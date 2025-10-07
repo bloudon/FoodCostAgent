@@ -1,89 +1,11 @@
 import { storage } from "./storage";
 import { hashPassword } from "./auth";
 
+// TODO: Update September counts seed to use inventory items instead of products
+// This function is temporarily disabled pending full seed data conversion
 async function seedSeptemberCounts() {
-  // Get necessary entities
-  const units = await storage.getUnits();
-  const locations = await storage.getStorageLocations();
-  const products = await storage.getProducts();
-  const adminUser = await storage.getUserByEmail("admin@pizza.com");
-  
-  const pound = units.find(u => u.name === "pound");
-  const walkIn = locations.find(l => l.name === "Walk-In Cooler");
-  const mozzarella = products.find(p => p.name === "Whole Milk Mozzarella");
-  const pepperoni = products.find(p => p.name === "Pepperoni Slices");
-  const chickenWings = products.find(p => p.name === "Chicken Wings (frozen)");
-  const sausage = products.find(p => p.name === "Italian Sausage (bulk)");
-  const bellPeppers = products.find(p => p.name === "Bell Peppers (mixed)");
-  const onions = products.find(p => p.name === "Yellow Onions");
-  
-  if (!pound || !walkIn || !mozzarella || !pepperoni || !chickenWings || !sausage || !bellPeppers || !onions || !adminUser) {
-    console.log("⚠️  Required data not found for September counts");
-    return;
-  }
-  
-  const septemberCounts = [
-    { date: new Date("2025-09-07T18:00:00"), note: "Weekly count - Walk-In Cooler" },
-    { date: new Date("2025-09-14T18:00:00"), note: "Weekly count - Walk-In Cooler" },
-    { date: new Date("2025-09-21T18:00:00"), note: "Weekly count - Walk-In Cooler" },
-    { date: new Date("2025-09-28T18:00:00"), note: "Weekly count - Walk-In Cooler" },
-  ];
-
-  for (let i = 0; i < septemberCounts.length; i++) {
-    const countData = septemberCounts[i];
-    const count = await storage.createInventoryCount({
-      storageLocationId: walkIn.id,
-      userId: adminUser.id,
-      note: countData.note,
-    });
-    
-    count.countedAt = countData.date;
-    
-    const weekMultiplier = 1 - (i * 0.15);
-    
-    // Inventory counts now in pounds
-    await storage.createInventoryCountLine({
-      inventoryCountId: count.id,
-      productId: mozzarella.id,
-      qty: parseFloat((8.75 * weekMultiplier).toFixed(2)),
-      unitId: pound.id,
-    });
-
-    await storage.createInventoryCountLine({
-      inventoryCountId: count.id,
-      productId: pepperoni.id,
-      qty: parseFloat((5.31 * weekMultiplier).toFixed(2)),
-      unitId: pound.id,
-    });
-
-    await storage.createInventoryCountLine({
-      inventoryCountId: count.id,
-      productId: chickenWings.id,
-      qty: parseFloat((7.5 * weekMultiplier).toFixed(2)),
-      unitId: pound.id,
-    });
-
-    await storage.createInventoryCountLine({
-      inventoryCountId: count.id,
-      productId: sausage.id,
-      qty: parseFloat((4.06 * weekMultiplier).toFixed(2)),
-      unitId: pound.id,
-    });
-
-    await storage.createInventoryCountLine({
-      inventoryCountId: count.id,
-      productId: bellPeppers.id,
-      qty: parseFloat((2 * weekMultiplier).toFixed(2)),
-      unitId: pound.id,
-    });
-
-    await storage.createInventoryCountLine({
-      inventoryCountId: count.id,
-      productId: onions.id,
-      qty: parseFloat((1.75 * weekMultiplier).toFixed(2)),
-      unitId: pound.id,
-    });
-  }
+  console.log("⚠️  September counts seeding temporarily disabled - awaiting seed data conversion");
+  return;
 }
 
 export async function seedDatabase() {
@@ -225,83 +147,97 @@ export async function seedDatabase() {
     usFoods: await storage.createVendor({ name: "US Foods", accountNumber: "USF-67890" }),
   };
 
-  // ============ PRODUCTS ============
+  // ============ INVENTORY ITEMS ============
   // Dough & Base Ingredients
-  const flour = await storage.createProduct({
+  const flour = await storage.createInventoryItem({
     name: "Bread Flour",
     category: "Dry/Pantry",
     pluSku: "DRY001",
     unitId: units.pound.id,
+    storageLocationId: locations.dryStorage.id,
     barcode: "8901234567890",
     active: 1,
-    lastCost: 0.001, // $0.001 per ounce
-    yieldAmount: 50, // 50 lb bag
-    yieldUnitId: units.pound.id,
+    costPerCase: 50, // $50 per 50 lb bag
+    caseSize: 50, // 50 lb bag
+    onHandQty: 0,
   });
 
-  const yeast = await storage.createProduct({
+  const yeast = await storage.createInventoryItem({
     name: "Active Dry Yeast",
     category: "Dry/Pantry",
     pluSku: "DRY002",
     unitId: units.pound.id,
+    storageLocationId: locations.dryStorage.id,
     active: 1,
-    lastCost: 0.02, // $0.02 per ounce
-    yieldAmount: 1, // 1 lb package
-    yieldUnitId: units.pound.id,
+    costPerCase: 20, // $20 per 1 lb package
+    caseSize: 1,
+    onHandQty: 0,
   });
 
-  const water = await storage.createProduct({
+  const water = await storage.createInventoryItem({
     name: "Water",
     category: "Beverages",
     pluSku: "BEV001",
     unitId: units.fluidOunce.id,
+    storageLocationId: locations.dryStorage.id,
     active: 1,
-    lastCost: 0.0001,
+    costPerCase: 1.28, // $1.28 per gallon (128 oz)
+    caseSize: 128,
+    onHandQty: 0,
   });
 
-  const oliveOil = await storage.createProduct({
+  const oliveOil = await storage.createInventoryItem({
     name: "Extra Virgin Olive Oil",
     category: "Oils",
     pluSku: "OIL001",
     unitId: units.fluidOunce.id,
+    storageLocationId: locations.dryStorage.id,
     active: 1,
-    lastCost: 0.015,
+    costPerCase: 15, // $15 per liter (33.8 oz)
+    caseSize: 33.8,
+    onHandQty: 0,
   });
 
-  const salt = await storage.createProduct({
+  const salt = await storage.createInventoryItem({
     name: "Kosher Salt",
     category: "Dry/Pantry",
     pluSku: "DRY003",
     unitId: units.pound.id,
+    storageLocationId: locations.dryStorage.id,
     active: 1,
-    lastCost: 0.002, // $0.002 per ounce
-    yieldAmount: 3, // 3 lb box
-    yieldUnitId: units.pound.id,
+    costPerCase: 6, // $6 per 3 lb box
+    caseSize: 3,
+    onHandQty: 0,
   });
 
-  const sugar = await storage.createProduct({
+  const sugar = await storage.createInventoryItem({
     name: "Granulated Sugar",
     category: "Dry/Pantry",
     pluSku: "DRY004",
     unitId: units.pound.id,
+    storageLocationId: locations.dryStorage.id,
     active: 1,
-    lastCost: 0.0015, // $0.0015 per ounce
-    yieldAmount: 10, // 10 lb bag
-    yieldUnitId: units.pound.id,
+    costPerCase: 15, // $15 per 10 lb bag
+    caseSize: 10,
+    onHandQty: 0,
   });
 
   // Sauce Ingredients
-  const crushedTomatoes = await storage.createProduct({
+  const crushedTomatoes = await storage.createInventoryItem({
     name: "Crushed Tomatoes (San Marzano)",
     category: "Dry/Pantry",
     pluSku: "CAN001",
     unitId: units.pound.id,
+    storageLocationId: locations.dryStorage.id,
     active: 1,
-    lastCost: 0.004, // $0.004 per ounce
-    yieldAmount: 6.5, // 6.5 lb can (~106 oz)
-    yieldUnitId: units.pound.id,
+    costPerCase: 26, // $26 per 6.5 lb can
+    caseSize: 6.5,
+    onHandQty: 0,
   });
 
+  // TODO: Convert remaining products to inventory items
+  // Temporarily commented out pending conversion
+  /* 
   const tomatoPaste = await storage.createProduct({
     name: "Tomato Paste",
     category: "Dry/Pantry",
@@ -347,15 +283,16 @@ export async function seedDatabase() {
   });
 
   // Cheese & Toppings
-  const mozzarella = await storage.createProduct({
+  const mozzarella = await storage.createInventoryItem({
     name: "Whole Milk Mozzarella",
     category: "Dairy",
     pluSku: "DAI001",
     unitId: units.pound.id,
+    storageLocationId: locations.walkIn.id,
     active: 1,
-    lastCost: 0.011, // $0.011 per ounce
-    yieldAmount: 5, // 5 lb bag
-    yieldUnitId: units.pound.id,
+    costPerCase: 55, // $55 per 5 lb bag
+    caseSize: 5,
+    onHandQty: 0,
   });
 
   const parmesan = await storage.createProduct({
@@ -369,15 +306,16 @@ export async function seedDatabase() {
     yieldUnitId: units.pound.id,
   });
 
-  const pepperoni = await storage.createProduct({
+  const pepperoni = await storage.createInventoryItem({
     name: "Pepperoni Slices",
     category: "Protein",
     pluSku: "MEA001",
     unitId: units.pound.id,
+    storageLocationId: locations.walkIn.id,
     active: 1,
-    lastCost: 0.015, // $0.015 per ounce
-    yieldAmount: 5, // 5 lb bag
-    yieldUnitId: units.pound.id,
+    costPerCase: 75, // $75 per 5 lb bag
+    caseSize: 5,
+    onHandQty: 0,
   });
 
   const italianSausage = await storage.createProduct({
@@ -508,11 +446,13 @@ export async function seedDatabase() {
     lastCost: 0.004,
   });
 
-  // ============ VENDOR PRODUCTS ============
-  // Sysco products
-  await storage.createVendorProduct({
+  */
+
+  // ============ VENDOR ITEMS ============
+  // Sysco items
+  await storage.createVendorItem({
     vendorId: vendors.sysco.id,
-    productId: flour.id,
+    inventoryItemId: flour.id,
     vendorSku: "SYS-FL-50LB",
     purchaseUnitId: units.pound.id,
     caseSize: 50,
@@ -520,9 +460,9 @@ export async function seedDatabase() {
     active: 1,
   });
 
-  await storage.createVendorProduct({
+  await storage.createVendorItem({
     vendorId: vendors.sysco.id,
-    productId: mozzarella.id,
+    inventoryItemId: mozzarella.id,
     vendorSku: "SYS-MZ-5LB",
     purchaseUnitId: units.pound.id,
     caseSize: 5,
@@ -530,9 +470,9 @@ export async function seedDatabase() {
     active: 1,
   });
 
-  await storage.createVendorProduct({
+  await storage.createVendorItem({
     vendorId: vendors.sysco.id,
-    productId: pepperoni.id,
+    inventoryItemId: pepperoni.id,
     vendorSku: "SYS-PEP-10LB",
     purchaseUnitId: units.pound.id,
     caseSize: 10,
@@ -540,10 +480,10 @@ export async function seedDatabase() {
     active: 1,
   });
 
-  // US Foods products
-  await storage.createVendorProduct({
+  // US Foods items
+  await storage.createVendorItem({
     vendorId: vendors.usFoods.id,
-    productId: crushedTomatoes.id,
+    inventoryItemId: crushedTomatoes.id,
     vendorSku: "USF-TOM-6CAN",
     purchaseUnitId: units.pound.id,
     caseSize: 6,
@@ -552,9 +492,9 @@ export async function seedDatabase() {
     active: 1,
   });
 
-  await storage.createVendorProduct({
+  await storage.createVendorItem({
     vendorId: vendors.usFoods.id,
-    productId: chickenWings.id,
+    inventoryItemId: chickenWings.id,
     vendorSku: "USF-WING-10LB",
     purchaseUnitId: units.pound.id,
     caseSize: 10,
@@ -562,9 +502,9 @@ export async function seedDatabase() {
     active: 1,
   });
 
-  await storage.createVendorProduct({
+  await storage.createVendorItem({
     vendorId: vendors.usFoods.id,
-    productId: oliveOil.id,
+    inventoryItemId: oliveOil.id,
     vendorSku: "USF-OIL-1GAL",
     purchaseUnitId: units.fluidOunce.id,
     caseSize: 128, // 1 gallon = 128 fluid ounces

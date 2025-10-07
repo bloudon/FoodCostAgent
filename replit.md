@@ -21,13 +21,15 @@ Preferred communication style: Simple, everyday language.
 - **Web Framework**: Express.js for REST APIs.
 - **API Design**: RESTful endpoints, WebSocket server for real-time POS sales, structured error handling, Zod for request/response validation.
 - **Database Layer**: Drizzle ORM, PostgreSQL (Neon serverless), schema-first approach with migrations, Zod integration.
-- **Core Domain Models**: Users, Storage Locations, Units, Products, Vendors, Recipes (with nested components and versioning), Inventory Counts, Purchase Orders, POS Sales, Menu Items, Transfer Logs, Waste Logs.
-- **Business Logic**: Unit conversion, recursive recipe cost calculation with yield-based scaling, theoretical vs. actual usage variance, purchase order workflow, inventory tracking, COGS analysis, price change impact analysis.
+- **Core Domain Models**: Users, Storage Locations, Units, **Inventory Items** (location-specific items with quantities), Vendors, Vendor Items, Recipes (with nested components using inventory items), Inventory Counts, Purchase Orders, POS Sales, Menu Items, Transfer Logs, Waste Logs.
+- **Inventory Architecture (Option A)**: Each inventory item represents a physical item at a specific location with its quantity. Same item at different locations = multiple inventory item records. Aggregated totals computed by summing across locations.
+- **Business Logic**: Unit conversion, recursive recipe cost calculation with yield-based scaling, location-based inventory tracking, theoretical vs. actual usage variance, purchase order workflow, COGS analysis, price change impact analysis.
 
 ### Data Storage
 - **Primary Database**: PostgreSQL (Neon Serverless) with relational schema, UUIDs, and timestamp tracking.
 - **ORM**: Drizzle ORM for type-safe queries, schema definitions, and migration system.
-- **Data Seeding**: Automated seed data for pizza restaurant operations, including products, recipes, units, and locations.
+- **Data Seeding**: Automated seed data for pizza restaurant operations, including inventory items (per location), recipes, units, and storage locations.
+- **Recent Major Refactoring**: Replaced `products` table with `inventoryItems` table (location-specific). Removed redundant `inventoryLevels` table. Updated all foreign key references from `productId` to `inventoryItemId`. Renamed `productPriceHistory` to `inventoryItemPriceHistory`, `vendorProducts` to `vendorItems`. Recipe components now use `inventory_item` type instead of `product`.
 
 ### Architectural Decisions
 - Single-page application with client-side routing.

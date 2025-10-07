@@ -9,8 +9,8 @@ import {
   insertUnitConversionSchema,
   insertStorageLocationSchema,
   insertVendorSchema,
-  insertProductSchema,
-  insertVendorProductSchema,
+  insertInventoryItemSchema,
+  insertVendorItemSchema,
   insertRecipeSchema,
   insertRecipeComponentSchema,
   insertInventoryCountSchema,
@@ -231,40 +231,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ============ PRODUCTS ============
-  app.get("/api/products", async (req, res) => {
-    const products = await storage.getProducts();
-    res.json(products);
+  // ============ INVENTORY ITEMS ============
+  app.get("/api/inventory-items", async (req, res) => {
+    const locationId = req.query.location_id as string | undefined;
+    const items = await storage.getInventoryItems(locationId);
+    res.json(items);
   });
 
-  app.get("/api/products/:id", async (req, res) => {
-    const product = await storage.getProduct(req.params.id);
-    if (!product) {
-      return res.status(404).json({ error: "Product not found" });
+  app.get("/api/inventory-items/aggregated", async (req, res) => {
+    const aggregated = await storage.getInventoryItemsAggregated();
+    res.json(aggregated);
+  });
+
+  app.get("/api/inventory-items/:id", async (req, res) => {
+    const item = await storage.getInventoryItem(req.params.id);
+    if (!item) {
+      return res.status(404).json({ error: "Inventory item not found" });
     }
-    res.json(product);
+    res.json(item);
   });
 
-  app.post("/api/products", async (req, res) => {
+  app.post("/api/inventory-items", async (req, res) => {
     try {
-      const data = insertProductSchema.parse(req.body);
-      const product = await storage.createProduct(data);
-      res.status(201).json(product);
+      const data = insertInventoryItemSchema.parse(req.body);
+      const item = await storage.createInventoryItem(data);
+      res.status(201).json(item);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
   });
 
-  app.patch("/api/products/:id", async (req, res) => {
+  app.patch("/api/inventory-items/:id", async (req, res) => {
     try {
-      const updates = insertProductSchema.partial().parse(req.body);
+      const updates = insertInventoryItemSchema.partial().parse(req.body);
       
       // Validate numeric fields are not NaN
-      if (updates.lastCost !== undefined && isNaN(updates.lastCost)) {
-        return res.status(400).json({ error: "Invalid lastCost value" });
+      if (updates.costPerCase !== undefined && isNaN(updates.costPerCase)) {
+        return res.status(400).json({ error: "Invalid costPerCase value" });
       }
       if (updates.caseSize !== undefined && isNaN(updates.caseSize)) {
         return res.status(400).json({ error: "Invalid caseSize value" });
+      }
+      if (updates.onHandQty !== undefined && isNaN(updates.onHandQty)) {
+        return res.status(400).json({ error: "Invalid onHandQty value" });
       }
       if (updates.parLevel !== undefined && updates.parLevel !== null && isNaN(updates.parLevel)) {
         return res.status(400).json({ error: "Invalid parLevel value" });
@@ -273,26 +282,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid reorderLevel value" });
       }
       
-      const product = await storage.updateProduct(req.params.id, updates);
-      if (!product) {
-        return res.status(404).json({ error: "Product not found" });
+      const item = await storage.updateInventoryItem(req.params.id, updates);
+      if (!item) {
+        return res.status(404).json({ error: "Inventory item not found" });
       }
-      res.json(product);
+      res.json(item);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
   });
 
-  app.get("/api/products/:id/vendor-products", async (req, res) => {
-    const vendorProducts = await storage.getVendorProductsByProduct(req.params.id);
+  app.get("/api/inventory-items/:id/vendor-items", async (req, res) => {
+    const vendorItems = await storage.getVendorItemsByInventoryItem(req.params.id);
     const vendors = await storage.getVendors();
     const units = await storage.getUnits();
     
-    const enriched = vendorProducts.map((vp) => {
-      const vendor = vendors.find((v) => v.id === vp.vendorId);
-      const unit = units.find((u) => u.id === vp.purchaseUnitId);
+    const enriched = vendorItems.map((vi) => {
+      const vendor = vendors.find((v) => v.id === vi.vendorId);
+      const unit = units.find((u) => u.id === vi.purchaseUnitId);
       return {
-        ...vp,
+        ...vi,
         vendor,
         unit,
       };
@@ -301,18 +310,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(enriched);
   });
 
-  // ============ VENDOR PRODUCTS ============
-  app.get("/api/vendor-products", async (req, res) => {
+  // ============ VENDOR ITEMS ============
+  app.get("/api/vendor-items", async (req, res) => {
     const vendorId = req.query.vendor_id as string | undefined;
-    const vendorProducts = await storage.getVendorProducts(vendorId);
-    res.json(vendorProducts);
+    const vendorItems = await storage.getVendorItems(vendorId);
+    res.json(vendorItems);
   });
 
-  app.post("/api/vendor-products", async (req, res) => {
+  app.post("/api/vendor-items", async (req, res) => {
     try {
-      const data = insertVendorProductSchema.parse(req.body);
-      const vendorProduct = await storage.createVendorProduct(data);
-      res.status(201).json(vendorProduct);
+      const data = insertVendorItemSchema.parse(req.body);
+      const vendorItem = await storage.createVendorItem(data);
+      res.status(201).json(vendorItem);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -332,17 +341,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const components = await storage.getRecipeComponents(req.params.id);
     const units = await storage.getUnits();
-    const products = await storage.getProducts();
+    const inventoryItems = await storage.getInventoryItems();
     const recipes = await storage.getRecipes();
 
     const expandedComponents = await Promise.all(
       components.map(async (comp) => {
         const unit = units.find((u) => u.id === comp.unitId);
-        if (comp.componentType === "product") {
-          const product = products.find((p) => p.id === comp.componentId);
+        if (comp.componentType === "inventory_item") {
+          const item = inventoryItems.find((i) => i.id === comp.componentId);
           return {
             ...comp,
-            name: product?.name || "Unknown",
+            name: item?.name || "Unknown",
             unitName: unit?.name || "Unknown",
           };
         } else {
@@ -1164,16 +1173,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
 async function calculateComponentCost(comp: any): Promise<number> {
   const units = await storage.getUnits();
-  const products = await storage.getProducts();
+  const inventoryItems = await storage.getInventoryItems();
   
   const unit = units.find((u) => u.id === comp.unitId);
   const qty = unit ? comp.qty * unit.toBaseRatio : comp.qty;
 
-  if (comp.componentType === "product") {
-    const product = products.find((p) => p.id === comp.componentId);
-    if (product) {
-      const costPerPound = product.lastCost / (product.caseSize || 1);
-      return qty * costPerPound;
+  if (comp.componentType === "inventory_item") {
+    const item = inventoryItems.find((i) => i.id === comp.componentId);
+    if (item) {
+      const costPerUnit = item.costPerCase / (item.caseSize || 1);
+      return qty * costPerUnit;
     }
   } else if (comp.componentType === "recipe") {
     const subRecipe = await storage.getRecipe(comp.componentId);
@@ -1195,7 +1204,7 @@ async function calculateRecipeCost(recipeId: string): Promise<number> {
 
   const components = await storage.getRecipeComponents(recipeId);
   const units = await storage.getUnits();
-  const products = await storage.getProducts();
+  const inventoryItems = await storage.getInventoryItems();
   
   let totalCost = 0;
 
@@ -1203,11 +1212,11 @@ async function calculateRecipeCost(recipeId: string): Promise<number> {
     const unit = units.find((u) => u.id === comp.unitId);
     const qty = unit ? comp.qty * unit.toBaseRatio : comp.qty;
 
-    if (comp.componentType === "product") {
-      const product = products.find((p) => p.id === comp.componentId);
-      if (product) {
-        const costPerPound = product.lastCost / (product.caseSize || 1);
-        totalCost += qty * costPerPound;
+    if (comp.componentType === "inventory_item") {
+      const item = inventoryItems.find((i) => i.id === comp.componentId);
+      if (item) {
+        const costPerUnit = item.costPerCase / (item.caseSize || 1);
+        totalCost += qty * costPerUnit;
       }
     } else if (comp.componentType === "recipe") {
       // Get sub-recipe's cost (already includes its waste)
@@ -1227,10 +1236,10 @@ async function calculateRecipeCost(recipeId: string): Promise<number> {
   return totalCost * wasteMultiplier;
 }
 
-async function calculateProductImpactInRecipe(recipeId: string, targetProductId: string): Promise<{ usesProduct: boolean, qty: number, costContribution: number }> {
+async function calculateInventoryItemImpactInRecipe(recipeId: string, targetItemId: string): Promise<{ usesItem: boolean, qty: number, costContribution: number }> {
   const components = await storage.getRecipeComponents(recipeId);
   const units = await storage.getUnits();
-  const products = await storage.getProducts();
+  const inventoryItems = await storage.getInventoryItems();
   
   let totalQty = 0;
   let totalCostContribution = 0;
@@ -1239,24 +1248,24 @@ async function calculateProductImpactInRecipe(recipeId: string, targetProductId:
     const unit = units.find((u) => u.id === comp.unitId);
     const qty = unit ? comp.qty * unit.toBaseRatio : comp.qty;
 
-    if (comp.componentType === "product" && comp.componentId === targetProductId) {
-      const product = products.find((p) => p.id === targetProductId);
-      if (product) {
+    if (comp.componentType === "inventory_item" && comp.componentId === targetItemId) {
+      const item = inventoryItems.find((i) => i.id === targetItemId);
+      if (item) {
         totalQty += qty;
-        const costPerPound = product.lastCost / (product.caseSize || 1);
-        totalCostContribution += qty * costPerPound;
+        const costPerUnit = item.costPerCase / (item.caseSize || 1);
+        totalCostContribution += qty * costPerUnit;
       }
     } else if (comp.componentType === "recipe") {
       const subRecipe = await storage.getRecipe(comp.componentId);
       if (subRecipe) {
-        const subImpact = await calculateProductImpactInRecipe(comp.componentId, targetProductId);
-        if (subImpact.usesProduct) {
+        const subImpact = await calculateInventoryItemImpactInRecipe(comp.componentId, targetItemId);
+        if (subImpact.usesItem) {
           // Scale sub-recipe usage by yield ratio
           const subRecipeYieldUnit = units.find(u => u.id === subRecipe.yieldUnitId);
           const subRecipeYieldQty = subRecipeYieldUnit ? subRecipe.yieldQty * subRecipeYieldUnit.toBaseRatio : subRecipe.yieldQty;
           
           if (subRecipeYieldQty > 0) {
-            // Scale the sub-recipe's product usage by (qty needed / yield)
+            // Scale the sub-recipe's item usage by (qty needed / yield)
             const scaleFactor = qty / subRecipeYieldQty;
             totalQty += subImpact.qty * scaleFactor;
             totalCostContribution += subImpact.costContribution * scaleFactor;
@@ -1267,7 +1276,7 @@ async function calculateProductImpactInRecipe(recipeId: string, targetProductId:
   }
 
   return {
-    usesProduct: totalQty > 0,
+    usesItem: totalQty > 0,
     qty: totalQty,
     costContribution: totalCostContribution
   };
