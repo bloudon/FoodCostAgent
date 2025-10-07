@@ -42,7 +42,7 @@ export type Unit = typeof units.$inferSelect;
 export const products = pgTable("products", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
-  category: text("category"), // Protein, Produce, Dairy, Dry/Pantry
+  category: text("category"), // Custom category entered by user
   pluSku: text("plu_sku"),
   baseUnitId: varchar("base_unit_id").notNull(), // micro-unit reference
   microUnitId: varchar("micro_unit_id").notNull(),
@@ -54,10 +54,12 @@ export const products = pgTable("products", {
   yieldAmount: real("yield_amount"), // package yield/size
   yieldUnitId: varchar("yield_unit_id"), // unit for yield
   imageUrl: text("image_url"),
+  parLevel: real("par_level"), // target inventory level
+  reorderLevel: real("reorder_level"), // level at which to reorder
 });
 
 export const insertProductSchema = createInsertSchema(products).omit({ id: true }).extend({
-  category: z.enum(["Protein", "Produce", "Dairy", "Dry/Pantry"]).optional(),
+  category: z.string().optional(),
   storageLocationIds: z.array(z.string()).optional(),
 });
 export type InsertProduct = z.infer<typeof insertProductSchema>;
