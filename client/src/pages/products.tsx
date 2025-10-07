@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Package } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function Products() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -26,6 +27,10 @@ export default function Products() {
     queryKey: ["/api/units"],
   });
 
+  const { data: storageLocations } = useQuery<any[]>({
+    queryKey: ["/api/storage-locations"],
+  });
+
   const filteredProducts = products?.filter(p => 
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (p.pluSku && p.pluSku.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -33,6 +38,23 @@ export default function Products() {
 
   const getUnitName = (unitId: string) => {
     return units?.find(u => u.id === unitId)?.name || "Unknown";
+  };
+
+  const getLocationNames = (locationIds: string[] | null) => {
+    if (!locationIds || locationIds.length === 0) return "-";
+    return locationIds
+      .map(id => storageLocations?.find(l => l.id === id)?.name || "Unknown")
+      .join(", ");
+  };
+
+  const getCategoryColor = (category: string | null) => {
+    switch (category) {
+      case "Protein": return "bg-red-500/10 text-red-700 dark:text-red-400";
+      case "Produce": return "bg-green-500/10 text-green-700 dark:text-green-400";
+      case "Dairy": return "bg-blue-500/10 text-blue-700 dark:text-blue-400";
+      case "Dry/Pantry": return "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400";
+      default: return "";
+    }
   };
 
   return (
@@ -70,10 +92,11 @@ export default function Products() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12"></TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Category</TableHead>
-                <TableHead>PLU/SKU</TableHead>
-                <TableHead>Base Unit</TableHead>
+                <TableHead>Storage Location(s)</TableHead>
+                <TableHead>Yield</TableHead>
                 <TableHead className="text-right">Last Cost</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
@@ -82,10 +105,11 @@ export default function Products() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
+                    <TableCell><Skeleton className="h-10 w-10 rounded-full" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-28" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                    <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                   </TableRow>
@@ -93,10 +117,30 @@ export default function Products() {
               ) : filteredProducts && filteredProducts.length > 0 ? (
                 filteredProducts.map((product) => (
                   <TableRow key={product.id} className="hover-elevate" data-testid={`row-product-${product.id}`}>
+                    <TableCell>
+                      <Avatar className="h-10 w-10" data-testid={`img-product-${product.id}`}>
+                        <AvatarImage src={product.imageUrl} alt={product.name} />
+                        <AvatarFallback>
+                          <Package className="h-5 w-5 text-muted-foreground" />
+                        </AvatarFallback>
+                      </Avatar>
+                    </TableCell>
                     <TableCell className="font-medium" data-testid={`text-product-name-${product.id}`}>{product.name}</TableCell>
-                    <TableCell className="text-muted-foreground" data-testid={`text-product-category-${product.id}`}>{product.category || "-"}</TableCell>
-                    <TableCell className="font-mono text-sm" data-testid={`text-product-sku-${product.id}`}>{product.pluSku || "-"}</TableCell>
-                    <TableCell data-testid={`text-product-unit-${product.id}`}>{getUnitName(product.baseUnitId)}</TableCell>
+                    <TableCell data-testid={`text-product-category-${product.id}`}>
+                      {product.category ? (
+                        <Badge variant="outline" className={getCategoryColor(product.category)}>
+                          {product.category}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm" data-testid={`text-product-locations-${product.id}`}>
+                      {getLocationNames(product.storageLocationIds)}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm" data-testid={`text-product-yield-${product.id}`}>
+                      {product.yieldAmount ? `${product.yieldAmount} ${getUnitName(product.yieldUnitId)}` : "-"}
+                    </TableCell>
                     <TableCell className="text-right font-mono" data-testid={`text-product-cost-${product.id}`}>
                       ${product.lastCost.toFixed(4)}
                     </TableCell>
@@ -109,7 +153,7 @@ export default function Products() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     {searchQuery ? "No products match your search" : "No products found. Create your first product to get started."}
                   </TableCell>
                 </TableRow>
