@@ -209,6 +209,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/vendors/:id", async (req, res) => {
+    try {
+      const data = insertVendorSchema.partial().parse(req.body);
+      const vendor = await storage.updateVendor(req.params.id, data);
+      if (!vendor) {
+        return res.status(404).json({ error: "Vendor not found" });
+      }
+      res.json(vendor);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/vendors/:id", async (req, res) => {
+    try {
+      await storage.deleteVendor(req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ PRODUCTS ============
   app.get("/api/products", async (req, res) => {
     const products = await storage.getProducts();
