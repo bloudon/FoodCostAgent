@@ -67,45 +67,46 @@ export const insertUnitConversionSchema = createInsertSchema(unitConversions).om
 export type InsertUnitConversion = z.infer<typeof insertUnitConversionSchema>;
 export type UnitConversion = typeof unitConversions.$inferSelect;
 
-// Products
-export const products = pgTable("products", {
+// Inventory Items (replaces Products - one record per item per location)
+export const inventoryItems = pgTable("inventory_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   category: text("category"), // Custom category entered by user
   pluSku: text("plu_sku"),
   unitId: varchar("unit_id").notNull(), // unit reference (pounds by default)
-  caseSize: real("case_size").notNull().default(20), // case size in pounds
+  caseSize: real("case_size").notNull().default(20), // case size in base units
   barcode: text("barcode"),
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
   lastCost: real("last_cost").notNull().default(0), // cost per case
-  storageLocationIds: text("storage_location_ids").array(), // array of storage location IDs
+  storageLocationId: varchar("storage_location_id").notNull(), // single location for this item
+  onHandQty: real("on_hand_qty").notNull().default(0), // quantity on hand in base units
   imageUrl: text("image_url"),
-  parLevel: real("par_level"), // target inventory level in pounds
-  reorderLevel: real("reorder_level"), // level at which to reorder in pounds
+  parLevel: real("par_level"), // target inventory level in base units
+  reorderLevel: real("reorder_level"), // level at which to reorder in base units
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const insertProductSchema = createInsertSchema(products).omit({ id: true }).extend({
+export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({ id: true, updatedAt: true }).extend({
   category: z.string().optional(),
-  storageLocationIds: z.array(z.string()).optional(),
 });
-export type InsertProduct = z.infer<typeof insertProductSchema>;
-export type Product = typeof products.$inferSelect;
+export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
+export type InventoryItem = typeof inventoryItems.$inferSelect;
 
-// Product Price History
-export const productPriceHistory = pgTable("product_price_history", {
+// Inventory Item Price History
+export const inventoryItemPriceHistory = pgTable("inventory_item_price_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  productId: varchar("product_id").notNull(),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
   effectiveAt: timestamp("effective_at").notNull(),
   costPerCase: real("cost_per_case").notNull(),
-  vendorProductId: varchar("vendor_product_id"),
+  vendorItemId: varchar("vendor_item_id"),
   note: text("note"),
   recordedBy: varchar("recorded_by"), // userId
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const insertProductPriceHistorySchema = createInsertSchema(productPriceHistory).omit({ id: true, createdAt: true });
-export type InsertProductPriceHistory = z.infer<typeof insertProductPriceHistorySchema>;
-export type ProductPriceHistory = typeof productPriceHistory.$inferSelect;
+export const insertInventoryItemPriceHistorySchema = createInsertSchema(inventoryItemPriceHistory).omit({ id: true, createdAt: true });
+export type InsertInventoryItemPriceHistory = z.infer<typeof insertInventoryItemPriceHistorySchema>;
+export type InventoryItemPriceHistory = typeof inventoryItemPriceHistory.$inferSelect;
 
 // Vendors
 export const vendors = pgTable("vendors", {
@@ -118,11 +119,11 @@ export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true })
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type Vendor = typeof vendors.$inferSelect;
 
-// Vendor Products (cross-reference)
-export const vendorProducts = pgTable("vendor_products", {
+// Vendor Items (cross-reference)
+export const vendorItems = pgTable("vendor_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   vendorId: varchar("vendor_id").notNull(),
-  productId: varchar("product_id").notNull(),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
   vendorSku: text("vendor_sku"),
   purchaseUnitId: varchar("purchase_unit_id").notNull(),
   caseSize: real("case_size").notNull().default(1), // number of purchase units per case
@@ -132,9 +133,9 @@ export const vendorProducts = pgTable("vendor_products", {
   active: integer("active").notNull().default(1),
 });
 
-export const insertVendorProductSchema = createInsertSchema(vendorProducts).omit({ id: true });
-export type InsertVendorProduct = z.infer<typeof insertVendorProductSchema>;
-export type VendorProduct = typeof vendorProducts.$inferSelect;
+export const insertVendorItemSchema = createInsertSchema(vendorItems).omit({ id: true });
+export type InsertVendorItem = z.infer<typeof insertVendorItemSchema>;
+export type VendorItem = typeof vendorItems.$inferSelect;
 
 // Recipes
 export const recipes = pgTable("recipes", {
@@ -154,8 +155,8 @@ export type Recipe = typeof recipes.$inferSelect;
 export const recipeComponents = pgTable("recipe_components", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   recipeId: varchar("recipe_id").notNull(),
-  componentType: text("component_type").notNull(), // 'product' | 'recipe'
-  componentId: varchar("component_id").notNull(), // product_id or recipe_id
+  componentType: text("component_type").notNull(), // 'inventory_item' | 'recipe'
+  componentId: varchar("component_id").notNull(), // inventory_item_id or recipe_id
   qty: real("qty").notNull(),
   unitId: varchar("unit_id").notNull(),
 });
@@ -163,19 +164,6 @@ export const recipeComponents = pgTable("recipe_components", {
 export const insertRecipeComponentSchema = createInsertSchema(recipeComponents).omit({ id: true });
 export type InsertRecipeComponent = z.infer<typeof insertRecipeComponentSchema>;
 export type RecipeComponent = typeof recipeComponents.$inferSelect;
-
-// Inventory Levels
-export const inventoryLevels = pgTable("inventory_levels", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  productId: varchar("product_id").notNull(),
-  storageLocationId: varchar("storage_location_id").notNull(),
-  onHandQty: real("on_hand_qty").notNull().default(0), // quantity in pounds
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const insertInventoryLevelSchema = createInsertSchema(inventoryLevels).omit({ id: true, updatedAt: true });
-export type InsertInventoryLevel = z.infer<typeof insertInventoryLevelSchema>;
-export type InventoryLevel = typeof inventoryLevels.$inferSelect;
 
 // Inventory Counts
 export const inventoryCounts = pgTable("inventory_counts", {
@@ -194,8 +182,8 @@ export type InventoryCount = typeof inventoryCounts.$inferSelect;
 export const inventoryCountLines = pgTable("inventory_count_lines", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   inventoryCountId: varchar("inventory_count_id").notNull(),
-  productId: varchar("product_id").notNull(),
-  qty: real("qty").notNull(), // quantity in pounds
+  inventoryItemId: varchar("inventory_item_id").notNull(),
+  qty: real("qty").notNull(), // quantity in base units
   unitId: varchar("unit_id").notNull(),
 });
 
@@ -222,7 +210,7 @@ export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 export const poLines = pgTable("po_lines", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   purchaseOrderId: varchar("purchase_order_id").notNull(),
-  vendorProductId: varchar("vendor_product_id").notNull(),
+  vendorItemId: varchar("vendor_item_id").notNull(),
   orderedQty: real("ordered_qty").notNull(),
   unitId: varchar("unit_id").notNull(),
   priceEach: real("price_each").notNull(),
@@ -247,8 +235,8 @@ export type Receipt = typeof receipts.$inferSelect;
 export const receiptLines = pgTable("receipt_lines", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   receiptId: varchar("receipt_id").notNull(),
-  vendorProductId: varchar("vendor_product_id").notNull(),
-  receivedQty: real("received_qty").notNull(), // quantity in pounds
+  vendorItemId: varchar("vendor_item_id").notNull(),
+  receivedQty: real("received_qty").notNull(), // quantity in base units
   unitId: varchar("unit_id").notNull(),
   priceEach: real("price_each").notNull(),
 });
@@ -316,10 +304,10 @@ export type RecipeVersion = typeof recipeVersions.$inferSelect;
 // Transfer Logs (for tracking stock movements between locations)
 export const transferLogs = pgTable("transfer_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  productId: varchar("product_id").notNull(),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
   fromLocationId: varchar("from_location_id").notNull(),
   toLocationId: varchar("to_location_id").notNull(),
-  qty: real("qty").notNull(), // quantity in pounds
+  qty: real("qty").notNull(), // quantity in base units
   unitId: varchar("unit_id").notNull(),
   transferredAt: timestamp("transferred_at").notNull().defaultNow(),
   transferredBy: varchar("transferred_by"),
@@ -333,9 +321,9 @@ export type TransferLog = typeof transferLogs.$inferSelect;
 // Waste Logs (for tracking waste and spoilage)
 export const wasteLogs = pgTable("waste_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  productId: varchar("product_id").notNull(),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
   storageLocationId: varchar("storage_location_id").notNull(),
-  qty: real("qty").notNull(), // quantity in pounds
+  qty: real("qty").notNull(), // quantity in base units
   unitId: varchar("unit_id").notNull(),
   reasonCode: text("reason_code").notNull(), // SPOILED, DAMAGED, OVERPRODUCTION, etc
   notes: text("notes"),
