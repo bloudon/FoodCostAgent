@@ -200,18 +200,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const unit = units.find((u) => u.id === comp.unitId);
         const componentCost = await calculateComponentCost(comp);
         
-        if (comp.productId) {
-          const product = products.find((p) => p.id === comp.productId);
+        if (comp.componentType === "product") {
+          const product = products.find((p) => p.id === comp.componentId);
           return {
             ...comp,
+            productId: comp.componentId, // Add for frontend compatibility
             productName: product?.name || "Unknown",
             unitName: unit?.name || "Unknown",
             componentCost,
           };
         } else {
-          const subRecipe = recipes.find((r) => r.id === comp.subRecipeId);
+          const subRecipe = recipes.find((r) => r.id === comp.componentId);
           return {
             ...comp,
+            subRecipeId: comp.componentId, // Add for frontend compatibility
             subRecipeName: subRecipe?.name || "Unknown",
             unitName: unit?.name || "Unknown",
             componentCost,
@@ -827,6 +829,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 }
 
 // ============ HELPER FUNCTIONS ============
+
+async function calculateComponentCost(comp: any): Promise<number> {
+  const units = await storage.getUnits();
+  const products = await storage.getProducts();
+  
+  const unit = units.find((u) => u.id === comp.unitId);
+  const microUnits = unit ? comp.qty * unit.toBaseRatio : comp.qty;
+
+  if (comp.componentType === "product") {
+    const product = products.find((p) => p.id === comp.componentId);
+    if (product) {
+      return microUnits * product.lastCost;
+    }
+  } else if (comp.componentType === "recipe") {
+    const subRecipe = await storage.getRecipe(comp.componentId);
+    if (subRecipe) {
+      const subRecipeCost = await calculateRecipeCost(comp.componentId);
+      const subRecipeYieldUnit = units.find(u => u.id === subRecipe.yieldUnitId);
+      const subRecipeYieldMicroUnits = subRecipeYieldUnit ? subRecipe.yieldQty * subRecipeYieldUnit.toBaseRatio : subRecipe.yieldQty;
+      const costPerMicroUnit = subRecipeYieldMicroUnits > 0 ? subRecipeCost / subRecipeYieldMicroUnits : 0;
+      return microUnits * costPerMicroUnit;
+    }
+  }
+  
+  return 0;
+}
 
 async function calculateRecipeCost(recipeId: string): Promise<number> {
   const recipe = await storage.getRecipe(recipeId);
