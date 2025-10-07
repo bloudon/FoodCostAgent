@@ -6,7 +6,7 @@ async function seedSeptemberCounts() {
   const locations = await storage.getStorageLocations();
   const products = await storage.getProducts();
   
-  const ounceWeight = units.find(u => u.name === "ounce (weight)");
+  const pound = units.find(u => u.name === "pound");
   const walkIn = locations.find(l => l.name === "Walk-In Cooler");
   const mozzarella = products.find(p => p.name === "Whole Milk Mozzarella");
   const pepperoni = products.find(p => p.name === "Pepperoni Slices");
@@ -15,7 +15,7 @@ async function seedSeptemberCounts() {
   const bellPeppers = products.find(p => p.name === "Bell Peppers (mixed)");
   const onions = products.find(p => p.name === "Yellow Onions");
   
-  if (!ounceWeight || !walkIn || !mozzarella || !pepperoni || !chickenWings || !sausage || !bellPeppers || !onions) {
+  if (!pound || !walkIn || !mozzarella || !pepperoni || !chickenWings || !sausage || !bellPeppers || !onions) {
     console.log("⚠️  Required data not found for September counts");
     return;
   }
@@ -39,52 +39,58 @@ async function seedSeptemberCounts() {
     
     const weekMultiplier = 1 - (i * 0.15);
     
+    // Convert from ounces to pounds: 140 oz = 8.75 lb
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: mozzarella.id,
-      qty: Math.floor(140 * weekMultiplier),
-      unitId: ounceWeight.id,
-      derivedMicroUnits: Math.floor(140 * weekMultiplier),
+      qty: parseFloat((8.75 * weekMultiplier).toFixed(2)),
+      unitId: pound.id,
+      derivedMicroUnits: parseFloat((8.75 * weekMultiplier).toFixed(2)),
     });
 
+    // 85 oz = 5.31 lb
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: pepperoni.id,
-      qty: Math.floor(85 * weekMultiplier),
-      unitId: ounceWeight.id,
-      derivedMicroUnits: Math.floor(85 * weekMultiplier),
+      qty: parseFloat((5.31 * weekMultiplier).toFixed(2)),
+      unitId: pound.id,
+      derivedMicroUnits: parseFloat((5.31 * weekMultiplier).toFixed(2)),
     });
 
+    // 120 oz = 7.5 lb
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: chickenWings.id,
-      qty: Math.floor(120 * weekMultiplier),
-      unitId: ounceWeight.id,
-      derivedMicroUnits: Math.floor(120 * weekMultiplier),
+      qty: parseFloat((7.5 * weekMultiplier).toFixed(2)),
+      unitId: pound.id,
+      derivedMicroUnits: parseFloat((7.5 * weekMultiplier).toFixed(2)),
     });
 
+    // 65 oz = 4.06 lb
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: sausage.id,
-      qty: Math.floor(65 * weekMultiplier),
-      unitId: ounceWeight.id,
-      derivedMicroUnits: Math.floor(65 * weekMultiplier),
+      qty: parseFloat((4.06 * weekMultiplier).toFixed(2)),
+      unitId: pound.id,
+      derivedMicroUnits: parseFloat((4.06 * weekMultiplier).toFixed(2)),
     });
 
+    // 32 oz = 2 lb
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: bellPeppers.id,
-      qty: Math.floor(32 * weekMultiplier),
-      unitId: ounceWeight.id,
-      derivedMicroUnits: Math.floor(32 * weekMultiplier),
+      qty: parseFloat((2 * weekMultiplier).toFixed(2)),
+      unitId: pound.id,
+      derivedMicroUnits: parseFloat((2 * weekMultiplier).toFixed(2)),
     });
 
+    // 28 oz = 1.75 lb
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: onions.id,
-      qty: Math.floor(28 * weekMultiplier),
-      unitId: ounceWeight.id,
-      derivedMicroUnits: Math.floor(28 * weekMultiplier),
+      qty: parseFloat((1.75 * weekMultiplier).toFixed(2)),
+      unitId: pound.id,
+      derivedMicroUnits: parseFloat((1.75 * weekMultiplier).toFixed(2)),
     });
   }
 }
@@ -110,14 +116,13 @@ export async function seedDatabase() {
   }
 
   // ============ UNITS ============
-  // Base microunit for weight: ounce (weight)
-  // Base microunit for volume: fluid ounce
+  // Base unit for weight: pound
+  // Base unit for volume: fluid ounce
   const units = {
-    // Weight (base: ounce)
-    ounceWeight: await storage.createUnit({ name: "ounce (weight)", kind: "weight", toBaseRatio: 1 }),
-    pound: await storage.createUnit({ name: "pound", kind: "weight", toBaseRatio: 16 }),
-    gram: await storage.createUnit({ name: "gram", kind: "weight", toBaseRatio: 0.0353 }),
-    kilogram: await storage.createUnit({ name: "kilogram", kind: "weight", toBaseRatio: 35.27 }),
+    // Weight (base: pound)
+    pound: await storage.createUnit({ name: "pound", kind: "weight", toBaseRatio: 1 }),
+    ounceWeight: await storage.createUnit({ name: "ounce (weight)", kind: "weight", toBaseRatio: 0.0625 }), // 1 oz = 0.0625 lb
+    kilogram: await storage.createUnit({ name: "kilogram", kind: "weight", toBaseRatio: 2.20462 }), // 1 kg = 2.20462 lb
     
     // Volume (base: fluid ounce)
     fluidOunce: await storage.createUnit({ name: "fluid ounce", kind: "volume", toBaseRatio: 1 }),
@@ -127,9 +132,10 @@ export async function seedDatabase() {
     milliliter: await storage.createUnit({ name: "milliliter", kind: "volume", toBaseRatio: 0.0338 }),
     liter: await storage.createUnit({ name: "liter", kind: "volume", toBaseRatio: 33.81 }),
     
-    // Count
+    // Count (base: each)
     each: await storage.createUnit({ name: "each", kind: "count", toBaseRatio: 1 }),
-    dozen: await storage.createUnit({ name: "dozen", kind: "count", toBaseRatio: 12 }),
+    bag: await storage.createUnit({ name: "bag", kind: "count", toBaseRatio: 1 }),
+    bottle: await storage.createUnit({ name: "bottle", kind: "count", toBaseRatio: 1 }),
   };
 
   // ============ STORAGE LOCATIONS ============
@@ -149,25 +155,29 @@ export async function seedDatabase() {
   // Dough & Base Ingredients
   const flour = await storage.createProduct({
     name: "Bread Flour",
-    category: "Dry Goods",
+    category: "Dry/Pantry",
     pluSku: "DRY001",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     barcode: "8901234567890",
     active: 1,
-    lastCost: 0.001,
+    lastCost: 0.016, // $0.016 per pound (was $0.001 per ounce * 16)
+    yieldAmount: 50, // 50 lb bag
+    yieldUnitId: units.pound.id,
   });
 
   const yeast = await storage.createProduct({
     name: "Active Dry Yeast",
-    category: "Dry Goods",
+    category: "Dry/Pantry",
     pluSku: "DRY002",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.02,
+    lastCost: 0.32, // $0.32 per pound (was $0.02 per ounce * 16)
+    yieldAmount: 1, // 1 lb package
+    yieldUnitId: units.pound.id,
   });
 
   const water = await storage.createProduct({
@@ -194,80 +204,94 @@ export async function seedDatabase() {
 
   const salt = await storage.createProduct({
     name: "Kosher Salt",
-    category: "Dry Goods",
+    category: "Dry/Pantry",
     pluSku: "DRY003",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.002,
+    lastCost: 0.032, // $0.032 per pound (was $0.002 per ounce * 16)
+    yieldAmount: 3, // 3 lb box
+    yieldUnitId: units.pound.id,
   });
 
   const sugar = await storage.createProduct({
     name: "Granulated Sugar",
-    category: "Dry Goods",
+    category: "Dry/Pantry",
     pluSku: "DRY004",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.0015,
+    lastCost: 0.024, // $0.024 per pound (was $0.0015 per ounce * 16)
+    yieldAmount: 10, // 10 lb bag
+    yieldUnitId: units.pound.id,
   });
 
   // Sauce Ingredients
   const crushedTomatoes = await storage.createProduct({
     name: "Crushed Tomatoes (San Marzano)",
-    category: "Canned Goods",
+    category: "Dry/Pantry",
     pluSku: "CAN001",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.004,
+    lastCost: 0.064, // $0.064 per pound (was $0.004 per ounce * 16)
+    yieldAmount: 6.5, // 6.5 lb can (~106 oz)
+    yieldUnitId: units.pound.id,
   });
 
   const tomatoPaste = await storage.createProduct({
     name: "Tomato Paste",
-    category: "Canned Goods",
+    category: "Dry/Pantry",
     pluSku: "CAN002",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.006,
+    lastCost: 0.096, // $0.096 per pound (was $0.006 per ounce * 16)
+    yieldAmount: 0.375, // 6 oz can
+    yieldUnitId: units.pound.id,
   });
 
   const garlic = await storage.createProduct({
     name: "Fresh Garlic",
     category: "Produce",
     pluSku: "PRO001",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.01,
+    lastCost: 0.16, // $0.16 per pound (was $0.01 per ounce * 16)
+    yieldAmount: 1, // 1 lb bag
+    yieldUnitId: units.pound.id,
   });
 
   const basil = await storage.createProduct({
     name: "Fresh Basil",
     category: "Produce",
     pluSku: "PRO002",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.03,
+    lastCost: 0.48, // $0.48 per pound (was $0.03 per ounce * 16)
+    yieldAmount: 0.25, // 4 oz package
+    yieldUnitId: units.pound.id,
   });
 
   const oregano = await storage.createProduct({
     name: "Dried Oregano",
-    category: "Spices",
+    category: "Dry/Pantry",
     pluSku: "SPI001",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.05,
+    lastCost: 0.80, // $0.80 per pound (was $0.05 per ounce * 16)
+    yieldAmount: 0.125, // 2 oz bottle
+    yieldUnitId: units.pound.id,
   });
 
   // Cheese & Toppings
@@ -275,99 +299,117 @@ export async function seedDatabase() {
     name: "Whole Milk Mozzarella",
     category: "Dairy",
     pluSku: "DAI001",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.011,
+    lastCost: 0.176, // $0.176 per pound (was $0.011 per ounce * 16)
+    yieldAmount: 5, // 5 lb bag
+    yieldUnitId: units.pound.id,
   });
 
   const parmesan = await storage.createProduct({
     name: "Grated Parmesan",
     category: "Dairy",
     pluSku: "DAI002",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.022,
+    lastCost: 0.352, // $0.352 per pound (was $0.022 per ounce * 16)
+    yieldAmount: 2, // 2 lb container
+    yieldUnitId: units.pound.id,
   });
 
   const pepperoni = await storage.createProduct({
     name: "Pepperoni Slices",
-    category: "Meat",
+    category: "Protein",
     pluSku: "MEA001",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.015,
+    lastCost: 0.24, // $0.24 per pound (was $0.015 per ounce * 16)
+    yieldAmount: 5, // 5 lb bag
+    yieldUnitId: units.pound.id,
   });
 
   const italianSausage = await storage.createProduct({
     name: "Italian Sausage (bulk)",
-    category: "Meat",
+    category: "Protein",
     pluSku: "MEA002",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.013,
+    lastCost: 0.208, // $0.208 per pound (was $0.013 per ounce * 16)
+    yieldAmount: 5, // 5 lb package
+    yieldUnitId: units.pound.id,
   });
 
   const chickenBreast = await storage.createProduct({
     name: "Chicken Breast",
-    category: "Meat",
+    category: "Protein",
     pluSku: "MEA003",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.012,
+    lastCost: 0.192, // $0.192 per pound (was $0.012 per ounce * 16)
+    yieldAmount: 10, // 10 lb bag
+    yieldUnitId: units.pound.id,
   });
 
   const bellPeppers = await storage.createProduct({
     name: "Bell Peppers (mixed)",
     category: "Produce",
     pluSku: "PRO003",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.007,
+    lastCost: 0.112, // $0.112 per pound (was $0.007 per ounce * 16)
+    yieldAmount: 1, // sold by pound
+    yieldUnitId: units.pound.id,
   });
 
   const mushrooms = await storage.createProduct({
     name: "Button Mushrooms",
     category: "Produce",
     pluSku: "PRO004",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.009,
+    lastCost: 0.144, // $0.144 per pound (was $0.009 per ounce * 16)
+    yieldAmount: 1, // 1 lb package
+    yieldUnitId: units.pound.id,
   });
 
   const onions = await storage.createProduct({
     name: "Yellow Onions",
     category: "Produce",
     pluSku: "PRO005",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.003,
+    lastCost: 0.048, // $0.048 per pound (was $0.003 per ounce * 16)
+    yieldAmount: 1, // sold by pound
+    yieldUnitId: units.pound.id,
   });
 
   const blackOlives = await storage.createProduct({
     name: "Sliced Black Olives",
-    category: "Canned Goods",
+    category: "Dry/Pantry",
     pluSku: "CAN003",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.008,
+    lastCost: 0.128, // $0.128 per pound (was $0.008 per ounce * 16)
+    yieldAmount: 0.375, // 6 oz can
+    yieldUnitId: units.pound.id,
   });
 
   // Sauces & Specialty
@@ -396,35 +438,41 @@ export async function seedDatabase() {
   // Wings & Appetizers
   const chickenWings = await storage.createProduct({
     name: "Chicken Wings (frozen)",
-    category: "Meat",
+    category: "Protein",
     pluSku: "MEA004",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.01,
+    lastCost: 0.16, // $0.16 per pound (was $0.01 per ounce * 16)
+    yieldAmount: 10, // 10 lb bag
+    yieldUnitId: units.pound.id,
   });
 
   const breadstickDough = await storage.createProduct({
     name: "Breadstick Dough",
-    category: "Frozen",
+    category: "Dry/Pantry",
     pluSku: "FRO001",
-    baseUnitId: units.ounceWeight.id,
-    microUnitId: units.ounceWeight.id,
+    baseUnitId: units.pound.id,
+    microUnitId: units.pound.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
-    lastCost: 0.005,
+    lastCost: 0.08, // $0.08 per pound (was $0.005 per ounce * 16)
+    yieldAmount: 1, // 1 lb package
+    yieldUnitId: units.pound.id,
   });
 
   const mozzarellaSticks = await storage.createProduct({
     name: "Mozzarella Sticks (frozen)",
-    category: "Frozen",
+    category: "Dry/Pantry",
     pluSku: "FRO002",
     baseUnitId: units.each.id,
     microUnitId: units.each.id,
     microUnitsPerPurchaseUnit: 1,
     active: 1,
     lastCost: 0.35,
+    yieldAmount: 24, // 24 pieces per bag
+    yieldUnitId: units.each.id,
   });
 
   const marinara = await storage.createProduct({
