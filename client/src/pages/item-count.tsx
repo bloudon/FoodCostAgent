@@ -146,7 +146,7 @@ export default function ItemCount() {
             <div>
               <div className="text-sm text-muted-foreground mb-1">Product Name</div>
               {product?.id ? (
-                <Link href={`/inventory-items/${product.id}`}>
+                <Link href={`/products/${product.id}`}>
                   <div className="text-lg font-medium text-primary hover:underline cursor-pointer" data-testid="link-product-name">
                     {product.name}
                   </div>
