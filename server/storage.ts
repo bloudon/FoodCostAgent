@@ -92,7 +92,7 @@ export interface IStorage {
   // Inventory Levels
   getInventoryLevels(locationId?: string): Promise<InventoryLevel[]>;
   getInventoryLevel(productId: string, locationId: string): Promise<InventoryLevel | undefined>;
-  updateInventoryLevel(productId: string, locationId: string, microUnits: number): Promise<InventoryLevel>;
+  updateInventoryLevel(productId: string, locationId: string, qty: number): Promise<InventoryLevel>;
 
   // Inventory Counts
   getInventoryCounts(): Promise<InventoryCount[]>;
@@ -171,7 +171,7 @@ export interface IStorage {
   getInventoryCountAggregations(countId: string): Promise<Array<{
     productId: string;
     productName: string;
-    totalMicroUnits: number;
+    totalQty: number;
     totalValue: number;
     countLineIds: string[];
   }>>;
@@ -185,8 +185,7 @@ export interface IStorage {
     qty: number;
     unitId: string;
     unitName: string;
-    microUnits: number;
-    costPerMicroUnit: number;
+    costPerCase: number;
     totalValue: number;
     countedAt: Date;
   }>>;
@@ -445,13 +444,13 @@ export class DatabaseStorage implements IStorage {
     return level || undefined;
   }
 
-  async updateInventoryLevel(productId: string, locationId: string, microUnits: number): Promise<InventoryLevel> {
+  async updateInventoryLevel(productId: string, locationId: string, qty: number): Promise<InventoryLevel> {
     const existing = await this.getInventoryLevel(productId, locationId);
     if (existing) {
       const [updated] = await db
         .update(inventoryLevels)
         .set({ 
-          onHandMicroUnits: microUnits,
+          onHandQty: qty,
           updatedAt: new Date()
         })
         .where(eq(inventoryLevels.id, existing.id))
@@ -463,7 +462,7 @@ export class DatabaseStorage implements IStorage {
         .values({
           productId,
           storageLocationId: locationId,
-          onHandMicroUnits: microUnits,
+          onHandQty: qty,
         })
         .returning();
       return level;

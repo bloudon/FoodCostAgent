@@ -73,18 +73,15 @@ export const products = pgTable("products", {
   name: text("name").notNull(),
   category: text("category"), // Custom category entered by user
   pluSku: text("plu_sku"),
-  baseUnitId: varchar("base_unit_id").notNull(), // micro-unit reference
-  microUnitId: varchar("micro_unit_id").notNull(),
-  microUnitsPerPurchaseUnit: real("micro_units_per_purchase_unit").notNull().default(1),
+  unitId: varchar("unit_id").notNull(), // unit reference (pounds by default)
+  caseSize: real("case_size").notNull().default(20), // case size in pounds
   barcode: text("barcode"),
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
-  lastCost: real("last_cost").notNull().default(0), // cost per micro-unit
+  lastCost: real("last_cost").notNull().default(0), // cost per case
   storageLocationIds: text("storage_location_ids").array(), // array of storage location IDs
-  yieldAmount: real("yield_amount"), // package yield/size
-  yieldUnitId: varchar("yield_unit_id"), // unit for yield
   imageUrl: text("image_url"),
-  parLevel: real("par_level"), // target inventory level
-  reorderLevel: real("reorder_level"), // level at which to reorder
+  parLevel: real("par_level"), // target inventory level in pounds
+  reorderLevel: real("reorder_level"), // level at which to reorder in pounds
 });
 
 export const insertProductSchema = createInsertSchema(products).omit({ id: true }).extend({
@@ -99,7 +96,7 @@ export const productPriceHistory = pgTable("product_price_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   productId: varchar("product_id").notNull(),
   effectiveAt: timestamp("effective_at").notNull(),
-  costPerMicroUnit: real("cost_per_micro_unit").notNull(),
+  costPerCase: real("cost_per_case").notNull(),
   vendorProductId: varchar("vendor_product_id"),
   note: text("note"),
   recordedBy: varchar("recorded_by"), // userId
@@ -172,7 +169,7 @@ export const inventoryLevels = pgTable("inventory_levels", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   productId: varchar("product_id").notNull(),
   storageLocationId: varchar("storage_location_id").notNull(),
-  onHandMicroUnits: real("on_hand_micro_units").notNull().default(0),
+  onHandQty: real("on_hand_qty").notNull().default(0), // quantity in pounds
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
@@ -198,16 +195,12 @@ export const inventoryCountLines = pgTable("inventory_count_lines", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   inventoryCountId: varchar("inventory_count_id").notNull(),
   productId: varchar("product_id").notNull(),
-  qty: real("qty").notNull(),
+  qty: real("qty").notNull(), // quantity in pounds
   unitId: varchar("unit_id").notNull(),
-  derivedMicroUnits: real("derived_micro_units").notNull(), // normalized value
 });
 
 export const insertInventoryCountLineSchema = createInsertSchema(inventoryCountLines).omit({ 
-  id: true,
-  derivedMicroUnits: true 
-}).extend({
-  derivedMicroUnits: z.number().optional()
+  id: true
 });
 export type InsertInventoryCountLine = z.infer<typeof insertInventoryCountLineSchema>;
 export type InventoryCountLine = typeof inventoryCountLines.$inferSelect;
@@ -255,10 +248,9 @@ export const receiptLines = pgTable("receipt_lines", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   receiptId: varchar("receipt_id").notNull(),
   vendorProductId: varchar("vendor_product_id").notNull(),
-  receivedQty: real("received_qty").notNull(),
+  receivedQty: real("received_qty").notNull(), // quantity in pounds
   unitId: varchar("unit_id").notNull(),
   priceEach: real("price_each").notNull(),
-  derivedMicroUnits: real("derived_micro_units").notNull(),
 });
 
 export const insertReceiptLineSchema = createInsertSchema(receiptLines).omit({ id: true });
@@ -327,9 +319,8 @@ export const transferLogs = pgTable("transfer_logs", {
   productId: varchar("product_id").notNull(),
   fromLocationId: varchar("from_location_id").notNull(),
   toLocationId: varchar("to_location_id").notNull(),
-  qty: real("qty").notNull(),
+  qty: real("qty").notNull(), // quantity in pounds
   unitId: varchar("unit_id").notNull(),
-  derivedMicroUnits: real("derived_micro_units").notNull(),
   transferredAt: timestamp("transferred_at").notNull().defaultNow(),
   transferredBy: varchar("transferred_by"),
   reason: text("reason"),
@@ -344,9 +335,8 @@ export const wasteLogs = pgTable("waste_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   productId: varchar("product_id").notNull(),
   storageLocationId: varchar("storage_location_id").notNull(),
-  qty: real("qty").notNull(),
+  qty: real("qty").notNull(), // quantity in pounds
   unitId: varchar("unit_id").notNull(),
-  derivedMicroUnits: real("derived_micro_units").notNull(),
   reasonCode: text("reason_code").notNull(), // SPOILED, DAMAGED, OVERPRODUCTION, etc
   notes: text("notes"),
   wastedAt: timestamp("wasted_at").notNull().defaultNow(),

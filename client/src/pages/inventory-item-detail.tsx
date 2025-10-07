@@ -19,12 +19,11 @@ type Product = {
   name: string;
   category: string | null;
   pluSku: string;
-  baseUnitId: string;
-  microUnitId: string;
-  microUnitsPerPurchaseUnit: number;
+  unitId: string;
   barcode: string | null;
   active: number;
   lastCost: number;
+  caseSize: number;
   storageLocationIds: string[] | null;
   yieldAmount: number | null;
   yieldUnitId: string | null;
@@ -126,7 +125,7 @@ export default function InventoryItemDetail() {
     if (field in editedFields) {
       const value = editedFields[field];
       // Validate numeric fields
-      if (["lastCost", "microUnitsPerPurchaseUnit", "parLevel", "reorderLevel", "yieldAmount"].includes(field)) {
+      if (["lastCost", "caseSize", "parLevel", "reorderLevel", "yieldAmount"].includes(field)) {
         const numValue = parseFloat(value);
         if (value !== "" && !isNaN(numValue)) {
           updateMutation.mutate({ [field]: numValue });
@@ -178,11 +177,11 @@ export default function InventoryItemDetail() {
     );
   }
 
-  const baseUnit = units?.find((u) => u.id === product.baseUnitId);
-  const microUnit = units?.find((u) => u.id === product.microUnitId);
+  const unit = units?.find((u) => u.id === product.unitId);
   const yieldUnit = units?.find((u) => u.id === product.yieldUnitId);
   
   const filteredUnits = filterUnitsBySystem(units, systemPrefs?.unitSystem);
+  const costPerPound = product.caseSize ? (product.lastCost / product.caseSize) : 0;
 
   return (
     <div className="h-full overflow-auto">
@@ -262,12 +261,12 @@ export default function InventoryItemDetail() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="lastCost">Cost Per Micro-Unit</Label>
+                <Label htmlFor="lastCost">Cost Per Case</Label>
                 <div className="flex gap-2">
                   <Input
                     id="lastCost"
                     type="number"
-                    step="0.0001"
+                    step="0.01"
                     value={getFieldValue("lastCost", product.lastCost)}
                     onChange={(e) => handleFieldChange("lastCost", e.target.value)}
                     onBlur={() => handleFieldBlur("lastCost")}
@@ -276,8 +275,22 @@ export default function InventoryItemDetail() {
                   />
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="caseSize">Case Size (lbs)</Label>
+                <Input
+                  id="caseSize"
+                  type="number"
+                  step="0.1"
+                  value={getFieldValue("caseSize", product.caseSize)}
+                  onChange={(e) => handleFieldChange("caseSize", e.target.value)}
+                  onBlur={() => handleFieldBlur("caseSize")}
+                  disabled={updateMutation.isPending}
+                  data-testid="input-case-size"
+                />
+              </div>
               <div className="text-sm text-muted-foreground">
-                <p>Current cost: ${product.lastCost.toFixed(4)} per {microUnit?.name || "micro-unit"}</p>
+                <p>Cost per case: ${product.lastCost.toFixed(2)}</p>
+                <p>Cost per pound: ${costPerPound.toFixed(4)}</p>
               </div>
             </CardContent>
           </Card>
@@ -288,20 +301,20 @@ export default function InventoryItemDetail() {
                 <Ruler className="h-5 w-5" />
                 Units & Measurements
               </CardTitle>
-              <CardDescription>Unit configuration and conversions</CardDescription>
+              <CardDescription>Unit configuration</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="baseUnitId">Base Unit</Label>
+                <Label htmlFor="unitId">Unit of Measure</Label>
                 <Select
-                  value={getFieldValue("baseUnitId", product.baseUnitId)}
+                  value={getFieldValue("unitId", product.unitId)}
                   onValueChange={(value) => {
-                    handleFieldChange("baseUnitId", value);
-                    handleFieldBlur("baseUnitId");
+                    handleFieldChange("unitId", value);
+                    handleFieldBlur("unitId");
                   }}
                   disabled={updateMutation.isPending}
                 >
-                  <SelectTrigger id="baseUnitId" data-testid="select-base-unit">
+                  <SelectTrigger id="unitId" data-testid="select-unit">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -314,48 +327,13 @@ export default function InventoryItemDetail() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="microUnitId">Micro-Unit</Label>
-                <Select
-                  value={getFieldValue("microUnitId", product.microUnitId)}
-                  onValueChange={(value) => {
-                    handleFieldChange("microUnitId", value);
-                    handleFieldBlur("microUnitId");
-                  }}
-                  disabled={updateMutation.isPending}
-                >
-                  <SelectTrigger id="microUnitId" data-testid="select-micro-unit">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredUnits?.map((unit) => (
-                      <SelectItem key={unit.id} value={unit.id}>
-                        {unit.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="microUnitsPerPurchaseUnit">Micro-Units Per Purchase Unit</Label>
-                <Input
-                  id="microUnitsPerPurchaseUnit"
-                  type="number"
-                  step="0.01"
-                  value={getFieldValue("microUnitsPerPurchaseUnit", product.microUnitsPerPurchaseUnit)}
-                  onChange={(e) => handleFieldChange("microUnitsPerPurchaseUnit", e.target.value)}
-                  onBlur={() => handleFieldBlur("microUnitsPerPurchaseUnit")}
-                  disabled={updateMutation.isPending}
-                  data-testid="input-micro-units-per-purchase"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="yieldAmount">Case Size (Yield Amount)</Label>
+                <Label htmlFor="yieldAmount">Yield Amount</Label>
                 <Input
                   id="yieldAmount"
                   type="number"
                   step="0.01"
                   value={getFieldValue("yieldAmount", product.yieldAmount ?? "")}
-                  placeholder="Enter case size"
+                  placeholder="Enter yield amount"
                   onChange={(e) => handleFieldChange("yieldAmount", e.target.value)}
                   onBlur={() => handleFieldBlur("yieldAmount")}
                   disabled={updateMutation.isPending}

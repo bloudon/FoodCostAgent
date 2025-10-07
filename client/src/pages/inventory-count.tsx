@@ -36,7 +36,6 @@ interface CountLine {
   unitId: string;
   unitName: string;
   caseSize: number;
-  derivedMicroUnits: number;
 }
 
 function CountHistoryRow({ count, location, countDate, products }: any) {
@@ -46,7 +45,8 @@ function CountHistoryRow({ count, location, countDate, products }: any) {
 
   const totalValue = countLines?.reduce((sum, line) => {
     const product = products?.find((p: any) => p.id === line.productId);
-    return sum + (line.derivedMicroUnits * (product?.lastCost || 0));
+    const costPerPound = product?.caseSize ? (product.lastCost / product.caseSize) : 0;
+    return sum + (line.qty * costPerPound);
   }, 0) || 0;
 
   return (
@@ -152,14 +152,8 @@ export default function InventoryCount() {
       return;
     }
 
-    const baseUnit = units?.find(u => u.id === product.baseUnitId);
-    const yieldUnit = units?.find(u => u.id === product.yieldUnitId);
-    
-    // Convert case size (yieldAmount) to base units
-    // yieldAmount is in yieldUnit, we need it in base units
-    const caseSizeInBaseUnits = product.yieldAmount 
-      ? (product.yieldAmount * (yieldUnit?.toBaseRatio || 1))
-      : 1;
+    const unit = units?.find(u => u.id === product.unitId);
+    const caseSize = product.caseSize || 20;
     
     setCountLines([...countLines, {
       productId: product.id,
@@ -167,10 +161,9 @@ export default function InventoryCount() {
       caseCount: 0,
       openCaseUnits: 0,
       qty: 0,
-      unitId: product.baseUnitId,
-      unitName: baseUnit?.name || "unit",
-      caseSize: caseSizeInBaseUnits,
-      derivedMicroUnits: 0,
+      unitId: product.unitId,
+      unitName: unit?.name || "unit",
+      caseSize: caseSize,
     }]);
     setSearchQuery("");
   };
@@ -181,22 +174,19 @@ export default function InventoryCount() {
         const updated = { ...line, [field]: value };
         const unit = units?.find(u => u.id === updated.unitId);
         
-        // Calculate base units from case count and open case units
-        // caseSize is already in base units (e.g., product yieldAmount)
-        const baseUnits = (updated.caseCount * updated.caseSize) + updated.openCaseUnits;
+        // Calculate quantity in pounds from case count and open case units
+        const totalPounds = (updated.caseCount * updated.caseSize) + updated.openCaseUnits;
         
-        // Convert base units to the selected unit for display
+        // Convert pounds to the selected unit for display
         if (field === "caseCount" || field === "openCaseUnits") {
-          updated.qty = unit ? baseUnits / unit.toBaseRatio : baseUnits;
-          updated.derivedMicroUnits = baseUnits;
+          updated.qty = unit ? totalPounds / unit.toBaseRatio : totalPounds;
         }
         
         // Recalculate when unit changes
         if (field === "unitId") {
           updated.unitName = unit?.name || "unit";
-          // Keep the same base units, just display in new unit
-          updated.qty = unit ? baseUnits / unit.toBaseRatio : baseUnits;
-          updated.derivedMicroUnits = baseUnits;
+          // Keep the same total in pounds, just display in new unit
+          updated.qty = unit ? totalPounds / unit.toBaseRatio : totalPounds;
         }
         
         return updated;
@@ -235,14 +225,14 @@ export default function InventoryCount() {
         productId: line.productId,
         qty: line.qty,
         unitId: line.unitId,
-        derivedMicroUnits: line.derivedMicroUnits,
       })),
     });
   };
 
   const totalValue = countLines.reduce((sum, line) => {
     const product = products?.find(p => p.id === line.productId);
-    return sum + (line.derivedMicroUnits * (product?.lastCost || 0));
+    const costPerPound = product?.caseSize ? (product.lastCost / product.caseSize) : 0;
+    return sum + (line.qty * costPerPound);
   }, 0);
 
   return (
@@ -482,7 +472,7 @@ export default function InventoryCount() {
                         {level.productName}
                       </span>
                       <span className="font-mono ml-2">
-                        {level.onHandMicroUnits.toFixed(0)}
+                        {level.onHandQty.toFixed(1)} lbs
                       </span>
                     </div>
                   ))}

@@ -40,29 +40,28 @@ export default function ItemCount() {
   });
 
   const product = products?.find(p => p.id === countLine?.productId);
-  const baseUnit = units?.find(u => u.id === product?.baseUnitId);
-  const yieldUnit = units?.find(u => u.id === product?.yieldUnitId);
+  const unit = units?.find(u => u.id === product?.unitId);
 
-  // Calculate case size in base units
-  const caseSizeInBaseUnits = product?.yieldAmount 
-    ? (product.yieldAmount * (yieldUnit?.toBaseRatio || 1))
-    : 1;
+  // Get case size (in pounds)
+  const caseSize = product?.caseSize || 20;
 
   // Initialize form values when countLine is loaded
   useEffect(() => {
     if (countLine && product) {
-      setSelectedUnitId(countLine.unitId || product.baseUnitId);
+      setSelectedUnitId(countLine.unitId || product.unitId);
       
-      // If we have derivedMicroUnits, reverse calculate case count and open units
-      if (countLine.derivedMicroUnits > 0) {
-        const totalBaseUnits = countLine.derivedMicroUnits;
-        const cases = Math.floor(totalBaseUnits / caseSizeInBaseUnits);
-        const open = totalBaseUnits % caseSizeInBaseUnits;
+      // If we have qty, reverse calculate case count and open units
+      const selectedUnit = units?.find(u => u.id === (countLine.unitId || product.unitId));
+      if (countLine.qty > 0) {
+        // Convert qty to pounds
+        const totalPounds = selectedUnit ? countLine.qty * selectedUnit.toBaseRatio : countLine.qty;
+        const cases = Math.floor(totalPounds / caseSize);
+        const open = totalPounds % caseSize;
         setCaseCount(cases);
         setOpenCaseUnits(open);
       }
     }
-  }, [countLine, product, caseSizeInBaseUnits]);
+  }, [countLine, product, caseSize, units]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -90,23 +89,23 @@ export default function ItemCount() {
 
   const handleSave = () => {
     const unit = units?.find(u => u.id === selectedUnitId);
-    const baseUnits = (caseCount * caseSizeInBaseUnits) + openCaseUnits;
-    const qty = unit ? baseUnits / unit.toBaseRatio : baseUnits;
+    const totalPounds = (caseCount * caseSize) + openCaseUnits;
+    const qty = unit ? totalPounds / unit.toBaseRatio : totalPounds;
 
     updateMutation.mutate({
       qty,
       unitId: selectedUnitId,
-      derivedMicroUnits: baseUnits,
     });
   };
 
   const totalQty = (() => {
     const unit = units?.find(u => u.id === selectedUnitId);
-    const baseUnits = (caseCount * caseSizeInBaseUnits) + openCaseUnits;
-    return unit ? baseUnits / unit.toBaseRatio : baseUnits;
+    const totalPounds = (caseCount * caseSize) + openCaseUnits;
+    return unit ? totalPounds / unit.toBaseRatio : totalPounds;
   })();
 
-  const totalValue = totalQty * (product?.lastCost || 0);
+  const costPerPound = product?.caseSize ? (product.lastCost / product.caseSize) : 0;
+  const totalValue = totalQty * costPerPound;
 
   if (lineLoading || !countLine) {
     return (
@@ -164,7 +163,7 @@ export default function ItemCount() {
             <div>
               <div className="text-sm text-muted-foreground mb-1">Case Size</div>
               <div className="font-mono">
-                {caseSizeInBaseUnits.toFixed(1)} {baseUnit?.name || 'units'}/case
+                {caseSize.toFixed(1)} {unit?.name || 'lbs'}/case
               </div>
             </div>
 
@@ -185,7 +184,7 @@ export default function ItemCount() {
 
               <div>
                 <label className="text-sm font-medium mb-2 block">
-                  Open Case Units ({baseUnit?.name || 'units'})
+                  Open Case Units ({unit?.name || 'lbs'})
                 </label>
                 <Input
                   type="number"
@@ -235,9 +234,9 @@ export default function ItemCount() {
               </div>
 
               <div>
-                <div className="text-sm text-muted-foreground">Unit Cost</div>
+                <div className="text-sm text-muted-foreground">Cost Per Pound</div>
                 <div className="text-lg font-mono">
-                  ${(product?.lastCost || 0).toFixed(4)}
+                  ${costPerPound.toFixed(4)}
                 </div>
               </div>
 

@@ -241,8 +241,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (updates.lastCost !== undefined && isNaN(updates.lastCost)) {
         return res.status(400).json({ error: "Invalid lastCost value" });
       }
-      if (updates.microUnitsPerPurchaseUnit !== undefined && isNaN(updates.microUnitsPerPurchaseUnit)) {
-        return res.status(400).json({ error: "Invalid microUnitsPerPurchaseUnit value" });
+      if (updates.caseSize !== undefined && isNaN(updates.caseSize)) {
+        return res.status(400).json({ error: "Invalid caseSize value" });
       }
       if (updates.parLevel !== undefined && updates.parLevel !== null && isNaN(updates.parLevel)) {
         return res.status(400).json({ error: "Invalid parLevel value" });
@@ -462,13 +462,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const enriched = levels.map((level) => {
       const product = products.find((p) => p.id === level.productId);
       const location = locations.find((l) => l.id === level.storageLocationId);
-      const baseUnit = units.find((u) => u.id === product?.baseUnitId);
+      const unit = units.find((u) => u.id === product?.unitId);
       
       return {
         ...level,
         product: product || null,
         location: location || null,
-        baseUnit: baseUnit || null,
+        unit: unit || null,
       };
     });
     
@@ -524,27 +524,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/inventory-count-lines", async (req, res) => {
     try {
       const lineData = insertInventoryCountLineSchema.parse(req.body);
-      const units = await storage.getUnits();
-      const unit = units.find((u) => u.id === lineData.unitId);
-      const derivedMicroUnits = unit
-        ? lineData.qty * unit.toBaseRatio
-        : lineData.qty;
 
       const count = await storage.getInventoryCount(lineData.inventoryCountId);
       if (!count) {
         return res.status(404).json({ error: "Count not found" });
       }
 
-      const line = await storage.createInventoryCountLine({
-        ...lineData,
-        derivedMicroUnits,
-      });
+      const line = await storage.createInventoryCountLine(lineData);
 
       // Update inventory level
       await storage.updateInventoryLevel(
         lineData.productId,
         count.storageLocationId,
-        derivedMicroUnits
+        lineData.qty
       );
 
       res.status(201).json(line);
@@ -567,31 +559,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Count not found" });
       }
 
-      // Calculate new derived micro units if qty or unit changed
-      let derivedMicroUnits = existingLine.derivedMicroUnits;
-      if (lineData.qty !== undefined || lineData.unitId !== undefined) {
-        const units = await storage.getUnits();
-        const unitId = lineData.unitId || existingLine.unitId;
-        const qty = lineData.qty !== undefined ? lineData.qty : existingLine.qty;
-        const unit = units.find((u) => u.id === unitId);
-        derivedMicroUnits = unit ? qty * unit.toBaseRatio : qty;
-      }
-
-      const updatedLine = await storage.updateInventoryCountLine(req.params.id, {
-        ...lineData,
-        derivedMicroUnits,
-      });
+      const updatedLine = await storage.updateInventoryCountLine(req.params.id, lineData);
 
       // Update inventory level - subtract old, add new
-      const oldMicroUnits = existingLine.derivedMicroUnits;
+      const oldQty = existingLine.qty;
+      const newQty = lineData.qty !== undefined ? lineData.qty : existingLine.qty;
       const productId = lineData.productId || existingLine.productId;
       const currentLevel = await storage.getInventoryLevel(productId, count.storageLocationId);
-      const currentQty = currentLevel?.onHandMicroUnits || 0;
+      const currentQty = currentLevel?.onHandQty || 0;
       
       await storage.updateInventoryLevel(
         productId,
         count.storageLocationId,
-        currentQty - oldMicroUnits + derivedMicroUnits
+        currentQty - oldQty + newQty
       );
 
       res.json(updatedLine);
@@ -615,12 +595,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update inventory level - subtract this line's quantity
       const currentLevel = await storage.getInventoryLevel(line.productId, count.storageLocationId);
-      const currentQty = currentLevel?.onHandMicroUnits || 0;
+      const currentQty = currentLevel?.onHandQty || 0;
       
       await storage.updateInventoryLevel(
         line.productId,
         count.storageLocationId,
-        currentQty - line.derivedMicroUnits
+        currentQty - line.qty
       );
 
       await storage.deleteInventoryCountLine(req.params.id);
@@ -637,28 +617,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const count = await storage.createInventoryCount(countInput);
 
       if (lines && Array.isArray(lines)) {
-        const units = await storage.getUnits();
-        
         for (const line of lines) {
           const lineData = insertInventoryCountLineSchema.parse({
             ...line,
             inventoryCountId: count.id,
           });
 
-          const unit = units.find((u) => u.id === lineData.unitId);
-          const derivedMicroUnits = unit
-            ? lineData.qty * unit.toBaseRatio
-            : lineData.qty;
-
-          await storage.createInventoryCountLine({
-            ...lineData,
-            derivedMicroUnits,
-          });
+          await storage.createInventoryCountLine(lineData);
 
           await storage.updateInventoryLevel(
             lineData.productId,
             count.storageLocationId,
-            derivedMicroUnits
+            lineData.qty
           );
         }
       }
@@ -746,7 +716,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const receipt = await storage.createReceipt(receiptInput);
 
       if (lines && Array.isArray(lines)) {
-        const units = await storage.getUnits();
         const vendorProducts = await storage.getVendorProducts();
 
         for (const line of lines) {
@@ -755,21 +724,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             receiptId: receipt.id,
           });
 
-          const unit = units.find((u) => u.id === lineData.unitId);
-          const derivedMicroUnits = unit
-            ? lineData.receivedQty * unit.toBaseRatio
-            : lineData.receivedQty;
-
-          await storage.createReceiptLine({
-            ...lineData,
-            derivedMicroUnits,
-          });
+          await storage.createReceiptLine(lineData);
 
           const vp = vendorProducts.find((vp) => vp.id === lineData.vendorProductId);
           if (vp) {
-            const costPerMicroUnit = lineData.priceEach / derivedMicroUnits;
+            const product = await storage.getProduct(vp.productId);
+            const costPerCase = lineData.priceEach;
             await storage.updateProduct(vp.productId, {
-              lastCost: costPerMicroUnit,
+              lastCost: costPerCase,
             });
 
             if (storageLocationId) {
@@ -777,7 +739,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 vp.productId,
                 storageLocationId
               );
-              const newOnHand = (currentLevel?.onHandMicroUnits || 0) + derivedMicroUnits;
+              const newOnHand = (currentLevel?.onHandQty || 0) + lineData.receivedQty;
               await storage.updateInventoryLevel(
                 vp.productId,
                 storageLocationId,
@@ -927,12 +889,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get current inventory levels
       const fromLevel = await storage.getInventoryLevel(data.productId, data.fromLocationId);
-      const fromQty = fromLevel?.onHandMicroUnits || 0;
+      const fromQty = fromLevel?.onHandQty || 0;
       
       // Validate sufficient quantity
-      if (fromQty < data.derivedMicroUnits) {
+      if (fromQty < data.qty) {
         return res.status(400).json({ 
-          error: `Insufficient inventory. Available: ${fromQty}, Requested: ${data.derivedMicroUnits}` 
+          error: `Insufficient inventory. Available: ${fromQty}, Requested: ${data.qty}` 
         });
       }
       
@@ -943,14 +905,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateInventoryLevel(
         data.productId,
         data.fromLocationId,
-        fromQty - data.derivedMicroUnits
+        fromQty - data.qty
       );
       
       const toLevel = await storage.getInventoryLevel(data.productId, data.toLocationId);
       await storage.updateInventoryLevel(
         data.productId,
         data.toLocationId,
-        (toLevel?.onHandMicroUnits || 0) + data.derivedMicroUnits
+        (toLevel?.onHandQty || 0) + data.qty
       );
       
       res.status(201).json(transfer);
@@ -974,12 +936,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get current inventory level
       const level = await storage.getInventoryLevel(data.productId, data.storageLocationId);
-      const currentQty = level?.onHandMicroUnits || 0;
+      const currentQty = level?.onHandQty || 0;
       
       // Validate sufficient quantity
-      if (currentQty < data.derivedMicroUnits) {
+      if (currentQty < data.qty) {
         return res.status(400).json({ 
-          error: `Insufficient inventory. Available: ${currentQty}, Waste amount: ${data.derivedMicroUnits}` 
+          error: `Insufficient inventory. Available: ${currentQty}, Waste amount: ${data.qty}` 
         });
       }
       
@@ -990,7 +952,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateInventoryLevel(
         data.productId,
         data.storageLocationId,
-        currentQty - data.derivedMicroUnits
+        currentQty - data.qty
       );
       
       res.status(201).json(wasteLog);
@@ -1008,15 +970,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     for (const wasteLog of wasteLogs) {
       if (!trends[wasteLog.productId]) {
         const product = products.find(p => p.id === wasteLog.productId);
-        trends[wasteLog.productId] = { productId: wasteLog.productId, productName: product?.name || "Unknown", totalWasteMicroUnits: 0, totalWasteCost: 0, byReason: {} as Record<string, number>, count: 0 };
+        trends[wasteLog.productId] = { productId: wasteLog.productId, productName: product?.name || "Unknown", totalWasteQty: 0, totalWasteCost: 0, byReason: {} as Record<string, number>, count: 0 };
       }
       const product = products.find(p => p.id === wasteLog.productId);
-      const costPerMicroUnit = product?.lastCost || 0;
-      trends[wasteLog.productId].totalWasteMicroUnits += wasteLog.derivedMicroUnits;
-      trends[wasteLog.productId].totalWasteCost += wasteLog.derivedMicroUnits * costPerMicroUnit;
+      const costPerPound = product?.lastCost ? product.lastCost / (product.caseSize || 1) : 0;
+      trends[wasteLog.productId].totalWasteQty += wasteLog.qty;
+      trends[wasteLog.productId].totalWasteCost += wasteLog.qty * costPerPound;
       trends[wasteLog.productId].count += 1;
       if (!trends[wasteLog.productId].byReason[wasteLog.reasonCode]) trends[wasteLog.productId].byReason[wasteLog.reasonCode] = 0;
-      trends[wasteLog.productId].byReason[wasteLog.reasonCode] += wasteLog.derivedMicroUnits;
+      trends[wasteLog.productId].byReason[wasteLog.reasonCode] += wasteLog.qty;
     }
     res.json(Object.values(trends));
   });
@@ -1121,7 +1083,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         menuItemName: menuItem.name,
         recipeId: menuItem.recipeId,
         currentRecipeCost,
-        componentQuantity: productImpact.microUnits,
+        componentQuantity: productImpact.qty,
         componentCostContribution: productImpact.costContribution,
         costPercentage: costPercent,
         priceImpactPer10Percent: productImpact.costContribution * 0.1
@@ -1133,7 +1095,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id: product.id,
         name: product.name,
         currentCost: product.lastCost,
-        baseUnitId: product.baseUnitId
+        unitId: product.unitId
       },
       affectedRecipes: impact.length,
       impactAnalysis: impact
@@ -1183,21 +1145,22 @@ async function calculateComponentCost(comp: any): Promise<number> {
   const products = await storage.getProducts();
   
   const unit = units.find((u) => u.id === comp.unitId);
-  const microUnits = unit ? comp.qty * unit.toBaseRatio : comp.qty;
+  const qty = unit ? comp.qty * unit.toBaseRatio : comp.qty;
 
   if (comp.componentType === "product") {
     const product = products.find((p) => p.id === comp.componentId);
     if (product) {
-      return microUnits * product.lastCost;
+      const costPerPound = product.lastCost / (product.caseSize || 1);
+      return qty * costPerPound;
     }
   } else if (comp.componentType === "recipe") {
     const subRecipe = await storage.getRecipe(comp.componentId);
     if (subRecipe) {
       const subRecipeCost = await calculateRecipeCost(comp.componentId);
       const subRecipeYieldUnit = units.find(u => u.id === subRecipe.yieldUnitId);
-      const subRecipeYieldMicroUnits = subRecipeYieldUnit ? subRecipe.yieldQty * subRecipeYieldUnit.toBaseRatio : subRecipe.yieldQty;
-      const costPerMicroUnit = subRecipeYieldMicroUnits > 0 ? subRecipeCost / subRecipeYieldMicroUnits : 0;
-      return microUnits * costPerMicroUnit;
+      const subRecipeYieldQty = subRecipeYieldUnit ? subRecipe.yieldQty * subRecipeYieldUnit.toBaseRatio : subRecipe.yieldQty;
+      const costPerUnit = subRecipeYieldQty > 0 ? subRecipeCost / subRecipeYieldQty : 0;
+      return qty * costPerUnit;
     }
   }
   
@@ -1216,12 +1179,13 @@ async function calculateRecipeCost(recipeId: string): Promise<number> {
 
   for (const comp of components) {
     const unit = units.find((u) => u.id === comp.unitId);
-    const microUnits = unit ? comp.qty * unit.toBaseRatio : comp.qty;
+    const qty = unit ? comp.qty * unit.toBaseRatio : comp.qty;
 
     if (comp.componentType === "product") {
       const product = products.find((p) => p.id === comp.componentId);
       if (product) {
-        totalCost += microUnits * product.lastCost;
+        const costPerPound = product.lastCost / (product.caseSize || 1);
+        totalCost += qty * costPerPound;
       }
     } else if (comp.componentType === "recipe") {
       // Get sub-recipe's cost (already includes its waste)
@@ -1230,9 +1194,9 @@ async function calculateRecipeCost(recipeId: string): Promise<number> {
         const subRecipeCost = await calculateRecipeCost(comp.componentId);
         // Convert sub-recipe's yield to cost per unit, then scale by quantity needed
         const subRecipeYieldUnit = units.find(u => u.id === subRecipe.yieldUnitId);
-        const subRecipeYieldMicroUnits = subRecipeYieldUnit ? subRecipe.yieldQty * subRecipeYieldUnit.toBaseRatio : subRecipe.yieldQty;
-        const costPerMicroUnit = subRecipeYieldMicroUnits > 0 ? subRecipeCost / subRecipeYieldMicroUnits : 0;
-        totalCost += microUnits * costPerMicroUnit;
+        const subRecipeYieldQty = subRecipeYieldUnit ? subRecipe.yieldQty * subRecipeYieldUnit.toBaseRatio : subRecipe.yieldQty;
+        const costPerUnit = subRecipeYieldQty > 0 ? subRecipeCost / subRecipeYieldQty : 0;
+        totalCost += qty * costPerUnit;
       }
     }
   }
@@ -1241,23 +1205,24 @@ async function calculateRecipeCost(recipeId: string): Promise<number> {
   return totalCost * wasteMultiplier;
 }
 
-async function calculateProductImpactInRecipe(recipeId: string, targetProductId: string): Promise<{ usesProduct: boolean, microUnits: number, costContribution: number }> {
+async function calculateProductImpactInRecipe(recipeId: string, targetProductId: string): Promise<{ usesProduct: boolean, qty: number, costContribution: number }> {
   const components = await storage.getRecipeComponents(recipeId);
   const units = await storage.getUnits();
   const products = await storage.getProducts();
   
-  let totalMicroUnits = 0;
+  let totalQty = 0;
   let totalCostContribution = 0;
 
   for (const comp of components) {
     const unit = units.find((u) => u.id === comp.unitId);
-    const microUnits = unit ? comp.qty * unit.toBaseRatio : comp.qty;
+    const qty = unit ? comp.qty * unit.toBaseRatio : comp.qty;
 
     if (comp.componentType === "product" && comp.componentId === targetProductId) {
       const product = products.find((p) => p.id === targetProductId);
       if (product) {
-        totalMicroUnits += microUnits;
-        totalCostContribution += microUnits * product.lastCost;
+        totalQty += qty;
+        const costPerPound = product.lastCost / (product.caseSize || 1);
+        totalCostContribution += qty * costPerPound;
       }
     } else if (comp.componentType === "recipe") {
       const subRecipe = await storage.getRecipe(comp.componentId);
@@ -1266,12 +1231,12 @@ async function calculateProductImpactInRecipe(recipeId: string, targetProductId:
         if (subImpact.usesProduct) {
           // Scale sub-recipe usage by yield ratio
           const subRecipeYieldUnit = units.find(u => u.id === subRecipe.yieldUnitId);
-          const subRecipeYieldMicroUnits = subRecipeYieldUnit ? subRecipe.yieldQty * subRecipeYieldUnit.toBaseRatio : subRecipe.yieldQty;
+          const subRecipeYieldQty = subRecipeYieldUnit ? subRecipe.yieldQty * subRecipeYieldUnit.toBaseRatio : subRecipe.yieldQty;
           
-          if (subRecipeYieldMicroUnits > 0) {
+          if (subRecipeYieldQty > 0) {
             // Scale the sub-recipe's product usage by (qty needed / yield)
-            const scaleFactor = microUnits / subRecipeYieldMicroUnits;
-            totalMicroUnits += subImpact.microUnits * scaleFactor;
+            const scaleFactor = qty / subRecipeYieldQty;
+            totalQty += subImpact.qty * scaleFactor;
             totalCostContribution += subImpact.costContribution * scaleFactor;
           }
         }
@@ -1280,8 +1245,8 @@ async function calculateProductImpactInRecipe(recipeId: string, targetProductId:
   }
 
   return {
-    usesProduct: totalMicroUnits > 0,
-    microUnits: totalMicroUnits,
+    usesProduct: totalQty > 0,
+    qty: totalQty,
     costContribution: totalCostContribution
   };
 }
@@ -1322,10 +1287,10 @@ async function calculateRecipeUsage(
 
   for (const comp of components) {
     const unit = units.find((u) => u.id === comp.unitId);
-    const microUnits = unit ? comp.qty * unit.toBaseRatio : comp.qty;
+    const qty = unit ? comp.qty * unit.toBaseRatio : comp.qty;
 
     if (comp.componentType === "product") {
-      usage[comp.componentId] = (usage[comp.componentId] || 0) + microUnits * multiplier;
+      usage[comp.componentId] = (usage[comp.componentId] || 0) + qty * multiplier;
     } else if (comp.componentType === "recipe") {
       const subUsage = await calculateRecipeUsage(comp.componentId, multiplier * comp.qty);
       for (const [productId, qty] of Object.entries(subUsage)) {
@@ -1366,12 +1331,12 @@ async function calculateActualUsage(
     ...endLines.map((l) => l.productId),
   ]);
 
-  for (const productId of productIds) {
+  for (const productId of Array.from(productIds)) {
     const startLine = startLines.find((l) => l.productId === productId);
     const endLine = endLines.find((l) => l.productId === productId);
 
-    const startingOnHand = startLine?.derivedMicroUnits || 0;
-    const endingOnHand = endLine?.derivedMicroUnits || 0;
+    const startingOnHand = startLine?.qty || 0;
+    const endingOnHand = endLine?.qty || 0;
 
     let receiptsInPeriod = 0;
     const filteredReceipts = receipts.filter((r) => {
@@ -1387,7 +1352,7 @@ async function calculateActualUsage(
       for (const rLine of receiptLines) {
         const vp = vendorProducts.find((vp) => vp.id === rLine.vendorProductId);
         if (vp && vp.productId === productId) {
-          receiptsInPeriod += rLine.derivedMicroUnits;
+          receiptsInPeriod += rLine.receivedQty;
         }
       }
     }

@@ -26,15 +26,15 @@ type InventoryLevel = {
   id: string;
   productId: string;
   storageLocationId: string;
-  onHandMicroUnits: number;
+  onHandQty: number;
   product: {
     id: string;
     name: string;
     category: string | null;
     pluSku: string;
     lastCost: number;
-    baseUnitId: string;
-    microUnitsPerPurchaseUnit: number;
+    unitId: string;
+    caseSize: number;
     imageUrl: string | null;
     parLevel: number | null;
     reorderLevel: number | null;
@@ -43,7 +43,7 @@ type InventoryLevel = {
     id: string;
     name: string;
   };
-  baseUnit: {
+  unit: {
     id: string;
     name: string;
     abbreviation: string;
@@ -95,8 +95,8 @@ export default function InventoryItems() {
 
   const totalValue = filteredLevels.reduce((sum, level) => {
     if (!level.product) return sum;
-    const quantity = level.onHandMicroUnits / level.product.microUnitsPerPurchaseUnit;
-    return sum + (quantity * level.product.lastCost);
+    const costPerPound = level.product.lastCost / (level.product.caseSize || 1);
+    return sum + (level.onHandQty * costPerPound);
   }, 0);
 
   return (
@@ -181,8 +181,9 @@ export default function InventoryItems() {
               </TableHeader>
               <TableBody>
                 {filteredLevels.map((level) => {
-                  const quantity = level.onHandMicroUnits / level.product.microUnitsPerPurchaseUnit;
-                  const totalValue = quantity * level.product.lastCost;
+                  const quantity = level.onHandQty;
+                  const costPerPound = level.product.lastCost / (level.product.caseSize || 1);
+                  const totalValue = quantity * costPerPound;
                   const inventoryStatus = getInventoryStatus(quantity, level.product.parLevel, level.product.reorderLevel);
 
                   return (

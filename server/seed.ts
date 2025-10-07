@@ -41,58 +41,47 @@ async function seedSeptemberCounts() {
     
     const weekMultiplier = 1 - (i * 0.15);
     
-    // 140 oz (micro units are ounces now)
+    // Inventory counts now in pounds
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: mozzarella.id,
       qty: parseFloat((8.75 * weekMultiplier).toFixed(2)),
       unitId: pound.id,
-      derivedMicroUnits: parseFloat((140 * weekMultiplier).toFixed(2)),
     });
 
-    // 85 oz (micro units are ounces now)
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: pepperoni.id,
       qty: parseFloat((5.31 * weekMultiplier).toFixed(2)),
       unitId: pound.id,
-      derivedMicroUnits: parseFloat((85 * weekMultiplier).toFixed(2)),
     });
 
-    // 120 oz (micro units are ounces now)
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: chickenWings.id,
       qty: parseFloat((7.5 * weekMultiplier).toFixed(2)),
       unitId: pound.id,
-      derivedMicroUnits: parseFloat((120 * weekMultiplier).toFixed(2)),
     });
 
-    // 65 oz (micro units are ounces now)
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: sausage.id,
       qty: parseFloat((4.06 * weekMultiplier).toFixed(2)),
       unitId: pound.id,
-      derivedMicroUnits: parseFloat((65 * weekMultiplier).toFixed(2)),
     });
 
-    // 32 oz (micro units are ounces now)
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: bellPeppers.id,
       qty: parseFloat((2 * weekMultiplier).toFixed(2)),
       unitId: pound.id,
-      derivedMicroUnits: parseFloat((32 * weekMultiplier).toFixed(2)),
     });
 
-    // 28 oz (micro units are ounces now)
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: onions.id,
       qty: parseFloat((1.75 * weekMultiplier).toFixed(2)),
       unitId: pound.id,
-      derivedMicroUnits: parseFloat((28 * weekMultiplier).toFixed(2)),
     });
   }
 }
@@ -242,9 +231,7 @@ export async function seedDatabase() {
     name: "Bread Flour",
     category: "Dry/Pantry",
     pluSku: "DRY001",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     barcode: "8901234567890",
     active: 1,
     lastCost: 0.001, // $0.001 per ounce
@@ -256,9 +243,7 @@ export async function seedDatabase() {
     name: "Active Dry Yeast",
     category: "Dry/Pantry",
     pluSku: "DRY002",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.02, // $0.02 per ounce
     yieldAmount: 1, // 1 lb package
@@ -269,9 +254,7 @@ export async function seedDatabase() {
     name: "Water",
     category: "Beverages",
     pluSku: "BEV001",
-    baseUnitId: units.fluidOunce.id,
-    microUnitId: units.fluidOunce.id,
-    microUnitsPerPurchaseUnit: 1,
+    unitId: units.fluidOunce.id,
     active: 1,
     lastCost: 0.0001,
   });
@@ -280,9 +263,7 @@ export async function seedDatabase() {
     name: "Extra Virgin Olive Oil",
     category: "Oils",
     pluSku: "OIL001",
-    baseUnitId: units.fluidOunce.id,
-    microUnitId: units.fluidOunce.id,
-    microUnitsPerPurchaseUnit: 1,
+    unitId: units.fluidOunce.id,
     active: 1,
     lastCost: 0.015,
   });
@@ -291,9 +272,7 @@ export async function seedDatabase() {
     name: "Kosher Salt",
     category: "Dry/Pantry",
     pluSku: "DRY003",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.002, // $0.002 per ounce
     yieldAmount: 3, // 3 lb box
@@ -304,9 +283,7 @@ export async function seedDatabase() {
     name: "Granulated Sugar",
     category: "Dry/Pantry",
     pluSku: "DRY004",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.0015, // $0.0015 per ounce
     yieldAmount: 10, // 10 lb bag
@@ -318,9 +295,7 @@ export async function seedDatabase() {
     name: "Crushed Tomatoes (San Marzano)",
     category: "Dry/Pantry",
     pluSku: "CAN001",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.004, // $0.004 per ounce
     yieldAmount: 6.5, // 6.5 lb can (~106 oz)
@@ -331,9 +306,7 @@ export async function seedDatabase() {
     name: "Tomato Paste",
     category: "Dry/Pantry",
     pluSku: "CAN002",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.006, // $0.006 per ounce
     yieldAmount: 0.375, // 6 oz can
@@ -344,9 +317,7 @@ export async function seedDatabase() {
     name: "Fresh Garlic",
     category: "Produce",
     pluSku: "PRO001",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.01, // $0.01 per ounce
     yieldAmount: 1, // 1 lb bag
@@ -357,9 +328,7 @@ export async function seedDatabase() {
     name: "Fresh Basil",
     category: "Produce",
     pluSku: "PRO002",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.03, // $0.03 per ounce
     yieldAmount: 0.25, // 4 oz package
@@ -370,9 +339,7 @@ export async function seedDatabase() {
     name: "Dried Oregano",
     category: "Dry/Pantry",
     pluSku: "SPI001",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.05, // $0.05 per ounce
     yieldAmount: 0.125, // 2 oz bottle
@@ -384,9 +351,7 @@ export async function seedDatabase() {
     name: "Whole Milk Mozzarella",
     category: "Dairy",
     pluSku: "DAI001",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.011, // $0.011 per ounce
     yieldAmount: 5, // 5 lb bag
@@ -397,9 +362,7 @@ export async function seedDatabase() {
     name: "Grated Parmesan",
     category: "Dairy",
     pluSku: "DAI002",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.022, // $0.022 per ounce
     yieldAmount: 2, // 2 lb container
@@ -410,9 +373,7 @@ export async function seedDatabase() {
     name: "Pepperoni Slices",
     category: "Protein",
     pluSku: "MEA001",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.015, // $0.015 per ounce
     yieldAmount: 5, // 5 lb bag
@@ -423,9 +384,7 @@ export async function seedDatabase() {
     name: "Italian Sausage (bulk)",
     category: "Protein",
     pluSku: "MEA002",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.013, // $0.013 per ounce
     yieldAmount: 5, // 5 lb package
@@ -436,9 +395,7 @@ export async function seedDatabase() {
     name: "Chicken Breast",
     category: "Protein",
     pluSku: "MEA003",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.012, // $0.012 per ounce
     yieldAmount: 10, // 10 lb bag
@@ -449,9 +406,7 @@ export async function seedDatabase() {
     name: "Bell Peppers (mixed)",
     category: "Produce",
     pluSku: "PRO003",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.007, // $0.007 per ounce
     yieldAmount: 1, // sold by pound
@@ -462,9 +417,7 @@ export async function seedDatabase() {
     name: "Button Mushrooms",
     category: "Produce",
     pluSku: "PRO004",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.009, // $0.009 per ounce
     yieldAmount: 1, // 1 lb package
@@ -475,9 +428,7 @@ export async function seedDatabase() {
     name: "Yellow Onions",
     category: "Produce",
     pluSku: "PRO005",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.003, // $0.003 per ounce
     yieldAmount: 1, // sold by pound
@@ -488,9 +439,7 @@ export async function seedDatabase() {
     name: "Sliced Black Olives",
     category: "Dry/Pantry",
     pluSku: "CAN003",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.008, // $0.008 per ounce
     yieldAmount: 0.375, // 6 oz can
@@ -502,9 +451,7 @@ export async function seedDatabase() {
     name: "BBQ Sauce (Sweet Baby Ray's)",
     category: "Sauces",
     pluSku: "SAU001",
-    baseUnitId: units.fluidOunce.id,
-    microUnitId: units.fluidOunce.id,
-    microUnitsPerPurchaseUnit: 1,
+    unitId: units.fluidOunce.id,
     active: 1,
     lastCost: 0.008,
   });
@@ -513,9 +460,7 @@ export async function seedDatabase() {
     name: "Ranch Dressing",
     category: "Sauces",
     pluSku: "SAU002",
-    baseUnitId: units.fluidOunce.id,
-    microUnitId: units.fluidOunce.id,
-    microUnitsPerPurchaseUnit: 1,
+    unitId: units.fluidOunce.id,
     active: 1,
     lastCost: 0.006,
   });
@@ -525,9 +470,7 @@ export async function seedDatabase() {
     name: "Chicken Wings (frozen)",
     category: "Protein",
     pluSku: "MEA004",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.01, // $0.01 per ounce
     yieldAmount: 10, // 10 lb bag
@@ -538,9 +481,7 @@ export async function seedDatabase() {
     name: "Breadstick Dough",
     category: "Dry/Pantry",
     pluSku: "FRO001",
-    baseUnitId: units.pound.id,
-    microUnitId: units.ounce.id,
-    microUnitsPerPurchaseUnit: 16,
+    unitId: units.pound.id,
     active: 1,
     lastCost: 0.005, // $0.005 per ounce
     yieldAmount: 1, // 1 lb package
@@ -551,9 +492,7 @@ export async function seedDatabase() {
     name: "Mozzarella Sticks (frozen)",
     category: "Dry/Pantry",
     pluSku: "FRO002",
-    baseUnitId: units.each.id,
-    microUnitId: units.each.id,
-    microUnitsPerPurchaseUnit: 1,
+    unitId: units.each.id,
     active: 1,
     lastCost: 0.35,
     yieldAmount: 24, // 24 pieces per bag
@@ -564,9 +503,7 @@ export async function seedDatabase() {
     name: "Marinara Dipping Sauce",
     category: "Sauces",
     pluSku: "SAU003",
-    baseUnitId: units.fluidOunce.id,
-    microUnitId: units.fluidOunce.id,
-    microUnitsPerPurchaseUnit: 1,
+    unitId: units.fluidOunce.id,
     active: 1,
     lastCost: 0.004,
   });

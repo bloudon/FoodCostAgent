@@ -37,7 +37,8 @@ export default function AddProduct() {
   const { toast } = useToast();
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
-  const [baseUnitId, setBaseUnitId] = useState("");
+  const [unitId, setUnitId] = useState("");
+  const [caseSize, setCaseSize] = useState<number>(20);
   const [yieldAmount, setYieldAmount] = useState<number>(1);
   const [yieldUnitId, setYieldUnitId] = useState("");
   const [imageUrl, setImageUrl] = useState("");
@@ -92,22 +93,20 @@ export default function AddProduct() {
       return;
     }
 
-    if (!baseUnitId) {
+    if (!unitId) {
       toast({
         title: "Validation error",
-        description: "Base unit is required",
+        description: "Unit is required",
         variant: "destructive",
       });
       return;
     }
 
-    // Use the same unit for both base and micro for simplicity
     createMutation.mutate({
       name: name.trim(),
       category: category.trim() || null,
-      baseUnitId,
-      microUnitId: baseUnitId,
-      microUnitsPerPurchaseUnit: 1,
+      unitId,
+      caseSize,
       yieldAmount: yieldAmount || null,
       yieldUnitId: yieldUnitId || null,
       imageUrl: imageUrl.trim() || null,
@@ -166,9 +165,9 @@ export default function AddProduct() {
               </div>
 
               <div>
-                <Label htmlFor="baseUnit">Base Unit of Measure *</Label>
-                <Select value={baseUnitId} onValueChange={setBaseUnitId}>
-                  <SelectTrigger id="baseUnit" data-testid="select-base-unit">
+                <Label htmlFor="unit">Unit of Measure *</Label>
+                <Select value={unitId} onValueChange={setUnitId}>
+                  <SelectTrigger id="unit" data-testid="select-unit">
                     <SelectValue placeholder="Select unit" />
                   </SelectTrigger>
                   <SelectContent>
@@ -181,18 +180,32 @@ export default function AddProduct() {
                 </Select>
               </div>
 
+              <div>
+                <Label htmlFor="caseSize">Case Size (lbs)</Label>
+                <Input
+                  id="caseSize"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={caseSize}
+                  onChange={(e) => setCaseSize(parseFloat(e.target.value) || 20)}
+                  placeholder="Enter case size in pounds"
+                  data-testid="input-case-size"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="caseSize">Case Size</Label>
+                  <Label htmlFor="yieldAmount">Yield Amount</Label>
                   <Input
-                    id="caseSize"
+                    id="yieldAmount"
                     type="number"
                     min="0"
                     step="0.01"
                     value={yieldAmount}
                     onChange={(e) => setYieldAmount(parseFloat(e.target.value) || 1)}
-                    placeholder="Enter case size"
-                    data-testid="input-case-size"
+                    placeholder="Enter yield amount"
+                    data-testid="input-yield-amount"
                   />
                 </div>
 
