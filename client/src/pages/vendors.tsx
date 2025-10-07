@@ -1,20 +1,141 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Pencil, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { insertVendorSchema, type InsertVendor, type Vendor } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Vendors() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null);
+  const { toast } = useToast();
 
-  const { data: vendors, isLoading } = useQuery<any[]>({
+  const { data: vendors, isLoading } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors"],
   });
 
   const { data: vendorProducts } = useQuery<any[]>({
     queryKey: ["/api/vendor-products"],
+  });
+
+  const form = useForm<InsertVendor>({
+    resolver: zodResolver(insertVendorSchema),
+    defaultValues: {
+      name: "",
+      accountNumber: "",
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: InsertVendor) => {
+      return await apiRequest("/api/vendors", {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      toast({
+        title: "Success",
+        description: "Vendor created successfully",
+      });
+      setIsDialogOpen(false);
+      form.reset();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<InsertVendor> }) => {
+      return await apiRequest(`/api/vendors/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      toast({
+        title: "Success",
+        description: "Vendor updated successfully",
+      });
+      setIsDialogOpen(false);
+      setEditingVendor(null);
+      form.reset();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await apiRequest(`/api/vendors/${id}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      toast({
+        title: "Success",
+        description: "Vendor deleted successfully",
+      });
+      setDeleteDialogOpen(false);
+      setVendorToDelete(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const getProductCount = (vendorId: string) => {
@@ -24,6 +145,34 @@ export default function Vendors() {
   const filteredVendors = vendors?.filter(v => 
     v.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleCreateClick = () => {
+    setEditingVendor(null);
+    form.reset({ name: "", accountNumber: "" });
+    setIsDialogOpen(true);
+  };
+
+  const handleEditClick = (vendor: Vendor) => {
+    setEditingVendor(vendor);
+    form.reset({
+      name: vendor.name,
+      accountNumber: vendor.accountNumber || "",
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleDeleteClick = (vendor: Vendor) => {
+    setVendorToDelete(vendor);
+    setDeleteDialogOpen(true);
+  };
+
+  const onSubmit = (data: InsertVendor) => {
+    if (editingVendor) {
+      updateMutation.mutate({ id: editingVendor.id, data });
+    } else {
+      createMutation.mutate(data);
+    }
+  };
 
   return (
     <div className="p-8">
@@ -36,7 +185,7 @@ export default function Vendors() {
             Manage vendor catalogs with product pricing and case specifications
           </p>
         </div>
-        <Button data-testid="button-create-vendor">
+        <Button onClick={handleCreateClick} data-testid="button-create-vendor">
           <Plus className="h-4 w-4 mr-2" />
           New Vendor
         </Button>
@@ -73,9 +222,27 @@ export default function Vendors() {
         ) : filteredVendors && filteredVendors.length > 0 ? (
           <>
             {filteredVendors.map((vendor) => (
-              <Card key={vendor.id} className="hover-elevate cursor-pointer transition-all" data-testid={`card-vendor-${vendor.id}`}>
-                <CardHeader>
+              <Card key={vendor.id} className="hover-elevate transition-all" data-testid={`card-vendor-${vendor.id}`}>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
                   <CardTitle className="text-lg" data-testid={`text-vendor-name-${vendor.id}`}>{vendor.name}</CardTitle>
+                  <div className="flex gap-1">
+                    <Button 
+                      size="icon" 
+                      variant="ghost"
+                      onClick={() => handleEditClick(vendor)}
+                      data-testid={`button-edit-vendor-${vendor.id}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      size="icon" 
+                      variant="ghost"
+                      onClick={() => handleDeleteClick(vendor)}
+                      data-testid={`button-delete-vendor-${vendor.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2 text-sm">
@@ -91,7 +258,11 @@ export default function Vendors() {
                 </CardContent>
               </Card>
             ))}
-            <Card className="border-dashed border-2 hover-elevate cursor-pointer transition-all" data-testid="button-add-new-vendor">
+            <Card 
+              className="border-dashed border-2 hover-elevate cursor-pointer transition-all" 
+              onClick={handleCreateClick}
+              data-testid="button-add-new-vendor"
+            >
               <CardContent className="flex items-center justify-center h-full min-h-[140px]">
                 <div className="text-center">
                   <Plus className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
@@ -108,6 +279,95 @@ export default function Vendors() {
           </Card>
         )}
       </div>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent data-testid="dialog-vendor-form">
+          <DialogHeader>
+            <DialogTitle data-testid="text-dialog-title">
+              {editingVendor ? "Edit Vendor" : "Create Vendor"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingVendor ? "Update vendor information" : "Add a new vendor to your system"}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="Vendor name" 
+                        {...field} 
+                        data-testid="input-vendor-name"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="accountNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Account Number (Optional)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="Account number" 
+                        {...field} 
+                        data-testid="input-vendor-account"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => setIsDialogOpen(false)}
+                  data-testid="button-cancel-vendor"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                  data-testid="button-submit-vendor"
+                >
+                  {editingVendor ? "Update" : "Create"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent data-testid="dialog-delete-vendor">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Vendor</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{vendorToDelete?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => vendorToDelete && deleteMutation.mutate(vendorToDelete.id)}
+              disabled={deleteMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
