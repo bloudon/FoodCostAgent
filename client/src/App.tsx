@@ -12,6 +12,7 @@ import Dashboard from "@/pages/dashboard";
 import InventoryCount from "@/pages/inventory-count";
 import CountSession from "@/pages/count-session";
 import Recipes from "@/pages/recipes";
+import RecipeDetail from "@/pages/recipe-detail";
 import Products from "@/pages/products";
 import Vendors from "@/pages/vendors";
 import PurchaseOrders from "@/pages/purchase-orders";
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/inventory" component={InventoryCount} />
       <Route path="/count/:id" component={CountSession} />
+      <Route path="/recipes/:id" component={RecipeDetail} />
       <Route path="/recipes" component={Recipes} />
       <Route path="/products" component={Products} />
       <Route path="/vendors" component={Vendors} />

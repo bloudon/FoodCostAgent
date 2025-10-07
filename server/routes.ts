@@ -188,6 +188,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ RECIPE COMPONENTS ============
+  app.get("/api/recipe-components/:recipeId", async (req, res) => {
+    const components = await storage.getRecipeComponents(req.params.recipeId);
+    const units = await storage.getUnits();
+    const products = await storage.getProducts();
+    const recipes = await storage.getRecipes();
+
+    const enriched = await Promise.all(
+      components.map(async (comp) => {
+        const unit = units.find((u) => u.id === comp.unitId);
+        const componentCost = await calculateComponentCost(comp);
+        
+        if (comp.productId) {
+          const product = products.find((p) => p.id === comp.productId);
+          return {
+            ...comp,
+            productName: product?.name || "Unknown",
+            unitName: unit?.name || "Unknown",
+            componentCost,
+          };
+        } else {
+          const subRecipe = recipes.find((r) => r.id === comp.subRecipeId);
+          return {
+            ...comp,
+            subRecipeName: subRecipe?.name || "Unknown",
+            unitName: unit?.name || "Unknown",
+            componentCost,
+          };
+        }
+      })
+    );
+
+    res.json(enriched);
+  });
+
+  app.patch("/api/recipe-components/:id", async (req, res) => {
+    try {
+      const component = await storage.getRecipeComponent(req.params.id);
+      if (!component) {
+        return res.status(404).json({ error: "Component not found" });
+      }
+
+      const updateData = {
+        qty: req.body.qty !== undefined ? req.body.qty : component.qty,
+        unitId: req.body.unitId || component.unitId,
+      };
+
+      await storage.updateRecipeComponent(req.params.id, updateData);
+      
+      const updatedCost = await calculateRecipeCost(component.recipeId);
+      await storage.updateRecipe(component.recipeId, { computedCost: updatedCost });
+      
+      const updated = await storage.getRecipeComponent(req.params.id);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/recipe-components/:id", async (req, res) => {
+    try {
+      const component = await storage.getRecipeComponent(req.params.id);
+      if (!component) {
+        return res.status(404).json({ error: "Component not found" });
+      }
+
+      const recipeId = component.recipeId;
+      await storage.deleteRecipeComponent(req.params.id);
+      
+      const updatedCost = await calculateRecipeCost(recipeId);
+      await storage.updateRecipe(recipeId, { computedCost: updatedCost });
+      
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ INVENTORY ============
   app.get("/api/inventory", async (req, res) => {
     const locationId = req.query.location_id as string | undefined;

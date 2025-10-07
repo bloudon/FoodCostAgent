@@ -64,7 +64,10 @@ export interface IStorage {
 
   // Recipe Components
   getRecipeComponents(recipeId: string): Promise<RecipeComponent[]>;
+  getRecipeComponent(id: string): Promise<RecipeComponent | undefined>;
   createRecipeComponent(component: InsertRecipeComponent): Promise<RecipeComponent>;
+  updateRecipeComponent(id: string, component: Partial<RecipeComponent>): Promise<RecipeComponent | undefined>;
+  deleteRecipeComponent(id: string): Promise<void>;
 
   // Inventory Levels
   getInventoryLevels(locationId?: string): Promise<InventoryLevel[]>;
@@ -260,9 +263,27 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(recipeComponents).where(eq(recipeComponents.recipeId, recipeId));
   }
 
+  async getRecipeComponent(id: string): Promise<RecipeComponent | undefined> {
+    const [component] = await db.select().from(recipeComponents).where(eq(recipeComponents.id, id));
+    return component || undefined;
+  }
+
   async createRecipeComponent(insertComponent: InsertRecipeComponent): Promise<RecipeComponent> {
     const [component] = await db.insert(recipeComponents).values(insertComponent).returning();
     return component;
+  }
+
+  async updateRecipeComponent(id: string, updates: Partial<RecipeComponent>): Promise<RecipeComponent | undefined> {
+    const [component] = await db
+      .update(recipeComponents)
+      .set(updates)
+      .where(eq(recipeComponents.id, id))
+      .returning();
+    return component || undefined;
+  }
+
+  async deleteRecipeComponent(id: string): Promise<void> {
+    await db.delete(recipeComponents).where(eq(recipeComponents.id, id));
   }
 
   // Inventory Levels

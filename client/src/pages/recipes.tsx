@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,36 +73,38 @@ export default function Recipes() {
         ) : filteredRecipes && filteredRecipes.length > 0 ? (
           <>
             {filteredRecipes.map((recipe) => (
-              <Card key={recipe.id} className="hover-elevate cursor-pointer transition-all" data-testid={`card-recipe-${recipe.id}`}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-lg" data-testid={`text-recipe-name-${recipe.id}`}>{recipe.name}</CardTitle>
-                    {recipe.name.includes("Dough") || recipe.name.includes("Sauce") ? (
-                      <Badge variant="secondary" className="text-xs" data-testid={`badge-recipe-base-${recipe.id}`}>
-                        Base Recipe
-                      </Badge>
-                    ) : null}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Yield:</span>
-                      <span className="font-mono" data-testid={`text-recipe-yield-${recipe.id}`}>{recipe.yieldQty} unit</span>
+              <Link key={recipe.id} href={`/recipes/${recipe.id}`}>
+                <Card className="hover-elevate cursor-pointer transition-all" data-testid={`card-recipe-${recipe.id}`}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-lg" data-testid={`text-recipe-name-${recipe.id}`}>{recipe.name}</CardTitle>
+                      {recipe.name.includes("Dough") || recipe.name.includes("Sauce") ? (
+                        <Badge variant="secondary" className="text-xs" data-testid={`badge-recipe-base-${recipe.id}`}>
+                          Base Recipe
+                        </Badge>
+                      ) : null}
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Cost:</span>
-                      <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${recipe.id}`}>
-                        ${recipe.computedCost?.toFixed(2) || "0.00"}
-                      </span>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Yield:</span>
+                        <span className="font-mono" data-testid={`text-recipe-yield-${recipe.id}`}>{recipe.yieldQty} unit</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Cost:</span>
+                        <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${recipe.id}`}>
+                          ${recipe.computedCost?.toFixed(2) || "0.00"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Waste:</span>
+                        <span className="font-mono" data-testid={`text-recipe-waste-${recipe.id}`}>{recipe.wastePercent}%</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Waste:</span>
-                      <span className="font-mono" data-testid={`text-recipe-waste-${recipe.id}`}>{recipe.wastePercent}%</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </Link>
             ))}
             <Card className="border-dashed border-2 hover-elevate cursor-pointer transition-all" data-testid="button-add-new-recipe">
               <CardContent className="flex items-center justify-center h-full min-h-[180px]">
