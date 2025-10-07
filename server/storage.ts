@@ -1,23 +1,24 @@
-import { randomUUID } from "crypto";
-import type {
-  User, InsertUser,
-  StorageLocation, InsertStorageLocation,
-  Unit, InsertUnit,
-  Product, InsertProduct,
-  Vendor, InsertVendor,
-  VendorProduct, InsertVendorProduct,
-  Recipe, InsertRecipe,
-  RecipeComponent, InsertRecipeComponent,
-  InventoryLevel, InsertInventoryLevel,
-  InventoryCount, InsertInventoryCount,
-  InventoryCountLine, InsertInventoryCountLine,
-  PurchaseOrder, InsertPurchaseOrder,
-  POLine, InsertPOLine,
-  Receipt, InsertReceipt,
-  ReceiptLine, InsertReceiptLine,
-  POSSale, InsertPOSSale,
-  POSSalesLine, InsertPOSSalesLine,
-  MenuItem, InsertMenuItem,
+import { eq, and, gte, lte } from "drizzle-orm";
+import { db } from "./db";
+import {
+  users, type User, type InsertUser,
+  storageLocations, type StorageLocation, type InsertStorageLocation,
+  units, type Unit, type InsertUnit,
+  products, type Product, type InsertProduct,
+  vendors, type Vendor, type InsertVendor,
+  vendorProducts, type VendorProduct, type InsertVendorProduct,
+  recipes, type Recipe, type InsertRecipe,
+  recipeComponents, type RecipeComponent, type InsertRecipeComponent,
+  inventoryLevels, type InventoryLevel, type InsertInventoryLevel,
+  inventoryCounts, type InventoryCount, type InsertInventoryCount,
+  inventoryCountLines, type InventoryCountLine, type InsertInventoryCountLine,
+  purchaseOrders, type PurchaseOrder, type InsertPurchaseOrder,
+  poLines, type POLine, type InsertPOLine,
+  receipts, type Receipt, type InsertReceipt,
+  receiptLines, type ReceiptLine, type InsertReceiptLine,
+  posSales, type POSSale, type InsertPOSSale,
+  posSalesLines, type POSSalesLine, type InsertPOSSalesLine,
+  menuItems, type MenuItem, type InsertMenuItem,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -110,348 +111,323 @@ export interface IStorage {
   createMenuItem(item: InsertMenuItem): Promise<MenuItem>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User> = new Map();
-  private storageLocations: Map<string, StorageLocation> = new Map();
-  private units: Map<string, Unit> = new Map();
-  private products: Map<string, Product> = new Map();
-  private vendors: Map<string, Vendor> = new Map();
-  private vendorProducts: Map<string, VendorProduct> = new Map();
-  private recipes: Map<string, Recipe> = new Map();
-  private recipeComponents: Map<string, RecipeComponent> = new Map();
-  private inventoryLevels: Map<string, InventoryLevel> = new Map();
-  private inventoryCounts: Map<string, InventoryCount> = new Map();
-  private inventoryCountLines: Map<string, InventoryCountLine> = new Map();
-  private purchaseOrders: Map<string, PurchaseOrder> = new Map();
-  private poLines: Map<string, POLine> = new Map();
-  private receipts: Map<string, Receipt> = new Map();
-  private receiptLines: Map<string, ReceiptLine> = new Map();
-  private posSales: Map<string, POSSale> = new Map();
-  private posSalesLines: Map<string, POSSalesLine> = new Map();
-  private menuItems: Map<string, MenuItem> = new Map();
-
+export class DatabaseStorage implements IStorage {
   // Users
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(u => u.email === email);
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
   // Storage Locations
   async getStorageLocations(): Promise<StorageLocation[]> {
-    return Array.from(this.storageLocations.values()).sort((a, b) => a.sortOrder - b.sortOrder);
+    return db.select().from(storageLocations).orderBy(storageLocations.sortOrder);
   }
 
   async getStorageLocation(id: string): Promise<StorageLocation | undefined> {
-    return this.storageLocations.get(id);
+    const [location] = await db.select().from(storageLocations).where(eq(storageLocations.id, id));
+    return location || undefined;
   }
 
   async createStorageLocation(insertLocation: InsertStorageLocation): Promise<StorageLocation> {
-    const id = randomUUID();
-    const location: StorageLocation = { ...insertLocation, id };
-    this.storageLocations.set(id, location);
+    const [location] = await db.insert(storageLocations).values(insertLocation).returning();
     return location;
   }
 
   // Units
   async getUnits(): Promise<Unit[]> {
-    return Array.from(this.units.values());
+    return db.select().from(units);
   }
 
   async getUnit(id: string): Promise<Unit | undefined> {
-    return this.units.get(id);
+    const [unit] = await db.select().from(units).where(eq(units.id, id));
+    return unit || undefined;
   }
 
   async createUnit(insertUnit: InsertUnit): Promise<Unit> {
-    const id = randomUUID();
-    const unit: Unit = { ...insertUnit, id };
-    this.units.set(id, unit);
+    const [unit] = await db.insert(units).values(insertUnit).returning();
     return unit;
   }
 
   // Products
   async getProducts(): Promise<Product[]> {
-    return Array.from(this.products.values());
+    return db.select().from(products);
   }
 
   async getProduct(id: string): Promise<Product | undefined> {
-    return this.products.get(id);
+    const [product] = await db.select().from(products).where(eq(products.id, id));
+    return product || undefined;
   }
 
   async createProduct(insertProduct: InsertProduct): Promise<Product> {
-    const id = randomUUID();
-    const product: Product = { ...insertProduct, id };
-    this.products.set(id, product);
+    const [product] = await db.insert(products).values(insertProduct).returning();
     return product;
   }
 
   async updateProduct(id: string, updates: Partial<Product>): Promise<Product | undefined> {
-    const product = this.products.get(id);
-    if (!product) return undefined;
-    const updated = { ...product, ...updates };
-    this.products.set(id, updated);
-    return updated;
+    const [product] = await db
+      .update(products)
+      .set(updates)
+      .where(eq(products.id, id))
+      .returning();
+    return product || undefined;
   }
 
   // Vendors
   async getVendors(): Promise<Vendor[]> {
-    return Array.from(this.vendors.values());
+    return db.select().from(vendors);
   }
 
   async getVendor(id: string): Promise<Vendor | undefined> {
-    return this.vendors.get(id);
+    const [vendor] = await db.select().from(vendors).where(eq(vendors.id, id));
+    return vendor || undefined;
   }
 
   async createVendor(insertVendor: InsertVendor): Promise<Vendor> {
-    const id = randomUUID();
-    const vendor: Vendor = { ...insertVendor, id };
-    this.vendors.set(id, vendor);
+    const [vendor] = await db.insert(vendors).values(insertVendor).returning();
     return vendor;
   }
 
   // Vendor Products
   async getVendorProducts(vendorId?: string): Promise<VendorProduct[]> {
-    const all = Array.from(this.vendorProducts.values());
     if (vendorId) {
-      return all.filter(vp => vp.vendorId === vendorId);
+      return db.select().from(vendorProducts).where(eq(vendorProducts.vendorId, vendorId));
     }
-    return all;
+    return db.select().from(vendorProducts);
   }
 
   async getVendorProduct(id: string): Promise<VendorProduct | undefined> {
-    return this.vendorProducts.get(id);
+    const [vendorProduct] = await db.select().from(vendorProducts).where(eq(vendorProducts.id, id));
+    return vendorProduct || undefined;
   }
 
   async createVendorProduct(insertVP: InsertVendorProduct): Promise<VendorProduct> {
-    const id = randomUUID();
-    const vp: VendorProduct = { ...insertVP, id };
-    this.vendorProducts.set(id, vp);
-    return vp;
+    const [vendorProduct] = await db.insert(vendorProducts).values(insertVP).returning();
+    return vendorProduct;
   }
 
   // Recipes
   async getRecipes(): Promise<Recipe[]> {
-    return Array.from(this.recipes.values());
+    return db.select().from(recipes);
   }
 
   async getRecipe(id: string): Promise<Recipe | undefined> {
-    return this.recipes.get(id);
+    const [recipe] = await db.select().from(recipes).where(eq(recipes.id, id));
+    return recipe || undefined;
   }
 
   async createRecipe(insertRecipe: InsertRecipe): Promise<Recipe> {
-    const id = randomUUID();
-    const recipe: Recipe = { ...insertRecipe, id };
-    this.recipes.set(id, recipe);
+    const [recipe] = await db.insert(recipes).values(insertRecipe).returning();
     return recipe;
   }
 
   async updateRecipe(id: string, updates: Partial<Recipe>): Promise<Recipe | undefined> {
-    const recipe = this.recipes.get(id);
-    if (!recipe) return undefined;
-    const updated = { ...recipe, ...updates };
-    this.recipes.set(id, updated);
-    return updated;
+    const [recipe] = await db
+      .update(recipes)
+      .set(updates)
+      .where(eq(recipes.id, id))
+      .returning();
+    return recipe || undefined;
   }
 
   // Recipe Components
   async getRecipeComponents(recipeId: string): Promise<RecipeComponent[]> {
-    return Array.from(this.recipeComponents.values()).filter(rc => rc.recipeId === recipeId);
+    return db.select().from(recipeComponents).where(eq(recipeComponents.recipeId, recipeId));
   }
 
   async createRecipeComponent(insertComponent: InsertRecipeComponent): Promise<RecipeComponent> {
-    const id = randomUUID();
-    const component: RecipeComponent = { ...insertComponent, id };
-    this.recipeComponents.set(id, component);
+    const [component] = await db.insert(recipeComponents).values(insertComponent).returning();
     return component;
   }
 
   // Inventory Levels
   async getInventoryLevels(locationId?: string): Promise<InventoryLevel[]> {
-    const all = Array.from(this.inventoryLevels.values());
     if (locationId) {
-      return all.filter(il => il.storageLocationId === locationId);
+      return db.select().from(inventoryLevels).where(eq(inventoryLevels.storageLocationId, locationId));
     }
-    return all;
+    return db.select().from(inventoryLevels);
   }
 
   async getInventoryLevel(productId: string, locationId: string): Promise<InventoryLevel | undefined> {
-    return Array.from(this.inventoryLevels.values()).find(
-      il => il.productId === productId && il.storageLocationId === locationId
-    );
+    const [level] = await db
+      .select()
+      .from(inventoryLevels)
+      .where(
+        and(
+          eq(inventoryLevels.productId, productId),
+          eq(inventoryLevels.storageLocationId, locationId)
+        )
+      );
+    return level || undefined;
   }
 
   async updateInventoryLevel(productId: string, locationId: string, microUnits: number): Promise<InventoryLevel> {
     const existing = await this.getInventoryLevel(productId, locationId);
     if (existing) {
-      existing.onHandMicroUnits = microUnits;
-      existing.updatedAt = new Date();
-      this.inventoryLevels.set(existing.id, existing);
-      return existing;
+      const [updated] = await db
+        .update(inventoryLevels)
+        .set({ 
+          onHandMicroUnits: microUnits,
+          updatedAt: new Date()
+        })
+        .where(eq(inventoryLevels.id, existing.id))
+        .returning();
+      return updated;
     } else {
-      const id = randomUUID();
-      const level: InventoryLevel = {
-        id,
-        productId,
-        storageLocationId: locationId,
-        onHandMicroUnits: microUnits,
-        updatedAt: new Date(),
-      };
-      this.inventoryLevels.set(id, level);
+      const [level] = await db
+        .insert(inventoryLevels)
+        .values({
+          productId,
+          storageLocationId: locationId,
+          onHandMicroUnits: microUnits,
+        })
+        .returning();
       return level;
     }
   }
 
   // Inventory Counts
   async getInventoryCounts(): Promise<InventoryCount[]> {
-    return Array.from(this.inventoryCounts.values());
+    return db.select().from(inventoryCounts);
   }
 
   async getInventoryCount(id: string): Promise<InventoryCount | undefined> {
-    return this.inventoryCounts.get(id);
+    const [count] = await db.select().from(inventoryCounts).where(eq(inventoryCounts.id, id));
+    return count || undefined;
   }
 
   async createInventoryCount(insertCount: InsertInventoryCount): Promise<InventoryCount> {
-    const id = randomUUID();
-    const count: InventoryCount = { ...insertCount, id, countedAt: new Date() };
-    this.inventoryCounts.set(id, count);
+    const [count] = await db.insert(inventoryCounts).values(insertCount).returning();
     return count;
   }
 
   // Inventory Count Lines
   async getInventoryCountLines(countId: string): Promise<InventoryCountLine[]> {
-    return Array.from(this.inventoryCountLines.values()).filter(icl => icl.inventoryCountId === countId);
+    return db.select().from(inventoryCountLines).where(eq(inventoryCountLines.inventoryCountId, countId));
   }
 
   async createInventoryCountLine(insertLine: InsertInventoryCountLine): Promise<InventoryCountLine> {
-    const id = randomUUID();
-    const line: InventoryCountLine = { ...insertLine, id };
-    this.inventoryCountLines.set(id, line);
+    const [line] = await db.insert(inventoryCountLines).values(insertLine).returning();
     return line;
   }
 
   // Purchase Orders
   async getPurchaseOrders(): Promise<PurchaseOrder[]> {
-    return Array.from(this.purchaseOrders.values());
+    return db.select().from(purchaseOrders);
   }
 
   async getPurchaseOrder(id: string): Promise<PurchaseOrder | undefined> {
-    return this.purchaseOrders.get(id);
+    const [po] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id));
+    return po || undefined;
   }
 
   async createPurchaseOrder(insertPO: InsertPurchaseOrder): Promise<PurchaseOrder> {
-    const id = randomUUID();
-    const po: PurchaseOrder = { ...insertPO, id, createdAt: new Date() };
-    this.purchaseOrders.set(id, po);
+    const [po] = await db.insert(purchaseOrders).values(insertPO).returning();
     return po;
   }
 
   async updatePurchaseOrder(id: string, updates: Partial<PurchaseOrder>): Promise<PurchaseOrder | undefined> {
-    const po = this.purchaseOrders.get(id);
-    if (!po) return undefined;
-    const updated = { ...po, ...updates };
-    this.purchaseOrders.set(id, updated);
-    return updated;
+    const [po] = await db
+      .update(purchaseOrders)
+      .set(updates)
+      .where(eq(purchaseOrders.id, id))
+      .returning();
+    return po || undefined;
   }
 
   // PO Lines
   async getPOLines(poId: string): Promise<POLine[]> {
-    return Array.from(this.poLines.values()).filter(pol => pol.purchaseOrderId === poId);
+    return db.select().from(poLines).where(eq(poLines.purchaseOrderId, poId));
   }
 
   async createPOLine(insertLine: InsertPOLine): Promise<POLine> {
-    const id = randomUUID();
-    const line: POLine = { ...insertLine, id };
-    this.poLines.set(id, line);
+    const [line] = await db.insert(poLines).values(insertLine).returning();
     return line;
   }
 
   // Receipts
   async getReceipts(): Promise<Receipt[]> {
-    return Array.from(this.receipts.values());
+    return db.select().from(receipts);
   }
 
   async getReceipt(id: string): Promise<Receipt | undefined> {
-    return this.receipts.get(id);
+    const [receipt] = await db.select().from(receipts).where(eq(receipts.id, id));
+    return receipt || undefined;
   }
 
   async createReceipt(insertReceipt: InsertReceipt): Promise<Receipt> {
-    const id = randomUUID();
-    const receipt: Receipt = { ...insertReceipt, id, receivedAt: new Date() };
-    this.receipts.set(id, receipt);
+    const [receipt] = await db.insert(receipts).values(insertReceipt).returning();
     return receipt;
   }
 
   // Receipt Lines
   async getReceiptLines(receiptId: string): Promise<ReceiptLine[]> {
-    return Array.from(this.receiptLines.values()).filter(rl => rl.receiptId === receiptId);
+    return db.select().from(receiptLines).where(eq(receiptLines.receiptId, receiptId));
   }
 
   async createReceiptLine(insertLine: InsertReceiptLine): Promise<ReceiptLine> {
-    const id = randomUUID();
-    const line: ReceiptLine = { ...insertLine, id };
-    this.receiptLines.set(id, line);
+    const [line] = await db.insert(receiptLines).values(insertLine).returning();
     return line;
   }
 
   // POS Sales
   async getPOSSales(startDate?: Date, endDate?: Date): Promise<POSSale[]> {
-    let sales = Array.from(this.posSales.values());
-    if (startDate) {
-      sales = sales.filter(s => s.occurredAt >= startDate);
+    if (startDate && endDate) {
+      return db
+        .select()
+        .from(posSales)
+        .where(and(gte(posSales.occurredAt, startDate), lte(posSales.occurredAt, endDate)));
+    } else if (startDate) {
+      return db.select().from(posSales).where(gte(posSales.occurredAt, startDate));
+    } else if (endDate) {
+      return db.select().from(posSales).where(lte(posSales.occurredAt, endDate));
     }
-    if (endDate) {
-      sales = sales.filter(s => s.occurredAt <= endDate);
-    }
-    return sales;
+    return db.select().from(posSales);
   }
 
   async createPOSSale(insertSale: InsertPOSSale): Promise<POSSale> {
-    const id = randomUUID();
-    const sale: POSSale = { ...insertSale, id, occurredAt: new Date() };
-    this.posSales.set(id, sale);
+    const [sale] = await db.insert(posSales).values(insertSale).returning();
     return sale;
   }
 
   // POS Sales Lines
   async getPOSSalesLines(saleId: string): Promise<POSSalesLine[]> {
-    return Array.from(this.posSalesLines.values()).filter(psl => psl.posSalesId === saleId);
+    return db.select().from(posSalesLines).where(eq(posSalesLines.posSalesId, saleId));
   }
 
   async createPOSSalesLine(insertLine: InsertPOSSalesLine): Promise<POSSalesLine> {
-    const id = randomUUID();
-    const line: POSSalesLine = { ...insertLine, id };
-    this.posSalesLines.set(id, line);
+    const [line] = await db.insert(posSalesLines).values(insertLine).returning();
     return line;
   }
 
   // Menu Items
   async getMenuItems(): Promise<MenuItem[]> {
-    return Array.from(this.menuItems.values());
+    return db.select().from(menuItems);
   }
 
   async getMenuItem(id: string): Promise<MenuItem | undefined> {
-    return this.menuItems.get(id);
+    const [item] = await db.select().from(menuItems).where(eq(menuItems.id, id));
+    return item || undefined;
   }
 
   async getMenuItemByPLU(pluSku: string): Promise<MenuItem | undefined> {
-    return Array.from(this.menuItems.values()).find(mi => mi.pluSku === pluSku);
+    const [item] = await db.select().from(menuItems).where(eq(menuItems.pluSku, pluSku));
+    return item || undefined;
   }
 
   async createMenuItem(insertItem: InsertMenuItem): Promise<MenuItem> {
-    const id = randomUUID();
-    const item: MenuItem = { ...insertItem, id };
-    this.menuItems.set(id, item);
+    const [item] = await db.insert(menuItems).values(insertItem).returning();
     return item;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
