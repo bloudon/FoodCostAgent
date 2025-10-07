@@ -158,7 +158,12 @@ export const inventoryCountLines = pgTable("inventory_count_lines", {
   derivedMicroUnits: real("derived_micro_units").notNull(), // normalized value
 });
 
-export const insertInventoryCountLineSchema = createInsertSchema(inventoryCountLines).omit({ id: true });
+export const insertInventoryCountLineSchema = createInsertSchema(inventoryCountLines).omit({ 
+  id: true,
+  derivedMicroUnits: true 
+}).extend({
+  derivedMicroUnits: z.number().optional()
+});
 export type InsertInventoryCountLine = z.infer<typeof insertInventoryCountLineSchema>;
 export type InventoryCountLine = typeof inventoryCountLines.$inferSelect;
 
