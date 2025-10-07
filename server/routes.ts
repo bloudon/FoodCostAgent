@@ -399,6 +399,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(enriched);
   });
 
+  app.get("/api/inventory-count-line/:id", async (req, res) => {
+    const line = await storage.getInventoryCountLine(req.params.id);
+    if (!line) {
+      return res.status(404).json({ error: "Count line not found" });
+    }
+    
+    const units = await storage.getUnits();
+    const unit = units.find(u => u.id === line.unitId);
+    
+    const enriched = {
+      ...line,
+      unitName: unit?.name || "unit"
+    };
+    
+    res.json(enriched);
+  });
+
   app.post("/api/inventory-count-lines", async (req, res) => {
     try {
       const lineData = insertInventoryCountLineSchema.parse(req.body);

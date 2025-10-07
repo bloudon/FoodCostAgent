@@ -67,6 +67,7 @@ export default function CountSession() {
   const params = useParams();
   const countId = params.id;
   const [showEmpty, setShowEmpty] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -237,10 +238,24 @@ export default function CountSession() {
 
   const totalItems = countLines?.length || 0;
 
-  // Filter lines based on toggle
-  const filteredLines = showEmpty 
-    ? countLines 
-    : countLines?.filter(line => line.qty > 0);
+  // Get unique categories from products
+  const categories = Array.from(new Set(
+    products?.map(p => p.category).filter(Boolean) || []
+  )).sort();
+
+  // Filter lines based on toggle and category
+  let filteredLines = countLines || [];
+  
+  if (!showEmpty) {
+    filteredLines = filteredLines.filter(line => line.qty > 0);
+  }
+  
+  if (selectedCategory !== "all") {
+    filteredLines = filteredLines.filter(line => {
+      const product = products?.find(p => p.id === line.productId);
+      return product?.category === selectedCategory;
+    });
+  }
 
   const countDate = count ? new Date(count.countedAt) : null;
 
@@ -261,14 +276,14 @@ export default function CountSession() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <Link href="/inventory">
+        <Link href="/inventory-sessions">
           <Button variant="ghost" className="mb-4" data-testid="button-back">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Inventory
+            Back to Sessions
           </Button>
         </Link>
         
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-session-title">
               Count Session Details
@@ -365,18 +380,36 @@ export default function CountSession() {
       {/* Count Lines Table */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
             <CardTitle>Counted Items</CardTitle>
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="show-empty"
-                checked={showEmpty}
-                onCheckedChange={setShowEmpty}
-                data-testid="toggle-show-empty"
-              />
-              <Label htmlFor="show-empty" className="cursor-pointer">
-                Show empty counts
-              </Label>
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="category-filter">Category:</Label>
+                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                  <SelectTrigger className="w-[180px]" id="category-filter" data-testid="select-category-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {categories.map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="show-empty"
+                  checked={showEmpty}
+                  onCheckedChange={setShowEmpty}
+                  data-testid="toggle-show-empty"
+                />
+                <Label htmlFor="show-empty" className="cursor-pointer">
+                  Show empty counts
+                </Label>
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -400,7 +433,11 @@ export default function CountSession() {
                   const value = line.derivedMicroUnits * (product?.lastCost || 0);
                   return (
                     <TableRow key={line.id} data-testid={`row-line-${line.id}`}>
-                      <TableCell className="font-medium">{product?.name || 'Unknown'}</TableCell>
+                      <TableCell className="font-medium">
+                        <Link href={`/item-count/${line.id}`}>
+                          <span className="hover:underline cursor-pointer">{product?.name || 'Unknown'}</span>
+                        </Link>
+                      </TableCell>
                       <TableCell className="text-muted-foreground">{product?.category || '-'}</TableCell>
                       <TableCell className="text-right font-mono">{line.qty}</TableCell>
                       <TableCell>{line.unitName || '-'}</TableCell>
@@ -408,14 +445,15 @@ export default function CountSession() {
                       <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEdit(line)}
-                            data-testid={`button-edit-${line.id}`}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
+                          <Link href={`/item-count/${line.id}`}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              data-testid={`button-edit-${line.id}`}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </Link>
                           <Button
                             variant="ghost"
                             size="icon"

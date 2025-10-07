@@ -141,9 +141,9 @@ export default function Dashboard() {
                 <ClipboardList className="h-5 w-5 text-muted-foreground" />
                 <CardTitle>Most Recent Inventory Count</CardTitle>
               </div>
-              <Link href="/inventory-count">
+              <Link href="/inventory-sessions">
                 <Button data-testid="button-new-count">
-                  Start New Count
+                  View All Sessions
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
@@ -203,9 +203,9 @@ export default function Dashboard() {
             ) : (
               <div className="text-center py-8">
                 <p className="text-muted-foreground mb-4">No inventory counts yet</p>
-                <Link href="/inventory-count">
+                <Link href="/inventory-sessions">
                   <Button data-testid="button-first-count">
-                    Create Your First Count
+                    Go to Sessions
                   </Button>
                 </Link>
               </div>

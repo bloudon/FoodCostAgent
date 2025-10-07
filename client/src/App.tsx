@@ -12,8 +12,9 @@ import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
-import InventoryCount from "@/pages/inventory-count";
+import InventorySessions from "@/pages/inventory-sessions";
 import CountSession from "@/pages/count-session";
+import ItemCount from "@/pages/item-count";
 import InventoryItems from "@/pages/inventory-items";
 import Recipes from "@/pages/recipes";
 import RecipeDetail from "@/pages/recipe-detail";
@@ -76,8 +77,9 @@ function ProtectedLayout() {
             <Switch>
               <Route path="/" component={Dashboard} />
               <Route path="/inventory-items" component={InventoryItems} />
-              <Route path="/inventory" component={InventoryCount} />
+              <Route path="/inventory-sessions" component={InventorySessions} />
               <Route path="/count/:id" component={CountSession} />
+              <Route path="/item-count/:id" component={ItemCount} />
               <Route path="/recipes/:id" component={RecipeDetail} />
               <Route path="/recipes" component={Recipes} />
               <Route path="/products" component={Products} />

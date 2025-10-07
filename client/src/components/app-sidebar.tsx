@@ -35,8 +35,8 @@ const menuItems = [
     icon: Warehouse,
   },
   {
-    title: "Inventory Count",
-    url: "/inventory",
+    title: "Inventory Sessions",
+    url: "/inventory-sessions",
     icon: ClipboardList,
   },
   {
