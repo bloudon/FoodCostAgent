@@ -15,6 +15,22 @@ export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
+// Auth Sessions
+export const authSessions = pgTable("auth_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+  userAgent: text("user_agent"),
+  ipAddress: text("ip_address"),
+});
+
+export const insertAuthSessionSchema = createInsertSchema(authSessions).omit({ id: true, createdAt: true });
+export type InsertAuthSession = z.infer<typeof insertAuthSessionSchema>;
+export type AuthSession = typeof authSessions.$inferSelect;
+
 // Storage Locations
 export const storageLocations = pgTable("storage_locations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -64,6 +80,22 @@ export const insertProductSchema = createInsertSchema(products).omit({ id: true 
 });
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof products.$inferSelect;
+
+// Product Price History
+export const productPriceHistory = pgTable("product_price_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: varchar("product_id").notNull(),
+  effectiveAt: timestamp("effective_at").notNull(),
+  costPerMicroUnit: real("cost_per_micro_unit").notNull(),
+  vendorProductId: varchar("vendor_product_id"),
+  note: text("note"),
+  recordedBy: varchar("recorded_by"), // userId
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertProductPriceHistorySchema = createInsertSchema(productPriceHistory).omit({ id: true, createdAt: true });
+export type InsertProductPriceHistory = z.infer<typeof insertProductPriceHistorySchema>;
+export type ProductPriceHistory = typeof productPriceHistory.$inferSelect;
 
 // Vendors
 export const vendors = pgTable("vendors", {
