@@ -260,3 +260,17 @@ Preferred communication style: Simple, everyday language.
   - Dedicated sidebar menu item with MapPin icon
   - Positioned after Inventory Count for logical grouping
   - Active state indication for current route
+
+### Product Schema Enhancements (October 2025)
+- **Enhanced Product Fields**:
+  - Category classification with color-coded badges (Protein, Produce, Dairy, Dry/Pantry)
+  - Storage location tracking via storageLocationIds array (multiple locations supported)
+  - Yield information with yieldAmount and yieldUnitId for package sizes
+  - Product image support with imageUrl field and fallback icons
+  
+- **Products Display Page**:
+  - Avatar-based product images with Package icon fallback
+  - Color-coded category badges (red for Protein, green for Produce, blue for Dairy, yellow for Dry/Pantry)
+  - Storage location names displayed from relationship lookups
+  - Yield amounts shown with proper unit conversions
+  - Enhanced table view with visual hierarchy
