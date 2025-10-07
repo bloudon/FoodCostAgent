@@ -602,6 +602,125 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(Object.values(trends));
   });
 
+  // ============ COGS & COST ANALYSIS ============
+  app.get("/api/reports/cogs-summary", async (req, res) => {
+    const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
+    const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
+    
+    // Prefetch all data once
+    const sales = await storage.getPOSSales(startDate, endDate);
+    const menuItems = await storage.getMenuItems();
+    const products = await storage.getProducts();
+    const units = await storage.getUnits();
+    
+    // Create lookup maps
+    const productMap = new Map(products.map(p => [p.id, p]));
+    const menuItemMap = new Map(menuItems.map(m => [m.id, m]));
+    const unitMap = new Map(units.map(u => [u.id, u]));
+    
+    // Pre-calculate menu item costs using calculateRecipeCost (handles sub-recipes)
+    const menuItemCostMap = new Map<string, number>();
+    for (const menuItem of menuItems) {
+      const cost = await calculateRecipeCost(menuItem.recipeId);
+      menuItemCostMap.set(menuItem.id, cost);
+    }
+    
+    let totalRevenue = 0;
+    let totalCOGS = 0;
+    const menuItemSummary: Record<string, { revenue: number, cogs: number, count: number, name: string }> = {};
+    
+    for (const sale of sales) {
+      totalRevenue += sale.totalAmount;
+      const saleLines = await storage.getPOSSalesLines(sale.id);
+      
+      for (const line of saleLines) {
+        const portionCost = menuItemCostMap.get(line.menuItemId) || 0;
+        const lineCOGS = portionCost * (line.qtySold || 0);
+        totalCOGS += lineCOGS;
+        
+        if (!menuItemSummary[line.menuItemId]) {
+          const menuItem = menuItemMap.get(line.menuItemId);
+          menuItemSummary[line.menuItemId] = {
+            revenue: 0,
+            cogs: 0,
+            count: 0,
+            name: menuItem?.name || "Unknown"
+          };
+        }
+        
+        menuItemSummary[line.menuItemId].revenue += line.lineTotal || 0;
+        menuItemSummary[line.menuItemId].cogs += lineCOGS;
+        menuItemSummary[line.menuItemId].count += line.qtySold || 0;
+      }
+    }
+    
+    res.json({
+      totalRevenue,
+      totalCOGS,
+      grossProfit: totalRevenue - totalCOGS,
+      grossMarginPercent: totalRevenue > 0 ? ((totalRevenue - totalCOGS) / totalRevenue * 100) : 0,
+      menuItems: Object.entries(menuItemSummary).map(([menuItemId, data]) => ({
+        menuItemId,
+        name: data.name,
+        revenue: data.revenue,
+        cogs: data.cogs,
+        profit: data.revenue - data.cogs,
+        marginPercent: data.revenue > 0 ? ((data.revenue - data.cogs) / data.revenue * 100) : 0,
+        unitsSold: data.count
+      }))
+    });
+  });
+
+  app.get("/api/reports/price-change-impact", async (req, res) => {
+    const productId = req.query.product_id as string;
+    
+    if (!productId) {
+      return res.status(400).json({ error: "product_id is required" });
+    }
+    
+    // Prefetch all data once
+    const product = await storage.getProduct(productId);
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+    
+    const menuItems = await storage.getMenuItems();
+    const impact = [];
+    
+    // Check each menu item's recipe for the affected product (including sub-recipes)
+    for (const menuItem of menuItems) {
+      const productImpact = await calculateProductImpactInRecipe(menuItem.recipeId, productId);
+      
+      if (!productImpact.usesProduct) continue;
+      
+      // Calculate current recipe cost using calculateRecipeCost (handles sub-recipes)
+      const currentRecipeCost = await calculateRecipeCost(menuItem.recipeId);
+      const costPercent = currentRecipeCost > 0 ? (productImpact.costContribution / currentRecipeCost * 100) : 0;
+      
+      impact.push({
+        menuItemId: menuItem.id,
+        menuItemName: menuItem.name,
+        recipeId: menuItem.recipeId,
+        currentRecipeCost,
+        componentQuantity: productImpact.microUnits,
+        componentCostContribution: productImpact.costContribution,
+        costPercentage: costPercent,
+        priceImpactPer10Percent: productImpact.costContribution * 0.1
+      });
+    }
+    
+    res.json({
+      product: {
+        id: product.id,
+        name: product.name,
+        currentCost: product.lastCost,
+        baseUnitId: product.baseUnitId
+      },
+      affectedRecipes: impact.length,
+      impactAnalysis: impact
+    });
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
@@ -628,13 +747,66 @@ async function calculateRecipeCost(recipeId: string): Promise<number> {
         totalCost += microUnits * product.lastCost;
       }
     } else if (comp.componentType === "recipe") {
-      const subRecipeCost = await calculateRecipeCost(comp.componentId);
-      totalCost += subRecipeCost * comp.qty;
+      // Get sub-recipe's cost (already includes its waste)
+      const subRecipe = await storage.getRecipe(comp.componentId);
+      if (subRecipe) {
+        const subRecipeCost = await calculateRecipeCost(comp.componentId);
+        // Convert sub-recipe's yield to cost per unit, then scale by quantity needed
+        const subRecipeYieldUnit = units.find(u => u.id === subRecipe.yieldUnitId);
+        const subRecipeYieldMicroUnits = subRecipeYieldUnit ? subRecipe.yieldQty * subRecipeYieldUnit.toBaseRatio : subRecipe.yieldQty;
+        const costPerMicroUnit = subRecipeYieldMicroUnits > 0 ? subRecipeCost / subRecipeYieldMicroUnits : 0;
+        totalCost += microUnits * costPerMicroUnit;
+      }
     }
   }
 
   const wasteMultiplier = 1 + recipe.wastePercent / 100;
   return totalCost * wasteMultiplier;
+}
+
+async function calculateProductImpactInRecipe(recipeId: string, targetProductId: string): Promise<{ usesProduct: boolean, microUnits: number, costContribution: number }> {
+  const components = await storage.getRecipeComponents(recipeId);
+  const units = await storage.getUnits();
+  const products = await storage.getProducts();
+  
+  let totalMicroUnits = 0;
+  let totalCostContribution = 0;
+
+  for (const comp of components) {
+    const unit = units.find((u) => u.id === comp.unitId);
+    const microUnits = unit ? comp.qty * unit.toBaseRatio : comp.qty;
+
+    if (comp.componentType === "product" && comp.componentId === targetProductId) {
+      const product = products.find((p) => p.id === targetProductId);
+      if (product) {
+        totalMicroUnits += microUnits;
+        totalCostContribution += microUnits * product.lastCost;
+      }
+    } else if (comp.componentType === "recipe") {
+      const subRecipe = await storage.getRecipe(comp.componentId);
+      if (subRecipe) {
+        const subImpact = await calculateProductImpactInRecipe(comp.componentId, targetProductId);
+        if (subImpact.usesProduct) {
+          // Scale sub-recipe usage by yield ratio
+          const subRecipeYieldUnit = units.find(u => u.id === subRecipe.yieldUnitId);
+          const subRecipeYieldMicroUnits = subRecipeYieldUnit ? subRecipe.yieldQty * subRecipeYieldUnit.toBaseRatio : subRecipe.yieldQty;
+          
+          if (subRecipeYieldMicroUnits > 0) {
+            // Scale the sub-recipe's product usage by (qty needed / yield)
+            const scaleFactor = microUnits / subRecipeYieldMicroUnits;
+            totalMicroUnits += subImpact.microUnits * scaleFactor;
+            totalCostContribution += subImpact.costContribution * scaleFactor;
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    usesProduct: totalMicroUnits > 0,
+    microUnits: totalMicroUnits,
+    costContribution: totalCostContribution
+  };
 }
 
 async function calculateTheoreticalUsage(
