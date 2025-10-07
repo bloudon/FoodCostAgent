@@ -274,3 +274,14 @@ Preferred communication style: Simple, everyday language.
   - Storage location names displayed from relationship lookups
   - Yield amounts shown with proper unit conversions
   - Enhanced table view with visual hierarchy
+
+### Inventory Items View (October 2025)
+- **Inventory Items Page** (`/inventory-items`):
+  - Dedicated view for current on-hand inventory levels across all storage locations
+  - Real-time display of product quantities and values
+  - Search functionality to filter products by name or PLU/SKU
+  - Location-based filtering to view inventory at specific storage areas
+  - Total inventory value calculation across filtered items
+  - Table view showing product details, category, location, quantity, unit cost, and total value
+  - Product avatars with category badges for visual identification
+  - Warehouse icon navigation item positioned after Dashboard
