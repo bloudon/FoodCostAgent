@@ -1,10 +1,12 @@
 import { storage } from "./storage";
+import { hashPassword } from "./auth";
 
 async function seedSeptemberCounts() {
   // Get necessary entities
   const units = await storage.getUnits();
   const locations = await storage.getStorageLocations();
   const products = await storage.getProducts();
+  const adminUser = await storage.getUserByEmail("admin@pizza.com");
   
   const pound = units.find(u => u.name === "pound");
   const walkIn = locations.find(l => l.name === "Walk-In Cooler");
@@ -15,7 +17,7 @@ async function seedSeptemberCounts() {
   const bellPeppers = products.find(p => p.name === "Bell Peppers (mixed)");
   const onions = products.find(p => p.name === "Yellow Onions");
   
-  if (!pound || !walkIn || !mozzarella || !pepperoni || !chickenWings || !sausage || !bellPeppers || !onions) {
+  if (!pound || !walkIn || !mozzarella || !pepperoni || !chickenWings || !sausage || !bellPeppers || !onions || !adminUser) {
     console.log("⚠️  Required data not found for September counts");
     return;
   }
@@ -31,7 +33,7 @@ async function seedSeptemberCounts() {
     const countData = septemberCounts[i];
     const count = await storage.createInventoryCount({
       storageLocationId: walkIn.id,
-      userId: "admin",
+      userId: adminUser.id,
       note: countData.note,
     });
     
@@ -97,6 +99,19 @@ async function seedSeptemberCounts() {
 
 export async function seedDatabase() {
   console.log("🌱 Seeding database with pizza restaurant data...");
+
+  // Ensure admin user exists
+  let adminUser = await storage.getUserByEmail("admin@pizza.com");
+  if (!adminUser) {
+    console.log("👤 Creating admin user...");
+    const passwordHash = await hashPassword("admin123");
+    adminUser = await storage.createUser({
+      email: "admin@pizza.com",
+      passwordHash,
+      role: "admin",
+    });
+    console.log("✅ Admin user created (email: admin@pizza.com, password: admin123)");
+  }
 
   // Check if database is already seeded
   const existingUnits = await storage.getUnits();

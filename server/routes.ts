@@ -2,6 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
+import { z } from "zod";
+import { createSession, requireAuth, verifyPassword } from "./auth";
 import {
   insertUnitSchema,
   insertStorageLocationSchema,
@@ -27,6 +29,57 @@ import {
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // ============ AUTHENTICATION ============
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = z.object({
+        email: z.string().email(),
+        password: z.string().min(1),
+      }).parse(req.body);
+
+      const user = await storage.getUserByEmail(email);
+      if (!user || !(await verifyPassword(password, user.passwordHash))) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
+      const token = await createSession(
+        user.id,
+        req.headers["user-agent"],
+        req.ip
+      );
+
+      res.cookie("session", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      });
+
+      res.json({ user: { id: user.id, email: user.email, role: user.role } });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/auth/logout", requireAuth, async (req, res) => {
+    try {
+      const sessionId = (req as any).sessionId;
+      if (sessionId) {
+        await storage.revokeAuthSession(sessionId);
+      }
+      res.clearCookie("session");
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/auth/me", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    res.json({ id: user.id, email: user.email, role: user.role });
+  });
+
+
   // ============ UNITS ============
   app.get("/api/units", async (req, res) => {
     const units = await storage.getUnits();

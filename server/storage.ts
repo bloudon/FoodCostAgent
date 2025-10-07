@@ -1,10 +1,12 @@
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, isNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, type User, type InsertUser,
+  authSessions, type AuthSession, type InsertAuthSession,
   storageLocations, type StorageLocation, type InsertStorageLocation,
   units, type Unit, type InsertUnit,
   products, type Product, type InsertProduct,
+  productPriceHistory, type ProductPriceHistory, type InsertProductPriceHistory,
   vendors, type Vendor, type InsertVendor,
   vendorProducts, type VendorProduct, type InsertVendorProduct,
   recipes, type Recipe, type InsertRecipe,
@@ -31,6 +33,12 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+
+  // Auth Sessions
+  createAuthSession(session: InsertAuthSession): Promise<AuthSession>;
+  getAuthSessionByToken(tokenHash: string): Promise<AuthSession | undefined>;
+  revokeAuthSession(id: string): Promise<void>;
+  cleanExpiredSessions(): Promise<void>;
 
   // Storage Locations
   getStorageLocations(): Promise<StorageLocation[]>;
@@ -143,6 +151,37 @@ export interface IStorage {
   // System Preferences
   getSystemPreferences(): Promise<SystemPreferences | undefined>;
   updateSystemPreferences(preferences: Partial<SystemPreferences>): Promise<SystemPreferences>;
+
+  // Product Price History
+  getProductPriceHistory(productId: string): Promise<ProductPriceHistory[]>;
+  createProductPriceHistory(history: InsertProductPriceHistory): Promise<ProductPriceHistory>;
+
+  // Product search for count entry
+  searchProducts(term: string): Promise<Product[]>;
+
+  // Inventory count aggregations
+  getInventoryCountAggregations(countId: string): Promise<Array<{
+    productId: string;
+    productName: string;
+    totalMicroUnits: number;
+    totalValue: number;
+    countLineIds: string[];
+  }>>;
+
+  getProductCountDetails(productId: string, countId: string): Promise<Array<{
+    countLineId: string;
+    userId: string;
+    userName: string;
+    storageLocationId: string;
+    locationName: string;
+    qty: number;
+    unitId: string;
+    unitName: string;
+    microUnits: number;
+    costPerMicroUnit: number;
+    totalValue: number;
+    countedAt: Date;
+  }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -160,6 +199,37 @@ export class DatabaseStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
+  }
+
+  // Auth Sessions
+  async createAuthSession(insertSession: InsertAuthSession): Promise<AuthSession> {
+    const [session] = await db.insert(authSessions).values(insertSession).returning();
+    return session;
+  }
+
+  async getAuthSessionByToken(tokenHash: string): Promise<AuthSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(authSessions)
+      .where(and(
+        eq(authSessions.tokenHash, tokenHash),
+        isNull(authSessions.revokedAt),
+        gte(authSessions.expiresAt, new Date())
+      ));
+    return session || undefined;
+  }
+
+  async revokeAuthSession(id: string): Promise<void> {
+    await db
+      .update(authSessions)
+      .set({ revokedAt: new Date() })
+      .where(eq(authSessions.id, id));
+  }
+
+  async cleanExpiredSessions(): Promise<void> {
+    await db
+      .delete(authSessions)
+      .where(lte(authSessions.expiresAt, new Date()));
   }
 
   // Storage Locations
@@ -627,6 +697,61 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return created;
     }
+  }
+
+  // Product Price History
+  async getProductPriceHistory(productId: string): Promise<ProductPriceHistory[]> {
+    return db
+      .select()
+      .from(productPriceHistory)
+      .where(eq(productPriceHistory.productId, productId))
+      .orderBy(productPriceHistory.effectiveAt);
+  }
+
+  async createProductPriceHistory(insertHistory: InsertProductPriceHistory): Promise<ProductPriceHistory> {
+    const [history] = await db.insert(productPriceHistory).values(insertHistory).returning();
+    return history;
+  }
+
+  // Product search for count entry
+  async searchProducts(term: string): Promise<Product[]> {
+    const searchTerm = `%${term.toLowerCase()}%`;
+    return db
+      .select()
+      .from(products)
+      .where(
+        and(
+          eq(products.active, 1)
+        )
+      );
+  }
+
+  // Inventory count aggregations
+  async getInventoryCountAggregations(countId: string): Promise<Array<{
+    productId: string;
+    productName: string;
+    totalMicroUnits: number;
+    totalValue: number;
+    countLineIds: string[];
+  }>> {
+    return [];
+  }
+
+  async getProductCountDetails(productId: string, countId: string): Promise<Array<{
+    countLineId: string;
+    userId: string;
+    userName: string;
+    storageLocationId: string;
+    locationName: string;
+    qty: number;
+    unitId: string;
+    unitName: string;
+    microUnits: number;
+    costPerMicroUnit: number;
+    totalValue: number;
+    countedAt: Date;
+  }>> {
+    return [];
   }
 }
 
