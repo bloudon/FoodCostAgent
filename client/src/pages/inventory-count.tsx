@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -57,13 +58,15 @@ function CountHistoryRow({ count, location, countDate, products }: any) {
         {count.note || '-'}
       </TableCell>
       <TableCell className="text-right">
-        <Button 
-          variant="ghost" 
-          size="sm"
-          data-testid={`button-view-count-${count.id}`}
-        >
-          View Details
-        </Button>
+        <Link href={`/count/${count.id}`}>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            data-testid={`button-view-count-${count.id}`}
+          >
+            View Details
+          </Button>
+        </Link>
       </TableCell>
     </TableRow>
   );

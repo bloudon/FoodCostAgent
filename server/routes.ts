@@ -211,6 +211,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(counts);
   });
 
+  app.get("/api/inventory-counts/:id", async (req, res) => {
+    const count = await storage.getInventoryCount(req.params.id);
+    if (!count) {
+      return res.status(404).json({ error: "Count not found" });
+    }
+    res.json(count);
+  });
+
+  app.get("/api/inventory-count-lines/:countId", async (req, res) => {
+    const lines = await storage.getInventoryCountLines(req.params.countId);
+    const units = await storage.getUnits();
+    
+    const enriched = lines.map(line => {
+      const unit = units.find(u => u.id === line.unitId);
+      return {
+        ...line,
+        unitName: unit?.name || "unit"
+      };
+    });
+    
+    res.json(enriched);
+  });
+
   app.post("/api/inventory-counts", async (req, res) => {
     try {
       const { lines, ...countData } = req.body;

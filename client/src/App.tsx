@@ -10,6 +10,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import InventoryCount from "@/pages/inventory-count";
+import CountSession from "@/pages/count-session";
 import Recipes from "@/pages/recipes";
 import Products from "@/pages/products";
 import Vendors from "@/pages/vendors";
@@ -22,6 +23,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/inventory" component={InventoryCount} />
+      <Route path="/count/:id" component={CountSession} />
       <Route path="/recipes" component={Recipes} />
       <Route path="/products" component={Products} />
       <Route path="/vendors" component={Vendors} />
