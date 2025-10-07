@@ -484,20 +484,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ INVENTORY ============
   app.get("/api/inventory", async (req, res) => {
     const locationId = req.query.location_id as string | undefined;
-    const levels = await storage.getInventoryLevels(locationId);
+    const items = await storage.getInventoryItems(locationId);
     
-    const products = await storage.getProducts();
     const locations = await storage.getStorageLocations();
     const units = await storage.getUnits();
     
-    const enriched = levels.map((level) => {
-      const product = products.find((p) => p.id === level.productId);
-      const location = locations.find((l) => l.id === level.storageLocationId);
-      const unit = units.find((u) => u.id === product?.unitId);
+    const enriched = items.map((item) => {
+      const location = locations.find((l) => l.id === item.storageLocationId);
+      const unit = units.find((u) => u.id === item.unitId);
       
       return {
-        ...level,
-        product: product || null,
+        id: item.id,
+        productId: item.id,
+        storageLocationId: item.storageLocationId,
+        onHandQty: item.onHandQty,
+        product: {
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          pluSku: item.pluSku,
+          lastCost: item.lastCost,
+          unitId: item.unitId,
+          caseSize: item.caseSize,
+          imageUrl: item.imageUrl,
+          parLevel: item.parLevel,
+          reorderLevel: item.reorderLevel,
+        },
         location: location || null,
         unit: unit || null,
       };
