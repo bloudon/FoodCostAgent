@@ -110,7 +110,7 @@ export default function CountSession() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-levels"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory"], exact: false });
       toast({
         title: "Success",
         description: "Count line updated successfully",
@@ -133,7 +133,7 @@ export default function CountSession() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-levels"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory"], exact: false });
       toast({
         title: "Success",
         description: "Item added to count successfully",
@@ -156,7 +156,7 @@ export default function CountSession() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-levels"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory"], exact: false });
       toast({
         title: "Success",
         description: "Count line deleted successfully",
