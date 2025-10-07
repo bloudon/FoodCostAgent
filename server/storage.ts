@@ -22,6 +22,8 @@ import {
   recipeVersions, type RecipeVersion, type InsertRecipeVersion,
   transferLogs, type TransferLog, type InsertTransferLog,
   wasteLogs, type WasteLog, type InsertWasteLog,
+  companySettings, type CompanySettings, type InsertCompanySettings,
+  systemPreferences, type SystemPreferences, type InsertSystemPreferences,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -130,6 +132,14 @@ export interface IStorage {
   // Waste Logs
   getWasteLogs(productId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]>;
   createWasteLog(waste: InsertWasteLog): Promise<WasteLog>;
+
+  // Company Settings
+  getCompanySettings(): Promise<CompanySettings | undefined>;
+  updateCompanySettings(settings: Partial<CompanySettings>): Promise<CompanySettings>;
+
+  // System Preferences
+  getSystemPreferences(): Promise<SystemPreferences | undefined>;
+  updateSystemPreferences(preferences: Partial<SystemPreferences>): Promise<SystemPreferences>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -546,6 +556,56 @@ export class DatabaseStorage implements IStorage {
   async createWasteLog(insertWaste: InsertWasteLog): Promise<WasteLog> {
     const [waste] = await db.insert(wasteLogs).values(insertWaste).returning();
     return waste;
+  }
+
+  // Company Settings
+  async getCompanySettings(): Promise<CompanySettings | undefined> {
+    const [settings] = await db.select().from(companySettings).limit(1);
+    return settings || undefined;
+  }
+
+  async updateCompanySettings(updates: Partial<CompanySettings>): Promise<CompanySettings> {
+    const existing = await this.getCompanySettings();
+    
+    if (existing) {
+      const [updated] = await db
+        .update(companySettings)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(companySettings.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(companySettings)
+        .values(updates as InsertCompanySettings)
+        .returning();
+      return created;
+    }
+  }
+
+  // System Preferences
+  async getSystemPreferences(): Promise<SystemPreferences | undefined> {
+    const [prefs] = await db.select().from(systemPreferences).limit(1);
+    return prefs || undefined;
+  }
+
+  async updateSystemPreferences(updates: Partial<SystemPreferences>): Promise<SystemPreferences> {
+    const existing = await this.getSystemPreferences();
+    
+    if (existing) {
+      const [updated] = await db
+        .update(systemPreferences)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(systemPreferences.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(systemPreferences)
+        .values(updates as InsertSystemPreferences)
+        .returning();
+      return created;
+    }
   }
 }
 

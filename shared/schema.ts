@@ -307,3 +307,36 @@ export const insertWasteLogSchema = createInsertSchema(wasteLogs).omit({ id: tru
 export type InsertWasteLog = z.infer<typeof insertWasteLogSchema>;
 export type WasteLog = typeof wasteLogs.$inferSelect;
 
+// Company Settings
+export const companySettings = pgTable("company_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name"),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
+  phone: text("phone"),
+  email: text("email"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertCompanySettingsSchema = createInsertSchema(companySettings).omit({ id: true, updatedAt: true });
+export type InsertCompanySettings = z.infer<typeof insertCompanySettingsSchema>;
+export type CompanySettings = typeof companySettings.$inferSelect;
+
+// System Preferences
+export const systemPreferences = pgTable("system_preferences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  weightUnit: text("weight_unit").notNull().default("pound"), // pound or kilogram
+  currency: text("currency").notNull().default("USD"),
+  timezone: text("timezone").notNull().default("America/New_York"),
+  posSystem: text("pos_system"), // square, toast, clover, custom, none
+  posApiKey: text("pos_api_key"),
+  posWebhookUrl: text("pos_webhook_url"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertSystemPreferencesSchema = createInsertSchema(systemPreferences).omit({ id: true, updatedAt: true });
+export type InsertSystemPreferences = z.infer<typeof insertSystemPreferencesSchema>;
+export type SystemPreferences = typeof systemPreferences.$inferSelect;
+
