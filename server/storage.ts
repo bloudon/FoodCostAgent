@@ -70,6 +70,8 @@ export interface IStorage {
   getVendors(): Promise<Vendor[]>;
   getVendor(id: string): Promise<Vendor | undefined>;
   createVendor(vendor: InsertVendor): Promise<Vendor>;
+  updateVendor(id: string, vendor: Partial<Vendor>): Promise<Vendor | undefined>;
+  deleteVendor(id: string): Promise<void>;
 
   // Vendor Products
   getVendorProducts(vendorId?: string): Promise<VendorProduct[]>;
@@ -347,6 +349,19 @@ export class DatabaseStorage implements IStorage {
   async createVendor(insertVendor: InsertVendor): Promise<Vendor> {
     const [vendor] = await db.insert(vendors).values(insertVendor).returning();
     return vendor;
+  }
+
+  async updateVendor(id: string, updates: Partial<Vendor>): Promise<Vendor | undefined> {
+    const [vendor] = await db
+      .update(vendors)
+      .set(updates)
+      .where(eq(vendors.id, id))
+      .returning();
+    return vendor || undefined;
+  }
+
+  async deleteVendor(id: string): Promise<void> {
+    await db.delete(vendors).where(eq(vendors.id, id));
   }
 
   // Vendor Products
