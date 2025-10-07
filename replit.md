@@ -236,3 +236,27 @@ Preferred communication style: Simple, everyday language.
   - Helper function `calculateComponentCost` for accurate component-level costing
   - Polymorphic component support (products and sub-recipes) with proper cost scaling
   - Frontend compatibility layer providing productId/subRecipeId alongside componentType/componentId schema
+
+### Storage Locations Administration
+- **Storage Locations Management Page** (`/storage-locations`):
+  - Full CRUD interface for managing warehouse and storage areas
+  - Card-based list view with search functionality
+  - Inline edit and delete actions for each location
+  - Dialog-based add/edit forms with validation
+  - Sort order management for display preferences
+  
+- **API Endpoints**:
+  - GET/POST/PATCH/DELETE for `/api/storage-locations`
+  - Schema validation using Zod with partial updates for PATCH
+  - Proper 404 handling for missing locations
+  - 204 response for successful deletions
+  
+- **Storage Interface**:
+  - `updateStorageLocation` method for partial updates
+  - `deleteStorageLocation` method for removal
+  - Maintains sort order for consistent display
+  
+- **Navigation**:
+  - Dedicated sidebar menu item with MapPin icon
+  - Positioned after Inventory Count for logical grouping
+  - Active state indication for current route
