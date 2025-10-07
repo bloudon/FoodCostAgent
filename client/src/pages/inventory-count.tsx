@@ -38,6 +38,7 @@ export default function InventoryCount() {
   const [selectedLocation, setSelectedLocation] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [countLines, setCountLines] = useState<CountLine[]>([]);
+  const [activeTab, setActiveTab] = useState("new-count");
 
   const { data: storageLocations, isLoading: locationsLoading } = useQuery<any[]>({
     queryKey: ["/api/storage-locations"],
@@ -54,6 +55,10 @@ export default function InventoryCount() {
   const { data: inventoryLevels } = useQuery<any[]>({
     queryKey: ["/api/inventory", selectedLocation],
     enabled: !!selectedLocation,
+  });
+
+  const { data: inventoryCounts, isLoading: countsLoading } = useQuery<any[]>({
+    queryKey: ["/api/inventory-counts"],
   });
 
   const saveCountMutation = useMutation({
@@ -177,11 +182,18 @@ export default function InventoryCount() {
           Inventory Count
         </h1>
         <p className="text-muted-foreground mt-2">
-          Count inventory by storage location with search or QR scan
+          Count inventory by storage location or view previous count sessions
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[280px_1fr_280px]">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="new-count" data-testid="tab-new-count">New Count</TabsTrigger>
+          <TabsTrigger value="history" data-testid="tab-count-history">Count History</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="new-count" className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-[280px_1fr_280px]">
         <div>
           <Card>
             <CardHeader>
@@ -391,6 +403,68 @@ export default function InventoryCount() {
           )}
         </div>
       </div>
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Previous Count Sessions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {countsLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                </div>
+              ) : inventoryCounts && inventoryCounts.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date & Time</TableHead>
+                      <TableHead>Location</TableHead>
+                      <TableHead>User</TableHead>
+                      <TableHead>Note</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {inventoryCounts.map((count) => {
+                      const location = storageLocations?.find(l => l.id === count.storageLocationId);
+                      const countDate = new Date(count.countedAt);
+                      return (
+                        <TableRow key={count.id} data-testid={`row-count-${count.id}`}>
+                          <TableCell className="font-mono">
+                            {countDate.toLocaleDateString()} {countDate.toLocaleTimeString()}
+                          </TableCell>
+                          <TableCell>{location?.name || 'Unknown'}</TableCell>
+                          <TableCell>{count.userId}</TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {count.note || '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              data-testid={`button-view-count-${count.id}`}
+                            >
+                              View Details
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  No inventory counts found. Start by creating your first count.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
