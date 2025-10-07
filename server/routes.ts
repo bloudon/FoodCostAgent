@@ -47,11 +47,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(locations);
   });
 
+  app.get("/api/storage-locations/:id", async (req, res) => {
+    const location = await storage.getStorageLocation(req.params.id);
+    if (!location) {
+      return res.status(404).json({ error: "Storage location not found" });
+    }
+    res.json(location);
+  });
+
   app.post("/api/storage-locations", async (req, res) => {
     try {
       const data = insertStorageLocationSchema.parse(req.body);
       const location = await storage.createStorageLocation(data);
       res.status(201).json(location);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/storage-locations/:id", async (req, res) => {
+    try {
+      const data = insertStorageLocationSchema.partial().parse(req.body);
+      const location = await storage.updateStorageLocation(req.params.id, data);
+      if (!location) {
+        return res.status(404).json({ error: "Storage location not found" });
+      }
+      res.json(location);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/storage-locations/:id", async (req, res) => {
+    try {
+      await storage.deleteStorageLocation(req.params.id);
+      res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

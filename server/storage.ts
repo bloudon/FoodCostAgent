@@ -34,6 +34,8 @@ export interface IStorage {
   getStorageLocations(): Promise<StorageLocation[]>;
   getStorageLocation(id: string): Promise<StorageLocation | undefined>;
   createStorageLocation(location: InsertStorageLocation): Promise<StorageLocation>;
+  updateStorageLocation(id: string, location: Partial<StorageLocation>): Promise<StorageLocation | undefined>;
+  deleteStorageLocation(id: string): Promise<void>;
 
   // Units
   getUnits(): Promise<Unit[]>;
@@ -160,6 +162,19 @@ export class DatabaseStorage implements IStorage {
   async createStorageLocation(insertLocation: InsertStorageLocation): Promise<StorageLocation> {
     const [location] = await db.insert(storageLocations).values(insertLocation).returning();
     return location;
+  }
+
+  async updateStorageLocation(id: string, updates: Partial<StorageLocation>): Promise<StorageLocation | undefined> {
+    const [location] = await db
+      .update(storageLocations)
+      .set(updates)
+      .where(eq(storageLocations.id, id))
+      .returning();
+    return location || undefined;
+  }
+
+  async deleteStorageLocation(id: string): Promise<void> {
+    await db.delete(storageLocations).where(eq(storageLocations.id, id));
   }
 
   // Units
