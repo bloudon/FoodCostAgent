@@ -9,7 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { filterUnitsBySystem } from "@/lib/utils";
 import { useState } from "react";
+import type { SystemPreferences } from "@shared/schema";
 
 type Product = {
   id: string;
@@ -35,6 +37,7 @@ type Unit = {
   name: string;
   kind: string;
   toBaseRatio: number;
+  system: string;
 };
 
 type StorageLocation = {
@@ -77,6 +80,10 @@ export default function InventoryItemDetail() {
 
   const { data: units } = useQuery<Unit[]>({
     queryKey: ["/api/units"],
+  });
+
+  const { data: systemPrefs } = useQuery<SystemPreferences>({
+    queryKey: ["/api/system-preferences"],
   });
 
   const { data: locations } = useQuery<StorageLocation[]>({
@@ -159,6 +166,8 @@ export default function InventoryItemDetail() {
   const baseUnit = units?.find((u) => u.id === product.baseUnitId);
   const microUnit = units?.find((u) => u.id === product.microUnitId);
   const yieldUnit = units?.find((u) => u.id === product.yieldUnitId);
+  
+  const filteredUnits = filterUnitsBySystem(units, systemPrefs?.unitSystem);
 
   return (
     <div className="h-full overflow-auto">
@@ -224,12 +233,48 @@ export default function InventoryItemDetail() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Base Unit</Label>
-                <div className="text-sm font-medium">{baseUnit?.name || "Unknown"}</div>
+                <Label htmlFor="baseUnitId">Base Unit</Label>
+                <Select
+                  value={getFieldValue("baseUnitId", product.baseUnitId)}
+                  onValueChange={(value) => {
+                    handleFieldChange("baseUnitId", value);
+                    handleFieldBlur("baseUnitId");
+                  }}
+                  disabled={updateMutation.isPending}
+                >
+                  <SelectTrigger id="baseUnitId" data-testid="select-base-unit">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredUnits?.map((unit) => (
+                      <SelectItem key={unit.id} value={unit.id}>
+                        {unit.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
-                <Label>Micro-Unit</Label>
-                <div className="text-sm font-medium">{microUnit?.name || "Unknown"}</div>
+                <Label htmlFor="microUnitId">Micro-Unit</Label>
+                <Select
+                  value={getFieldValue("microUnitId", product.microUnitId)}
+                  onValueChange={(value) => {
+                    handleFieldChange("microUnitId", value);
+                    handleFieldBlur("microUnitId");
+                  }}
+                  disabled={updateMutation.isPending}
+                >
+                  <SelectTrigger id="microUnitId" data-testid="select-micro-unit">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredUnits?.map((unit) => (
+                      <SelectItem key={unit.id} value={unit.id}>
+                        {unit.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="microUnitsPerPurchaseUnit">Micro-Units Per Purchase Unit</Label>

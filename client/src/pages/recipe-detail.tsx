@@ -43,7 +43,9 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { filterUnitsBySystem } from "@/lib/utils";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import type { SystemPreferences } from "@shared/schema";
 
 export default function RecipeDetail() {
   const [, params] = useRoute("/recipes/:id");
@@ -73,6 +75,10 @@ export default function RecipeDetail() {
 
   const { data: units } = useQuery<any[]>({
     queryKey: ["/api/units"],
+  });
+
+  const { data: systemPrefs } = useQuery<SystemPreferences>({
+    queryKey: ["/api/system-preferences"],
   });
 
   const { data: products } = useQuery<any[]>({
@@ -402,7 +408,7 @@ export default function RecipeDetail() {
                   <SelectValue placeholder="Select unit" />
                 </SelectTrigger>
                 <SelectContent>
-                  {units?.map((unit) => (
+                  {filterUnitsBySystem(units, systemPrefs?.unitSystem).map((unit) => (
                     <SelectItem key={unit.id} value={unit.id} data-testid={`option-unit-${unit.id}`}>
                       {unit.name}
                     </SelectItem>

@@ -24,6 +24,8 @@ import {
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { filterUnitsBySystem } from "@/lib/utils";
+import type { SystemPreferences } from "@shared/schema";
 
 interface CountLine {
   productId: string;
@@ -92,6 +94,10 @@ export default function InventoryCount() {
 
   const { data: units } = useQuery<any[]>({
     queryKey: ["/api/units"],
+  });
+
+  const { data: systemPrefs } = useQuery<SystemPreferences>({
+    queryKey: ["/api/system-preferences"],
   });
 
   const { data: inventoryLevels } = useQuery<any[]>({
@@ -399,7 +405,7 @@ export default function InventoryCount() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {units?.map((unit) => (
+                              {filterUnitsBySystem(units, systemPrefs?.unitSystem).map((unit) => (
                                 <SelectItem key={unit.id} value={unit.id} data-testid={`option-unit-${unit.id}`}>
                                   {unit.name}
                                 </SelectItem>
