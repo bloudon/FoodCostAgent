@@ -20,6 +20,7 @@ import PurchaseOrders from "@/pages/purchase-orders";
 import Receiving from "@/pages/receiving";
 import VarianceReport from "@/pages/variance-report";
 import StorageLocations from "@/pages/storage-locations";
+import Settings from "@/pages/settings";
 
 function Router() {
   return (
@@ -36,6 +37,7 @@ function Router() {
       <Route path="/receiving" component={Receiving} />
       <Route path="/variance" component={VarianceReport} />
       <Route path="/storage-locations" component={StorageLocations} />
+      <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -10,6 +10,7 @@ import {
   Home,
   MapPin,
   Warehouse,
+  Settings,
 } from "lucide-react";
 import {
   Sidebar,
@@ -99,6 +100,26 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        
+        <SidebarGroup>
+          <SidebarGroupLabel>System</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={location === "/settings"}
+                  data-testid="link-settings"
+                >
+                  <Link href="/settings">
+                    <Settings className="h-4 w-4" />
+                    <span>Settings</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
