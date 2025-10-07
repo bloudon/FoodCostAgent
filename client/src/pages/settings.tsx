@@ -16,26 +16,94 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import type { CompanySettings, SystemPreferences } from "@shared/schema";
 
 export default function Settings() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("company");
 
-  // Placeholder for future API calls
-  const companyInfo = {
-    name: "",
-    address: "",
-    city: "",
-    state: "",
-    zip: "",
-    phone: "",
-    email: "",
+  const { data: companySettings, isLoading: companyLoading } = useQuery<CompanySettings>({
+    queryKey: ["/api/company-settings"],
+  });
+
+  const { data: systemPrefs, isLoading: prefsLoading } = useQuery<SystemPreferences>({
+    queryKey: ["/api/system-preferences"],
+  });
+
+  const updateCompanyMutation = useMutation({
+    mutationFn: async (data: Partial<CompanySettings>) => {
+      return await apiRequest("/api/company-settings", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company-settings"] });
+      toast({
+        title: "Success",
+        description: "Company information updated successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update company information",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updatePrefsMutation = useMutation({
+    mutationFn: async (data: Partial<SystemPreferences>) => {
+      return await apiRequest("/api/system-preferences", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/system-preferences"] });
+      toast({
+        title: "Success",
+        description: "System preferences updated successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update system preferences",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCompanySave = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const data = {
+      name: formData.get("company-name") as string,
+      address: formData.get("company-address") as string,
+      city: formData.get("company-city") as string,
+      state: formData.get("company-state") as string,
+      zip: formData.get("company-zip") as string,
+      phone: formData.get("company-phone") as string,
+      email: formData.get("company-email") as string,
+    };
+    updateCompanyMutation.mutate(data);
   };
 
-  const systemPreferences = {
-    weightUnit: "pound",
-    currency: "USD",
-    timezone: "America/New_York",
+  const handlePrefsSave = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const data = {
+      weightUnit: formData.get("weight-unit") as string,
+      currency: formData.get("currency") as string,
+      timezone: formData.get("timezone") as string,
+      posSystem: formData.get("pos-system") as string,
+      posApiKey: formData.get("pos-api-key") as string,
+    };
+    updatePrefsMutation.mutate(data);
   };
 
   return (
@@ -77,87 +145,100 @@ export default function Settings() {
                 Basic information about your restaurant or business
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="company-name">Company Name</Label>
-                  <Input
-                    id="company-name"
-                    placeholder="Your Restaurant Name"
-                    defaultValue={companyInfo.name}
-                    data-testid="input-company-name"
-                  />
+            <CardContent>
+              <form onSubmit={handleCompanySave} className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="company-name">Company Name</Label>
+                    <Input
+                      id="company-name"
+                      name="company-name"
+                      placeholder="Your Restaurant Name"
+                      defaultValue={companySettings?.name || ""}
+                      data-testid="input-company-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company-phone">Phone Number</Label>
+                    <Input
+                      id="company-phone"
+                      name="company-phone"
+                      type="tel"
+                      placeholder="(555) 123-4567"
+                      defaultValue={companySettings?.phone || ""}
+                      data-testid="input-company-phone"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="company-phone">Phone Number</Label>
-                  <Input
-                    id="company-phone"
-                    type="tel"
-                    placeholder="(555) 123-4567"
-                    defaultValue={companyInfo.phone}
-                    data-testid="input-company-phone"
-                  />
-                </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="company-address">Street Address</Label>
-                <Input
-                  id="company-address"
-                  placeholder="123 Main Street"
-                  defaultValue={companyInfo.address}
-                  data-testid="input-company-address"
-                />
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">
-                  <Label htmlFor="company-city">City</Label>
+                  <Label htmlFor="company-address">Street Address</Label>
                   <Input
-                    id="company-city"
-                    placeholder="City"
-                    defaultValue={companyInfo.city}
-                    data-testid="input-company-city"
+                    id="company-address"
+                    name="company-address"
+                    placeholder="123 Main Street"
+                    defaultValue={companySettings?.address || ""}
+                    data-testid="input-company-address"
                   />
                 </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="company-city">City</Label>
+                    <Input
+                      id="company-city"
+                      name="company-city"
+                      placeholder="City"
+                      defaultValue={companySettings?.city || ""}
+                      data-testid="input-company-city"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company-state">State</Label>
+                    <Input
+                      id="company-state"
+                      name="company-state"
+                      placeholder="State"
+                      defaultValue={companySettings?.state || ""}
+                      data-testid="input-company-state"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company-zip">ZIP Code</Label>
+                    <Input
+                      id="company-zip"
+                      name="company-zip"
+                      placeholder="12345"
+                      defaultValue={companySettings?.zip || ""}
+                      data-testid="input-company-zip"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="company-state">State</Label>
+                  <Label htmlFor="company-email">Email Address</Label>
                   <Input
-                    id="company-state"
-                    placeholder="State"
-                    defaultValue={companyInfo.state}
-                    data-testid="input-company-state"
+                    id="company-email"
+                    name="company-email"
+                    type="email"
+                    placeholder="info@restaurant.com"
+                    defaultValue={companySettings?.email || ""}
+                    data-testid="input-company-email"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="company-zip">ZIP Code</Label>
-                  <Input
-                    id="company-zip"
-                    placeholder="12345"
-                    defaultValue={companyInfo.zip}
-                    data-testid="input-company-zip"
-                  />
+
+                <Separator />
+                
+                <div className="flex justify-end">
+                  <Button 
+                    type="submit" 
+                    data-testid="button-save-company"
+                    disabled={updateCompanyMutation.isPending}
+                  >
+                    {updateCompanyMutation.isPending ? "Saving..." : "Save Company Information"}
+                  </Button>
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="company-email">Email Address</Label>
-                <Input
-                  id="company-email"
-                  type="email"
-                  placeholder="info@restaurant.com"
-                  defaultValue={companyInfo.email}
-                  data-testid="input-company-email"
-                />
-              </div>
-
-              <Separator />
-              
-              <div className="flex justify-end">
-                <Button data-testid="button-save-company">
-                  Save Company Information
-                </Button>
-              </div>
+              </form>
             </CardContent>
           </Card>
         </TabsContent>
@@ -225,56 +306,69 @@ export default function Settings() {
                 Configure your point-of-sale system connection for real-time sales data
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="pos-system">POS System</Label>
-                <Select defaultValue="none">
-                  <SelectTrigger id="pos-system" data-testid="select-pos-system">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None (Manual Entry)</SelectItem>
-                    <SelectItem value="square">Square</SelectItem>
-                    <SelectItem value="toast">Toast</SelectItem>
-                    <SelectItem value="clover">Clover</SelectItem>
-                    <SelectItem value="custom">Custom API</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <CardContent>
+              <form onSubmit={handlePrefsSave} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="pos-system">POS System</Label>
+                  <Select name="pos-system" defaultValue={systemPrefs?.posSystem || "none"}>
+                    <SelectTrigger id="pos-system" data-testid="select-pos-system">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None (Manual Entry)</SelectItem>
+                      <SelectItem value="square">Square</SelectItem>
+                      <SelectItem value="toast">Toast</SelectItem>
+                      <SelectItem value="clover">Clover</SelectItem>
+                      <SelectItem value="custom">Custom API</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="pos-api-key">API Key</Label>
-                <Input
-                  id="pos-api-key"
-                  type="password"
-                  placeholder="Enter API key"
-                  data-testid="input-pos-api-key"
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pos-api-key">API Key</Label>
+                  <Input
+                    id="pos-api-key"
+                    name="pos-api-key"
+                    type="password"
+                    placeholder="Enter API key"
+                    defaultValue={systemPrefs?.posApiKey || ""}
+                    data-testid="input-pos-api-key"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="pos-webhook">Webhook URL</Label>
-                <Input
-                  id="pos-webhook"
-                  placeholder="https://your-app.com/webhook/pos"
-                  data-testid="input-pos-webhook"
-                  readOnly
-                />
-                <p className="text-xs text-muted-foreground">
-                  Configure this URL in your POS system to receive real-time sales data
-                </p>
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pos-webhook">Webhook URL</Label>
+                  <Input
+                    id="pos-webhook"
+                    placeholder="wss://your-app.com/ws/pos"
+                    defaultValue={systemPrefs?.posWebhookUrl || ""}
+                    data-testid="input-pos-webhook"
+                    readOnly
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Configure this URL in your POS system to receive real-time sales data
+                  </p>
+                </div>
 
-              <Separator />
-              
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" data-testid="button-test-connection">
-                  Test Connection
-                </Button>
-                <Button data-testid="button-save-pos">
-                  Save POS Settings
-                </Button>
-              </div>
+                <Separator />
+                
+                <div className="flex justify-end gap-2">
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    data-testid="button-test-connection"
+                  >
+                    Test Connection
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    data-testid="button-save-pos"
+                    disabled={updatePrefsMutation.isPending}
+                  >
+                    {updatePrefsMutation.isPending ? "Saving..." : "Save POS Settings"}
+                  </Button>
+                </div>
+              </form>
             </CardContent>
           </Card>
         </TabsContent>
@@ -287,60 +381,66 @@ export default function Settings() {
                 Configure your system settings and regional preferences
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="weight-unit">Weight Unit System</Label>
-                <Select defaultValue={systemPreferences.weightUnit}>
-                  <SelectTrigger id="weight-unit" data-testid="select-weight-unit">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pound">Pounds (lb)</SelectItem>
-                    <SelectItem value="kilogram">Kilograms (kg)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Choose your preferred weight unit for inventory and recipes
-                </p>
-              </div>
+            <CardContent>
+              <form onSubmit={handlePrefsSave} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="weight-unit">Weight Unit System</Label>
+                  <Select name="weight-unit" defaultValue={systemPrefs?.weightUnit || "pound"}>
+                    <SelectTrigger id="weight-unit" data-testid="select-weight-unit">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pound">Pounds (lb)</SelectItem>
+                      <SelectItem value="kilogram">Kilograms (kg)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Choose your preferred weight unit for inventory and recipes
+                  </p>
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="currency">Currency</Label>
-                <Select defaultValue={systemPreferences.currency}>
-                  <SelectTrigger id="currency" data-testid="select-currency">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="USD">US Dollar (USD)</SelectItem>
-                    <SelectItem value="EUR">Euro (EUR)</SelectItem>
-                    <SelectItem value="GBP">British Pound (GBP)</SelectItem>
-                    <SelectItem value="CAD">Canadian Dollar (CAD)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="currency">Currency</Label>
+                  <Select name="currency" defaultValue={systemPrefs?.currency || "USD"}>
+                    <SelectTrigger id="currency" data-testid="select-currency">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="USD">US Dollar (USD)</SelectItem>
+                      <SelectItem value="EUR">Euro (EUR)</SelectItem>
+                      <SelectItem value="GBP">British Pound (GBP)</SelectItem>
+                      <SelectItem value="CAD">Canadian Dollar (CAD)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="timezone">Timezone</Label>
-                <Select defaultValue={systemPreferences.timezone}>
-                  <SelectTrigger id="timezone" data-testid="select-timezone">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="America/New_York">Eastern Time</SelectItem>
-                    <SelectItem value="America/Chicago">Central Time</SelectItem>
-                    <SelectItem value="America/Denver">Mountain Time</SelectItem>
-                    <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="timezone">Timezone</Label>
+                  <Select name="timezone" defaultValue={systemPrefs?.timezone || "America/New_York"}>
+                    <SelectTrigger id="timezone" data-testid="select-timezone">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="America/New_York">Eastern Time</SelectItem>
+                      <SelectItem value="America/Chicago">Central Time</SelectItem>
+                      <SelectItem value="America/Denver">Mountain Time</SelectItem>
+                      <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <Separator />
-              
-              <div className="flex justify-end">
-                <Button data-testid="button-save-preferences">
-                  Save Preferences
-                </Button>
-              </div>
+                <Separator />
+                
+                <div className="flex justify-end">
+                  <Button 
+                    type="submit" 
+                    data-testid="button-save-preferences"
+                    disabled={updatePrefsMutation.isPending}
+                  >
+                    {updatePrefsMutation.isPending ? "Saving..." : "Save Preferences"}
+                  </Button>
+                </div>
+              </form>
             </CardContent>
           </Card>
         </TabsContent>

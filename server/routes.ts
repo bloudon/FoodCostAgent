@@ -856,6 +856,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // ============ COMPANY SETTINGS ============
+  app.get("/api/company-settings", async (req, res) => {
+    const settings = await storage.getCompanySettings();
+    res.json(settings || {});
+  });
+
+  app.patch("/api/company-settings", async (req, res) => {
+    try {
+      const data = insertCompanySettingsSchema.partial().parse(req.body);
+      const settings = await storage.updateCompanySettings(data);
+      res.json(settings);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // ============ SYSTEM PREFERENCES ============
+  app.get("/api/system-preferences", async (req, res) => {
+    const preferences = await storage.getSystemPreferences();
+    res.json(preferences || {});
+  });
+
+  app.patch("/api/system-preferences", async (req, res) => {
+    try {
+      const data = insertSystemPreferencesSchema.partial().parse(req.body);
+      const preferences = await storage.updateSystemPreferences(data);
+      res.json(preferences);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
@@ -1082,38 +1114,6 @@ async function calculateActualUsage(
 
   return usage;
 }
-
-  // ============ COMPANY SETTINGS ============
-  app.get("/api/company-settings", async (req, res) => {
-    const settings = await storage.getCompanySettings();
-    res.json(settings || {});
-  });
-
-  app.patch("/api/company-settings", async (req, res) => {
-    try {
-      const data = insertCompanySettingsSchema.partial().parse(req.body);
-      const settings = await storage.updateCompanySettings(data);
-      res.json(settings);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  });
-
-  // ============ SYSTEM PREFERENCES ============
-  app.get("/api/system-preferences", async (req, res) => {
-    const preferences = await storage.getSystemPreferences();
-    res.json(preferences || {});
-  });
-
-  app.patch("/api/system-preferences", async (req, res) => {
-    try {
-      const data = insertSystemPreferencesSchema.partial().parse(req.body);
-      const preferences = await storage.updateSystemPreferences(data);
-      res.json(preferences);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  });
 
 // ============ WEBSOCKET POS STREAMING ============
 export function setupWebSocket(server: Server) {
