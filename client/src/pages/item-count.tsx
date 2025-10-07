@@ -145,7 +145,15 @@ export default function ItemCount() {
           <CardContent className="space-y-6">
             <div>
               <div className="text-sm text-muted-foreground mb-1">Product Name</div>
-              <div className="text-lg font-medium">{product?.name || 'Unknown'}</div>
+              {product?.id ? (
+                <Link href={`/inventory-items/${product.id}`}>
+                  <div className="text-lg font-medium text-primary hover:underline cursor-pointer" data-testid="link-product-name">
+                    {product.name}
+                  </div>
+                </Link>
+              ) : (
+                <div className="text-lg font-medium">Unknown</div>
+              )}
             </div>
 
             <div>
