@@ -3,6 +3,13 @@ import { storage } from "./storage";
 export async function seedDatabase() {
   console.log("🌱 Seeding database with pizza restaurant data...");
 
+  // Check if database is already seeded
+  const existingUnits = await storage.getUnits();
+  if (existingUnits.length > 0) {
+    console.log("✅ Database already seeded, skipping...");
+    return;
+  }
+
   // ============ UNITS ============
   const units = {
     // Weight

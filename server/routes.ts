@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import {
   insertUnitSchema,
@@ -619,4 +620,71 @@ async function calculateActualUsage(
   }
 
   return usage;
+}
+
+// ============ WEBSOCKET POS STREAMING ============
+export function setupWebSocket(server: Server) {
+  const wss = new WebSocketServer({ server, path: "/ws/pos" });
+  
+  wss.on("connection", (ws: WebSocket) => {
+    console.log("🔌 POS WebSocket client connected");
+    
+    ws.on("message", async (data: Buffer) => {
+      try {
+        const message = JSON.parse(data.toString());
+        
+        if (message.type === "POS_SALE") {
+          // Process POS sale in real-time
+          const saleData = insertPOSSaleSchema.parse(message.data);
+          const sale = await storage.createPOSSale(saleData);
+          
+          // Process sale lines if provided
+          if (message.lines && Array.isArray(message.lines)) {
+            for (const lineData of message.lines) {
+              const parsedLine = insertPOSSalesLineSchema.parse({
+                ...lineData,
+                posSalesId: sale.id,
+              });
+              await storage.createPOSSalesLine(parsedLine);
+            }
+          }
+          
+          // Send confirmation back to client
+          ws.send(JSON.stringify({
+            type: "SALE_PROCESSED",
+            saleId: sale.id,
+            timestamp: new Date().toISOString(),
+          }));
+          
+          // Broadcast to all connected clients (for dashboard updates)
+          wss.clients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({
+                type: "SALE_UPDATE",
+                sale,
+              }));
+            }
+          });
+        }
+      } catch (error: any) {
+        console.error("WebSocket error:", error);
+        ws.send(JSON.stringify({
+          type: "ERROR",
+          message: error.message,
+        }));
+      }
+    });
+    
+    ws.on("close", () => {
+      console.log("🔌 POS WebSocket client disconnected");
+    });
+    
+    ws.on("error", (error) => {
+      console.error("WebSocket error:", error);
+    });
+  });
+  
+  console.log("✅ WebSocket POS streaming enabled at /ws/pos");
+  
+  return wss;
 }
