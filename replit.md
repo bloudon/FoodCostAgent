@@ -193,3 +193,26 @@ Preferred communication style: Simple, everyday language.
 - Sub-recipes properly converted using yield ratios
 - Waste percentage applied only once per recipe level
 - Helper functions: `calculateRecipeCost`, `calculateProductImpactInRecipe`
+
+### Inventory Count Interface
+- **Count History Page** (`/inventory-count`):
+  - Tabbed interface: "New Count" and "Count History"
+  - Displays all past count sessions with date, location, items counted, and total value
+  - "View Details" button for each count session
+  
+- **Count Session Detail Page** (`/count/:id`):
+  - Mini dashboard showing total value, total items, and category count
+  - Category breakdown with item counts and values per category
+  - Detailed table of all counted items with toggle to show/hide zero-quantity items
+  - Shows product name, category, quantity, unit, micro units, cost, and total value
+  
+- **Dashboard Integration**:
+  - Most recent inventory count summary displayed at bottom of dashboard
+  - Shows date, location, total items, and total value
+  - "Start New Count" button for quick access to inventory counting
+  - "View Full Details" link to see complete count breakdown
+  
+- **September 2025 Seed Data**:
+  - Added 4 mock inventory count sessions for Sundays in September 2025 (7th, 14th, 21st, 28th)
+  - Simulates Walk-In Cooler counts with decreasing inventory over the month
+  - Includes key products: mozzarella, pepperoni, chicken wings, sausage, bell peppers, onions
