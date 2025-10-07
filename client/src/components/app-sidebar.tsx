@@ -9,6 +9,7 @@ import {
   BarChart3,
   Home,
   MapPin,
+  Warehouse,
 } from "lucide-react";
 import {
   Sidebar,
@@ -26,6 +27,11 @@ const menuItems = [
     title: "Dashboard",
     url: "/",
     icon: Home,
+  },
+  {
+    title: "Inventory Items",
+    url: "/inventory-items",
+    icon: Warehouse,
   },
   {
     title: "Inventory Count",

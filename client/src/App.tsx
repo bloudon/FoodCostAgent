@@ -11,6 +11,7 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import InventoryCount from "@/pages/inventory-count";
 import CountSession from "@/pages/count-session";
+import InventoryItems from "@/pages/inventory-items";
 import Recipes from "@/pages/recipes";
 import RecipeDetail from "@/pages/recipe-detail";
 import Products from "@/pages/products";
@@ -24,6 +25,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/inventory-items" component={InventoryItems} />
       <Route path="/inventory" component={InventoryCount} />
       <Route path="/count/:id" component={CountSession} />
       <Route path="/recipes/:id" component={RecipeDetail} />
