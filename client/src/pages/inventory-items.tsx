@@ -22,32 +22,29 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-type InventoryLevel = {
+type InventoryItem = {
   id: string;
-  productId: string;
+  name: string;
+  category: string | null;
+  pluSku: string;
+  lastCost: number;
+  unitId: string;
+  caseSize: number;
+  imageUrl: string | null;
+  parLevel: number | null;
+  reorderLevel: number | null;
   storageLocationId: string;
   onHandQty: number;
-  product: {
-    id: string;
-    name: string;
-    category: string | null;
-    pluSku: string;
-    lastCost: number;
-    unitId: string;
-    caseSize: number;
-    imageUrl: string | null;
-    parLevel: number | null;
-    reorderLevel: number | null;
-  };
+  costPerCase: number;
   location: {
     id: string;
     name: string;
-  };
+  } | null;
   unit: {
     id: string;
     name: string;
     abbreviation: string;
-  };
+  } | null;
 };
 
 type StorageLocation = {
@@ -77,7 +74,7 @@ export default function InventoryItems() {
   const [search, setSearch] = useState("");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
 
-  const { data: inventoryLevels, isLoading } = useQuery<InventoryLevel[]>({
+  const { data: inventoryItems, isLoading } = useQuery<InventoryItem[]>({
     queryKey: ["/api/inventory"],
   });
 
@@ -85,18 +82,16 @@ export default function InventoryItems() {
     queryKey: ["/api/storage-locations"],
   });
 
-  const filteredLevels = inventoryLevels?.filter((level) => {
-    if (!level.product) return false;
-    const matchesSearch = level.product.name.toLowerCase().includes(search.toLowerCase()) ||
-      level.product.pluSku.toLowerCase().includes(search.toLowerCase());
-    const matchesLocation = selectedLocation === "all" || level.storageLocationId === selectedLocation;
+  const filteredItems = inventoryItems?.filter((item) => {
+    const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase()) ||
+      item.pluSku.toLowerCase().includes(search.toLowerCase());
+    const matchesLocation = selectedLocation === "all" || item.storageLocationId === selectedLocation;
     return matchesSearch && matchesLocation;
   }) || [];
 
-  const totalValue = filteredLevels.reduce((sum, level) => {
-    if (!level.product) return sum;
-    const costPerPound = level.product.lastCost / (level.product.caseSize || 1);
-    return sum + (level.onHandQty * costPerPound);
+  const totalValue = filteredItems.reduce((sum, item) => {
+    const costPerPound = item.lastCost / (item.caseSize || 1);
+    return sum + (item.onHandQty * costPerPound);
   }, 0);
 
   return (
@@ -153,14 +148,14 @@ export default function InventoryItems() {
           <div className="flex items-center justify-center py-12">
             <div className="text-muted-foreground">Loading inventory...</div>
           </div>
-        ) : filteredLevels.length === 0 ? (
+        ) : filteredItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Package className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-1">No inventory items found</h3>
             <p className="text-muted-foreground text-sm">
               {search || selectedLocation !== "all"
                 ? "Try adjusting your filters"
-                : "Inventory levels will appear here as stock is received"}
+                : "Inventory items will appear here as you add them"}
             </p>
           </div>
         ) : (
@@ -168,7 +163,7 @@ export default function InventoryItems() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[300px]">Product</TableHead>
+                  <TableHead className="w-[300px]">Item</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
@@ -180,62 +175,62 @@ export default function InventoryItems() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredLevels.map((level) => {
-                  const quantity = level.onHandQty;
-                  const costPerPound = level.product.lastCost / (level.product.caseSize || 1);
+                {filteredItems.map((item) => {
+                  const quantity = item.onHandQty;
+                  const costPerPound = item.lastCost / (item.caseSize || 1);
                   const totalValue = quantity * costPerPound;
-                  const inventoryStatus = getInventoryStatus(quantity, level.product.parLevel, level.product.reorderLevel);
+                  const inventoryStatus = getInventoryStatus(quantity, item.parLevel, item.reorderLevel);
 
                   return (
                     <TableRow 
-                      key={level.id} 
-                      data-testid={`row-inventory-${level.id}`}
+                      key={item.id} 
+                      data-testid={`row-inventory-${item.id}`}
                       className="cursor-pointer hover-elevate"
-                      onClick={() => window.location.href = `/products/${level.productId}`}
+                      onClick={() => window.location.href = `/inventory-items/${item.id}`}
                     >
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar className="h-8 w-8">
-                            <AvatarImage src={level.product.imageUrl || undefined} />
+                            <AvatarImage src={item.imageUrl || undefined} />
                             <AvatarFallback>
                               <Package className="h-4 w-4" />
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <div className="font-medium">{level.product.name}</div>
-                            <div className="text-sm text-muted-foreground">{level.product.pluSku}</div>
+                            <div className="font-medium">{item.name}</div>
+                            <div className="text-sm text-muted-foreground">{item.pluSku}</div>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        {level.product.category && (
+                        {item.category && (
                           <Badge 
                             variant="secondary" 
-                            className={categoryColors[level.product.category] || ""}
+                            className={categoryColors[item.category] || ""}
                           >
-                            {level.product.category}
+                            {item.category}
                           </Badge>
                         )}
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm">{level.location.name}</span>
+                        <span className="text-sm">{item.location?.name || "-"}</span>
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         <span className={inventoryStatus.color}>{quantity.toFixed(2)}</span>
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                        {level.product.parLevel ? level.product.parLevel.toFixed(1) : "-"}
+                        {item.parLevel ? item.parLevel.toFixed(1) : "-"}
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                        {level.product.reorderLevel ? level.product.reorderLevel.toFixed(1) : "-"}
+                        {item.reorderLevel ? item.reorderLevel.toFixed(1) : "-"}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={inventoryStatus.variant} data-testid={`badge-status-${level.id}`}>
+                        <Badge variant={inventoryStatus.variant} data-testid={`badge-status-${item.id}`}>
                           {inventoryStatus.status}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        ${level.product.lastCost.toFixed(4)}
+                        ${item.lastCost.toFixed(4)}
                       </TableCell>
                       <TableCell className="text-right font-mono font-semibold">
                         ${totalValue.toFixed(2)}
@@ -249,7 +244,7 @@ export default function InventoryItems() {
         )}
 
         <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>Showing {filteredLevels.length} items</span>
+          <span>Showing {filteredItems.length} items</span>
           {selectedLocation !== "all" && (
             <span>
               Filtered by location
