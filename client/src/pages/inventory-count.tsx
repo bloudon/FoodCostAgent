@@ -28,9 +28,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface CountLine {
   productId: string;
   productName: string;
+  caseCount: number;
+  openCaseUnits: number;
   qty: number;
   unitId: string;
   unitName: string;
+  caseSize: number;
   derivedMicroUnits: number;
 }
 
@@ -144,12 +147,16 @@ export default function InventoryCount() {
     }
 
     const baseUnit = units?.find(u => u.id === product.baseUnitId);
+    const caseSize = product.yieldAmount || 1;
     setCountLines([...countLines, {
       productId: product.id,
       productName: product.name,
+      caseCount: 0,
+      openCaseUnits: 0,
       qty: 0,
       unitId: product.baseUnitId,
       unitName: baseUnit?.name || "unit",
+      caseSize: caseSize,
       derivedMicroUnits: 0,
     }]);
     setSearchQuery("");
@@ -160,7 +167,13 @@ export default function InventoryCount() {
       if (line.productId === productId) {
         const updated = { ...line, [field]: value };
         
-        if (field === "qty" || field === "unitId") {
+        // Calculate total quantity from case count and open case units
+        if (field === "caseCount" || field === "openCaseUnits") {
+          updated.qty = (updated.caseCount * updated.caseSize) + updated.openCaseUnits;
+        }
+        
+        // Recalculate derived micro units when qty or unit changes
+        if (field === "caseCount" || field === "openCaseUnits" || field === "qty" || field === "unitId") {
           const unit = units?.find(u => u.id === updated.unitId);
           updated.derivedMicroUnits = unit ? updated.qty * unit.toBaseRatio : updated.qty;
           if (field === "unitId") {
@@ -317,31 +330,53 @@ export default function InventoryCount() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
-                    <TableHead className="w-[120px]">Quantity</TableHead>
+                    <TableHead className="w-[100px]">Cases</TableHead>
+                    <TableHead className="w-[120px]">Open Units</TableHead>
+                    <TableHead className="w-[100px]">Total Qty</TableHead>
                     <TableHead className="w-[140px]">Unit</TableHead>
-                    <TableHead className="w-[140px]">Micro Units</TableHead>
                     <TableHead className="w-[60px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {countLines.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      <TableCell colSpan={6} className="text-center text-muted-foreground">
                         No items counted yet. Search or scan to add products.
                       </TableCell>
                     </TableRow>
                   ) : (
                     countLines.map((line) => (
                       <TableRow key={line.productId} data-testid={`row-count-line-${line.productId}`}>
-                        <TableCell className="font-medium">{line.productName}</TableCell>
+                        <TableCell className="font-medium">
+                          <div>{line.productName}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {line.caseSize} units/case
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <Input
                             type="number"
-                            value={line.qty}
-                            onChange={(e) => updateCountLine(line.productId, "qty", parseFloat(e.target.value) || 0)}
+                            min="0"
+                            step="1"
+                            value={line.caseCount}
+                            onChange={(e) => updateCountLine(line.productId, "caseCount", parseFloat(e.target.value) || 0)}
                             className="w-full"
-                            data-testid={`input-qty-${line.productId}`}
+                            data-testid={`input-case-count-${line.productId}`}
                           />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            value={line.openCaseUnits}
+                            onChange={(e) => updateCountLine(line.productId, "openCaseUnits", parseFloat(e.target.value) || 0)}
+                            className="w-full"
+                            data-testid={`input-open-units-${line.productId}`}
+                          />
+                        </TableCell>
+                        <TableCell className="font-mono text-sm" data-testid={`text-total-qty-${line.productId}`}>
+                          {line.qty.toFixed(2)}
                         </TableCell>
                         <TableCell>
                           <Select
@@ -359,9 +394,6 @@ export default function InventoryCount() {
                               ))}
                             </SelectContent>
                           </Select>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm" data-testid={`text-micro-units-${line.productId}`}>
-                          {line.derivedMicroUnits.toFixed(2)}
                         </TableCell>
                         <TableCell>
                           <Button
