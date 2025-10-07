@@ -34,6 +34,8 @@ type InventoryLevel = {
     baseUnitId: string;
     microUnitsPerPurchaseUnit: number;
     imageUrl: string | null;
+    parLevel: number | null;
+    reorderLevel: number | null;
   };
   location: {
     id: string;
@@ -58,6 +60,16 @@ const categoryColors: Record<string, string> = {
   "Dairy": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
   "Dry/Pantry": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
 };
+
+function getInventoryStatus(quantity: number, parLevel: number | null, reorderLevel: number | null) {
+  if (reorderLevel && quantity <= reorderLevel) {
+    return { status: "Critical", variant: "destructive" as const, color: "text-red-600 dark:text-red-400" };
+  }
+  if (parLevel && quantity < parLevel) {
+    return { status: "Low", variant: "secondary" as const, color: "text-yellow-600 dark:text-yellow-400" };
+  }
+  return { status: "OK", variant: "outline" as const, color: "text-green-600 dark:text-green-400" };
+}
 
 export default function InventoryItems() {
   const [search, setSearch] = useState("");
@@ -148,7 +160,9 @@ export default function InventoryItems() {
                   <TableHead>Category</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Unit</TableHead>
+                  <TableHead className="text-right">Par</TableHead>
+                  <TableHead className="text-right">Reorder</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Unit Cost</TableHead>
                   <TableHead className="text-right">Total Value</TableHead>
                 </TableRow>
@@ -157,6 +171,7 @@ export default function InventoryItems() {
                 {filteredLevels.map((level) => {
                   const quantity = level.onHandMicroUnits / level.product.microUnitsPerPurchaseUnit;
                   const totalValue = quantity * level.product.lastCost;
+                  const inventoryStatus = getInventoryStatus(quantity, level.product.parLevel, level.product.reorderLevel);
 
                   return (
                     <TableRow key={level.id} data-testid={`row-inventory-${level.id}`}>
@@ -188,12 +203,18 @@ export default function InventoryItems() {
                         <span className="text-sm">{level.location.name}</span>
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {quantity.toFixed(2)}
+                        <span className={inventoryStatus.color}>{quantity.toFixed(2)}</span>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <span className="text-sm text-muted-foreground">
-                          {level.baseUnit.abbreviation}
-                        </span>
+                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                        {level.product.parLevel ? level.product.parLevel.toFixed(1) : "-"}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                        {level.product.reorderLevel ? level.product.reorderLevel.toFixed(1) : "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={inventoryStatus.variant} data-testid={`badge-status-${level.id}`}>
+                          {inventoryStatus.status}
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         ${level.product.lastCost.toFixed(4)}
