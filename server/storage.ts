@@ -5,6 +5,7 @@ import {
   authSessions, type AuthSession, type InsertAuthSession,
   storageLocations, type StorageLocation, type InsertStorageLocation,
   units, type Unit, type InsertUnit,
+  unitConversions, type UnitConversion, type InsertUnitConversion,
   products, type Product, type InsertProduct,
   productPriceHistory, type ProductPriceHistory, type InsertProductPriceHistory,
   vendors, type Vendor, type InsertVendor,
@@ -51,6 +52,13 @@ export interface IStorage {
   getUnits(): Promise<Unit[]>;
   getUnit(id: string): Promise<Unit | undefined>;
   createUnit(unit: InsertUnit): Promise<Unit>;
+
+  // Unit Conversions
+  getUnitConversions(): Promise<UnitConversion[]>;
+  getUnitConversion(id: string): Promise<UnitConversion | undefined>;
+  createUnitConversion(conversion: InsertUnitConversion): Promise<UnitConversion>;
+  updateUnitConversion(id: string, conversion: Partial<UnitConversion>): Promise<UnitConversion | undefined>;
+  deleteUnitConversion(id: string): Promise<void>;
 
   // Products
   getProducts(): Promise<Product[]>;
@@ -273,6 +281,34 @@ export class DatabaseStorage implements IStorage {
   async createUnit(insertUnit: InsertUnit): Promise<Unit> {
     const [unit] = await db.insert(units).values(insertUnit).returning();
     return unit;
+  }
+
+  // Unit Conversions
+  async getUnitConversions(): Promise<UnitConversion[]> {
+    return db.select().from(unitConversions);
+  }
+
+  async getUnitConversion(id: string): Promise<UnitConversion | undefined> {
+    const [conversion] = await db.select().from(unitConversions).where(eq(unitConversions.id, id));
+    return conversion || undefined;
+  }
+
+  async createUnitConversion(insertConversion: InsertUnitConversion): Promise<UnitConversion> {
+    const [conversion] = await db.insert(unitConversions).values(insertConversion).returning();
+    return conversion;
+  }
+
+  async updateUnitConversion(id: string, updates: Partial<UnitConversion>): Promise<UnitConversion | undefined> {
+    const [conversion] = await db
+      .update(unitConversions)
+      .set(updates)
+      .where(eq(unitConversions.id, id))
+      .returning();
+    return conversion || undefined;
+  }
+
+  async deleteUnitConversion(id: string): Promise<void> {
+    await db.delete(unitConversions).where(eq(unitConversions.id, id));
   }
 
   // Products

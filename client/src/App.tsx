@@ -21,6 +21,7 @@ import Recipes from "@/pages/recipes";
 import RecipeDetail from "@/pages/recipe-detail";
 import Products from "@/pages/products";
 import AddProduct from "@/pages/add-product";
+import UnitConversions from "@/pages/unit-conversions";
 import Vendors from "@/pages/vendors";
 import PurchaseOrders from "@/pages/purchase-orders";
 import Receiving from "@/pages/receiving";
@@ -92,6 +93,7 @@ function ProtectedLayout() {
               <Route path="/receiving" component={Receiving} />
               <Route path="/variance" component={VarianceReport} />
               <Route path="/storage-locations" component={StorageLocations} />
+              <Route path="/unit-conversions" component={UnitConversions} />
               <Route path="/settings" component={Settings} />
               <Route component={NotFound} />
             </Switch>

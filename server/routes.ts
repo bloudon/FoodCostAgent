@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createSession, requireAuth, verifyPassword } from "./auth";
 import {
   insertUnitSchema,
+  insertUnitConversionSchema,
   insertStorageLocationSchema,
   insertVendorSchema,
   insertProductSchema,
@@ -91,6 +92,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const data = insertUnitSchema.parse(req.body);
       const unit = await storage.createUnit(data);
       res.status(201).json(unit);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // ============ UNIT CONVERSIONS ============
+  app.get("/api/unit-conversions", async (req, res) => {
+    const conversions = await storage.getUnitConversions();
+    const units = await storage.getUnits();
+    
+    const enriched = conversions.map((conv) => {
+      const fromUnit = units.find((u) => u.id === conv.fromUnitId);
+      const toUnit = units.find((u) => u.id === conv.toUnitId);
+      return {
+        ...conv,
+        fromUnit,
+        toUnit,
+      };
+    });
+    
+    res.json(enriched);
+  });
+
+  app.post("/api/unit-conversions", async (req, res) => {
+    try {
+      const data = insertUnitConversionSchema.parse(req.body);
+      const conversion = await storage.createUnitConversion(data);
+      res.status(201).json(conversion);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/unit-conversions/:id", async (req, res) => {
+    try {
+      const data = insertUnitConversionSchema.partial().parse(req.body);
+      const conversion = await storage.updateUnitConversion(req.params.id, data);
+      if (!conversion) {
+        return res.status(404).json({ error: "Unit conversion not found" });
+      }
+      res.json(conversion);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/unit-conversions/:id", async (req, res) => {
+    try {
+      await storage.deleteUnitConversion(req.params.id);
+      res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

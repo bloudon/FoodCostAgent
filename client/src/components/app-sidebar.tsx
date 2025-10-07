@@ -11,6 +11,7 @@ import {
   MapPin,
   Warehouse,
   Settings,
+  ArrowLeftRight,
 } from "lucide-react";
 import {
   Sidebar,
@@ -108,6 +109,18 @@ export function AppSidebar() {
           <SidebarGroupLabel>System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={location === "/unit-conversions"}
+                  data-testid="link-unit-conversions"
+                >
+                  <Link href="/unit-conversions">
+                    <ArrowLeftRight className="h-4 w-4" />
+                    <span>Unit Conversions</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild

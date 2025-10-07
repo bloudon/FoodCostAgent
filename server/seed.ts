@@ -158,6 +158,71 @@ export async function seedDatabase() {
     bottle: await storage.createUnit({ name: "bottle", kind: "count", toBaseRatio: 1, system: "both" }),
   };
 
+  // ============ UNIT CONVERSIONS ============
+  console.log("🔄 Creating unit conversions...");
+  
+  // 1 pound = 16 ounces
+  await storage.createUnitConversion({
+    fromUnitId: units.pound.id,
+    toUnitId: units.ounce.id,
+    conversionFactor: 16,
+  });
+
+  // 1 fluid ounce = 2 tablespoons
+  await storage.createUnitConversion({
+    fromUnitId: units.fluidOunce.id,
+    toUnitId: units.tablespoon.id,
+    conversionFactor: 2,
+  });
+
+  // 1 cup = 8 fluid ounces
+  await storage.createUnitConversion({
+    fromUnitId: units.cup.id,
+    toUnitId: units.fluidOunce.id,
+    conversionFactor: 8,
+  });
+
+  // 1 pint = 2 cups (or 16 fluid ounces)
+  const pint = await storage.createUnit({ name: "pint", kind: "volume", toBaseRatio: 16, system: "imperial" });
+  await storage.createUnitConversion({
+    fromUnitId: pint.id,
+    toUnitId: units.cup.id,
+    conversionFactor: 2,
+  });
+  await storage.createUnitConversion({
+    fromUnitId: pint.id,
+    toUnitId: units.fluidOunce.id,
+    conversionFactor: 16,
+  });
+
+  // 1 quart = 2 pints (or 32 fluid ounces)
+  const quart = await storage.createUnit({ name: "quart", kind: "volume", toBaseRatio: 32, system: "imperial" });
+  await storage.createUnitConversion({
+    fromUnitId: quart.id,
+    toUnitId: pint.id,
+    conversionFactor: 2,
+  });
+  await storage.createUnitConversion({
+    fromUnitId: quart.id,
+    toUnitId: units.fluidOunce.id,
+    conversionFactor: 32,
+  });
+
+  // 1 gallon = 4 quarts (or 128 fluid ounces)
+  const gallon = await storage.createUnit({ name: "gallon", kind: "volume", toBaseRatio: 128, system: "imperial" });
+  await storage.createUnitConversion({
+    fromUnitId: gallon.id,
+    toUnitId: quart.id,
+    conversionFactor: 4,
+  });
+  await storage.createUnitConversion({
+    fromUnitId: gallon.id,
+    toUnitId: units.fluidOunce.id,
+    conversionFactor: 128,
+  });
+
+  console.log("✅ Unit conversions created!");
+
   // ============ STORAGE LOCATIONS ============
   const locations = {
     walkIn: await storage.createStorageLocation({ name: "Walk-In Cooler", sortOrder: 1 }),
