@@ -179,7 +179,10 @@ export default function Dashboard() {
                   <div>
                     <p className="text-sm text-muted-foreground">Total Value</p>
                     <p className="font-medium font-mono" data-testid="text-recent-count-value">
-                      ${recentCountLines?.reduce((sum, line) => sum + (line.totalValue || 0), 0).toFixed(2) || "0.00"}
+                      ${recentCountLines?.reduce((sum, line) => {
+                        const product = products?.find(p => p.id === line.productId);
+                        return sum + (line.derivedMicroUnits * (product?.lastCost || 0));
+                      }, 0).toFixed(2) || "0.00"}
                     </p>
                   </div>
                 </div>
