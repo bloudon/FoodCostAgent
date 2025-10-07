@@ -216,3 +216,23 @@ Preferred communication style: Simple, everyday language.
   - Added 4 mock inventory count sessions for Sundays in September 2025 (7th, 14th, 21st, 28th)
   - Simulates Walk-In Cooler counts with decreasing inventory over the month
   - Includes key products: mozzarella, pepperoni, chicken wings, sausage, bell peppers, onions
+
+### Recipe Detail & Component Management
+- **Recipe Detail Page** (`/recipes/:id`):
+  - Tabbed interface with "Current Cost" and "Historical Cost" views
+  - Component table displays all recipe ingredients with quantities, units, and calculated costs
+  - Inline edit/delete actions for recipe components with dialog-based UI
+  - Real-time cost updates after component modifications
+  - Links to navigate to sub-recipes when components are nested recipes
+  
+- **Historical Cost Tracking**:
+  - Line chart visualization using Recharts showing recipe cost trends over past year
+  - Uses recipe_versions data to display cost changes over time
+  - Displays version count and date range of available historical data
+  
+- **Recipe Component API Enhancements**:
+  - GET/PATCH/DELETE endpoints for `/api/recipe-components/:id`
+  - Automatic recipe cost recalculation after component updates
+  - Helper function `calculateComponentCost` for accurate component-level costing
+  - Polymorphic component support (products and sub-recipes) with proper cost scaling
+  - Frontend compatibility layer providing productId/subRecipeId alongside componentType/componentId schema
