@@ -48,6 +48,7 @@ export const units = pgTable("units", {
   name: text("name").notNull(),
   kind: text("kind").notNull(), // 'weight' | 'volume' | 'count'
   toBaseRatio: real("to_base_ratio").notNull(), // converts to base micro-unit
+  system: text("system").notNull(), // 'imperial' | 'metric' | 'both'
 });
 
 export const insertUnitSchema = createInsertSchema(units).omit({ id: true });
@@ -364,7 +365,7 @@ export type CompanySettings = typeof companySettings.$inferSelect;
 // System Preferences
 export const systemPreferences = pgTable("system_preferences", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  weightUnit: text("weight_unit").notNull().default("pound"), // pound or kilogram
+  unitSystem: text("unit_system").notNull().default("imperial"), // imperial or metric
   currency: text("currency").notNull().default("USD"),
   timezone: text("timezone").notNull().default("America/New_York"),
   posSystem: text("pos_system"), // square, toast, clover, custom, none

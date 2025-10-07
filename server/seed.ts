@@ -131,23 +131,31 @@ export async function seedDatabase() {
   }
 
   // ============ UNITS ============
-  // Base unit for weight: pound
-  // Base unit for volume: fluid ounce
+  // Base unit for weight: pound (imperial) / kilogram (metric)
+  // Base unit for volume: fluid ounce (imperial) / milliliter (metric)
   const units = {
-    // Weight (base: pound)
-    pound: await storage.createUnit({ name: "pound", kind: "weight", toBaseRatio: 1 }),
-    ounce: await storage.createUnit({ name: "ounce", kind: "weight", toBaseRatio: 0.0625 }), // 1 oz = 0.0625 lb
+    // Weight - Imperial (base: pound)
+    pound: await storage.createUnit({ name: "pound", kind: "weight", toBaseRatio: 1, system: "imperial" }),
+    ounce: await storage.createUnit({ name: "ounce", kind: "weight", toBaseRatio: 0.0625, system: "imperial" }), // 1 oz = 0.0625 lb
     
-    // Volume (base: fluid ounce)
-    fluidOunce: await storage.createUnit({ name: "fluid ounce", kind: "volume", toBaseRatio: 1 }),
-    cup: await storage.createUnit({ name: "cup", kind: "volume", toBaseRatio: 8 }),
-    tablespoon: await storage.createUnit({ name: "tablespoon", kind: "volume", toBaseRatio: 0.5 }),
-    teaspoon: await storage.createUnit({ name: "teaspoon", kind: "volume", toBaseRatio: 0.167 }),
+    // Weight - Metric (base: pound for conversion)
+    gram: await storage.createUnit({ name: "gram", kind: "weight", toBaseRatio: 0.00220462, system: "metric" }), // 1 g = 0.00220462 lb
+    kilogram: await storage.createUnit({ name: "kilogram", kind: "weight", toBaseRatio: 2.20462, system: "metric" }), // 1 kg = 2.20462 lb
     
-    // Count (base: each)
-    each: await storage.createUnit({ name: "each", kind: "count", toBaseRatio: 1 }),
-    bag: await storage.createUnit({ name: "bag", kind: "count", toBaseRatio: 1 }),
-    bottle: await storage.createUnit({ name: "bottle", kind: "count", toBaseRatio: 1 }),
+    // Volume - Imperial (base: fluid ounce)
+    fluidOunce: await storage.createUnit({ name: "fluid ounce", kind: "volume", toBaseRatio: 1, system: "imperial" }),
+    cup: await storage.createUnit({ name: "cup", kind: "volume", toBaseRatio: 8, system: "imperial" }),
+    tablespoon: await storage.createUnit({ name: "tablespoon", kind: "volume", toBaseRatio: 0.5, system: "imperial" }),
+    teaspoon: await storage.createUnit({ name: "teaspoon", kind: "volume", toBaseRatio: 0.167, system: "imperial" }),
+    
+    // Volume - Metric (base: fluid ounce for conversion)
+    milliliter: await storage.createUnit({ name: "milliliter", kind: "volume", toBaseRatio: 0.033814, system: "metric" }), // 1 ml = 0.033814 fl oz
+    liter: await storage.createUnit({ name: "liter", kind: "volume", toBaseRatio: 33.814, system: "metric" }), // 1 L = 33.814 fl oz
+    
+    // Count (works for both systems)
+    each: await storage.createUnit({ name: "each", kind: "count", toBaseRatio: 1, system: "both" }),
+    bag: await storage.createUnit({ name: "bag", kind: "count", toBaseRatio: 1, system: "both" }),
+    bottle: await storage.createUnit({ name: "bottle", kind: "count", toBaseRatio: 1, system: "both" }),
   };
 
   // ============ STORAGE LOCATIONS ============
