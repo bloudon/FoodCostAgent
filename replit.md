@@ -200,6 +200,13 @@ Preferred communication style: Simple, everyday language.
   - Displays all past count sessions with date, location, items counted, and total value
   - "View Details" button for each count session
   
+- **Case Count & Open Units Entry**:
+  - Separate inputs for full case count and open case units
+  - Automatic calculation: total = (cases × case size) + open units
+  - Case size derived from product yieldAmount and converted to base units
+  - Unit selector allows viewing totals in different units
+  - Derived micro units properly calculated without double-scaling
+  
 - **Count Session Detail Page** (`/count/:id`):
   - Mini dashboard showing total value, total items, and category count
   - Category breakdown with item counts and values per category
