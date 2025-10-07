@@ -44,30 +44,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function login(email: string, password: string) {
-    const response = await apiRequest("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-      credentials: "include",
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Login failed");
-    }
-
+    const response = await apiRequest("POST", "/api/auth/login", { email, password });
     const data = await response.json();
     setUser(data.user);
   }
 
   async function logout() {
     try {
-      await apiRequest("/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
+      await apiRequest("POST", "/api/auth/logout");
     } catch (error) {
       console.error("Logout error:", error);
     } finally {
