@@ -67,7 +67,6 @@ export interface IStorage {
   getVendorProducts(vendorId?: string): Promise<VendorProduct[]>;
   getVendorProduct(id: string): Promise<VendorProduct | undefined>;
   createVendorProduct(vendorProduct: InsertVendorProduct): Promise<VendorProduct>;
-  deleteVendorProduct(id: string): Promise<void>;
 
   // Recipes
   getRecipes(): Promise<Recipe[]>;
@@ -331,10 +330,6 @@ export class DatabaseStorage implements IStorage {
   async createVendorProduct(insertVP: InsertVendorProduct): Promise<VendorProduct> {
     const [vendorProduct] = await db.insert(vendorProducts).values(insertVP).returning();
     return vendorProduct;
-  }
-
-  async deleteVendorProduct(id: string): Promise<void> {
-    await db.delete(vendorProducts).where(eq(vendorProducts.id, id));
   }
 
   // Recipes

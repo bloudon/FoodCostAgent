@@ -1,9 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { Package, Search, Plus } from "lucide-react";
+import { Package, Search } from "lucide-react";
 import { useState } from "react";
-import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -109,17 +107,9 @@ export default function InventoryItems() {
               Current on-hand quantities across all storage locations
             </p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Total Value:</span>
-              <span className="text-2xl font-bold">${totalValue.toFixed(2)}</span>
-            </div>
-            <Link href="/inventory-items/new">
-              <Button data-testid="button-add-item">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Item
-              </Button>
-            </Link>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Total Value:</span>
+            <span className="text-2xl font-bold">${totalValue.toFixed(2)}</span>
           </div>
         </div>
 
@@ -186,12 +176,7 @@ export default function InventoryItems() {
                   const inventoryStatus = getInventoryStatus(quantity, level.product.parLevel, level.product.reorderLevel);
 
                   return (
-                    <TableRow 
-                      key={level.id} 
-                      data-testid={`row-inventory-${level.id}`}
-                      className="cursor-pointer hover-elevate"
-                      onClick={() => window.location.href = `/inventory-items/${level.product.id}`}
-                    >
+                    <TableRow key={level.id} data-testid={`row-inventory-${level.id}`}>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar className="h-8 w-8">

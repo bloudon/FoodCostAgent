@@ -16,7 +16,6 @@ import InventorySessions from "@/pages/inventory-sessions";
 import CountSession from "@/pages/count-session";
 import ItemCount from "@/pages/item-count";
 import InventoryItems from "@/pages/inventory-items";
-import InventoryItemDetail from "@/pages/inventory-item-detail";
 import Recipes from "@/pages/recipes";
 import RecipeDetail from "@/pages/recipe-detail";
 import Products from "@/pages/products";
@@ -77,7 +76,6 @@ function ProtectedLayout() {
           <main className="flex-1 overflow-auto">
             <Switch>
               <Route path="/" component={Dashboard} />
-              <Route path="/inventory-items/:id" component={InventoryItemDetail} />
               <Route path="/inventory-items" component={InventoryItems} />
               <Route path="/inventory-sessions" component={InventorySessions} />
               <Route path="/count/:id" component={CountSession} />
