@@ -8,6 +8,7 @@ import {
   PackageCheck,
   BarChart3,
   Home,
+  MapPin,
 } from "lucide-react";
 import {
   Sidebar,
@@ -30,6 +31,11 @@ const menuItems = [
     title: "Inventory Count",
     url: "/inventory",
     icon: ClipboardList,
+  },
+  {
+    title: "Storage Locations",
+    url: "/storage-locations",
+    icon: MapPin,
   },
   {
     title: "Recipes",
