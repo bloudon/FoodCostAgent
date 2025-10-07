@@ -147,7 +147,14 @@ export default function InventoryCount() {
     }
 
     const baseUnit = units?.find(u => u.id === product.baseUnitId);
-    const caseSize = product.yieldAmount || 1;
+    const yieldUnit = units?.find(u => u.id === product.yieldUnitId);
+    
+    // Convert case size (yieldAmount) to base units
+    // yieldAmount is in yieldUnit, we need it in base units
+    const caseSizeInBaseUnits = product.yieldAmount 
+      ? (product.yieldAmount * (yieldUnit?.toBaseRatio || 1))
+      : 1;
+    
     setCountLines([...countLines, {
       productId: product.id,
       productName: product.name,
@@ -156,7 +163,7 @@ export default function InventoryCount() {
       qty: 0,
       unitId: product.baseUnitId,
       unitName: baseUnit?.name || "unit",
-      caseSize: caseSize,
+      caseSize: caseSizeInBaseUnits,
       derivedMicroUnits: 0,
     }]);
     setSearchQuery("");
@@ -166,19 +173,24 @@ export default function InventoryCount() {
     setCountLines(countLines.map(line => {
       if (line.productId === productId) {
         const updated = { ...line, [field]: value };
+        const unit = units?.find(u => u.id === updated.unitId);
         
-        // Calculate total quantity from case count and open case units
+        // Calculate base units from case count and open case units
+        // caseSize is already in base units (e.g., product yieldAmount)
+        const baseUnits = (updated.caseCount * updated.caseSize) + updated.openCaseUnits;
+        
+        // Convert base units to the selected unit for display
         if (field === "caseCount" || field === "openCaseUnits") {
-          updated.qty = (updated.caseCount * updated.caseSize) + updated.openCaseUnits;
+          updated.qty = unit ? baseUnits / unit.toBaseRatio : baseUnits;
+          updated.derivedMicroUnits = baseUnits;
         }
         
-        // Recalculate derived micro units when qty or unit changes
-        if (field === "caseCount" || field === "openCaseUnits" || field === "qty" || field === "unitId") {
-          const unit = units?.find(u => u.id === updated.unitId);
-          updated.derivedMicroUnits = unit ? updated.qty * unit.toBaseRatio : updated.qty;
-          if (field === "unitId") {
-            updated.unitName = unit?.name || "unit";
-          }
+        // Recalculate when unit changes
+        if (field === "unitId") {
+          updated.unitName = unit?.name || "unit";
+          // Keep the same base units, just display in new unit
+          updated.qty = unit ? baseUnits / unit.toBaseRatio : baseUnits;
+          updated.derivedMicroUnits = baseUnits;
         }
         
         return updated;
@@ -331,8 +343,8 @@ export default function InventoryCount() {
                   <TableRow>
                     <TableHead>Product</TableHead>
                     <TableHead className="w-[100px]">Cases</TableHead>
-                    <TableHead className="w-[120px]">Open Units</TableHead>
-                    <TableHead className="w-[100px]">Total Qty</TableHead>
+                    <TableHead className="w-[120px]">Open (base units)</TableHead>
+                    <TableHead className="w-[100px]">Total</TableHead>
                     <TableHead className="w-[140px]">Unit</TableHead>
                     <TableHead className="w-[60px]"></TableHead>
                   </TableRow>
@@ -350,7 +362,7 @@ export default function InventoryCount() {
                         <TableCell className="font-medium">
                           <div>{line.productName}</div>
                           <div className="text-xs text-muted-foreground">
-                            {line.caseSize} units/case
+                            {line.caseSize.toFixed(1)} {line.unitName}/case
                           </div>
                         </TableCell>
                         <TableCell>
