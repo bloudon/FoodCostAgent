@@ -1023,6 +1023,79 @@ export async function seedDatabase() {
     }
   }
 
+  // ============ SEPTEMBER 2025 INVENTORY COUNTS ============
+  // September Sundays: 7, 14, 21, 28
+  const septemberCounts = [
+    { date: new Date("2025-09-07T18:00:00"), note: "Weekly count - Walk-In Cooler" },
+    { date: new Date("2025-09-14T18:00:00"), note: "Weekly count - Walk-In Cooler" },
+    { date: new Date("2025-09-21T18:00:00"), note: "Weekly count - Walk-In Cooler" },
+    { date: new Date("2025-09-28T18:00:00"), note: "Weekly count - Walk-In Cooler" },
+  ];
+
+  for (let i = 0; i < septemberCounts.length; i++) {
+    const countData = septemberCounts[i];
+    const count = await storage.createInventoryCount({
+      storageLocationId: locations.walkIn.id,
+      userId: "admin",
+      note: countData.note,
+    });
+    
+    // Override the countedAt timestamp
+    count.countedAt = countData.date;
+    
+    // Decreasing inventory over the month to simulate usage
+    const weekMultiplier = 1 - (i * 0.15); // Gradually decrease inventory
+    
+    // Create count lines for key products
+    await storage.createInventoryCountLine({
+      inventoryCountId: count.id,
+      productId: mozzarella.id,
+      qty: Math.floor(140 * weekMultiplier),
+      unitId: units.ounceWeight.id,
+      derivedMicroUnits: Math.floor(140 * weekMultiplier),
+    });
+
+    await storage.createInventoryCountLine({
+      inventoryCountId: count.id,
+      productId: pepperoni.id,
+      qty: Math.floor(85 * weekMultiplier),
+      unitId: units.ounceWeight.id,
+      derivedMicroUnits: Math.floor(85 * weekMultiplier),
+    });
+
+    await storage.createInventoryCountLine({
+      inventoryCountId: count.id,
+      productId: chickenWings.id,
+      qty: Math.floor(120 * weekMultiplier),
+      unitId: units.ounceWeight.id,
+      derivedMicroUnits: Math.floor(120 * weekMultiplier),
+    });
+
+    await storage.createInventoryCountLine({
+      inventoryCountId: count.id,
+      productId: sausage.id,
+      qty: Math.floor(65 * weekMultiplier),
+      unitId: units.ounceWeight.id,
+      derivedMicroUnits: Math.floor(65 * weekMultiplier),
+    });
+
+    await storage.createInventoryCountLine({
+      inventoryCountId: count.id,
+      productId: bellPeppers.id,
+      qty: Math.floor(32 * weekMultiplier),
+      unitId: units.ounceWeight.id,
+      derivedMicroUnits: Math.floor(32 * weekMultiplier),
+    });
+
+    await storage.createInventoryCountLine({
+      inventoryCountId: count.id,
+      productId: onions.id,
+      qty: Math.floor(28 * weekMultiplier),
+      unitId: units.ounceWeight.id,
+      derivedMicroUnits: Math.floor(28 * weekMultiplier),
+    });
+  }
+
   console.log("✅ Database seeded successfully!");
   console.log("📊 Created:");
   console.log("   - 13 units");
@@ -1033,4 +1106,5 @@ export async function seedDatabase() {
   console.log("   - 10 recipes (2 nested)");
   console.log("   - 8 menu items");
   console.log("   - 7 days of POS sales");
+  console.log("   - 4 September 2025 inventory counts");
 }
