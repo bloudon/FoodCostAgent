@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Package, DollarSign, Layers } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Layers, Pencil, Trash2, Plus } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -14,12 +14,64 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+
+const countLineSchema = z.object({
+  productId: z.string().min(1, "Product is required"),
+  unitId: z.string().min(1, "Unit is required"),
+  qty: z.coerce.number().min(0, "Quantity must be at least 0"),
+});
+
+type CountLineForm = z.infer<typeof countLineSchema>;
 
 export default function CountSession() {
   const params = useParams();
   const countId = params.id;
   const [showEmpty, setShowEmpty] = useState(true);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedLine, setSelectedLine] = useState<any>(null);
+  const { toast } = useToast();
 
   const { data: count, isLoading: countLoading } = useQuery<any>({
     queryKey: ["/api/inventory-counts", countId],
@@ -38,7 +90,130 @@ export default function CountSession() {
     queryKey: ["/api/products"],
   });
 
+  const { data: units } = useQuery<any[]>({
+    queryKey: ["/api/units"],
+  });
+
   const location = storageLocations?.find(l => l.id === count?.storageLocationId);
+
+  const editForm = useForm<CountLineForm>({
+    resolver: zodResolver(countLineSchema),
+  });
+
+  const addForm = useForm<CountLineForm>({
+    resolver: zodResolver(countLineSchema),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: { id: string; updates: Partial<CountLineForm> }) => {
+      return apiRequest(`/api/inventory-count-lines/${data.id}`, "PATCH", data.updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-levels"] });
+      toast({
+        title: "Success",
+        description: "Count line updated successfully",
+      });
+      setEditDialogOpen(false);
+      editForm.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update count line",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: CountLineForm & { inventoryCountId: string }) => {
+      return apiRequest("/api/inventory-count-lines", "POST", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-levels"] });
+      toast({
+        title: "Success",
+        description: "Item added to count successfully",
+      });
+      setAddDialogOpen(false);
+      addForm.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add item to count",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest(`/api/inventory-count-lines/${id}`, "DELETE");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-levels"] });
+      toast({
+        title: "Success",
+        description: "Count line deleted successfully",
+      });
+      setDeleteDialogOpen(false);
+      setSelectedLine(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete count line",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleEdit = (line: any) => {
+    setSelectedLine(line);
+    editForm.reset({
+      productId: line.productId,
+      unitId: line.unitId,
+      qty: line.qty,
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleDelete = (line: any) => {
+    setSelectedLine(line);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleAdd = () => {
+    addForm.reset({
+      productId: "",
+      unitId: "",
+      qty: 0,
+    });
+    setAddDialogOpen(true);
+  };
+
+  const onEditSubmit = (data: CountLineForm) => {
+    if (selectedLine) {
+      updateMutation.mutate({
+        id: selectedLine.id,
+        updates: data,
+      });
+    }
+  };
+
+  const onAddSubmit = (data: CountLineForm) => {
+    if (countId) {
+      createMutation.mutate({
+        ...data,
+        inventoryCountId: countId,
+      });
+    }
+  };
   
   // Calculate category totals
   const categoryTotals = countLines?.reduce((acc: any, line) => {
@@ -93,18 +268,26 @@ export default function CountSession() {
           </Button>
         </Link>
         
-        <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-session-title">
-          Count Session Details
-        </h1>
-        <p className="text-muted-foreground mt-2">
-          {location?.name} - {countDate?.toLocaleDateString()} {countDate?.toLocaleTimeString()}
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-session-title">
+              Count Session Details
+            </h1>
+            <p className="text-muted-foreground mt-2">
+              {location?.name} - {countDate?.toLocaleDateString()} {countDate?.toLocaleTimeString()}
+            </p>
+          </div>
+          <Button onClick={handleAdd} data-testid="button-add-item">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Item
+          </Button>
+        </div>
       </div>
 
       {/* Mini Dashboard */}
       <div className="grid gap-4 md:grid-cols-3 mb-8">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Value</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -119,7 +302,7 @@ export default function CountSession() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Items</CardTitle>
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -134,7 +317,7 @@ export default function CountSession() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Categories</CardTitle>
             <Layers className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -207,6 +390,7 @@ export default function CountSession() {
                 <TableHead>Unit</TableHead>
                 <TableHead className="text-right">Unit Cost</TableHead>
                 <TableHead className="text-right">Total Value</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -222,12 +406,32 @@ export default function CountSession() {
                       <TableCell>{line.unitName || '-'}</TableCell>
                       <TableCell className="text-right font-mono">${(product?.lastCost || 0).toFixed(4)}</TableCell>
                       <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEdit(line)}
+                            data-testid={`button-edit-${line.id}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(line)}
+                            data-testid={`button-delete-${line.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   );
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     {showEmpty ? "No items in this count" : "No items with quantities found"}
                   </TableCell>
                 </TableRow>
@@ -236,6 +440,229 @@ export default function CountSession() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent data-testid="dialog-edit-line">
+          <DialogHeader>
+            <DialogTitle>Edit Count Line</DialogTitle>
+            <DialogDescription>
+              Update the quantity or unit for this inventory item.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+              <FormField
+                control={editForm.control}
+                name="productId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Product</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-product">
+                          <SelectValue placeholder="Select product" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {products?.map((product) => (
+                          <SelectItem key={product.id} value={product.id}>
+                            {product.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="unitId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Unit</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-unit">
+                          <SelectValue placeholder="Select unit" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {units?.map((unit) => (
+                          <SelectItem key={unit.id} value={unit.id}>
+                            {unit.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="qty"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Quantity</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0"
+                        {...field}
+                        data-testid="input-edit-qty"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditDialogOpen(false)}
+                  data-testid="button-cancel-edit"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={updateMutation.isPending}
+                  data-testid="button-submit-edit"
+                >
+                  {updateMutation.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Dialog */}
+      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+        <DialogContent data-testid="dialog-add-line">
+          <DialogHeader>
+            <DialogTitle>Add Item to Count</DialogTitle>
+            <DialogDescription>
+              Add a new inventory item to this count session.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...addForm}>
+            <form onSubmit={addForm.handleSubmit(onAddSubmit)} className="space-y-4">
+              <FormField
+                control={addForm.control}
+                name="productId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Product</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-add-product">
+                          <SelectValue placeholder="Select product" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {products?.map((product) => (
+                          <SelectItem key={product.id} value={product.id}>
+                            {product.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={addForm.control}
+                name="unitId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Unit</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-add-unit">
+                          <SelectValue placeholder="Select unit" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {units?.map((unit) => (
+                          <SelectItem key={unit.id} value={unit.id}>
+                            {unit.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={addForm.control}
+                name="qty"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Quantity</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0"
+                        {...field}
+                        data-testid="input-add-qty"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setAddDialogOpen(false)}
+                  data-testid="button-cancel-add"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={createMutation.isPending}
+                  data-testid="button-submit-add"
+                >
+                  {createMutation.isPending ? "Adding..." : "Add Item"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent data-testid="dialog-delete-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this count line and update the inventory level accordingly.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => selectedLine && deleteMutation.mutate(selectedLine.id)}
+              disabled={deleteMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
