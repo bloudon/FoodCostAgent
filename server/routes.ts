@@ -182,6 +182,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/products/:id", async (req, res) => {
+    try {
+      const updates = insertProductSchema.partial().parse(req.body);
+      
+      // Validate numeric fields are not NaN
+      if (updates.lastCost !== undefined && isNaN(updates.lastCost)) {
+        return res.status(400).json({ error: "Invalid lastCost value" });
+      }
+      if (updates.microUnitsPerPurchaseUnit !== undefined && isNaN(updates.microUnitsPerPurchaseUnit)) {
+        return res.status(400).json({ error: "Invalid microUnitsPerPurchaseUnit value" });
+      }
+      if (updates.parLevel !== undefined && updates.parLevel !== null && isNaN(updates.parLevel)) {
+        return res.status(400).json({ error: "Invalid parLevel value" });
+      }
+      if (updates.reorderLevel !== undefined && updates.reorderLevel !== null && isNaN(updates.reorderLevel)) {
+        return res.status(400).json({ error: "Invalid reorderLevel value" });
+      }
+      
+      const product = await storage.updateProduct(req.params.id, updates);
+      if (!product) {
+        return res.status(404).json({ error: "Product not found" });
+      }
+      res.json(product);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/products/:id/vendor-products", async (req, res) => {
+    const vendorProducts = await storage.getVendorProductsByProduct(req.params.id);
+    const vendors = await storage.getVendors();
+    const units = await storage.getUnits();
+    
+    const enriched = vendorProducts.map((vp) => {
+      const vendor = vendors.find((v) => v.id === vp.vendorId);
+      const unit = units.find((u) => u.id === vp.purchaseUnitId);
+      return {
+        ...vp,
+        vendor,
+        unit,
+      };
+    });
+    
+    res.json(enriched);
+  });
+
   // ============ VENDOR PRODUCTS ============
   app.get("/api/vendor-products", async (req, res) => {
     const vendorId = req.query.vendor_id as string | undefined;
