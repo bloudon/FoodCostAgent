@@ -63,11 +63,7 @@ export default function Vendors() {
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertVendor) => {
-      return await apiRequest("/api/vendors", {
-        method: "POST",
-        body: JSON.stringify(data),
-        headers: { "Content-Type": "application/json" },
-      });
+      return await apiRequest("POST", "/api/vendors", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
@@ -89,11 +85,7 @@ export default function Vendors() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<InsertVendor> }) => {
-      return await apiRequest(`/api/vendors/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(data),
-        headers: { "Content-Type": "application/json" },
-      });
+      return await apiRequest("PATCH", `/api/vendors/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
@@ -116,9 +108,7 @@ export default function Vendors() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return await apiRequest(`/api/vendors/${id}`, {
-        method: "DELETE",
-      });
+      return await apiRequest("DELETE", `/api/vendors/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
@@ -318,7 +308,8 @@ export default function Vendors() {
                     <FormControl>
                       <Input 
                         placeholder="Account number" 
-                        {...field} 
+                        {...field}
+                        value={field.value || ""}
                         data-testid="input-vendor-account"
                       />
                     </FormControl>
