@@ -41,58 +41,58 @@ async function seedSeptemberCounts() {
     
     const weekMultiplier = 1 - (i * 0.15);
     
-    // Convert from ounces to pounds: 140 oz = 8.75 lb
+    // 140 oz (micro units are ounces now)
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: mozzarella.id,
       qty: parseFloat((8.75 * weekMultiplier).toFixed(2)),
       unitId: pound.id,
-      derivedMicroUnits: parseFloat((8.75 * weekMultiplier).toFixed(2)),
+      derivedMicroUnits: parseFloat((140 * weekMultiplier).toFixed(2)),
     });
 
-    // 85 oz = 5.31 lb
+    // 85 oz (micro units are ounces now)
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: pepperoni.id,
       qty: parseFloat((5.31 * weekMultiplier).toFixed(2)),
       unitId: pound.id,
-      derivedMicroUnits: parseFloat((5.31 * weekMultiplier).toFixed(2)),
+      derivedMicroUnits: parseFloat((85 * weekMultiplier).toFixed(2)),
     });
 
-    // 120 oz = 7.5 lb
+    // 120 oz (micro units are ounces now)
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: chickenWings.id,
       qty: parseFloat((7.5 * weekMultiplier).toFixed(2)),
       unitId: pound.id,
-      derivedMicroUnits: parseFloat((7.5 * weekMultiplier).toFixed(2)),
+      derivedMicroUnits: parseFloat((120 * weekMultiplier).toFixed(2)),
     });
 
-    // 65 oz = 4.06 lb
+    // 65 oz (micro units are ounces now)
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: sausage.id,
       qty: parseFloat((4.06 * weekMultiplier).toFixed(2)),
       unitId: pound.id,
-      derivedMicroUnits: parseFloat((4.06 * weekMultiplier).toFixed(2)),
+      derivedMicroUnits: parseFloat((65 * weekMultiplier).toFixed(2)),
     });
 
-    // 32 oz = 2 lb
+    // 32 oz (micro units are ounces now)
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: bellPeppers.id,
       qty: parseFloat((2 * weekMultiplier).toFixed(2)),
       unitId: pound.id,
-      derivedMicroUnits: parseFloat((2 * weekMultiplier).toFixed(2)),
+      derivedMicroUnits: parseFloat((32 * weekMultiplier).toFixed(2)),
     });
 
-    // 28 oz = 1.75 lb
+    // 28 oz (micro units are ounces now)
     await storage.createInventoryCountLine({
       inventoryCountId: count.id,
       productId: onions.id,
       qty: parseFloat((1.75 * weekMultiplier).toFixed(2)),
       unitId: pound.id,
-      derivedMicroUnits: parseFloat((1.75 * weekMultiplier).toFixed(2)),
+      derivedMicroUnits: parseFloat((28 * weekMultiplier).toFixed(2)),
     });
   }
 }
@@ -178,11 +178,11 @@ export async function seedDatabase() {
     category: "Dry/Pantry",
     pluSku: "DRY001",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     barcode: "8901234567890",
     active: 1,
-    lastCost: 0.016, // $0.016 per pound (was $0.001 per ounce * 16)
+    lastCost: 0.001, // $0.001 per ounce
     yieldAmount: 50, // 50 lb bag
     yieldUnitId: units.pound.id,
   });
@@ -192,10 +192,10 @@ export async function seedDatabase() {
     category: "Dry/Pantry",
     pluSku: "DRY002",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.32, // $0.32 per pound (was $0.02 per ounce * 16)
+    lastCost: 0.02, // $0.02 per ounce
     yieldAmount: 1, // 1 lb package
     yieldUnitId: units.pound.id,
   });
@@ -227,10 +227,10 @@ export async function seedDatabase() {
     category: "Dry/Pantry",
     pluSku: "DRY003",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.032, // $0.032 per pound (was $0.002 per ounce * 16)
+    lastCost: 0.002, // $0.002 per ounce
     yieldAmount: 3, // 3 lb box
     yieldUnitId: units.pound.id,
   });
@@ -240,10 +240,10 @@ export async function seedDatabase() {
     category: "Dry/Pantry",
     pluSku: "DRY004",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.024, // $0.024 per pound (was $0.0015 per ounce * 16)
+    lastCost: 0.0015, // $0.0015 per ounce
     yieldAmount: 10, // 10 lb bag
     yieldUnitId: units.pound.id,
   });
@@ -254,10 +254,10 @@ export async function seedDatabase() {
     category: "Dry/Pantry",
     pluSku: "CAN001",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.064, // $0.064 per pound (was $0.004 per ounce * 16)
+    lastCost: 0.004, // $0.004 per ounce
     yieldAmount: 6.5, // 6.5 lb can (~106 oz)
     yieldUnitId: units.pound.id,
   });
@@ -267,10 +267,10 @@ export async function seedDatabase() {
     category: "Dry/Pantry",
     pluSku: "CAN002",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.096, // $0.096 per pound (was $0.006 per ounce * 16)
+    lastCost: 0.006, // $0.006 per ounce
     yieldAmount: 0.375, // 6 oz can
     yieldUnitId: units.pound.id,
   });
@@ -280,10 +280,10 @@ export async function seedDatabase() {
     category: "Produce",
     pluSku: "PRO001",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.16, // $0.16 per pound (was $0.01 per ounce * 16)
+    lastCost: 0.01, // $0.01 per ounce
     yieldAmount: 1, // 1 lb bag
     yieldUnitId: units.pound.id,
   });
@@ -293,10 +293,10 @@ export async function seedDatabase() {
     category: "Produce",
     pluSku: "PRO002",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.48, // $0.48 per pound (was $0.03 per ounce * 16)
+    lastCost: 0.03, // $0.03 per ounce
     yieldAmount: 0.25, // 4 oz package
     yieldUnitId: units.pound.id,
   });
@@ -306,10 +306,10 @@ export async function seedDatabase() {
     category: "Dry/Pantry",
     pluSku: "SPI001",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.80, // $0.80 per pound (was $0.05 per ounce * 16)
+    lastCost: 0.05, // $0.05 per ounce
     yieldAmount: 0.125, // 2 oz bottle
     yieldUnitId: units.pound.id,
   });
@@ -320,10 +320,10 @@ export async function seedDatabase() {
     category: "Dairy",
     pluSku: "DAI001",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.176, // $0.176 per pound (was $0.011 per ounce * 16)
+    lastCost: 0.011, // $0.011 per ounce
     yieldAmount: 5, // 5 lb bag
     yieldUnitId: units.pound.id,
   });
@@ -333,10 +333,10 @@ export async function seedDatabase() {
     category: "Dairy",
     pluSku: "DAI002",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.352, // $0.352 per pound (was $0.022 per ounce * 16)
+    lastCost: 0.022, // $0.022 per ounce
     yieldAmount: 2, // 2 lb container
     yieldUnitId: units.pound.id,
   });
@@ -346,10 +346,10 @@ export async function seedDatabase() {
     category: "Protein",
     pluSku: "MEA001",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.24, // $0.24 per pound (was $0.015 per ounce * 16)
+    lastCost: 0.015, // $0.015 per ounce
     yieldAmount: 5, // 5 lb bag
     yieldUnitId: units.pound.id,
   });
@@ -359,10 +359,10 @@ export async function seedDatabase() {
     category: "Protein",
     pluSku: "MEA002",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.208, // $0.208 per pound (was $0.013 per ounce * 16)
+    lastCost: 0.013, // $0.013 per ounce
     yieldAmount: 5, // 5 lb package
     yieldUnitId: units.pound.id,
   });
@@ -372,10 +372,10 @@ export async function seedDatabase() {
     category: "Protein",
     pluSku: "MEA003",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.192, // $0.192 per pound (was $0.012 per ounce * 16)
+    lastCost: 0.012, // $0.012 per ounce
     yieldAmount: 10, // 10 lb bag
     yieldUnitId: units.pound.id,
   });
@@ -385,10 +385,10 @@ export async function seedDatabase() {
     category: "Produce",
     pluSku: "PRO003",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.112, // $0.112 per pound (was $0.007 per ounce * 16)
+    lastCost: 0.007, // $0.007 per ounce
     yieldAmount: 1, // sold by pound
     yieldUnitId: units.pound.id,
   });
@@ -398,10 +398,10 @@ export async function seedDatabase() {
     category: "Produce",
     pluSku: "PRO004",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.144, // $0.144 per pound (was $0.009 per ounce * 16)
+    lastCost: 0.009, // $0.009 per ounce
     yieldAmount: 1, // 1 lb package
     yieldUnitId: units.pound.id,
   });
@@ -411,10 +411,10 @@ export async function seedDatabase() {
     category: "Produce",
     pluSku: "PRO005",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.048, // $0.048 per pound (was $0.003 per ounce * 16)
+    lastCost: 0.003, // $0.003 per ounce
     yieldAmount: 1, // sold by pound
     yieldUnitId: units.pound.id,
   });
@@ -424,10 +424,10 @@ export async function seedDatabase() {
     category: "Dry/Pantry",
     pluSku: "CAN003",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.128, // $0.128 per pound (was $0.008 per ounce * 16)
+    lastCost: 0.008, // $0.008 per ounce
     yieldAmount: 0.375, // 6 oz can
     yieldUnitId: units.pound.id,
   });
@@ -461,10 +461,10 @@ export async function seedDatabase() {
     category: "Protein",
     pluSku: "MEA004",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.16, // $0.16 per pound (was $0.01 per ounce * 16)
+    lastCost: 0.01, // $0.01 per ounce
     yieldAmount: 10, // 10 lb bag
     yieldUnitId: units.pound.id,
   });
@@ -474,10 +474,10 @@ export async function seedDatabase() {
     category: "Dry/Pantry",
     pluSku: "FRO001",
     baseUnitId: units.pound.id,
-    microUnitId: units.pound.id,
-    microUnitsPerPurchaseUnit: 1,
+    microUnitId: units.ounce.id,
+    microUnitsPerPurchaseUnit: 16,
     active: 1,
-    lastCost: 0.08, // $0.08 per pound (was $0.005 per ounce * 16)
+    lastCost: 0.005, // $0.005 per ounce
     yieldAmount: 1, // 1 lb package
     yieldUnitId: units.pound.id,
   });
