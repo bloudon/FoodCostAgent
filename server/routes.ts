@@ -359,11 +359,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const levels = await storage.getInventoryLevels(locationId);
     
     const products = await storage.getProducts();
+    const locations = await storage.getStorageLocations();
+    const units = await storage.getUnits();
+    
     const enriched = levels.map((level) => {
       const product = products.find((p) => p.id === level.productId);
+      const location = locations.find((l) => l.id === level.storageLocationId);
+      const baseUnit = units.find((u) => u.id === product?.baseUnitId);
+      
       return {
         ...level,
-        productName: product?.name || "Unknown",
+        product: product || null,
+        location: location || null,
+        baseUnit: baseUnit || null,
       };
     });
     

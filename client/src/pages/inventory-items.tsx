@@ -84,6 +84,7 @@ export default function InventoryItems() {
   });
 
   const filteredLevels = inventoryLevels?.filter((level) => {
+    if (!level.product) return false;
     const matchesSearch = level.product.name.toLowerCase().includes(search.toLowerCase()) ||
       level.product.pluSku.toLowerCase().includes(search.toLowerCase());
     const matchesLocation = selectedLocation === "all" || level.storageLocationId === selectedLocation;
@@ -91,6 +92,7 @@ export default function InventoryItems() {
   }) || [];
 
   const totalValue = filteredLevels.reduce((sum, level) => {
+    if (!level.product) return sum;
     const quantity = level.onHandMicroUnits / level.product.microUnitsPerPurchaseUnit;
     return sum + (quantity * level.product.lastCost);
   }, 0);
