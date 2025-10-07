@@ -42,7 +42,7 @@ export type Unit = typeof units.$inferSelect;
 export const products = pgTable("products", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
-  category: text("category"),
+  category: text("category"), // Protein, Produce, Dairy, Dry/Pantry
   pluSku: text("plu_sku"),
   baseUnitId: varchar("base_unit_id").notNull(), // micro-unit reference
   microUnitId: varchar("micro_unit_id").notNull(),
@@ -50,9 +50,16 @@ export const products = pgTable("products", {
   barcode: text("barcode"),
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
   lastCost: real("last_cost").notNull().default(0), // cost per micro-unit
+  storageLocationIds: text("storage_location_ids").array(), // array of storage location IDs
+  yieldAmount: real("yield_amount"), // package yield/size
+  yieldUnitId: varchar("yield_unit_id"), // unit for yield
+  imageUrl: text("image_url"),
 });
 
-export const insertProductSchema = createInsertSchema(products).omit({ id: true });
+export const insertProductSchema = createInsertSchema(products).omit({ id: true }).extend({
+  category: z.enum(["Protein", "Produce", "Dairy", "Dry/Pantry"]).optional(),
+  storageLocationIds: z.array(z.string()).optional(),
+});
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof products.$inferSelect;
 
