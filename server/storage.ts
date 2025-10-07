@@ -19,6 +19,9 @@ import {
   posSales, type POSSale, type InsertPOSSale,
   posSalesLines, type POSSalesLine, type InsertPOSSalesLine,
   menuItems, type MenuItem, type InsertMenuItem,
+  recipeVersions, type RecipeVersion, type InsertRecipeVersion,
+  transferLogs, type TransferLog, type InsertTransferLog,
+  wasteLogs, type WasteLog, type InsertWasteLog,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -109,6 +112,19 @@ export interface IStorage {
   getMenuItem(id: string): Promise<MenuItem | undefined>;
   getMenuItemByPLU(pluSku: string): Promise<MenuItem | undefined>;
   createMenuItem(item: InsertMenuItem): Promise<MenuItem>;
+
+  // Recipe Versions
+  getRecipeVersions(recipeId: string): Promise<RecipeVersion[]>;
+  getRecipeVersion(id: string): Promise<RecipeVersion | undefined>;
+  createRecipeVersion(version: InsertRecipeVersion): Promise<RecipeVersion>;
+
+  // Transfer Logs
+  getTransferLogs(productId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]>;
+  createTransferLog(transfer: InsertTransferLog): Promise<TransferLog>;
+
+  // Waste Logs
+  getWasteLogs(productId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]>;
+  createWasteLog(waste: InsertWasteLog): Promise<WasteLog>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -427,6 +443,73 @@ export class DatabaseStorage implements IStorage {
   async createMenuItem(insertItem: InsertMenuItem): Promise<MenuItem> {
     const [item] = await db.insert(menuItems).values(insertItem).returning();
     return item;
+  }
+
+  // Recipe Versions
+  async getRecipeVersions(recipeId: string): Promise<RecipeVersion[]> {
+    return db.select().from(recipeVersions).where(eq(recipeVersions.recipeId, recipeId)).orderBy(recipeVersions.versionNumber);
+  }
+
+  async getRecipeVersion(id: string): Promise<RecipeVersion | undefined> {
+    const [version] = await db.select().from(recipeVersions).where(eq(recipeVersions.id, id));
+    return version || undefined;
+  }
+
+  async createRecipeVersion(insertVersion: InsertRecipeVersion): Promise<RecipeVersion> {
+    const [version] = await db.insert(recipeVersions).values(insertVersion).returning();
+    return version;
+  }
+
+  // Transfer Logs
+  async getTransferLogs(productId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]> {
+    let query = db.select().from(transferLogs);
+    const conditions = [];
+    
+    if (productId) {
+      conditions.push(eq(transferLogs.productId, productId));
+    }
+    if (startDate) {
+      conditions.push(gte(transferLogs.transferredAt, startDate));
+    }
+    if (endDate) {
+      conditions.push(lte(transferLogs.transferredAt, endDate));
+    }
+    
+    if (conditions.length > 0) {
+      return query.where(and(...conditions));
+    }
+    return query;
+  }
+
+  async createTransferLog(insertTransfer: InsertTransferLog): Promise<TransferLog> {
+    const [transfer] = await db.insert(transferLogs).values(insertTransfer).returning();
+    return transfer;
+  }
+
+  // Waste Logs
+  async getWasteLogs(productId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]> {
+    let query = db.select().from(wasteLogs);
+    const conditions = [];
+    
+    if (productId) {
+      conditions.push(eq(wasteLogs.productId, productId));
+    }
+    if (startDate) {
+      conditions.push(gte(wasteLogs.wastedAt, startDate));
+    }
+    if (endDate) {
+      conditions.push(lte(wasteLogs.wastedAt, endDate));
+    }
+    
+    if (conditions.length > 0) {
+      return query.where(and(...conditions));
+    }
+    return query;
+  }
+
+  async createWasteLog(insertWaste: InsertWasteLog): Promise<WasteLog> {
+    const [waste] = await db.insert(wasteLogs).values(insertWaste).returning();
+    return waste;
   }
 }
 

@@ -242,3 +242,59 @@ export const menuItems = pgTable("menu_items", {
 export const insertMenuItemSchema = createInsertSchema(menuItems).omit({ id: true });
 export type InsertMenuItem = z.infer<typeof insertMenuItemSchema>;
 export type MenuItem = typeof menuItems.$inferSelect;
+
+// Recipe Versions (for cost change tracking)
+export const recipeVersions = pgTable("recipe_versions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipeId: varchar("recipe_id").notNull(),
+  versionNumber: integer("version_number").notNull(),
+  yieldQty: real("yield_qty").notNull(),
+  yieldUnitId: varchar("yield_unit_id").notNull(),
+  wastePercent: real("waste_percent").notNull().default(0),
+  computedCost: real("computed_cost").notNull().default(0),
+  components: text("components").notNull(), // JSON string of components
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: varchar("created_by"),
+  changeReason: text("change_reason"),
+});
+
+export const insertRecipeVersionSchema = createInsertSchema(recipeVersions).omit({ id: true, createdAt: true });
+export type InsertRecipeVersion = z.infer<typeof insertRecipeVersionSchema>;
+export type RecipeVersion = typeof recipeVersions.$inferSelect;
+
+// Transfer Logs (for tracking stock movements between locations)
+export const transferLogs = pgTable("transfer_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: varchar("product_id").notNull(),
+  fromLocationId: varchar("from_location_id").notNull(),
+  toLocationId: varchar("to_location_id").notNull(),
+  qty: real("qty").notNull(),
+  unitId: varchar("unit_id").notNull(),
+  derivedMicroUnits: real("derived_micro_units").notNull(),
+  transferredAt: timestamp("transferred_at").notNull().defaultNow(),
+  transferredBy: varchar("transferred_by"),
+  reason: text("reason"),
+});
+
+export const insertTransferLogSchema = createInsertSchema(transferLogs).omit({ id: true, transferredAt: true });
+export type InsertTransferLog = z.infer<typeof insertTransferLogSchema>;
+export type TransferLog = typeof transferLogs.$inferSelect;
+
+// Waste Logs (for tracking waste and spoilage)
+export const wasteLogs = pgTable("waste_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: varchar("product_id").notNull(),
+  storageLocationId: varchar("storage_location_id").notNull(),
+  qty: real("qty").notNull(),
+  unitId: varchar("unit_id").notNull(),
+  derivedMicroUnits: real("derived_micro_units").notNull(),
+  reasonCode: text("reason_code").notNull(), // SPOILED, DAMAGED, OVERPRODUCTION, etc
+  notes: text("notes"),
+  wastedAt: timestamp("wasted_at").notNull().defaultNow(),
+  loggedBy: varchar("logged_by"),
+});
+
+export const insertWasteLogSchema = createInsertSchema(wasteLogs).omit({ id: true, wastedAt: true });
+export type InsertWasteLog = z.infer<typeof insertWasteLogSchema>;
+export type WasteLog = typeof wasteLogs.$inferSelect;
+

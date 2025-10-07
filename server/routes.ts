@@ -19,6 +19,9 @@ import {
   insertPOSSaleSchema,
   insertPOSSalesLineSchema,
   insertMenuItemSchema,
+  insertRecipeVersionSchema,
+  insertTransferLogSchema,
+  insertWasteLogSchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -474,6 +477,131 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ RECIPE VERSIONS ============
+  app.get("/api/recipe-versions/:recipeId", async (req, res) => {
+    const versions = await storage.getRecipeVersions(req.params.recipeId);
+    res.json(versions);
+  });
+
+  app.post("/api/recipe-versions", async (req, res) => {
+    try {
+      const data = insertRecipeVersionSchema.parse(req.body);
+      const version = await storage.createRecipeVersion(data);
+      res.status(201).json(version);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // ============ TRANSFER LOGS ============
+  app.get("/api/transfers", async (req, res) => {
+    const productId = req.query.product_id as string | undefined;
+    const startDate = req.query.start_date ? new Date(req.query.start_date as string) : undefined;
+    const endDate = req.query.end_date ? new Date(req.query.end_date as string) : undefined;
+    const transfers = await storage.getTransferLogs(productId, startDate, endDate);
+    res.json(transfers);
+  });
+
+  app.post("/api/transfers", async (req, res) => {
+    try {
+      const data = insertTransferLogSchema.parse(req.body);
+      
+      // Get current inventory levels
+      const fromLevel = await storage.getInventoryLevel(data.productId, data.fromLocationId);
+      const fromQty = fromLevel?.onHandMicroUnits || 0;
+      
+      // Validate sufficient quantity
+      if (fromQty < data.derivedMicroUnits) {
+        return res.status(400).json({ 
+          error: `Insufficient inventory. Available: ${fromQty}, Requested: ${data.derivedMicroUnits}` 
+        });
+      }
+      
+      // Create transfer log
+      const transfer = await storage.createTransferLog(data);
+      
+      // Update inventory levels (creates rows if they don't exist)
+      await storage.updateInventoryLevel(
+        data.productId,
+        data.fromLocationId,
+        fromQty - data.derivedMicroUnits
+      );
+      
+      const toLevel = await storage.getInventoryLevel(data.productId, data.toLocationId);
+      await storage.updateInventoryLevel(
+        data.productId,
+        data.toLocationId,
+        (toLevel?.onHandMicroUnits || 0) + data.derivedMicroUnits
+      );
+      
+      res.status(201).json(transfer);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // ============ WASTE LOGS ============
+  app.get("/api/waste", async (req, res) => {
+    const productId = req.query.product_id as string | undefined;
+    const startDate = req.query.start_date ? new Date(req.query.start_date as string) : undefined;
+    const endDate = req.query.end_date ? new Date(req.query.end_date as string) : undefined;
+    const wasteLogs = await storage.getWasteLogs(productId, startDate, endDate);
+    res.json(wasteLogs);
+  });
+
+  app.post("/api/waste", async (req, res) => {
+    try {
+      const data = insertWasteLogSchema.parse(req.body);
+      
+      // Get current inventory level
+      const level = await storage.getInventoryLevel(data.productId, data.storageLocationId);
+      const currentQty = level?.onHandMicroUnits || 0;
+      
+      // Validate sufficient quantity
+      if (currentQty < data.derivedMicroUnits) {
+        return res.status(400).json({ 
+          error: `Insufficient inventory. Available: ${currentQty}, Waste amount: ${data.derivedMicroUnits}` 
+        });
+      }
+      
+      // Create waste log
+      const wasteLog = await storage.createWasteLog(data);
+      
+      // Update inventory level (creates row if it doesn't exist)
+      await storage.updateInventoryLevel(
+        data.productId,
+        data.storageLocationId,
+        currentQty - data.derivedMicroUnits
+      );
+      
+      res.status(201).json(wasteLog);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/reports/waste-trends", async (req, res) => {
+    const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
+    const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
+    const wasteLogs = await storage.getWasteLogs(undefined, startDate, endDate);
+    const products = await storage.getProducts();
+    const trends: Record<string, any> = {};
+    for (const wasteLog of wasteLogs) {
+      if (!trends[wasteLog.productId]) {
+        const product = products.find(p => p.id === wasteLog.productId);
+        trends[wasteLog.productId] = { productId: wasteLog.productId, productName: product?.name || "Unknown", totalWasteMicroUnits: 0, totalWasteCost: 0, byReason: {} as Record<string, number>, count: 0 };
+      }
+      const product = products.find(p => p.id === wasteLog.productId);
+      const costPerMicroUnit = product?.lastCost || 0;
+      trends[wasteLog.productId].totalWasteMicroUnits += wasteLog.derivedMicroUnits;
+      trends[wasteLog.productId].totalWasteCost += wasteLog.derivedMicroUnits * costPerMicroUnit;
+      trends[wasteLog.productId].count += 1;
+      if (!trends[wasteLog.productId].byReason[wasteLog.reasonCode]) trends[wasteLog.productId].byReason[wasteLog.reasonCode] = 0;
+      trends[wasteLog.productId].byReason[wasteLog.reasonCode] += wasteLog.derivedMicroUnits;
+    }
+    res.json(Object.values(trends));
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
@@ -621,6 +749,7 @@ async function calculateActualUsage(
 
   return usage;
 }
+
 
 // ============ WEBSOCKET POS STREAMING ============
 export function setupWebSocket(server: Server) {
