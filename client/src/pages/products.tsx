@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,10 +71,12 @@ export default function Products() {
             Manage product catalog with units and vendor information
           </p>
         </div>
-        <Button data-testid="button-create-product">
-          <Plus className="h-4 w-4 mr-2" />
-          New Product
-        </Button>
+        <Link href="/products/new">
+          <Button data-testid="button-create-product">
+            <Plus className="h-4 w-4 mr-2" />
+            New Product
+          </Button>
+        </Link>
       </div>
 
       <Card>
