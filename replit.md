@@ -271,15 +271,18 @@ Preferred communication style: Simple, everyday language.
 ### Product Schema Enhancements (October 2025)
 - **Enhanced Product Fields**:
   - Category classification with color-coded badges (Protein, Produce, Dairy, Dry/Pantry)
+  - Flexible category system - changed from enum to text field allowing custom user-defined categories
   - Storage location tracking via storageLocationIds array (multiple locations supported)
   - Yield information with yieldAmount and yieldUnitId for package sizes
   - Product image support with imageUrl field and fallback icons
+  - Par level and reorder level fields for inventory management and alerts
   
 - **Products Display Page**:
   - Avatar-based product images with Package icon fallback
-  - Color-coded category badges (red for Protein, green for Produce, blue for Dairy, yellow for Dry/Pantry)
+  - Color-coded category badges (red for Protein, green for Produce, blue for Dairy, yellow for Dry/Pantry, gray for custom categories)
   - Storage location names displayed from relationship lookups
   - Yield amounts shown with proper unit conversions
+  - Par level and reorder level columns with numeric formatting
   - Enhanced table view with visual hierarchy
 
 ### Inventory Items View (October 2025)
@@ -292,3 +295,12 @@ Preferred communication style: Simple, everyday language.
   - Table view showing product details, category, location, quantity, unit cost, and total value
   - Product avatars with category badges for visual identification
   - Warehouse icon navigation item positioned after Dashboard
+  
+- **Inventory Level Status Indicators**:
+  - Automatic status calculation based on par and reorder levels
+  - Critical status (red badge) when quantity ≤ reorder level
+  - Low status (yellow badge) when quantity < par level
+  - OK status (green badge) when inventory is adequate
+  - Color-coded quantity display matching status (red/yellow/green text)
+  - Par and reorder level columns for reference
+  - Visual alerts help identify items needing immediate attention or restocking
