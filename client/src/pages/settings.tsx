@@ -97,7 +97,7 @@ export default function Settings() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const data = {
-      weightUnit: formData.get("weight-unit") as string,
+      unitSystem: formData.get("unit-system") as string,
       currency: formData.get("currency") as string,
       timezone: formData.get("timezone") as string,
       posSystem: formData.get("pos-system") as string,
@@ -384,18 +384,18 @@ export default function Settings() {
             <CardContent>
               <form onSubmit={handlePrefsSave} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="weight-unit">Weight Unit System</Label>
-                  <Select name="weight-unit" defaultValue={systemPrefs?.weightUnit || "pound"}>
-                    <SelectTrigger id="weight-unit" data-testid="select-weight-unit">
+                  <Label htmlFor="unit-system">Unit System</Label>
+                  <Select name="unit-system" defaultValue={systemPrefs?.unitSystem || "imperial"}>
+                    <SelectTrigger id="unit-system" data-testid="select-unit-system">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="pound">Pounds (lb)</SelectItem>
-                      <SelectItem value="kilogram">Kilograms (kg)</SelectItem>
+                      <SelectItem value="imperial">Imperial (lb, oz, fl oz)</SelectItem>
+                      <SelectItem value="metric">Metric (kg, g, ml, L)</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Choose your preferred weight unit for inventory and recipes
+                    Choose your preferred measurement system for inventory and recipes
                   </p>
                 </div>
 
