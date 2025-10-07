@@ -182,11 +182,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/products/:id", async (req, res) => {
+    try {
+      const product = await storage.getProduct(req.params.id);
+      if (!product) {
+        return res.status(404).json({ error: "Product not found" });
+      }
+      const updated = await storage.updateProduct(req.params.id, req.body);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ VENDOR PRODUCTS ============
   app.get("/api/vendor-products", async (req, res) => {
     const vendorId = req.query.vendor_id as string | undefined;
-    const vendorProducts = await storage.getVendorProducts(vendorId);
-    res.json(vendorProducts);
+    const productId = req.query.product_id as string | undefined;
+    
+    let vendorProducts = await storage.getVendorProducts(vendorId);
+    
+    if (productId) {
+      vendorProducts = vendorProducts.filter(vp => vp.productId === productId);
+    }
+    
+    const vendors = await storage.getVendors();
+    const units = await storage.getUnits();
+    
+    const enriched = vendorProducts.map(vp => {
+      const vendor = vendors.find(v => v.id === vp.vendorId);
+      const unit = units.find(u => u.id === vp.purchaseUnitId);
+      return {
+        ...vp,
+        vendor,
+        unit,
+      };
+    });
+    
+    res.json(enriched);
   });
 
   app.post("/api/vendor-products", async (req, res) => {
@@ -194,6 +227,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const data = insertVendorProductSchema.parse(req.body);
       const vendorProduct = await storage.createVendorProduct(data);
       res.status(201).json(vendorProduct);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/vendor-products/:id", async (req, res) => {
+    try {
+      await storage.deleteVendorProduct(req.params.id);
+      res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
