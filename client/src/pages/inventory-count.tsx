@@ -33,6 +33,42 @@ interface CountLine {
   derivedMicroUnits: number;
 }
 
+function CountHistoryRow({ count, location, countDate, products }: any) {
+  const { data: countLines } = useQuery<any[]>({
+    queryKey: ["/api/inventory-count-lines", count.id],
+  });
+
+  const totalValue = countLines?.reduce((sum, line) => {
+    const product = products?.find((p: any) => p.id === line.productId);
+    return sum + (line.derivedMicroUnits * (product?.lastCost || 0));
+  }, 0) || 0;
+
+  return (
+    <TableRow data-testid={`row-count-${count.id}`}>
+      <TableCell className="font-mono">
+        {countDate.toLocaleDateString()} {countDate.toLocaleTimeString()}
+      </TableCell>
+      <TableCell>{location?.name || 'Unknown'}</TableCell>
+      <TableCell>{count.userId}</TableCell>
+      <TableCell className="text-right font-mono font-semibold" data-testid={`text-count-value-${count.id}`}>
+        ${totalValue.toFixed(2)}
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {count.note || '-'}
+      </TableCell>
+      <TableCell className="text-right">
+        <Button 
+          variant="ghost" 
+          size="sm"
+          data-testid={`button-view-count-${count.id}`}
+        >
+          View Details
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 export default function InventoryCount() {
   const { toast } = useToast();
   const [selectedLocation, setSelectedLocation] = useState("");
@@ -424,6 +460,7 @@ export default function InventoryCount() {
                       <TableHead>Date & Time</TableHead>
                       <TableHead>Location</TableHead>
                       <TableHead>User</TableHead>
+                      <TableHead className="text-right">Total Value</TableHead>
                       <TableHead>Note</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -433,25 +470,13 @@ export default function InventoryCount() {
                       const location = storageLocations?.find(l => l.id === count.storageLocationId);
                       const countDate = new Date(count.countedAt);
                       return (
-                        <TableRow key={count.id} data-testid={`row-count-${count.id}`}>
-                          <TableCell className="font-mono">
-                            {countDate.toLocaleDateString()} {countDate.toLocaleTimeString()}
-                          </TableCell>
-                          <TableCell>{location?.name || 'Unknown'}</TableCell>
-                          <TableCell>{count.userId}</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {count.note || '-'}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              data-testid={`button-view-count-${count.id}`}
-                            >
-                              View Details
-                            </Button>
-                          </TableCell>
-                        </TableRow>
+                        <CountHistoryRow 
+                          key={count.id} 
+                          count={count} 
+                          location={location} 
+                          countDate={countDate}
+                          products={products}
+                        />
                       );
                     })}
                   </TableBody>
