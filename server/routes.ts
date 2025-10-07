@@ -346,6 +346,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(enriched);
   });
 
+  app.post("/api/inventory-count-lines", async (req, res) => {
+    try {
+      const lineData = insertInventoryCountLineSchema.parse(req.body);
+      const units = await storage.getUnits();
+      const unit = units.find((u) => u.id === lineData.unitId);
+      const derivedMicroUnits = unit
+        ? lineData.qty * unit.toBaseRatio
+        : lineData.qty;
+
+      const count = await storage.getInventoryCount(lineData.inventoryCountId);
+      if (!count) {
+        return res.status(404).json({ error: "Count not found" });
+      }
+
+      const line = await storage.createInventoryCountLine({
+        ...lineData,
+        derivedMicroUnits,
+      });
+
+      // Update inventory level
+      await storage.updateInventoryLevel(
+        lineData.productId,
+        count.storageLocationId,
+        derivedMicroUnits
+      );
+
+      res.status(201).json(line);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/inventory-count-lines/:id", async (req, res) => {
+    try {
+      const lineData = insertInventoryCountLineSchema.partial().parse(req.body);
+      const existingLine = await storage.getInventoryCountLine(req.params.id);
+      
+      if (!existingLine) {
+        return res.status(404).json({ error: "Count line not found" });
+      }
+
+      const count = await storage.getInventoryCount(existingLine.inventoryCountId);
+      if (!count) {
+        return res.status(404).json({ error: "Count not found" });
+      }
+
+      // Calculate new derived micro units if qty or unit changed
+      let derivedMicroUnits = existingLine.derivedMicroUnits;
+      if (lineData.qty !== undefined || lineData.unitId !== undefined) {
+        const units = await storage.getUnits();
+        const unitId = lineData.unitId || existingLine.unitId;
+        const qty = lineData.qty !== undefined ? lineData.qty : existingLine.qty;
+        const unit = units.find((u) => u.id === unitId);
+        derivedMicroUnits = unit ? qty * unit.toBaseRatio : qty;
+      }
+
+      const updatedLine = await storage.updateInventoryCountLine(req.params.id, {
+        ...lineData,
+        derivedMicroUnits,
+      });
+
+      // Update inventory level - subtract old, add new
+      const oldMicroUnits = existingLine.derivedMicroUnits;
+      const productId = lineData.productId || existingLine.productId;
+      const currentLevel = await storage.getInventoryLevel(productId, count.storageLocationId);
+      const currentQty = currentLevel?.onHandMicroUnits || 0;
+      
+      await storage.updateInventoryLevel(
+        productId,
+        count.storageLocationId,
+        currentQty - oldMicroUnits + derivedMicroUnits
+      );
+
+      res.json(updatedLine);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/inventory-count-lines/:id", async (req, res) => {
+    try {
+      const line = await storage.getInventoryCountLine(req.params.id);
+      
+      if (!line) {
+        return res.status(404).json({ error: "Count line not found" });
+      }
+
+      const count = await storage.getInventoryCount(line.inventoryCountId);
+      if (!count) {
+        return res.status(404).json({ error: "Count not found" });
+      }
+
+      // Update inventory level - subtract this line's quantity
+      const currentLevel = await storage.getInventoryLevel(line.productId, count.storageLocationId);
+      const currentQty = currentLevel?.onHandMicroUnits || 0;
+      
+      await storage.updateInventoryLevel(
+        line.productId,
+        count.storageLocationId,
+        currentQty - line.derivedMicroUnits
+      );
+
+      await storage.deleteInventoryCountLine(req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   app.post("/api/inventory-counts", async (req, res) => {
     try {
       const { lines, ...countData } = req.body;

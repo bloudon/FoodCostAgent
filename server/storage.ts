@@ -85,7 +85,10 @@ export interface IStorage {
 
   // Inventory Count Lines
   getInventoryCountLines(countId: string): Promise<InventoryCountLine[]>;
+  getInventoryCountLine(id: string): Promise<InventoryCountLine | undefined>;
   createInventoryCountLine(line: InsertInventoryCountLine): Promise<InventoryCountLine>;
+  updateInventoryCountLine(id: string, line: Partial<InventoryCountLine>): Promise<InventoryCountLine | undefined>;
+  deleteInventoryCountLine(id: string): Promise<void>;
 
   // Purchase Orders
   getPurchaseOrders(): Promise<PurchaseOrder[]>;
@@ -377,9 +380,27 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(inventoryCountLines).where(eq(inventoryCountLines.inventoryCountId, countId));
   }
 
+  async getInventoryCountLine(id: string): Promise<InventoryCountLine | undefined> {
+    const [line] = await db.select().from(inventoryCountLines).where(eq(inventoryCountLines.id, id));
+    return line || undefined;
+  }
+
   async createInventoryCountLine(insertLine: InsertInventoryCountLine): Promise<InventoryCountLine> {
     const [line] = await db.insert(inventoryCountLines).values(insertLine).returning();
     return line;
+  }
+
+  async updateInventoryCountLine(id: string, updates: Partial<InventoryCountLine>): Promise<InventoryCountLine | undefined> {
+    const [line] = await db
+      .update(inventoryCountLines)
+      .set(updates)
+      .where(eq(inventoryCountLines.id, id))
+      .returning();
+    return line || undefined;
+  }
+
+  async deleteInventoryCountLine(id: string): Promise<void> {
+    await db.delete(inventoryCountLines).where(eq(inventoryCountLines.id, id));
   }
 
   // Purchase Orders
