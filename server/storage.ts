@@ -6,13 +6,12 @@ import {
   storageLocations, type StorageLocation, type InsertStorageLocation,
   units, type Unit, type InsertUnit,
   unitConversions, type UnitConversion, type InsertUnitConversion,
-  products, type Product, type InsertProduct,
-  productPriceHistory, type ProductPriceHistory, type InsertProductPriceHistory,
+  inventoryItems, type InventoryItem, type InsertInventoryItem,
+  inventoryItemPriceHistory, type InventoryItemPriceHistory, type InsertInventoryItemPriceHistory,
   vendors, type Vendor, type InsertVendor,
-  vendorProducts, type VendorProduct, type InsertVendorProduct,
+  vendorItems, type VendorItem, type InsertVendorItem,
   recipes, type Recipe, type InsertRecipe,
   recipeComponents, type RecipeComponent, type InsertRecipeComponent,
-  inventoryLevels, type InventoryLevel, type InsertInventoryLevel,
   inventoryCounts, type InventoryCount, type InsertInventoryCount,
   inventoryCountLines, type InventoryCountLine, type InsertInventoryCountLine,
   purchaseOrders, type PurchaseOrder, type InsertPurchaseOrder,
@@ -60,11 +59,22 @@ export interface IStorage {
   updateUnitConversion(id: string, conversion: Partial<UnitConversion>): Promise<UnitConversion | undefined>;
   deleteUnitConversion(id: string): Promise<void>;
 
-  // Products
-  getProducts(): Promise<Product[]>;
-  getProduct(id: string): Promise<Product | undefined>;
-  createProduct(product: InsertProduct): Promise<Product>;
-  updateProduct(id: string, product: Partial<Product>): Promise<Product | undefined>;
+  // Inventory Items
+  getInventoryItems(locationId?: string): Promise<InventoryItem[]>;
+  getInventoryItem(id: string): Promise<InventoryItem | undefined>;
+  createInventoryItem(item: InsertInventoryItem): Promise<InventoryItem>;
+  updateInventoryItem(id: string, item: Partial<InventoryItem>): Promise<InventoryItem | undefined>;
+  getInventoryItemsByName(name: string): Promise<InventoryItem[]>;
+  getInventoryItemsAggregated(): Promise<Array<{
+    name: string;
+    category: string | null;
+    totalOnHandQty: number;
+    locations: Array<{
+      locationId: string;
+      locationName: string;
+      onHandQty: number;
+    }>;
+  }>>;
 
   // Vendors
   getVendors(): Promise<Vendor[]>;
@@ -73,10 +83,10 @@ export interface IStorage {
   updateVendor(id: string, vendor: Partial<Vendor>): Promise<Vendor | undefined>;
   deleteVendor(id: string): Promise<void>;
 
-  // Vendor Products
-  getVendorProducts(vendorId?: string): Promise<VendorProduct[]>;
-  getVendorProduct(id: string): Promise<VendorProduct | undefined>;
-  createVendorProduct(vendorProduct: InsertVendorProduct): Promise<VendorProduct>;
+  // Vendor Items
+  getVendorItems(vendorId?: string): Promise<VendorItem[]>;
+  getVendorItem(id: string): Promise<VendorItem | undefined>;
+  createVendorItem(vendorItem: InsertVendorItem): Promise<VendorItem>;
 
   // Recipes
   getRecipes(): Promise<Recipe[]>;
@@ -91,10 +101,6 @@ export interface IStorage {
   updateRecipeComponent(id: string, component: Partial<RecipeComponent>): Promise<RecipeComponent | undefined>;
   deleteRecipeComponent(id: string): Promise<void>;
 
-  // Inventory Levels
-  getInventoryLevels(locationId?: string): Promise<InventoryLevel[]>;
-  getInventoryLevel(productId: string, locationId: string): Promise<InventoryLevel | undefined>;
-  updateInventoryLevel(productId: string, locationId: string, qty: number): Promise<InventoryLevel>;
 
   // Inventory Counts
   getInventoryCounts(): Promise<InventoryCount[]>;
@@ -147,11 +153,11 @@ export interface IStorage {
   createRecipeVersion(version: InsertRecipeVersion): Promise<RecipeVersion>;
 
   // Transfer Logs
-  getTransferLogs(productId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]>;
+  getTransferLogs(inventoryItemId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]>;
   createTransferLog(transfer: InsertTransferLog): Promise<TransferLog>;
 
   // Waste Logs
-  getWasteLogs(productId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]>;
+  getWasteLogs(inventoryItemId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]>;
   createWasteLog(waste: InsertWasteLog): Promise<WasteLog>;
 
   // Company Settings
@@ -162,23 +168,23 @@ export interface IStorage {
   getSystemPreferences(): Promise<SystemPreferences | undefined>;
   updateSystemPreferences(preferences: Partial<SystemPreferences>): Promise<SystemPreferences>;
 
-  // Product Price History
-  getProductPriceHistory(productId: string): Promise<ProductPriceHistory[]>;
-  createProductPriceHistory(history: InsertProductPriceHistory): Promise<ProductPriceHistory>;
+  // Inventory Item Price History
+  getInventoryItemPriceHistory(inventoryItemId: string): Promise<InventoryItemPriceHistory[]>;
+  createInventoryItemPriceHistory(history: InsertInventoryItemPriceHistory): Promise<InventoryItemPriceHistory>;
 
-  // Product search for count entry
-  searchProducts(term: string): Promise<Product[]>;
+  // Inventory item search for count entry
+  searchInventoryItems(term: string): Promise<InventoryItem[]>;
 
   // Inventory count aggregations
   getInventoryCountAggregations(countId: string): Promise<Array<{
-    productId: string;
-    productName: string;
+    inventoryItemId: string;
+    inventoryItemName: string;
     totalQty: number;
     totalValue: number;
     countLineIds: string[];
   }>>;
 
-  getProductCountDetails(productId: string, countId: string): Promise<Array<{
+  getInventoryItemCountDetails(inventoryItemId: string, countId: string): Promise<Array<{
     countLineId: string;
     userId: string;
     userName: string;
@@ -312,28 +318,84 @@ export class DatabaseStorage implements IStorage {
     await db.delete(unitConversions).where(eq(unitConversions.id, id));
   }
 
-  // Products
-  async getProducts(): Promise<Product[]> {
-    return db.select().from(products);
+  // Inventory Items
+  async getInventoryItems(locationId?: string): Promise<InventoryItem[]> {
+    if (locationId) {
+      return db.select().from(inventoryItems).where(eq(inventoryItems.storageLocationId, locationId));
+    }
+    return db.select().from(inventoryItems);
   }
 
-  async getProduct(id: string): Promise<Product | undefined> {
-    const [product] = await db.select().from(products).where(eq(products.id, id));
-    return product || undefined;
+  async getInventoryItem(id: string): Promise<InventoryItem | undefined> {
+    const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id));
+    return item || undefined;
   }
 
-  async createProduct(insertProduct: InsertProduct): Promise<Product> {
-    const [product] = await db.insert(products).values(insertProduct).returning();
-    return product;
+  async createInventoryItem(insertItem: InsertInventoryItem): Promise<InventoryItem> {
+    const [item] = await db.insert(inventoryItems).values(insertItem).returning();
+    return item;
   }
 
-  async updateProduct(id: string, updates: Partial<Product>): Promise<Product | undefined> {
-    const [product] = await db
-      .update(products)
+  async updateInventoryItem(id: string, updates: Partial<InventoryItem>): Promise<InventoryItem | undefined> {
+    const [item] = await db
+      .update(inventoryItems)
       .set(updates)
-      .where(eq(products.id, id))
+      .where(eq(inventoryItems.id, id))
       .returning();
-    return product || undefined;
+    return item || undefined;
+  }
+
+  async getInventoryItemsByName(name: string): Promise<InventoryItem[]> {
+    return db.select().from(inventoryItems).where(eq(inventoryItems.name, name));
+  }
+
+  async getInventoryItemsAggregated(): Promise<Array<{
+    name: string;
+    category: string | null;
+    totalOnHandQty: number;
+    locations: Array<{
+      locationId: string;
+      locationName: string;
+      onHandQty: number;
+    }>;
+  }>> {
+    const items = await db.select().from(inventoryItems);
+    const locations = await db.select().from(storageLocations);
+    
+    const grouped = new Map<string, {
+      name: string;
+      category: string | null;
+      totalOnHandQty: number;
+      locations: Array<{
+        locationId: string;
+        locationName: string;
+        onHandQty: number;
+      }>;
+    }>();
+
+    for (const item of items) {
+      const key = `${item.name}-${item.category || 'null'}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          name: item.name,
+          category: item.category,
+          totalOnHandQty: 0,
+          locations: []
+        });
+      }
+
+      const group = grouped.get(key)!;
+      group.totalOnHandQty += item.onHandQty;
+      
+      const location = locations.find(l => l.id === item.storageLocationId);
+      group.locations.push({
+        locationId: item.storageLocationId,
+        locationName: location?.name || 'Unknown',
+        onHandQty: item.onHandQty
+      });
+    }
+
+    return Array.from(grouped.values());
   }
 
   // Vendors
@@ -364,26 +426,26 @@ export class DatabaseStorage implements IStorage {
     await db.delete(vendors).where(eq(vendors.id, id));
   }
 
-  // Vendor Products
-  async getVendorProducts(vendorId?: string): Promise<VendorProduct[]> {
+  // Vendor Items
+  async getVendorItems(vendorId?: string): Promise<VendorItem[]> {
     if (vendorId) {
-      return db.select().from(vendorProducts).where(eq(vendorProducts.vendorId, vendorId));
+      return db.select().from(vendorItems).where(eq(vendorItems.vendorId, vendorId));
     }
-    return db.select().from(vendorProducts);
+    return db.select().from(vendorItems);
   }
 
-  async getVendorProductsByProduct(productId: string): Promise<VendorProduct[]> {
-    return db.select().from(vendorProducts).where(eq(vendorProducts.productId, productId));
+  async getVendorItemsByInventoryItem(inventoryItemId: string): Promise<VendorItem[]> {
+    return db.select().from(vendorItems).where(eq(vendorItems.inventoryItemId, inventoryItemId));
   }
 
-  async getVendorProduct(id: string): Promise<VendorProduct | undefined> {
-    const [vendorProduct] = await db.select().from(vendorProducts).where(eq(vendorProducts.id, id));
-    return vendorProduct || undefined;
+  async getVendorItem(id: string): Promise<VendorItem | undefined> {
+    const [vendorItem] = await db.select().from(vendorItems).where(eq(vendorItems.id, id));
+    return vendorItem || undefined;
   }
 
-  async createVendorProduct(insertVP: InsertVendorProduct): Promise<VendorProduct> {
-    const [vendorProduct] = await db.insert(vendorProducts).values(insertVP).returning();
-    return vendorProduct;
+  async createVendorItem(insertVI: InsertVendorItem): Promise<VendorItem> {
+    const [vendorItem] = await db.insert(vendorItems).values(insertVI).returning();
+    return vendorItem;
   }
 
   // Recipes
@@ -436,52 +498,6 @@ export class DatabaseStorage implements IStorage {
 
   async deleteRecipeComponent(id: string): Promise<void> {
     await db.delete(recipeComponents).where(eq(recipeComponents.id, id));
-  }
-
-  // Inventory Levels
-  async getInventoryLevels(locationId?: string): Promise<InventoryLevel[]> {
-    if (locationId) {
-      return db.select().from(inventoryLevels).where(eq(inventoryLevels.storageLocationId, locationId));
-    }
-    return db.select().from(inventoryLevels);
-  }
-
-  async getInventoryLevel(productId: string, locationId: string): Promise<InventoryLevel | undefined> {
-    const [level] = await db
-      .select()
-      .from(inventoryLevels)
-      .where(
-        and(
-          eq(inventoryLevels.productId, productId),
-          eq(inventoryLevels.storageLocationId, locationId)
-        )
-      );
-    return level || undefined;
-  }
-
-  async updateInventoryLevel(productId: string, locationId: string, qty: number): Promise<InventoryLevel> {
-    const existing = await this.getInventoryLevel(productId, locationId);
-    if (existing) {
-      const [updated] = await db
-        .update(inventoryLevels)
-        .set({ 
-          onHandQty: qty,
-          updatedAt: new Date()
-        })
-        .where(eq(inventoryLevels.id, existing.id))
-        .returning();
-      return updated;
-    } else {
-      const [level] = await db
-        .insert(inventoryLevels)
-        .values({
-          productId,
-          storageLocationId: locationId,
-          onHandQty: qty,
-        })
-        .returning();
-      return level;
-    }
   }
 
   // Inventory Counts
@@ -652,12 +668,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Transfer Logs
-  async getTransferLogs(productId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]> {
+  async getTransferLogs(inventoryItemId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]> {
     let query = db.select().from(transferLogs);
     const conditions = [];
     
-    if (productId) {
-      conditions.push(eq(transferLogs.productId, productId));
+    if (inventoryItemId) {
+      conditions.push(eq(transferLogs.inventoryItemId, inventoryItemId));
     }
     if (startDate) {
       conditions.push(gte(transferLogs.transferredAt, startDate));
@@ -678,12 +694,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Waste Logs
-  async getWasteLogs(productId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]> {
+  async getWasteLogs(inventoryItemId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]> {
     let query = db.select().from(wasteLogs);
     const conditions = [];
     
-    if (productId) {
-      conditions.push(eq(wasteLogs.productId, productId));
+    if (inventoryItemId) {
+      conditions.push(eq(wasteLogs.inventoryItemId, inventoryItemId));
     }
     if (startDate) {
       conditions.push(gte(wasteLogs.wastedAt, startDate));
@@ -753,45 +769,45 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  // Product Price History
-  async getProductPriceHistory(productId: string): Promise<ProductPriceHistory[]> {
+  // Inventory Item Price History
+  async getInventoryItemPriceHistory(inventoryItemId: string): Promise<InventoryItemPriceHistory[]> {
     return db
       .select()
-      .from(productPriceHistory)
-      .where(eq(productPriceHistory.productId, productId))
-      .orderBy(productPriceHistory.effectiveAt);
+      .from(inventoryItemPriceHistory)
+      .where(eq(inventoryItemPriceHistory.inventoryItemId, inventoryItemId))
+      .orderBy(inventoryItemPriceHistory.effectiveAt);
   }
 
-  async createProductPriceHistory(insertHistory: InsertProductPriceHistory): Promise<ProductPriceHistory> {
-    const [history] = await db.insert(productPriceHistory).values(insertHistory).returning();
+  async createInventoryItemPriceHistory(insertHistory: InsertInventoryItemPriceHistory): Promise<InventoryItemPriceHistory> {
+    const [history] = await db.insert(inventoryItemPriceHistory).values(insertHistory).returning();
     return history;
   }
 
-  // Product search for count entry
-  async searchProducts(term: string): Promise<Product[]> {
+  // Inventory item search for count entry
+  async searchInventoryItems(term: string): Promise<InventoryItem[]> {
     const searchTerm = `%${term.toLowerCase()}%`;
     return db
       .select()
-      .from(products)
+      .from(inventoryItems)
       .where(
         and(
-          eq(products.active, 1)
+          eq(inventoryItems.active, 1)
         )
       );
   }
 
   // Inventory count aggregations
   async getInventoryCountAggregations(countId: string): Promise<Array<{
-    productId: string;
-    productName: string;
-    totalMicroUnits: number;
+    inventoryItemId: string;
+    inventoryItemName: string;
+    totalQty: number;
     totalValue: number;
     countLineIds: string[];
   }>> {
     return [];
   }
 
-  async getProductCountDetails(productId: string, countId: string): Promise<Array<{
+  async getInventoryItemCountDetails(inventoryItemId: string, countId: string): Promise<Array<{
     countLineId: string;
     userId: string;
     userName: string;
@@ -800,8 +816,7 @@ export class DatabaseStorage implements IStorage {
     qty: number;
     unitId: string;
     unitName: string;
-    microUnits: number;
-    costPerMicroUnit: number;
+    costPerCase: number;
     totalValue: number;
     countedAt: Date;
   }>> {
