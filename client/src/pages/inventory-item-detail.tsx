@@ -76,7 +76,7 @@ export default function InventoryItemDetail() {
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
 
   const { data: product, isLoading: productLoading } = useQuery<Product>({
-    queryKey: ["/api/products", id],
+    queryKey: ["/api/inventory-items", id],
   });
 
   const { data: units } = useQuery<Unit[]>({
@@ -92,20 +92,21 @@ export default function InventoryItemDetail() {
   });
 
   const { data: vendorProducts } = useQuery<VendorProduct[]>({
-    queryKey: ["/api/products", id, "vendor-products"],
+    queryKey: ["/api/inventory-items", id, "vendor-items"],
     enabled: !!id,
   });
 
   const updateMutation = useMutation({
     mutationFn: async (updates: Partial<Product>) => {
-      return apiRequest("PATCH", `/api/products/${id}`, updates);
+      return apiRequest("PATCH", `/api/inventory-items/${id}`, updates);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/products", id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
       toast({
-        title: "Product updated",
-        description: "The product has been successfully updated.",
+        title: "Item updated",
+        description: "The inventory item has been successfully updated.",
       });
     },
     onError: (error: Error) => {
