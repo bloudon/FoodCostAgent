@@ -6,11 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { filterUnitsBySystem } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { SystemPreferences } from "@shared/schema";
 
 type Product = {
@@ -73,6 +74,7 @@ export default function InventoryItemDetail() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [editedFields, setEditedFields] = useState<Record<string, any>>({});
+  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
 
   const { data: product, isLoading: productLoading } = useQuery<Product>({
     queryKey: ["/api/products", id],
@@ -124,11 +126,11 @@ export default function InventoryItemDetail() {
     if (field in editedFields) {
       const value = editedFields[field];
       // Validate numeric fields
-      if (["lastCost", "microUnitsPerPurchaseUnit", "parLevel", "reorderLevel"].includes(field)) {
+      if (["lastCost", "microUnitsPerPurchaseUnit", "parLevel", "reorderLevel", "yieldAmount"].includes(field)) {
         const numValue = parseFloat(value);
         if (value !== "" && !isNaN(numValue)) {
           updateMutation.mutate({ [field]: numValue });
-        } else if (value === "" && (field === "parLevel" || field === "reorderLevel")) {
+        } else if (value === "" && (field === "parLevel" || field === "reorderLevel" || field === "yieldAmount")) {
           updateMutation.mutate({ [field]: null });
         }
       } else {
@@ -141,6 +143,20 @@ export default function InventoryItemDetail() {
       });
     }
   };
+
+  const handleLocationToggle = (locationId: string) => {
+    const newLocations = selectedLocationIds.includes(locationId)
+      ? selectedLocationIds.filter(id => id !== locationId)
+      : [...selectedLocationIds, locationId];
+    setSelectedLocationIds(newLocations);
+    updateMutation.mutate({ storageLocationIds: newLocations.length > 0 ? newLocations : null });
+  };
+
+  useEffect(() => {
+    if (product?.storageLocationIds) {
+      setSelectedLocationIds(product.storageLocationIds);
+    }
+  }, [product]);
 
   const getFieldValue = (field: string, defaultValue: any) => {
     return field in editedFields ? editedFields[field] : defaultValue;
@@ -171,7 +187,7 @@ export default function InventoryItemDetail() {
   return (
     <div className="h-full overflow-auto">
       <div className="p-6 space-y-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 mb-6">
           <Button
             variant="ghost"
             size="icon"
@@ -181,15 +197,59 @@ export default function InventoryItemDetail() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">{product.name}</h1>
+            <h1 className="text-3xl font-bold">Product Details</h1>
             <p className="text-muted-foreground mt-1">
-              {product.category || "Uncategorized"} • PLU/SKU: {product.pluSku}
+              PLU/SKU: {product.pluSku}
             </p>
           </div>
           <Badge variant={product.active ? "outline" : "secondary"} className="ml-auto">
             {product.active ? "Active" : "Inactive"}
           </Badge>
         </div>
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Basic Information</CardTitle>
+            <CardDescription>Product name, category, and image</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Product Name</Label>
+              <Input
+                id="name"
+                value={getFieldValue("name", product.name)}
+                onChange={(e) => handleFieldChange("name", e.target.value)}
+                onBlur={() => handleFieldBlur("name")}
+                disabled={updateMutation.isPending}
+                data-testid="input-product-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="category">Category</Label>
+              <Input
+                id="category"
+                value={getFieldValue("category", product.category || "")}
+                onChange={(e) => handleFieldChange("category", e.target.value)}
+                onBlur={() => handleFieldBlur("category")}
+                placeholder="e.g., Dairy, Produce, Protein"
+                disabled={updateMutation.isPending}
+                data-testid="input-category"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="imageUrl">Image URL</Label>
+              <Input
+                id="imageUrl"
+                value={getFieldValue("imageUrl", product.imageUrl || "")}
+                onChange={(e) => handleFieldChange("imageUrl", e.target.value)}
+                onBlur={() => handleFieldBlur("imageUrl")}
+                placeholder="https://example.com/image.jpg"
+                disabled={updateMutation.isPending}
+                data-testid="input-image-url"
+              />
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid gap-6 md:grid-cols-2">
           <Card>
@@ -288,14 +348,42 @@ export default function InventoryItemDetail() {
                   data-testid="input-micro-units-per-purchase"
                 />
               </div>
-              {product.yieldAmount && (
-                <div className="space-y-2">
-                  <Label>Yield</Label>
-                  <div className="text-sm font-medium">
-                    {product.yieldAmount} {yieldUnit?.name || "units"}
-                  </div>
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label htmlFor="yieldAmount">Case Size (Yield Amount)</Label>
+                <Input
+                  id="yieldAmount"
+                  type="number"
+                  step="0.01"
+                  value={getFieldValue("yieldAmount", product.yieldAmount ?? "")}
+                  placeholder="Enter case size"
+                  onChange={(e) => handleFieldChange("yieldAmount", e.target.value)}
+                  onBlur={() => handleFieldBlur("yieldAmount")}
+                  disabled={updateMutation.isPending}
+                  data-testid="input-yield-amount"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="yieldUnitId">Yield Unit</Label>
+                <Select
+                  value={getFieldValue("yieldUnitId", product.yieldUnitId || "")}
+                  onValueChange={(value) => {
+                    handleFieldChange("yieldUnitId", value);
+                    handleFieldBlur("yieldUnitId");
+                  }}
+                  disabled={updateMutation.isPending}
+                >
+                  <SelectTrigger id="yieldUnitId" data-testid="select-yield-unit">
+                    <SelectValue placeholder="Select yield unit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredUnits?.map((unit) => (
+                      <SelectItem key={unit.id} value={unit.id}>
+                        {unit.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardContent>
           </Card>
 
@@ -307,22 +395,32 @@ export default function InventoryItemDetail() {
               </CardTitle>
               <CardDescription>Where this product is stored</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {product.storageLocationIds && product.storageLocationIds.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {product.storageLocationIds.map((locId) => {
-                    const location = locations?.find((l) => l.id === locId);
-                    return (
-                      <Badge key={locId} variant="outline" data-testid={`badge-location-${locId}`}>
-                        {location?.name || "Unknown"}
-                      </Badge>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No storage locations assigned</p>
-              )}
-              <div className="mt-4 space-y-2">
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                {locations && locations.length > 0 ? (
+                  locations.map((location) => (
+                    <div key={location.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`location-${location.id}`}
+                        checked={selectedLocationIds.includes(location.id)}
+                        onCheckedChange={() => handleLocationToggle(location.id)}
+                        data-testid={`checkbox-location-${location.id}`}
+                      />
+                      <Label
+                        htmlFor={`location-${location.id}`}
+                        className="text-sm font-normal cursor-pointer"
+                      >
+                        {location.name}
+                      </Label>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No storage locations configured
+                  </p>
+                )}
+              </div>
+              <div className="border-t pt-4 mt-4 space-y-2">
                 <Label htmlFor="parLevel">Par Level</Label>
                 <Input
                   id="parLevel"
