@@ -48,12 +48,14 @@ export default function Products() {
   };
 
   const getCategoryColor = (category: string | null) => {
+    // Predefined colors for common categories
     switch (category) {
       case "Protein": return "bg-red-500/10 text-red-700 dark:text-red-400";
       case "Produce": return "bg-green-500/10 text-green-700 dark:text-green-400";
       case "Dairy": return "bg-blue-500/10 text-blue-700 dark:text-blue-400";
       case "Dry/Pantry": return "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400";
-      default: return "";
+      // Default color for custom categories
+      default: return "bg-gray-500/10 text-gray-700 dark:text-gray-400";
     }
   };
 
@@ -97,6 +99,8 @@ export default function Products() {
                 <TableHead>Category</TableHead>
                 <TableHead>Storage Location(s)</TableHead>
                 <TableHead>Yield</TableHead>
+                <TableHead className="text-right">Par Level</TableHead>
+                <TableHead className="text-right">Reorder Level</TableHead>
                 <TableHead className="text-right">Last Cost</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
@@ -110,6 +114,8 @@ export default function Products() {
                     <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-28" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                   </TableRow>
@@ -141,6 +147,12 @@ export default function Products() {
                     <TableCell className="font-mono text-sm" data-testid={`text-product-yield-${product.id}`}>
                       {product.yieldAmount ? `${product.yieldAmount} ${getUnitName(product.yieldUnitId)}` : "-"}
                     </TableCell>
+                    <TableCell className="text-right font-mono text-sm" data-testid={`text-product-par-${product.id}`}>
+                      {product.parLevel ? product.parLevel.toFixed(1) : "-"}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm" data-testid={`text-product-reorder-${product.id}`}>
+                      {product.reorderLevel ? product.reorderLevel.toFixed(1) : "-"}
+                    </TableCell>
                     <TableCell className="text-right font-mono" data-testid={`text-product-cost-${product.id}`}>
                       ${product.lastCost.toFixed(4)}
                     </TableCell>
@@ -153,7 +165,7 @@ export default function Products() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground">
                     {searchQuery ? "No products match your search" : "No products found. Create your first product to get started."}
                   </TableCell>
                 </TableRow>
