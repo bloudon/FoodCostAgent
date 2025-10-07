@@ -205,7 +205,6 @@ export default function CountSession() {
                 <TableHead>Category</TableHead>
                 <TableHead className="text-right">Quantity</TableHead>
                 <TableHead>Unit</TableHead>
-                <TableHead className="text-right">Micro Units</TableHead>
                 <TableHead className="text-right">Unit Cost</TableHead>
                 <TableHead className="text-right">Total Value</TableHead>
               </TableRow>
@@ -221,7 +220,6 @@ export default function CountSession() {
                       <TableCell className="text-muted-foreground">{product?.category || '-'}</TableCell>
                       <TableCell className="text-right font-mono">{line.qty}</TableCell>
                       <TableCell>{line.unitName || '-'}</TableCell>
-                      <TableCell className="text-right font-mono">{line.derivedMicroUnits.toFixed(2)}</TableCell>
                       <TableCell className="text-right font-mono">${(product?.lastCost || 0).toFixed(4)}</TableCell>
                       <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
                     </TableRow>
@@ -229,7 +227,7 @@ export default function CountSession() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     {showEmpty ? "No items in this count" : "No items with quantities found"}
                   </TableCell>
                 </TableRow>
