@@ -1,0 +1,296 @@
+Restaurant Inventory & Recipe Costing App
+Role
+
+You are a senior full-stack engineer. Build a small, production-ready MVP with clean architecture, strong typing, and tests.
+
+Default stack (override only if the user asks):
+
+Backend: TypeScript + Node + Express, Drizzle ORM, SQLite (file DB)
+
+Frontend: React + Vite, TypeScript, Tailwind, shadcn/ui
+
+API: REST + OpenAPI (Swagger UI)
+
+Auth: simple email/password (session or JWT) with roles
+
+Tests: Vitest (frontend), Jest (backend)
+
+Objectives
+
+Manage Products, Vendors, VendorProduct cross-refs (same product from multiple vendors).
+
+Manage Units: purchase unit, case size, inner packs, micro-unit (smallest usable unit), and conversions.
+
+Manage Recipes (BOM) with nested recipes as ingredients (e.g., Pizza Dough). Track yield and waste %.
+
+Inventory Counts by Storage Location (e.g., Walk-In, Dry Storage) with easy UX: search by name, QR scan, or by region.
+
+Ingest POS/PLU/SKU sales via a streaming/ingest API to compute theoretical (ideal) usage.
+
+Compute Recipe Costs, Theoretical Usage, Actual Usage, and Variance by product and period.
+
+Support Purchasing (vendor catalogs, POs, receiving) to update on-hand and last cost.
+
+Provide reports: COGS summary, Item Variance, Recipe Cost breakdown, Price change impact.
+
+Non-Goals (MVP)
+
+No multi-tenant billing or advanced permissions.
+
+No complex accounting exports.
+
+No lot tracking or expiration dates.
+
+Core Domain & Schema (propose Drizzle schema + migrations)
+
+users(id, email, password_hash, role)
+
+storage_locations(id, name, sort_order)
+
+units(id, name, kind, to_base_ratio)
+
+kind: weight | volume | count (enforce compatible conversions)
+
+to_base_ratio: converts this unit to its base micro-unit within its kind
+
+products(id, name, category, plu_sku?, base_unit_id, micro_unit_id, micro_units_per_purchase_unit, barcode?, active)
+
+base_unit_id is the micro-unit canonical reference (e.g., gram, milliliter, each-tsp)
+
+allow unit families; prevent cross-family conversions
+
+vendors(id, name, account_number?)
+
+vendor_products(id, vendor_id, product_id, vendor_sku, purchase_unit_id, case_size, inner_pack_size?, last_price, lead_time_days?, active)
+
+case_size & inner_pack_size convert to the product’s micro-unit via conversion table
+
+recipes(id, name, yield_qty, yield_unit_id, waste_percent default 0)
+
+recipe_components(id, recipe_id, component_type, component_id, qty, unit_id)
+
+component_type: 'product' | 'recipe' (nested)
+
+component_id: product_id or recipe_id depending on type
+
+recipe_versions(id, recipe_id, version, created_at) (optional for future; MVP can keep a single current version)
+
+inventory_levels(id, product_id, storage_location_id, on_hand_micro_units, updated_at)
+
+inventory_counts(id, counted_at, storage_location_id, user_id, note?)
+
+inventory_count_lines(id, inventory_count_id, product_id, qty, unit_id, derived_micro_units)
+
+store both display qty/unit and normalized derived_micro_units
+
+purchase_orders(id, vendor_id, status, created_at, expected_date?)
+
+po_lines(id, purchase_order_id, vendor_product_id, ordered_qty, unit_id, price_each)
+
+receipts(id, purchase_order_id, received_at)
+
+receipt_lines(id, receipt_id, vendor_product_id, received_qty, unit_id, price_each, derived_micro_units)
+
+receipt updates inventory_levels and products.last_cost
+
+pos_sales(id, store_id, occurred_at)
+
+pos_sales_lines(id, pos_sales_id, plu_sku, qty_sold)
+
+menu_items(id, name, plu_sku, recipe_id, serving_size_qty, serving_unit_id)
+
+map PLU/SKU → recipe to compute theoretical usage
+
+transfers(id, product_id, from_location_id, to_location_id, qty_micro_units, occurred_at)
+
+waste_logs(id, product_id, qty_micro_units, reason, occurred_at)
+
+Units & Conversions Rules
+
+Define base micro-units per family (e.g., gram for weight, milliliter for volume, each for count).
+
+Store conversions once (units.to_base_ratio).
+
+For any displayed qty, always persist derived_micro_units for math.
+
+Example: Oregano sold by “case of 2 x 16oz containers”, used in recipes by teaspoon. Map: teaspoon → milliliter base; case → ounces → milliliter via known ratios.
+
+Key Processes
+
+Recipe Costing
+
+Cost of recipe = Σ (component micro-units needed × product last_cost per micro-unit), adjusted for waste_percent.
+
+Nested recipes: resolve recursively; cache computed cost per yield.
+
+Theoretical (Ideal) Usage
+
+From pos_sales_lines: find menu_items by PLU/SKU → linked recipe; scale recipe components by qty_sold and serving size; aggregate to product-level micro-units.
+
+Actual Usage
+
+Period actual usage (per product) = Starting On-Hand + Receipts − Ending On-Hand − Transfers Out + Transfers In − Waste Adjustments.
+
+Variance
+
+Variance (micro-units) = Actual Usage − Theoretical Usage.
+
+Report in both micro-units and cost (using last cost or moving average).
+
+Purchasing & Receiving
+
+Create PO from vendor catalog (vendor_products).
+
+Receiving converts received unit → micro-units; updates inventory_levels and products.last_cost.
+
+Inventory Counting UX
+
+Filter by Storage Location; search by name; scan QR/Barcode; quick add lines.
+
+Show product’s count unit defaults (e.g., “by case” or “by each”), but allow override; compute derived_micro_units live.
+
+POS Stream Ingest
+
+Provide /api/pos/ingest (REST) and /api/pos/stream (WebSocket).
+
+Payload: { store_id, occurred_at, lines: [{ plu_sku, qty_sold }] }.
+
+Validate unknown PLUs; queue for mapping.
+
+API (MVP)
+
+Catalog
+
+POST /api/vendors, GET /api/vendors
+
+POST /api/products, GET /api/products (search, by location availability)
+
+POST /api/vendor-products, GET /api/vendor-products?vendor_id=
+
+Units & Conversions
+
+GET /api/units, POST /api/units
+
+Recipes
+
+POST /api/recipes, GET /api/recipes/:id (expands nested BOM & computed cost)
+
+POST /api/recipes/:id/components
+
+Inventory
+
+GET /api/storage-locations
+
+GET /api/inventory?location_id=
+
+POST /api/inventory-counts with lines array
+
+PO/Receiving
+
+POST /api/purchase-orders (+ lines), GET /api/purchase-orders/:id
+
+POST /api/receipts (+ lines)
+
+POS
+
+POST /api/pos/ingest
+
+WS /api/pos/stream
+
+Reports
+
+GET /api/reports/recipe-costs?recipe_id=
+
+GET /api/reports/variance?start=YYYY-MM-DD&end=YYYY-MM-DD&product_id?&location_id?
+
+GET /api/reports/cogs-summary?start&end
+
+Frontend UX (MVP)
+
+Counts: Location selector (Walk-In, Dry Storage, etc.), search box, QR/Barcode scan, editable qty + unit with live conversion.
+
+Recipes: BOM editor, nested components, yield & waste, computed cost display.
+
+Vendors & Catalog: manage vendor SKUs and case specs.
+
+Reports: Recipe cost card, Variance table (product, theoretical, actual, variance qty, variance cost), period filter.
+
+Data Integrity & Validation
+
+Enforce unit family compatibility (no grams ↔ teaspoons without density mapping).
+
+Deny negative on-hand except via explicit adjustment reason.
+
+Soft-delete with active flags; audit updated_at.
+
+Events / Recalc Triggers
+
+On price change or receipt: recalc affected recipe costs asynchronously and cache.
+
+Nightly job: compute daily theoretical and actual usage per product; store snapshot for fast reports.
+
+Seed Data (for demo)
+
+Units: gram, kilogram, milliliter, liter, teaspoon, tablespoon, ounce (fluid), each.
+
+Locations: Walk-In, Dry Storage, Prep Table.
+
+Products: Flour (g), Yeast (g), Water (ml), Oregano (ml), Cheese (g).
+
+Vendors: Sysco, US Foods.
+
+VendorProduct examples with case & price.
+
+Recipes: Pizza Dough (nested in “Cheese Pizza”).
+
+Menu Item: Cheese Pizza → recipe “Cheese Pizza”, serving size 1 each, PLU “CZP001”.
+
+Security & Roles
+
+Roles: admin, manager, counter (counts only), viewer (reports).
+
+Protect mutating endpoints; log who counted/received.
+
+Tests (high value)
+
+Unit conversion correctness.
+
+Nested recipe costing.
+
+Theoretical usage from POS lines.
+
+Variance calc over a period with receipts and counts.
+
+API contract tests (OpenAPI validation).
+
+Deliverables
+
+Monorepo/workspace with backend (/server) and frontend (/web).
+
+Drizzle migrations + seed script.
+
+OpenAPI docs at /api/docs.
+
+Minimal but solid UI for Counts, Recipes, Vendors, Reports.
+
+Example curl/HTTPie snippets for POS ingest.
+
+README with setup steps (Replit run commands), env vars, and sample data load.
+
+Acceptance Criteria
+
+I can:
+
+Create a recipe with nested components, see computed cost.
+
+Map a PLU to a recipe, post POS sales, then view Theoretical Usage.
+
+Enter a beginning count, receive a PO, enter an ending count → see Variance by product and cost.
+
+Count items by location and via QR/Barcode.
+
+Source the same product from multiple vendors with different case specs.
+
+Bonus: first task for the AI
+
+Task 1: Scaffold the project with the default stack, create the schema/migrations above, load seed data, implement /api/pos/ingest, /api/recipes/:id (with computed cost), /api/reports/variance, and the Counts screen (location filter, search, QR input). Add a script to simulate POS sales for 7 days and show a working Variance report.
