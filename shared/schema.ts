@@ -55,6 +55,18 @@ export const insertUnitSchema = createInsertSchema(units).omit({ id: true });
 export type InsertUnit = z.infer<typeof insertUnitSchema>;
 export type Unit = typeof units.$inferSelect;
 
+// Unit Conversions (for common conversions like 1 pound = 16 oz)
+export const unitConversions = pgTable("unit_conversions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromUnitId: varchar("from_unit_id").notNull(),
+  toUnitId: varchar("to_unit_id").notNull(),
+  conversionFactor: real("conversion_factor").notNull(), // how many toUnits in 1 fromUnit
+});
+
+export const insertUnitConversionSchema = createInsertSchema(unitConversions).omit({ id: true });
+export type InsertUnitConversion = z.infer<typeof insertUnitConversionSchema>;
+export type UnitConversion = typeof unitConversions.$inferSelect;
+
 // Products
 export const products = pgTable("products", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
