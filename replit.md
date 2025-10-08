@@ -54,6 +54,14 @@ Preferred communication style: Simple, everyday language.
     - API routes: POST/PATCH/DELETE /api/vendor-items with Zod validation
     - Proper cache invalidation using TanStack Query
     - Toast notifications for success/error feedback
+  - **Inventory Count Sessions** (October 2025):
+    - Dashboard-style filter cards showing aggregated values by category and location
+    - Each card displays item count and total value for that category/location
+    - Clickable filter cards to filter count lines table
+    - Toggle behavior: click to filter, click again to clear
+    - Both category and location filters can be active simultaneously
+    - Handles "Uncategorized" items and items without locations using sentinel values
+    - Count sessions do NOT automatically update inventory levels (recording only)
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
