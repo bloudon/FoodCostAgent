@@ -26,6 +26,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -144,9 +145,9 @@ export default function CountSession() {
     mutationFn: async (data: any) => {
       return apiRequest("PATCH", `/api/inventory-items/${editingItem.id}`, data);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
       toast({
         title: "Success",
         description: "Item updated successfully",
@@ -165,7 +166,7 @@ export default function CountSession() {
   const handleSaveItem = () => {
     const updates: any = {
       name: itemEditForm.name,
-      categoryId: itemEditForm.categoryId || null,
+      categoryId: (itemEditForm.categoryId && itemEditForm.categoryId !== "none") ? itemEditForm.categoryId : null,
       pricePerUnit: parseFloat(itemEditForm.pricePerUnit),
       caseSize: parseFloat(itemEditForm.caseSize),
       parLevel: itemEditForm.parLevel ? parseFloat(itemEditForm.parLevel) : null,
@@ -537,6 +538,9 @@ export default function CountSession() {
         <DialogContent className="max-w-2xl" data-testid="dialog-edit-item">
           <DialogHeader>
             <DialogTitle>Edit Inventory Item</DialogTitle>
+            <DialogDescription>
+              Update the details for this inventory item. Required fields are marked with an asterisk (*).
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -552,14 +556,14 @@ export default function CountSession() {
             <div className="space-y-2">
               <Label htmlFor="item-category">Category</Label>
               <Select
-                value={itemEditForm.categoryId}
+                value={itemEditForm.categoryId || undefined}
                 onValueChange={(value) => setItemEditForm({ ...itemEditForm, categoryId: value })}
               >
                 <SelectTrigger id="item-category" data-testid="select-item-category">
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No category</SelectItem>
+                  <SelectItem value="none">No category</SelectItem>
                   {categoriesData?.map((cat: any) => (
                     <SelectItem key={cat.id} value={cat.id}>
                       {cat.name}
