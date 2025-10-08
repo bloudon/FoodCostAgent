@@ -42,6 +42,17 @@ export const insertStorageLocationSchema = createInsertSchema(storageLocations).
 export type InsertStorageLocation = z.infer<typeof insertStorageLocationSchema>;
 export type StorageLocation = typeof storageLocations.$inferSelect;
 
+// Categories
+export const categories = pgTable("categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export const insertCategorySchema = createInsertSchema(categories).omit({ id: true });
+export type InsertCategory = z.infer<typeof insertCategorySchema>;
+export type Category = typeof categories.$inferSelect;
+
 // Units
 export const units = pgTable("units", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -71,7 +82,7 @@ export type UnitConversion = typeof unitConversions.$inferSelect;
 export const inventoryItems = pgTable("inventory_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
-  category: text("category"), // Custom category entered by user
+  categoryId: varchar("category_id"), // Reference to categories table
   pluSku: text("plu_sku"),
   unitId: varchar("unit_id").notNull(), // unit reference (pounds by default)
   caseSize: real("case_size").notNull().default(20), // case size in base units
@@ -88,7 +99,7 @@ export const inventoryItems = pgTable("inventory_items", {
 });
 
 export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({ id: true, updatedAt: true }).extend({
-  category: z.string().optional(),
+  categoryId: z.string().optional(),
 });
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
