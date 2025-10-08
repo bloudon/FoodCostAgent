@@ -285,31 +285,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     const locations = await storage.getStorageLocations();
     const units = await storage.getUnits();
+    const categories = await storage.getCategories();
     
     const enriched = items.map((item) => {
       const location = locations.find((l) => l.id === item.storageLocationId);
       const unit = units.find((u) => u.id === item.unitId);
+      const category = item.categoryId ? categories.find((c) => c.id === item.categoryId) : null;
       
       return {
         id: item.id,
-        productId: item.id,
+        name: item.name,
+        categoryId: item.categoryId,
+        category: category?.name || null,
+        pluSku: item.pluSku,
+        pricePerUnit: item.pricePerUnit,
+        unitId: item.unitId,
+        caseSize: item.caseSize,
+        imageUrl: item.imageUrl,
+        parLevel: item.parLevel,
+        reorderLevel: item.reorderLevel,
         storageLocationId: item.storageLocationId,
         onHandQty: item.onHandQty,
-        product: {
-          id: item.id,
-          name: item.name,
-          category: item.category,
-          pluSku: item.pluSku,
-          pricePerUnit: item.pricePerUnit,
-          lastCost: item.pricePerUnit * item.caseSize, // derived: case cost
-          unitId: item.unitId,
-          caseSize: item.caseSize,
-          imageUrl: item.imageUrl,
-          parLevel: item.parLevel,
-          reorderLevel: item.reorderLevel,
-        },
-        location: location || null,
-        unit: unit || null,
+        location: location || { id: item.storageLocationId, name: '' },
+        unit: unit || { id: item.unitId, name: '', abbreviation: '' },
       };
     });
     

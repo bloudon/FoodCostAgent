@@ -25,6 +25,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 type InventoryItemDisplay = {
   id: string;
   name: string;
+  categoryId: string | null;
   category: string | null;
   pluSku: string;
   pricePerUnit: number;
