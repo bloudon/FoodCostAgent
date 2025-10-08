@@ -6,6 +6,11 @@ This project is a comprehensive inventory management and recipe costing system t
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
+### Inventory Item Configuration
+- **Default Unit of Measure**: Pound should be the default unit when creating new inventory items
+- **Yield Field**: Yield is stored as a percentage value (0-100), not a separate yield amount + unit
+- **Storage Location**: Each inventory item has ONE storage location (singular, not plural)
+
 ## System Architecture
 
 ### Frontend
@@ -29,7 +34,15 @@ Preferred communication style: Simple, everyday language.
 - **Primary Database**: PostgreSQL (Neon Serverless) with relational schema, UUIDs, and timestamp tracking.
 - **ORM**: Drizzle ORM for type-safe queries, schema definitions, and migration system.
 - **Data Seeding**: Automated seed data for pizza restaurant operations, including inventory items (per location), recipes, units, and storage locations.
-- **Recent Major Refactoring**: Replaced `products` table with `inventoryItems` table (location-specific). Removed redundant `inventoryLevels` table. Updated all foreign key references from `productId` to `inventoryItemId`. Renamed `productPriceHistory` to `inventoryItemPriceHistory`, `vendorProducts` to `vendorItems`. Recipe components now use `inventory_item` type instead of `product`.
+- **Recent Major Refactoring**: 
+  - Replaced `products` table with `inventoryItems` table (location-specific)
+  - Removed redundant `inventoryLevels` table
+  - Updated all foreign key references from `productId` to `inventoryItemId`
+  - Renamed `productPriceHistory` to `inventoryItemPriceHistory`, `vendorProducts` to `vendorItems`
+  - Recipe components now use `inventory_item` type instead of `product`
+  - Removed Products pages and navigation - fully replaced with Inventory Items
+  - Added `yieldPercent` field to inventory items (percentage 0-100)
+  - Changed storage location from array to singular field (`storageLocationId`)
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
