@@ -57,8 +57,6 @@ export default function CountSession() {
     queryKey: ["/api/units"],
   });
 
-  const location = storageLocations?.find(l => l.id === count?.storageLocationId);
-
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; qty: number }) => {
       return apiRequest("PATCH", `/api/inventory-count-lines/${data.id}`, { qty: data.qty });
@@ -195,10 +193,10 @@ export default function CountSession() {
             Count Session Details
           </h1>
           <p className="text-muted-foreground mt-2">
-            {location?.name} - {countDate?.toLocaleDateString()} {countDate?.toLocaleTimeString()}
+            {countDate?.toLocaleDateString()} {countDate?.toLocaleTimeString()}
           </p>
           <p className="text-sm text-muted-foreground mt-1">
-            Click on a quantity to edit. All active items are pre-loaded.
+            Click on a quantity to edit. Use filters below to view items by category or location.
           </p>
         </div>
       </div>
