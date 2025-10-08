@@ -6,11 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { filterUnitsBySystem } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { SystemPreferences } from "@shared/schema";
 
 type Product = {
@@ -71,6 +72,7 @@ export default function InventoryItemDetail() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [editedFields, setEditedFields] = useState<Record<string, any>>({});
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
 
   const { data: product, isLoading: productLoading } = useQuery<Product>({
     queryKey: ["/api/inventory-items", id],
@@ -88,17 +90,29 @@ export default function InventoryItemDetail() {
     queryKey: ["/api/storage-locations"],
   });
 
+  const { data: itemLocations } = useQuery<{ id: string; inventoryItemId: string; storageLocationId: string; isPrimary: number }[]>({
+    queryKey: ["/api/inventory-items", id, "locations"],
+    enabled: !!id,
+  });
+
   const { data: vendorProducts } = useQuery<VendorProduct[]>({
     queryKey: ["/api/inventory-items", id, "vendor-items"],
     enabled: !!id,
   });
 
+  useEffect(() => {
+    if (itemLocations) {
+      setSelectedLocations(itemLocations.map(loc => loc.storageLocationId));
+    }
+  }, [itemLocations]);
+
   const updateMutation = useMutation({
-    mutationFn: async (updates: Partial<Product>) => {
+    mutationFn: async (updates: Partial<Product> & { locationIds?: string[] }) => {
       return apiRequest("PATCH", `/api/inventory-items/${id}`, updates);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "locations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
       toast({
         title: "Item updated",
@@ -143,6 +157,34 @@ export default function InventoryItemDetail() {
 
   const getFieldValue = (field: string, defaultValue: any) => {
     return field in editedFields ? editedFields[field] : defaultValue;
+  };
+
+  const handleLocationToggle = (locationId: string) => {
+    const newLocations = selectedLocations.includes(locationId)
+      ? selectedLocations.filter(id => id !== locationId)
+      : [...selectedLocations, locationId];
+    
+    setSelectedLocations(newLocations);
+    
+    // If no locations selected, don't update
+    if (newLocations.length === 0) {
+      toast({
+        title: "At least one location required",
+        description: "An inventory item must have at least one storage location.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Update the mutation with new locations
+    const primaryLocationId = newLocations.includes(product!.storageLocationId)
+      ? product!.storageLocationId
+      : newLocations[0];
+    
+    updateMutation.mutate({
+      locationIds: newLocations,
+      storageLocationId: primaryLocationId,
+    });
   };
 
   if (productLoading) {
@@ -343,26 +385,30 @@ export default function InventoryItemDetail() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="storageLocationId">Storage Location</Label>
-                <Select
-                  value={getFieldValue("storageLocationId", product.storageLocationId)}
-                  onValueChange={(value) => {
-                    handleFieldChange("storageLocationId", value);
-                    handleFieldBlur("storageLocationId");
-                  }}
-                  disabled={updateMutation.isPending}
-                >
-                  <SelectTrigger id="storageLocationId" data-testid="select-storage-location">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {locations?.map((loc) => (
-                      <SelectItem key={loc.id} value={loc.id}>
+                <Label>Storage Locations</Label>
+                <p className="text-sm text-muted-foreground">Select all locations where this item is stored</p>
+                <div className="space-y-2 border rounded-md p-3">
+                  {locations?.map((loc) => (
+                    <div key={loc.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`location-${loc.id}`}
+                        checked={selectedLocations.includes(loc.id)}
+                        onCheckedChange={() => handleLocationToggle(loc.id)}
+                        disabled={updateMutation.isPending}
+                        data-testid={`checkbox-location-${loc.id}`}
+                      />
+                      <Label 
+                        htmlFor={`location-${loc.id}`}
+                        className="text-sm font-normal cursor-pointer flex-1"
+                      >
                         {loc.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                        {loc.id === product.storageLocationId && (
+                          <Badge variant="outline" className="ml-2">Primary</Badge>
+                        )}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="parLevel">Par Level</Label>
