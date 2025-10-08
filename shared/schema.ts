@@ -196,12 +196,15 @@ export const inventoryCountLines = pgTable("inventory_count_lines", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   inventoryCountId: varchar("inventory_count_id").notNull(),
   inventoryItemId: varchar("inventory_item_id").notNull(),
-  qty: real("qty").notNull(), // quantity in base units
+  qty: real("qty").notNull().default(0), // quantity in base units
   unitId: varchar("unit_id").notNull(),
+  userId: varchar("user_id"),
+  countedAt: timestamp("counted_at").defaultNow(),
 });
 
 export const insertInventoryCountLineSchema = createInsertSchema(inventoryCountLines).omit({ 
-  id: true
+  id: true,
+  countedAt: true
 });
 export type InsertInventoryCountLine = z.infer<typeof insertInventoryCountLineSchema>;
 export type InventoryCountLine = typeof inventoryCountLines.$inferSelect;
