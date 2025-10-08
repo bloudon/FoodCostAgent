@@ -82,8 +82,8 @@ export default function InventoryItems() {
   });
 
   const filteredItems = inventoryItems?.filter((item) => {
-    const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase()) ||
-      item.pluSku.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase()) ||
+      item.pluSku?.toLowerCase().includes(search.toLowerCase());
     const matchesLocation = selectedLocation === "all" || item.storageLocationId === selectedLocation;
     return matchesSearch && matchesLocation;
   }) || [];

@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system tailored for pizza restaurants and similar food service businesses. It enables management of products, vendors, recipes, inventory, and purchase orders. Key capabilities include complex unit conversions, nested recipes, real-time POS sales data integration for theoretical usage calculations, and detailed variance reporting between theoretical and actual usage. The business vision is to provide a robust tool that enhances operational efficiency, reduces waste, and improves profitability for food service establishments.
+This project is a comprehensive inventory management and recipe costing system tailored for pizza restaurants and similar food service businesses. It enables management of inventory items, vendors, recipes, inventory, and purchase orders. Key capabilities include complex unit conversions, nested recipes, real-time POS sales data integration for theoretical usage calculations, and detailed variance reporting between theoretical and actual usage. The business vision is to provide a robust tool that enhances operational efficiency, reduces waste, and improves profitability for food service establishments.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -63,6 +63,13 @@ Preferred communication style: Simple, everyday language.
     - **Toggle Behavior**: Click to filter, click again to clear; both filters can be active simultaneously
     - **Empty Counts**: "Show empty counts" toggle defaults to false (hides items with qty=0)
     - Handles "Uncategorized" items and items without locations using sentinel values
+  - **Terminology Standardization** (October 2025):
+    - Completed comprehensive refactoring from "product" to "inventory item" terminology throughout entire codebase
+    - Updated all server routes to use inventory item storage methods
+    - Updated all frontend pages, UI text, placeholders, and labels
+    - Recipe components now consistently use `inventory_item` componentType
+    - All user-facing text standardized: "Search items...", "Variance by Item", "Compare by item"
+    - Verified with end-to-end testing and architect review
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
