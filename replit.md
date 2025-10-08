@@ -55,13 +55,14 @@ Preferred communication style: Simple, everyday language.
     - Proper cache invalidation using TanStack Query
     - Toast notifications for success/error feedback
   - **Inventory Count Sessions** (October 2025):
-    - Dashboard-style filter cards showing aggregated values by category and location
-    - Each card displays item count and total value for that category/location
-    - Clickable filter cards to filter count lines table
-    - Toggle behavior: click to filter, click again to clear
-    - Both category and location filters can be active simultaneously
+    - **Auto-Population**: All active inventory items are automatically added as count lines when a session is created (qty=0)
+    - **Inline Editing**: Click any quantity to edit inline with Save/Cancel buttons (no add/edit/delete dialogs)
+    - **Schema**: Count lines include userId and countedAt timestamp for audit trail
+    - **Recording Only**: Count sessions do NOT automatically update inventory levels
+    - **Dashboard Filtering**: Filter cards show aggregated values by category and location
+    - **Toggle Behavior**: Click to filter, click again to clear; both filters can be active simultaneously
+    - **Empty Counts**: "Show empty counts" toggle defaults to false (hides items with qty=0)
     - Handles "Uncategorized" items and items without locations using sentinel values
-    - Count sessions do NOT automatically update inventory levels (recording only)
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
