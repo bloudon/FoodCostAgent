@@ -21,6 +21,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -34,6 +41,15 @@ export default function CountSession() {
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [editingQty, setEditingQty] = useState<string>("");
+  const [editingItem, setEditingItem] = useState<any | null>(null);
+  const [itemEditForm, setItemEditForm] = useState({
+    name: "",
+    categoryId: "",
+    pricePerUnit: "",
+    caseSize: "",
+    parLevel: "",
+    reorderLevel: "",
+  });
   const { toast } = useToast();
 
   const { data: count, isLoading: countLoading } = useQuery<any>({
@@ -55,6 +71,10 @@ export default function CountSession() {
 
   const { data: units } = useQuery<any[]>({
     queryKey: ["/api/units"],
+  });
+
+  const { data: categoriesData } = useQuery<any[]>({
+    queryKey: ["/api/categories"],
   });
 
   const updateMutation = useMutation({
@@ -94,6 +114,74 @@ export default function CountSession() {
   const handleCancelEdit = () => {
     setEditingLineId(null);
     setEditingQty("");
+  };
+
+  const handleOpenItemEdit = (item: any) => {
+    setEditingItem(item);
+    setItemEditForm({
+      name: item.name || "",
+      categoryId: item.categoryId || "",
+      pricePerUnit: item.pricePerUnit?.toString() || "",
+      caseSize: item.caseSize?.toString() || "",
+      parLevel: item.parLevel?.toString() || "",
+      reorderLevel: item.reorderLevel?.toString() || "",
+    });
+  };
+
+  const handleCloseItemEdit = () => {
+    setEditingItem(null);
+    setItemEditForm({
+      name: "",
+      categoryId: "",
+      pricePerUnit: "",
+      caseSize: "",
+      parLevel: "",
+      reorderLevel: "",
+    });
+  };
+
+  const updateItemMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return apiRequest("PATCH", `/api/inventory-items/${editingItem.id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
+      toast({
+        title: "Success",
+        description: "Item updated successfully",
+      });
+      handleCloseItemEdit();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update item",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSaveItem = () => {
+    const updates: any = {
+      name: itemEditForm.name,
+      categoryId: itemEditForm.categoryId || null,
+      pricePerUnit: parseFloat(itemEditForm.pricePerUnit),
+      caseSize: parseFloat(itemEditForm.caseSize),
+      parLevel: itemEditForm.parLevel ? parseFloat(itemEditForm.parLevel) : null,
+      reorderLevel: itemEditForm.reorderLevel ? parseFloat(itemEditForm.reorderLevel) : null,
+    };
+
+    if (!updates.name || isNaN(updates.pricePerUnit) || isNaN(updates.caseSize)) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    updateItemMutation.mutate(updates);
   };
   
   // Calculate category totals using captured unit cost
@@ -371,7 +459,15 @@ export default function CountSession() {
                   const value = line.qty * (line.unitCost || 0);
                   return (
                     <TableRow key={line.id} data-testid={`row-line-${line.id}`}>
-                      <TableCell className="font-medium">{item?.name || 'Unknown'}</TableCell>
+                      <TableCell className="font-medium">
+                        <button
+                          onClick={() => handleOpenItemEdit(item)}
+                          className="hover:underline text-left cursor-pointer"
+                          data-testid={`button-edit-item-${line.id}`}
+                        >
+                          {item?.name || 'Unknown'}
+                        </button>
+                      </TableCell>
                       <TableCell className="text-muted-foreground">{item?.category || '-'}</TableCell>
                       <TableCell className="text-right font-mono">
                         {editingLineId === line.id ? (
@@ -436,6 +532,111 @@ export default function CountSession() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={!!editingItem} onOpenChange={(open) => !open && handleCloseItemEdit()}>
+        <DialogContent className="max-w-2xl" data-testid="dialog-edit-item">
+          <DialogHeader>
+            <DialogTitle>Edit Inventory Item</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="item-name">Name *</Label>
+              <Input
+                id="item-name"
+                value={itemEditForm.name}
+                onChange={(e) => setItemEditForm({ ...itemEditForm, name: e.target.value })}
+                data-testid="input-item-name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="item-category">Category</Label>
+              <Select
+                value={itemEditForm.categoryId}
+                onValueChange={(value) => setItemEditForm({ ...itemEditForm, categoryId: value })}
+              >
+                <SelectTrigger id="item-category" data-testid="select-item-category">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">No category</SelectItem>
+                  {categoriesData?.map((cat: any) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="item-price">Price Per Unit *</Label>
+                <Input
+                  id="item-price"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.pricePerUnit}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, pricePerUnit: e.target.value })}
+                  data-testid="input-item-price"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="item-case-size">Case Size *</Label>
+                <Input
+                  id="item-case-size"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.caseSize}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, caseSize: e.target.value })}
+                  data-testid="input-item-case-size"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="item-par-level">Par Level</Label>
+                <Input
+                  id="item-par-level"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.parLevel}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, parLevel: e.target.value })}
+                  data-testid="input-item-par-level"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="item-reorder-level">Reorder Level</Label>
+                <Input
+                  id="item-reorder-level"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.reorderLevel}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, reorderLevel: e.target.value })}
+                  data-testid="input-item-reorder-level"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleCloseItemEdit}
+              data-testid="button-cancel-item"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveItem}
+              disabled={updateItemMutation.isPending}
+              data-testid="button-save-item"
+            >
+              {updateItemMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
