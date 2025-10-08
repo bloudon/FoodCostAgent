@@ -19,8 +19,6 @@ import InventoryItems from "@/pages/inventory-items";
 import InventoryItemDetail from "@/pages/inventory-item-detail";
 import Recipes from "@/pages/recipes";
 import RecipeDetail from "@/pages/recipe-detail";
-import Products from "@/pages/products";
-import AddProduct from "@/pages/add-product";
 import UnitConversions from "@/pages/unit-conversions";
 import Vendors from "@/pages/vendors";
 import PurchaseOrders from "@/pages/purchase-orders";
@@ -81,14 +79,11 @@ function ProtectedLayout() {
               <Route path="/" component={Dashboard} />
               <Route path="/inventory-items" component={InventoryItems} />
               <Route path="/inventory-items/:id" component={InventoryItemDetail} />
-              <Route path="/products/:id" component={InventoryItemDetail} />
               <Route path="/inventory-sessions" component={InventorySessions} />
               <Route path="/count/:id" component={CountSession} />
               <Route path="/item-count/:id" component={ItemCount} />
               <Route path="/recipes/:id" component={RecipeDetail} />
               <Route path="/recipes" component={Recipes} />
-              <Route path="/products/new" component={AddProduct} />
-              <Route path="/products" component={Products} />
               <Route path="/vendors" component={Vendors} />
               <Route path="/purchase-orders" component={PurchaseOrders} />
               <Route path="/receiving" component={Receiving} />

@@ -51,11 +51,6 @@ const menuItems = [
     icon: ChefHat,
   },
   {
-    title: "Products",
-    url: "/products",
-    icon: Package,
-  },
-  {
     title: "Vendors",
     url: "/vendors",
     icon: Users,

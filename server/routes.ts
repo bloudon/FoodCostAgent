@@ -511,6 +511,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ LEGACY PRODUCT ENDPOINTS ============
+  // Legacy endpoint - returns aggregated inventory items as "products"
+  app.get("/api/products", async (req, res) => {
+    const aggregated = await storage.getInventoryItemsAggregated();
+    res.json(aggregated);
+  });
+
   // ============ INVENTORY ============
   // Legacy endpoint - redirects to inventory items
   app.get("/api/inventory", async (req, res) => {

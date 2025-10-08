@@ -115,7 +115,7 @@ export default function InventoryItems() {
               <span className="text-2xl font-bold">${totalValue.toFixed(2)}</span>
             </div>
             <Button asChild data-testid="button-add-item">
-              <Link href="/products/new">
+              <Link href="/inventory-items/new">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Item
               </Link>
