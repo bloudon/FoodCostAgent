@@ -86,12 +86,13 @@ export default function InventoryItemCreate() {
         barcode: barcode.trim() || null,
         lastCost: parseFloat(lastCost) || 0,
         storageLocationId: primaryLocationId,
-        yieldPercent: yieldPercent ? parseFloat(yieldPercent) : null,
-        parLevel: parLevel ? parseFloat(parLevel) : null,
-        reorderLevel: reorderLevel ? parseFloat(reorderLevel) : null,
+        yieldPercent: yieldPercent.trim() !== "" ? parseFloat(yieldPercent.trim()) : null,
+        parLevel: parLevel.trim() !== "" ? parseFloat(parLevel.trim()) : null,
+        reorderLevel: reorderLevel.trim() !== "" ? parseFloat(reorderLevel.trim()) : null,
         locationIds: selectedLocations,
       };
-      return apiRequest("POST", "/api/inventory-items", data);
+      const response = await apiRequest("POST", "/api/inventory-items", data);
+      return response.json();
     },
     onSuccess: (newItem: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
