@@ -68,6 +68,7 @@ export default function CountSession() {
   const countId = params.id;
   const [showEmpty, setShowEmpty] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -231,6 +232,22 @@ export default function CountSession() {
     return acc;
   }, {}) || {};
 
+  // Calculate location totals
+  const locationTotals = countLines?.reduce((acc: any, line) => {
+    const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
+    const locationId = item?.storageLocationId;
+    const locationName = storageLocations?.find(l => l.id === locationId)?.name || "Unknown Location";
+    const value = line.qty * (item?.lastCost || 0);
+    
+    if (!acc[locationId]) {
+      acc[locationId] = { name: locationName, count: 0, value: 0, items: 0 };
+    }
+    acc[locationId].count += line.qty;
+    acc[locationId].value += value;
+    acc[locationId].items += 1;
+    return acc;
+  }, {}) || {};
+
   const totalValue = countLines?.reduce((sum, line) => {
     const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
     return sum + (line.qty * (item?.lastCost || 0));
@@ -243,7 +260,7 @@ export default function CountSession() {
     inventoryItems?.map((p: any) => p.category).filter(Boolean) || []
   )).sort();
 
-  // Filter lines based on toggle and category
+  // Filter lines based on toggle, category, and location
   let filteredLines = countLines || [];
   
   if (!showEmpty) {
@@ -254,6 +271,13 @@ export default function CountSession() {
     filteredLines = filteredLines.filter(line => {
       const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
       return item?.category === selectedCategory;
+    });
+  }
+  
+  if (selectedLocation !== "all") {
+    filteredLines = filteredLines.filter(line => {
+      const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
+      return item?.storageLocationId === selectedLocation;
     });
   }
 
@@ -350,17 +374,55 @@ export default function CountSession() {
       {/* Category Totals */}
       <Card className="mb-8">
         <CardHeader>
-          <CardTitle>Category Breakdown</CardTitle>
+          <CardTitle>Filter by Category</CardTitle>
+          <p className="text-sm text-muted-foreground">Click a category to filter items below</p>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {Object.entries(categoryTotals).map(([category, data]: [string, any]) => (
               <div 
                 key={category} 
-                className="border rounded-lg p-4 hover-elevate"
+                className={`border rounded-lg p-4 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
+                  selectedCategory === category ? 'bg-accent border-accent-border' : ''
+                }`}
+                onClick={() => setSelectedCategory(selectedCategory === category ? "all" : category)}
                 data-testid={`card-category-${category.toLowerCase().replace(/\s+/g, '-')}`}
               >
                 <div className="font-semibold mb-2">{category}</div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Items:</span>
+                    <span className="font-mono">{data.items}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Value:</span>
+                    <span className="font-mono font-semibold">${data.value.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Location Totals */}
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle>Filter by Location</CardTitle>
+          <p className="text-sm text-muted-foreground">Click a location to filter items below</p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {Object.entries(locationTotals).map(([locationId, data]: [string, any]) => (
+              <div 
+                key={locationId} 
+                className={`border rounded-lg p-4 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
+                  selectedLocation === locationId ? 'bg-accent border-accent-border' : ''
+                }`}
+                onClick={() => setSelectedLocation(selectedLocation === locationId ? "all" : locationId)}
+                data-testid={`card-location-${data.name.toLowerCase().replace(/\s+/g, '-')}`}
+              >
+                <div className="font-semibold mb-2">{data.name}</div>
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Items:</span>
