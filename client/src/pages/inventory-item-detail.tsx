@@ -35,7 +35,7 @@ import type { SystemPreferences } from "@shared/schema";
 type InventoryItem = {
   id: string;
   name: string;
-  category: string | null;
+  categoryId: string | null;
   pluSku: string;
   unitId: string;
   barcode: string | null;
@@ -58,6 +58,12 @@ type Unit = {
 };
 
 type StorageLocation = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
+type Category = {
   id: string;
   name: string;
   sortOrder: number;
@@ -127,6 +133,10 @@ export default function InventoryItemDetail() {
 
   const { data: locations } = useQuery<StorageLocation[]>({
     queryKey: ["/api/storage-locations"],
+  });
+
+  const { data: categories } = useQuery<Category[]>({
+    queryKey: ["/api/categories"],
   });
 
   const { data: itemLocations } = useQuery<{ id: string; inventoryItemId: string; storageLocationId: string; isPrimary: number }[]>({
@@ -416,16 +426,26 @@ export default function InventoryItemDetail() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="category">Category</Label>
-              <Input
-                id="category"
-                value={getFieldValue("category", item.category || "")}
-                onChange={(e) => handleFieldChange("category", e.target.value)}
-                onBlur={() => handleFieldBlur("category")}
-                placeholder="e.g., Dairy, Produce, Protein"
+              <Label htmlFor="categoryId">Category</Label>
+              <Select 
+                value={getFieldValue("categoryId", item.categoryId || "")} 
+                onValueChange={(value) => {
+                  handleFieldChange("categoryId", value);
+                  handleFieldBlur("categoryId");
+                }}
                 disabled={updateMutation.isPending}
-                data-testid="input-category"
-              />
+              >
+                <SelectTrigger data-testid="select-category">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories?.map((category) => (
+                    <SelectItem key={category.id} value={category.id} data-testid={`option-category-${category.id}`}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="imageUrl">Image URL</Label>

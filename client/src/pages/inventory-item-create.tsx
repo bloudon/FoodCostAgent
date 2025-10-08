@@ -27,12 +27,18 @@ type StorageLocation = {
   sortOrder: number;
 };
 
+type Category = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
 export default function InventoryItemCreate() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("");
+  const [categoryId, setCategoryId] = useState("");
   const [pluSku, setPluSku] = useState("");
   const [unitId, setUnitId] = useState("");
   const [caseSize, setCaseSize] = useState("20");
@@ -54,6 +60,10 @@ export default function InventoryItemCreate() {
 
   const { data: locations } = useQuery<StorageLocation[]>({
     queryKey: ["/api/storage-locations"],
+  });
+
+  const { data: categories } = useQuery<Category[]>({
+    queryKey: ["/api/categories"],
   });
 
   // Set default unit to Pound when units are loaded
@@ -79,7 +89,7 @@ export default function InventoryItemCreate() {
     mutationFn: async () => {
       const data = {
         name: name.trim(),
-        category: category.trim() || null,
+        categoryId: categoryId || null,
         pluSku: pluSku.trim() || null,
         unitId,
         caseSize: parseFloat(caseSize) || 20,
@@ -204,14 +214,19 @@ export default function InventoryItemCreate() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
-                <Input
-                  id="category"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  placeholder="e.g., Dairy"
-                  data-testid="input-category"
-                />
+                <Label htmlFor="categoryId">Category</Label>
+                <Select value={categoryId} onValueChange={setCategoryId}>
+                  <SelectTrigger data-testid="select-category">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories?.map((category) => (
+                      <SelectItem key={category.id} value={category.id} data-testid={`option-category-${category.id}`}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
