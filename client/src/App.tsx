@@ -1,4 +1,5 @@
 import { Switch, Route, useLocation } from "wouter";
+import { useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -33,6 +34,13 @@ function ProtectedLayout() {
   const { user, isLoading, logout } = useAuth();
   const [location, setLocation] = useLocation();
 
+  // Use useEffect for navigation to avoid setState during render
+  useEffect(() => {
+    if (!isLoading && !user && location !== "/login") {
+      setLocation("/login");
+    }
+  }, [isLoading, user, location, setLocation]);
+
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -44,7 +52,6 @@ function ProtectedLayout() {
   }
 
   if (!user) {
-    setLocation("/login");
     return null;
   }
 

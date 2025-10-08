@@ -181,7 +181,7 @@ export default function Dashboard() {
                     <p className="font-medium font-mono" data-testid="text-recent-count-value">
                       ${recentCountLines?.reduce((sum, line) => {
                         const item = inventoryItems?.find(i => i.id === line.inventoryItemId);
-                        return sum + (line.derivedMicroUnits * (item?.lastCost || 0));
+                        return sum + (line.derivedMicroUnits * (item?.pricePerUnit || 0));
                       }, 0).toFixed(2) || "0.00"}
                     </p>
                   </div>

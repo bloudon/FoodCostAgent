@@ -27,7 +27,7 @@ type InventoryItemDisplay = {
   name: string;
   category: string | null;
   pluSku: string;
-  lastCost: number;
+  pricePerUnit: number;
   unitId: string;
   caseSize: number;
   imageUrl: string | null;
@@ -89,8 +89,7 @@ export default function InventoryItems() {
   }) || [];
 
   const totalValue = filteredItems.reduce((sum, item) => {
-    const costPerPound = item.lastCost / (item.caseSize || 1);
-    return sum + (item.onHandQty * costPerPound);
+    return sum + (item.onHandQty * item.pricePerUnit);
   }, 0);
 
   return (
@@ -176,8 +175,7 @@ export default function InventoryItems() {
               <TableBody>
                 {filteredItems.map((item) => {
                   const quantity = item.onHandQty;
-                  const costPerPound = item.lastCost / (item.caseSize || 1);
-                  const totalValue = quantity * costPerPound;
+                  const totalValue = quantity * item.pricePerUnit;
                   const inventoryStatus = getInventoryStatus(quantity, item.parLevel, item.reorderLevel);
 
                   return (
@@ -229,7 +227,7 @@ export default function InventoryItems() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        ${item.lastCost.toFixed(4)}
+                        ${item.pricePerUnit.toFixed(4)}
                       </TableCell>
                       <TableCell className="text-right font-mono font-semibold">
                         ${totalValue.toFixed(2)}
