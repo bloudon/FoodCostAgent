@@ -40,7 +40,7 @@ type InventoryItem = {
   unitId: string;
   barcode: string | null;
   active: number;
-  lastCost: number;
+  pricePerUnit: number;
   caseSize: number;
   storageLocationId: string;
   yieldPercent: number | null;
@@ -179,7 +179,7 @@ export default function InventoryItemDetail() {
     if (field in editedFields) {
       const value = editedFields[field];
       // Validate numeric fields
-      if (["lastCost", "caseSize", "parLevel", "reorderLevel", "yieldPercent"].includes(field)) {
+      if (["pricePerUnit", "caseSize", "parLevel", "reorderLevel", "yieldPercent"].includes(field)) {
         const numValue = parseFloat(value);
         if (value !== "" && !isNaN(numValue)) {
           updateMutation.mutate({ [field]: numValue });
@@ -373,7 +373,7 @@ export default function InventoryItemDetail() {
   const location = locations?.find((l) => l.id === item.storageLocationId);
   
   const filteredUnits = filterUnitsBySystem(units, systemPrefs?.unitSystem);
-  const costPerPound = item.caseSize ? (item.lastCost / item.caseSize) : 0;
+  const caseCost = item.pricePerUnit * item.caseSize;
 
   return (
     <div className="h-full overflow-auto">
@@ -453,17 +453,17 @@ export default function InventoryItemDetail() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="lastCost">Cost Per Case</Label>
+                <Label htmlFor="pricePerUnit">Price Per Unit</Label>
                 <div className="flex gap-2">
                   <Input
-                    id="lastCost"
+                    id="pricePerUnit"
                     type="number"
                     step="0.01"
-                    value={getFieldValue("lastCost", item.lastCost)}
-                    onChange={(e) => handleFieldChange("lastCost", e.target.value)}
-                    onBlur={() => handleFieldBlur("lastCost")}
+                    value={getFieldValue("pricePerUnit", item.pricePerUnit)}
+                    onChange={(e) => handleFieldChange("pricePerUnit", e.target.value)}
+                    onBlur={() => handleFieldBlur("pricePerUnit")}
                     disabled={updateMutation.isPending}
-                    data-testid="input-last-cost"
+                    data-testid="input-price-per-unit"
                   />
                 </div>
               </div>
@@ -481,8 +481,8 @@ export default function InventoryItemDetail() {
                 />
               </div>
               <div className="text-sm text-muted-foreground">
-                <p>Cost per case: ${item.lastCost.toFixed(2)}</p>
-                <p>Cost per pound: ${costPerPound.toFixed(4)}</p>
+                <p>Price per unit: ${item.pricePerUnit.toFixed(2)}</p>
+                <p>Case cost: ${caseCost.toFixed(2)} (${item.pricePerUnit.toFixed(2)} × {item.caseSize})</p>
               </div>
             </CardContent>
           </Card>

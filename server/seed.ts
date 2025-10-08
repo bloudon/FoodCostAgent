@@ -157,7 +157,7 @@ export async function seedDatabase() {
     storageLocationId: locations.dryStorage.id,
     barcode: "8901234567890",
     active: 1,
-    costPerCase: 50, // $50 per 50 lb bag
+    pricePerUnit: 1, // $1 per lb (case cost: $50 for 50 lb bag)
     caseSize: 50, // 50 lb bag
     onHandQty: 0,
   });
@@ -169,7 +169,7 @@ export async function seedDatabase() {
     unitId: units.pound.id,
     storageLocationId: locations.dryStorage.id,
     active: 1,
-    costPerCase: 20, // $20 per 1 lb package
+    pricePerUnit: 20, // $20 per lb (case cost: $20 for 1 lb package)
     caseSize: 1,
     onHandQty: 0,
   });
@@ -181,7 +181,7 @@ export async function seedDatabase() {
     unitId: units.fluidOunce.id,
     storageLocationId: locations.dryStorage.id,
     active: 1,
-    costPerCase: 1.28, // $1.28 per gallon (128 oz)
+    pricePerUnit: 0.01, // $0.01 per fl oz (case cost: $1.28 for 128 oz gallon)
     caseSize: 128,
     onHandQty: 0,
   });
@@ -193,7 +193,7 @@ export async function seedDatabase() {
     unitId: units.fluidOunce.id,
     storageLocationId: locations.dryStorage.id,
     active: 1,
-    costPerCase: 15, // $15 per liter (33.8 oz)
+    pricePerUnit: 0.44, // $0.44 per fl oz (case cost: $15 for 33.8 oz liter)
     caseSize: 33.8,
     onHandQty: 0,
   });
@@ -205,7 +205,7 @@ export async function seedDatabase() {
     unitId: units.pound.id,
     storageLocationId: locations.dryStorage.id,
     active: 1,
-    costPerCase: 6, // $6 per 3 lb box
+    pricePerUnit: 2, // $2 per lb (case cost: $6 for 3 lb box)
     caseSize: 3,
     onHandQty: 0,
   });
@@ -217,7 +217,7 @@ export async function seedDatabase() {
     unitId: units.pound.id,
     storageLocationId: locations.dryStorage.id,
     active: 1,
-    costPerCase: 15, // $15 per 10 lb bag
+    pricePerUnit: 1.5, // $1.50 per lb (case cost: $15 for 10 lb bag)
     caseSize: 10,
     onHandQty: 0,
   });
@@ -230,7 +230,7 @@ export async function seedDatabase() {
     unitId: units.pound.id,
     storageLocationId: locations.dryStorage.id,
     active: 1,
-    costPerCase: 26, // $26 per 6.5 lb can
+    pricePerUnit: 4, // $4 per lb (case cost: $26 for 6.5 lb can)
     caseSize: 6.5,
     onHandQty: 0,
   });
@@ -290,7 +290,7 @@ export async function seedDatabase() {
     unitId: units.pound.id,
     storageLocationId: locations.walkIn.id,
     active: 1,
-    costPerCase: 55, // $55 per 5 lb bag
+    pricePerUnit: 11, // $11 per lb (case cost: $55 for 5 lb bag)
     caseSize: 5,
     onHandQty: 0,
   });
@@ -313,7 +313,7 @@ export async function seedDatabase() {
     unitId: units.pound.id,
     storageLocationId: locations.walkIn.id,
     active: 1,
-    costPerCase: 75, // $75 per 5 lb bag
+    pricePerUnit: 15, // $15 per lb (case cost: $75 for 5 lb bag)
     caseSize: 5,
     onHandQty: 0,
   });

@@ -253,7 +253,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: item.name,
           category: item.category,
           pluSku: item.pluSku,
-          lastCost: item.lastCost,
+          pricePerUnit: item.pricePerUnit,
+          lastCost: item.pricePerUnit * item.caseSize, // derived: case cost
           unitId: item.unitId,
           caseSize: item.caseSize,
           imageUrl: item.imageUrl,
@@ -315,8 +316,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updates = insertInventoryItemSchema.partial().parse(updateData);
       
       // Validate numeric fields are not NaN
-      if (updates.costPerCase !== undefined && isNaN(updates.costPerCase)) {
-        return res.status(400).json({ error: "Invalid costPerCase value" });
+      if (updates.pricePerUnit !== undefined && isNaN(updates.pricePerUnit)) {
+        return res.status(400).json({ error: "Invalid pricePerUnit value" });
       }
       if (updates.caseSize !== undefined && isNaN(updates.caseSize)) {
         return res.status(400).json({ error: "Invalid caseSize value" });
@@ -603,7 +604,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: item.name,
           category: item.category,
           pluSku: item.pluSku,
-          lastCost: item.lastCost,
+          pricePerUnit: item.pricePerUnit,
+          lastCost: item.pricePerUnit * item.caseSize, // derived: case cost
           unitId: item.unitId,
           caseSize: item.caseSize,
           imageUrl: item.imageUrl,
@@ -842,10 +844,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           const vi = vendorItems.find((vi) => vi.id === lineData.vendorProductId);
           if (vi) {
-            const costPerCase = lineData.priceEach;
-            await storage.updateInventoryItem(vi.inventoryItemId, {
-              lastCost: costPerCase,
-            });
+            const item = await storage.getInventoryItem(vi.inventoryItemId);
+            if (item) {
+              const costPerCase = lineData.priceEach;
+              const pricePerUnit = costPerCase / (item.caseSize || 1);
+              await storage.updateInventoryItem(vi.inventoryItemId, {
+                pricePerUnit,
+              });
+            }
 
             if (storageLocationId) {
               const item = await storage.getInventoryItem(vi.inventoryItemId);
@@ -923,7 +929,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const theoretical = theoreticalUsage[item.id] || 0;
         const actual = actualUsage[item.id] || 0;
         const varianceUnits = actual - theoretical;
-        const varianceCost = varianceUnits * item.lastCost;
+        const varianceCost = varianceUnits * item.pricePerUnit; // price per base unit × units
         const variancePercent = theoretical > 0 ? (varianceUnits / theoretical) * 100 : 0;
 
         return {
@@ -1083,9 +1089,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         trends[wasteLog.productId] = { productId: wasteLog.productId, productName: item?.name || "Unknown", totalWasteQty: 0, totalWasteCost: 0, byReason: {} as Record<string, number>, count: 0 };
       }
       const item = inventoryItems.find(i => i.id === wasteLog.productId);
-      const costPerPound = item?.lastCost ? item.lastCost / (item.caseSize || 1) : 0;
+      const pricePerUnit = item?.pricePerUnit || 0;
       trends[wasteLog.productId].totalWasteQty += wasteLog.qty;
-      trends[wasteLog.productId].totalWasteCost += wasteLog.qty * costPerPound;
+      trends[wasteLog.productId].totalWasteCost += wasteLog.qty * pricePerUnit;
       trends[wasteLog.productId].count += 1;
       if (!trends[wasteLog.productId].byReason[wasteLog.reasonCode]) trends[wasteLog.productId].byReason[wasteLog.reasonCode] = 0;
       trends[wasteLog.productId].byReason[wasteLog.reasonCode] += wasteLog.qty;
@@ -1204,7 +1210,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       product: { // Keep for backwards compatibility
         id: inventoryItem.id,
         name: inventoryItem.name,
-        currentCost: inventoryItem.lastCost,
+        currentCost: inventoryItem.pricePerUnit * inventoryItem.caseSize, // derived: case cost
+        pricePerUnit: inventoryItem.pricePerUnit,
         unitId: inventoryItem.unitId
       },
       affectedRecipes: impact.length,
@@ -1260,8 +1267,7 @@ async function calculateComponentCost(comp: any): Promise<number> {
   if (comp.componentType === "inventory_item") {
     const item = inventoryItems.find((i) => i.id === comp.componentId);
     if (item) {
-      const costPerUnit = item.costPerCase / (item.caseSize || 1);
-      return qty * costPerUnit;
+      return qty * item.pricePerUnit;
     }
   } else if (comp.componentType === "recipe") {
     const subRecipe = await storage.getRecipe(comp.componentId);
@@ -1294,8 +1300,7 @@ async function calculateRecipeCost(recipeId: string): Promise<number> {
     if (comp.componentType === "inventory_item") {
       const item = inventoryItems.find((i) => i.id === comp.componentId);
       if (item) {
-        const costPerUnit = item.costPerCase / (item.caseSize || 1);
-        totalCost += qty * costPerUnit;
+        totalCost += qty * item.pricePerUnit;
       }
     } else if (comp.componentType === "recipe") {
       // Get sub-recipe's cost (already includes its waste)
@@ -1331,8 +1336,7 @@ async function calculateInventoryItemImpactInRecipe(recipeId: string, targetItem
       const item = inventoryItems.find((i) => i.id === targetItemId);
       if (item) {
         totalQty += qty;
-        const costPerUnit = item.costPerCase / (item.caseSize || 1);
-        totalCostContribution += qty * costPerUnit;
+        totalCostContribution += qty * item.pricePerUnit;
       }
     } else if (comp.componentType === "recipe") {
       const subRecipe = await storage.getRecipe(comp.componentId);

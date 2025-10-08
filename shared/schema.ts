@@ -77,7 +77,7 @@ export const inventoryItems = pgTable("inventory_items", {
   caseSize: real("case_size").notNull().default(20), // case size in base units
   barcode: text("barcode"),
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
-  lastCost: real("last_cost").notNull().default(0), // cost per case
+  pricePerUnit: real("price_per_unit").notNull().default(0), // price per base unit (case cost = pricePerUnit × caseSize)
   storageLocationId: varchar("storage_location_id").notNull(), // primary storage location
   onHandQty: real("on_hand_qty").notNull().default(0), // quantity on hand in base units
   yieldPercent: real("yield_percent"), // usable yield percentage after trimming/waste (0-100)
@@ -110,7 +110,7 @@ export const inventoryItemPriceHistory = pgTable("inventory_item_price_history",
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   inventoryItemId: varchar("inventory_item_id").notNull(),
   effectiveAt: timestamp("effective_at").notNull(),
-  costPerCase: real("cost_per_case").notNull(),
+  pricePerUnit: real("price_per_unit").notNull(),
   vendorItemId: varchar("vendor_item_id"),
   note: text("note"),
   recordedBy: varchar("recorded_by"), // userId

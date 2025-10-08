@@ -200,7 +200,8 @@ export interface IStorage {
     qty: number;
     unitId: string;
     unitName: string;
-    costPerCase: number;
+    pricePerUnit: number;
+    caseSize: number;
     totalValue: number;
     countedAt: Date;
   }>>;
@@ -873,7 +874,8 @@ export class DatabaseStorage implements IStorage {
     qty: number;
     unitId: string;
     unitName: string;
-    costPerCase: number;
+    pricePerUnit: number;
+    caseSize: number;
     totalValue: number;
     countedAt: Date;
   }>> {

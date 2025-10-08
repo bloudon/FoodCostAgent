@@ -37,7 +37,7 @@ export default function InventoryItemCreate() {
   const [unitId, setUnitId] = useState("");
   const [caseSize, setCaseSize] = useState("20");
   const [barcode, setBarcode] = useState("");
-  const [lastCost, setLastCost] = useState("0");
+  const [pricePerUnit, setPricePerUnit] = useState("0");
   const [yieldPercent, setYieldPercent] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderLevel, setReorderLevel] = useState("");
@@ -84,7 +84,7 @@ export default function InventoryItemCreate() {
         unitId,
         caseSize: parseFloat(caseSize) || 20,
         barcode: barcode.trim() || null,
-        lastCost: parseFloat(lastCost) || 0,
+        pricePerUnit: parseFloat(pricePerUnit) || 0,
         storageLocationId: primaryLocationId,
         yieldPercent: yieldPercent.trim() !== "" ? parseFloat(yieldPercent.trim()) : null,
         parLevel: parLevel.trim() !== "" ? parseFloat(parLevel.trim()) : null,
@@ -273,15 +273,18 @@ export default function InventoryItemCreate() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="lastCost">Cost per Case ($)</Label>
+                <Label htmlFor="pricePerUnit">Price per Unit ($)</Label>
                 <Input
-                  id="lastCost"
+                  id="pricePerUnit"
                   type="number"
                   step="0.01"
-                  value={lastCost}
-                  onChange={(e) => setLastCost(e.target.value)}
-                  data-testid="input-last-cost"
+                  value={pricePerUnit}
+                  onChange={(e) => setPricePerUnit(e.target.value)}
+                  data-testid="input-price-per-unit"
                 />
+                <p className="text-sm text-muted-foreground">
+                  Case cost will be calculated as: ${(parseFloat(pricePerUnit) * parseFloat(caseSize)).toFixed(2)}
+                </p>
               </div>
 
               <div className="space-y-2">
