@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
-import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { filterUnitsBySystem } from "@/lib/utils";
@@ -45,10 +63,16 @@ type StorageLocation = {
   sortOrder: number;
 };
 
-type VendorProduct = {
+type Vendor = {
+  id: string;
+  name: string;
+  accountNumber: string | null;
+};
+
+type VendorItem = {
   id: string;
   vendorId: string;
-  productId: string;
+  inventoryItemId: string;
   vendorSku: string | null;
   purchaseUnitId: string;
   caseSize: number;
@@ -73,6 +97,21 @@ export default function InventoryItemDetail() {
   const { toast } = useToast();
   const [editedFields, setEditedFields] = useState<Record<string, any>>({});
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [vendorItemDialogOpen, setVendorItemDialogOpen] = useState(false);
+  const [editingVendorItem, setEditingVendorItem] = useState<VendorItem | null>(null);
+  const [deleteVendorItemId, setDeleteVendorItemId] = useState<string | null>(null);
+  
+  // Vendor item form state
+  const [vendorItemForm, setVendorItemForm] = useState({
+    vendorId: "",
+    vendorSku: "",
+    purchaseUnitId: "",
+    caseSize: "1",
+    innerPackSize: "",
+    lastPrice: "0",
+    leadTimeDays: "",
+    active: 1,
+  });
 
   const { data: product, isLoading: productLoading } = useQuery<Product>({
     queryKey: ["/api/inventory-items", id],
@@ -95,7 +134,11 @@ export default function InventoryItemDetail() {
     enabled: !!id,
   });
 
-  const { data: vendorProducts } = useQuery<VendorProduct[]>({
+  const { data: vendors } = useQuery<Vendor[]>({
+    queryKey: ["/api/vendors"],
+  });
+
+  const { data: vendorItems } = useQuery<VendorItem[]>({
     queryKey: ["/api/inventory-items", id, "vendor-items"],
     enabled: !!id,
   });
@@ -186,6 +229,128 @@ export default function InventoryItemDetail() {
       locationIds: newLocations,
       storageLocationId: primaryLocationId,
     });
+  };
+
+  const createVendorItemMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await apiRequest("POST", "/api/vendor-items", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "vendor-items"] });
+      toast({
+        title: "Vendor added",
+        description: "The vendor has been successfully added to this item.",
+      });
+      setVendorItemDialogOpen(false);
+      resetVendorItemForm();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to add vendor",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateVendorItemMutation = useMutation({
+    mutationFn: async ({ id: vendorItemId, data }: { id: string; data: any }) => {
+      const response = await apiRequest("PATCH", `/api/vendor-items/${vendorItemId}`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "vendor-items"] });
+      toast({
+        title: "Vendor updated",
+        description: "The vendor information has been successfully updated.",
+      });
+      setVendorItemDialogOpen(false);
+      setEditingVendorItem(null);
+      resetVendorItemForm();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to update vendor",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteVendorItemMutation = useMutation({
+    mutationFn: async (vendorItemId: string) => {
+      await apiRequest("DELETE", `/api/vendor-items/${vendorItemId}`, undefined);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "vendor-items"] });
+      toast({
+        title: "Vendor removed",
+        description: "The vendor has been successfully removed from this item.",
+      });
+      setDeleteVendorItemId(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to remove vendor",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const resetVendorItemForm = () => {
+    setVendorItemForm({
+      vendorId: "",
+      vendorSku: "",
+      purchaseUnitId: "",
+      caseSize: "1",
+      innerPackSize: "",
+      lastPrice: "0",
+      leadTimeDays: "",
+      active: 1,
+    });
+  };
+
+  const handleOpenAddVendorDialog = () => {
+    resetVendorItemForm();
+    setEditingVendorItem(null);
+    setVendorItemDialogOpen(true);
+  };
+
+  const handleOpenEditVendorDialog = (vendorItem: VendorItem) => {
+    setEditingVendorItem(vendorItem);
+    setVendorItemForm({
+      vendorId: vendorItem.vendorId,
+      vendorSku: vendorItem.vendorSku || "",
+      purchaseUnitId: vendorItem.purchaseUnitId,
+      caseSize: vendorItem.caseSize.toString(),
+      innerPackSize: vendorItem.innerPackSize?.toString() || "",
+      lastPrice: vendorItem.lastPrice.toString(),
+      leadTimeDays: vendorItem.leadTimeDays?.toString() || "",
+      active: vendorItem.active,
+    });
+    setVendorItemDialogOpen(true);
+  };
+
+  const handleSaveVendorItem = () => {
+    const data = {
+      inventoryItemId: id,
+      vendorId: vendorItemForm.vendorId,
+      vendorSku: vendorItemForm.vendorSku.trim() || null,
+      purchaseUnitId: vendorItemForm.purchaseUnitId,
+      caseSize: parseFloat(vendorItemForm.caseSize) || 1,
+      innerPackSize: vendorItemForm.innerPackSize.trim() !== "" ? parseFloat(vendorItemForm.innerPackSize) : null,
+      lastPrice: parseFloat(vendorItemForm.lastPrice) || 0,
+      leadTimeDays: vendorItemForm.leadTimeDays.trim() !== "" ? parseInt(vendorItemForm.leadTimeDays) : null,
+      active: vendorItemForm.active,
+    };
+
+    if (editingVendorItem) {
+      updateVendorItemMutation.mutate({ id: editingVendorItem.id, data });
+    } else {
+      createVendorItemMutation.mutate(data);
+    }
   };
 
   if (productLoading) {
@@ -443,44 +608,72 @@ export default function InventoryItemDetail() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Vendors
-              </CardTitle>
-              <CardDescription>Suppliers for this product</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Vendors
+                </CardTitle>
+                <CardDescription>Suppliers for this item</CardDescription>
+              </div>
+              <Button
+                onClick={handleOpenAddVendorDialog}
+                size="sm"
+                data-testid="button-add-vendor"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Vendor
+              </Button>
             </CardHeader>
             <CardContent>
-              {vendorProducts && vendorProducts.length > 0 ? (
-                <div className="space-y-4">
-                  {vendorProducts.map((vp) => (
-                    <div key={vp.id} className="border rounded-lg p-4 space-y-2" data-testid={`vendor-product-${vp.id}`}>
+              {vendorItems && vendorItems.length > 0 ? (
+                <div className="space-y-3">
+                  {vendorItems.map((vi) => (
+                    <div key={vi.id} className="border rounded-lg p-4 space-y-2" data-testid={`vendor-item-${vi.id}`}>
                       <div className="flex items-center justify-between">
-                        <h4 className="font-medium">{vp.vendor?.name || "Unknown Vendor"}</h4>
-                        <Badge variant={vp.active ? "outline" : "secondary"}>
-                          {vp.active ? "Active" : "Inactive"}
-                        </Badge>
+                        <h4 className="font-medium">{vi.vendor?.name || "Unknown Vendor"}</h4>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={vi.active ? "outline" : "secondary"} data-testid={`badge-vendor-status-${vi.id}`}>
+                            {vi.active ? "Active" : "Inactive"}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleOpenEditVendorDialog(vi)}
+                            data-testid={`button-edit-vendor-${vi.id}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setDeleteVendorItemId(vi.id)}
+                            data-testid={`button-delete-vendor-${vi.id}`}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
                       </div>
-                      {vp.vendorSku && (
-                        <p className="text-sm text-muted-foreground">SKU: {vp.vendorSku}</p>
+                      {vi.vendorSku && (
+                        <p className="text-sm text-muted-foreground">SKU: {vi.vendorSku}</p>
                       )}
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
                           <span className="text-muted-foreground">Price: </span>
-                          <span className="font-medium">${vp.lastPrice.toFixed(2)}</span>
+                          <span className="font-medium">${vi.lastPrice.toFixed(2)}</span>
                         </div>
                         <div>
                           <span className="text-muted-foreground">Unit: </span>
-                          <span className="font-medium">{vp.unit?.name || "Unknown"}</span>
+                          <span className="font-medium">{vi.unit?.name || "Unknown"}</span>
                         </div>
                         <div>
                           <span className="text-muted-foreground">Case Size: </span>
-                          <span className="font-medium">{vp.caseSize}</span>
+                          <span className="font-medium">{vi.caseSize}</span>
                         </div>
-                        {vp.leadTimeDays && (
+                        {vi.leadTimeDays && (
                           <div>
                             <span className="text-muted-foreground">Lead Time: </span>
-                            <span className="font-medium">{vp.leadTimeDays} days</span>
+                            <span className="font-medium">{vi.leadTimeDays} days</span>
                           </div>
                         )}
                       </div>
@@ -488,12 +681,196 @@ export default function InventoryItemDetail() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No vendors configured for this product</p>
+                <div className="text-center py-8">
+                  <p className="text-sm text-muted-foreground mb-4">No vendors configured for this item</p>
+                  <Button
+                    variant="outline"
+                    onClick={handleOpenAddVendorDialog}
+                    data-testid="button-add-first-vendor"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add First Vendor
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Vendor Item Dialog */}
+      <Dialog open={vendorItemDialogOpen} onOpenChange={setVendorItemDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingVendorItem ? "Edit Vendor" : "Add Vendor"}</DialogTitle>
+            <DialogDescription>
+              {editingVendorItem ? "Update vendor information for this item" : "Add a new vendor for this item"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="vendorId">Vendor *</Label>
+                <Select
+                  value={vendorItemForm.vendorId}
+                  onValueChange={(value) => setVendorItemForm({ ...vendorItemForm, vendorId: value })}
+                >
+                  <SelectTrigger id="vendorId" data-testid="select-vendor">
+                    <SelectValue placeholder="Select vendor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vendors?.map((vendor) => (
+                      <SelectItem key={vendor.id} value={vendor.id}>
+                        {vendor.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="vendorSku">Vendor SKU</Label>
+                <Input
+                  id="vendorSku"
+                  value={vendorItemForm.vendorSku}
+                  onChange={(e) => setVendorItemForm({ ...vendorItemForm, vendorSku: e.target.value })}
+                  placeholder="Vendor's SKU"
+                  data-testid="input-vendor-sku"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="purchaseUnitId">Purchase Unit *</Label>
+                <Select
+                  value={vendorItemForm.purchaseUnitId}
+                  onValueChange={(value) => setVendorItemForm({ ...vendorItemForm, purchaseUnitId: value })}
+                >
+                  <SelectTrigger id="purchaseUnitId" data-testid="select-purchase-unit">
+                    <SelectValue placeholder="Select unit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredUnits?.map((unit) => (
+                      <SelectItem key={unit.id} value={unit.id}>
+                        {unit.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastPrice">Price per Case ($) *</Label>
+                <Input
+                  id="lastPrice"
+                  type="number"
+                  step="0.01"
+                  value={vendorItemForm.lastPrice}
+                  onChange={(e) => setVendorItemForm({ ...vendorItemForm, lastPrice: e.target.value })}
+                  data-testid="input-last-price"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="caseSize">Case Size *</Label>
+                <Input
+                  id="caseSize"
+                  type="number"
+                  step="0.01"
+                  value={vendorItemForm.caseSize}
+                  onChange={(e) => setVendorItemForm({ ...vendorItemForm, caseSize: e.target.value })}
+                  data-testid="input-case-size"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="innerPackSize">Inner Pack Size</Label>
+                <Input
+                  id="innerPackSize"
+                  type="number"
+                  step="0.01"
+                  value={vendorItemForm.innerPackSize}
+                  onChange={(e) => setVendorItemForm({ ...vendorItemForm, innerPackSize: e.target.value })}
+                  placeholder="Optional"
+                  data-testid="input-inner-pack-size"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="leadTimeDays">Lead Time (days)</Label>
+                <Input
+                  id="leadTimeDays"
+                  type="number"
+                  value={vendorItemForm.leadTimeDays}
+                  onChange={(e) => setVendorItemForm({ ...vendorItemForm, leadTimeDays: e.target.value })}
+                  placeholder="Optional"
+                  data-testid="input-lead-time-days"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="active">Status</Label>
+                <Select
+                  value={vendorItemForm.active.toString()}
+                  onValueChange={(value) => setVendorItemForm({ ...vendorItemForm, active: parseInt(value) })}
+                >
+                  <SelectTrigger id="active" data-testid="select-active">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Active</SelectItem>
+                    <SelectItem value="0">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setVendorItemDialogOpen(false);
+                setEditingVendorItem(null);
+                resetVendorItemForm();
+              }}
+              data-testid="button-cancel-vendor"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveVendorItem}
+              disabled={!vendorItemForm.vendorId || !vendorItemForm.purchaseUnitId || createVendorItemMutation.isPending || updateVendorItemMutation.isPending}
+              data-testid="button-save-vendor"
+            >
+              {createVendorItemMutation.isPending || updateVendorItemMutation.isPending ? "Saving..." : editingVendorItem ? "Update" : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteVendorItemId} onOpenChange={() => setDeleteVendorItemId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Vendor</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this vendor from this item? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteVendorItemId) {
+                  deleteVendorItemMutation.mutate(deleteVendorItemId);
+                }
+              }}
+              disabled={deleteVendorItemMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteVendorItemMutation.isPending ? "Removing..." : "Remove"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
