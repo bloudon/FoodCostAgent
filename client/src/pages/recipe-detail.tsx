@@ -81,8 +81,8 @@ export default function RecipeDetail() {
     queryKey: ["/api/system-preferences"],
   });
 
-  const { data: products } = useQuery<any[]>({
-    queryKey: ["/api/products"],
+  const { data: inventoryItems } = useQuery<any[]>({
+    queryKey: ["/api/inventory-items"],
   });
 
   const { data: recipes } = useQuery<any[]>({
@@ -278,13 +278,13 @@ export default function RecipeDetail() {
                 <TableBody>
                   {components.map((component) => {
                     const unit = units?.find((u) => u.id === component.unitId);
-                    const product = component.productId
-                      ? products?.find((p) => p.id === component.productId)
+                    const item = component.componentType === "inventory_item"
+                      ? inventoryItems?.find((i) => i.id === component.componentId)
                       : null;
-                    const subRecipe = component.subRecipeId
-                      ? recipes?.find((r) => r.id === component.subRecipeId)
+                    const subRecipe = component.componentType === "recipe"
+                      ? recipes?.find((r) => r.id === component.componentId)
                       : null;
-                    const name = product?.name || subRecipe?.name || "Unknown";
+                    const name = item?.name || subRecipe?.name || "Unknown";
                     const cost = component.componentCost || 0;
 
                     return (
