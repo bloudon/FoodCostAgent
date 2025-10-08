@@ -56,7 +56,7 @@ import {
 } from "@/components/ui/form";
 
 const countLineSchema = z.object({
-  productId: z.string().min(1, "Product is required"),
+  inventoryItemId: z.string().min(1, "Item is required"),
   unitId: z.string().min(1, "Unit is required"),
   qty: z.coerce.number().min(0, "Quantity must be at least 0"),
 });
@@ -87,8 +87,8 @@ export default function CountSession() {
     queryKey: ["/api/storage-locations"],
   });
 
-  const { data: products } = useQuery<any[]>({
-    queryKey: ["/api/products"],
+  const { data: inventoryItems } = useQuery<any[]>({
+    queryKey: ["/api/inventory-items"],
   });
 
   const { data: units } = useQuery<any[]>({
@@ -177,7 +177,7 @@ export default function CountSession() {
   const handleEdit = (line: any) => {
     setSelectedLine(line);
     editForm.reset({
-      productId: line.productId,
+      inventoryItemId: line.inventoryItemId,
       unitId: line.unitId,
       qty: line.qty,
     });
@@ -191,7 +191,7 @@ export default function CountSession() {
 
   const handleAdd = () => {
     addForm.reset({
-      productId: "",
+      inventoryItemId: "",
       unitId: "",
       qty: 0,
     });
@@ -218,29 +218,29 @@ export default function CountSession() {
   
   // Calculate category totals
   const categoryTotals = countLines?.reduce((acc: any, line) => {
-    const product = products?.find(p => p.id === line.productId);
-    const category = product?.category || "Uncategorized";
-    const value = line.derivedMicroUnits * (product?.lastCost || 0);
+    const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
+    const category = item?.category || "Uncategorized";
+    const value = line.qty * (item?.lastCost || 0);
     
     if (!acc[category]) {
       acc[category] = { count: 0, value: 0, items: 0 };
     }
-    acc[category].count += line.derivedMicroUnits;
+    acc[category].count += line.qty;
     acc[category].value += value;
     acc[category].items += 1;
     return acc;
   }, {}) || {};
 
   const totalValue = countLines?.reduce((sum, line) => {
-    const product = products?.find(p => p.id === line.productId);
-    return sum + (line.derivedMicroUnits * (product?.lastCost || 0));
+    const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
+    return sum + (line.qty * (item?.lastCost || 0));
   }, 0) || 0;
 
   const totalItems = countLines?.length || 0;
 
-  // Get unique categories from products
+  // Get unique categories from inventory items
   const categories = Array.from(new Set(
-    products?.map(p => p.category).filter(Boolean) || []
+    inventoryItems?.map((p: any) => p.category).filter(Boolean) || []
   )).sort();
 
   // Filter lines based on toggle and category
@@ -252,8 +252,8 @@ export default function CountSession() {
   
   if (selectedCategory !== "all") {
     filteredLines = filteredLines.filter(line => {
-      const product = products?.find(p => p.id === line.productId);
-      return product?.category === selectedCategory;
+      const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
+      return item?.category === selectedCategory;
     });
   }
 
@@ -429,19 +429,19 @@ export default function CountSession() {
             <TableBody>
               {filteredLines && filteredLines.length > 0 ? (
                 filteredLines.map((line) => {
-                  const product = products?.find(p => p.id === line.productId);
-                  const value = line.derivedMicroUnits * (product?.lastCost || 0);
+                  const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
+                  const value = line.qty * (item?.lastCost || 0);
                   return (
                     <TableRow key={line.id} data-testid={`row-line-${line.id}`}>
                       <TableCell className="font-medium">
                         <Link href={`/item-count/${line.id}`}>
-                          <span className="hover:underline cursor-pointer">{product?.name || 'Unknown'}</span>
+                          <span className="hover:underline cursor-pointer">{item?.name || 'Unknown'}</span>
                         </Link>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{product?.category || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{item?.category || '-'}</TableCell>
                       <TableCell className="text-right font-mono">{line.qty}</TableCell>
                       <TableCell>{line.unitName || '-'}</TableCell>
-                      <TableCell className="text-right font-mono">${(product?.lastCost || 0).toFixed(4)}</TableCell>
+                      <TableCell className="text-right font-mono">${(item?.lastCost || 0).toFixed(4)}</TableCell>
                       <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
@@ -492,20 +492,20 @@ export default function CountSession() {
             <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
               <FormField
                 control={editForm.control}
-                name="productId"
+                name="inventoryItemId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Product</FormLabel>
+                    <FormLabel>Item</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <SelectTrigger data-testid="select-edit-product">
-                          <SelectValue placeholder="Select product" />
+                        <SelectTrigger data-testid="select-edit-item">
+                          <SelectValue placeholder="Select item" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {products?.map((product) => (
-                          <SelectItem key={product.id} value={product.id}>
-                            {product.name}
+                        {inventoryItems?.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            {item.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -592,20 +592,20 @@ export default function CountSession() {
             <form onSubmit={addForm.handleSubmit(onAddSubmit)} className="space-y-4">
               <FormField
                 control={addForm.control}
-                name="productId"
+                name="inventoryItemId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Product</FormLabel>
+                    <FormLabel>Item</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <SelectTrigger data-testid="select-add-product">
-                          <SelectValue placeholder="Select product" />
+                        <SelectTrigger data-testid="select-add-item">
+                          <SelectValue placeholder="Select item" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {products?.map((product) => (
-                          <SelectItem key={product.id} value={product.id}>
-                            {product.name}
+                        {inventoryItems?.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            {item.name}
                           </SelectItem>
                         ))}
                       </SelectContent>

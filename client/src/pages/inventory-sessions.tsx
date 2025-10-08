@@ -16,14 +16,14 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
-function SessionRow({ count, location, countDate, products }: any) {
+function SessionRow({ count, location, countDate, inventoryItems }: any) {
   const { data: countLines } = useQuery<any[]>({
     queryKey: ["/api/inventory-count-lines", count.id],
   });
 
   const totalValue = countLines?.reduce((sum, line) => {
-    const product = products?.find((p: any) => p.id === line.productId);
-    return sum + (line.derivedMicroUnits * (product?.lastCost || 0));
+    const item = inventoryItems?.find((p: any) => p.id === line.inventoryItemId);
+    return sum + (line.qty * (item?.lastCost || 0));
   }, 0) || 0;
 
   return (
@@ -63,8 +63,8 @@ export default function InventorySessions() {
     queryKey: ["/api/storage-locations"],
   });
 
-  const { data: products } = useQuery<any[]>({
-    queryKey: ["/api/products"],
+  const { data: inventoryItems } = useQuery<any[]>({
+    queryKey: ["/api/inventory-items"],
   });
 
   const { data: inventoryCounts, isLoading: countsLoading } = useQuery<any[]>({
@@ -176,7 +176,7 @@ export default function InventorySessions() {
                       count={count} 
                       location={location} 
                       countDate={countDate}
-                      products={products}
+                      inventoryItems={inventoryItems}
                     />
                   );
                 })}
