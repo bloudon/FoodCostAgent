@@ -524,7 +524,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: pizzaDough.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: flour.id,
     qty: 18,
     unitId: units.ounce.id,
@@ -532,7 +532,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: pizzaDough.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: water.id,
     qty: 11,
     unitId: units.fluidOunce.id,
@@ -540,7 +540,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: pizzaDough.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: yeast.id,
     qty: 0.25,
     unitId: units.ounce.id,
@@ -548,7 +548,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: pizzaDough.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: salt.id,
     qty: 0.35,
     unitId: units.ounce.id,
@@ -556,7 +556,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: pizzaDough.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: sugar.id,
     qty: 0.18,
     unitId: units.ounce.id,
@@ -564,7 +564,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: pizzaDough.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: oliveOil.id,
     qty: 0.5,
     unitId: units.fluidOunce.id,
@@ -581,7 +581,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: marinaraSauce.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: crushedTomatoes.id,
     qty: 14,
     unitId: units.ounce.id,
@@ -589,7 +589,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: marinaraSauce.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: tomatoPaste.id,
     qty: 2,
     unitId: units.ounce.id,
@@ -597,7 +597,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: marinaraSauce.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: garlic.id,
     qty: 0.35,
     unitId: units.ounce.id,
@@ -605,7 +605,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: marinaraSauce.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: basil.id,
     qty: 0.18,
     unitId: units.ounce.id,
@@ -613,7 +613,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: marinaraSauce.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: oregano.id,
     qty: 0.07,
     unitId: units.ounce.id,
@@ -621,7 +621,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: marinaraSauce.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: oliveOil.id,
     qty: 0.68,
     unitId: units.fluidOunce.id,
@@ -629,7 +629,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: marinaraSauce.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: salt.id,
     qty: 3,
     unitId: units.ounce.id,
@@ -662,7 +662,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: margheritaPizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: mozzarella.id,
     qty: 120,
     unitId: units.ounce.id,
@@ -670,7 +670,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: margheritaPizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: basil.id,
     qty: 3,
     unitId: units.ounce.id,
@@ -678,7 +678,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: margheritaPizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: parmesan.id,
     qty: 10,
     unitId: units.ounce.id,
@@ -711,7 +711,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: pepperoniPizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: mozzarella.id,
     qty: 140,
     unitId: units.ounce.id,
@@ -719,7 +719,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: pepperoniPizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: pepperoni.id,
     qty: 60,
     unitId: units.ounce.id,
@@ -752,7 +752,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: supremePizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: mozzarella.id,
     qty: 140,
     unitId: units.ounce.id,
@@ -760,7 +760,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: supremePizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: pepperoni.id,
     qty: 40,
     unitId: units.ounce.id,
@@ -768,7 +768,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: supremePizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: italianSausage.id,
     qty: 40,
     unitId: units.ounce.id,
@@ -776,7 +776,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: supremePizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: bellPeppers.id,
     qty: 30,
     unitId: units.ounce.id,
@@ -784,7 +784,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: supremePizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: mushrooms.id,
     qty: 30,
     unitId: units.ounce.id,
@@ -792,7 +792,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: supremePizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: onions.id,
     qty: 20,
     unitId: units.ounce.id,
@@ -800,7 +800,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: supremePizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: blackOlives.id,
     qty: 20,
     unitId: units.ounce.id,
@@ -825,7 +825,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: bbqChickenPizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: bbqSauce.id,
     qty: 60,
     unitId: units.fluidOunce.id,
@@ -833,7 +833,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: bbqChickenPizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: mozzarella.id,
     qty: 140,
     unitId: units.ounce.id,
@@ -841,7 +841,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: bbqChickenPizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: chickenBreast.id,
     qty: 100,
     unitId: units.ounce.id,
@@ -849,7 +849,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: bbqChickenPizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: onions.id,
     qty: 30,
     unitId: units.ounce.id,
@@ -882,7 +882,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: veggiePizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: mozzarella.id,
     qty: 140,
     unitId: units.ounce.id,
@@ -890,7 +890,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: veggiePizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: bellPeppers.id,
     qty: 40,
     unitId: units.ounce.id,
@@ -898,7 +898,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: veggiePizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: mushrooms.id,
     qty: 40,
     unitId: units.ounce.id,
@@ -906,7 +906,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: veggiePizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: onions.id,
     qty: 30,
     unitId: units.ounce.id,
@@ -914,7 +914,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: veggiePizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: blackOlives.id,
     qty: 30,
     unitId: units.ounce.id,
@@ -922,7 +922,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: veggiePizza.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: basil.id,
     qty: 5,
     unitId: units.ounce.id,
@@ -939,7 +939,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: chickenWingsRecipe.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: chickenWings.id,
     qty: 400,
     unitId: units.ounce.id,
@@ -947,7 +947,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: chickenWingsRecipe.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: ranchDressing.id,
     qty: 60,
     unitId: units.fluidOunce.id,
@@ -964,7 +964,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: breadsticksRecipe.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: breadstickDough.id,
     qty: 200,
     unitId: units.ounce.id,
@@ -972,7 +972,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: breadsticksRecipe.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: garlic.id,
     qty: 10,
     unitId: units.ounce.id,
@@ -980,7 +980,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: breadsticksRecipe.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: oliveOil.id,
     qty: 20,
     unitId: units.fluidOunce.id,
@@ -988,7 +988,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: breadsticksRecipe.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: parmesan.id,
     qty: 15,
     unitId: units.ounce.id,
@@ -996,7 +996,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: breadsticksRecipe.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: marinara.id,
     qty: 60,
     unitId: units.fluidOunce.id,
@@ -1013,7 +1013,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: mozzSticksRecipe.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: mozzarellaSticks.id,
     qty: 6,
     unitId: units.each.id,
@@ -1021,7 +1021,7 @@ export async function seedDatabase() {
 
   await storage.createRecipeComponent({
     recipeId: mozzSticksRecipe.id,
-    componentType: "product",
+    componentType: "inventory_item",
     componentId: marinara.id,
     qty: 60,
     unitId: units.fluidOunce.id,

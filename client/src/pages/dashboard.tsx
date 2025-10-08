@@ -6,8 +6,8 @@ import { Package, DollarSign, TrendingUp, AlertTriangle, ClipboardList, ArrowRig
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Dashboard() {
-  const { data: products, isLoading: productsLoading } = useQuery<any[]>({
-    queryKey: ["/api/products"],
+  const { data: inventoryItems, isLoading: itemsLoading } = useQuery<any[]>({
+    queryKey: ["/api/inventory-items"],
   });
 
   const { data: recipes, isLoading: recipesLoading } = useQuery<any[]>({
@@ -32,15 +32,15 @@ export default function Dashboard() {
     enabled: !!mostRecentCount,
   });
 
-  const totalProducts = products?.filter(p => p.active === 1).length || 0;
+  const totalItems = inventoryItems?.filter(i => i.active === 1).length || 0;
   const avgRecipeCost = recipes?.length
     ? recipes.reduce((sum, r) => sum + (r.computedCost || 0), 0) / recipes.length
     : 0;
 
   const stats = [
     {
-      title: "Total Products",
-      value: productsLoading ? "..." : totalProducts.toString(),
+      title: "Total Items",
+      value: itemsLoading ? "..." : totalItems.toString(),
       icon: Package,
       description: "Active inventory items",
     },
@@ -114,8 +114,8 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              {products && products.length > 0 
-                ? `${products.length} products in catalog` 
+              {inventoryItems && inventoryItems.length > 0 
+                ? `${inventoryItems.length} inventory items in catalog` 
                 : "No recent activity"}
             </p>
           </CardContent>
@@ -180,8 +180,8 @@ export default function Dashboard() {
                     <p className="text-sm text-muted-foreground">Total Value</p>
                     <p className="font-medium font-mono" data-testid="text-recent-count-value">
                       ${recentCountLines?.reduce((sum, line) => {
-                        const product = products?.find(p => p.id === line.productId);
-                        return sum + (line.derivedMicroUnits * (product?.lastCost || 0));
+                        const item = inventoryItems?.find(i => i.id === line.inventoryItemId);
+                        return sum + (line.derivedMicroUnits * (item?.lastCost || 0));
                       }, 0).toFixed(2) || "0.00"}
                     </p>
                   </div>
