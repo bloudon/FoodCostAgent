@@ -100,7 +100,7 @@ export default function CountSession() {
   
   // Calculate category totals
   const categoryTotals = countLines?.reduce((acc: any, line) => {
-    const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
+    const item = line.inventoryItem;
     const category = item?.category || "Uncategorized";
     const value = line.qty * (item?.lastCost || 0);
     
@@ -115,7 +115,7 @@ export default function CountSession() {
 
   // Calculate location totals
   const locationTotals = countLines?.reduce((acc: any, line) => {
-    const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
+    const item = line.inventoryItem;
     const locationId = item?.storageLocationId || "unknown";
     const locationName = storageLocations?.find(l => l.id === locationId)?.name || "Unknown Location";
     const value = line.qty * (item?.lastCost || 0);
@@ -130,7 +130,7 @@ export default function CountSession() {
   }, {}) || {};
 
   const totalValue = countLines?.reduce((sum, line) => {
-    const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
+    const item = line.inventoryItem;
     return sum + (line.qty * (item?.lastCost || 0));
   }, 0) || 0;
 
@@ -150,7 +150,7 @@ export default function CountSession() {
   
   if (selectedCategory !== "all") {
     filteredLines = filteredLines.filter(line => {
-      const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
+      const item = line.inventoryItem;
       const category = item?.category || "Uncategorized";
       return category === selectedCategory;
     });
@@ -158,7 +158,7 @@ export default function CountSession() {
   
   if (selectedLocation !== "all") {
     filteredLines = filteredLines.filter(line => {
-      const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
+      const item = line.inventoryItem;
       const locationId = item?.storageLocationId || "unknown";
       return locationId === selectedLocation;
     });
@@ -370,7 +370,7 @@ export default function CountSession() {
             <TableBody>
               {filteredLines && filteredLines.length > 0 ? (
                 filteredLines.map((line) => {
-                  const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
+                  const item = line.inventoryItem;
                   const value = line.qty * (item?.lastCost || 0);
                   return (
                     <TableRow key={line.id} data-testid={`row-line-${line.id}`}>

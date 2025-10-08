@@ -635,12 +635,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/inventory-count-lines/:countId", async (req, res) => {
     const lines = await storage.getInventoryCountLines(req.params.countId);
     const units = await storage.getUnits();
+    const inventoryItems = await storage.getInventoryItems();
     
     const enriched = lines.map(line => {
       const unit = units.find(u => u.id === line.unitId);
+      const item = inventoryItems.find(i => i.id === line.inventoryItemId);
       return {
         ...line,
-        unitName: unit?.name || "unit"
+        unitName: unit?.name || "unit",
+        inventoryItem: item || null
       };
     });
     
