@@ -397,6 +397,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/vendor-items/:id", async (req, res) => {
+    try {
+      const updates = insertVendorItemSchema.partial().parse(req.body);
+      const vendorItem = await storage.updateVendorItem(req.params.id, updates);
+      if (!vendorItem) {
+        return res.status(404).json({ error: "Vendor item not found" });
+      }
+      res.json(vendorItem);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/vendor-items/:id", async (req, res) => {
+    try {
+      await storage.deleteVendorItem(req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ RECIPES ============
   app.get("/api/recipes", async (req, res) => {
     const recipes = await storage.getRecipes();
