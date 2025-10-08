@@ -62,7 +62,7 @@ export default function VarianceReport() {
             Variance Report
           </h1>
           <p className="text-muted-foreground mt-2">
-            Compare theoretical vs. actual usage by product and period
+            Compare theoretical vs. actual usage by item and period
           </p>
         </div>
         <Button variant="outline" data-testid="button-export-report">
@@ -124,13 +124,13 @@ export default function VarianceReport() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Variance by Product</CardTitle>
+          <CardTitle className="text-lg">Variance by Item</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Product</TableHead>
+                <TableHead>Item</TableHead>
                 <TableHead className="text-right">Theoretical Usage</TableHead>
                 <TableHead className="text-right">Actual Usage</TableHead>
                 <TableHead className="text-right">Variance (Units)</TableHead>
@@ -153,7 +153,7 @@ export default function VarianceReport() {
               ) : variance && variance.length > 0 ? (
                 variance.map((row) => (
                   <TableRow key={row.productId} className="hover-elevate" data-testid={`row-variance-${row.productId}`}>
-                    <TableCell className="font-medium" data-testid={`text-variance-product-${row.productId}`}>{row.productName}</TableCell>
+                    <TableCell className="font-medium" data-testid={`text-variance-item-${row.productId}`}>{row.productName}</TableCell>
                     <TableCell className="text-right font-mono" data-testid={`text-variance-theoretical-${row.productId}`}>{row.theoreticalUsage.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-mono" data-testid={`text-variance-actual-${row.productId}`}>{row.actualUsage.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-mono" data-testid={`text-variance-units-${row.productId}`}>{row.varianceUnits.toFixed(2)}</TableCell>

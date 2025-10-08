@@ -32,7 +32,7 @@ import { filterUnitsBySystem } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import type { SystemPreferences } from "@shared/schema";
 
-type Product = {
+type InventoryItem = {
   id: string;
   name: string;
   category: string | null;
@@ -113,7 +113,7 @@ export default function InventoryItemDetail() {
     active: 1,
   });
 
-  const { data: product, isLoading: productLoading } = useQuery<Product>({
+  const { data: item, isLoading: itemLoading } = useQuery<InventoryItem>({
     queryKey: ["/api/inventory-items", id],
   });
 
@@ -150,7 +150,7 @@ export default function InventoryItemDetail() {
   }, [itemLocations]);
 
   const updateMutation = useMutation({
-    mutationFn: async (updates: Partial<Product> & { locationIds?: string[] }) => {
+    mutationFn: async (updates: Partial<InventoryItem> & { locationIds?: string[] }) => {
       return apiRequest("PATCH", `/api/inventory-items/${id}`, updates);
     },
     onSuccess: () => {
@@ -221,8 +221,8 @@ export default function InventoryItemDetail() {
     setSelectedLocations(newLocations);
     
     // Update the mutation with new locations
-    const primaryLocationId = newLocations.includes(product!.storageLocationId)
-      ? product!.storageLocationId
+    const primaryLocationId = newLocations.includes(item!.storageLocationId)
+      ? item!.storageLocationId
       : newLocations[0];
     
     updateMutation.mutate({
@@ -353,7 +353,7 @@ export default function InventoryItemDetail() {
     }
   };
 
-  if (productLoading) {
+  if (itemLoading) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-muted-foreground">Loading...</div>
@@ -361,19 +361,19 @@ export default function InventoryItemDetail() {
     );
   }
 
-  if (!product) {
+  if (!item) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="text-muted-foreground">Product not found</div>
+        <div className="text-muted-foreground">Item not found</div>
       </div>
     );
   }
 
-  const unit = units?.find((u) => u.id === product.unitId);
-  const location = locations?.find((l) => l.id === product.storageLocationId);
+  const unit = units?.find((u) => u.id === item.unitId);
+  const location = locations?.find((l) => l.id === item.storageLocationId);
   
   const filteredUnits = filterUnitsBySystem(units, systemPrefs?.unitSystem);
-  const costPerPound = product.caseSize ? (product.lastCost / product.caseSize) : 0;
+  const costPerPound = item.caseSize ? (item.lastCost / item.caseSize) : 0;
 
   return (
     <div className="h-full overflow-auto">
@@ -388,38 +388,38 @@ export default function InventoryItemDetail() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">Product Details</h1>
+            <h1 className="text-3xl font-bold">Inventory Item Details</h1>
             <p className="text-muted-foreground mt-1">
-              PLU/SKU: {product.pluSku}
+              PLU/SKU: {item.pluSku}
             </p>
           </div>
-          <Badge variant={product.active ? "outline" : "secondary"} className="ml-auto">
-            {product.active ? "Active" : "Inactive"}
+          <Badge variant={item.active ? "outline" : "secondary"} className="ml-auto">
+            {item.active ? "Active" : "Inactive"}
           </Badge>
         </div>
 
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Basic Information</CardTitle>
-            <CardDescription>Product name, category, and image</CardDescription>
+            <CardDescription>Item name, category, and image</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Product Name</Label>
+              <Label htmlFor="name">Item Name</Label>
               <Input
                 id="name"
-                value={getFieldValue("name", product.name)}
+                value={getFieldValue("name", item.name)}
                 onChange={(e) => handleFieldChange("name", e.target.value)}
                 onBlur={() => handleFieldBlur("name")}
                 disabled={updateMutation.isPending}
-                data-testid="input-product-name"
+                data-testid="input-item-name"
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="category">Category</Label>
               <Input
                 id="category"
-                value={getFieldValue("category", product.category || "")}
+                value={getFieldValue("category", item.category || "")}
                 onChange={(e) => handleFieldChange("category", e.target.value)}
                 onBlur={() => handleFieldBlur("category")}
                 placeholder="e.g., Dairy, Produce, Protein"
@@ -431,7 +431,7 @@ export default function InventoryItemDetail() {
               <Label htmlFor="imageUrl">Image URL</Label>
               <Input
                 id="imageUrl"
-                value={getFieldValue("imageUrl", product.imageUrl || "")}
+                value={getFieldValue("imageUrl", item.imageUrl || "")}
                 onChange={(e) => handleFieldChange("imageUrl", e.target.value)}
                 onBlur={() => handleFieldBlur("imageUrl")}
                 placeholder="https://example.com/image.jpg"
@@ -459,7 +459,7 @@ export default function InventoryItemDetail() {
                     id="lastCost"
                     type="number"
                     step="0.01"
-                    value={getFieldValue("lastCost", product.lastCost)}
+                    value={getFieldValue("lastCost", item.lastCost)}
                     onChange={(e) => handleFieldChange("lastCost", e.target.value)}
                     onBlur={() => handleFieldBlur("lastCost")}
                     disabled={updateMutation.isPending}
@@ -473,7 +473,7 @@ export default function InventoryItemDetail() {
                   id="caseSize"
                   type="number"
                   step="0.1"
-                  value={getFieldValue("caseSize", product.caseSize)}
+                  value={getFieldValue("caseSize", item.caseSize)}
                   onChange={(e) => handleFieldChange("caseSize", e.target.value)}
                   onBlur={() => handleFieldBlur("caseSize")}
                   disabled={updateMutation.isPending}
@@ -481,7 +481,7 @@ export default function InventoryItemDetail() {
                 />
               </div>
               <div className="text-sm text-muted-foreground">
-                <p>Cost per case: ${product.lastCost.toFixed(2)}</p>
+                <p>Cost per case: ${item.lastCost.toFixed(2)}</p>
                 <p>Cost per pound: ${costPerPound.toFixed(4)}</p>
               </div>
             </CardContent>
@@ -499,7 +499,7 @@ export default function InventoryItemDetail() {
               <div className="space-y-2">
                 <Label htmlFor="unitId">Unit of Measure</Label>
                 <Select
-                  value={getFieldValue("unitId", product.unitId)}
+                  value={getFieldValue("unitId", item.unitId)}
                   onValueChange={(value) => {
                     handleFieldChange("unitId", value);
                     handleFieldBlur("unitId");
@@ -527,7 +527,7 @@ export default function InventoryItemDetail() {
                     step="1"
                     min="0"
                     max="100"
-                    value={getFieldValue("yieldPercent", product.yieldPercent ?? "")}
+                    value={getFieldValue("yieldPercent", item.yieldPercent ?? "")}
                     placeholder="e.g., 75"
                     onChange={(e) => handleFieldChange("yieldPercent", e.target.value)}
                     onBlur={() => handleFieldBlur("yieldPercent")}
@@ -568,7 +568,7 @@ export default function InventoryItemDetail() {
                         className="text-sm font-normal cursor-pointer flex-1"
                       >
                         {loc.name}
-                        {loc.id === product.storageLocationId && (
+                        {loc.id === item.storageLocationId && (
                           <Badge variant="outline" className="ml-2">Primary</Badge>
                         )}
                       </Label>
@@ -582,7 +582,7 @@ export default function InventoryItemDetail() {
                   id="parLevel"
                   type="number"
                   step="0.01"
-                  value={getFieldValue("parLevel", product.parLevel ?? "")}
+                  value={getFieldValue("parLevel", item.parLevel ?? "")}
                   placeholder="Not set"
                   onChange={(e) => handleFieldChange("parLevel", e.target.value)}
                   onBlur={() => handleFieldBlur("parLevel")}
@@ -596,7 +596,7 @@ export default function InventoryItemDetail() {
                   id="reorderLevel"
                   type="number"
                   step="0.01"
-                  value={getFieldValue("reorderLevel", product.reorderLevel ?? "")}
+                  value={getFieldValue("reorderLevel", item.reorderLevel ?? "")}
                   placeholder="Not set"
                   onChange={(e) => handleFieldChange("reorderLevel", e.target.value)}
                   onBlur={() => handleFieldBlur("reorderLevel")}

@@ -121,7 +121,7 @@ export default function InventoryItems() {
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search products..."
+              placeholder="Search items..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
@@ -243,7 +243,7 @@ export default function InventoryItems() {
         )}
 
         <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>Showing {filteredLevels.length} items</span>
+          <span>Showing {filteredItems.length} items</span>
           {selectedLocation !== "all" && (
             <span>
               Filtered by location
