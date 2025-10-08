@@ -693,25 +693,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Count line not found" });
       }
 
-      const count = await storage.getInventoryCount(existingLine.inventoryCountId);
-      if (!count) {
-        return res.status(404).json({ error: "Count not found" });
-      }
-
       const updatedLine = await storage.updateInventoryCountLine(req.params.id, lineData);
 
-      // Update inventory level - subtract old, add new
-      const oldQty = existingLine.qty;
-      const newQty = lineData.qty !== undefined ? lineData.qty : existingLine.qty;
-      const productId = lineData.productId || existingLine.productId;
-      const currentLevel = await storage.getInventoryLevel(productId, count.storageLocationId);
-      const currentQty = currentLevel?.onHandQty || 0;
-      
-      await storage.updateInventoryLevel(
-        productId,
-        count.storageLocationId,
-        currentQty - oldQty + newQty
-      );
+      // Note: Inventory counts record what was counted, they don't update inventory levels
+      // Inventory adjustments should be done separately if needed
 
       res.json(updatedLine);
     } catch (error: any) {
@@ -727,22 +712,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Count line not found" });
       }
 
-      const count = await storage.getInventoryCount(line.inventoryCountId);
-      if (!count) {
-        return res.status(404).json({ error: "Count not found" });
-      }
-
-      // Update inventory level - subtract this line's quantity
-      const currentLevel = await storage.getInventoryLevel(line.productId, count.storageLocationId);
-      const currentQty = currentLevel?.onHandQty || 0;
-      
-      await storage.updateInventoryLevel(
-        line.productId,
-        count.storageLocationId,
-        currentQty - line.qty
-      );
-
       await storage.deleteInventoryCountLine(req.params.id);
+      
+      // Note: Inventory counts record what was counted, they don't update inventory levels
+      // Inventory adjustments should be done separately if needed
+      
       res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });
