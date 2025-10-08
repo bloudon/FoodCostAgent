@@ -78,7 +78,7 @@ export default function InventoryItems() {
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
 
   const { data: inventoryLevels, isLoading } = useQuery<InventoryLevel[]>({
-    queryKey: ["/api/inventory"],
+    queryKey: ["/api/inventory-items"],
   });
 
   const { data: locations } = useQuery<StorageLocation[]>({
@@ -191,7 +191,7 @@ export default function InventoryItems() {
                       key={level.id} 
                       data-testid={`row-inventory-${level.id}`}
                       className="cursor-pointer hover-elevate"
-                      onClick={() => window.location.href = `/products/${level.productId}`}
+                      onClick={() => window.location.href = `/inventory-items/${level.id}`}
                     >
                       <TableCell>
                         <div className="flex items-center gap-3">

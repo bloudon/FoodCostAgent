@@ -235,7 +235,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/inventory-items", async (req, res) => {
     const locationId = req.query.location_id as string | undefined;
     const items = await storage.getInventoryItems(locationId);
-    res.json(items);
+    
+    const locations = await storage.getStorageLocations();
+    const units = await storage.getUnits();
+    
+    const enriched = items.map((item) => {
+      const location = locations.find((l) => l.id === item.storageLocationId);
+      const unit = units.find((u) => u.id === item.unitId);
+      
+      return {
+        id: item.id,
+        productId: item.id,
+        storageLocationId: item.storageLocationId,
+        onHandQty: item.onHandQty,
+        product: {
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          pluSku: item.pluSku,
+          lastCost: item.lastCost,
+          unitId: item.unitId,
+          caseSize: item.caseSize,
+          imageUrl: item.imageUrl,
+          parLevel: item.parLevel,
+          reorderLevel: item.reorderLevel,
+        },
+        location: location || null,
+        unit: unit || null,
+      };
+    });
+    
+    res.json(enriched);
   });
 
   app.get("/api/inventory-items/aggregated", async (req, res) => {
@@ -482,6 +512,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ INVENTORY ============
+  // Legacy endpoint - redirects to inventory items
   app.get("/api/inventory", async (req, res) => {
     const locationId = req.query.location_id as string | undefined;
     const items = await storage.getInventoryItems(locationId);

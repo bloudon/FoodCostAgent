@@ -80,6 +80,7 @@ function ProtectedLayout() {
             <Switch>
               <Route path="/" component={Dashboard} />
               <Route path="/inventory-items" component={InventoryItems} />
+              <Route path="/inventory-items/:id" component={InventoryItemDetail} />
               <Route path="/products/:id" component={InventoryItemDetail} />
               <Route path="/inventory-sessions" component={InventorySessions} />
               <Route path="/count/:id" component={CountSession} />

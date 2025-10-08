@@ -103,7 +103,6 @@ export default function InventoryItemDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
       toast({
         title: "Item updated",
         description: "The inventory item has been successfully updated.",
