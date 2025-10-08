@@ -283,8 +283,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/inventory-items", async (req, res) => {
     try {
-      const data = insertInventoryItemSchema.parse(req.body);
+      const { locationIds, ...itemData } = req.body;
+      const data = insertInventoryItemSchema.parse(itemData);
       const item = await storage.createInventoryItem(data);
+      
+      // Set locations if provided
+      if (locationIds && Array.isArray(locationIds) && locationIds.length > 0) {
+        await storage.setInventoryItemLocations(item.id, locationIds, data.storageLocationId);
+      }
+      
       res.status(201).json(item);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -293,7 +300,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/inventory-items/:id", async (req, res) => {
     try {
-      const updates = insertInventoryItemSchema.partial().parse(req.body);
+      const { locationIds, ...updateData } = req.body;
+      const updates = insertInventoryItemSchema.partial().parse(updateData);
       
       // Validate numeric fields are not NaN
       if (updates.costPerCase !== undefined && isNaN(updates.costPerCase)) {
@@ -316,10 +324,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!item) {
         return res.status(404).json({ error: "Inventory item not found" });
       }
+      
+      // Update locations if provided
+      if (locationIds && Array.isArray(locationIds)) {
+        await storage.setInventoryItemLocations(req.params.id, locationIds, updates.storageLocationId || item.storageLocationId);
+      }
+      
       res.json(item);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
+  });
+
+  app.get("/api/inventory-items/:id/locations", async (req, res) => {
+    const locations = await storage.getInventoryItemLocations(req.params.id);
+    res.json(locations);
   });
 
   app.get("/api/inventory-items/:id/vendor-items", async (req, res) => {
