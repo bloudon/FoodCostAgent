@@ -797,6 +797,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           inventoryItemId: item.id,
           qty: 0,
           unitId: item.unitId,
+          unitCost: item.pricePerUnit, // Snapshot the current price
           userId: countInput.userId,
         };
 

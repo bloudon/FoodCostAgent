@@ -22,8 +22,7 @@ function SessionRow({ count, countDate, inventoryItems }: any) {
   });
 
   const totalValue = countLines?.reduce((sum, line) => {
-    const item = inventoryItems?.find((p: any) => p.id === line.inventoryItemId);
-    return sum + (line.qty * (item?.lastCost || 0));
+    return sum + (line.qty * (line.unitCost || 0));
   }, 0) || 0;
 
   return (

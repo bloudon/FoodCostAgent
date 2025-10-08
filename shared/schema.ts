@@ -208,6 +208,7 @@ export const inventoryCountLines = pgTable("inventory_count_lines", {
   inventoryItemId: varchar("inventory_item_id").notNull(),
   qty: real("qty").notNull().default(0), // quantity in base units
   unitId: varchar("unit_id").notNull(),
+  unitCost: real("unit_cost").notNull().default(0), // price per unit at time of count (snapshot)
   userId: varchar("user_id"),
   countedAt: timestamp("counted_at").defaultNow(),
 });

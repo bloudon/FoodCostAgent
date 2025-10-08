@@ -58,6 +58,8 @@ Preferred communication style: Simple, everyday language.
     - **Auto-Population**: All active inventory items are automatically added as count lines when a session is created (qty=0)
     - **Inline Editing**: Click any quantity to edit inline with Save/Cancel buttons (no add/edit/delete dialogs)
     - **Schema**: Count lines include userId and countedAt timestamp for audit trail
+    - **Price Snapshot**: Each count line captures unitCost at time of counting to preserve historical accuracy
+    - **Multi-Location Support**: Inventory sessions no longer tied to specific location; use location filter to count by area
     - **Recording Only**: Count sessions do NOT automatically update inventory levels
     - **Dashboard Filtering**: Filter cards show aggregated values by category and location
     - **Toggle Behavior**: Click to filter, click again to clear; both filters can be active simultaneously

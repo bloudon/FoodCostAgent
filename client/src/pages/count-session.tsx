@@ -96,11 +96,11 @@ export default function CountSession() {
     setEditingQty("");
   };
   
-  // Calculate category totals
+  // Calculate category totals using captured unit cost
   const categoryTotals = countLines?.reduce((acc: any, line) => {
     const item = line.inventoryItem;
     const category = item?.category || "Uncategorized";
-    const value = line.qty * (item?.lastCost || 0);
+    const value = line.qty * (line.unitCost || 0);
     
     if (!acc[category]) {
       acc[category] = { count: 0, value: 0, items: 0 };
@@ -111,12 +111,12 @@ export default function CountSession() {
     return acc;
   }, {}) || {};
 
-  // Calculate location totals
+  // Calculate location totals using captured unit cost
   const locationTotals = countLines?.reduce((acc: any, line) => {
     const item = line.inventoryItem;
     const locationId = item?.storageLocationId || "unknown";
     const locationName = storageLocations?.find(l => l.id === locationId)?.name || "Unknown Location";
-    const value = line.qty * (item?.lastCost || 0);
+    const value = line.qty * (line.unitCost || 0);
     
     if (!acc[locationId]) {
       acc[locationId] = { name: locationName, count: 0, value: 0, items: 0 };
@@ -128,8 +128,7 @@ export default function CountSession() {
   }, {}) || {};
 
   const totalValue = countLines?.reduce((sum, line) => {
-    const item = line.inventoryItem;
-    return sum + (line.qty * (item?.lastCost || 0));
+    return sum + (line.qty * (line.unitCost || 0));
   }, 0) || 0;
 
   const totalItems = countLines?.length || 0;
