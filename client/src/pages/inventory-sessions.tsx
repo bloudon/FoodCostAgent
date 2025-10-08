@@ -16,7 +16,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
-function SessionRow({ count, location, countDate, inventoryItems }: any) {
+function SessionRow({ count, countDate, inventoryItems }: any) {
   const { data: countLines } = useQuery<any[]>({
     queryKey: ["/api/inventory-count-lines", count.id],
   });
@@ -31,7 +31,6 @@ function SessionRow({ count, location, countDate, inventoryItems }: any) {
       <TableCell className="font-mono">
         {countDate.toLocaleDateString()} {countDate.toLocaleTimeString()}
       </TableCell>
-      <TableCell>{location?.name || 'Unknown'}</TableCell>
       <TableCell>{count.userId}</TableCell>
       <TableCell className="text-right font-mono">{countLines?.length || 0}</TableCell>
       <TableCell className="text-right font-mono font-semibold" data-testid={`text-session-value-${count.id}`}>
@@ -59,10 +58,6 @@ export default function InventorySessions() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const { data: storageLocations } = useQuery<any[]>({
-    queryKey: ["/api/storage-locations"],
-  });
-
   const { data: inventoryItems } = useQuery<any[]>({
     queryKey: ["/api/inventory-items"],
   });
@@ -72,9 +67,8 @@ export default function InventorySessions() {
   });
 
   const createSessionMutation = useMutation({
-    mutationFn: async (data: { storageLocationId: string }) => {
+    mutationFn: async () => {
       const response = await apiRequest("POST", "/api/inventory-counts", {
-        storageLocationId: data.storageLocationId,
         userId: "system",
         lines: [],
       });
@@ -98,18 +92,7 @@ export default function InventorySessions() {
   });
 
   const handleStartNewCount = () => {
-    if (!storageLocations || storageLocations.length === 0) {
-      toast({
-        title: "Error",
-        description: "Please create a storage location first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    createSessionMutation.mutate({
-      storageLocationId: storageLocations[0].id,
-    });
+    createSessionMutation.mutate();
   };
 
   // Sort counts by date descending
@@ -159,7 +142,6 @@ export default function InventorySessions() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date & Time</TableHead>
-                  <TableHead>Location</TableHead>
                   <TableHead>User</TableHead>
                   <TableHead className="text-right">Items</TableHead>
                   <TableHead className="text-right">Total Value</TableHead>
@@ -169,13 +151,11 @@ export default function InventorySessions() {
               </TableHeader>
               <TableBody>
                 {sortedCounts.map((count) => {
-                  const location = storageLocations?.find(l => l.id === count.storageLocationId);
                   const countDate = new Date(count.countedAt);
                   return (
                     <SessionRow 
                       key={count.id} 
                       count={count} 
-                      location={location} 
                       countDate={countDate}
                       inventoryItems={inventoryItems}
                     />
