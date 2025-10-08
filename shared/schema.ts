@@ -193,7 +193,6 @@ export type RecipeComponent = typeof recipeComponents.$inferSelect;
 export const inventoryCounts = pgTable("inventory_counts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   countedAt: timestamp("counted_at").notNull().defaultNow(),
-  storageLocationId: varchar("storage_location_id").notNull(),
   userId: varchar("user_id").notNull(),
   note: text("note"),
 });
