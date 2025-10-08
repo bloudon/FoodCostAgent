@@ -751,25 +751,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/inventory-counts", async (req, res) => {
     try {
-      const { lines, ...countData } = req.body;
-      const countInput = insertInventoryCountSchema.parse(countData);
+      const countInput = insertInventoryCountSchema.parse(req.body);
       const count = await storage.createInventoryCount(countInput);
 
-      if (lines && Array.isArray(lines)) {
-        for (const line of lines) {
-          const lineData = insertInventoryCountLineSchema.parse({
-            ...line,
-            inventoryCountId: count.id,
-          });
+      // Auto-populate count lines for ALL active inventory items
+      const allItems = await storage.getInventoryItems();
+      const activeItems = allItems.filter(item => item.active === 1);
 
-          await storage.createInventoryCountLine(lineData);
+      for (const item of activeItems) {
+        const lineData = {
+          inventoryCountId: count.id,
+          inventoryItemId: item.id,
+          qty: 0,
+          unitId: item.unitId,
+          userId: countInput.userId,
+        };
 
-          await storage.updateInventoryLevel(
-            lineData.productId,
-            count.storageLocationId,
-            lineData.qty
-          );
-        }
+        await storage.createInventoryCountLine(lineData);
       }
 
       res.status(201).json(count);
