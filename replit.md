@@ -9,7 +9,7 @@ Preferred communication style: Simple, everyday language.
 ### Inventory Item Configuration
 - **Default Unit of Measure**: Pound should be the default unit when creating new inventory items
 - **Yield Field**: Yield is stored as a percentage value (0-100), not a separate yield amount + unit
-- **Storage Location**: Each inventory item has ONE storage location (singular, not plural)
+- **Storage Locations**: Inventory items can be associated with multiple storage locations using checkboxes. At least one location is required. The primary location is indicated with a "Primary" badge.
 
 ## System Architecture
 
@@ -42,7 +42,11 @@ Preferred communication style: Simple, everyday language.
   - Recipe components now use `inventory_item` type instead of `product`
   - Removed Products pages and navigation - fully replaced with Inventory Items
   - Added `yieldPercent` field to inventory items (percentage 0-100)
-  - Changed storage location from array to singular field (`storageLocationId`)
+  - Implemented many-to-many storage locations using `inventory_item_locations` join table
+    - Multiple locations per inventory item supported
+    - Primary location tracked in both `inventoryItems.storageLocationId` and `inventory_item_locations.isPrimary`
+    - Frontend uses checkboxes for location selection
+    - Client and server-side validation ensures at least one location is always selected
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
