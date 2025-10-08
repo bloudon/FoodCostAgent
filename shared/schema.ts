@@ -80,6 +80,7 @@ export const inventoryItems = pgTable("inventory_items", {
   lastCost: real("last_cost").notNull().default(0), // cost per case
   storageLocationId: varchar("storage_location_id").notNull(), // single location for this item
   onHandQty: real("on_hand_qty").notNull().default(0), // quantity on hand in base units
+  yieldPercent: real("yield_percent"), // usable yield percentage after trimming/waste (0-100)
   imageUrl: text("image_url"),
   parLevel: real("par_level"), // target inventory level in base units
   reorderLevel: real("reorder_level"), // level at which to reorder in base units

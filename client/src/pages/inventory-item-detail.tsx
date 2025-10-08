@@ -6,12 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { filterUnitsBySystem } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { SystemPreferences } from "@shared/schema";
 
 type Product = {
@@ -24,9 +23,8 @@ type Product = {
   active: number;
   lastCost: number;
   caseSize: number;
-  storageLocationIds: string[] | null;
-  yieldAmount: number | null;
-  yieldUnitId: string | null;
+  storageLocationId: string;
+  yieldPercent: number | null;
   imageUrl: string | null;
   parLevel: number | null;
   reorderLevel: number | null;
@@ -73,7 +71,6 @@ export default function InventoryItemDetail() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [editedFields, setEditedFields] = useState<Record<string, any>>({});
-  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
 
   const { data: product, isLoading: productLoading } = useQuery<Product>({
     queryKey: ["/api/inventory-items", id],
@@ -125,11 +122,11 @@ export default function InventoryItemDetail() {
     if (field in editedFields) {
       const value = editedFields[field];
       // Validate numeric fields
-      if (["lastCost", "caseSize", "parLevel", "reorderLevel", "yieldAmount"].includes(field)) {
+      if (["lastCost", "caseSize", "parLevel", "reorderLevel", "yieldPercent"].includes(field)) {
         const numValue = parseFloat(value);
         if (value !== "" && !isNaN(numValue)) {
           updateMutation.mutate({ [field]: numValue });
-        } else if (value === "" && (field === "parLevel" || field === "reorderLevel" || field === "yieldAmount")) {
+        } else if (value === "" && (field === "parLevel" || field === "reorderLevel" || field === "yieldPercent")) {
           updateMutation.mutate({ [field]: null });
         }
       } else {
@@ -143,19 +140,6 @@ export default function InventoryItemDetail() {
     }
   };
 
-  const handleLocationToggle = (locationId: string) => {
-    const newLocations = selectedLocationIds.includes(locationId)
-      ? selectedLocationIds.filter(id => id !== locationId)
-      : [...selectedLocationIds, locationId];
-    setSelectedLocationIds(newLocations);
-    updateMutation.mutate({ storageLocationIds: newLocations.length > 0 ? newLocations : null });
-  };
-
-  useEffect(() => {
-    if (product?.storageLocationIds) {
-      setSelectedLocationIds(product.storageLocationIds);
-    }
-  }, [product]);
 
   const getFieldValue = (field: string, defaultValue: any) => {
     return field in editedFields ? editedFields[field] : defaultValue;
@@ -178,7 +162,7 @@ export default function InventoryItemDetail() {
   }
 
   const unit = units?.find((u) => u.id === product.unitId);
-  const yieldUnit = units?.find((u) => u.id === product.yieldUnitId);
+  const location = locations?.find((l) => l.id === product.storageLocationId);
   
   const filteredUnits = filterUnitsBySystem(units, systemPrefs?.unitSystem);
   const costPerPound = product.caseSize ? (product.lastCost / product.caseSize) : 0;
@@ -327,40 +311,24 @@ export default function InventoryItemDetail() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="yieldAmount">Yield Amount</Label>
-                <Input
-                  id="yieldAmount"
-                  type="number"
-                  step="0.01"
-                  value={getFieldValue("yieldAmount", product.yieldAmount ?? "")}
-                  placeholder="Enter yield amount"
-                  onChange={(e) => handleFieldChange("yieldAmount", e.target.value)}
-                  onBlur={() => handleFieldBlur("yieldAmount")}
-                  disabled={updateMutation.isPending}
-                  data-testid="input-yield-amount"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="yieldUnitId">Yield Unit</Label>
-                <Select
-                  value={getFieldValue("yieldUnitId", product.yieldUnitId || "")}
-                  onValueChange={(value) => {
-                    handleFieldChange("yieldUnitId", value);
-                    handleFieldBlur("yieldUnitId");
-                  }}
-                  disabled={updateMutation.isPending}
-                >
-                  <SelectTrigger id="yieldUnitId" data-testid="select-yield-unit">
-                    <SelectValue placeholder="Select yield unit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredUnits?.map((unit) => (
-                      <SelectItem key={unit.id} value={unit.id}>
-                        {unit.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="yieldPercent">Yield Percentage</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="yieldPercent"
+                    type="number"
+                    step="1"
+                    min="0"
+                    max="100"
+                    value={getFieldValue("yieldPercent", product.yieldPercent ?? "")}
+                    placeholder="e.g., 75"
+                    onChange={(e) => handleFieldChange("yieldPercent", e.target.value)}
+                    onBlur={() => handleFieldBlur("yieldPercent")}
+                    disabled={updateMutation.isPending}
+                    data-testid="input-yield-percent"
+                  />
+                  <div className="flex items-center px-3 text-muted-foreground">%</div>
+                </div>
+                <p className="text-xs text-muted-foreground">Usable yield after trimming/waste</p>
               </div>
             </CardContent>
           </Card>
@@ -369,36 +337,34 @@ export default function InventoryItemDetail() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MapPin className="h-5 w-5" />
-                Storage Locations
+                Storage & Inventory
               </CardTitle>
-              <CardDescription>Where this product is stored</CardDescription>
+              <CardDescription>Location and inventory levels</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-3">
-                {locations && locations.length > 0 ? (
-                  locations.map((location) => (
-                    <div key={location.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`location-${location.id}`}
-                        checked={selectedLocationIds.includes(location.id)}
-                        onCheckedChange={() => handleLocationToggle(location.id)}
-                        data-testid={`checkbox-location-${location.id}`}
-                      />
-                      <Label
-                        htmlFor={`location-${location.id}`}
-                        className="text-sm font-normal cursor-pointer"
-                      >
-                        {location.name}
-                      </Label>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No storage locations configured
-                  </p>
-                )}
+              <div className="space-y-2">
+                <Label htmlFor="storageLocationId">Storage Location</Label>
+                <Select
+                  value={getFieldValue("storageLocationId", product.storageLocationId)}
+                  onValueChange={(value) => {
+                    handleFieldChange("storageLocationId", value);
+                    handleFieldBlur("storageLocationId");
+                  }}
+                  disabled={updateMutation.isPending}
+                >
+                  <SelectTrigger id="storageLocationId" data-testid="select-storage-location">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locations?.map((loc) => (
+                      <SelectItem key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="border-t pt-4 mt-4 space-y-2">
+              <div className="space-y-2">
                 <Label htmlFor="parLevel">Par Level</Label>
                 <Input
                   id="parLevel"
