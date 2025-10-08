@@ -12,6 +12,7 @@ import {
   Warehouse,
   Settings,
   ArrowLeftRight,
+  Tag,
 } from "lucide-react";
 import {
   Sidebar,
@@ -104,6 +105,18 @@ export function AppSidebar() {
           <SidebarGroupLabel>System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={location === "/categories"}
+                  data-testid="link-categories"
+                >
+                  <Link href="/categories">
+                    <Tag className="h-4 w-4" />
+                    <span>Categories</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild

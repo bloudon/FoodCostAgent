@@ -27,6 +27,7 @@ import PurchaseOrders from "@/pages/purchase-orders";
 import Receiving from "@/pages/receiving";
 import VarianceReport from "@/pages/variance-report";
 import StorageLocations from "@/pages/storage-locations";
+import Categories from "@/pages/categories";
 import Settings from "@/pages/settings";
 import Login from "@/pages/login";
 
@@ -98,6 +99,7 @@ function ProtectedLayout() {
               <Route path="/receiving" component={Receiving} />
               <Route path="/variance" component={VarianceReport} />
               <Route path="/storage-locations" component={StorageLocations} />
+              <Route path="/categories" component={Categories} />
               <Route path="/unit-conversions" component={UnitConversions} />
               <Route path="/settings" component={Settings} />
               <Route component={NotFound} />
