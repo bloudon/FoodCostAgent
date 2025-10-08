@@ -78,7 +78,7 @@ export const inventoryItems = pgTable("inventory_items", {
   barcode: text("barcode"),
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
   lastCost: real("last_cost").notNull().default(0), // cost per case
-  storageLocationId: varchar("storage_location_id").notNull(), // single location for this item
+  storageLocationId: varchar("storage_location_id").notNull(), // primary storage location
   onHandQty: real("on_hand_qty").notNull().default(0), // quantity on hand in base units
   yieldPercent: real("yield_percent"), // usable yield percentage after trimming/waste (0-100)
   imageUrl: text("image_url"),
@@ -92,6 +92,18 @@ export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit
 });
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
+
+// Inventory Item Locations (many-to-many: items can exist in multiple storage locations)
+export const inventoryItemLocations = pgTable("inventory_item_locations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
+  storageLocationId: varchar("storage_location_id").notNull(),
+  isPrimary: integer("is_primary").notNull().default(0), // 1 if this is the primary location
+});
+
+export const insertInventoryItemLocationSchema = createInsertSchema(inventoryItemLocations).omit({ id: true });
+export type InsertInventoryItemLocation = z.infer<typeof insertInventoryItemLocationSchema>;
+export type InventoryItemLocation = typeof inventoryItemLocations.$inferSelect;
 
 // Inventory Item Price History
 export const inventoryItemPriceHistory = pgTable("inventory_item_price_history", {
