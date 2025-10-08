@@ -164,9 +164,7 @@ export default function InventoryItemDetail() {
       ? selectedLocations.filter(id => id !== locationId)
       : [...selectedLocations, locationId];
     
-    setSelectedLocations(newLocations);
-    
-    // If no locations selected, don't update
+    // Check if this would result in zero locations BEFORE updating state
     if (newLocations.length === 0) {
       toast({
         title: "At least one location required",
@@ -175,6 +173,9 @@ export default function InventoryItemDetail() {
       });
       return;
     }
+    
+    // Update state only if validation passes
+    setSelectedLocations(newLocations);
     
     // Update the mutation with new locations
     const primaryLocationId = newLocations.includes(product!.storageLocationId)

@@ -285,6 +285,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { locationIds, ...itemData } = req.body;
       const data = insertInventoryItemSchema.parse(itemData);
+      
+      // Validate locationIds if provided
+      if (locationIds !== undefined) {
+        if (!Array.isArray(locationIds)) {
+          return res.status(400).json({ error: "locationIds must be an array" });
+        }
+        if (locationIds.length === 0) {
+          return res.status(400).json({ error: "At least one storage location is required" });
+        }
+      }
+      
       const item = await storage.createInventoryItem(data);
       
       // Set locations if provided
@@ -320,13 +331,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid reorderLevel value" });
       }
       
+      // Validate locationIds if provided
+      if (locationIds !== undefined) {
+        if (!Array.isArray(locationIds)) {
+          return res.status(400).json({ error: "locationIds must be an array" });
+        }
+        if (locationIds.length === 0) {
+          return res.status(400).json({ error: "At least one storage location is required" });
+        }
+      }
+      
       const item = await storage.updateInventoryItem(req.params.id, updates);
       if (!item) {
         return res.status(404).json({ error: "Inventory item not found" });
       }
       
       // Update locations if provided
-      if (locationIds && Array.isArray(locationIds)) {
+      if (locationIds && Array.isArray(locationIds) && locationIds.length > 0) {
         await storage.setInventoryItemLocations(req.params.id, locationIds, updates.storageLocationId || item.storageLocationId);
       }
       
