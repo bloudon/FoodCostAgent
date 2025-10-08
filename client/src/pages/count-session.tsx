@@ -108,7 +108,7 @@ export default function CountSession() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; updates: Partial<CountLineForm> }) => {
-      return apiRequest(`/api/inventory-count-lines/${data.id}`, "PATCH", data.updates);
+      return apiRequest("PATCH", `/api/inventory-count-lines/${data.id}`, data.updates);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
@@ -131,7 +131,7 @@ export default function CountSession() {
 
   const createMutation = useMutation({
     mutationFn: async (data: CountLineForm & { inventoryCountId: string }) => {
-      return apiRequest("/api/inventory-count-lines", "POST", data);
+      return apiRequest("POST", "/api/inventory-count-lines", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
@@ -154,7 +154,7 @@ export default function CountSession() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/inventory-count-lines/${id}`, "DELETE");
+      return apiRequest("DELETE", `/api/inventory-count-lines/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
@@ -235,7 +235,7 @@ export default function CountSession() {
   // Calculate location totals
   const locationTotals = countLines?.reduce((acc: any, line) => {
     const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
-    const locationId = item?.storageLocationId;
+    const locationId = item?.storageLocationId || "unknown";
     const locationName = storageLocations?.find(l => l.id === locationId)?.name || "Unknown Location";
     const value = line.qty * (item?.lastCost || 0);
     
@@ -270,14 +270,16 @@ export default function CountSession() {
   if (selectedCategory !== "all") {
     filteredLines = filteredLines.filter(line => {
       const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
-      return item?.category === selectedCategory;
+      const category = item?.category || "Uncategorized";
+      return category === selectedCategory;
     });
   }
   
   if (selectedLocation !== "all") {
     filteredLines = filteredLines.filter(line => {
       const item = inventoryItems?.find(p => p.id === line.inventoryItemId);
-      return item?.storageLocationId === selectedLocation;
+      const locationId = item?.storageLocationId || "unknown";
+      return locationId === selectedLocation;
     });
   }
 

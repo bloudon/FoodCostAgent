@@ -675,12 +675,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const line = await storage.createInventoryCountLine(lineData);
 
-      // Update inventory level
-      await storage.updateInventoryLevel(
-        lineData.productId,
-        count.storageLocationId,
-        lineData.qty
-      );
+      // Note: Inventory counts record what was counted, they don't update inventory levels
+      // Inventory adjustments should be done separately if needed
 
       res.status(201).json(line);
     } catch (error: any) {

@@ -73,11 +73,12 @@ export default function InventorySessions() {
 
   const createSessionMutation = useMutation({
     mutationFn: async (data: { storageLocationId: string }) => {
-      return apiRequest("/api/inventory-counts", "POST", {
+      const response = await apiRequest("POST", "/api/inventory-counts", {
         storageLocationId: data.storageLocationId,
         userId: "system",
         lines: [],
       });
+      return response.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
