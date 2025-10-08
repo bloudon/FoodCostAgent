@@ -4,6 +4,7 @@ import {
   users, type User, type InsertUser,
   authSessions, type AuthSession, type InsertAuthSession,
   storageLocations, type StorageLocation, type InsertStorageLocation,
+  categories, type Category, type InsertCategory,
   units, type Unit, type InsertUnit,
   unitConversions, type UnitConversion, type InsertUnitConversion,
   inventoryItems, type InventoryItem, type InsertInventoryItem,
@@ -47,6 +48,13 @@ export interface IStorage {
   createStorageLocation(location: InsertStorageLocation): Promise<StorageLocation>;
   updateStorageLocation(id: string, location: Partial<StorageLocation>): Promise<StorageLocation | undefined>;
   deleteStorageLocation(id: string): Promise<void>;
+
+  // Categories
+  getCategories(): Promise<Category[]>;
+  getCategory(id: string): Promise<Category | undefined>;
+  createCategory(category: InsertCategory): Promise<Category>;
+  updateCategory(id: string, category: Partial<Category>): Promise<Category | undefined>;
+  deleteCategory(id: string): Promise<void>;
 
   // Units
   getUnits(): Promise<Unit[]>;
@@ -281,6 +289,34 @@ export class DatabaseStorage implements IStorage {
 
   async deleteStorageLocation(id: string): Promise<void> {
     await db.delete(storageLocations).where(eq(storageLocations.id, id));
+  }
+
+  // Categories
+  async getCategories(): Promise<Category[]> {
+    return db.select().from(categories).orderBy(categories.sortOrder);
+  }
+
+  async getCategory(id: string): Promise<Category | undefined> {
+    const [category] = await db.select().from(categories).where(eq(categories.id, id));
+    return category || undefined;
+  }
+
+  async createCategory(insertCategory: InsertCategory): Promise<Category> {
+    const [category] = await db.insert(categories).values(insertCategory).returning();
+    return category;
+  }
+
+  async updateCategory(id: string, updates: Partial<Category>): Promise<Category | undefined> {
+    const [category] = await db
+      .update(categories)
+      .set(updates)
+      .where(eq(categories.id, id))
+      .returning();
+    return category || undefined;
+  }
+
+  async deleteCategory(id: string): Promise<void> {
+    await db.delete(categories).where(eq(categories.id, id));
   }
 
   // Units

@@ -8,6 +8,7 @@ import {
   insertUnitSchema,
   insertUnitConversionSchema,
   insertStorageLocationSchema,
+  insertCategorySchema,
   insertVendorSchema,
   insertInventoryItemSchema,
   insertVendorItemSchema,
@@ -187,6 +188,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/storage-locations/:id", async (req, res) => {
     try {
       await storage.deleteStorageLocation(req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // ============ CATEGORIES ============
+  app.get("/api/categories", async (req, res) => {
+    const categories = await storage.getCategories();
+    res.json(categories);
+  });
+
+  app.get("/api/categories/:id", async (req, res) => {
+    const category = await storage.getCategory(req.params.id);
+    if (!category) {
+      return res.status(404).json({ error: "Category not found" });
+    }
+    res.json(category);
+  });
+
+  app.post("/api/categories", async (req, res) => {
+    try {
+      const data = insertCategorySchema.parse(req.body);
+      const category = await storage.createCategory(data);
+      res.status(201).json(category);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/categories/:id", async (req, res) => {
+    try {
+      const data = insertCategorySchema.partial().parse(req.body);
+      const category = await storage.updateCategory(req.params.id, data);
+      if (!category) {
+        return res.status(404).json({ error: "Category not found" });
+      }
+      res.json(category);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/categories/:id", async (req, res) => {
+    try {
+      await storage.deleteCategory(req.params.id);
       res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });
