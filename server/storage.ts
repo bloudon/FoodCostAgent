@@ -7,6 +7,7 @@ import {
   units, type Unit, type InsertUnit,
   unitConversions, type UnitConversion, type InsertUnitConversion,
   inventoryItems, type InventoryItem, type InsertInventoryItem,
+  inventoryItemLocations, type InventoryItemLocation, type InsertInventoryItemLocation,
   inventoryItemPriceHistory, type InventoryItemPriceHistory, type InsertInventoryItemPriceHistory,
   vendors, type Vendor, type InsertVendor,
   vendorItems, type VendorItem, type InsertVendorItem,
@@ -75,6 +76,10 @@ export interface IStorage {
       onHandQty: number;
     }>;
   }>>;
+  
+  // Inventory Item Locations
+  getInventoryItemLocations(inventoryItemId: string): Promise<InventoryItemLocation[]>;
+  setInventoryItemLocations(inventoryItemId: string, locationIds: string[], primaryLocationId?: string): Promise<void>;
 
   // Vendors
   getVendors(): Promise<Vendor[]>;
@@ -396,6 +401,43 @@ export class DatabaseStorage implements IStorage {
     }
 
     return Array.from(grouped.values());
+  }
+
+  // Inventory Item Locations
+  async getInventoryItemLocations(inventoryItemId: string): Promise<InventoryItemLocation[]> {
+    return db
+      .select()
+      .from(inventoryItemLocations)
+      .where(eq(inventoryItemLocations.inventoryItemId, inventoryItemId));
+  }
+
+  async setInventoryItemLocations(
+    inventoryItemId: string,
+    locationIds: string[],
+    primaryLocationId?: string
+  ): Promise<void> {
+    // Delete existing locations
+    await db
+      .delete(inventoryItemLocations)
+      .where(eq(inventoryItemLocations.inventoryItemId, inventoryItemId));
+    
+    // Insert new locations
+    if (locationIds.length > 0) {
+      const primary = primaryLocationId || locationIds[0];
+      await db.insert(inventoryItemLocations).values(
+        locationIds.map(locationId => ({
+          inventoryItemId,
+          storageLocationId: locationId,
+          isPrimary: locationId === primary ? 1 : 0
+        }))
+      );
+      
+      // Update the primary location in the inventory item
+      await db
+        .update(inventoryItems)
+        .set({ storageLocationId: primary })
+        .where(eq(inventoryItems.id, inventoryItemId));
+    }
   }
 
   // Vendors
