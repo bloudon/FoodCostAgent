@@ -368,7 +368,7 @@ export default function CountSession() {
               {filteredLines && filteredLines.length > 0 ? (
                 filteredLines.map((line) => {
                   const item = line.inventoryItem;
-                  const value = line.qty * (item?.lastCost || 0);
+                  const value = line.qty * (line.unitCost || 0);
                   return (
                     <TableRow key={line.id} data-testid={`row-line-${line.id}`}>
                       <TableCell className="font-medium">{item?.name || 'Unknown'}</TableCell>
@@ -420,7 +420,7 @@ export default function CountSession() {
                         )}
                       </TableCell>
                       <TableCell>{line.unitName || '-'}</TableCell>
-                      <TableCell className="text-right font-mono">${(item?.lastCost || 0).toFixed(4)}</TableCell>
+                      <TableCell className="text-right font-mono">${(line.unitCost || 0).toFixed(4)}</TableCell>
                       <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
                     </TableRow>
                   );
