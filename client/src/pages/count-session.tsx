@@ -29,7 +29,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 export default function CountSession() {
   const params = useParams();
   const countId = params.id;
-  const [showEmpty, setShowEmpty] = useState(false); // Default to hiding empty items
+  const [showEmpty, setShowEmpty] = useState(true); // Default to showing all items
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
