@@ -230,7 +230,7 @@ export default function CountSession() {
               {totalItems}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Products counted
+              Inventory items counted
             </p>
           </CardContent>
         </Card>
@@ -245,7 +245,7 @@ export default function CountSession() {
               {Object.keys(categoryTotals).length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Product categories
+              Item categories
             </p>
           </CardContent>
         </Card>
@@ -359,7 +359,7 @@ export default function CountSession() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Product</TableHead>
+                <TableHead>Inventory Item</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead className="text-right">Quantity (click to edit)</TableHead>
                 <TableHead>Unit</TableHead>
