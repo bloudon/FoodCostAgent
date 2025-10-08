@@ -47,6 +47,13 @@ Preferred communication style: Simple, everyday language.
     - Primary location tracked in both `inventoryItems.storageLocationId` and `inventory_item_locations.isPrimary`
     - Frontend uses checkboxes for location selection
     - Client and server-side validation ensures at least one location is always selected
+  - **Vendor Items Management** (October 2025):
+    - Full CRUD operations for vendor items (create, update, delete)
+    - Dialog-based UI on inventory item detail page for managing vendor relationships
+    - Each inventory item can have multiple vendors with vendor-specific details (SKU, pricing, lead times)
+    - API routes: POST/PATCH/DELETE /api/vendor-items with Zod validation
+    - Proper cache invalidation using TanStack Query
+    - Toast notifications for success/error feedback
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
