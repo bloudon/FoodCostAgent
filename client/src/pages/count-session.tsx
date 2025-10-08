@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Package, DollarSign, Layers, Pencil, Trash2, Plus } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Layers } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -14,24 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -43,36 +25,15 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-
-const countLineSchema = z.object({
-  inventoryItemId: z.string().min(1, "Item is required"),
-  unitId: z.string().min(1, "Unit is required"),
-  qty: z.coerce.number().min(0, "Quantity must be at least 0"),
-});
-
-type CountLineForm = z.infer<typeof countLineSchema>;
 
 export default function CountSession() {
   const params = useParams();
   const countId = params.id;
-  const [showEmpty, setShowEmpty] = useState(true);
+  const [showEmpty, setShowEmpty] = useState(false); // Default to hiding empty items
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [selectedLine, setSelectedLine] = useState<any>(null);
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  const [editingQty, setEditingQty] = useState<string>("");
   const { toast } = useToast();
 
   const { data: count, isLoading: countLoading } = useQuery<any>({
@@ -98,123 +59,43 @@ export default function CountSession() {
 
   const location = storageLocations?.find(l => l.id === count?.storageLocationId);
 
-  const editForm = useForm<CountLineForm>({
-    resolver: zodResolver(countLineSchema),
-  });
-
-  const addForm = useForm<CountLineForm>({
-    resolver: zodResolver(countLineSchema),
-  });
-
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; updates: Partial<CountLineForm> }) => {
-      return apiRequest("PATCH", `/api/inventory-count-lines/${data.id}`, data.updates);
+    mutationFn: async (data: { id: string; qty: number }) => {
+      return apiRequest("PATCH", `/api/inventory-count-lines/${data.id}`, { qty: data.qty });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory"], exact: false });
       toast({
         title: "Success",
-        description: "Count line updated successfully",
+        description: "Count updated successfully",
       });
-      setEditDialogOpen(false);
-      editForm.reset();
+      setEditingLineId(null);
+      setEditingQty("");
     },
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update count line",
+        description: error.message || "Failed to update count",
         variant: "destructive",
       });
     },
   });
 
-  const createMutation = useMutation({
-    mutationFn: async (data: CountLineForm & { inventoryCountId: string }) => {
-      return apiRequest("POST", "/api/inventory-count-lines", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory"], exact: false });
-      toast({
-        title: "Success",
-        description: "Item added to count successfully",
-      });
-      setAddDialogOpen(false);
-      addForm.reset();
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to add item to count",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/inventory-count-lines/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory"], exact: false });
-      toast({
-        title: "Success",
-        description: "Count line deleted successfully",
-      });
-      setDeleteDialogOpen(false);
-      setSelectedLine(null);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete count line",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleEdit = (line: any) => {
-    setSelectedLine(line);
-    editForm.reset({
-      inventoryItemId: line.inventoryItemId,
-      unitId: line.unitId,
-      qty: line.qty,
-    });
-    setEditDialogOpen(true);
+  const handleStartEdit = (line: any) => {
+    setEditingLineId(line.id);
+    setEditingQty(line.qty.toString());
   };
 
-  const handleDelete = (line: any) => {
-    setSelectedLine(line);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleAdd = () => {
-    addForm.reset({
-      inventoryItemId: "",
-      unitId: "",
-      qty: 0,
-    });
-    setAddDialogOpen(true);
-  };
-
-  const onEditSubmit = (data: CountLineForm) => {
-    if (selectedLine) {
-      updateMutation.mutate({
-        id: selectedLine.id,
-        updates: data,
-      });
+  const handleSaveEdit = (lineId: string) => {
+    const qty = parseFloat(editingQty);
+    if (!isNaN(qty) && qty >= 0) {
+      updateMutation.mutate({ id: lineId, qty });
     }
   };
 
-  const onAddSubmit = (data: CountLineForm) => {
-    if (countId) {
-      createMutation.mutate({
-        ...data,
-        inventoryCountId: countId,
-      });
-    }
+  const handleCancelEdit = () => {
+    setEditingLineId(null);
+    setEditingQty("");
   };
   
   // Calculate category totals
@@ -309,19 +190,16 @@ export default function CountSession() {
           </Button>
         </Link>
         
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-session-title">
-              Count Session Details
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              {location?.name} - {countDate?.toLocaleDateString()} {countDate?.toLocaleTimeString()}
-            </p>
-          </div>
-          <Button onClick={handleAdd} data-testid="button-add-item">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Item
-          </Button>
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-session-title">
+            Count Session Details
+          </h1>
+          <p className="text-muted-foreground mt-2">
+            {location?.name} - {countDate?.toLocaleDateString()} {countDate?.toLocaleTimeString()}
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Click on a quantity to edit. All active items are pre-loaded.
+          </p>
         </div>
       </div>
 
@@ -483,11 +361,10 @@ export default function CountSession() {
               <TableRow>
                 <TableHead>Product</TableHead>
                 <TableHead>Category</TableHead>
-                <TableHead className="text-right">Quantity</TableHead>
+                <TableHead className="text-right">Quantity (click to edit)</TableHead>
                 <TableHead>Unit</TableHead>
                 <TableHead className="text-right">Unit Cost</TableHead>
                 <TableHead className="text-right">Total Value</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -497,43 +374,63 @@ export default function CountSession() {
                   const value = line.qty * (item?.lastCost || 0);
                   return (
                     <TableRow key={line.id} data-testid={`row-line-${line.id}`}>
-                      <TableCell className="font-medium">
-                        <Link href={`/item-count/${line.id}`}>
-                          <span className="hover:underline cursor-pointer">{item?.name || 'Unknown'}</span>
-                        </Link>
-                      </TableCell>
+                      <TableCell className="font-medium">{item?.name || 'Unknown'}</TableCell>
                       <TableCell className="text-muted-foreground">{item?.category || '-'}</TableCell>
-                      <TableCell className="text-right font-mono">{line.qty}</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {editingLineId === line.id ? (
+                          <div className="flex items-center gap-2 justify-end">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={editingQty}
+                              onChange={(e) => setEditingQty(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSaveEdit(line.id);
+                                } else if (e.key === 'Escape') {
+                                  handleCancelEdit();
+                                }
+                              }}
+                              className="w-24 h-8"
+                              autoFocus
+                              data-testid={`input-qty-${line.id}`}
+                            />
+                            <Button
+                              size="sm"
+                              onClick={() => handleSaveEdit(line.id)}
+                              disabled={updateMutation.isPending}
+                              data-testid={`button-save-${line.id}`}
+                            >
+                              Save
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={handleCancelEdit}
+                              data-testid={`button-cancel-${line.id}`}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <div
+                            className="cursor-pointer hover:underline"
+                            onClick={() => handleStartEdit(line)}
+                            data-testid={`text-qty-${line.id}`}
+                          >
+                            {line.qty}
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell>{line.unitName || '-'}</TableCell>
                       <TableCell className="text-right font-mono">${(item?.lastCost || 0).toFixed(4)}</TableCell>
                       <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Link href={`/item-count/${line.id}`}>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              data-testid={`button-edit-${line.id}`}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          </Link>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(line)}
-                            data-testid={`button-delete-${line.id}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
                     </TableRow>
                   );
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     {showEmpty ? "No items in this count" : "No items with quantities found"}
                   </TableCell>
                 </TableRow>
@@ -542,229 +439,6 @@ export default function CountSession() {
           </Table>
         </CardContent>
       </Card>
-
-      {/* Edit Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent data-testid="dialog-edit-line">
-          <DialogHeader>
-            <DialogTitle>Edit Count Line</DialogTitle>
-            <DialogDescription>
-              Update the quantity or unit for this inventory item.
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...editForm}>
-            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
-              <FormField
-                control={editForm.control}
-                name="inventoryItemId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Item</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger data-testid="select-edit-item">
-                          <SelectValue placeholder="Select item" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {inventoryItems?.map((item) => (
-                          <SelectItem key={item.id} value={item.id}>
-                            {item.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="unitId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unit</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger data-testid="select-edit-unit">
-                          <SelectValue placeholder="Select unit" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {units?.map((unit) => (
-                          <SelectItem key={unit.id} value={unit.id}>
-                            {unit.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="qty"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Quantity</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="0"
-                        {...field}
-                        data-testid="input-edit-qty"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setEditDialogOpen(false)}
-                  data-testid="button-cancel-edit"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={updateMutation.isPending}
-                  data-testid="button-submit-edit"
-                >
-                  {updateMutation.isPending ? "Saving..." : "Save Changes"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Dialog */}
-      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent data-testid="dialog-add-line">
-          <DialogHeader>
-            <DialogTitle>Add Item to Count</DialogTitle>
-            <DialogDescription>
-              Add a new inventory item to this count session.
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...addForm}>
-            <form onSubmit={addForm.handleSubmit(onAddSubmit)} className="space-y-4">
-              <FormField
-                control={addForm.control}
-                name="inventoryItemId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Item</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger data-testid="select-add-item">
-                          <SelectValue placeholder="Select item" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {inventoryItems?.map((item) => (
-                          <SelectItem key={item.id} value={item.id}>
-                            {item.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={addForm.control}
-                name="unitId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unit</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger data-testid="select-add-unit">
-                          <SelectValue placeholder="Select unit" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {units?.map((unit) => (
-                          <SelectItem key={unit.id} value={unit.id}>
-                            {unit.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={addForm.control}
-                name="qty"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Quantity</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="0"
-                        {...field}
-                        data-testid="input-add-qty"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setAddDialogOpen(false)}
-                  data-testid="button-cancel-add"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={createMutation.isPending}
-                  data-testid="button-submit-add"
-                >
-                  {createMutation.isPending ? "Adding..." : "Add Item"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent data-testid="dialog-delete-confirm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this count line and update the inventory level accordingly.
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => selectedLine && deleteMutation.mutate(selectedLine.id)}
-              disabled={deleteMutation.isPending}
-              data-testid="button-confirm-delete"
-            >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
