@@ -53,6 +53,12 @@ type StorageLocation = {
   sortOrder: number;
 };
 
+type Category = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
 const categoryColors: Record<string, string> = {
   "Protein": "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
   "Produce": "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
@@ -73,6 +79,7 @@ function getInventoryStatus(quantity: number, parLevel: number | null, reorderLe
 export default function InventoryItems() {
   const [search, setSearch] = useState("");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   const { data: inventoryItems, isLoading } = useQuery<InventoryItemDisplay[]>({
     queryKey: ["/api/inventory-items"],
@@ -82,11 +89,16 @@ export default function InventoryItems() {
     queryKey: ["/api/storage-locations"],
   });
 
+  const { data: categories } = useQuery<Category[]>({
+    queryKey: ["/api/categories"],
+  });
+
   const filteredItems = inventoryItems?.filter((item) => {
     const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase()) ||
       item.pluSku?.toLowerCase().includes(search.toLowerCase());
     const matchesLocation = selectedLocation === "all" || item.storageLocationId === selectedLocation;
-    return matchesSearch && matchesLocation;
+    const matchesCategory = selectedCategory === "all" || item.categoryId === selectedCategory;
+    return matchesSearch && matchesLocation && matchesCategory;
   }) || [];
 
   return (
@@ -118,8 +130,21 @@ export default function InventoryItems() {
               data-testid="input-search-inventory"
             />
           </div>
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="w-[200px]" data-testid="select-category-filter">
+              <SelectValue placeholder="Filter by category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {categories?.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {category.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-            <SelectTrigger className="w-[250px]" data-testid="select-location-filter">
+            <SelectTrigger className="w-[200px]" data-testid="select-location-filter">
               <SelectValue placeholder="Filter by location" />
             </SelectTrigger>
             <SelectContent>
@@ -142,7 +167,7 @@ export default function InventoryItems() {
             <Package className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-1">No inventory items found</h3>
             <p className="text-muted-foreground text-sm">
-              {search || selectedLocation !== "all"
+              {search || selectedLocation !== "all" || selectedCategory !== "all"
                 ? "Try adjusting your filters"
                 : "Inventory items will appear here as stock is received"}
             </p>
