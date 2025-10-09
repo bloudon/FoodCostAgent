@@ -121,6 +121,7 @@ export interface IStorage {
   getInventoryCounts(): Promise<InventoryCount[]>;
   getInventoryCount(id: string): Promise<InventoryCount | undefined>;
   createInventoryCount(count: InsertInventoryCount): Promise<InventoryCount>;
+  deleteInventoryCount(id: string): Promise<void>;
 
   // Inventory Count Lines
   getInventoryCountLines(countId: string): Promise<InventoryCountLine[]>;
@@ -607,6 +608,13 @@ export class DatabaseStorage implements IStorage {
   async createInventoryCount(insertCount: InsertInventoryCount): Promise<InventoryCount> {
     const [count] = await db.insert(inventoryCounts).values(insertCount).returning();
     return count;
+  }
+
+  async deleteInventoryCount(id: string): Promise<void> {
+    // First delete all count lines for this session (cascade)
+    await db.delete(inventoryCountLines).where(eq(inventoryCountLines.inventoryCountId, id));
+    // Then delete the count session itself
+    await db.delete(inventoryCounts).where(eq(inventoryCounts.id, id));
   }
 
   // Inventory Count Lines
