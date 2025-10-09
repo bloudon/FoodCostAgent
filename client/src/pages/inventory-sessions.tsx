@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Calendar } from "lucide-react";
+import { Plus, Calendar, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -17,13 +17,42 @@ import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 function SessionRow({ count, countDate, inventoryItems }: any) {
+  const { toast } = useToast();
+  
   const { data: countLines } = useQuery<any[]>({
     queryKey: ["/api/inventory-count-lines", count.id],
+  });
+
+  const deleteSessionMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/inventory-counts/${count.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      toast({
+        title: "Session Deleted",
+        description: "Count session and all associated records have been deleted",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete count session",
+        variant: "destructive",
+      });
+    },
   });
 
   const totalValue = countLines?.reduce((sum, line) => {
     return sum + (line.qty * (line.unitCost || 0));
   }, 0) || 0;
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (confirm("Are you sure you want to delete this count session? This will also delete all count records for this session.")) {
+      deleteSessionMutation.mutate();
+    }
+  };
 
   return (
     <TableRow data-testid={`row-session-${count.id}`}>
@@ -39,15 +68,26 @@ function SessionRow({ count, countDate, inventoryItems }: any) {
         {count.note || '-'}
       </TableCell>
       <TableCell className="text-right">
-        <Link href={`/count/${count.id}`}>
-          <Button 
-            variant="ghost" 
+        <div className="flex items-center justify-end gap-2">
+          <Link href={`/count/${count.id}`}>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              data-testid={`button-view-session-${count.id}`}
+            >
+              View Details
+            </Button>
+          </Link>
+          <Button
+            variant="ghost"
             size="sm"
-            data-testid={`button-view-session-${count.id}`}
+            onClick={handleDelete}
+            disabled={deleteSessionMutation.isPending}
+            data-testid={`button-delete-session-${count.id}`}
           >
-            View Details
+            <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
-        </Link>
+        </div>
       </TableCell>
     </TableRow>
   );
