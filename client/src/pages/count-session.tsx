@@ -43,6 +43,7 @@ export default function CountSession() {
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [editingQty, setEditingQty] = useState<string>("");
   const [editingItem, setEditingItem] = useState<any | null>(null);
+  const [wasTabPressed, setWasTabPressed] = useState(false);
   const [itemEditForm, setItemEditForm] = useState({
     name: "",
     categoryId: "",
@@ -249,6 +250,13 @@ export default function CountSession() {
       return locationId === selectedLocation;
     });
   }
+
+  // Sort alphabetically by item name (ascending)
+  filteredLines = [...filteredLines].sort((a, b) => {
+    const nameA = a.inventoryItem?.name?.toLowerCase() || '';
+    const nameB = b.inventoryItem?.name?.toLowerCase() || '';
+    return nameA.localeCompare(nameB);
+  });
 
   const countDate = count ? new Date(count.countedAt) : null;
 
@@ -478,11 +486,26 @@ export default function CountSession() {
                               step="0.01"
                               value={editingQty}
                               onChange={(e) => setEditingQty(e.target.value)}
+                              onBlur={(e) => {
+                                // Only save if blur is NOT to Save/Cancel buttons (unless Tab was pressed)
+                                const relatedTarget = e.relatedTarget as HTMLElement;
+                                const isBlurToActionButton = relatedTarget && 
+                                  (relatedTarget.getAttribute('data-testid')?.includes('button-save-') ||
+                                   relatedTarget.getAttribute('data-testid')?.includes('button-cancel-'));
+                                
+                                if (wasTabPressed || !isBlurToActionButton) {
+                                  handleSaveEdit(line.id);
+                                }
+                                setWasTabPressed(false);
+                              }}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   handleSaveEdit(line.id);
                                 } else if (e.key === 'Escape') {
                                   handleCancelEdit();
+                                } else if (e.key === 'Tab') {
+                                  // Mark that Tab was pressed, blur will handle the save
+                                  setWasTabPressed(true);
                                 }
                               }}
                               className="w-24 h-8"
