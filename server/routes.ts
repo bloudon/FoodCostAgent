@@ -877,14 +877,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const lines = await storage.getPOLines(req.params.id);
     const vendorItems = await storage.getVendorItems();
     const inventoryItems = await storage.getInventoryItems();
+    const units = await storage.getUnits();
 
     const enrichedLines = lines.map((line) => {
       const vi = vendorItems.find((vi) => vi.id === line.vendorItemId);
       const item = inventoryItems.find((i) => i.id === vi?.inventoryItemId);
+      const unit = units.find((u) => u.id === line.unitId);
       return {
         ...line,
         inventoryItemName: item?.name || "Unknown",
         vendorSku: vi?.vendorSku || "",
+        unitName: unit?.name || "",
       };
     });
 

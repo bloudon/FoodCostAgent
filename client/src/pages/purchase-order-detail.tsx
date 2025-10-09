@@ -78,7 +78,7 @@ export default function PurchaseOrderDetail() {
   const [selectedVendor, setSelectedVendor] = useState<string>("");
   const [expectedDate, setExpectedDate] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
-  const [orderLines, setOrderLines] = useState<{ vendorItemId: string; inventoryItemId?: string; qty: number; price: number }[]>([]);
+  const [orderLines, setOrderLines] = useState<{ vendorItemId: string; inventoryItemId?: string; unitId?: string; unitName?: string; qty: number; price: number }[]>([]);
   const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   const { data: purchaseOrder, isLoading: loadingOrder } = useQuery<PurchaseOrderDetail>({
@@ -90,12 +90,13 @@ export default function PurchaseOrderDetail() {
     queryKey: ["/api/vendors"],
   });
 
-  // Check if selected vendor is Misc Grocery
-  const isMiscGrocery = vendors?.find(v => v.id === selectedVendor)?.name === "Misc Grocery";
+  // Check if selected vendor is Misc Grocery (by ID for consistency)
+  const MISC_GROCERY_VENDOR_ID = "d3c1ebe2-3ca9-4858-ac08-e7f00e0edb1a";
+  const isMiscGrocery = selectedVendor === MISC_GROCERY_VENDOR_ID;
 
   const { data: vendorItems } = useQuery<VendorItem[]>({
     queryKey: [`/api/vendor-items?vendor_id=${selectedVendor}`],
-    enabled: !!selectedVendor && !isMiscGrocery,
+    enabled: !!selectedVendor,
   });
 
   const { data: inventoryItems } = useQuery<InventoryItem[]>({
@@ -143,6 +144,8 @@ export default function PurchaseOrderDetail() {
       setOrderLines(prev => [...prev, {
         vendorItemId: "", // Will be created on save
         inventoryItemId: itemId, // Store inventory item ID
+        unitId: invItem.unitId, // Store the unit ID
+        unitName: invItem.unitName, // Store the unit name
         qty: 0,
         price: invItem.pricePerUnit || 0,
       }]);
@@ -153,6 +156,8 @@ export default function PurchaseOrderDetail() {
 
       setOrderLines(prev => [...prev, {
         vendorItemId: itemId,
+        unitId: vendorItem.purchaseUnitId, // Store the unit ID
+        unitName: vendorItem.purchaseUnitName, // Store the unit name
         qty: 0,
         price: vendorItem.lastPrice || 0,
       }]);
@@ -200,11 +205,10 @@ export default function PurchaseOrderDetail() {
         if (isMiscGrocery) {
           // For new misc grocery items (have inventoryItemId)
           if (line.inventoryItemId) {
-            const invItem = inventoryItems?.find(item => item.id === line.inventoryItemId);
             return {
               inventoryItemId: line.inventoryItemId,
               orderedQty: line.qty,
-              unitId: invItem?.unitId || "",
+              unitId: line.unitId || "",
               priceEach: line.price,
             };
           } else {
@@ -212,7 +216,7 @@ export default function PurchaseOrderDetail() {
             return {
               vendorItemId: line.vendorItemId,
               orderedQty: line.qty,
-              unitId: vendorItems?.find(item => item.id === line.vendorItemId)?.purchaseUnitId || "",
+              unitId: line.unitId || "",
               priceEach: line.price,
             };
           }
@@ -221,7 +225,7 @@ export default function PurchaseOrderDetail() {
           return {
             vendorItemId: line.vendorItemId,
             orderedQty: line.qty,
-            unitId: vendorItems?.find(item => item.id === line.vendorItemId)?.purchaseUnitId || "",
+            unitId: line.unitId || "",
             priceEach: line.price,
           };
         }
@@ -238,7 +242,7 @@ export default function PurchaseOrderDetail() {
       setNotes((purchaseOrder as any).notes || "");
       
       // For misc grocery orders, we need to track the inventoryItemId too
-      const isMiscGroceryOrder = purchaseOrder.vendorId === "d3c1ebe2-3ca9-4858-ac08-e7f00e0edb1a";
+      const isMiscGroceryOrder = purchaseOrder.vendorId === MISC_GROCERY_VENDOR_ID;
       
       setOrderLines(purchaseOrder.lines.map(line => {
         const vendorItem = vendorItems?.find(vi => vi.id === line.vendorItemId);
@@ -246,6 +250,8 @@ export default function PurchaseOrderDetail() {
         return {
           vendorItemId: line.vendorItemId,
           inventoryItemId: isMiscGroceryOrder ? vendorItem?.inventoryItemId : undefined,
+          unitId: line.unitId,
+          unitName: (line as any).unitName, // Use unit name from API response
           qty: line.orderedQty,
           price: line.priceEach,
         };
@@ -398,7 +404,7 @@ export default function PurchaseOrderDetail() {
                   const lineTotal = line.qty * line.price;
                   let itemName = 'Unknown Item';
                   let vendorSku = '-';
-                  let unitName = '-';
+                  let unitName = line.unitName || '-'; // Use stored unit name
 
                   if (isMiscGrocery) {
                     // For misc grocery, use inventoryItemId if available (new items) or vendorItemId (existing items)
@@ -412,13 +418,11 @@ export default function PurchaseOrderDetail() {
                     }
                     
                     itemName = invItem?.name || 'Unknown Item';
-                    unitName = invItem?.unitName || '-';
                     vendorSku = 'N/A';
                   } else {
                     const vendorItem = vendorItems?.find(item => item.id === line.vendorItemId);
                     itemName = vendorItem?.inventoryItemName || 'Unknown Item';
                     vendorSku = vendorItem?.vendorSku || '-';
-                    unitName = vendorItem?.purchaseUnitName || '-';
                   }
 
                   return (
