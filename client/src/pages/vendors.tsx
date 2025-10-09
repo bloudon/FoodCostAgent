@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertVendorSchema, type InsertVendor, type Vendor } from "@shared/schema";
+import { insertVendorSchema, type InsertVendor, type Vendor, type VendorItem } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -50,7 +50,7 @@ export default function Vendors() {
     queryKey: ["/api/vendors"],
   });
 
-  const { data: vendorItems } = useQuery<any[]>({
+  const { data: vendorItems, isLoading: vendorItemsLoading } = useQuery<VendorItem[]>({
     queryKey: ["/api/vendor-items"],
   });
 
@@ -130,6 +130,7 @@ export default function Vendors() {
   });
 
   const getProductCount = (vendorId: string) => {
+    if (vendorItemsLoading) return "...";
     return vendorItems?.filter(vi => vi.vendorId === vendorId).length || 0;
   };
 
