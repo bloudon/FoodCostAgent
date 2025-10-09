@@ -128,6 +128,16 @@ Preferred communication style: Simple, everyday language.
     - Added "each" and "roll" as count-based units (kind='count', toBaseRatio=1)
     - These units do not have conversions defined (standalone units)
     - Available in all inventory item forms and dropdowns
+  - **Purchase Orders Management** (October 2025):
+    - **List Page**: Full-featured purchase orders index with search, vendor filter, and status filter
+    - **Detail Page**: Keyboard-optimized order entry with tabbed navigation between quantity/price fields
+    - **Vendor Filtering**: Items dropdown filtered by selected vendor (GET /api/vendor-items?vendor_id={id})
+    - **API Enrichment**: GET /api/purchase-orders returns lineCount and totalAmount computed from PO lines
+    - **Data Integrity**: Vendor-specific item filtering prevents adding items from wrong vendors
+    - **Keyboard Navigation**: Tab key moves between qty→price→next qty without focus trap
+    - **Status Badges**: Color-coded status indicators (pending/ordered/received)
+    - **Order Entry Flow**: Select vendor → add items → enter qty/price → save
+    - Routes: /purchase-orders (list), /purchase-orders/new (create), /purchase-orders/:id (detail/edit)
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
