@@ -837,6 +837,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/inventory-counts/:id", async (req, res) => {
+    try {
+      await storage.deleteInventoryCount(req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ PURCHASE ORDERS ============
   app.get("/api/purchase-orders", async (req, res) => {
     const orders = await storage.getPurchaseOrders();
