@@ -99,6 +99,13 @@ Preferred communication style: Simple, everyday language.
       - Verified all 10 inventory items have valid unit references
       - Verified all 15 unit conversions have valid from/to unit references
       - Final system: 13 unique units, 0 duplicates, 100% data integrity
+  - **Vendor-Item Display Fix** (October 2025):
+    - Fixed vendors page calling wrong endpoint: `/api/vendor-products` → `/api/vendor-items`
+    - Added proper TypeScript typing (VendorItem[] instead of any[])
+    - Added loading state indicator for vendor item counts
+    - Removed duplicate Sysco vendor from database
+    - Verified vendor detail navigation shows all associated inventory items
+    - Future optimization opportunities: server-side count aggregation, error handling, cache invalidation
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
