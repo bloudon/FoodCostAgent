@@ -25,6 +25,7 @@ import UnitConversions from "@/pages/unit-conversions";
 import Vendors from "@/pages/vendors";
 import VendorDetail from "@/pages/vendor-detail";
 import PurchaseOrders from "@/pages/purchase-orders";
+import PurchaseOrderDetail from "@/pages/purchase-order-detail";
 import Receiving from "@/pages/receiving";
 import VarianceReport from "@/pages/variance-report";
 import StorageLocations from "@/pages/storage-locations";
@@ -97,6 +98,7 @@ function ProtectedLayout() {
               <Route path="/recipes" component={Recipes} />
               <Route path="/vendors/:id" component={VendorDetail} />
               <Route path="/vendors" component={Vendors} />
+              <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
               <Route path="/purchase-orders" component={PurchaseOrders} />
               <Route path="/receiving" component={Receiving} />
               <Route path="/variance" component={VarianceReport} />
