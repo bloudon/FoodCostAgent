@@ -3,7 +3,8 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, ExternalLink } from "lucide-react";
+import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -236,10 +237,15 @@ export default function Vendors() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Products:</span>
-                      <span className="font-mono" data-testid={`text-vendor-products-${vendor.id}`}>{getProductCount(vendor.id)}</span>
-                    </div>
+                    <Link href={`/vendors/${vendor.id}`}>
+                      <div className="flex justify-between items-center hover-elevate rounded-md p-2 -m-2 transition-all group">
+                        <span className="text-muted-foreground">Products:</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono" data-testid={`text-vendor-products-${vendor.id}`}>{getProductCount(vendor.id)}</span>
+                          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                      </div>
+                    </Link>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Account #:</span>
                       <span className="font-mono" data-testid={`text-vendor-account-${vendor.id}`}>{vendor.accountNumber || "-"}</span>
