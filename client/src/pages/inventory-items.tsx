@@ -89,10 +89,6 @@ export default function InventoryItems() {
     return matchesSearch && matchesLocation;
   }) || [];
 
-  const totalValue = filteredItems.reduce((sum, item) => {
-    return sum + (item.onHandQty * item.pricePerUnit);
-  }, 0);
-
   return (
     <div className="h-full overflow-auto">
       <div className="p-6 space-y-6">
@@ -103,18 +99,12 @@ export default function InventoryItems() {
               Current on-hand quantities across all storage locations
             </p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Total Value:</span>
-              <span className="text-2xl font-bold">${totalValue.toFixed(2)}</span>
-            </div>
-            <Button asChild data-testid="button-add-item">
-              <Link href="/inventory-items/new">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Item
-              </Link>
-            </Button>
-          </div>
+          <Button asChild data-testid="button-add-item">
+            <Link href="/inventory-items/new">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Item
+            </Link>
+          </Button>
         </div>
 
         <div className="flex gap-4 flex-wrap">
@@ -169,14 +159,12 @@ export default function InventoryItems() {
                   <TableHead className="text-right">Par</TableHead>
                   <TableHead className="text-right">Reorder</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Unit Cost</TableHead>
-                  <TableHead className="text-right">Total Value</TableHead>
+                  <TableHead className="text-right">Most Recent Unit Price</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredItems.map((item) => {
                   const quantity = item.onHandQty;
-                  const totalValue = quantity * item.pricePerUnit;
                   const inventoryStatus = getInventoryStatus(quantity, item.parLevel, item.reorderLevel);
 
                   return (
@@ -228,10 +216,7 @@ export default function InventoryItems() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        ${item.pricePerUnit.toFixed(4)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono font-semibold">
-                        ${totalValue.toFixed(2)}
+                        ${item.pricePerUnit.toFixed(2)}
                       </TableCell>
                     </TableRow>
                   );
