@@ -112,6 +112,14 @@ Preferred communication style: Simple, everyday language.
     - Changed from: `apiRequest(url, { method, body, headers })` to `apiRequest(method, url, data)`
     - Settings now properly persist (unit system, currency, timezone changes work correctly)
     - Same bug pattern previously fixed in unit-conversions.tsx
+  - **Vendor Detail Price Display Fix** (October 2025):
+    - Fixed vendor detail page showing $0.00 for items when inventory item had actual prices
+    - Root cause: Page displayed vendor_items.lastPrice (often 0/null) instead of inventory_items.pricePerUnit
+    - Solution: Reversed priority to show inventory item values primarily using nullish coalescing
+    - Price: `item.inventoryItem?.pricePerUnit ?? item.lastPrice ?? 0`
+    - Case Size: `item.inventoryItem?.caseSize ?? item.caseSize`
+    - Used `??` instead of `||` to preserve legitimate 0 values and prevent incorrect fallbacks
+    - Inventory items are canonical source of truth; vendor-specific values only used when inventory data is null/undefined
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
