@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Package, DollarSign, Layers } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Layers, X } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -348,7 +348,7 @@ export default function CountSession() {
       {/* Category Totals */}
       <Card className="mb-8">
         <CardHeader>
-          <CardTitle>Filter by Category</CardTitle>
+          <CardTitle>Categories</CardTitle>
           <p className="text-sm text-muted-foreground">Click a category to filter items below</p>
         </CardHeader>
         <CardContent>
@@ -382,7 +382,7 @@ export default function CountSession() {
       {/* Location Totals */}
       <Card className="mb-8">
         <CardHeader>
-          <CardTitle>Filter by Location</CardTitle>
+          <CardTitle>Locations</CardTitle>
           <p className="text-sm text-muted-foreground">Click a location to filter items below</p>
         </CardHeader>
         <CardContent>
@@ -419,22 +419,20 @@ export default function CountSession() {
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <CardTitle>Counted Items</CardTitle>
             <div className="flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="category-filter">Category:</Label>
-                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                  <SelectTrigger className="w-[180px]" id="category-filter" data-testid="select-category-filter">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
-                    {categories.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {(selectedCategory !== "all" || selectedLocation !== "all") && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedCategory("all");
+                    setSelectedLocation("all");
+                  }}
+                  data-testid="button-clear-filters"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Clear Filters
+                </Button>
+              )}
               <div className="flex items-center gap-2">
                 <Switch
                   id="show-empty"
