@@ -430,8 +430,7 @@ export default function InventoryItemDetail() {
               <Select 
                 value={getFieldValue("categoryId", item.categoryId || "")} 
                 onValueChange={(value) => {
-                  handleFieldChange("categoryId", value);
-                  handleFieldBlur("categoryId");
+                  updateMutation.mutate({ categoryId: value || null });
                 }}
                 disabled={updateMutation.isPending}
               >
@@ -521,8 +520,7 @@ export default function InventoryItemDetail() {
                 <Select
                   value={getFieldValue("unitId", item.unitId)}
                   onValueChange={(value) => {
-                    handleFieldChange("unitId", value);
-                    handleFieldBlur("unitId");
+                    updateMutation.mutate({ unitId: value });
                   }}
                   disabled={updateMutation.isPending}
                 >
