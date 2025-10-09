@@ -80,6 +80,12 @@ Preferred communication style: Simple, everyday language.
     - Enhanced /api/vendor-items endpoint to return enriched data (inventory item + unit info)
     - Full navigation flow: vendors list → vendor detail → inventory item detail
     - Proper test IDs and e2e test coverage for all interactive elements
+  - **Unit Conversions Module** (October 2025):
+    - Fixed authentication caching issue: disabled ETag globally to prevent 304 responses
+    - Fixed apiRequest parameter order bug in unit-conversions.tsx (method, url, data)
+    - Created pound to 16 oz conversion as seed data (1 pound = 16 ounces)
+    - Full CRUD functionality tested and working: create, update, delete conversions
+    - All API endpoints verified (POST returns 201, PATCH returns 200, DELETE returns 204)
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
