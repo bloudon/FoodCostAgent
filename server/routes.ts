@@ -647,10 +647,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     const locations = await storage.getStorageLocations();
     const units = await storage.getUnits();
+    const categories = await storage.getCategories();
     
     const enriched = items.map((item) => {
       const location = locations.find((l) => l.id === item.storageLocationId);
       const unit = units.find((u) => u.id === item.unitId);
+      
+      const category = item.categoryId ? categories.find((c) => c.id === item.categoryId) : null;
       
       return {
         id: item.id,
@@ -660,7 +663,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         product: {
           id: item.id,
           name: item.name,
-          category: item.category,
+          category: category?.name || null,
           pluSku: item.pluSku,
           pricePerUnit: item.pricePerUnit,
           lastCost: item.pricePerUnit * item.caseSize, // derived: case cost
@@ -850,7 +853,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const inventoryItems = await storage.getInventoryItems();
 
     const enrichedLines = lines.map((line) => {
-      const vi = vendorItems.find((vi) => vi.id === line.vendorProductId);
+      const vi = vendorItems.find((vi) => vi.id === line.vendorItemId);
       const item = inventoryItems.find((i) => i.id === vi?.inventoryItemId);
       return {
         ...line,
@@ -910,7 +913,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           await storage.createReceiptLine(lineData);
 
-          const vi = vendorItems.find((vi) => vi.id === lineData.vendorProductId);
+          const vi = vendorItems.find((vi) => vi.id === lineData.vendorItemId);
           if (vi) {
             const item = await storage.getInventoryItem(vi.inventoryItemId);
             if (item) {
@@ -992,17 +995,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const theoreticalUsage = await calculateTheoreticalUsage(startDate, endDate);
       const actualUsage = await calculateActualUsage(startDate, endDate);
 
-      const inventoryItems = await storage.getInventoryItemsAggregated();
-      const variance = inventoryItems.map((item) => {
-        const theoretical = theoreticalUsage[item.id] || 0;
-        const actual = actualUsage[item.id] || 0;
+      // Get actual inventory items to access id and pricePerUnit
+      const inventoryItems = await storage.getInventoryItems();
+      
+      // Create a map of item names to their details for aggregation
+      const itemMap = new Map<string, { ids: string[], name: string, pricePerUnit: number }>();
+      for (const item of inventoryItems) {
+        if (!itemMap.has(item.name)) {
+          itemMap.set(item.name, { ids: [item.id], name: item.name, pricePerUnit: item.pricePerUnit });
+        } else {
+          itemMap.get(item.name)!.ids.push(item.id);
+        }
+      }
+      
+      const variance = Array.from(itemMap.values()).map((itemData) => {
+        // Sum theoretical and actual for all locations of this item
+        const theoretical = itemData.ids.reduce((sum, id) => sum + (theoreticalUsage[id] || 0), 0);
+        const actual = itemData.ids.reduce((sum, id) => sum + (actualUsage[id] || 0), 0);
         const varianceUnits = actual - theoretical;
-        const varianceCost = varianceUnits * item.pricePerUnit; // price per base unit × units
+        const varianceCost = varianceUnits * itemData.pricePerUnit; // price per base unit × units
         const variancePercent = theoretical > 0 ? (varianceUnits / theoretical) * 100 : 0;
 
         return {
-          productId: item.id, // Keep for backwards compatibility
-          productName: item.name,
+          productId: itemData.ids[0], // Keep for backwards compatibility - use first ID
+          productName: itemData.name,
           theoreticalUsage: theoretical,
           actualUsage: actual,
           varianceUnits,
@@ -1071,9 +1087,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertTransferLogSchema.parse(req.body);
       
-      // Get current inventory levels
-      const fromLevel = await storage.getInventoryLevel(data.productId, data.fromLocationId);
-      const fromQty = fromLevel?.onHandQty || 0;
+      // Get inventory items at from location
+      const inventoryItems = await storage.getInventoryItems(data.fromLocationId);
+      const fromItem = inventoryItems.find(i => i.id === data.inventoryItemId);
+      const fromQty = fromItem?.onHandQty || 0;
       
       // Validate sufficient quantity
       if (fromQty < data.qty) {
@@ -1085,19 +1102,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create transfer log
       const transfer = await storage.createTransferLog(data);
       
-      // Update inventory levels (creates rows if they don't exist)
-      await storage.updateInventoryLevel(
-        data.productId,
-        data.fromLocationId,
-        fromQty - data.qty
-      );
+      // Update from location inventory
+      if (fromItem) {
+        await storage.updateInventoryItem(fromItem.id, {
+          onHandQty: fromQty - data.qty
+        });
+      }
       
-      const toLevel = await storage.getInventoryLevel(data.productId, data.toLocationId);
-      await storage.updateInventoryLevel(
-        data.productId,
-        data.toLocationId,
-        (toLevel?.onHandQty || 0) + data.qty
-      );
+      // Update to location inventory
+      const toItems = await storage.getInventoryItems(data.toLocationId);
+      const toItem = toItems.find(i => i.id === data.inventoryItemId);
+      if (toItem) {
+        await storage.updateInventoryItem(toItem.id, {
+          onHandQty: (toItem.onHandQty || 0) + data.qty
+        });
+      }
       
       res.status(201).json(transfer);
     } catch (error: any) {
@@ -1118,9 +1137,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertWasteLogSchema.parse(req.body);
       
-      // Get current inventory level
-      const level = await storage.getInventoryLevel(data.productId, data.storageLocationId);
-      const currentQty = level?.onHandQty || 0;
+      // Get inventory item at the location
+      const inventoryItems = await storage.getInventoryItems(data.storageLocationId);
+      const item = inventoryItems.find(i => i.id === data.inventoryItemId);
+      const currentQty = item?.onHandQty || 0;
       
       // Validate sufficient quantity
       if (currentQty < data.qty) {
@@ -1132,12 +1152,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create waste log
       const wasteLog = await storage.createWasteLog(data);
       
-      // Update inventory level (creates row if it doesn't exist)
-      await storage.updateInventoryLevel(
-        data.productId,
-        data.storageLocationId,
-        currentQty - data.qty
-      );
+      // Update inventory level
+      if (item) {
+        await storage.updateInventoryItem(item.id, {
+          onHandQty: currentQty - data.qty
+        });
+      }
       
       res.status(201).json(wasteLog);
     } catch (error: any) {
@@ -1149,20 +1169,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
     const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
     const wasteLogs = await storage.getWasteLogs(undefined, startDate, endDate);
-    const inventoryItems = await storage.getInventoryItemsAggregated();
+    const inventoryItems = await storage.getInventoryItems();
     const trends: Record<string, any> = {};
     for (const wasteLog of wasteLogs) {
-      if (!trends[wasteLog.productId]) {
-        const item = inventoryItems.find(i => i.id === wasteLog.productId);
-        trends[wasteLog.productId] = { productId: wasteLog.productId, productName: item?.name || "Unknown", totalWasteQty: 0, totalWasteCost: 0, byReason: {} as Record<string, number>, count: 0 };
+      if (!trends[wasteLog.inventoryItemId]) {
+        const item = inventoryItems.find(i => i.id === wasteLog.inventoryItemId);
+        trends[wasteLog.inventoryItemId] = { productId: wasteLog.inventoryItemId, productName: item?.name || "Unknown", totalWasteQty: 0, totalWasteCost: 0, byReason: {} as Record<string, number>, count: 0 };
       }
-      const item = inventoryItems.find(i => i.id === wasteLog.productId);
+      const item = inventoryItems.find(i => i.id === wasteLog.inventoryItemId);
       const pricePerUnit = item?.pricePerUnit || 0;
-      trends[wasteLog.productId].totalWasteQty += wasteLog.qty;
-      trends[wasteLog.productId].totalWasteCost += wasteLog.qty * pricePerUnit;
-      trends[wasteLog.productId].count += 1;
-      if (!trends[wasteLog.productId].byReason[wasteLog.reasonCode]) trends[wasteLog.productId].byReason[wasteLog.reasonCode] = 0;
-      trends[wasteLog.productId].byReason[wasteLog.reasonCode] += wasteLog.qty;
+      trends[wasteLog.inventoryItemId].totalWasteQty += wasteLog.qty;
+      trends[wasteLog.inventoryItemId].totalWasteCost += wasteLog.qty * pricePerUnit;
+      trends[wasteLog.inventoryItemId].count += 1;
+      if (!trends[wasteLog.inventoryItemId].byReason[wasteLog.reasonCode]) trends[wasteLog.inventoryItemId].byReason[wasteLog.reasonCode] = 0;
+      trends[wasteLog.inventoryItemId].byReason[wasteLog.reasonCode] += wasteLog.qty;
     }
     res.json(Object.values(trends));
   });
@@ -1175,7 +1195,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Prefetch all data once
     const sales = await storage.getPOSSales(startDate, endDate);
     const menuItems = await storage.getMenuItems();
-    const inventoryItems = await storage.getInventoryItemsAggregated();
+    const inventoryItems = await storage.getInventoryItems();
     const units = await storage.getUnits();
     
     // Create lookup maps
@@ -1195,27 +1215,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const menuItemSummary: Record<string, { revenue: number, cogs: number, count: number, name: string }> = {};
     
     for (const sale of sales) {
-      totalRevenue += sale.totalAmount;
       const saleLines = await storage.getPOSSalesLines(sale.id);
       
       for (const line of saleLines) {
-        const portionCost = menuItemCostMap.get(line.menuItemId) || 0;
+        // Find menu item by pluSku
+        const menuItem = menuItems.find(mi => mi.pluSku === line.pluSku);
+        if (!menuItem) continue;
+        
+        const portionCost = menuItemCostMap.get(menuItem.id) || 0;
         const lineCOGS = portionCost * (line.qtySold || 0);
         totalCOGS += lineCOGS;
         
-        if (!menuItemSummary[line.menuItemId]) {
-          const menuItem = menuItemMap.get(line.menuItemId);
-          menuItemSummary[line.menuItemId] = {
+        if (!menuItemSummary[menuItem.id]) {
+          menuItemSummary[menuItem.id] = {
             revenue: 0,
             cogs: 0,
             count: 0,
-            name: menuItem?.name || "Unknown"
+            name: menuItem.name || "Unknown"
           };
         }
         
-        menuItemSummary[line.menuItemId].revenue += line.lineTotal || 0;
-        menuItemSummary[line.menuItemId].cogs += lineCOGS;
-        menuItemSummary[line.menuItemId].count += line.qtySold || 0;
+        // Note: POS sales don't track revenue in this schema, only quantity sold
+        menuItemSummary[menuItem.id].cogs += lineCOGS;
+        menuItemSummary[menuItem.id].count += line.qtySold || 0;
       }
     }
     
@@ -1254,9 +1276,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     // Check each menu item's recipe for the affected inventory item (including sub-recipes)
     for (const menuItem of menuItems) {
-      const itemImpact = await calculateProductImpactInRecipe(menuItem.recipeId, inventoryItemId);
+      const itemImpact = await calculateInventoryItemImpactInRecipe(menuItem.recipeId, inventoryItemId);
       
-      if (!itemImpact.usesProduct) continue;
+      if (!itemImpact.usesItem) continue;
       
       // Calculate current recipe cost using calculateRecipeCost (handles sub-recipes)
       const currentRecipeCost = await calculateRecipeCost(menuItem.recipeId);
@@ -1532,7 +1554,7 @@ async function calculateActualUsage(
       const vendorItems = await storage.getVendorItems();
       
       for (const rLine of receiptLines) {
-        const vi = vendorItems.find((vi) => vi.id === rLine.vendorProductId);
+        const vi = vendorItems.find((vi) => vi.id === rLine.vendorItemId);
         if (vi && vi.inventoryItemId === inventoryItemId) {
           receiptsInPeriod += rLine.receivedQty;
         }
