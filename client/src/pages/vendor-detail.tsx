@@ -137,18 +137,18 @@ export default function VendorDetail() {
                             <DollarSign className="h-4 w-4 text-muted-foreground" />
                             <span className="text-muted-foreground">Price:</span>
                             <span className="font-medium" data-testid={`text-item-price-${item.id}`}>
-                              ${(item.lastPrice || item.inventoryItem?.pricePerUnit || 0).toFixed(2)}
+                              ${(item.inventoryItem?.pricePerUnit ?? item.lastPrice ?? 0).toFixed(2)}
                             </span>
                             {item.unit && (
                               <span className="text-muted-foreground">/ {item.unit.name}</span>
                             )}
                           </div>
-                          {(item.caseSize || item.inventoryItem?.caseSize) && (
+                          {(item.inventoryItem?.caseSize ?? item.caseSize) != null && (
                             <div className="flex items-center gap-2">
                               <Package className="h-4 w-4 text-muted-foreground" />
                               <span className="text-muted-foreground">Case Size:</span>
                               <span className="font-medium" data-testid={`text-item-case-${item.id}`}>
-                                {item.caseSize || item.inventoryItem?.caseSize}
+                                {item.inventoryItem?.caseSize ?? item.caseSize}
                               </span>
                             </div>
                           )}
