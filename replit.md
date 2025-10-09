@@ -65,6 +65,10 @@ Preferred communication style: Simple, everyday language.
     - **Toggle Behavior**: Click to filter, click again to clear; both filters can be active simultaneously
     - **Empty Counts**: "Show empty counts" toggle defaults to false (hides items with qty=0)
     - Handles "Uncategorized" items and items without locations using sentinel values
+    - **Session Deletion**: Delete button (trash icon) on inventory-sessions page with confirmation dialog
+      - Cascade deletes all count lines before deleting session
+      - API endpoint: DELETE /api/inventory-counts/:id (returns 204 on success)
+      - Shows success toast and invalidates cache to refresh list
   - **Terminology Standardization** (October 2025):
     - Completed comprehensive refactoring from "product" to "inventory item" terminology throughout entire codebase
     - Updated all server routes to use inventory item storage methods
