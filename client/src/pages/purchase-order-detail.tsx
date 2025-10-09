@@ -61,6 +61,14 @@ type Vendor = {
   accountNumber: string | null;
 };
 
+type InventoryItem = {
+  id: string;
+  name: string;
+  unitId: string;
+  unitName: string;
+  pricePerUnit: number;
+};
+
 export default function PurchaseOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
@@ -69,6 +77,7 @@ export default function PurchaseOrderDetail() {
 
   const [selectedVendor, setSelectedVendor] = useState<string>("");
   const [expectedDate, setExpectedDate] = useState<string>("");
+  const [notes, setNotes] = useState<string>("");
   const [orderLines, setOrderLines] = useState<{ vendorItemId: string; qty: number; price: number }[]>([]);
   const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
@@ -81,9 +90,17 @@ export default function PurchaseOrderDetail() {
     queryKey: ["/api/vendors"],
   });
 
+  // Check if selected vendor is Misc Grocery
+  const isMiscGrocery = vendors?.find(v => v.id === selectedVendor)?.name === "Misc Grocery";
+
   const { data: vendorItems } = useQuery<VendorItem[]>({
     queryKey: [`/api/vendor-items?vendor_id=${selectedVendor}`],
-    enabled: !!selectedVendor,
+    enabled: !!selectedVendor && !isMiscGrocery,
+  });
+
+  const { data: inventoryItems } = useQuery<InventoryItem[]>({
+    queryKey: ["/api/inventory-items"],
+    enabled: !!selectedVendor && isMiscGrocery,
   });
 
   const savePOMutation = useMutation({
@@ -113,15 +130,28 @@ export default function PurchaseOrderDetail() {
     },
   });
 
-  const handleAddLine = (vendorItemId: string) => {
-    const vendorItem = vendorItems?.find(item => item.id === vendorItemId);
-    if (!vendorItem) return;
+  const handleAddLine = (itemId: string) => {
+    if (isMiscGrocery) {
+      // For misc grocery, itemId is actually an inventory item ID
+      const invItem = inventoryItems?.find(item => item.id === itemId);
+      if (!invItem) return;
 
-    setOrderLines(prev => [...prev, {
-      vendorItemId,
-      qty: 0,
-      price: vendorItem.lastPrice || 0,
-    }]);
+      setOrderLines(prev => [...prev, {
+        vendorItemId: itemId, // Store inventory item ID
+        qty: 0,
+        price: invItem.pricePerUnit || 0,
+      }]);
+    } else {
+      // For regular vendors, itemId is a vendor item ID
+      const vendorItem = vendorItems?.find(item => item.id === itemId);
+      if (!vendorItem) return;
+
+      setOrderLines(prev => [...prev, {
+        vendorItemId: itemId,
+        qty: 0,
+        price: vendorItem.lastPrice || 0,
+      }]);
+    }
   };
 
   const handleUpdateLine = (index: number, field: 'qty' | 'price', value: number) => {
@@ -160,12 +190,27 @@ export default function PurchaseOrderDetail() {
       vendorId: selectedVendor,
       expectedDate: expectedDate || null,
       status: "pending",
-      lines: orderLines.map(line => ({
-        vendorItemId: line.vendorItemId,
-        orderedQty: line.qty,
-        unitId: vendorItems?.find(item => item.id === line.vendorItemId)?.purchaseUnitId || "",
-        priceEach: line.price,
-      })),
+      notes: notes || null,
+      lines: orderLines.map(line => {
+        if (isMiscGrocery) {
+          // For misc grocery, line.vendorItemId is actually an inventory item ID
+          const invItem = inventoryItems?.find(item => item.id === line.vendorItemId);
+          return {
+            inventoryItemId: line.vendorItemId,
+            orderedQty: line.qty,
+            unitId: invItem?.unitId || "",
+            priceEach: line.price,
+          };
+        } else {
+          // For regular vendors, use vendor item ID
+          return {
+            vendorItemId: line.vendorItemId,
+            orderedQty: line.qty,
+            unitId: vendorItems?.find(item => item.id === line.vendorItemId)?.purchaseUnitId || "",
+            priceEach: line.price,
+          };
+        }
+      }),
     };
 
     savePOMutation.mutate(poData);
@@ -175,6 +220,7 @@ export default function PurchaseOrderDetail() {
     if (purchaseOrder && !isNew) {
       setSelectedVendor(purchaseOrder.vendorId);
       setExpectedDate(purchaseOrder.expectedDate || "");
+      setNotes((purchaseOrder as any).notes || "");
       setOrderLines(purchaseOrder.lines.map(line => ({
         vendorItemId: line.vendorItemId,
         qty: line.orderedQty,
@@ -266,6 +312,16 @@ export default function PurchaseOrderDetail() {
           </div>
         </div>
 
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Notes</label>
+          <Input
+            placeholder="Add notes or comments about this order..."
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            data-testid="input-notes"
+          />
+        </div>
+
         {selectedVendor && isNew && (
           <div className="space-y-2">
             <label className="text-sm font-medium">Add Item</label>
@@ -274,11 +330,19 @@ export default function PurchaseOrderDetail() {
                 <SelectValue placeholder="Select item to add" />
               </SelectTrigger>
               <SelectContent>
-                {vendorItems?.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.inventoryItemName} - ${item.lastPrice?.toFixed(2) || '0.00'}
-                  </SelectItem>
-                ))}
+                {isMiscGrocery ? (
+                  inventoryItems?.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name} - ${item.pricePerUnit?.toFixed(2) || '0.00'}
+                    </SelectItem>
+                  ))
+                ) : (
+                  vendorItems?.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.inventoryItemName} - ${item.lastPrice?.toFixed(2) || '0.00'}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -307,19 +371,33 @@ export default function PurchaseOrderDetail() {
               </TableHeader>
               <TableBody>
                 {orderLines.map((line, index) => {
-                  const vendorItem = vendorItems?.find(item => item.id === line.vendorItemId);
                   const lineTotal = line.qty * line.price;
+                  let itemName = 'Unknown Item';
+                  let vendorSku = '-';
+                  let unitName = '-';
+
+                  if (isMiscGrocery) {
+                    const invItem = inventoryItems?.find(item => item.id === line.vendorItemId);
+                    itemName = invItem?.name || 'Unknown Item';
+                    unitName = invItem?.unitName || '-';
+                    vendorSku = 'N/A';
+                  } else {
+                    const vendorItem = vendorItems?.find(item => item.id === line.vendorItemId);
+                    itemName = vendorItem?.inventoryItemName || 'Unknown Item';
+                    vendorSku = vendorItem?.vendorSku || '-';
+                    unitName = vendorItem?.purchaseUnitName || '-';
+                  }
 
                   return (
                     <TableRow key={`${line.vendorItemId}-${index}`} data-testid={`row-line-${index}`}>
                       <TableCell>
-                        <div className="font-medium">{vendorItem?.inventoryItemName || 'Unknown Item'}</div>
+                        <div className="font-medium">{itemName}</div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {vendorItem?.vendorSku || '-'}
+                        {vendorSku}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {vendorItem?.purchaseUnitName || '-'}
+                        {unitName}
                       </TableCell>
                       <TableCell>
                         <Input

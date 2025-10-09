@@ -902,8 +902,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (lines && Array.isArray(lines)) {
         for (const line of lines) {
+          let vendorItemId = line.vendorItemId;
+          
+          // Check if this is a misc grocery order with inventoryItemId instead
+          if (line.inventoryItemId) {
+            // Create a vendor item on the fly for this inventory item
+            const vendorItem = await storage.createVendorItem({
+              vendorId: po.vendorId,
+              inventoryItemId: line.inventoryItemId,
+              purchaseUnitId: line.unitId,
+              caseSize: 1,
+              lastPrice: line.priceEach,
+              active: 1,
+            });
+            vendorItemId = vendorItem.id;
+          }
+          
           const lineData = insertPOLineSchema.parse({
-            ...line,
+            vendorItemId,
+            orderedQty: line.orderedQty,
+            unitId: line.unitId,
+            priceEach: line.priceEach,
             purchaseOrderId: po.id,
           });
           await storage.createPOLine(lineData);

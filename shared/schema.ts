@@ -227,6 +227,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   status: text("status").notNull().default("pending"), // pending, ordered, received
   createdAt: timestamp("created_at").notNull().defaultNow(),
   expectedDate: timestamp("expected_date"),
+  notes: text("notes"),
 });
 
 export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({ id: true, createdAt: true });
