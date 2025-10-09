@@ -7,6 +7,12 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Package, DollarSign, Layers, X } from "lucide-react";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   Table,
   TableBody,
   TableCell,
@@ -347,77 +353,89 @@ export default function CountSession() {
 
       {/* Category Totals */}
       <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Categories</CardTitle>
-          <p className="text-sm text-muted-foreground">Click a category to filter items below</p>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {Object.entries(categoryTotals).map(([category, data]: [string, any]) => (
-              <div 
-                key={category} 
-                className={`border rounded-lg p-4 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
-                  selectedCategory === category ? 'bg-accent border-accent-border' : ''
-                }`}
-                onClick={() => setSelectedCategory(selectedCategory === category ? "all" : category)}
-                data-testid={`card-category-${category.toLowerCase().replace(/\s+/g, '-')}`}
-              >
-                <div className="font-semibold mb-2">{category}</div>
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Items:</span>
-                    <span className="font-mono">{data.items}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Value:</span>
-                    <span className="font-mono font-semibold">${data.value.toFixed(2)}</span>
-                  </div>
-                </div>
+        <Accordion type="single" collapsible>
+          <AccordionItem value="categories" className="border-0">
+            <AccordionTrigger className="px-6 pt-6 pb-2 hover:no-underline">
+              <div className="flex flex-col items-start gap-1">
+                <CardTitle>Categories</CardTitle>
+                <p className="text-sm text-muted-foreground font-normal">Click a category to filter items below</p>
               </div>
-            ))}
-          </div>
-        </CardContent>
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {Object.entries(categoryTotals).map(([category, data]: [string, any]) => (
+                  <div 
+                    key={category} 
+                    className={`border rounded-lg p-4 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
+                      selectedCategory === category ? 'bg-accent border-accent-border' : ''
+                    }`}
+                    onClick={() => setSelectedCategory(selectedCategory === category ? "all" : category)}
+                    data-testid={`card-category-${category.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    <div className="font-semibold mb-2">{category}</div>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Items:</span>
+                        <span className="font-mono">{data.items}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Value:</span>
+                        <span className="font-mono font-semibold">${data.value.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </Card>
 
       {/* Location Totals */}
       <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Locations</CardTitle>
-          <p className="text-sm text-muted-foreground">Click a location to filter items below</p>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {Object.entries(locationTotals).map(([locationId, data]: [string, any]) => (
-              <div 
-                key={locationId} 
-                className={`border rounded-lg p-4 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
-                  selectedLocation === locationId ? 'bg-accent border-accent-border' : ''
-                }`}
-                onClick={() => setSelectedLocation(selectedLocation === locationId ? "all" : locationId)}
-                data-testid={`card-location-${data.name.toLowerCase().replace(/\s+/g, '-')}`}
-              >
-                <div className="font-semibold mb-2">{data.name}</div>
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Items:</span>
-                    <span className="font-mono">{data.items}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Value:</span>
-                    <span className="font-mono font-semibold">${data.value.toFixed(2)}</span>
-                  </div>
-                </div>
+        <Accordion type="single" collapsible>
+          <AccordionItem value="locations" className="border-0">
+            <AccordionTrigger className="px-6 pt-6 pb-2 hover:no-underline">
+              <div className="flex flex-col items-start gap-1">
+                <CardTitle>Locations</CardTitle>
+                <p className="text-sm text-muted-foreground font-normal">Click a location to filter items below</p>
               </div>
-            ))}
-          </div>
-        </CardContent>
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {Object.entries(locationTotals).map(([locationId, data]: [string, any]) => (
+                  <div 
+                    key={locationId} 
+                    className={`border rounded-lg p-4 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
+                      selectedLocation === locationId ? 'bg-accent border-accent-border' : ''
+                    }`}
+                    onClick={() => setSelectedLocation(selectedLocation === locationId ? "all" : locationId)}
+                    data-testid={`card-location-${data.name.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    <div className="font-semibold mb-2">{data.name}</div>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Items:</span>
+                        <span className="font-mono">{data.items}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Value:</span>
+                        <span className="font-mono font-semibold">${data.value.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </Card>
 
       {/* Count Lines Table */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            <CardTitle>Counted Items</CardTitle>
+            <CardTitle>Items</CardTitle>
             <div className="flex items-center gap-4 flex-wrap">
               {(selectedCategory !== "all" || selectedLocation !== "all") && (
                 <Button
