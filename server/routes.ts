@@ -430,7 +430,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/vendor-items", async (req, res) => {
     const vendorId = req.query.vendor_id as string | undefined;
     const vendorItems = await storage.getVendorItems(vendorId);
-    res.json(vendorItems);
+    const inventoryItems = await storage.getInventoryItems();
+    const units = await storage.getUnits();
+    
+    const enriched = vendorItems.map((vi) => {
+      const item = inventoryItems.find((i) => i.id === vi.inventoryItemId);
+      const unit = units.find((u) => u.id === vi.purchaseUnitId);
+      return {
+        ...vi,
+        inventoryItem: item,
+        unit,
+      };
+    });
+    
+    res.json(enriched);
   });
 
   app.post("/api/vendor-items", async (req, res) => {
