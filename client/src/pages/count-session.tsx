@@ -303,52 +303,39 @@ export default function CountSession() {
         </div>
       </div>
 
-      {/* Mini Dashboard */}
-      <div className="grid gap-4 md:grid-cols-3 mb-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Value</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-mono" data-testid="text-dashboard-total-value">
-              ${totalValue.toFixed(2)}
+      {/* Mini Dashboard - Sticky Stats Bar */}
+      <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-8 -mx-8 px-8 py-3">
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="flex items-center gap-3">
+            <DollarSign className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <div className="text-sm text-muted-foreground">Total Value</div>
+              <div className="text-lg font-bold font-mono" data-testid="text-dashboard-total-value">
+                ${totalValue.toFixed(2)}
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Inventory valuation
-            </p>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Items</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-mono" data-testid="text-dashboard-total-items">
-              {totalItems}
+          <div className="flex items-center gap-3">
+            <Package className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <div className="text-sm text-muted-foreground">Total Items</div>
+              <div className="text-lg font-bold font-mono" data-testid="text-dashboard-total-items">
+                {totalItems}
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Inventory items counted
-            </p>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Categories</CardTitle>
-            <Layers className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-mono" data-testid="text-dashboard-categories">
-              {Object.keys(categoryTotals).length}
+          <div className="flex items-center gap-3">
+            <Layers className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <div className="text-sm text-muted-foreground">Categories</div>
+              <div className="text-lg font-bold font-mono" data-testid="text-dashboard-categories">
+                {Object.keys(categoryTotals).length}
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Item categories
-            </p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {/* Category Totals */}
