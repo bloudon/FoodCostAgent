@@ -42,11 +42,6 @@ const menuItems = [
     icon: ClipboardList,
   },
   {
-    title: "Storage Locations",
-    url: "/storage-locations",
-    icon: MapPin,
-  },
-  {
     title: "Recipes",
     url: "/recipes",
     icon: ChefHat,
@@ -70,6 +65,29 @@ const menuItems = [
     title: "Variance Report",
     url: "/variance",
     icon: BarChart3,
+  },
+];
+
+const settingsItems = [
+  {
+    title: "Storage Locations",
+    url: "/storage-locations",
+    icon: MapPin,
+  },
+  {
+    title: "Categories",
+    url: "/categories",
+    icon: Tag,
+  },
+  {
+    title: "Unit Conversions",
+    url: "/unit-conversions",
+    icon: ArrowLeftRight,
+  },
+  {
+    title: "System",
+    url: "/settings",
+    icon: Settings,
   },
 ];
 
@@ -102,45 +120,23 @@ export function AppSidebar() {
         </SidebarGroup>
         
         <SidebarGroup>
-          <SidebarGroupLabel>System</SidebarGroupLabel>
+          <SidebarGroupLabel>Settings</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={location === "/categories"}
-                  data-testid="link-categories"
-                >
-                  <Link href="/categories">
-                    <Tag className="h-4 w-4" />
-                    <span>Categories</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={location === "/unit-conversions"}
-                  data-testid="link-unit-conversions"
-                >
-                  <Link href="/unit-conversions">
-                    <ArrowLeftRight className="h-4 w-4" />
-                    <span>Unit Conversions</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={location === "/settings"}
-                  data-testid="link-settings"
-                >
-                  <Link href="/settings">
-                    <Settings className="h-4 w-4" />
-                    <span>Settings</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {settingsItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location === item.url}
+                    data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
