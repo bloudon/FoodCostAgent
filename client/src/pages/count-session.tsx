@@ -192,8 +192,26 @@ export default function CountSession() {
     updateItemMutation.mutate(updates);
   };
   
-  // Calculate category totals using captured unit cost
-  const categoryTotals = countLines?.reduce((acc: any, line) => {
+  // Get unique categories from inventory items
+  const categories = Array.from(new Set(
+    inventoryItems?.map((p: any) => p.category).filter(Boolean) || []
+  )).sort();
+
+  // Filter lines based on toggle and location (for category accordion)
+  let linesForCategoryTotals = countLines || [];
+  if (!showEmpty) {
+    linesForCategoryTotals = linesForCategoryTotals.filter(line => line.qty > 0);
+  }
+  if (selectedLocation !== "all") {
+    linesForCategoryTotals = linesForCategoryTotals.filter(line => {
+      const item = line.inventoryItem;
+      const locationId = item?.storageLocationId || "unknown";
+      return locationId === selectedLocation;
+    });
+  }
+
+  // Calculate category totals from filtered lines (by location/empty, not by category)
+  const categoryTotals = linesForCategoryTotals.reduce((acc: any, line) => {
     const item = line.inventoryItem;
     const category = item?.category || "Uncategorized";
     const value = line.qty * (line.unitCost || 0);
@@ -207,8 +225,21 @@ export default function CountSession() {
     return acc;
   }, {}) || {};
 
-  // Calculate location totals using captured unit cost
-  const locationTotals = countLines?.reduce((acc: any, line) => {
+  // Filter lines based on toggle and category (for location accordion)
+  let linesForLocationTotals = countLines || [];
+  if (!showEmpty) {
+    linesForLocationTotals = linesForLocationTotals.filter(line => line.qty > 0);
+  }
+  if (selectedCategory !== "all") {
+    linesForLocationTotals = linesForLocationTotals.filter(line => {
+      const item = line.inventoryItem;
+      const category = item?.category || "Uncategorized";
+      return category === selectedCategory;
+    });
+  }
+
+  // Calculate location totals from filtered lines (by category/empty, not by location)
+  const locationTotals = linesForLocationTotals.reduce((acc: any, line) => {
     const item = line.inventoryItem;
     const locationId = item?.storageLocationId || "unknown";
     const locationName = storageLocations?.find(l => l.id === locationId)?.name || "Unknown Location";
@@ -223,18 +254,7 @@ export default function CountSession() {
     return acc;
   }, {}) || {};
 
-  const totalValue = countLines?.reduce((sum, line) => {
-    return sum + (line.qty * (line.unitCost || 0));
-  }, 0) || 0;
-
-  const totalItems = countLines?.length || 0;
-
-  // Get unique categories from inventory items
-  const categories = Array.from(new Set(
-    inventoryItems?.map((p: any) => p.category).filter(Boolean) || []
-  )).sort();
-
-  // Filter lines based on toggle, category, and location
+  // Filter lines for display (all filters applied)
   let filteredLines = countLines || [];
   
   if (!showEmpty) {
@@ -263,6 +283,18 @@ export default function CountSession() {
     const nameB = b.inventoryItem?.name?.toLowerCase() || '';
     return nameA.localeCompare(nameB);
   });
+
+  // Calculate totals from FILTERED lines so stats match what's displayed
+  const totalValue = filteredLines.reduce((sum, line) => {
+    return sum + (line.qty * (line.unitCost || 0));
+  }, 0);
+
+  const totalItems = filteredLines.length;
+  
+  // Calculate unique categories in filtered results
+  const displayedCategories = new Set(
+    filteredLines.map(line => line.inventoryItem?.category || "Uncategorized")
+  ).size;
 
   const countDate = count ? new Date(count.countedAt) : null;
 
@@ -331,7 +363,7 @@ export default function CountSession() {
             <div>
               <div className="text-sm text-muted-foreground">Categories</div>
               <div className="text-lg font-bold font-mono" data-testid="text-dashboard-categories">
-                {Object.keys(categoryTotals).length}
+                {displayedCategories}
               </div>
             </div>
           </div>
@@ -350,7 +382,7 @@ export default function CountSession() {
             </AccordionTrigger>
             <AccordionContent className="px-6 pb-6">
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {Object.entries(categoryTotals).map(([category, data]: [string, any]) => (
+                {Object.entries(categoryTotals).filter(([_, data]: [string, any]) => data.items > 0).map(([category, data]: [string, any]) => (
                   <div 
                     key={category} 
                     className={`border rounded-lg p-4 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
@@ -390,7 +422,7 @@ export default function CountSession() {
             </AccordionTrigger>
             <AccordionContent className="px-6 pb-6">
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {Object.entries(locationTotals).map(([locationId, data]: [string, any]) => (
+                {Object.entries(locationTotals).filter(([_, data]: [string, any]) => data.items > 0).map(([locationId, data]: [string, any]) => (
                   <div 
                     key={locationId} 
                     className={`border rounded-lg p-4 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
