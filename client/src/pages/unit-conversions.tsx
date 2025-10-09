@@ -68,7 +68,7 @@ export default function UnitConversions() {
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
-      return apiRequest("/api/unit-conversions", "POST", data);
+      return apiRequest("POST", "/api/unit-conversions", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/unit-conversions"] });
@@ -89,7 +89,7 @@ export default function UnitConversions() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      return apiRequest(`/api/unit-conversions/${id}`, "PATCH", data);
+      return apiRequest("PATCH", `/api/unit-conversions/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/unit-conversions"] });
@@ -110,7 +110,7 @@ export default function UnitConversions() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/unit-conversions/${id}`, "DELETE");
+      return apiRequest("DELETE", `/api/unit-conversions/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/unit-conversions"] });

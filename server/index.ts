@@ -5,6 +5,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import { seedDatabase } from "./seed";
 
 const app = express();
+app.disable('etag');
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
