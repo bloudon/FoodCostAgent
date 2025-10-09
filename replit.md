@@ -72,6 +72,14 @@ Preferred communication style: Simple, everyday language.
     - Recipe components now consistently use `inventory_item` componentType
     - All user-facing text standardized: "Search items...", "Variance by Item", "Compare by item"
     - Verified with end-to-end testing and architect review
+  - **Vendor Detail Navigation** (October 2025):
+    - Added clickable product count on vendor cards to access vendor detail page
+    - Created dedicated vendor detail page showing vendor info and all associated inventory items
+    - Each inventory item card on vendor detail is clickable, navigating to item detail page
+    - Implemented GET /api/vendors/:id endpoint for fetching single vendor
+    - Enhanced /api/vendor-items endpoint to return enriched data (inventory item + unit info)
+    - Full navigation flow: vendors list → vendor detail → inventory item detail
+    - Proper test IDs and e2e test coverage for all interactive elements
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
