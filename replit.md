@@ -92,6 +92,13 @@ Preferred communication style: Simple, everyday language.
       - Metric conversions: tsp→mL (5), tbsp→mL (15), fl oz→mL (30), cup→mL (240), L→mL (1000)
       - Weight conversions: oz→g (28.35), lb→g (454), kg→g (1000), lb→oz (16)
       - Created missing imperial units: pint, quart, gallon
+    - **Microunit System Data Integrity Fixes** (October 2025):
+      - Removed 14 duplicate units from database (every unit existed twice)
+      - Consolidated duplicate ounce (weight) units and updated conversion references
+      - Fixed incorrect microunit ratios: pint (473.18mL), quart (946.35mL), gallon (3785.41mL)
+      - Verified all 10 inventory items have valid unit references
+      - Verified all 15 unit conversions have valid from/to unit references
+      - Final system: 13 unique units, 0 duplicates, 100% data integrity
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
