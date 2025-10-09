@@ -32,11 +32,7 @@ export default function Settings() {
 
   const updateCompanyMutation = useMutation({
     mutationFn: async (data: Partial<CompanySettings>) => {
-      return await apiRequest("/api/company-settings", {
-        method: "PATCH",
-        body: JSON.stringify(data),
-        headers: { "Content-Type": "application/json" },
-      });
+      return await apiRequest("PATCH", "/api/company-settings", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/company-settings"] });
@@ -56,11 +52,7 @@ export default function Settings() {
 
   const updatePrefsMutation = useMutation({
     mutationFn: async (data: Partial<SystemPreferences>) => {
-      return await apiRequest("/api/system-preferences", {
-        method: "PATCH",
-        body: JSON.stringify(data),
-        headers: { "Content-Type": "application/json" },
-      });
+      return await apiRequest("PATCH", "/api/system-preferences", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/system-preferences"] });
