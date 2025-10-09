@@ -124,6 +124,10 @@ Preferred communication style: Simple, everyday language.
     - Case Size: `item.inventoryItem?.caseSize ?? item.caseSize`
     - Used `??` instead of `||` to preserve legitimate 0 values and prevent incorrect fallbacks
     - Inventory items are canonical source of truth; vendor-specific values only used when inventory data is null/undefined
+  - **Additional Unit Types** (October 2025):
+    - Added "each" and "roll" as count-based units (kind='count', toBaseRatio=1)
+    - These units do not have conversions defined (standalone units)
+    - Available in all inventory item forms and dropdowns
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
