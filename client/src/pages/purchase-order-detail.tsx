@@ -82,14 +82,9 @@ export default function PurchaseOrderDetail() {
   });
 
   const { data: vendorItems } = useQuery<VendorItem[]>({
-    queryKey: ["/api/vendor-items"],
+    queryKey: [`/api/vendor-items?vendor_id=${selectedVendor}`],
     enabled: !!selectedVendor,
   });
-
-  const filteredVendorItems = vendorItems?.filter(item => {
-    // Filter by selected vendor - we'll need to enhance the API to support this
-    return true;
-  }) || [];
 
   const savePOMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -119,7 +114,7 @@ export default function PurchaseOrderDetail() {
   });
 
   const handleAddLine = (vendorItemId: string) => {
-    const vendorItem = filteredVendorItems.find(item => item.id === vendorItemId);
+    const vendorItem = vendorItems?.find(item => item.id === vendorItemId);
     if (!vendorItem) return;
 
     setOrderLines(prev => [...prev, {
@@ -138,13 +133,13 @@ export default function PurchaseOrderDetail() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent, currentIndex: number, field: 'qty' | 'price') => {
-    if (e.key === 'Tab') {
-      e.preventDefault();
+    if (e.key === 'Tab' && !e.shiftKey) {
       const nextField = field === 'qty' ? 'price' : 'qty';
       const nextIndex = field === 'price' ? currentIndex + 1 : currentIndex;
       const nextRef = inputRefs.current[`${nextIndex}-${nextField}`];
       
       if (nextRef) {
+        e.preventDefault();
         nextRef.focus();
         nextRef.select();
       }
@@ -168,7 +163,7 @@ export default function PurchaseOrderDetail() {
       lines: orderLines.map(line => ({
         vendorItemId: line.vendorItemId,
         orderedQty: line.qty,
-        unitId: filteredVendorItems.find(item => item.id === line.vendorItemId)?.purchaseUnitId || "",
+        unitId: vendorItems?.find(item => item.id === line.vendorItemId)?.purchaseUnitId || "",
         priceEach: line.price,
       })),
     };
@@ -279,7 +274,7 @@ export default function PurchaseOrderDetail() {
                 <SelectValue placeholder="Select item to add" />
               </SelectTrigger>
               <SelectContent>
-                {filteredVendorItems?.map((item) => (
+                {vendorItems?.map((item) => (
                   <SelectItem key={item.id} value={item.id}>
                     {item.inventoryItemName} - ${item.lastPrice?.toFixed(2) || '0.00'}
                   </SelectItem>
@@ -312,7 +307,7 @@ export default function PurchaseOrderDetail() {
               </TableHeader>
               <TableBody>
                 {orderLines.map((line, index) => {
-                  const vendorItem = filteredVendorItems.find(item => item.id === line.vendorItemId);
+                  const vendorItem = vendorItems?.find(item => item.id === line.vendorItemId);
                   const lineTotal = line.qty * line.price;
 
                   return (

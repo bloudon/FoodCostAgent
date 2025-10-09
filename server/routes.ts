@@ -851,13 +851,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const orders = await storage.getPurchaseOrders();
     const vendors = await storage.getVendors();
     
-    const enriched = orders.map((po) => {
+    const enriched = await Promise.all(orders.map(async (po) => {
       const vendor = vendors.find((v) => v.id === po.vendorId);
+      const lines = await storage.getPOLines(po.id);
+      const lineCount = lines.length;
+      const totalAmount = lines.reduce((sum, line) => sum + (line.orderedQty * line.priceEach), 0);
+      
       return {
         ...po,
         vendorName: vendor?.name || "Unknown",
+        lineCount,
+        totalAmount,
       };
-    });
+    }));
     
     res.json(enriched);
   });
