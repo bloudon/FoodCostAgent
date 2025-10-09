@@ -35,12 +35,12 @@ export default function VendorDetail() {
   const vendorId = params?.id;
 
   const { data: vendor, isLoading: vendorLoading } = useQuery<Vendor>({
-    queryKey: ["/api/vendors", vendorId],
+    queryKey: [`/api/vendors/${vendorId}`],
     enabled: !!vendorId,
   });
 
   const { data: vendorItems, isLoading: itemsLoading } = useQuery<VendorItemWithDetails[]>({
-    queryKey: ["/api/vendor-items", { vendor_id: vendorId }],
+    queryKey: [`/api/vendor-items?vendor_id=${vendorId}`],
     enabled: !!vendorId,
   });
 

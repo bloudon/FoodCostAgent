@@ -246,6 +246,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(vendors);
   });
 
+  app.get("/api/vendors/:id", async (req, res) => {
+    const vendor = await storage.getVendor(req.params.id);
+    if (!vendor) {
+      return res.status(404).json({ error: "Vendor not found" });
+    }
+    res.json(vendor);
+  });
+
   app.post("/api/vendors", async (req, res) => {
     try {
       const data = insertVendorSchema.parse(req.body);

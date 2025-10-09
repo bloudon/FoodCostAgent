@@ -237,7 +237,7 @@ export default function Vendors() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2 text-sm">
-                    <Link href={`/vendors/${vendor.id}`}>
+                    <Link href={`/vendors/${vendor.id}`} data-testid={`link-vendor-detail-${vendor.id}`}>
                       <div className="flex justify-between items-center hover-elevate rounded-md p-2 -m-2 transition-all group">
                         <span className="text-muted-foreground">Products:</span>
                         <div className="flex items-center gap-1.5">
