@@ -86,6 +86,12 @@ Preferred communication style: Simple, everyday language.
     - Created pound to 16 oz conversion as seed data (1 pound = 16 ounces)
     - Full CRUD functionality tested and working: create, update, delete conversions
     - All API endpoints verified (POST returns 201, PATCH returns 200, DELETE returns 204)
+    - **Comprehensive Cooking Conversions Added**:
+      - Added 15 total conversions from professional cooking chart
+      - Volume conversions: tsp→tbsp (3), fl oz→tbsp (2), cup→fl oz (8), pint→cup (2), quart→pint (2), gallon→quart (4)
+      - Metric conversions: tsp→mL (5), tbsp→mL (15), fl oz→mL (30), cup→mL (240), L→mL (1000)
+      - Weight conversions: oz→g (28.35), lb→g (454), kg→g (1000), lb→oz (16)
+      - Created missing imperial units: pint, quart, gallon
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
