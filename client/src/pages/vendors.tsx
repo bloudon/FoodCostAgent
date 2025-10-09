@@ -50,8 +50,8 @@ export default function Vendors() {
     queryKey: ["/api/vendors"],
   });
 
-  const { data: vendorProducts } = useQuery<any[]>({
-    queryKey: ["/api/vendor-products"],
+  const { data: vendorItems } = useQuery<any[]>({
+    queryKey: ["/api/vendor-items"],
   });
 
   const form = useForm<InsertVendor>({
@@ -130,7 +130,7 @@ export default function Vendors() {
   });
 
   const getProductCount = (vendorId: string) => {
-    return vendorProducts?.filter(vp => vp.vendorId === vendorId).length || 0;
+    return vendorItems?.filter(vi => vi.vendorId === vendorId).length || 0;
   };
 
   const filteredVendors = vendors?.filter(v => 
