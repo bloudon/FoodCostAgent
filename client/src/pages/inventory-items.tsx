@@ -44,7 +44,7 @@ type InventoryItemDisplay = {
     id: string;
     name: string;
     abbreviation: string;
-  };
+  } | null;
 };
 
 type StorageLocation = {
@@ -155,6 +155,7 @@ export default function InventoryItems() {
                   <TableHead className="w-[300px]">Item</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Location</TableHead>
+                  <TableHead>Unit</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Par</TableHead>
                   <TableHead className="text-right">Reorder</TableHead>
@@ -200,6 +201,9 @@ export default function InventoryItems() {
                       </TableCell>
                       <TableCell>
                         <span className="text-sm">{item.location.name}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-muted-foreground">{item.unit?.name ?? '—'}</span>
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         <span className={inventoryStatus.color}>{quantity.toFixed(2)}</span>
