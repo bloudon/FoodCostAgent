@@ -137,6 +137,14 @@ Preferred communication style: Simple, everyday language.
     - **Keyboard Navigation**: Tab key moves between qty→price→next qty without focus trap
     - **Status Badges**: Color-coded status indicators (pending/ordered/received)
     - **Order Entry Flow**: Select vendor → add items → enter qty/price → save
+    - **Notes Field**: Optional notes field on purchase orders for additional context
+    - **Misc Grocery Workflow**: Special "Misc Grocery" vendor for spot purchases; auto-creates/reuses vendor items to prevent duplicates
+    - **Unit Propagation Fix**: Order lines now store unitId/unitName; backend enriches detail response with unitName for proper display
+    - **Delete Functionality**: 
+      - DELETE /api/purchase-orders/:id endpoint with cascade deletion of PO lines
+      - Only non-received orders can be deleted (status validation)
+      - Confirmation dialog with AlertDialog component
+      - Cache invalidation and success/error toast notifications
     - Routes: /purchase-orders (list), /purchase-orders/new (create), /purchase-orders/:id (detail/edit)
 
 ### Architectural Decisions
