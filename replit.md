@@ -106,6 +106,12 @@ Preferred communication style: Simple, everyday language.
     - Removed duplicate Sysco vendor from database
     - Verified vendor detail navigation shows all associated inventory items
     - Future optimization opportunities: server-side count aggregation, error handling, cache invalidation
+  - **System Preferences API Fix** (October 2025):
+    - Fixed apiRequest signature bug in settings.tsx mutations
+    - Both updateCompanyMutation and updatePrefsMutation were using incorrect fetch-style API
+    - Changed from: `apiRequest(url, { method, body, headers })` to `apiRequest(method, url, data)`
+    - Settings now properly persist (unit system, currency, timezone changes work correctly)
+    - Same bug pattern previously fixed in unit-conversions.tsx
 
 ### Architectural Decisions
 - Single-page application with client-side routing.
