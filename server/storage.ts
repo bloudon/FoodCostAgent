@@ -135,6 +135,7 @@ export interface IStorage {
   getPurchaseOrder(id: string): Promise<PurchaseOrder | undefined>;
   createPurchaseOrder(po: InsertPurchaseOrder): Promise<PurchaseOrder>;
   updatePurchaseOrder(id: string, po: Partial<PurchaseOrder>): Promise<PurchaseOrder | undefined>;
+  deletePurchaseOrder(id: string): Promise<void>;
 
   // PO Lines
   getPOLines(poId: string): Promise<POLine[]>;
@@ -668,6 +669,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(purchaseOrders.id, id))
       .returning();
     return po || undefined;
+  }
+
+  async deletePurchaseOrder(id: string): Promise<void> {
+    await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
   }
 
   // PO Lines

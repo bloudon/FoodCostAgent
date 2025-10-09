@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { Package, Search, Plus } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Package, Search, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 type PurchaseOrderDisplay = {
   id: string;
@@ -48,6 +60,8 @@ export default function PurchaseOrders() {
   const [search, setSearch] = useState("");
   const [selectedVendor, setSelectedVendor] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const { data: purchaseOrders, isLoading } = useQuery<PurchaseOrderDisplay[]>({
     queryKey: ["/api/purchase-orders"],
@@ -55,6 +69,27 @@ export default function PurchaseOrders() {
 
   const { data: vendors } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors"],
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/purchase-orders/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      toast({
+        title: "Success",
+        description: "Purchase order deleted successfully",
+      });
+      setOrderToDelete(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete purchase order",
+        variant: "destructive",
+      });
+    },
   });
 
   const filteredOrders = purchaseOrders?.filter((order) => {
@@ -189,16 +224,31 @@ export default function PurchaseOrders() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Link href={`/purchase-orders/${order.id}`}>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            data-testid={`button-view-po-${order.id}`}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            View Details
-                          </Button>
-                        </Link>
+                        <div className="flex items-center justify-end gap-2">
+                          <Link href={`/purchase-orders/${order.id}`}>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              data-testid={`button-view-po-${order.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              View Details
+                            </Button>
+                          </Link>
+                          {order.status !== "received" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOrderToDelete(order.id);
+                              }}
+                              data-testid={`button-delete-po-${order.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -208,6 +258,27 @@ export default function PurchaseOrders() {
           </div>
         )}
       </div>
+
+      <AlertDialog open={!!orderToDelete} onOpenChange={(open) => !open && setOrderToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Purchase Order</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this purchase order? This action cannot be undone and will also delete all associated order lines.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => orderToDelete && deleteMutation.mutate(orderToDelete)}
+              data-testid="button-confirm-delete"
+              className="bg-destructive text-destructive-foreground hover-elevate"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

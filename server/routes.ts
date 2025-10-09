@@ -1020,6 +1020,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/purchase-orders/:id", async (req, res) => {
+    try {
+      const po = await storage.getPurchaseOrder(req.params.id);
+      if (!po) {
+        return res.status(404).json({ error: "Purchase order not found" });
+      }
+
+      // Check if order has been received
+      if (po.status === "received") {
+        return res.status(400).json({ error: "Cannot delete a received purchase order" });
+      }
+
+      // Delete all PO lines first
+      const lines = await storage.getPOLines(req.params.id);
+      for (const line of lines) {
+        await storage.deletePOLine(line.id);
+      }
+
+      // Delete the purchase order
+      await storage.deletePurchaseOrder(req.params.id);
+
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ RECEIPTS ============
   app.get("/api/receipts", async (req, res) => {
     const receipts = await storage.getReceipts();
