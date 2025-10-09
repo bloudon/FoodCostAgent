@@ -78,7 +78,7 @@ export default function PurchaseOrderDetail() {
   const [selectedVendor, setSelectedVendor] = useState<string>("");
   const [expectedDate, setExpectedDate] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
-  const [orderLines, setOrderLines] = useState<{ vendorItemId: string; qty: number; price: number }[]>([]);
+  const [orderLines, setOrderLines] = useState<{ vendorItemId: string; inventoryItemId?: string; qty: number; price: number }[]>([]);
   const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   const { data: purchaseOrder, isLoading: loadingOrder } = useQuery<PurchaseOrderDetail>({
@@ -113,6 +113,10 @@ export default function PurchaseOrderDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      if (!isNew) {
+        queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${id}`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/vendor-items?vendor_id=${selectedVendor}`] });
+      }
       toast({
         title: "Success",
         description: `Purchase order ${isNew ? "created" : "updated"} successfully`,
@@ -137,7 +141,8 @@ export default function PurchaseOrderDetail() {
       if (!invItem) return;
 
       setOrderLines(prev => [...prev, {
-        vendorItemId: itemId, // Store inventory item ID
+        vendorItemId: "", // Will be created on save
+        inventoryItemId: itemId, // Store inventory item ID
         qty: 0,
         price: invItem.pricePerUnit || 0,
       }]);
@@ -193,14 +198,24 @@ export default function PurchaseOrderDetail() {
       notes: notes || null,
       lines: orderLines.map(line => {
         if (isMiscGrocery) {
-          // For misc grocery, line.vendorItemId is actually an inventory item ID
-          const invItem = inventoryItems?.find(item => item.id === line.vendorItemId);
-          return {
-            inventoryItemId: line.vendorItemId,
-            orderedQty: line.qty,
-            unitId: invItem?.unitId || "",
-            priceEach: line.price,
-          };
+          // For new misc grocery items (have inventoryItemId)
+          if (line.inventoryItemId) {
+            const invItem = inventoryItems?.find(item => item.id === line.inventoryItemId);
+            return {
+              inventoryItemId: line.inventoryItemId,
+              orderedQty: line.qty,
+              unitId: invItem?.unitId || "",
+              priceEach: line.price,
+            };
+          } else {
+            // For existing misc grocery items (have vendorItemId already)
+            return {
+              vendorItemId: line.vendorItemId,
+              orderedQty: line.qty,
+              unitId: vendorItems?.find(item => item.id === line.vendorItemId)?.purchaseUnitId || "",
+              priceEach: line.price,
+            };
+          }
         } else {
           // For regular vendors, use vendor item ID
           return {
@@ -221,13 +236,22 @@ export default function PurchaseOrderDetail() {
       setSelectedVendor(purchaseOrder.vendorId);
       setExpectedDate(purchaseOrder.expectedDate || "");
       setNotes((purchaseOrder as any).notes || "");
-      setOrderLines(purchaseOrder.lines.map(line => ({
-        vendorItemId: line.vendorItemId,
-        qty: line.orderedQty,
-        price: line.priceEach,
-      })));
+      
+      // For misc grocery orders, we need to track the inventoryItemId too
+      const isMiscGroceryOrder = purchaseOrder.vendorId === "d3c1ebe2-3ca9-4858-ac08-e7f00e0edb1a";
+      
+      setOrderLines(purchaseOrder.lines.map(line => {
+        const vendorItem = vendorItems?.find(vi => vi.id === line.vendorItemId);
+        
+        return {
+          vendorItemId: line.vendorItemId,
+          inventoryItemId: isMiscGroceryOrder ? vendorItem?.inventoryItemId : undefined,
+          qty: line.orderedQty,
+          price: line.priceEach,
+        };
+      }));
     }
-  }, [purchaseOrder, isNew]);
+  }, [purchaseOrder, isNew, vendorItems]);
 
   const totalAmount = orderLines.reduce((sum, line) => sum + (line.qty * line.price), 0);
 
@@ -377,7 +401,16 @@ export default function PurchaseOrderDetail() {
                   let unitName = '-';
 
                   if (isMiscGrocery) {
-                    const invItem = inventoryItems?.find(item => item.id === line.vendorItemId);
+                    // For misc grocery, use inventoryItemId if available (new items) or vendorItemId (existing items)
+                    const invItemId = line.inventoryItemId || line.vendorItemId;
+                    let invItem = inventoryItems?.find(item => item.id === invItemId);
+                    
+                    // If not found by direct ID, lookup via vendor item
+                    if (!invItem && line.vendorItemId) {
+                      const vendorItem = vendorItems?.find(item => item.id === line.vendorItemId);
+                      invItem = inventoryItems?.find(item => item.id === vendorItem?.inventoryItemId);
+                    }
+                    
                     itemName = invItem?.name || 'Unknown Item';
                     unitName = invItem?.unitName || '-';
                     vendorSku = 'N/A';

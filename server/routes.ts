@@ -906,16 +906,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Check if this is a misc grocery order with inventoryItemId instead
           if (line.inventoryItemId) {
-            // Create a vendor item on the fly for this inventory item
-            const vendorItem = await storage.createVendorItem({
-              vendorId: po.vendorId,
-              inventoryItemId: line.inventoryItemId,
-              purchaseUnitId: line.unitId,
-              caseSize: 1,
-              lastPrice: line.priceEach,
-              active: 1,
-            });
-            vendorItemId = vendorItem.id;
+            // Check if vendor item already exists for this vendor and inventory item
+            const vendorItems = await storage.getVendorItems();
+            const existingVendorItem = vendorItems.find(
+              vi => vi.vendorId === po.vendorId && vi.inventoryItemId === line.inventoryItemId
+            );
+            
+            if (existingVendorItem) {
+              vendorItemId = existingVendorItem.id;
+            } else {
+              // Create a vendor item on the fly for this inventory item
+              const vendorItem = await storage.createVendorItem({
+                vendorId: po.vendorId,
+                inventoryItemId: line.inventoryItemId,
+                purchaseUnitId: line.unitId,
+                caseSize: 1,
+                lastPrice: line.priceEach,
+                active: 1,
+              });
+              vendorItemId = vendorItem.id;
+            }
           }
           
           const lineData = insertPOLineSchema.parse({
@@ -930,6 +940,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       res.status(201).json(po);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/purchase-orders/:id", async (req, res) => {
+    try {
+      const po = await storage.getPurchaseOrder(req.params.id);
+      if (!po) {
+        return res.status(404).json({ error: "Purchase order not found" });
+      }
+
+      const { lines, ...poData } = req.body;
+      
+      // Update the purchase order
+      const updateData = {
+        expectedDate: poData.expectedDate !== undefined ? poData.expectedDate : po.expectedDate,
+        status: poData.status || po.status,
+        notes: poData.notes !== undefined ? poData.notes : po.notes,
+      };
+      
+      await storage.updatePurchaseOrder(req.params.id, updateData);
+
+      // Update lines if provided
+      if (lines && Array.isArray(lines)) {
+        // Delete existing lines
+        const existingLines = await storage.getPOLines(req.params.id);
+        for (const line of existingLines) {
+          await storage.deletePOLine(line.id);
+        }
+
+        // Create new lines
+        for (const line of lines) {
+          let vendorItemId = line.vendorItemId;
+          
+          // Check if this is a misc grocery order with inventoryItemId instead
+          if (line.inventoryItemId) {
+            // Check if vendor item already exists for this vendor and inventory item
+            const vendorItems = await storage.getVendorItems();
+            const existingVendorItem = vendorItems.find(
+              vi => vi.vendorId === po.vendorId && vi.inventoryItemId === line.inventoryItemId
+            );
+            
+            if (existingVendorItem) {
+              vendorItemId = existingVendorItem.id;
+            } else {
+              // Create a vendor item on the fly for this inventory item
+              const vendorItem = await storage.createVendorItem({
+                vendorId: po.vendorId,
+                inventoryItemId: line.inventoryItemId,
+                purchaseUnitId: line.unitId,
+                caseSize: 1,
+                lastPrice: line.priceEach,
+                active: 1,
+              });
+              vendorItemId = vendorItem.id;
+            }
+          }
+          
+          const lineData = insertPOLineSchema.parse({
+            vendorItemId,
+            orderedQty: line.orderedQty,
+            unitId: line.unitId,
+            priceEach: line.priceEach,
+            purchaseOrderId: req.params.id,
+          });
+          await storage.createPOLine(lineData);
+        }
+      }
+
+      const updatedPO = await storage.getPurchaseOrder(req.params.id);
+      res.json(updatedPO);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

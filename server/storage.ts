@@ -139,6 +139,7 @@ export interface IStorage {
   // PO Lines
   getPOLines(poId: string): Promise<POLine[]>;
   createPOLine(line: InsertPOLine): Promise<POLine>;
+  deletePOLine(id: string): Promise<void>;
 
   // Receipts
   getReceipts(): Promise<Receipt[]>;
@@ -677,6 +678,10 @@ export class DatabaseStorage implements IStorage {
   async createPOLine(insertLine: InsertPOLine): Promise<POLine> {
     const [line] = await db.insert(poLines).values(insertLine).returning();
     return line;
+  }
+
+  async deletePOLine(id: string): Promise<void> {
+    await db.delete(poLines).where(eq(poLines.id, id));
   }
 
   // Receipts
