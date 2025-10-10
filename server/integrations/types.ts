@@ -100,20 +100,30 @@ export interface PunchoutOrderDraft {
 
 export interface VendorCredentials {
   vendorKey: VendorKey;
+  // API Credentials
   apiKey?: string;
   apiSecret?: string;
+  apiUrl?: string;
   username?: string;
   password?: string;
   accountNumber?: string;
+  // EDI Configuration
   ediIsaId?: string;
   ediGsId?: string;
+  ediQualifier?: string;
   as2Url?: string;
+  as2Identifier?: string;
+  // SFTP Configuration
   sftpHost?: string;
+  sftpPort?: number;
   sftpUsername?: string;
+  sftpPassword?: string;
   sftpPath?: string;
+  // PunchOut Configuration
   punchoutUrl?: string;
+  punchoutDomain?: string;
+  punchoutIdentity?: string;
   sharedSecret?: string;
-  [key: string]: string | undefined;
 }
 
 export interface SyncOrderGuideOptions {

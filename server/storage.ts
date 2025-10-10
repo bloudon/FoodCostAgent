@@ -28,6 +28,7 @@ import {
   wasteLogs, type WasteLog, type InsertWasteLog,
   companySettings, type CompanySettings, type InsertCompanySettings,
   systemPreferences, type SystemPreferences, type InsertSystemPreferences,
+  vendorCredentials, type VendorCredentials, type InsertVendorCredentials,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -185,6 +186,13 @@ export interface IStorage {
   // System Preferences
   getSystemPreferences(): Promise<SystemPreferences | undefined>;
   updateSystemPreferences(preferences: Partial<SystemPreferences>): Promise<SystemPreferences>;
+
+  // Vendor Credentials
+  getVendorCredentials(): Promise<VendorCredentials[]>;
+  getVendorCredentialsByKey(vendorKey: string): Promise<VendorCredentials | undefined>;
+  createVendorCredentials(credentials: InsertVendorCredentials): Promise<VendorCredentials>;
+  updateVendorCredentials(id: string, credentials: Partial<VendorCredentials>): Promise<VendorCredentials | undefined>;
+  deleteVendorCredentials(id: string): Promise<void>;
 
   // Inventory Item Price History
   getInventoryItemPriceHistory(inventoryItemId: string): Promise<InventoryItemPriceHistory[]>;
@@ -879,6 +887,41 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return created;
     }
+  }
+
+  // Vendor Credentials
+  async getVendorCredentials(): Promise<VendorCredentials[]> {
+    return await db.select().from(vendorCredentials);
+  }
+
+  async getVendorCredentialsByKey(vendorKey: string): Promise<VendorCredentials | undefined> {
+    const [creds] = await db
+      .select()
+      .from(vendorCredentials)
+      .where(eq(vendorCredentials.vendorKey, vendorKey))
+      .limit(1);
+    return creds || undefined;
+  }
+
+  async createVendorCredentials(credentials: InsertVendorCredentials): Promise<VendorCredentials> {
+    const [created] = await db
+      .insert(vendorCredentials)
+      .values(credentials)
+      .returning();
+    return created;
+  }
+
+  async updateVendorCredentials(id: string, updates: Partial<VendorCredentials>): Promise<VendorCredentials | undefined> {
+    const [updated] = await db
+      .update(vendorCredentials)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(vendorCredentials.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteVendorCredentials(id: string): Promise<void> {
+    await db.delete(vendorCredentials).where(eq(vendorCredentials.id, id));
   }
 
   // Inventory Item Price History

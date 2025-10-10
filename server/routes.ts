@@ -1085,7 +1085,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vendor-integrations/:vendorKey/sync-order-guide", requireAuth, async (req, res) => {
     try {
       const { vendorKey } = req.params;
-      const vendor = getVendor(vendorKey as any);
+      const vendor = await getVendor(vendorKey as any);
       
       const params = syncOrderGuideSchema.parse(req.body);
       const orderGuide = await vendor.syncOrderGuide(params);
@@ -1100,7 +1100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vendor-integrations/:vendorKey/submit-po", requireAuth, async (req, res) => {
     try {
       const { vendorKey } = req.params;
-      const vendor = getVendor(vendorKey as any);
+      const vendor = await getVendor(vendorKey as any);
       
       // Validate PO structure - reuse existing schema patterns
       const poData = z.object({
@@ -1132,7 +1132,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vendor-integrations/:vendorKey/fetch-invoices", requireAuth, async (req, res) => {
     try {
       const { vendorKey } = req.params;
-      const vendor = getVendor(vendorKey as any);
+      const vendor = await getVendor(vendorKey as any);
       
       const params = fetchInvoicesSchema.parse(req.body);
       const invoices = await vendor.fetchInvoices(params);
@@ -1147,7 +1147,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vendor-integrations/:vendorKey/punchout-init", requireAuth, async (req, res) => {
     try {
       const { vendorKey } = req.params;
-      const vendor = getVendor(vendorKey as any);
+      const vendor = await getVendor(vendorKey as any);
       
       if (!vendor.punchoutInit) {
         return res.status(400).json({ error: "PunchOut not supported for this vendor" });
@@ -1166,7 +1166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vendor-integrations/:vendorKey/punchout-return", requireAuth, async (req, res) => {
     try {
       const { vendorKey } = req.params;
-      const vendor = getVendor(vendorKey as any);
+      const vendor = await getVendor(vendorKey as any);
       
       if (!vendor.punchoutReturn) {
         return res.status(400).json({ error: "PunchOut not supported for this vendor" });
@@ -1637,6 +1637,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const data = insertSystemPreferencesSchema.partial().parse(req.body);
       const preferences = await storage.updateSystemPreferences(data);
       res.json(preferences);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Helper function to redact sensitive credential fields
+  const redactCredentials = (creds: any) => ({
+    id: creds.id,
+    vendorKey: creds.vendorKey,
+    vendorName: creds.vendorName,
+    isActive: creds.isActive,
+    lastSyncedAt: creds.lastSyncedAt,
+    updatedAt: creds.updatedAt,
+    // Indicate which fields are configured without exposing values
+    hasApiCredentials: !!(creds.apiKey || creds.apiSecret || creds.apiUrl || creds.username || creds.password),
+    hasEdiConfig: !!(creds.ediIsaId || creds.ediGsId || creds.ediQualifier || creds.as2Url || creds.as2Identifier),
+    hasSftpConfig: !!(creds.sftpHost || creds.sftpPort || creds.sftpUsername || creds.sftpPassword),
+    hasPunchoutConfig: !!(creds.punchoutUrl || creds.punchoutDomain || creds.punchoutIdentity || creds.sharedSecret),
+  });
+
+  // Helper function to check admin role
+  const requireAdmin = (req: any, res: any, next: any) => {
+    const user = req.user;
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    next();
+  };
+
+  // ============ VENDOR CREDENTIALS ============
+  app.get("/api/vendor-credentials", requireAuth, requireAdmin, async (req, res) => {
+    const credentials = await storage.getVendorCredentials();
+    // Redact sensitive fields
+    const safe = credentials.map(redactCredentials);
+    res.json(safe);
+  });
+
+  app.get("/api/vendor-credentials/:vendorKey", requireAuth, requireAdmin, async (req, res) => {
+    const credentials = await storage.getVendorCredentialsByKey(req.params.vendorKey);
+    if (!credentials) {
+      return res.status(404).json({ error: "Vendor credentials not found" });
+    }
+    // Return full credentials only to admins for editing
+    res.json(credentials);
+  });
+
+  app.post("/api/vendor-credentials", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { insertVendorCredentialsSchema } = await import("@shared/schema");
+      const data = insertVendorCredentialsSchema.parse(req.body);
+      const credentials = await storage.createVendorCredentials(data);
+      res.status(201).json(redactCredentials(credentials));
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/vendor-credentials/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { insertVendorCredentialsSchema } = await import("@shared/schema");
+      const data = insertVendorCredentialsSchema.partial().parse(req.body);
+      const credentials = await storage.updateVendorCredentials(req.params.id, data);
+      if (!credentials) {
+        return res.status(404).json({ error: "Vendor credentials not found" });
+      }
+      
+      // Clear adapter cache for this vendor
+      const { clearAdapterCache } = await import('./integrations');
+      clearAdapterCache(credentials.vendorKey as any);
+      
+      res.json(redactCredentials(credentials));
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/vendor-credentials/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteVendorCredentials(req.params.id);
+      res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

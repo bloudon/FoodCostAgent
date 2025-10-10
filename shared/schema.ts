@@ -397,3 +397,47 @@ export const insertSystemPreferencesSchema = createInsertSchema(systemPreference
 export type InsertSystemPreferences = z.infer<typeof insertSystemPreferencesSchema>;
 export type SystemPreferences = typeof systemPreferences.$inferSelect;
 
+// Vendor Credentials (for food distributor integrations)
+export const vendorCredentials = pgTable("vendor_credentials", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vendorKey: text("vendor_key").notNull().unique(), // sysco, gfs, usfoods
+  vendorName: text("vendor_name").notNull(), // Display name
+  
+  // API Credentials
+  apiKey: text("api_key"),
+  apiSecret: text("api_secret"),
+  apiUrl: text("api_url"),
+  username: text("username"),
+  password: text("password"),
+  accountNumber: text("account_number"),
+  
+  // EDI Configuration
+  ediIsaId: text("edi_isa_id"),
+  ediGsId: text("edi_gs_id"),
+  ediQualifier: text("edi_qualifier"),
+  as2Url: text("as2_url"),
+  as2Identifier: text("as2_identifier"),
+  
+  // SFTP Configuration
+  sftpHost: text("sftp_host"),
+  sftpPort: integer("sftp_port"),
+  sftpUsername: text("sftp_username"),
+  sftpPassword: text("sftp_password"),
+  sftpPath: text("sftp_path"),
+  
+  // PunchOut Configuration
+  punchoutUrl: text("punchout_url"),
+  punchoutDomain: text("punchout_domain"),
+  punchoutIdentity: text("punchout_identity"),
+  sharedSecret: text("shared_secret"),
+  
+  // Status
+  isActive: integer("is_active").notNull().default(1), // 1 = active, 0 = inactive
+  lastSyncedAt: timestamp("last_synced_at"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertVendorCredentialsSchema = createInsertSchema(vendorCredentials).omit({ id: true, updatedAt: true });
+export type InsertVendorCredentials = z.infer<typeof insertVendorCredentialsSchema>;
+export type VendorCredentials = typeof vendorCredentials.$inferSelect;
+

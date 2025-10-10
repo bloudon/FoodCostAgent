@@ -54,8 +54,15 @@ Preferred communication style: Simple, everyday language.
   - **PunchOut Integration**: cXML protocol support for interactive catalog shopping (US Foods)
   - **API Routes**: Authenticated endpoints for sync, submit PO, fetch invoices, PunchOut flows
   - **Security**: All integration endpoints protected with requireAuth middleware and Zod validation
-  - **Credentials**: Environment-based configuration (future: secure database storage)
-  - **Status**: Infrastructure complete, vendor-specific implementations pending actual API connections
+  - **Credentials Management** (October 2025):
+    - **Database Storage**: vendor_credentials table stores all vendor API keys, EDI configs, SFTP details, and PunchOut settings
+    - **Admin-Only Access**: Credential management restricted to admin role via requireAdmin middleware
+    - **Credential Redaction**: API responses redact sensitive fields (passwords, secrets, API keys) from non-admin views
+    - **Field Coverage**: Supports API (key/secret/URL/username/password), EDI (ISA/GS/Qualifier/AS2), SFTP (host/port/credentials/path), PunchOut (URL/domain/identity/shared secret)
+    - **Active Status**: Adapters only load for isActive=1 credentials; deactivated vendors automatically evict cache
+    - **Cache Invalidation**: Adapter cache cleared on credential updates to ensure fresh configuration
+    - **Fallback Support**: Environment variables used as fallback if database credentials not configured
+  - **Status**: Infrastructure complete with secure credential management, vendor-specific implementations pending actual API connections
 
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
