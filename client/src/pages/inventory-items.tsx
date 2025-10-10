@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Package, Search, Plus, MoreVertical } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -89,7 +89,9 @@ export default function InventoryItems() {
   const [search, setSearch] = useState("");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [showInactive, setShowInactive] = useState<boolean>(false);
+  const [activeFilter, setActiveFilter] = useState<"active" | "inactive" | "all">("active");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(9999);
   const { toast } = useToast();
 
   const { data: inventoryItems, isLoading } = useQuery<InventoryItemDisplay[]>({
@@ -129,16 +131,36 @@ export default function InventoryItems() {
       item.pluSku?.toLowerCase().includes(search.toLowerCase());
     const matchesLocation = selectedLocation === "all" || item.storageLocationId === selectedLocation;
     const matchesCategory = selectedCategory === "all" || item.categoryId === selectedCategory;
-    const matchesActive = showInactive || item.active === 1;
+    const matchesActive = 
+      activeFilter === "all" ? true :
+      activeFilter === "active" ? item.active === 1 :
+      item.active === 0;
     return matchesSearch && matchesLocation && matchesCategory && matchesActive;
   }) || [];
+
+  const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+  
+  // Clamp currentPage to valid range when filtered items change
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    } else if (totalPages === 0 && currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [filteredItems.length, itemsPerPage, currentPage, totalPages]);
+
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedItems = itemsPerPage === 9999 ? filteredItems : filteredItems.slice(startIndex, endIndex);
 
   return (
     <div className="h-full overflow-auto">
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-3xl font-bold">Inventory Items</h1>
+            <h1 className="text-3xl font-bold">
+              Inventory Items ({filteredItems.length})
+            </h1>
             <p className="text-muted-foreground mt-1">
               Current on-hand quantities across all storage locations
             </p>
@@ -188,12 +210,16 @@ export default function InventoryItems() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={showInactive ? "all" : "active"} onValueChange={(val) => setShowInactive(val === "all")}>
+          <Select value={activeFilter} onValueChange={(val) => {
+            setActiveFilter(val as "active" | "inactive" | "all");
+            setCurrentPage(1);
+          }}>
             <SelectTrigger className="w-[200px]" data-testid="select-active-filter">
               <SelectValue placeholder="Filter by status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="active">Active Only</SelectItem>
+              <SelectItem value="inactive">Inactive Only</SelectItem>
               <SelectItem value="all">All Items</SelectItem>
             </SelectContent>
           </Select>
@@ -231,7 +257,7 @@ export default function InventoryItems() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredItems.map((item) => {
+                {paginatedItems.map((item) => {
                   const quantity = item.onHandQty;
                   const inventoryStatus = getInventoryStatus(quantity, item.parLevel, item.reorderLevel);
 
@@ -354,12 +380,55 @@ export default function InventoryItems() {
           </div>
         )}
 
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>Showing {filteredItems.length} items</span>
-          {selectedLocation !== "all" && (
-            <span>
-              Filtered by location
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-muted-foreground">
+              {filteredItems.length === 0 
+                ? "Showing 0 items"
+                : itemsPerPage === 9999 
+                  ? `Showing ${filteredItems.length} items`
+                  : `Showing ${startIndex + 1}-${Math.min(endIndex, filteredItems.length)} of ${filteredItems.length} items`
+              }
             </span>
+            <Select value={itemsPerPage.toString()} onValueChange={(val) => {
+              setItemsPerPage(Number(val));
+              setCurrentPage(1);
+            }}>
+              <SelectTrigger className="w-[140px]" data-testid="select-items-per-page">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="25">25 per page</SelectItem>
+                <SelectItem value="50">50 per page</SelectItem>
+                <SelectItem value="100">100 per page</SelectItem>
+                <SelectItem value="9999">Show all</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {itemsPerPage !== 9999 && totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                data-testid="button-prev-page"
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                data-testid="button-next-page"
+              >
+                Next
+              </Button>
+            </div>
           )}
         </div>
       </div>
