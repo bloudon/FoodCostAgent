@@ -2236,6 +2236,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update company logo image
+  app.put("/api/company-settings/logo", requireAuth, async (req, res) => {
+    try {
+      const { imageUrl } = z.object({
+        imageUrl: z.string(),
+      }).parse(req.body);
+
+      const user = (req as any).user;
+      const objectStorageService = new ObjectStorageService();
+      
+      // Set ACL policy for the uploaded logo (public visibility)
+      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+        imageUrl,
+        {
+          owner: user.id,
+          visibility: "public",
+        }
+      );
+
+      // Update company settings with the normalized object path
+      const settings = await storage.updateCompanySettings({
+        logoImagePath: objectPath,
+      });
+
+      res.json({ objectPath });
+    } catch (error: any) {
+      console.error("Error updating company logo:", error);
+      res.status(500).json({ error: "Failed to update logo" });
+    }
+  });
+
   // ============ SYSTEM PREFERENCES ============
   app.get("/api/system-preferences", async (req, res) => {
     const preferences = await storage.getSystemPreferences();
