@@ -4,6 +4,8 @@ import type {
   PunchoutCartReturn,
   VendorCredentials,
 } from '../types';
+import { XMLParser } from 'fast-xml-parser';
+import crypto from 'crypto';
 
 /**
  * cXML PunchOut Client
@@ -18,6 +20,11 @@ export interface CxmlConfig {
   buyerDomain: string;
   buyerIdentity: string;
 }
+
+const xmlParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '@_',
+});
 
 /**
  * cXML PunchOut Client
@@ -38,16 +45,36 @@ export class CxmlClient {
     const setupRequest = this.buildSetupRequest(req);
     
     try {
-      // TODO: Send actual HTTP request to vendor
-      // const response = await fetch(this.config.punchoutUrl, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'text/xml' },
-      //   body: setupRequest,
-      // });
+      const response = await fetch(this.config.punchoutUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'text/xml',
+          'Accept': 'text/xml',
+        },
+        body: setupRequest,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const responseXml = await response.text();
+      const parsed = xmlParser.parse(responseXml);
+
+      // Extract redirect URL from cXML response
+      const cxml = parsed.cXML;
+      const setupResponse = cxml?.Response?.PunchOutSetupResponse;
       
-      // For now, return mock response
+      if (!setupResponse) {
+        throw new Error('Invalid cXML response: missing PunchOutSetupResponse');
+      }
+
+      const redirectUrl = setupResponse.StartPage?.URL;
+      if (!redirectUrl) {
+        throw new Error('Invalid cXML response: missing redirect URL');
+      }
+
       const sessionId = `${this.vendorName.toUpperCase()}-${Date.now()}`;
-      const redirectUrl = `${this.config.punchoutUrl}?session=${sessionId}`;
 
       return {
         sessionId,
@@ -55,7 +82,7 @@ export class CxmlClient {
       };
     } catch (error) {
       console.error('[cXML] Setup request failed:', error);
-      throw new Error('Failed to initialize PunchOut session');
+      throw new Error(`Failed to initialize PunchOut session: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -67,19 +94,44 @@ export class CxmlClient {
     console.log(`[cXML] Processing cart return from ${this.vendorName}`);
 
     try {
-      // TODO: Parse actual cXML OrderRequest
-      // const doc = parseXml(cxmlPayload);
-      // const items = extractLineItems(doc);
+      const parsed = xmlParser.parse(cxmlPayload);
+      const cxml = parsed.cXML;
       
-      // For now, return mock data
+      if (!cxml?.Message?.PunchOutOrderMessage) {
+        throw new Error('Invalid cXML: missing PunchOutOrderMessage');
+      }
+
+      const orderMessage = cxml.Message.PunchOutOrderMessage;
+      const buyerCookie = orderMessage.BuyerCookie || `${this.vendorName}-SESSION`;
+      
+      // Extract line items from ItemIn elements
+      const itemsData = orderMessage.ItemIn;
+      const items = [];
+      
+      if (itemsData) {
+        const itemsArray = Array.isArray(itemsData) ? itemsData : [itemsData];
+        
+        for (const item of itemsArray) {
+          items.push({
+            vendorSku: item.ItemID?.SupplierPartID || '',
+            quantity: parseFloat(item['@_quantity'] || '0'),
+            unitPrice: parseFloat(item.ItemDetail?.UnitPrice?.Money || '0'),
+            description: item.ItemDetail?.Description?.['#text'] || item.ItemDetail?.Description || '',
+          });
+        }
+      }
+
+      // Calculate total
+      const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+
       return {
-        sessionId: `${this.vendorName}-SESSION`,
-        items: [],
-        totalAmount: 0,
+        sessionId: buyerCookie,
+        items,
+        totalAmount,
       };
     } catch (error) {
       console.error('[cXML] Cart parsing failed:', error);
-      throw new Error('Failed to parse PunchOut cart return');
+      throw new Error(`Failed to parse PunchOut cart return: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -129,11 +181,23 @@ export class CxmlClient {
   }
 
   /**
-   * Validate cXML signature
+   * Validate cXML signature using HMAC-SHA256
    */
   validateSignature(cxmlPayload: string, signature: string): boolean {
-    // TODO: Implement signature validation
-    return true;
+    try {
+      const hmac = crypto.createHmac('sha256', this.config.sharedSecret);
+      hmac.update(cxmlPayload);
+      const expectedSignature = hmac.digest('hex');
+      
+      // Constant-time comparison to prevent timing attacks
+      return crypto.timingSafeEqual(
+        Buffer.from(signature, 'hex'),
+        Buffer.from(expectedSignature, 'hex')
+      );
+    } catch (error) {
+      console.error('[cXML] Signature validation failed:', error);
+      return false;
+    }
   }
 }
 
