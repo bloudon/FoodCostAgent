@@ -112,10 +112,15 @@ export class CxmlClient {
         const itemsArray = Array.isArray(itemsData) ? itemsData : [itemsData];
         
         for (const item of itemsArray) {
+          const money = item.ItemDetail?.UnitPrice?.Money;
+          const unitPrice = parseFloat(
+            typeof money === 'object' ? (money['#text'] || money) : money || '0'
+          );
+          
           items.push({
             vendorSku: item.ItemID?.SupplierPartID || '',
             quantity: parseFloat(item['@_quantity'] || '0'),
-            unitPrice: parseFloat(item.ItemDetail?.UnitPrice?.Money || '0'),
+            unitPrice,
             description: item.ItemDetail?.Description?.['#text'] || item.ItemDetail?.Description || '',
           });
         }
@@ -188,6 +193,11 @@ export class CxmlClient {
       const hmac = crypto.createHmac('sha256', this.config.sharedSecret);
       hmac.update(cxmlPayload);
       const expectedSignature = hmac.digest('hex');
+      
+      // Ensure both signatures are the same length before comparison
+      if (signature.length !== expectedSignature.length) {
+        return false;
+      }
       
       // Constant-time comparison to prevent timing attacks
       return crypto.timingSafeEqual(
