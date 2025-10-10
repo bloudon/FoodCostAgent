@@ -448,11 +448,11 @@ export class DatabaseStorage implements IStorage {
     }>();
 
     for (const item of items) {
-      const key = `${item.name}-${item.category || 'null'}`;
+      const key = `${item.name}-${item.categoryId || 'null'}`;
       if (!grouped.has(key)) {
         grouped.set(key, {
           name: item.name,
-          category: item.category,
+          category: item.categoryId,
           totalOnHandQty: 0,
           locations: []
         });

@@ -69,6 +69,8 @@ export default function Vendors() {
       name: "",
       accountNumber: "",
       orderGuideType: "manual",
+      phone: "",
+      website: "",
     },
   });
 
@@ -150,7 +152,7 @@ export default function Vendors() {
 
   const handleCreateClick = () => {
     setEditingVendor(null);
-    form.reset({ name: "", accountNumber: "", orderGuideType: "manual" });
+    form.reset({ name: "", accountNumber: "", orderGuideType: "manual", phone: "", website: "" });
     setIsDialogOpen(true);
   };
 
@@ -160,6 +162,8 @@ export default function Vendors() {
       name: vendor.name,
       accountNumber: vendor.accountNumber || "",
       orderGuideType: vendor.orderGuideType || "manual",
+      phone: vendor.phone || "",
+      website: vendor.website || "",
     });
     setIsDialogOpen(true);
   };
@@ -342,6 +346,42 @@ export default function Vendors() {
                         {...field}
                         value={field.value || ""}
                         data-testid="input-vendor-account"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Ordering Phone (Optional)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="(555) 123-4567" 
+                        {...field}
+                        value={field.value || ""}
+                        data-testid="input-vendor-phone"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="website"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Website (Optional)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="https://vendor.com" 
+                        {...field}
+                        value={field.value || ""}
+                        data-testid="input-vendor-website"
                       />
                     </FormControl>
                     <FormMessage />

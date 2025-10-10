@@ -138,6 +138,8 @@ export const vendors = pgTable("vendors", {
   name: text("name").notNull(),
   accountNumber: text("account_number"),
   orderGuideType: text("order_guide_type").notNull().default("manual"), // "electronic" or "manual"
+  phone: text("phone"),
+  website: text("website"),
 });
 
 export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true }).extend({

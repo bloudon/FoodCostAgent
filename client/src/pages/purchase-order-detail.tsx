@@ -66,6 +66,8 @@ type Vendor = {
   id: string;
   name: string;
   accountNumber: string | null;
+  phone: string | null;
+  website: string | null;
 };
 
 type InventoryItem = {
@@ -403,6 +405,46 @@ export default function PurchaseOrderDetail() {
 
         {selectedVendor && (
           <>
+            {/* Vendor Contact Information */}
+            {(() => {
+              const vendor = vendors?.find(v => v.id === selectedVendor);
+              if (vendor && (vendor.phone || vendor.website)) {
+                return (
+                  <div className="bg-muted/50 rounded-lg p-4 border">
+                    <div className="flex flex-wrap gap-4 text-sm">
+                      {vendor.phone && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Ordering Phone:</span>
+                          <a 
+                            href={`tel:${vendor.phone}`}
+                            className="text-foreground hover:underline font-medium"
+                            data-testid="link-vendor-phone"
+                          >
+                            {vendor.phone}
+                          </a>
+                        </div>
+                      )}
+                      {vendor.website && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Website:</span>
+                          <a 
+                            href={vendor.website.startsWith('http') ? vendor.website : `https://${vendor.website}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-foreground hover:underline font-medium"
+                            data-testid="link-vendor-website"
+                          >
+                            {vendor.website}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+            
             <div className="flex gap-4 flex-wrap items-center">
               <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
