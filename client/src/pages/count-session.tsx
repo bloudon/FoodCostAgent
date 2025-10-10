@@ -506,6 +506,7 @@ export default function CountSession() {
                 <TableHead>Unit</TableHead>
                 <TableHead className="text-right">Unit Cost</TableHead>
                 <TableHead className="text-right">Total Value</TableHead>
+                <TableHead className="text-right">Previous Value</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -589,12 +590,18 @@ export default function CountSession() {
                       <TableCell>{line.unitName || '-'}</TableCell>
                       <TableCell className="text-right font-mono">${(line.unitCost || 0).toFixed(4)}</TableCell>
                       <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-mono text-muted-foreground">
+                        {previousValuesByItemId[line.inventoryItemId] !== undefined 
+                          ? `$${previousValuesByItemId[line.inventoryItemId].toFixed(2)}`
+                          : '-'
+                        }
+                      </TableCell>
                     </TableRow>
                   );
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     {showEmpty ? "No items in this count" : "No items with quantities found"}
                   </TableCell>
                 </TableRow>
