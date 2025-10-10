@@ -417,18 +417,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Vendor adapter not configured' });
       }
 
-      // Map internal PO to vendor PO format
+      // Map internal PO to EDI 850 format
       const po = req.body;
+      
+      // Generate X12 from normalized JSON
+      const { generateX12 } = await import('./integrations/edi-generator');
+      const x12Document = generateX12(po);
+
+      // Submit to vendor via adapter
       const response = await adapter.submitPO(po);
 
-      // Log EDI message
+      // Log EDI message with both normalized JSON and raw X12
       await storage.createEdiMessage({
         vendorKey,
         direction: 'outbound',
         docType: '850',
-        controlNumber: response.externalId,
-        status: response.status,
+        controlNumber: response.externalId || po.poNumber,
+        status: response.status || 'sent',
         payloadJson: JSON.stringify(po),
+        rawEdi: x12Document,
       });
 
       res.json(response);
