@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, useLocation } from "wouter";
+import { useParams, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
 import { ArrowLeft, Save, Package, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -476,6 +476,7 @@ export default function PurchaseOrderDetail() {
                       const caseQty = caseQuantities[itemId] || 0;
                       
                       let itemName: string;
+                      let inventoryItemId: string;
                       let categoryName: string;
                       let vendorSku: string = '-';
                       let caseSize: number = 1;
@@ -486,12 +487,14 @@ export default function PurchaseOrderDetail() {
                       
                       if (isMiscGrocery) {
                         itemName = item.name;
+                        inventoryItemId = item.id;
                         categoryName = item.categoryName || '-';
                         unitName = item.unitName || '-';
                         unitPrice = item.pricePerUnit;
                         lineTotal = caseQty * unitPrice;
                       } else {
                         itemName = item.inventoryItemName;
+                        inventoryItemId = item.inventoryItemId;
                         categoryName = item.categoryName || '-';
                         vendorSku = item.vendorSku || '-';
                         caseSize = item.inventoryItem?.caseSize || 1;
@@ -503,7 +506,13 @@ export default function PurchaseOrderDetail() {
                       return (
                         <TableRow key={itemId} data-testid={`row-item-${itemId}`}>
                           <TableCell>
-                            <div className="font-medium">{itemName}</div>
+                            <Link 
+                              href={`/inventory-items/${inventoryItemId}`}
+                              className="font-medium hover:text-primary hover:underline"
+                              data-testid={`link-item-${inventoryItemId}`}
+                            >
+                              {itemName}
+                            </Link>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {categoryName}
