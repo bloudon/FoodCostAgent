@@ -251,7 +251,7 @@ export default function PurchaseOrderDetail() {
       const quantities: Record<string, number> = {};
       const isMiscGroceryOrder = purchaseOrder.vendorId === MISC_GROCERY_VENDOR_ID;
       
-      purchaseOrder.lines.forEach(line => {
+      purchaseOrder.lines.forEach((line) => {
         let itemId: string;
         
         if (isMiscGroceryOrder) {
@@ -263,13 +263,14 @@ export default function PurchaseOrderDetail() {
         }
         
         const caseQty = (line as any).caseQuantity;
-        if (caseQty !== undefined) {
+        if (caseQty !== undefined && caseQty !== null) {
           quantities[itemId] = caseQty;
         } else {
           // For misc grocery or unit-based orders (use orderedQty)
           quantities[itemId] = line.orderedQty;
         }
       });
+      
       setCaseQuantities(quantities);
     }
   }, [purchaseOrder, isNew, vendorItems, inventoryItems, MISC_GROCERY_VENDOR_ID]);

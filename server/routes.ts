@@ -885,6 +885,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const unit = units.find((u) => u.id === line.unitId);
       return {
         ...line,
+        inventoryItemId: vi?.inventoryItemId,
         inventoryItemName: item?.name || "Unknown",
         vendorSku: vi?.vendorSku || "",
         unitName: unit?.name || "",
