@@ -1451,6 +1451,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get previous inventory count session (for comparison)
+  app.get("/api/inventory-counts/:id/previous-lines", async (req, res) => {
+    try {
+      const currentCountId = req.params.id;
+      const currentCount = await storage.getInventoryCount(currentCountId);
+      
+      if (!currentCount) {
+        return res.status(404).json({ error: "Count not found" });
+      }
+
+      // Get all counts and find the one immediately before this one
+      const allCounts = await storage.getInventoryCounts();
+      const previousCount = allCounts
+        .filter(c => new Date(c.countedAt) < new Date(currentCount.countedAt))
+        .sort((a, b) => new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime())[0];
+
+      if (!previousCount) {
+        return res.json([]); // No previous count exists
+      }
+
+      // Get the previous count's lines
+      const previousLines = await storage.getInventoryCountLines(previousCount.id);
+      
+      res.json(previousLines);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ PURCHASE ORDERS ============
   app.get("/api/purchase-orders", async (req, res) => {
     const orders = await storage.getPurchaseOrders();
