@@ -11,6 +11,7 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.17.2",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@neondatabase/serverless": "^0.10.4",
@@ -46,6 +47,10 @@
     "@types/cookie-parser": "^1.4.9",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
+    "@uppy/aws-s3": "^5.0.1",
+    "@uppy/core": "^5.1.0",
+    "@uppy/dashboard": "^5.0.2",
+    "@uppy/react": "^5.1.0",
     "bcrypt": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -73,6 +78,7 @@
     "react-icons": "^5.4.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.2",
+    "sharp": "^0.34.4",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "tailwind-merge": "^2.6.0",
