@@ -290,9 +290,15 @@ export default function CountSession() {
   });
 
   // Create a lookup map for previous values by inventory item ID
+  // Aggregate all previous lines for the same item (handles edge cases where duplicates exist)
+  // Note: Count sessions typically have one line per inventory item, but we sum to handle any duplicates
+  // This shows the TOTAL previous value for each item, matching the user requirement
   const previousValuesByItemId = (previousLines || []).reduce((acc: any, line) => {
     const previousValue = line.qty * (line.unitCost || 0);
-    acc[line.inventoryItemId] = previousValue;
+    if (!acc[line.inventoryItemId]) {
+      acc[line.inventoryItemId] = 0;
+    }
+    acc[line.inventoryItemId] += previousValue;
     return acc;
   }, {});
 
