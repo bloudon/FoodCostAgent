@@ -1836,6 +1836,126 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(receipts);
   });
 
+  // Get or create draft receipt for a purchase order
+  app.get("/api/receipts/draft/:poId", async (req, res) => {
+    try {
+      const { poId } = req.params;
+      
+      // Check if draft receipt already exists
+      const existingReceipts = await storage.getReceipts();
+      const draftReceipt = existingReceipts.find(
+        r => r.purchaseOrderId === poId && r.status === "draft"
+      );
+      
+      if (draftReceipt) {
+        // Get lines for this receipt
+        const lines = await storage.getReceiptLinesByReceiptId(draftReceipt.id);
+        res.json({ receipt: draftReceipt, lines });
+      } else {
+        // Create new draft receipt
+        const newReceipt = await storage.createReceipt({
+          purchaseOrderId: poId,
+          status: "draft",
+        });
+        res.json({ receipt: newReceipt, lines: [] });
+      }
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Save or update a receipt line
+  app.post("/api/receipt-lines", async (req, res) => {
+    try {
+      const lineData = insertReceiptLineSchema.parse(req.body);
+      
+      // Check if line already exists for this receipt and vendor item
+      const existingLines = await storage.getReceiptLinesByReceiptId(lineData.receiptId);
+      const existingLine = existingLines.find(l => l.vendorItemId === lineData.vendorItemId);
+      
+      if (existingLine) {
+        // Update existing line
+        await storage.updateReceiptLine(existingLine.id, {
+          receivedQty: lineData.receivedQty,
+          priceEach: lineData.priceEach,
+        });
+        res.json({ ...existingLine, ...lineData });
+      } else {
+        // Create new line
+        const newLine = await storage.createReceiptLine(lineData);
+        res.status(201).json(newLine);
+      }
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Update receipt storage location
+  app.patch("/api/receipts/:id/storage-location", async (req, res) => {
+    try {
+      const { storageLocationId } = req.body;
+      await storage.updateReceipt(req.params.id, { storageLocationId });
+      const receipt = await storage.getReceipt(req.params.id);
+      res.json(receipt);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Complete receiving - finalize draft receipt
+  app.patch("/api/receipts/:id/complete", async (req, res) => {
+    try {
+      const receipt = await storage.getReceipt(req.params.id);
+      if (!receipt) {
+        return res.status(404).json({ error: "Receipt not found" });
+      }
+      
+      if (receipt.status !== "draft") {
+        return res.status(400).json({ error: "Receipt is not in draft status" });
+      }
+
+      const lines = await storage.getReceiptLinesByReceiptId(receipt.id);
+      const vendorItems = await storage.getVendorItems();
+
+      // Update inventory and pricing
+      for (const line of lines) {
+        const vi = vendorItems.find((vi) => vi.id === line.vendorItemId);
+        if (vi) {
+          const item = await storage.getInventoryItem(vi.inventoryItemId);
+          if (item) {
+            const costPerCase = line.priceEach;
+            const pricePerUnit = costPerCase / (item.caseSize || 1);
+            await storage.updateInventoryItem(vi.inventoryItemId, {
+              pricePerUnit,
+            });
+          }
+
+          if (receipt.storageLocationId) {
+            const item = await storage.getInventoryItem(vi.inventoryItemId);
+            if (item && item.storageLocationId === receipt.storageLocationId) {
+              const newOnHand = (item.onHandQty || 0) + line.receivedQty;
+              await storage.updateInventoryItem(vi.inventoryItemId, {
+                onHandQty: newOnHand
+              });
+            }
+          }
+        }
+      }
+
+      // Mark receipt as completed
+      await storage.updateReceipt(receipt.id, { status: "completed" });
+      
+      // Mark PO as received
+      await storage.updatePurchaseOrder(receipt.purchaseOrderId, {
+        status: "received",
+      });
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   app.post("/api/receipts", async (req, res) => {
     try {
       const { lines, storageLocationId, ...receiptData } = req.body;

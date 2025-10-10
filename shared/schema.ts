@@ -258,6 +258,8 @@ export type POLine = typeof poLines.$inferSelect;
 export const receipts = pgTable("receipts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   purchaseOrderId: varchar("purchase_order_id").notNull(),
+  status: text("status").notNull().default("draft"), // draft, completed
+  storageLocationId: varchar("storage_location_id"),
   receivedAt: timestamp("received_at").notNull().defaultNow(),
 });
 

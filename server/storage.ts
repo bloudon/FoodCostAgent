@@ -150,10 +150,13 @@ export interface IStorage {
   getReceipts(): Promise<Receipt[]>;
   getReceipt(id: string): Promise<Receipt | undefined>;
   createReceipt(receipt: InsertReceipt): Promise<Receipt>;
+  updateReceipt(id: string, data: Partial<InsertReceipt>): Promise<void>;
 
   // Receipt Lines
   getReceiptLines(receiptId: string): Promise<ReceiptLine[]>;
+  getReceiptLinesByReceiptId(receiptId: string): Promise<ReceiptLine[]>;
   createReceiptLine(line: InsertReceiptLine): Promise<ReceiptLine>;
+  updateReceiptLine(id: string, data: Partial<InsertReceiptLine>): Promise<void>;
 
   // POS Sales
   getPOSSales(startDate?: Date, endDate?: Date): Promise<POSSale[]>;
@@ -731,14 +734,26 @@ export class DatabaseStorage implements IStorage {
     return receipt;
   }
 
+  async updateReceipt(id: string, data: Partial<InsertReceipt>): Promise<void> {
+    await db.update(receipts).set(data).where(eq(receipts.id, id));
+  }
+
   // Receipt Lines
   async getReceiptLines(receiptId: string): Promise<ReceiptLine[]> {
+    return db.select().from(receiptLines).where(eq(receiptLines.receiptId, receiptId));
+  }
+
+  async getReceiptLinesByReceiptId(receiptId: string): Promise<ReceiptLine[]> {
     return db.select().from(receiptLines).where(eq(receiptLines.receiptId, receiptId));
   }
 
   async createReceiptLine(insertLine: InsertReceiptLine): Promise<ReceiptLine> {
     const [line] = await db.insert(receiptLines).values(insertLine).returning();
     return line;
+  }
+
+  async updateReceiptLine(id: string, data: Partial<InsertReceiptLine>): Promise<void> {
+    await db.update(receiptLines).set(data).where(eq(receiptLines.id, id));
   }
 
   // POS Sales
