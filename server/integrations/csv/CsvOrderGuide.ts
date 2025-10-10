@@ -19,6 +19,7 @@ export interface CsvColumnMapping {
   productName: string;
   description?: string;
   caseSize?: string;
+  innerPack?: string;
   unit?: string;
   price?: string;
   brand?: string;
@@ -35,6 +36,7 @@ const VENDOR_MAPPINGS: Record<VendorKey, CsvColumnMapping> = {
     productName: 'Product Description',
     description: 'Extended Description',
     caseSize: 'Pack Size',
+    innerPack: 'Inner Pack',
     unit: 'Unit of Measure',
     price: 'Unit Price',
     brand: 'Brand',
@@ -46,6 +48,7 @@ const VENDOR_MAPPINGS: Record<VendorKey, CsvColumnMapping> = {
     productName: 'Description',
     description: 'Long Description',
     caseSize: 'Pack',
+    innerPack: 'Inner Pack',
     unit: 'Unit',
     price: 'Price',
     brand: 'Brand Name',
@@ -57,6 +60,7 @@ const VENDOR_MAPPINGS: Record<VendorKey, CsvColumnMapping> = {
     productName: 'Item Description',
     description: 'Full Description',
     caseSize: 'Case Pack',
+    innerPack: 'Inner Pack Size',
     unit: 'UOM',
     price: 'Case Price',
     brand: 'Brand',
@@ -96,6 +100,7 @@ export class CsvOrderGuide {
         vendorProductName: this.getValue(row, mapping.productName),
         description: this.getValue(row, mapping.description),
         caseSize: this.parseNumber(this.getValue(row, mapping.caseSize)),
+        innerPack: this.parseNumber(this.getValue(row, mapping.innerPack)),
         unit: this.getValue(row, mapping.unit),
         price: this.parsePrice(this.getValue(row, mapping.price)),
         brandName: this.getValue(row, mapping.brand),

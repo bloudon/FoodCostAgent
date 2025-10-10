@@ -9,6 +9,7 @@ export interface VendorProduct {
   vendorProductName: string;
   description?: string;
   caseSize?: number;
+  innerPack?: number;
   unit?: string;
   price?: number;
   brandName?: string;

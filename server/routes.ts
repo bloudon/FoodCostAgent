@@ -579,6 +579,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         packSize: p.description,
         uom: p.unit,
         caseSize: p.caseSize,
+        innerPack: p.innerPack,
         price: p.price,
         gtin: p.upc,
         category: p.categoryCode,
@@ -586,6 +587,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }));
 
       await storage.createOrderGuideLinesBatch(lines);
+
+      // Get vendor to update vendor_items
+      const vendors = await storage.getVendors();
+      const vendor = vendors.find(v => v.key === vendorKey);
+      
+      if (vendor) {
+        // Update vendor_items: create if missing, update if exists
+        for (const product of orderGuide.products) {
+          // Check if vendor item already exists
+          const existingItems = await storage.getVendorItems(vendor.id);
+          const existingItem = existingItems.find(vi => vi.vendorSku === product.vendorSku);
+          
+          if (existingItem) {
+            // Update existing vendor item with latest price and sizes
+            await storage.updateVendorItem(existingItem.id, {
+              lastPrice: product.price || existingItem.lastPrice,
+              caseSize: product.caseSize || existingItem.caseSize,
+              innerPackSize: product.innerPack,
+            });
+          }
+          // Note: Creating new vendor_items requires inventoryItemId which we don't have from CSV
+          // This would be done through a separate mapping process
+        }
+      }
 
       res.json({
         orderGuideId: guideRecord.id,
