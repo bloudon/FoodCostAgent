@@ -27,6 +27,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ObjectUploader } from "@/components/ObjectUploader";
 
 export default function Settings() {
   const { toast } = useToast();
@@ -79,6 +80,26 @@ export default function Settings() {
       toast({
         title: "Error",
         description: "Failed to update system preferences",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateLogoMutation = useMutation({
+    mutationFn: async (imageUrl: string) => {
+      return await apiRequest("PUT", "/api/company-settings/logo", { imageUrl });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company-settings"] });
+      toast({
+        title: "Success",
+        description: "Company logo updated successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update company logo",
         variant: "destructive",
       });
     },
@@ -212,6 +233,32 @@ export default function Settings() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleCompanySave} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Company Logo</Label>
+                  <div className="flex items-center gap-4">
+                    {companySettings?.logoImagePath && (
+                      <div className="flex-shrink-0">
+                        <img 
+                          src={`${companySettings.logoImagePath}?thumbnail=true`}
+                          alt="Company logo"
+                          className="max-h-[150px] object-contain rounded-md border"
+                          data-testid="img-company-logo"
+                        />
+                      </div>
+                    )}
+                    <ObjectUploader
+                      onUploadComplete={(url) => updateLogoMutation.mutate(url)}
+                      buttonText={companySettings?.logoImagePath ? "Change Logo" : "Upload Logo"}
+                      dataTestId="button-upload-logo"
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Upload your company logo. Maximum height: 150px
+                  </p>
+                </div>
+
+                <Separator />
+
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="company-name">Company Name</Label>
