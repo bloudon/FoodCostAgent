@@ -134,8 +134,12 @@ export default function Settings() {
   };
 
   const renderVendorCard = (vendorKey: string, vendorName: string, credentials?: VendorCredentials) => {
-    const isConfigured = credentials?.hasApiCredentials || credentials?.hasEdiConfig || credentials?.hasSftpConfig || credentials?.hasPunchoutConfig;
-    const isActive = credentials?.isActive;
+    const hasApiCredentials = !!(credentials?.apiKey || credentials?.apiSecret || credentials?.apiUrl || credentials?.username || credentials?.password);
+    const hasEdiConfig = !!(credentials?.ediIsaId || credentials?.ediGsId || credentials?.ediQualifier || credentials?.as2Url || credentials?.as2Identifier);
+    const hasSftpConfig = !!(credentials?.sftpHost || credentials?.sftpPort || credentials?.sftpUsername || credentials?.sftpPassword);
+    const hasPunchoutConfig = !!(credentials?.punchoutUrl || credentials?.punchoutDomain || credentials?.punchoutIdentity || credentials?.sharedSecret);
+    const isConfigured = hasApiCredentials || hasEdiConfig || hasSftpConfig || hasPunchoutConfig;
+    const isActive = credentials?.isActive === 1;
 
     return (
       <div key={vendorKey} className="flex items-center justify-between p-4 border rounded-md" data-testid={`vendor-card-${vendorKey}`}>
@@ -150,7 +154,7 @@ export default function Settings() {
           </div>
           <p className="text-sm text-muted-foreground">
             {isConfigured 
-              ? `Configured • ${credentials?.hasApiCredentials ? 'API' : ''} ${credentials?.hasEdiConfig ? 'EDI' : ''} ${credentials?.hasSftpConfig ? 'SFTP' : ''} ${credentials?.hasPunchoutConfig ? 'PunchOut' : ''}`.trim()
+              ? `Configured • ${hasApiCredentials ? 'API' : ''} ${hasEdiConfig ? 'EDI' : ''} ${hasSftpConfig ? 'SFTP' : ''} ${hasPunchoutConfig ? 'PunchOut' : ''}`.trim()
               : 'Not configured'
             }
           </p>
@@ -173,7 +177,7 @@ export default function Settings() {
                 <Label htmlFor={`${vendorKey}-active`}>Enable Integration</Label>
                 <Switch
                   id={`${vendorKey}-active`}
-                  defaultChecked={isActive}
+                  checked={isActive}
                   data-testid={`switch-${vendorKey}-active`}
                 />
               </div>
