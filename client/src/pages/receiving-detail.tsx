@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ArrowLeft, Save, PackageCheck, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +58,22 @@ type StorageLocation = {
   name: string;
 };
 
+type DraftReceipt = {
+  id: string;
+  purchaseOrderId: string;
+  status: string;
+  storageLocationId: string | null;
+};
+
+type ReceiptLine = {
+  id: string;
+  receiptId: string;
+  vendorItemId: string;
+  receivedQty: number;
+  unitId: string;
+  priceEach: number;
+};
+
 export default function ReceivingDetail() {
   const { poId } = useParams<{ poId: string }>();
   const [, setLocation] = useLocation();
@@ -65,6 +81,7 @@ export default function ReceivingDetail() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedStorageLocation, setSelectedStorageLocation] = useState<string>("");
+  const [draftReceiptId, setDraftReceiptId] = useState<string | null>(null);
   
   // Track received quantities for each PO line (in units, not cases)
   const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
@@ -75,6 +92,11 @@ export default function ReceivingDetail() {
     queryKey: [`/api/purchase-orders/${poId}`],
   });
 
+  const { data: draftReceiptData } = useQuery<{ receipt: DraftReceipt; lines: ReceiptLine[] }>({
+    queryKey: [`/api/receipts/draft/${poId}`],
+    enabled: !!poId,
+  });
+
   const { data: categories } = useQuery<Category[]>({
     queryKey: ["/api/categories"],
   });
@@ -83,9 +105,63 @@ export default function ReceivingDetail() {
     queryKey: ["/api/storage-locations"],
   });
 
-  const receiptMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return await apiRequest("POST", "/api/receipts", data);
+  // Load draft receipt data when available
+  useEffect(() => {
+    if (draftReceiptData?.receipt) {
+      setDraftReceiptId(draftReceiptData.receipt.id);
+      
+      if (draftReceiptData.receipt.storageLocationId) {
+        setSelectedStorageLocation(draftReceiptData.receipt.storageLocationId);
+      }
+
+      // Load saved receipt lines
+      const savedQtys: Record<string, number> = {};
+      const savedSet = new Set<string>();
+      
+      draftReceiptData.lines.forEach(line => {
+        // Match by vendorItemId to find the corresponding PO line
+        const poLine = purchaseOrder?.lines.find(pl => pl.vendorItemId === line.vendorItemId);
+        if (poLine) {
+          savedQtys[poLine.id] = line.receivedQty;
+          savedSet.add(poLine.id);
+        }
+      });
+
+      setReceivedQuantities(prev => ({ ...prev, ...savedQtys }));
+      setSavedLines(savedSet);
+    }
+  }, [draftReceiptData, purchaseOrder]);
+
+  const saveLineMutation = useMutation({
+    mutationFn: async (data: { receiptId: string; vendorItemId: string; receivedQty: number; unitId: string; priceEach: number }) => {
+      return await apiRequest("POST", "/api/receipt-lines", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/receipts/draft/${poId}`] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save line",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateStorageLocationMutation = useMutation({
+    mutationFn: async (data: { receiptId: string; storageLocationId: string }) => {
+      return await apiRequest("PATCH", `/api/receipts/${data.receiptId}/storage-location`, {
+        storageLocationId: data.storageLocationId,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/receipts/draft/${poId}`] });
+    },
+  });
+
+  const completeReceivingMutation = useMutation({
+    mutationFn: async (receiptId: string) => {
+      return await apiRequest("PATCH", `/api/receipts/${receiptId}/complete`, {});
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
@@ -100,7 +176,7 @@ export default function ReceivingDetail() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to receive items",
+        description: error.message || "Failed to complete receiving",
         variant: "destructive",
       });
     },
@@ -118,13 +194,28 @@ export default function ReceivingDetail() {
         initialized[line.id] = line.orderedQty;
       }
     });
-    setReceivedQuantities(initialized);
+    setReceivedQuantities(prev => ({ ...prev, ...initialized }));
   };
 
-  // Initialize on load
-  if (purchaseOrder?.lines && Object.keys(receivedQuantities).length === 0) {
-    initializeReceivedQuantities(purchaseOrder.lines);
-  }
+  // Initialize on load (only for lines not already saved)
+  useEffect(() => {
+    if (purchaseOrder?.lines) {
+      const unsavedLines = purchaseOrder.lines.filter(line => !savedLines.has(line.id));
+      if (unsavedLines.length > 0) {
+        initializeReceivedQuantities(unsavedLines);
+      }
+    }
+  }, [purchaseOrder]);
+
+  // Update storage location when changed
+  useEffect(() => {
+    if (selectedStorageLocation && draftReceiptId && draftReceiptData?.receipt.storageLocationId !== selectedStorageLocation) {
+      updateStorageLocationMutation.mutate({
+        receiptId: draftReceiptId,
+        storageLocationId: selectedStorageLocation,
+      });
+    }
+  }, [selectedStorageLocation, draftReceiptId]);
 
   const handleReceivedQuantityChange = (lineId: string, value: number) => {
     setReceivedQuantities(prev => ({
@@ -140,9 +231,22 @@ export default function ReceivingDetail() {
   };
 
   const handleSaveLine = (lineId: string) => {
-    setSavedLines(prev => new Set(prev).add(lineId));
-    toast({
-      description: "Quantity confirmed",
+    const line = purchaseOrder?.lines.find(l => l.id === lineId);
+    if (!line || !draftReceiptId) return;
+
+    saveLineMutation.mutate({
+      receiptId: draftReceiptId,
+      vendorItemId: line.vendorItemId,
+      receivedQty: receivedQuantities[lineId] || 0,
+      unitId: line.unitId,
+      priceEach: line.priceEach,
+    }, {
+      onSuccess: () => {
+        setSavedLines(prev => new Set(prev).add(lineId));
+        toast({
+          description: "Quantity confirmed",
+        });
+      }
     });
   };
 
@@ -181,7 +285,7 @@ export default function ReceivingDetail() {
     }
   };
 
-  const handleReceiveAll = () => {
+  const handleCompleteReceiving = () => {
     if (!selectedStorageLocation) {
       toast({
         title: "Error",
@@ -191,29 +295,16 @@ export default function ReceivingDetail() {
       return;
     }
 
-    const lines = purchaseOrder?.lines
-      .filter(line => (receivedQuantities[line.id] || 0) > 0)
-      .map(line => ({
-        vendorItemId: line.vendorItemId,
-        receivedQty: receivedQuantities[line.id] || 0,
-        unitId: line.unitId,
-        priceEach: line.priceEach,
-      })) || [];
-
-    if (lines.length === 0) {
+    if (!draftReceiptId) {
       toast({
         title: "Error",
-        description: "No items to receive",
+        description: "No receipt to complete",
         variant: "destructive",
       });
       return;
     }
 
-    receiptMutation.mutate({
-      purchaseOrderId: poId,
-      lines,
-      storageLocationId: selectedStorageLocation,
-    });
+    completeReceivingMutation.mutate(draftReceiptId);
   };
 
   if (loadingOrder) {
@@ -389,9 +480,14 @@ export default function ReceivingDetail() {
                       const receivedQty = receivedQuantities[line.id] || 0;
                       const isSaved = savedLines.has(line.id);
                       const lineTotal = receivedQty * line.priceEach;
+                      const isShort = receivedQty < line.orderedQty;
                       
                       return (
-                        <TableRow key={line.id} data-testid={`row-receive-item-${line.id}`}>
+                        <TableRow 
+                          key={line.id} 
+                          data-testid={`row-receive-item-${line.id}`}
+                          className={isShort && isSaved ? "bg-red-50 dark:bg-red-950/20" : ""}
+                        >
                           <TableCell className="font-medium">{line.itemName}</TableCell>
                           <TableCell className="text-muted-foreground">{line.vendorSku || '-'}</TableCell>
                           <TableCell className="text-right font-mono text-muted-foreground">
@@ -418,7 +514,7 @@ export default function ReceivingDetail() {
                             <Button
                               size="sm"
                               onClick={() => handleSaveLine(line.id)}
-                              disabled={isSaved}
+                              disabled={isSaved || saveLineMutation.isPending}
                               variant={isSaved ? "outline" : "default"}
                               data-testid={`button-save-line-${line.id}`}
                             >
@@ -442,12 +538,12 @@ export default function ReceivingDetail() {
                 Cancel
               </Button>
               <Button
-                onClick={handleReceiveAll}
-                disabled={!selectedStorageLocation || receiptMutation.isPending}
-                data-testid="button-receive-all"
+                onClick={handleCompleteReceiving}
+                disabled={!selectedStorageLocation || completeReceivingMutation.isPending || !draftReceiptId}
+                data-testid="button-complete-receiving"
               >
                 <PackageCheck className="h-4 w-4 mr-2" />
-                {receiptMutation.isPending ? "Receiving..." : "Complete Receiving"}
+                {completeReceivingMutation.isPending ? "Receiving..." : "Complete Receiving"}
               </Button>
             </div>
           </CardContent>
