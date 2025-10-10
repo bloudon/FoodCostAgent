@@ -157,6 +157,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ id: user.id, email: user.email, role: user.role });
   });
 
+  // ============ OBJECT STORAGE (IMAGE UPLOADS) ============
+  // Integration with blueprint:javascript_object_storage for image uploads
+  const { ObjectStorageService, ObjectNotFoundError } = await import("./objectStorage");
+  const sharp = await import("sharp");
+
+  // Get upload URL for inventory item images
+  app.post("/api/objects/upload", requireAuth, async (req, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error: any) {
+      console.error("Error getting upload URL:", error);
+      res.status(500).json({ error: "Failed to generate upload URL" });
+    }
+  });
+
+  // Serve uploaded images with thumbnail support
+  app.get("/objects/:objectPath(*)", async (req, res) => {
+    const objectStorageService = new ObjectStorageService();
+    const thumbnail = req.query.thumbnail === "true";
+    
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+      
+      if (thumbnail) {
+        // Stream through sharp for thumbnail generation
+        const stream = objectFile.createReadStream();
+        const [metadata] = await objectFile.getMetadata();
+        
+        res.set({
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "public, max-age=31536000",
+        });
+
+        stream
+          .pipe(sharp.default().resize(200, 200, { fit: 'cover' }).jpeg({ quality: 80 }))
+          .pipe(res);
+      } else {
+        // Serve original image
+        objectStorageService.downloadObject(objectFile, res);
+      }
+    } catch (error) {
+      console.error("Error serving image:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
+    }
+  });
+
+  // Update inventory item with uploaded image
+  app.put("/api/inventory-items/:id/image", requireAuth, async (req, res) => {
+    try {
+      const { imageUrl } = z.object({
+        imageUrl: z.string(),
+      }).parse(req.body);
+
+      const user = (req as any).user;
+      const objectStorageService = new ObjectStorageService();
+      
+      // Set ACL policy for the uploaded image (public visibility for inventory items)
+      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+        imageUrl,
+        {
+          owner: user.id,
+          visibility: "public",
+        }
+      );
+
+      // Update inventory item with the normalized object path
+      const item = await storage.updateInventoryItem(req.params.id, {
+        imageUrl: objectPath,
+      });
+
+      if (!item) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+
+      res.json({ objectPath });
+    } catch (error: any) {
+      console.error("Error updating inventory item image:", error);
+      res.status(500).json({ error: "Failed to update image" });
+    }
+  });
 
   // ============ UNITS ============
   app.get("/api/units", async (req, res) => {
