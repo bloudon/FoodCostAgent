@@ -812,6 +812,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         reorderLevel: item.reorderLevel,
         storageLocationId: item.storageLocationId,
         onHandQty: item.onHandQty,
+        active: item.active,
         location: location || { id: item.storageLocationId, name: '' },
         unit: unit || { id: item.unitId, name: '', abbreviation: '' },
       };

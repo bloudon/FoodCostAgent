@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { Package, Search, Plus } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Package, Search, Plus, MoreVertical } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
@@ -20,7 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 type InventoryItemDisplay = {
   id: string;
@@ -36,6 +44,7 @@ type InventoryItemDisplay = {
   reorderLevel: number | null;
   storageLocationId: string;
   onHandQty: number;
+  active: number;
   location: {
     id: string;
     name: string;
@@ -80,6 +89,8 @@ export default function InventoryItems() {
   const [search, setSearch] = useState("");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [showInactive, setShowInactive] = useState<boolean>(false);
+  const { toast } = useToast();
 
   const { data: inventoryItems, isLoading } = useQuery<InventoryItemDisplay[]>({
     queryKey: ["/api/inventory-items"],
@@ -93,12 +104,33 @@ export default function InventoryItems() {
     queryKey: ["/api/categories"],
   });
 
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: number }) => {
+      return await apiRequest("PATCH", `/api/inventory-items/${id}`, { active });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      toast({
+        title: "Success",
+        description: "Item status updated",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const filteredItems = inventoryItems?.filter((item) => {
     const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase()) ||
       item.pluSku?.toLowerCase().includes(search.toLowerCase());
     const matchesLocation = selectedLocation === "all" || item.storageLocationId === selectedLocation;
     const matchesCategory = selectedCategory === "all" || item.categoryId === selectedCategory;
-    return matchesSearch && matchesLocation && matchesCategory;
+    const matchesActive = showInactive || item.active === 1;
+    return matchesSearch && matchesLocation && matchesCategory && matchesActive;
   }) || [];
 
   return (
@@ -156,6 +188,15 @@ export default function InventoryItems() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={showInactive ? "all" : "active"} onValueChange={(val) => setShowInactive(val === "all")}>
+            <SelectTrigger className="w-[200px]" data-testid="select-active-filter">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active Only</SelectItem>
+              <SelectItem value="all">All Items</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {isLoading ? (
@@ -186,6 +227,7 @@ export default function InventoryItems() {
                   <TableHead className="text-right">Reorder</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Most Recent Unit Price</TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -197,10 +239,12 @@ export default function InventoryItems() {
                     <TableRow 
                       key={item.id} 
                       data-testid={`row-inventory-${item.id}`}
-                      className="cursor-pointer hover-elevate"
-                      onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      className={item.active === 0 ? "opacity-60" : ""}
                     >
-                      <TableCell>
+                      <TableCell 
+                        className="cursor-pointer hover-elevate"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
                         <div className="flex items-center gap-3">
                           <Avatar className="h-8 w-8">
                             <AvatarImage src={item.imageUrl || undefined} />
@@ -209,12 +253,22 @@ export default function InventoryItems() {
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <div className="font-medium">{item.name}</div>
+                            <div className="font-medium flex items-center gap-2">
+                              {item.name}
+                              {item.active === 0 && (
+                                <Badge variant="outline" className="text-xs">
+                                  Inactive
+                                </Badge>
+                              )}
+                            </div>
                             <div className="text-sm text-muted-foreground">{item.pluSku}</div>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
                         {item.category && (
                           <Badge 
                             variant="secondary" 
@@ -224,28 +278,73 @@ export default function InventoryItems() {
                           </Badge>
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
                         <span className="text-sm">{item.location.name}</span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
                         <span className="text-sm text-muted-foreground">{item.unit?.name ?? '—'}</span>
                       </TableCell>
-                      <TableCell className="text-right font-mono">
+                      <TableCell 
+                        className="text-right font-mono cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
                         <span className={inventoryStatus.color}>{quantity.toFixed(2)}</span>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                      <TableCell 
+                        className="text-right font-mono text-sm text-muted-foreground cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
                         {item.parLevel ? item.parLevel.toFixed(1) : "-"}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                      <TableCell 
+                        className="text-right font-mono text-sm text-muted-foreground cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
                         {item.reorderLevel ? item.reorderLevel.toFixed(1) : "-"}
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
                         <Badge variant={inventoryStatus.variant} data-testid={`badge-status-${item.id}`}>
                           {inventoryStatus.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right font-mono">
+                      <TableCell 
+                        className="text-right font-mono cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
                         ${item.pricePerUnit.toFixed(2)}
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              data-testid={`button-menu-${item.id}`}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => toggleActiveMutation.mutate({ 
+                                id: item.id, 
+                                active: item.active === 1 ? 0 : 1 
+                              })}
+                              data-testid={`menu-toggle-active-${item.id}`}
+                            >
+                              {item.active === 1 ? "Mark as Inactive" : "Mark as Active"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   );
