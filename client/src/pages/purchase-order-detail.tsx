@@ -538,7 +538,7 @@ export default function PurchaseOrderDetail() {
                                   step="1"
                                   min="0"
                                   value={caseQty || ""}
-                                  onChange={(e) => handleCaseQuantityChange(itemId, parseFloat(e.target.value) || 0)}
+                                  onChange={(e) => handleCaseQuantityChange(itemId, parseInt(e.target.value) || 0)}
                                   onKeyDown={(e) => handleKeyDown(e, itemId, displayItems)}
                                   className="text-center"
                                   placeholder="0"
