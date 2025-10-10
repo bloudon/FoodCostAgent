@@ -2,10 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Package, DollarSign, TrendingUp, AlertTriangle, ClipboardList, ArrowRight } from "lucide-react";
+import { Package, DollarSign, TrendingUp, AlertTriangle, ClipboardList, ArrowRight, Building2, MapPin, Phone, Mail } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { CompanySettings } from "@shared/schema";
 
 export default function Dashboard() {
+  const { data: companySettings, isLoading: companyLoading } = useQuery<CompanySettings>({
+    queryKey: ["/api/company-settings"],
+  });
+
   const { data: inventoryItems, isLoading: itemsLoading } = useQuery<any[]>({
     queryKey: ["/api/inventory-items"],
   });
@@ -74,6 +79,49 @@ export default function Dashboard() {
           Overview of your restaurant inventory and operations
         </p>
       </div>
+
+      {/* Company Info Card */}
+      {companySettings && (companySettings.name || companySettings.address) && (
+        <Card className="mb-8" data-testid="card-company-info">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-muted-foreground" />
+              <CardTitle>{companySettings.name || "Restaurant"}</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+              {companySettings.address && (
+                <div className="flex items-start gap-2" data-testid="company-address">
+                  <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-medium">{companySettings.address}</p>
+                    {(companySettings.city || companySettings.state || companySettings.zip) && (
+                      <p className="text-muted-foreground">
+                        {[companySettings.city, companySettings.state, companySettings.zip]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+              {companySettings.phone && (
+                <div className="flex items-center gap-2" data-testid="company-phone">
+                  <Phone className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">{companySettings.phone}</span>
+                </div>
+              )}
+              {companySettings.email && (
+                <div className="flex items-center gap-2" data-testid="company-email">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">{companySettings.email}</span>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-12">
         {stats.map((stat) => (

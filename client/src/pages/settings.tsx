@@ -160,7 +160,7 @@ export default function Settings() {
               <p className="text-sm text-muted-foreground">
                 Configuration for {vendorName} is coming soon. This will include fields for API credentials, EDI configuration, SFTP settings, and PunchOut/cXML setup.
               </p>
-            </DialogContent>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
