@@ -3,7 +3,8 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Pencil, Trash2, ExternalLink } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Search, Pencil, Trash2, ExternalLink, Zap } from "lucide-react";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -31,7 +32,15 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertVendorSchema, type InsertVendor, type Vendor, type VendorItem } from "@shared/schema";
@@ -59,6 +68,7 @@ export default function Vendors() {
     defaultValues: {
       name: "",
       accountNumber: "",
+      orderGuideType: "manual",
     },
   });
 
@@ -140,7 +150,7 @@ export default function Vendors() {
 
   const handleCreateClick = () => {
     setEditingVendor(null);
-    form.reset({ name: "", accountNumber: "" });
+    form.reset({ name: "", accountNumber: "", orderGuideType: "manual" });
     setIsDialogOpen(true);
   };
 
@@ -149,6 +159,7 @@ export default function Vendors() {
     form.reset({
       name: vendor.name,
       accountNumber: vendor.accountNumber || "",
+      orderGuideType: vendor.orderGuideType || "manual",
     });
     setIsDialogOpen(true);
   };
@@ -251,6 +262,19 @@ export default function Vendors() {
                       <span className="text-muted-foreground">Account #:</span>
                       <span className="font-mono" data-testid={`text-vendor-account-${vendor.id}`}>{vendor.accountNumber || "-"}</span>
                     </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Order Guide:</span>
+                      {vendor.orderGuideType === "electronic" ? (
+                        <Badge variant="outline" className="gap-1" data-testid={`badge-order-guide-${vendor.id}`}>
+                          <Zap className="h-3 w-3" />
+                          Electronic
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" data-testid={`badge-order-guide-${vendor.id}`}>
+                          Manual
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -320,6 +344,30 @@ export default function Vendors() {
                         data-testid="input-vendor-account"
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="orderGuideType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Order Guide Type</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-order-guide-type">
+                          <SelectValue placeholder="Select order guide type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="manual" data-testid="option-manual">Manual</SelectItem>
+                        <SelectItem value="electronic" data-testid="option-electronic">Electronic</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Electronic vendors use EDI, API, or PunchOut integrations. Manual vendors require manual order entry.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

@@ -140,7 +140,9 @@ export const vendors = pgTable("vendors", {
   orderGuideType: text("order_guide_type").notNull().default("manual"), // "electronic" or "manual"
 });
 
-export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true });
+export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true }).extend({
+  orderGuideType: z.string().min(1).default("manual"),
+});
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type Vendor = typeof vendors.$inferSelect;
 
