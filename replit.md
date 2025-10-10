@@ -69,7 +69,17 @@ Preferred communication style: Simple, everyday language.
     - **order_guides table**: Stores metadata about fetched order guides (vendor, source method, row count, dates)
     - **order_guide_lines table**: Product line items from order guides with SKU, pricing, pack sizes, and category data
     - **Integration**: Storage layer supports batch operations for efficient order guide imports and EDI message logging
-  - **Status**: Infrastructure complete with secure credential management and data persistence, vendor-specific implementations pending actual API connections
+  - **EDI X12 Mapping** (October 2025):
+    - **Bidirectional Conversion**: JSON ↔ X12 transformation for 850 (PO), 855 (PO Ack), 810 (Invoice)
+    - **Parser**: Converts X12 to normalized JSON, handles all required segments (BEG, DTM, N1/N3/N4, PO1/IT1, PID, CTT, BAK, BIG, ACK, TDS)
+    - **Generator**: Converts normalized JSON to X12 format with configurable separators
+    - **N1 Loop Handling**: Properly parses/generates both identification qualifiers and codes for trading partners
+    - **Dual Storage**: Stores both normalized JSON (payloadJson) and raw X12 (rawEdi) in edi_messages table
+    - **No Hard-Coded Conversions**: Uses existing units system, no hard-wired densities
+    - **Webhook Integration**: Parses incoming X12 documents, verifies HMAC signatures
+    - **PO Submission**: Generates X12 from JSON when submitting purchase orders
+    - **Test Coverage**: Comprehensive test suite covering parsing, generation, and round-trip conversion
+  - **Status**: Infrastructure complete with secure credential management, data persistence, and working EDI X12 mapping; vendor-specific implementations pending actual API connections
 
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
