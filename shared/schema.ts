@@ -137,6 +137,7 @@ export const vendors = pgTable("vendors", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   accountNumber: text("account_number"),
+  orderGuideType: text("order_guide_type").notNull().default("manual"), // "electronic" or "manual"
 });
 
 export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true });
