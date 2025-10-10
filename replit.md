@@ -96,6 +96,18 @@ Preferred communication style: Simple, everyday language.
     - **Required Fields**: EDI_GATEWAY_BASE_URL, EDI_GATEWAY_TOKEN, AS2_INBOUND_HMAC_SECRET, MAX_UPLOAD_SIZE_MB
     - **Example Template**: .env.example provides template for all integration credentials
   - **Status**: Complete vendor integration infrastructure with EDI X12, CSV parsing, and PunchOut cXML support; ready for live vendor connections
+- **Object Storage Integration** (October 2025):
+  - **Replit Object Storage**: Integrated Google Cloud Storage via Replit's object storage service for inventory item images
+  - **Image Upload Flow**: ObjectUploader component (Uppy-based) → presigned URL generation → direct upload to GCS → ACL policy setting
+  - **Thumbnail Generation**: Sharp library automatically creates 200x200px thumbnails on-the-fly via query parameter (?thumbnail=true)
+  - **Backend Routes**:
+    - `POST /api/objects/upload`: Generates presigned URLs for authenticated uploads
+    - `GET /objects/:objectPath(*)`: Serves images with optional thumbnail rendering
+    - `PUT /api/inventory-items/:id/image`: Updates inventory item with uploaded image path and sets ACL
+  - **ACL Management**: Public visibility for inventory item images with owner tracking; supports extensible access control rules
+  - **Environment Variables**: Requires `PRIVATE_OBJECT_DIR` for uploaded files and optionally `PUBLIC_OBJECT_SEARCH_PATHS` for static assets
+  - **UI Components**: ObjectUploader button with modal interface, drag-drop support, progress tracking, and automatic cache invalidation
+  - **File Handling**: Max 10MB uploads, image-only restriction, automatic content-type detection, efficient streaming with caching headers
 
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
