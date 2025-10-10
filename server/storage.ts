@@ -29,6 +29,9 @@ import {
   companySettings, type CompanySettings, type InsertCompanySettings,
   systemPreferences, type SystemPreferences, type InsertSystemPreferences,
   vendorCredentials, type VendorCredentials, type InsertVendorCredentials,
+  ediMessages, type EdiMessage, type InsertEdiMessage,
+  orderGuides, type OrderGuide, type InsertOrderGuide,
+  orderGuideLines, type OrderGuideLine, type InsertOrderGuideLine,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -193,6 +196,22 @@ export interface IStorage {
   createVendorCredentials(credentials: InsertVendorCredentials): Promise<VendorCredentials>;
   updateVendorCredentials(id: string, credentials: Partial<VendorCredentials>): Promise<VendorCredentials | undefined>;
   deleteVendorCredentials(id: string): Promise<void>;
+
+  // EDI Messages
+  getEdiMessages(vendorKey?: string, limit?: number): Promise<EdiMessage[]>;
+  getEdiMessage(id: string): Promise<EdiMessage | undefined>;
+  createEdiMessage(message: InsertEdiMessage): Promise<EdiMessage>;
+  updateEdiMessage(id: string, updates: Partial<EdiMessage>): Promise<EdiMessage | undefined>;
+
+  // Order Guides
+  getOrderGuides(vendorKey?: string, limit?: number): Promise<OrderGuide[]>;
+  getOrderGuide(id: string): Promise<OrderGuide | undefined>;
+  createOrderGuide(guide: InsertOrderGuide): Promise<OrderGuide>;
+
+  // Order Guide Lines
+  getOrderGuideLines(orderGuideId: string): Promise<OrderGuideLine[]>;
+  createOrderGuideLine(line: InsertOrderGuideLine): Promise<OrderGuideLine>;
+  createOrderGuideLinesBatch(lines: InsertOrderGuideLine[]): Promise<OrderGuideLine[]>;
 
   // Inventory Item Price History
   getInventoryItemPriceHistory(inventoryItemId: string): Promise<InventoryItemPriceHistory[]>;
@@ -922,6 +941,75 @@ export class DatabaseStorage implements IStorage {
 
   async deleteVendorCredentials(id: string): Promise<void> {
     await db.delete(vendorCredentials).where(eq(vendorCredentials.id, id));
+  }
+
+  // EDI Messages
+  async getEdiMessages(vendorKey?: string, limit: number = 100): Promise<EdiMessage[]> {
+    let query = db.select().from(ediMessages);
+    
+    if (vendorKey) {
+      query = query.where(eq(ediMessages.vendorKey, vendorKey)) as any;
+    }
+    
+    return query.orderBy(ediMessages.createdAt).limit(limit);
+  }
+
+  async getEdiMessage(id: string): Promise<EdiMessage | undefined> {
+    const results = await db.select().from(ediMessages).where(eq(ediMessages.id, id));
+    return results[0];
+  }
+
+  async createEdiMessage(message: InsertEdiMessage): Promise<EdiMessage> {
+    const results = await db.insert(ediMessages).values(message).returning();
+    return results[0];
+  }
+
+  async updateEdiMessage(id: string, updates: Partial<EdiMessage>): Promise<EdiMessage | undefined> {
+    const results = await db
+      .update(ediMessages)
+      .set(updates)
+      .where(eq(ediMessages.id, id))
+      .returning();
+    return results[0];
+  }
+
+  // Order Guides
+  async getOrderGuides(vendorKey?: string, limit: number = 50): Promise<OrderGuide[]> {
+    let query = db.select().from(orderGuides);
+    
+    if (vendorKey) {
+      query = query.where(eq(orderGuides.vendorKey, vendorKey)) as any;
+    }
+    
+    return query.orderBy(orderGuides.fetchedAt).limit(limit);
+  }
+
+  async getOrderGuide(id: string): Promise<OrderGuide | undefined> {
+    const results = await db.select().from(orderGuides).where(eq(orderGuides.id, id));
+    return results[0];
+  }
+
+  async createOrderGuide(guide: InsertOrderGuide): Promise<OrderGuide> {
+    const results = await db.insert(orderGuides).values(guide).returning();
+    return results[0];
+  }
+
+  // Order Guide Lines
+  async getOrderGuideLines(orderGuideId: string): Promise<OrderGuideLine[]> {
+    return db
+      .select()
+      .from(orderGuideLines)
+      .where(eq(orderGuideLines.orderGuideId, orderGuideId));
+  }
+
+  async createOrderGuideLine(line: InsertOrderGuideLine): Promise<OrderGuideLine> {
+    const results = await db.insert(orderGuideLines).values(line).returning();
+    return results[0];
+  }
+
+  async createOrderGuideLinesBatch(lines: InsertOrderGuideLine[]): Promise<OrderGuideLine[]> {
+    if (lines.length === 0) return [];
+    return db.insert(orderGuideLines).values(lines).returning();
   }
 
   // Inventory Item Price History

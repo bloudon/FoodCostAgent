@@ -441,3 +441,59 @@ export const insertVendorCredentialsSchema = createInsertSchema(vendorCredential
 export type InsertVendorCredentials = z.infer<typeof insertVendorCredentialsSchema>;
 export type VendorCredentials = typeof vendorCredentials.$inferSelect;
 
+// EDI Messages - Log of all EDI transmissions (sent/received)
+export const ediMessages = pgTable("edi_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vendorKey: text("vendor_key").notNull(), // sysco, gfs, usfoods
+  direction: text("direction").notNull(), // outbound, inbound
+  docType: text("doc_type").notNull(), // 850 (PO), 810 (Invoice), 832 (Price Catalog), 997 (Ack)
+  controlNumber: text("control_number"), // ISA control number
+  status: text("status").notNull().default("pending"), // pending, sent, acknowledged, failed
+  payloadJson: text("payload_json"), // JSON representation of the EDI data
+  rawEdi: text("raw_edi"), // Raw X12 EDI content
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  sentAt: timestamp("sent_at"),
+  acknowledgedAt: timestamp("acknowledged_at"),
+});
+
+export const insertEdiMessageSchema = createInsertSchema(ediMessages).omit({ id: true, createdAt: true });
+export type InsertEdiMessage = z.infer<typeof insertEdiMessageSchema>;
+export type EdiMessage = typeof ediMessages.$inferSelect;
+
+// Order Guides - Metadata about fetched order guides
+export const orderGuides = pgTable("order_guides", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vendorKey: text("vendor_key").notNull(), // sysco, gfs, usfoods
+  fetchedAt: timestamp("fetched_at").notNull().defaultNow(),
+  source: text("source").notNull(), // csv, api, edi, punchout
+  rowCount: integer("row_count").notNull().default(0),
+  fileName: text("file_name"),
+  effectiveDate: timestamp("effective_date"),
+  expirationDate: timestamp("expiration_date"),
+});
+
+export const insertOrderGuideSchema = createInsertSchema(orderGuides).omit({ id: true, fetchedAt: true });
+export type InsertOrderGuide = z.infer<typeof insertOrderGuideSchema>;
+export type OrderGuide = typeof orderGuides.$inferSelect;
+
+// Order Guide Lines - Product line items from order guides
+export const orderGuideLines = pgTable("order_guide_lines", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderGuideId: varchar("order_guide_id").notNull(),
+  vendorSku: text("vendor_sku").notNull(),
+  productName: text("product_name").notNull(),
+  packSize: text("pack_size"),
+  uom: text("uom"), // Unit of measure
+  caseSize: real("case_size"),
+  innerPack: real("inner_pack"),
+  price: real("price"),
+  gtin: text("gtin"), // Global Trade Item Number / UPC
+  category: text("category"),
+  brandName: text("brand_name"),
+});
+
+export const insertOrderGuideLineSchema = createInsertSchema(orderGuideLines).omit({ id: true });
+export type InsertOrderGuideLine = z.infer<typeof insertOrderGuideLineSchema>;
+export type OrderGuideLine = typeof orderGuideLines.$inferSelect;
+

@@ -64,7 +64,12 @@ Preferred communication style: Simple, everyday language.
     - **Active Status**: Adapters only load for isActive=1 credentials; deactivated vendors automatically evict cache
     - **Cache Invalidation**: Adapter cache cleared on credential updates to ensure fresh configuration
     - **Fallback Support**: Environment variables used as fallback if database credentials not configured
-  - **Status**: Infrastructure complete with secure credential management, vendor-specific implementations pending actual API connections
+  - **Data Persistence** (October 2025):
+    - **edi_messages table**: Logs all EDI transmissions (sent/received) with status tracking, control numbers, and raw X12 content
+    - **order_guides table**: Stores metadata about fetched order guides (vendor, source method, row count, dates)
+    - **order_guide_lines table**: Product line items from order guides with SKU, pricing, pack sizes, and category data
+    - **Integration**: Storage layer supports batch operations for efficient order guide imports and EDI message logging
+  - **Status**: Infrastructure complete with secure credential management and data persistence, vendor-specific implementations pending actual API connections
 
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
