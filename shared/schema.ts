@@ -379,6 +379,7 @@ export const companySettings = pgTable("company_settings", {
   zip: text("zip"),
   phone: text("phone"),
   email: text("email"),
+  logoImagePath: text("logo_image_path"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
