@@ -642,26 +642,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const vendorKey = req.params.vendorKey as 'sysco' | 'gfs' | 'usfoods';
       
-      // Parse request body (could be JSON or raw EDI text)
-      let parsedBody: any;
-      if (req.get('content-type')?.includes('application/json')) {
-        parsedBody = JSON.parse((req as any).rawBody || '{}');
-      } else {
-        // For raw EDI/text payloads, parse as JSON from rawBody
-        try {
-          parsedBody = JSON.parse((req as any).rawBody || '{}');
-        } catch {
-          // If not JSON, treat as raw EDI text
-          parsedBody = {
-            rawEdi: (req as any).rawBody,
-            docType: 'unknown',
-            controlNumber: '',
-          };
-        }
-      }
-      
-      const { docType, controlNumber, payload, rawEdi } = parsedBody;
-
       // Verify HMAC signature for security
       const signature = req.headers['x-edi-signature'] as string;
       const webhookSecret = process.env.EDI_WEBHOOK_SECRET || '';
@@ -703,15 +683,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: 'Invalid signature' });
       }
 
-      // Store inbound EDI message
+      // Parse X12 to normalized JSON
+      const { parseX12 } = await import('./integrations/edi-parser');
+      let parseResult;
+      
+      try {
+        parseResult = parseX12(rawBody);
+      } catch (parseError: any) {
+        console.error('[EDI Webhook] Parse error:', parseError.message);
+        
+        // Store failed message for debugging
+        await storage.createEdiMessage({
+          vendorKey,
+          direction: 'inbound',
+          docType: 'unknown',
+          status: 'failed',
+          rawEdi: rawBody,
+          errorMessage: parseError.message,
+        });
+        
+        return res.status(400).json({ error: 'Invalid EDI format', details: parseError.message });
+      }
+
+      const { normalized, raw } = parseResult;
+      const docType = normalized.docType;
+
+      // Extract control number based on document type
+      let controlNumber = '';
+      if (docType === '850' && 'poNumber' in normalized) {
+        controlNumber = normalized.poNumber;
+      } else if (docType === '855' && 'poNumber' in normalized) {
+        controlNumber = normalized.poNumber;
+      } else if (docType === '810' && 'invoiceNumber' in normalized) {
+        controlNumber = normalized.invoiceNumber;
+      }
+
+      // Store inbound EDI message with both normalized JSON and raw X12
       const ediMessage = await storage.createEdiMessage({
         vendorKey,
         direction: 'inbound',
         docType,
         controlNumber,
         status: 'received',
-        payloadJson: JSON.stringify(payload),
-        rawEdi,
+        payloadJson: JSON.stringify(normalized),
+        rawEdi: raw,
       });
 
       // Process based on document type
@@ -725,7 +740,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // TODO: Create receipt record
       }
 
-      res.json({ received: true, messageId: ediMessage.id });
+      res.json({ 
+        received: true, 
+        messageId: ediMessage.id,
+        docType,
+        controlNumber,
+      });
     } catch (error: any) {
       console.error('[EDI Webhook Error]', error);
       res.status(500).json({ error: error.message });
