@@ -160,6 +160,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ OBJECT STORAGE (IMAGE UPLOADS) ============
   // Integration with blueprint:javascript_object_storage for image uploads
   const { ObjectStorageService, ObjectNotFoundError } = await import("./objectStorage");
+  const { ObjectPermission } = await import("./objectAcl");
   const sharp = await import("sharp");
 
   // Get upload URL for inventory item images
@@ -181,6 +182,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     try {
       const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+      
+      // Check ACL policy to enforce access control
+      const user = (req as any).user; // May be undefined if not authenticated
+      const userId = user?.id;
+      
+      const canAccess = await objectStorageService.canAccessObjectEntity({
+        objectFile,
+        userId,
+        requestedPermission: ObjectPermission.READ,
+      });
+      
+      if (!canAccess) {
+        return res.sendStatus(userId ? 403 : 401);
+      }
       
       if (thumbnail) {
         // Stream through sharp for thumbnail generation
