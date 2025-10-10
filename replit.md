@@ -46,6 +46,16 @@ Preferred communication style: Simple, everyday language.
 - System-wide standardization from "product" to "inventory item" terminology.
 - Enhanced vendor management with CRUD operations for vendor items and dedicated vendor detail pages.
 - Robust unit conversion module with comprehensive cooking and metric conversions.
+- **Vendor Integration Architecture** (October 2025):
+  - **VendorAdapter Pattern**: Pluggable integration system for food distributors (Sysco, GFS, US Foods)
+  - **Multiple Integration Methods**: EDI (X12), CSV order guides, REST APIs, PunchOut/cXML
+  - **EDI Support**: Generic gateway for X12 transactions (850 PO, 810 Invoice, 832 Price Catalog, 997 Ack)
+  - **CSV Parser**: Vendor-specific column mappings for order guide imports
+  - **PunchOut Integration**: cXML protocol support for interactive catalog shopping (US Foods)
+  - **API Routes**: Authenticated endpoints for sync, submit PO, fetch invoices, PunchOut flows
+  - **Security**: All integration endpoints protected with requireAuth middleware and Zod validation
+  - **Credentials**: Environment-based configuration (future: secure database storage)
+  - **Status**: Infrastructure complete, vendor-specific implementations pending actual API connections
 
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
