@@ -1367,6 +1367,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
     }));
     
+    // Sort by created date descending (newest first)
+    enriched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
     res.json(enriched);
   });
 
@@ -1462,14 +1465,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { lines, ...poData } = req.body;
       
-      // Update the purchase order
-      const updateData = {
-        expectedDate: poData.expectedDate !== undefined ? poData.expectedDate : po.expectedDate,
-        status: poData.status || po.status,
-        notes: poData.notes !== undefined ? poData.notes : po.notes,
-      };
+      // Validate and update the purchase order
+      const validatedData = insertPurchaseOrderSchema.partial().parse(poData);
       
-      await storage.updatePurchaseOrder(req.params.id, updateData);
+      await storage.updatePurchaseOrder(req.params.id, validatedData);
 
       // Update lines if provided
       if (lines && Array.isArray(lines)) {
