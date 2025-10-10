@@ -43,9 +43,16 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 export default function CountSession() {
   const params = useParams();
   const countId = params.id;
+  
+  // Get URL search parameters for filtering and navigation
+  const urlParams = new URLSearchParams(window.location.search);
+  const filterItemId = urlParams.get('item');
+  const sourceCountId = urlParams.get('from');
+  
   const [showEmpty, setShowEmpty] = useState(true); // Default to showing all items
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
+  const [selectedItemId, setSelectedItemId] = useState<string>(filterItemId || "all");
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [editingQty, setEditingQty] = useState<string>("");
   const [editingItem, setEditingItem] = useState<any | null>(null);
@@ -69,10 +76,13 @@ export default function CountSession() {
     enabled: !!countId,
   });
 
-  const { data: previousLines } = useQuery<any[]>({
+  const { data: previousData } = useQuery<{previousCountId: string | null, lines: any[]}>({
     queryKey: ["/api/inventory-counts", countId, "previous-lines"],
     enabled: !!countId,
   });
+  
+  const previousCountId = previousData?.previousCountId || null;
+  const previousLines = previousData?.lines || [];
 
   const { data: storageLocations } = useQuery<any[]>({
     queryKey: ["/api/storage-locations"],
@@ -281,6 +291,10 @@ export default function CountSession() {
       return locationId === selectedLocation;
     });
   }
+  
+  if (selectedItemId !== "all") {
+    filteredLines = filteredLines.filter(line => line.inventoryItemId === selectedItemId);
+  }
 
   // Sort alphabetically by item name (ascending)
   filteredLines = [...filteredLines].sort((a, b) => {
@@ -333,10 +347,10 @@ export default function CountSession() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <Link href="/inventory-sessions">
+        <Link href={sourceCountId ? `/inventory-count/${sourceCountId}` : "/inventory-sessions"}>
           <Button variant="ghost" className="mb-4" data-testid="button-back">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Sessions
+            {sourceCountId ? "Back to Previous Session" : "Back to Sessions"}
           </Button>
         </Link>
         
@@ -474,19 +488,25 @@ export default function CountSession() {
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <CardTitle>Items</CardTitle>
             <div className="flex items-center gap-4 flex-wrap">
-              {(selectedCategory !== "all" || selectedLocation !== "all") && (
+              {(selectedCategory !== "all" || selectedLocation !== "all" || selectedItemId !== "all") && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => {
                     setSelectedCategory("all");
                     setSelectedLocation("all");
+                    setSelectedItemId("all");
                   }}
                   data-testid="button-clear-filters"
                 >
                   <X className="h-4 w-4 mr-1" />
                   Clear Filters
                 </Button>
+              )}
+              {selectedItemId !== "all" && (
+                <div className="text-sm text-muted-foreground">
+                  Showing: <span className="font-medium">{filteredLines[0]?.inventoryItem?.name || 'Unknown Item'}</span>
+                </div>
               )}
               <div className="flex items-center gap-2">
                 <Switch
@@ -597,10 +617,17 @@ export default function CountSession() {
                       <TableCell className="text-right font-mono">${(line.unitCost || 0).toFixed(4)}</TableCell>
                       <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
                       <TableCell className="text-right font-mono text-muted-foreground">
-                        {previousValuesByItemId[line.inventoryItemId] !== undefined 
-                          ? `$${previousValuesByItemId[line.inventoryItemId].toFixed(2)}`
-                          : '-'
-                        }
+                        {previousValuesByItemId[line.inventoryItemId] !== undefined && previousCountId ? (
+                          <Link 
+                            href={`/inventory-count/${previousCountId}?item=${line.inventoryItemId}&from=${countId}`}
+                            className="hover:underline cursor-pointer inline-block"
+                            data-testid={`link-previous-value-${line.id}`}
+                          >
+                            ${previousValuesByItemId[line.inventoryItemId].toFixed(2)}
+                          </Link>
+                        ) : (
+                          '-'
+                        )}
                       </TableCell>
                     </TableRow>
                   );
