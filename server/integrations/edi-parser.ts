@@ -33,12 +33,18 @@ function parseElements(segment: string): string[] {
 
 /**
  * Parse N1 loop into party information
+ * N1*ST*Restaurant Name*92*12345
+ * Element 1: Entity identifier code (ST, BT, VN, etc.)
+ * Element 2: Name
+ * Element 3: Identification code qualifier (e.g., "92")
+ * Element 4: Identification code (actual ID value)
  */
 function parseN1Party(elements: string[]): EdiParty {
   return {
     qualifier: elements[1] || '',
     name: elements[2] || '',
-    identifierCode: elements[3],
+    identificationCodeQualifier: elements[3],
+    identifierCode: elements[4],
   };
 }
 

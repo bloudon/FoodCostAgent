@@ -7,7 +7,8 @@
 export interface EdiParty {
   qualifier: string; // ST=Ship To, BT=Bill To, VN=Vendor, BY=Buyer
   name: string;
-  identifierCode?: string;
+  identificationCodeQualifier?: string; // e.g., "92" for assigned by buyer/seller
+  identifierCode?: string; // Actual identifier value (e.g., STORE001)
   address1?: string;
   address2?: string;
   city?: string;

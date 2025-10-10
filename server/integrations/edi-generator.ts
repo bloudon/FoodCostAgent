@@ -30,7 +30,9 @@ function generateN1Loop(
   // N1 segment
   const n1Parts = ['N1', party.qualifier, party.name];
   if (party.identifierCode) {
-    n1Parts.push('92', party.identifierCode);
+    // Use stored qualifier if available, otherwise default to "92"
+    const qualifier = party.identificationCodeQualifier || '92';
+    n1Parts.push(qualifier, party.identifierCode);
   }
   segments.push(n1Parts.join(sep) + term);
 
