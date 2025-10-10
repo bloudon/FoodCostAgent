@@ -79,7 +79,22 @@ Preferred communication style: Simple, everyday language.
     - **Webhook Integration**: Parses incoming X12 documents, verifies HMAC signatures
     - **PO Submission**: Generates X12 from JSON when submitting purchase orders
     - **Test Coverage**: Comprehensive test suite covering parsing, generation, and round-trip conversion
-  - **Status**: Infrastructure complete with secure credential management, data persistence, and working EDI X12 mapping; vendor-specific implementations pending actual API connections
+  - **PunchOut cXML Implementation** (October 2025):
+    - **Real HTTP Integration**: CxmlClient sends POST requests to vendor punchout URLs with cXML SetupRequest
+    - **XML Parsing**: fast-xml-parser library parses cXML responses and PunchOutOrderMessage documents
+    - **Session Management**: Extracts redirect URLs from SetupResponse for interactive catalog sessions
+    - **Cart Return Processing**: Parses ItemIn elements with robust Money/UnitPrice handling for accurate pricing
+    - **HMAC Signature Validation**: Validates incoming cXML payloads using HMAC-SHA256 with constant-time comparison
+    - **Test Coverage**: Comprehensive fixtures (setup-response.xml, order-message.xml) and executable test script
+  - **CSV Order Guide Enhancements** (October 2025):
+    - **InnerPack Support**: VendorProduct interface and CSV parser handle innerPack field from order guides
+    - **Vendor Item Sync**: Order guide imports automatically update vendor_items with latest prices, case sizes, and inner pack sizes
+    - **Column Mapping**: Supports vendor-specific CSV formats (Sysco, GFS, US Foods) with flexible column detection
+  - **Environment Configuration** (October 2025):
+    - **Zod Validation**: server/config/env.ts validates all environment variables at startup
+    - **Required Fields**: EDI_GATEWAY_BASE_URL, EDI_GATEWAY_TOKEN, AS2_INBOUND_HMAC_SECRET, MAX_UPLOAD_SIZE_MB
+    - **Example Template**: .env.example provides template for all integration credentials
+  - **Status**: Complete vendor integration infrastructure with EDI X12, CSV parsing, and PunchOut cXML support; ready for live vendor connections
 
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
