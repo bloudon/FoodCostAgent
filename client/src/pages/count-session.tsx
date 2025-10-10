@@ -69,6 +69,11 @@ export default function CountSession() {
     enabled: !!countId,
   });
 
+  const { data: previousLines } = useQuery<any[]>({
+    queryKey: ["/api/inventory-counts", countId, "previous-lines"],
+    enabled: !!countId,
+  });
+
   const { data: storageLocations } = useQuery<any[]>({
     queryKey: ["/api/storage-locations"],
   });
@@ -283,6 +288,13 @@ export default function CountSession() {
     const nameB = b.inventoryItem?.name?.toLowerCase() || '';
     return nameA.localeCompare(nameB);
   });
+
+  // Create a lookup map for previous values by inventory item ID
+  const previousValuesByItemId = (previousLines || []).reduce((acc: any, line) => {
+    const previousValue = line.qty * (line.unitCost || 0);
+    acc[line.inventoryItemId] = previousValue;
+    return acc;
+  }, {});
 
   // Calculate totals from FILTERED lines so stats match what's displayed
   const totalValue = filteredLines.reduce((sum, line) => {
