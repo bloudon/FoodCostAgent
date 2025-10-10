@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +54,17 @@ export default function CountSession() {
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [selectedItemId, setSelectedItemId] = useState<string>(filterItemId || "all");
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  
+  // Update filter when URL parameters change
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const itemFilter = params.get('item');
+    if (itemFilter) {
+      setSelectedItemId(itemFilter);
+    } else {
+      setSelectedItemId("all");
+    }
+  }, [window.location.search]);
   const [editingQty, setEditingQty] = useState<string>("");
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [wasTabPressed, setWasTabPressed] = useState(false);
@@ -347,7 +358,7 @@ export default function CountSession() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <Link href={sourceCountId ? `/inventory-count/${sourceCountId}` : "/inventory-sessions"}>
+        <Link href={sourceCountId ? `/count/${sourceCountId}` : "/inventory-sessions"}>
           <Button variant="ghost" className="mb-4" data-testid="button-back">
             <ArrowLeft className="h-4 w-4 mr-2" />
             {sourceCountId ? "Back to Previous Session" : "Back to Sessions"}
@@ -619,7 +630,7 @@ export default function CountSession() {
                       <TableCell className="text-right font-mono text-muted-foreground">
                         {previousValuesByItemId[line.inventoryItemId] !== undefined && previousCountId ? (
                           <Link 
-                            href={`/inventory-count/${previousCountId}?item=${line.inventoryItemId}&from=${countId}`}
+                            href={`/count/${previousCountId}?item=${line.inventoryItemId}&from=${countId}`}
                             className="hover:underline cursor-pointer inline-block"
                             data-testid={`link-previous-value-${line.id}`}
                           >
