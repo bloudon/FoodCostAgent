@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, User, Plug, Settings as SettingsIcon } from "lucide-react";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import {
   Select,
@@ -16,7 +16,17 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { CompanySettings, SystemPreferences } from "@shared/schema";
+import type { CompanySettings, SystemPreferences, VendorCredentials } from "@shared/schema";
+import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 export default function Settings() {
   const { toast } = useToast();
@@ -28,6 +38,10 @@ export default function Settings() {
 
   const { data: systemPrefs, isLoading: prefsLoading } = useQuery<SystemPreferences>({
     queryKey: ["/api/system-preferences"],
+  });
+
+  const { data: vendorCredentials, isLoading: vendorCredsLoading } = useQuery<VendorCredentials[]>({
+    queryKey: ["/api/vendor-credentials"],
   });
 
   const updateCompanyMutation = useMutation({
@@ -98,6 +112,61 @@ export default function Settings() {
     updatePrefsMutation.mutate(data);
   };
 
+  const renderVendorCard = (vendorKey: string, vendorName: string, credentials?: VendorCredentials) => {
+    const isConfigured = credentials?.hasApiCredentials || credentials?.hasEdiConfig || credentials?.hasSftpConfig || credentials?.hasPunchoutConfig;
+    const isActive = credentials?.isActive;
+
+    return (
+      <div key={vendorKey} className="flex items-center justify-between p-4 border rounded-md" data-testid={`vendor-card-${vendorKey}`}>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h3 className="font-medium">{vendorName}</h3>
+            {isConfigured && (
+              <span className={`text-xs px-2 py-0.5 rounded-full ${isActive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'}`}>
+                {isActive ? 'Active' : 'Inactive'}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {isConfigured 
+              ? `Configured • ${credentials?.hasApiCredentials ? 'API' : ''} ${credentials?.hasEdiConfig ? 'EDI' : ''} ${credentials?.hasSftpConfig ? 'SFTP' : ''} ${credentials?.hasPunchoutConfig ? 'PunchOut' : ''}`.trim()
+              : 'Not configured'
+            }
+          </p>
+        </div>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" data-testid={`button-configure-${vendorKey}`}>
+              {isConfigured ? 'Edit' : 'Configure'}
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Configure {vendorName} Integration</DialogTitle>
+              <DialogDescription>
+                Enter your {vendorName} API credentials and configuration details
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor={`${vendorKey}-active`}>Enable Integration</Label>
+                <Switch
+                  id={`${vendorKey}-active`}
+                  defaultChecked={isActive}
+                  data-testid={`switch-${vendorKey}-active`}
+                />
+              </div>
+              <Separator />
+              <p className="text-sm text-muted-foreground">
+                Configuration for {vendorName} is coming soon. This will include fields for API credentials, EDI configuration, SFTP settings, and PunchOut/cXML setup.
+              </p>
+            </DialogContent>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  };
+
   return (
     <div className="p-8">
       <div className="mb-8">
@@ -110,7 +179,7 @@ export default function Settings() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+        <TabsList className="grid w-full grid-cols-5 max-w-3xl">
           <TabsTrigger value="company" data-testid="tab-company">
             <Building2 className="h-4 w-4 mr-2" />
             Company
@@ -118,6 +187,10 @@ export default function Settings() {
           <TabsTrigger value="user" data-testid="tab-user">
             <User className="h-4 w-4 mr-2" />
             User Profile
+          </TabsTrigger>
+          <TabsTrigger value="integrations" data-testid="tab-integrations">
+            <Truck className="h-4 w-4 mr-2" />
+            Vendor Integrations
           </TabsTrigger>
           <TabsTrigger value="connections" data-testid="tab-connections">
             <Plug className="h-4 w-4 mr-2" />
@@ -286,6 +359,33 @@ export default function Settings() {
                   Save User Profile
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Vendor Integrations</CardTitle>
+              <CardDescription>
+                Configure API credentials for food distributor integrations (Sysco, Gordon Food Service, US Foods)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {vendorCredsLoading ? (
+                <p className="text-muted-foreground">Loading vendor credentials...</p>
+              ) : (
+                <>
+                  {/* Sysco */}
+                  {renderVendorCard("sysco", "Sysco", vendorCredentials?.find(vc => vc.vendorKey === "sysco"))}
+                  
+                  {/* Gordon Food Service */}
+                  {renderVendorCard("gfs", "Gordon Food Service", vendorCredentials?.find(vc => vc.vendorKey === "gfs"))}
+                  
+                  {/* US Foods */}
+                  {renderVendorCard("usfoods", "US Foods", vendorCredentials?.find(vc => vc.vendorKey === "usfoods"))}
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
