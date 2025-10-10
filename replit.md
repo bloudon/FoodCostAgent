@@ -20,6 +20,7 @@ Preferred communication style: Simple, everyday language.
 - **State Management**: TanStack Query for server state; local component state for UI.
 - **Routing**: Wouter for client-side routing.
 - **Key Features**: Dark/light theme, responsive navigation, search/filtering, real-time data updates via WebSockets.
+- **Dashboard**: Displays company information card (name, address, phone, email) with conditional rendering and proper icon formatting (October 2025).
 
 ### Backend
 - **Runtime**: Node.js with TypeScript.
@@ -42,6 +43,7 @@ Preferred communication style: Simple, everyday language.
 - Dedicated pages for managing storage locations, inventory items with status indicators, and detailed recipe views.
 - Robust settings and configuration module for company info, user profiles, data connections, and system preferences.
 - Purchase order management supports both unit-based and case-based ordering, with vendor-specific item filtering and keyboard-optimized entry.
+- Purchase order detail page redesigned (October 2025): Full vendor product list view with search and category filters, inline case quantity inputs, real-time summary totals, supports both Misc Grocery (unit-based, keyed by inventoryItemId) and regular vendors (case-based, keyed by vendorItemId).
 - Inventory count sessions auto-populate active items, support inline editing, capture price snapshots, and allow multi-location filtering without directly updating inventory levels.
 - System-wide standardization from "product" to "inventory item" terminology.
 - Enhanced vendor management with CRUD operations for vendor items and dedicated vendor detail pages.
