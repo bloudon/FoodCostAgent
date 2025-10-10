@@ -1050,6 +1050,147 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ VENDOR INTEGRATIONS ============
+  const { getVendor, getAllVendors } = await import('./integrations');
+
+  // Validation schemas for vendor integration requests
+  const syncOrderGuideSchema = z.object({
+    since: z.string().optional(),
+    fullSync: z.boolean().optional(),
+  });
+
+  const fetchInvoicesSchema = z.object({
+    start: z.string(),
+    end: z.string(),
+  });
+
+  const punchoutInitSchema = z.object({
+    buyerCookie: z.string(),
+    buyerUserId: z.string(),
+    buyerEmail: z.string().email().optional(),
+    returnUrl: z.string().url(),
+  });
+
+  // Get all available vendor integrations
+  app.get("/api/vendor-integrations", requireAuth, async (req, res) => {
+    const vendors = getAllVendors();
+    res.json(vendors.map(v => ({
+      key: v.key,
+      name: v.name,
+      supports: v.supports,
+    })));
+  });
+
+  // Sync order guide from vendor
+  app.post("/api/vendor-integrations/:vendorKey/sync-order-guide", requireAuth, async (req, res) => {
+    try {
+      const { vendorKey } = req.params;
+      const vendor = getVendor(vendorKey as any);
+      
+      const params = syncOrderGuideSchema.parse(req.body);
+      const orderGuide = await vendor.syncOrderGuide(params);
+      
+      res.json(orderGuide);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Submit purchase order to vendor
+  app.post("/api/vendor-integrations/:vendorKey/submit-po", requireAuth, async (req, res) => {
+    try {
+      const { vendorKey } = req.params;
+      const vendor = getVendor(vendorKey as any);
+      
+      // Validate PO structure - reuse existing schema patterns
+      const poData = z.object({
+        internalOrderId: z.string(),
+        vendorKey: z.enum(['sysco', 'gfs', 'usfoods']),
+        orderDate: z.string(),
+        expectedDeliveryDate: z.string().optional(),
+        lines: z.array(z.object({
+          vendorSku: z.string(),
+          productName: z.string(),
+          quantity: z.number(),
+          unitPrice: z.number(),
+          unitOfMeasure: z.string().optional(),
+          lineTotal: z.number(),
+        })),
+        totalAmount: z.number(),
+        notes: z.string().optional(),
+      }).parse(req.body);
+      
+      const result = await vendor.submitPO(poData);
+      
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Fetch invoices from vendor
+  app.post("/api/vendor-integrations/:vendorKey/fetch-invoices", requireAuth, async (req, res) => {
+    try {
+      const { vendorKey } = req.params;
+      const vendor = getVendor(vendorKey as any);
+      
+      const params = fetchInvoicesSchema.parse(req.body);
+      const invoices = await vendor.fetchInvoices(params);
+      
+      res.json(invoices);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Initialize PunchOut session
+  app.post("/api/vendor-integrations/:vendorKey/punchout-init", requireAuth, async (req, res) => {
+    try {
+      const { vendorKey } = req.params;
+      const vendor = getVendor(vendorKey as any);
+      
+      if (!vendor.punchoutInit) {
+        return res.status(400).json({ error: "PunchOut not supported for this vendor" });
+      }
+      
+      const params = punchoutInitSchema.parse(req.body);
+      const result = await vendor.punchoutInit(params);
+      
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Process PunchOut cart return
+  app.post("/api/vendor-integrations/:vendorKey/punchout-return", requireAuth, async (req, res) => {
+    try {
+      const { vendorKey } = req.params;
+      const vendor = getVendor(vendorKey as any);
+      
+      if (!vendor.punchoutReturn) {
+        return res.status(400).json({ error: "PunchOut not supported for this vendor" });
+      }
+      
+      const params = z.object({
+        sessionId: z.string(),
+        items: z.array(z.object({
+          vendorSku: z.string(),
+          quantity: z.number(),
+          unitPrice: z.number(),
+          description: z.string(),
+        })),
+        totalAmount: z.number(),
+      }).parse(req.body);
+      
+      const orderDraft = await vendor.punchoutReturn(params);
+      
+      res.json(orderDraft);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ RECEIPTS ============
   app.get("/api/receipts", async (req, res) => {
     const receipts = await storage.getReceipts();
