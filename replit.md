@@ -49,6 +49,7 @@ Preferred communication style: Simple, everyday language.
 - Enhanced vendor management with CRUD operations for vendor items and dedicated vendor detail pages.
 - Robust unit conversion module with comprehensive cooking and metric conversions.
 - **Vendor Integration Architecture** (October 2025):
+  - **Order Guide Type Classification**: Vendors are classified as "electronic" (EDI/API/PunchOut enabled) or "manual" (local suppliers requiring manual entry). This field is stored in the vendors.orderGuideType column and displayed in the UI with badges and form controls.
   - **VendorAdapter Pattern**: Pluggable integration system for food distributors (Sysco, GFS, US Foods)
   - **Multiple Integration Methods**: EDI (X12), CSV order guides, REST APIs, PunchOut/cXML
   - **EDI Support**: Generic gateway for X12 transactions (850 PO, 810 Invoice, 832 Price Catalog, 997 Ack)
