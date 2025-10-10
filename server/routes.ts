@@ -944,7 +944,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const unit = units.find((u) => u.id === vi.purchaseUnitId);
       return {
         ...vi,
-        inventoryItem: item,
+        inventoryItemName: item?.name || "",
+        purchaseUnitName: unit?.name || "",
+        categoryId: item?.categoryId || null,
+        categoryName: item?.categoryId ? (item as any).category : null,
+        inventoryItem: item ? {
+          caseSize: item.caseSize,
+          pricePerUnit: item.pricePerUnit,
+        } : undefined,
         unit,
       };
     });
@@ -1381,7 +1388,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return {
         ...line,
         inventoryItemId: vi?.inventoryItemId,
-        inventoryItemName: item?.name || "Unknown",
+        itemName: item?.name || "Unknown",
         vendorSku: vi?.vendorSku || "",
         unitName: unit?.name || "",
         caseQuantity: line.caseQuantity,

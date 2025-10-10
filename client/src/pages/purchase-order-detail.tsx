@@ -36,6 +36,7 @@ type PurchaseOrderDetail = {
 type POLineDisplay = {
   id: string;
   vendorItemId: string;
+  inventoryItemId?: string;
   itemName: string;
   vendorSku: string | null;
   orderedQty: number;
