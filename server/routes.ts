@@ -1468,13 +1468,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .sort((a, b) => new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime())[0];
 
       if (!previousCount) {
-        return res.json([]); // No previous count exists
+        return res.json({ previousCountId: null, lines: [] }); // No previous count exists
       }
 
       // Get the previous count's lines
       const previousLines = await storage.getInventoryCountLines(previousCount.id);
       
-      res.json(previousLines);
+      res.json({ previousCountId: previousCount.id, lines: previousLines });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
