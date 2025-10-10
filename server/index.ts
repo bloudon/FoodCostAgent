@@ -6,7 +6,19 @@ import { seedDatabase } from "./seed";
 
 const app = express();
 app.disable('etag');
+
+// Raw body parser for webhooks (must come before JSON parser to handle non-JSON EDI payloads)
+app.use('/webhooks/edi', express.raw({
+  type: '*/*',
+  verify: (req: any, res, buf, encoding) => {
+    // Store raw body for HMAC verification
+    req.rawBody = buf.toString((encoding as BufferEncoding) || 'utf8');
+  }
+}));
+
+// JSON parser for all other routes
 app.use(express.json());
+
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 

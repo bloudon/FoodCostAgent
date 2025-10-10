@@ -4,6 +4,8 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { z } from "zod";
 import { createSession, requireAuth, verifyPassword } from "./auth";
+import swaggerJsdoc from "swagger-jsdoc";
+import swaggerUi from "swagger-ui-express";
 import {
   insertUnitSchema,
   insertUnitConversionSchema,
@@ -30,7 +32,78 @@ import {
   insertSystemPreferencesSchema,
 } from "@shared/schema";
 
+// Swagger/OpenAPI Configuration
+const swaggerOptions = {
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'Restaurant Inventory API',
+      version: '1.0.0',
+      description: 'Restaurant inventory management and vendor integration API',
+    },
+    servers: [
+      {
+        url: '/api',
+        description: 'API Server',
+      },
+    ],
+    components: {
+      securitySchemes: {
+        cookieAuth: {
+          type: 'apiKey',
+          in: 'cookie',
+          name: 'auth_session',
+        },
+      },
+      schemas: {
+        PurchaseOrder: {
+          type: 'object',
+          properties: {
+            internalOrderId: { type: 'string' },
+            vendorKey: { type: 'string', enum: ['sysco', 'gfs', 'usfoods'] },
+            orderDate: { type: 'string', format: 'date-time' },
+            expectedDeliveryDate: { type: 'string', format: 'date-time' },
+            lines: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  vendorSku: { type: 'string' },
+                  productName: { type: 'string' },
+                  quantity: { type: 'number' },
+                  unitPrice: { type: 'number' },
+                  lineTotal: { type: 'number' },
+                },
+              },
+            },
+            totalAmount: { type: 'number' },
+          },
+        },
+        Invoice: {
+          type: 'object',
+          properties: {
+            externalInvoiceId: { type: 'string' },
+            vendorKey: { type: 'string', enum: ['sysco', 'gfs', 'usfoods'] },
+            invoiceDate: { type: 'string', format: 'date-time' },
+            totalAmount: { type: 'number' },
+          },
+        },
+      },
+    },
+  },
+  apis: ['./server/routes.ts'],
+};
+
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
+
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Swagger UI Documentation (mounted at /docs to avoid Vite middleware conflict)
+  app.use('/docs', swaggerUi.serve);
+  app.get('/docs', swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'Restaurant Inventory API Docs',
+  }));
+
   // ============ AUTHENTICATION ============
   app.post("/api/auth/login", async (req, res) => {
     try {
@@ -286,6 +359,376 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // ============ VENDOR INTEGRATIONS ============
+
+  /**
+   * @swagger
+   * /vendors/{vendorKey}/po:
+   *   post:
+   *     summary: Submit Purchase Order via EDI
+   *     description: Submit a purchase order to a vendor via EDI 850 transaction
+   *     tags: [Vendor Integrations]
+   *     security:
+   *       - cookieAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: vendorKey
+   *         required: true
+   *         schema:
+   *           type: string
+   *           enum: [sysco, gfs, usfoods]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/PurchaseOrder'
+   *     responses:
+   *       200:
+   *         description: PO submitted successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 externalId:
+   *                   type: string
+   *                 status:
+   *                   type: string
+   *                   enum: [queued, sent, acknowledged, failed]
+   */
+  app.post("/api/vendors/:vendorKey/po", requireAuth, async (req, res) => {
+    try {
+      const vendorKey = req.params.vendorKey as 'sysco' | 'gfs' | 'usfoods';
+      
+      // Validate vendor key
+      if (!['sysco', 'gfs', 'usfoods'].includes(vendorKey)) {
+        return res.status(400).json({ error: 'Invalid vendor key' });
+      }
+
+      // Get vendor adapter
+      const { getVendorAdapter } = await import('./integrations/registry');
+      const adapter = await getVendorAdapter(vendorKey);
+      
+      if (!adapter) {
+        return res.status(404).json({ error: 'Vendor adapter not configured' });
+      }
+
+      // Map internal PO to vendor PO format
+      const po = req.body;
+      const response = await adapter.submitPO(po);
+
+      // Log EDI message
+      await storage.createEdiMessage({
+        vendorKey,
+        direction: 'outbound',
+        docType: '850',
+        controlNumber: response.externalId,
+        status: response.status,
+        payloadJson: JSON.stringify(po),
+      });
+
+      res.json(response);
+    } catch (error: any) {
+      console.error('[Vendor PO Submit Error]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * @swagger
+   * /vendors/{vendorKey}/invoices:
+   *   get:
+   *     summary: Fetch Invoices from Vendor
+   *     description: Retrieve invoices from vendor via EDI 810 for a date range
+   *     tags: [Vendor Integrations]
+   *     security:
+   *       - cookieAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: vendorKey
+   *         required: true
+   *         schema:
+   *           type: string
+   *           enum: [sysco, gfs, usfoods]
+   *       - in: query
+   *         name: start
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: date
+   *       - in: query
+   *         name: end
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: date
+   *     responses:
+   *       200:
+   *         description: List of invoices
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: array
+   *               items:
+   *                 $ref: '#/components/schemas/Invoice'
+   */
+  app.get("/api/vendors/:vendorKey/invoices", requireAuth, async (req, res) => {
+    try {
+      const vendorKey = req.params.vendorKey as 'sysco' | 'gfs' | 'usfoods';
+      const start = req.query.start as string;
+      const end = req.query.end as string;
+
+      if (!start || !end) {
+        return res.status(400).json({ error: 'start and end dates required' });
+      }
+
+      const { getVendorAdapter } = await import('./integrations/registry');
+      const adapter = await getVendorAdapter(vendorKey);
+
+      if (!adapter) {
+        return res.status(404).json({ error: 'Vendor adapter not configured' });
+      }
+
+      const invoices = await adapter.fetchInvoices({ start, end });
+      res.json(invoices);
+    } catch (error: any) {
+      console.error('[Vendor Invoices Error]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * @swagger
+   * /vendors/{vendorKey}/order-guides/import:
+   *   post:
+   *     summary: Import Order Guide from CSV
+   *     description: Parse and import vendor order guide from CSV file
+   *     tags: [Vendor Integrations]
+   *     security:
+   *       - cookieAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: vendorKey
+   *         required: true
+   *         schema:
+   *           type: string
+   *           enum: [sysco, gfs, usfoods]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               csvContent:
+   *                 type: string
+   *               fileName:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Order guide imported successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 orderGuideId:
+   *                   type: string
+   *                 productsImported:
+   *                   type: number
+   */
+  app.post("/api/vendors/:vendorKey/order-guides/import", requireAuth, async (req, res) => {
+    try {
+      const vendorKey = req.params.vendorKey as 'sysco' | 'gfs' | 'usfoods';
+      const { csvContent, fileName } = req.body;
+
+      if (!csvContent) {
+        return res.status(400).json({ error: 'CSV content required' });
+      }
+
+      // Parse CSV using vendor-specific parser
+      const { CsvOrderGuide } = await import('./integrations/csv/CsvOrderGuide');
+      const orderGuide = await CsvOrderGuide.parse(csvContent, { vendorKey });
+
+      // Create order guide record
+      const guideRecord = await storage.createOrderGuide({
+        vendorKey,
+        source: 'csv',
+        rowCount: orderGuide.products.length,
+        fileName: fileName || undefined,
+        effectiveDate: new Date(orderGuide.effectiveDate),
+        expirationDate: orderGuide.expirationDate ? new Date(orderGuide.expirationDate) : undefined,
+      });
+
+      // Create order guide lines in batch
+      const lines = orderGuide.products.map(p => ({
+        orderGuideId: guideRecord.id,
+        vendorSku: p.vendorSku,
+        productName: p.vendorProductName,
+        packSize: p.description,
+        uom: p.unit,
+        caseSize: p.caseSize,
+        price: p.price,
+        gtin: p.upc,
+        category: p.categoryCode,
+        brandName: p.brandName,
+      }));
+
+      await storage.createOrderGuideLinesBatch(lines);
+
+      res.json({
+        orderGuideId: guideRecord.id,
+        productsImported: lines.length,
+        effectiveDate: guideRecord.effectiveDate,
+      });
+    } catch (error: any) {
+      console.error('[Order Guide Import Error]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PunchOut - Initialize Session
+  app.post("/api/vendors/:vendorKey/punchout/init", requireAuth, async (req, res) => {
+    try {
+      const vendorKey = req.params.vendorKey as 'sysco' | 'gfs' | 'usfoods';
+      const { getVendorAdapter } = await import('./integrations/registry');
+      const adapter = await getVendorAdapter(vendorKey);
+
+      if (!adapter) {
+        return res.status(404).json({ error: 'Vendor adapter not configured' });
+      }
+
+      if (!adapter.punchoutInit) {
+        return res.status(400).json({ error: 'Vendor does not support PunchOut' });
+      }
+
+      const initResponse = await adapter.punchoutInit(req.body);
+      res.json(initResponse);
+    } catch (error: any) {
+      console.error('[PunchOut Init Error]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PunchOut - Process Cart Return
+  app.post("/api/vendors/:vendorKey/punchout/return", requireAuth, async (req, res) => {
+    try {
+      const vendorKey = req.params.vendorKey as 'sysco' | 'gfs' | 'usfoods';
+      const { getVendorAdapter } = await import('./integrations/registry');
+      const adapter = await getVendorAdapter(vendorKey);
+
+      if (!adapter) {
+        return res.status(404).json({ error: 'Vendor adapter not configured' });
+      }
+
+      if (!adapter.punchoutReturn) {
+        return res.status(400).json({ error: 'Vendor does not support PunchOut' });
+      }
+
+      const orderDraft = await adapter.punchoutReturn(req.body);
+      res.json(orderDraft);
+    } catch (error: any) {
+      console.error('[PunchOut Return Error]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Webhook - Receive Inbound EDI Documents
+  app.post("/webhooks/edi/:vendorKey", async (req, res) => {
+    try {
+      const vendorKey = req.params.vendorKey as 'sysco' | 'gfs' | 'usfoods';
+      
+      // Parse request body (could be JSON or raw EDI text)
+      let parsedBody: any;
+      if (req.get('content-type')?.includes('application/json')) {
+        parsedBody = JSON.parse((req as any).rawBody || '{}');
+      } else {
+        // For raw EDI/text payloads, parse as JSON from rawBody
+        try {
+          parsedBody = JSON.parse((req as any).rawBody || '{}');
+        } catch {
+          // If not JSON, treat as raw EDI text
+          parsedBody = {
+            rawEdi: (req as any).rawBody,
+            docType: 'unknown',
+            controlNumber: '',
+          };
+        }
+      }
+      
+      const { docType, controlNumber, payload, rawEdi } = parsedBody;
+
+      // Verify HMAC signature for security
+      const signature = req.headers['x-edi-signature'] as string;
+      const webhookSecret = process.env.EDI_WEBHOOK_SECRET || '';
+      const rawBody = (req as any).rawBody;
+      
+      if (!webhookSecret) {
+        console.error('[EDI Webhook] No EDI_WEBHOOK_SECRET configured');
+        return res.status(500).json({ error: 'Webhook not configured' });
+      }
+
+      if (!signature) {
+        return res.status(401).json({ error: 'Missing signature' });
+      }
+
+      if (!rawBody) {
+        console.error('[EDI Webhook] No raw body available for verification');
+        return res.status(500).json({ error: 'Webhook verification error' });
+      }
+
+      // Verify HMAC-SHA256 signature using raw request body
+      const crypto = await import('crypto');
+      const expectedSignature = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(rawBody)
+        .digest('hex');
+
+      // Use timing-safe comparison to prevent timing attacks
+      // Check lengths match before comparison (constant-time for length check)
+      const sigBuffer = Buffer.from(signature);
+      const expectedBuffer = Buffer.from(expectedSignature);
+      
+      let isValid = false;
+      if (sigBuffer.length === expectedBuffer.length) {
+        isValid = crypto.timingSafeEqual(sigBuffer, expectedBuffer);
+      }
+
+      if (!isValid) {
+        console.error('[EDI Webhook] Invalid signature');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+
+      // Store inbound EDI message
+      const ediMessage = await storage.createEdiMessage({
+        vendorKey,
+        direction: 'inbound',
+        docType,
+        controlNumber,
+        status: 'received',
+        payloadJson: JSON.stringify(payload),
+        rawEdi,
+      });
+
+      // Process based on document type
+      if (docType === '855') {
+        // Purchase Order Acknowledgment
+        console.log('[EDI 855] PO Acknowledgment received', controlNumber);
+        // TODO: Update PO status in database
+      } else if (docType === '810') {
+        // Invoice
+        console.log('[EDI 810] Invoice received', controlNumber);
+        // TODO: Create receipt record
+      }
+
+      res.json({ received: true, messageId: ediMessage.id });
+    } catch (error: any) {
+      console.error('[EDI Webhook Error]', error);
+      res.status(500).json({ error: error.message });
     }
   });
 
