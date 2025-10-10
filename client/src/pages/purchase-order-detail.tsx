@@ -53,6 +53,10 @@ type VendorItem = {
   lastPrice: number;
   purchaseUnitId: string;
   purchaseUnitName: string;
+  inventoryItem?: {
+    caseSize: number;
+    pricePerUnit: number;
+  };
 };
 
 type Vendor = {
@@ -78,7 +82,16 @@ export default function PurchaseOrderDetail() {
   const [selectedVendor, setSelectedVendor] = useState<string>("");
   const [expectedDate, setExpectedDate] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
-  const [orderLines, setOrderLines] = useState<{ vendorItemId: string; inventoryItemId?: string; unitId?: string; unitName?: string; qty: number; price: number }[]>([]);
+  const [orderLines, setOrderLines] = useState<{ 
+    vendorItemId: string; 
+    inventoryItemId?: string; 
+    unitId?: string; 
+    unitName?: string; 
+    qty: number; 
+    price: number;
+    caseQuantity?: number;
+    caseSize?: number;
+  }[]>([]);
   const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   const { data: purchaseOrder, isLoading: loadingOrder } = useQuery<PurchaseOrderDetail>({
@@ -148,34 +161,66 @@ export default function PurchaseOrderDetail() {
         unitName: invItem.unitName, // Store the unit name
         qty: 0,
         price: invItem.pricePerUnit || 0,
+        caseQuantity: undefined,
+        caseSize: undefined,
       }]);
     } else {
-      // For regular vendors, itemId is a vendor item ID
+      // For regular vendors, use case-based ordering
       const vendorItem = vendorItems?.find(item => item.id === itemId);
       if (!vendorItem) return;
+
+      const caseSize = vendorItem.inventoryItem?.caseSize || 1;
+      const unitPrice = vendorItem.inventoryItem?.pricePerUnit || vendorItem.lastPrice || 0;
 
       setOrderLines(prev => [...prev, {
         vendorItemId: itemId,
         unitId: vendorItem.purchaseUnitId, // Store the unit ID
         unitName: vendorItem.purchaseUnitName, // Store the unit name
-        qty: 0,
-        price: vendorItem.lastPrice || 0,
+        qty: 0, // Will be calculated from caseQuantity * caseSize
+        price: unitPrice, // Unit price
+        caseQuantity: 0,
+        caseSize: caseSize,
       }]);
     }
   };
 
-  const handleUpdateLine = (index: number, field: 'qty' | 'price', value: number) => {
+  const handleUpdateLine = (index: number, field: 'qty' | 'price' | 'caseQuantity', value: number) => {
     setOrderLines(prev => {
       const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
+      if (field === 'caseQuantity' && updated[index].caseSize) {
+        // Update caseQuantity and calculate orderedQty
+        updated[index] = { 
+          ...updated[index], 
+          caseQuantity: value,
+          qty: value * updated[index].caseSize! 
+        };
+      } else {
+        updated[index] = { ...updated[index], [field]: value };
+      }
       return updated;
     });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent, currentIndex: number, field: 'qty' | 'price') => {
+  const handleKeyDown = (e: React.KeyboardEvent, currentIndex: number, field: 'qty' | 'price' | 'caseQuantity') => {
     if (e.key === 'Tab' && !e.shiftKey) {
-      const nextField = field === 'qty' ? 'price' : 'qty';
-      const nextIndex = field === 'price' ? currentIndex + 1 : currentIndex;
+      // For case-based ordering, navigate: caseQuantity -> next caseQuantity
+      // For Misc Grocery, navigate: qty -> price -> next qty
+      const line = orderLines[currentIndex];
+      const isCaseBased = !isMiscGrocery && line.caseSize !== undefined;
+      
+      let nextField: string;
+      let nextIndex: number;
+      
+      if (isCaseBased) {
+        // Case-based: just move to next row's caseQuantity
+        nextField = 'caseQuantity';
+        nextIndex = currentIndex + 1;
+      } else {
+        // Misc Grocery: toggle between qty and price
+        nextField = field === 'qty' ? 'price' : 'qty';
+        nextIndex = field === 'price' ? currentIndex + 1 : currentIndex;
+      }
+      
       const nextRef = inputRefs.current[`${nextIndex}-${nextField}`];
       
       if (nextRef) {
@@ -221,12 +266,13 @@ export default function PurchaseOrderDetail() {
             };
           }
         } else {
-          // For regular vendors, use vendor item ID
+          // For regular vendors (case-based ordering)
           return {
             vendorItemId: line.vendorItemId,
-            orderedQty: line.qty,
+            orderedQty: line.qty, // Already calculated from caseQuantity * caseSize
+            caseQuantity: line.caseQuantity || 0,
             unitId: line.unitId || "",
-            priceEach: line.price,
+            priceEach: line.price, // Unit price
           };
         }
       }),
@@ -244,18 +290,26 @@ export default function PurchaseOrderDetail() {
       // For misc grocery orders, we need to track the inventoryItemId too
       const isMiscGroceryOrder = purchaseOrder.vendorId === MISC_GROCERY_VENDOR_ID;
       
-      setOrderLines(purchaseOrder.lines.map(line => {
-        const vendorItem = vendorItems?.find(vi => vi.id === line.vendorItemId);
-        
-        return {
-          vendorItemId: line.vendorItemId,
-          inventoryItemId: isMiscGroceryOrder ? vendorItem?.inventoryItemId : undefined,
-          unitId: line.unitId,
-          unitName: (line as any).unitName, // Use unit name from API response
-          qty: line.orderedQty,
-          price: line.priceEach,
-        };
-      }));
+      // Only populate order lines when vendorItems are available (for case-based orders)
+      // or for misc grocery orders
+      if (isMiscGroceryOrder || vendorItems) {
+        setOrderLines(purchaseOrder.lines.map(line => {
+          const vendorItem = vendorItems?.find(vi => vi.id === line.vendorItemId);
+          const caseSize = vendorItem?.inventoryItem?.caseSize;
+          const caseQuantity = (line as any).caseQuantity;
+          
+          return {
+            vendorItemId: line.vendorItemId,
+            inventoryItemId: isMiscGroceryOrder ? vendorItem?.inventoryItemId : undefined,
+            unitId: line.unitId,
+            unitName: (line as any).unitName, // Use unit name from API response
+            qty: line.orderedQty,
+            price: line.priceEach,
+            caseQuantity: caseQuantity,
+            caseSize: caseSize,
+          };
+        }));
+      }
     }
   }, [purchaseOrder, isNew, vendorItems]);
 
@@ -393,25 +447,40 @@ export default function PurchaseOrderDetail() {
                 <TableRow>
                   <TableHead className="w-[300px]">Item</TableHead>
                   <TableHead>Vendor SKU</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead className="w-[150px]">Quantity</TableHead>
-                  <TableHead className="w-[150px]">Price Each</TableHead>
-                  <TableHead className="text-right">Line Total</TableHead>
+                  {!isMiscGrocery && (
+                    <>
+                      <TableHead className="text-right">Case Size</TableHead>
+                      <TableHead className="text-right">Unit Price</TableHead>
+                      <TableHead className="text-right">Case Price</TableHead>
+                      <TableHead className="w-[150px]">Case Qty</TableHead>
+                    </>
+                  )}
+                  {isMiscGrocery && (
+                    <>
+                      <TableHead>Unit</TableHead>
+                      <TableHead className="w-[150px]">Quantity</TableHead>
+                      <TableHead className="w-[150px]">Price Each</TableHead>
+                    </>
+                  )}
+                  <TableHead className="text-right">Total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {orderLines.map((line, index) => {
-                  const lineTotal = line.qty * line.price;
+                  const isCaseBased = !isMiscGrocery && line.caseSize !== undefined;
+                  const casePrice = isCaseBased ? (line.price * (line.caseSize || 1)) : 0;
+                  const lineTotal = isCaseBased 
+                    ? (casePrice * (line.caseQuantity || 0))
+                    : (line.qty * line.price);
+                  
                   let itemName = 'Unknown Item';
                   let vendorSku = '-';
-                  let unitName = line.unitName || '-'; // Use stored unit name
+                  let unitName = line.unitName || '-';
 
                   if (isMiscGrocery) {
-                    // For misc grocery, use inventoryItemId if available (new items) or vendorItemId (existing items)
                     const invItemId = line.inventoryItemId || line.vendorItemId;
                     let invItem = inventoryItems?.find(item => item.id === invItemId);
                     
-                    // If not found by direct ID, lookup via vendor item
                     if (!invItem && line.vendorItemId) {
                       const vendorItem = vendorItems?.find(item => item.id === line.vendorItemId);
                       invItem = inventoryItems?.find(item => item.id === vendorItem?.inventoryItemId);
@@ -433,33 +502,62 @@ export default function PurchaseOrderDetail() {
                       <TableCell className="text-sm text-muted-foreground">
                         {vendorSku}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {unitName}
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          ref={el => inputRefs.current[`${index}-qty`] = el}
-                          type="number"
-                          step="0.01"
-                          value={line.qty}
-                          onChange={(e) => handleUpdateLine(index, 'qty', parseFloat(e.target.value) || 0)}
-                          onKeyDown={(e) => handleKeyDown(e, index, 'qty')}
-                          className="font-mono"
-                          data-testid={`input-qty-${index}`}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          ref={el => inputRefs.current[`${index}-price`] = el}
-                          type="number"
-                          step="0.01"
-                          value={line.price}
-                          onChange={(e) => handleUpdateLine(index, 'price', parseFloat(e.target.value) || 0)}
-                          onKeyDown={(e) => handleKeyDown(e, index, 'price')}
-                          className="font-mono"
-                          data-testid={`input-price-${index}`}
-                        />
-                      </TableCell>
+                      {isCaseBased && (
+                        <>
+                          <TableCell className="text-right font-mono">
+                            {line.caseSize || 1}
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            ${line.price.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-semibold">
+                            ${casePrice.toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              ref={el => inputRefs.current[`${index}-caseQuantity`] = el}
+                              type="number"
+                              step="0.01"
+                              value={line.caseQuantity || 0}
+                              onChange={(e) => handleUpdateLine(index, 'caseQuantity', parseFloat(e.target.value) || 0)}
+                              onKeyDown={(e) => handleKeyDown(e, index, 'caseQuantity')}
+                              className="font-mono"
+                              data-testid={`input-case-qty-${index}`}
+                            />
+                          </TableCell>
+                        </>
+                      )}
+                      {isMiscGrocery && (
+                        <>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {unitName}
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              ref={el => inputRefs.current[`${index}-qty`] = el}
+                              type="number"
+                              step="0.01"
+                              value={line.qty}
+                              onChange={(e) => handleUpdateLine(index, 'qty', parseFloat(e.target.value) || 0)}
+                              onKeyDown={(e) => handleKeyDown(e, index, 'qty')}
+                              className="font-mono"
+                              data-testid={`input-qty-${index}`}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              ref={el => inputRefs.current[`${index}-price`] = el}
+                              type="number"
+                              step="0.01"
+                              value={line.price}
+                              onChange={(e) => handleUpdateLine(index, 'price', parseFloat(e.target.value) || 0)}
+                              onKeyDown={(e) => handleKeyDown(e, index, 'price')}
+                              className="font-mono"
+                              data-testid={`input-price-${index}`}
+                            />
+                          </TableCell>
+                        </>
+                      )}
                       <TableCell className="text-right font-mono font-semibold">
                         ${lineTotal.toFixed(2)}
                       </TableCell>
@@ -467,7 +565,7 @@ export default function PurchaseOrderDetail() {
                   );
                 })}
                 <TableRow>
-                  <TableCell colSpan={5} className="text-right font-semibold">
+                  <TableCell colSpan={isMiscGrocery ? 4 : 6} className="text-right font-semibold">
                     Total:
                   </TableCell>
                   <TableCell className="text-right font-mono font-bold text-lg" data-testid="text-total">

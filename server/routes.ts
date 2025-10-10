@@ -888,6 +888,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         inventoryItemName: item?.name || "Unknown",
         vendorSku: vi?.vendorSku || "",
         unitName: unit?.name || "",
+        caseQuantity: line.caseQuantity,
       };
     });
 
@@ -934,6 +935,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const lineData = insertPOLineSchema.parse({
             vendorItemId,
             orderedQty: line.orderedQty,
+            caseQuantity: line.caseQuantity,
             unitId: line.unitId,
             priceEach: line.priceEach,
             purchaseOrderId: po.id,
@@ -1005,6 +1007,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const lineData = insertPOLineSchema.parse({
             vendorItemId,
             orderedQty: line.orderedQty,
+            caseQuantity: line.caseQuantity,
             unitId: line.unitId,
             priceEach: line.priceEach,
             purchaseOrderId: req.params.id,

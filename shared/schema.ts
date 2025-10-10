@@ -240,8 +240,9 @@ export const poLines = pgTable("po_lines", {
   purchaseOrderId: varchar("purchase_order_id").notNull(),
   vendorItemId: varchar("vendor_item_id").notNull(),
   orderedQty: real("ordered_qty").notNull(),
+  caseQuantity: real("case_quantity"), // For case-based ordering (non-Misc Grocery vendors)
   unitId: varchar("unit_id").notNull(),
-  priceEach: real("price_each").notNull(),
+  priceEach: real("price_each").notNull(), // Unit price (price per single unit)
 });
 
 export const insertPOLineSchema = createInsertSchema(poLines).omit({ id: true });
