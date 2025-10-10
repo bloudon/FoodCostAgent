@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Save, Package, Search } from "lucide-react";
+import { ArrowLeft, Save, Package, Search, PackageCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -343,6 +343,18 @@ export default function PurchaseOrderDetail() {
             </div>
           </div>
           <div className="flex gap-2">
+            {purchaseOrder && purchaseOrder.status !== "received" && !isNew && (
+              <Button
+                asChild
+                variant="outline"
+                data-testid="button-receive-po"
+              >
+                <Link href={`/receiving/${purchaseOrder.id}`}>
+                  <PackageCheck className="h-4 w-4 mr-2" />
+                  Receive Order
+                </Link>
+              </Button>
+            )}
             <Button
               onClick={handleSave}
               disabled={savePOMutation.isPending || !selectedVendor || itemsWithQuantity === 0}
