@@ -938,16 +938,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const vendorItems = await storage.getVendorItems(vendorId);
     const inventoryItems = await storage.getInventoryItems();
     const units = await storage.getUnits();
+    const categories = await storage.getCategories();
     
     const enriched = vendorItems.map((vi) => {
       const item = inventoryItems.find((i) => i.id === vi.inventoryItemId);
       const unit = units.find((u) => u.id === vi.purchaseUnitId);
+      const category = item?.categoryId ? categories.find((c) => c.id === item.categoryId) : null;
       return {
         ...vi,
         inventoryItemName: item?.name || "",
         purchaseUnitName: unit?.name || "",
         categoryId: item?.categoryId || null,
-        categoryName: item?.categoryId ? (item as any).category : null,
+        categoryName: category?.name || null,
         inventoryItem: item ? {
           caseSize: item.caseSize,
           pricePerUnit: item.pricePerUnit,
