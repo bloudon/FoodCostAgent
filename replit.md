@@ -11,6 +11,20 @@ Preferred communication style: Simple, everyday language.
 - **Yield Field**: Yield is stored as a percentage value (0-100), not a separate yield amount + unit
 - **Storage Locations**: Inventory items can be associated with multiple storage locations using checkboxes. At least one location is required. The primary location is indicated with a "Primary" badge.
 
+## Multi-Company Enterprise Architecture (October 2025)
+
+**Core Multi-Tenant Structure**:
+- **Companies**: Root entity with tcc_account_id for The Chef's Companion integration
+- **Company Stores**: Physical store locations with tcc_location_id for TCC integration
+- **Store Storage Locations**: Granular storage areas within each store (Walk-In Cooler, Dry Storage, etc.)
+- **User Roles**: global_admin (NULL companyId), company_admin, user (both with companyId)
+- **Data Isolation**: All features (except unit conversions) isolated per company
+- **Store-Based Operations**: Transfer orders and inventory counts operate at store level
+
+**TCC Integration Fields**:
+- companies.tcc_account_id: Maps company to TCC account
+- company_stores.tcc_location_id: Maps store location to TCC location
+
 ## System Architecture
 
 ### Frontend

@@ -17,6 +17,7 @@ export const companies = pgTable("companies", {
   postalCode: text("postal_code"),
   country: text("country").notNull().default("US"),
   timezone: text("timezone").notNull().default("America/New_York"),
+  tccAccountId: text("tcc_account_id"), // The Chef's Companion account ID
   status: text("status").notNull().default("active"), // active, inactive, suspended
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -38,6 +39,7 @@ export const companyStores = pgTable("company_stores", {
   state: text("state"),
   postalCode: text("postal_code"),
   timezone: text("timezone"),
+  tccLocationId: text("tcc_location_id"), // The Chef's Companion location ID
   status: text("status").notNull().default("active"), // active, inactive, closed
   openedAt: timestamp("opened_at"),
   closedAt: timestamp("closed_at"),
