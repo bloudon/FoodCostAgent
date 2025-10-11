@@ -476,6 +476,11 @@ export default function ReceivingDetail() {
               Back to Receiving
             </Button>
           </Link>
+          <Link href={`/purchase-orders/${poId}`}>
+            <Button variant="outline" data-testid="button-view-purchase-order">
+              View Purchase Order
+            </Button>
+          </Link>
         </div>
 
         <div className="flex items-start justify-between gap-4 flex-wrap">
