@@ -19,7 +19,18 @@ Preferred communication style: Simple, everyday language.
 - **Store Storage Locations**: Granular storage areas within each store (Walk-In Cooler, Dry Storage, etc.)
 - **User Roles**: global_admin (NULL companyId), company_admin, user (both with companyId)
 - **Data Isolation**: All features (except unit conversions) isolated per company
-- **Store-Based Operations**: Transfer orders and inventory counts operate at store level
+- **Store-Based Operations**: Transfer orders, inventory counts, purchase orders, and waste logs all operate at store level
+
+**Schema Migration Completed** (October 11, 2025):
+- **Tenant Isolation**: All domain tables include company_id (except global units/conversions)
+- **Store-Level Tracking**: inventory_counts, purchase_orders, waste_logs, transfer_logs all require storeId (NOT NULL)
+- **Inventory Quantities**: Moved from inventory_items to store_inventory_items table with unique (storeId, inventoryItemId) constraint
+- **Deprecated Fields Removed**: 
+  - inventory_items: removed storageLocationId, onHandQty, parLevel, reorderLevel
+  - inventory_counts: removed storageLocationId
+  - transfer_orders/logs: removed fromLocationId/toLocationId (replaced by fromStoreId/toStoreId)
+  - waste_logs: removed storageLocationId
+- **Legacy Tables**: inventory_item_locations deprecated (references global storage_locations); location tracking now via store_inventory_items.primaryLocationId
 
 **TCC Integration Fields**:
 - companies.tcc_account_id: Maps company to TCC account

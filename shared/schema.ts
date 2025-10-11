@@ -165,11 +165,13 @@ export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
 
-// Inventory Item Locations (many-to-many: items can exist in multiple storage locations)
+// DEPRECATED: Inventory Item Locations (replaced by store_inventory_items.primaryLocationId)
+// This table references the legacy global storage_locations table and breaks tenant isolation
+// Location tracking is now handled at the store level via store_inventory_items table
 export const inventoryItemLocations = pgTable("inventory_item_locations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   inventoryItemId: varchar("inventory_item_id").notNull(),
-  storageLocationId: varchar("storage_location_id").notNull(),
+  storageLocationId: varchar("storage_location_id").notNull(), // DEPRECATED: references global storage_locations
   isPrimary: integer("is_primary").notNull().default(0), // 1 if this is the primary location
 });
 
@@ -345,7 +347,6 @@ export const receipts = pgTable("receipts", {
   companyId: varchar("company_id").notNull(),
   purchaseOrderId: varchar("purchase_order_id").notNull(),
   status: text("status").notNull().default("draft"), // draft, completed
-  storageLocationId: varchar("storage_location_id"), // DEPRECATED: will use storeId from purchase order
   receivedAt: timestamp("received_at").notNull().defaultNow(),
 });
 
@@ -437,10 +438,8 @@ export const transferLogs = pgTable("transfer_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   inventoryItemId: varchar("inventory_item_id").notNull(),
-  fromStoreId: varchar("from_store_id"), // Source store
-  toStoreId: varchar("to_store_id"), // Destination store
-  fromLocationId: varchar("from_location_id").notNull(), // DEPRECATED: use fromStoreId
-  toLocationId: varchar("to_location_id").notNull(), // DEPRECATED: use toStoreId
+  fromStoreId: varchar("from_store_id").notNull(), // Source store
+  toStoreId: varchar("to_store_id").notNull(), // Destination store
   qty: real("qty").notNull(), // quantity in base units
   unitId: varchar("unit_id").notNull(),
   transferredAt: timestamp("transferred_at").notNull().defaultNow(),
@@ -490,9 +489,8 @@ export type TransferOrderLine = typeof transferOrderLines.$inferSelect;
 export const wasteLogs = pgTable("waste_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
-  storeId: varchar("store_id"), // Store where waste occurred
+  storeId: varchar("store_id").notNull(), // Store where waste occurred
   inventoryItemId: varchar("inventory_item_id").notNull(),
-  storageLocationId: varchar("storage_location_id").notNull(), // DEPRECATED: will use storeId
   qty: real("qty").notNull(), // quantity in base units
   unitId: varchar("unit_id").notNull(),
   reasonCode: text("reason_code").notNull(), // SPOILED, DAMAGED, OVERPRODUCTION, etc
