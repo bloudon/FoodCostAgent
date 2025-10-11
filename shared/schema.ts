@@ -1,14 +1,73 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, timestamp, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Companies table (root entity for multi-tenant isolation)
+export const companies = pgTable("companies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  legalName: text("legal_name"),
+  contactEmail: text("contact_email"),
+  phone: text("phone"),
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  state: text("state"),
+  postalCode: text("postal_code"),
+  country: text("country").notNull().default("US"),
+  timezone: text("timezone").notNull().default("America/New_York"),
+  status: text("status").notNull().default("active"), // active, inactive, suspended
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertCompanySchema = createInsertSchema(companies).omit({ id: true, createdAt: true });
+export type InsertCompany = z.infer<typeof insertCompanySchema>;
+export type Company = typeof companies.$inferSelect;
+
+// Company Stores (physical store locations for each company)
+export const companyStores = pgTable("company_stores", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  code: text("code").notNull(), // Store code (e.g., "S001", "S002")
+  name: text("name").notNull(), // Store name (e.g., "Downtown Store", "Airport Location")
+  phone: text("phone"),
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  state: text("state"),
+  postalCode: text("postal_code"),
+  timezone: text("timezone"),
+  status: text("status").notNull().default("active"), // active, inactive, closed
+  openedAt: timestamp("opened_at"),
+  closedAt: timestamp("closed_at"),
+});
+
+export const insertCompanyStoreSchema = createInsertSchema(companyStores).omit({ id: true });
+export type InsertCompanyStore = z.infer<typeof insertCompanyStoreSchema>;
+export type CompanyStore = typeof companyStores.$inferSelect;
+
+// Store Storage Locations (storage areas within each store)
+export const storeStorageLocations = pgTable("store_storage_locations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  storeId: varchar("store_id").notNull(),
+  name: text("name").notNull(), // e.g., "Walk-In Cooler", "Dry Storage", "Walk-In Freezer"
+  type: text("type"), // cooler, freezer, dry_storage, prep_area, etc.
+  sortOrder: integer("sort_order").notNull().default(0),
+  isDefault: integer("is_default").notNull().default(0), // 1 if this is the default location for the store
+});
+
+export const insertStoreStorageLocationSchema = createInsertSchema(storeStorageLocations).omit({ id: true });
+export type InsertStoreStorageLocation = z.infer<typeof insertStoreStorageLocationSchema>;
+export type StoreStorageLocation = typeof storeStorageLocations.$inferSelect;
 
 // Users table
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
-  role: text("role").notNull().default("viewer"), // admin, manager, counter, viewer
+  role: text("role").notNull().default("user"), // global_admin, company_admin, user
+  companyId: varchar("company_id"), // nullable for global_admin
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
@@ -45,9 +104,12 @@ export type StorageLocation = typeof storageLocations.$inferSelect;
 // Categories
 export const categories = pgTable("categories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull().unique(),
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
-});
+}, (table) => ({
+  uniqueCompanyCategory: unique().on(table.companyId, table.name),
+}));
 
 export const insertCategorySchema = createInsertSchema(categories).omit({ id: true });
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
@@ -78,9 +140,10 @@ export const insertUnitConversionSchema = createInsertSchema(unitConversions).om
 export type InsertUnitConversion = z.infer<typeof insertUnitConversionSchema>;
 export type UnitConversion = typeof unitConversions.$inferSelect;
 
-// Inventory Items (replaces Products - one record per item per location)
+// Inventory Items (company-level catalog - quantities tracked at store level)
 export const inventoryItems = pgTable("inventory_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
   categoryId: varchar("category_id"), // Reference to categories table
   pluSku: text("plu_sku"),
@@ -89,12 +152,12 @@ export const inventoryItems = pgTable("inventory_items", {
   barcode: text("barcode"),
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
   pricePerUnit: real("price_per_unit").notNull().default(0), // price per base unit (case cost = pricePerUnit × caseSize)
-  storageLocationId: varchar("storage_location_id").notNull(), // primary storage location
-  onHandQty: real("on_hand_qty").notNull().default(0), // quantity on hand in base units
+  storageLocationId: varchar("storage_location_id").notNull(), // DEPRECATED: will be removed after migration
+  onHandQty: real("on_hand_qty").notNull().default(0), // DEPRECATED: will be moved to store_inventory_items
   yieldPercent: real("yield_percent"), // usable yield percentage after trimming/waste (0-100)
   imageUrl: text("image_url"),
-  parLevel: real("par_level"), // target inventory level in base units
-  reorderLevel: real("reorder_level"), // level at which to reorder in base units
+  parLevel: real("par_level"), // DEPRECATED: will be moved to store level
+  reorderLevel: real("reorder_level"), // DEPRECATED: will be moved to store level
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
@@ -132,9 +195,28 @@ export const insertInventoryItemPriceHistorySchema = createInsertSchema(inventor
 export type InsertInventoryItemPriceHistory = z.infer<typeof insertInventoryItemPriceHistorySchema>;
 export type InventoryItemPriceHistory = typeof inventoryItemPriceHistory.$inferSelect;
 
+// Store Inventory Items (store-level quantities for company catalog items)
+export const storeInventoryItems = pgTable("store_inventory_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  storeId: varchar("store_id").notNull(),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
+  primaryLocationId: varchar("primary_location_id"), // Primary storage location within the store
+  onHandQty: real("on_hand_qty").notNull().default(0), // quantity on hand in base units
+  parLevel: real("par_level"), // target inventory level for this store
+  reorderLevel: real("reorder_level"), // reorder level for this store
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  uniqueStoreItem: unique().on(table.storeId, table.inventoryItemId),
+}));
+
+export const insertStoreInventoryItemSchema = createInsertSchema(storeInventoryItems).omit({ id: true, updatedAt: true });
+export type InsertStoreInventoryItem = z.infer<typeof insertStoreInventoryItemSchema>;
+export type StoreInventoryItem = typeof storeInventoryItems.$inferSelect;
+
 // Vendors
 export const vendors = pgTable("vendors", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
   accountNumber: text("account_number"),
   orderGuideType: text("order_guide_type").notNull().default("manual"), // "electronic" or "manual"
@@ -169,6 +251,7 @@ export type VendorItem = typeof vendorItems.$inferSelect;
 // Recipes
 export const recipes = pgTable("recipes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
   yieldQty: real("yield_qty").notNull(),
   yieldUnitId: varchar("yield_unit_id").notNull(),
@@ -197,7 +280,9 @@ export type RecipeComponent = typeof recipeComponents.$inferSelect;
 // Inventory Counts
 export const inventoryCounts = pgTable("inventory_counts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  storageLocationId: varchar("storage_location_id"), // Filter counts by location (store)
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id"), // Filter counts by store (replaces storageLocationId)
+  storageLocationId: varchar("storage_location_id"), // DEPRECATED: use storeId instead
   countedAt: timestamp("counted_at").notNull().defaultNow(),
   userId: varchar("user_id").notNull(),
   note: text("note"),
@@ -229,6 +314,8 @@ export type InventoryCountLine = typeof inventoryCountLines.$inferSelect;
 // Purchase Orders
 export const purchaseOrders = pgTable("purchase_orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id"), // Store receiving the order
   vendorId: varchar("vendor_id").notNull(),
   status: text("status").notNull().default("pending"), // pending, ordered, received
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -258,9 +345,10 @@ export type POLine = typeof poLines.$inferSelect;
 // Receipts
 export const receipts = pgTable("receipts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
   purchaseOrderId: varchar("purchase_order_id").notNull(),
   status: text("status").notNull().default("draft"), // draft, completed
-  storageLocationId: varchar("storage_location_id"),
+  storageLocationId: varchar("storage_location_id"), // DEPRECATED: will use storeId from purchase order
   receivedAt: timestamp("received_at").notNull().defaultNow(),
 });
 
@@ -290,7 +378,8 @@ export type ReceiptLine = typeof receiptLines.$inferSelect;
 // POS Sales
 export const posSales = pgTable("pos_sales", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  storeId: varchar("store_id").notNull().default("main"),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id").notNull(),
   occurredAt: timestamp("occurred_at").notNull().defaultNow(),
 });
 
@@ -313,12 +402,15 @@ export type POSSalesLine = typeof posSalesLines.$inferSelect;
 // Menu Items
 export const menuItems = pgTable("menu_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
-  pluSku: text("plu_sku").notNull().unique(),
+  pluSku: text("plu_sku").notNull(),
   recipeId: varchar("recipe_id").notNull(),
   servingSizeQty: real("serving_size_qty").notNull().default(1),
   servingUnitId: varchar("serving_unit_id").notNull(),
-});
+}, (table) => ({
+  uniqueCompanyPlu: unique().on(table.companyId, table.pluSku),
+}));
 
 export const insertMenuItemSchema = createInsertSchema(menuItems).omit({ id: true });
 export type InsertMenuItem = z.infer<typeof insertMenuItemSchema>;
@@ -343,12 +435,15 @@ export const insertRecipeVersionSchema = createInsertSchema(recipeVersions).omit
 export type InsertRecipeVersion = z.infer<typeof insertRecipeVersionSchema>;
 export type RecipeVersion = typeof recipeVersions.$inferSelect;
 
-// Transfer Logs (for tracking stock movements between locations)
+// Transfer Logs (for tracking stock movements between stores)
 export const transferLogs = pgTable("transfer_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
   inventoryItemId: varchar("inventory_item_id").notNull(),
-  fromLocationId: varchar("from_location_id").notNull(),
-  toLocationId: varchar("to_location_id").notNull(),
+  fromStoreId: varchar("from_store_id"), // Source store
+  toStoreId: varchar("to_store_id"), // Destination store
+  fromLocationId: varchar("from_location_id").notNull(), // DEPRECATED: use fromStoreId
+  toLocationId: varchar("to_location_id").notNull(), // DEPRECATED: use toStoreId
   qty: real("qty").notNull(), // quantity in base units
   unitId: varchar("unit_id").notNull(),
   transferredAt: timestamp("transferred_at").notNull().defaultNow(),
@@ -360,11 +455,14 @@ export const insertTransferLogSchema = createInsertSchema(transferLogs).omit({ i
 export type InsertTransferLog = z.infer<typeof insertTransferLogSchema>;
 export type TransferLog = typeof transferLogs.$inferSelect;
 
-// Transfer Orders (for planning and tracking inventory transfers between locations)
+// Transfer Orders (for planning and tracking inventory transfers between company stores)
 export const transferOrders = pgTable("transfer_orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  fromLocationId: varchar("from_location_id").notNull(),
-  toLocationId: varchar("to_location_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  fromStoreId: varchar("from_store_id").notNull(), // Source company store
+  toStoreId: varchar("to_store_id").notNull(), // Destination company store
+  fromLocationId: varchar("from_location_id"), // DEPRECATED: use fromStoreId instead
+  toLocationId: varchar("to_location_id"), // DEPRECATED: use toStoreId instead
   status: text("status").notNull().default("pending"), // pending, in_transit, completed
   createdAt: timestamp("created_at").notNull().defaultNow(),
   expectedDate: timestamp("expected_date"),
@@ -396,8 +494,10 @@ export type TransferOrderLine = typeof transferOrderLines.$inferSelect;
 // Waste Logs (for tracking waste and spoilage)
 export const wasteLogs = pgTable("waste_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id"), // Store where waste occurred
   inventoryItemId: varchar("inventory_item_id").notNull(),
-  storageLocationId: varchar("storage_location_id").notNull(),
+  storageLocationId: varchar("storage_location_id").notNull(), // DEPRECATED: will use storeId
   qty: real("qty").notNull(), // quantity in base units
   unitId: varchar("unit_id").notNull(),
   reasonCode: text("reason_code").notNull(), // SPOILED, DAMAGED, OVERPRODUCTION, etc
