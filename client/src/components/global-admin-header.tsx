@@ -21,18 +21,18 @@ export function GlobalAdminHeader() {
   };
 
   return (
-    <div className="bg-primary/10 border-b px-4 py-2 flex items-center justify-between">
+    <div className="bg-accent border-b border-accent-border px-4 py-2 flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <Badge variant="secondary" className="gap-1.5">
+        <Badge variant="secondary" className="gap-1.5 bg-background/90">
           <Building2 className="h-3 w-3" />
           Global Admin
         </Badge>
         {company && (
           <>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="h-4 w-4 text-accent-foreground/70" />
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">{company.name}</span>
-              <Badge variant="outline" className="text-xs">
+              <span className="text-sm font-medium text-accent-foreground">{company.name}</span>
+              <Badge variant="outline" className="text-xs border-accent-foreground/30">
                 {company.code || company.id.slice(0, 8)}
               </Badge>
             </div>

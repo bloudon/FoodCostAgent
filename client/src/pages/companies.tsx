@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Company, InsertCompany, insertCompanySchema } from "@shared/schema";
-import { Building2, MapPin, Store, Plus, Settings2 } from "lucide-react";
+import { Building2, MapPin, Store, Plus, Settings2, UserCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -190,69 +190,69 @@ export default function Companies() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="space-y-2">
         {companies?.map((company) => (
           <Card
             key={company.id}
             className="hover-elevate transition-all"
             data-testid={`card-company-${company.id}`}
           >
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5 text-primary" />
-                  <CardTitle className="text-lg">{company.name}</CardTitle>
-                </div>
-                <Badge variant={company.status === "active" ? "default" : "secondary"}>
-                  {company.status}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {company.addressLine1 && (
-                <div className="flex items-start gap-2 text-sm">
-                  <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                  <div className="text-muted-foreground">
-                    <div>{company.addressLine1}</div>
-                    {company.addressLine2 && <div>{company.addressLine2}</div>}
-                    <div>
-                      {company.city && `${company.city}, `}
-                      {company.state} {company.postalCode}
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-4">
+                {/* Left: Company info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Building2 className="h-5 w-5 text-primary flex-shrink-0" />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-lg">{company.name}</h3>
+                      <Badge variant={company.status === "active" ? "default" : "secondary"} className="text-xs">
+                        {company.status}
+                      </Badge>
                     </div>
                   </div>
+                  
+                  {company.addressLine1 && (
+                    <div className="flex items-start gap-2 text-sm text-muted-foreground ml-8">
+                      <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <div>{company.addressLine1}</div>
+                        {company.addressLine2 && <div>{company.addressLine2}</div>}
+                        <div>
+                          {company.city && `${company.city}, `}
+                          {company.state} {company.postalCode}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-              
-              <div className="flex items-center gap-2 pt-2">
-                <Store className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">
-                  View stores and data
-                </span>
-              </div>
 
-              <div className="flex gap-2 mt-2">
-                <Button 
-                  className="flex-1" 
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectCompany(company.id);
-                  }}
-                  data-testid={`button-select-company-${company.id}`}
-                >
-                  Select Company
-                </Button>
-                <Button 
-                  variant="outline"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleManageCompany(company.id);
-                  }}
-                  data-testid={`button-manage-company-${company.id}`}
-                >
-                  <Settings2 className="h-4 w-4" />
-                </Button>
+                {/* Right: Actions */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectCompany(company.id);
+                    }}
+                    data-testid={`button-become-company-${company.id}`}
+                    title="Become this company"
+                  >
+                    <UserCircle className="h-5 w-5" />
+                  </Button>
+                  <Button 
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleManageCompany(company.id);
+                    }}
+                    data-testid={`button-manage-company-${company.id}`}
+                    title="Manage company"
+                  >
+                    <Settings2 className="h-5 w-5" />
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
