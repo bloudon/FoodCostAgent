@@ -2419,6 +2419,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Transfer Order Lines
+  app.get("/api/transfer-order-lines", async (req, res) => {
+    try {
+      const transferOrderId = req.query.transferOrderId as string;
+      if (!transferOrderId) {
+        return res.status(400).json({ error: "transferOrderId query parameter is required" });
+      }
+      const lines = await storage.getTransferOrderLines(transferOrderId);
+      res.json(lines);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   app.post("/api/transfer-order-lines", async (req, res) => {
     try {
       const { insertTransferOrderLineSchema } = await import("@shared/schema");

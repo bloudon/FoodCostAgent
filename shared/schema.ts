@@ -373,7 +373,9 @@ export const transferOrders = pgTable("transfer_orders", {
   createdBy: varchar("created_by"),
 });
 
-export const insertTransferOrderSchema = createInsertSchema(transferOrders).omit({ id: true, createdAt: true, completedAt: true });
+export const insertTransferOrderSchema = createInsertSchema(transferOrders).omit({ id: true, createdAt: true, completedAt: true }).extend({
+  expectedDate: z.coerce.date().optional(),
+});
 export type InsertTransferOrder = z.infer<typeof insertTransferOrderSchema>;
 export type TransferOrder = typeof transferOrders.$inferSelect;
 
