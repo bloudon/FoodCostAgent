@@ -107,27 +107,37 @@ export default function ReceivingDetail() {
 
   // Load draft receipt data when available
   useEffect(() => {
-    if (draftReceiptData?.receipt) {
+    if (draftReceiptData?.receipt && purchaseOrder?.lines) {
       setDraftReceiptId(draftReceiptData.receipt.id);
       
       if (draftReceiptData.receipt.storageLocationId) {
         setSelectedStorageLocation(draftReceiptData.receipt.storageLocationId);
       }
 
-      // Load saved receipt lines
-      const savedQtys: Record<string, number> = {};
+      // Build complete received quantities object
+      const allQtys: Record<string, number> = {};
       const savedSet = new Set<string>();
       
+      // First, load saved receipt lines
       draftReceiptData.lines.forEach(line => {
         // Match by vendorItemId to find the corresponding PO line
-        const poLine = purchaseOrder?.lines.find(pl => pl.vendorItemId === line.vendorItemId);
+        const poLine = purchaseOrder.lines.find(pl => pl.vendorItemId === line.vendorItemId);
         if (poLine) {
-          savedQtys[poLine.id] = line.receivedQty;
+          allQtys[poLine.id] = line.receivedQty;
           savedSet.add(poLine.id);
         }
       });
 
-      setReceivedQuantities(prev => ({ ...prev, ...savedQtys }));
+      // Then, initialize unsaved lines with expected quantities
+      purchaseOrder.lines.forEach(line => {
+        if (!savedSet.has(line.id)) {
+          // For case-based orders, use orderedQty (already in units)
+          // For unit-based orders (Misc Grocery), use orderedQty directly
+          allQtys[line.id] = line.orderedQty;
+        }
+      });
+
+      setReceivedQuantities(allQtys);
       setSavedLines(savedSet);
     }
   }, [draftReceiptData, purchaseOrder]);
@@ -181,31 +191,6 @@ export default function ReceivingDetail() {
       });
     },
   });
-
-  // Initialize received quantities with expected unit counts (cases × case size)
-  const initializeReceivedQuantities = (lines: POLineDisplay[]) => {
-    const initialized: Record<string, number> = {};
-    lines.forEach(line => {
-      // For case-based orders, calculate expected units (caseQuantity × orderedQty/case)
-      // For unit-based orders (Misc Grocery), use orderedQty directly
-      if (line.caseQuantity !== null && line.caseQuantity > 0) {
-        initialized[line.id] = line.orderedQty;
-      } else {
-        initialized[line.id] = line.orderedQty;
-      }
-    });
-    setReceivedQuantities(prev => ({ ...prev, ...initialized }));
-  };
-
-  // Initialize on load (only for lines not already saved)
-  useEffect(() => {
-    if (purchaseOrder?.lines) {
-      const unsavedLines = purchaseOrder.lines.filter(line => !savedLines.has(line.id));
-      if (unsavedLines.length > 0) {
-        initializeReceivedQuantities(unsavedLines);
-      }
-    }
-  }, [purchaseOrder]);
 
   // Update storage location when changed
   useEffect(() => {
@@ -340,7 +325,7 @@ export default function ReceivingDetail() {
     return matchesSearch && matchesCategory;
   });
 
-  const totalExpected = filteredLines.reduce((sum, line) => sum + line.lineTotal, 0);
+  const totalExpected = filteredLines.reduce((sum, line) => sum + (line.orderedQty * line.priceEach), 0);
   const totalItems = filteredLines.length;
 
   return (
