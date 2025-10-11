@@ -154,12 +154,8 @@ export const inventoryItems = pgTable("inventory_items", {
   barcode: text("barcode"),
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
   pricePerUnit: real("price_per_unit").notNull().default(0), // price per base unit (case cost = pricePerUnit × caseSize)
-  storageLocationId: varchar("storage_location_id").notNull(), // DEPRECATED: will be removed after migration
-  onHandQty: real("on_hand_qty").notNull().default(0), // DEPRECATED: will be moved to store_inventory_items
   yieldPercent: real("yield_percent"), // usable yield percentage after trimming/waste (0-100)
   imageUrl: text("image_url"),
-  parLevel: real("par_level"), // DEPRECATED: will be moved to store level
-  reorderLevel: real("reorder_level"), // DEPRECATED: will be moved to store level
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
@@ -283,8 +279,7 @@ export type RecipeComponent = typeof recipeComponents.$inferSelect;
 export const inventoryCounts = pgTable("inventory_counts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
-  storeId: varchar("store_id"), // Filter counts by store (replaces storageLocationId)
-  storageLocationId: varchar("storage_location_id"), // DEPRECATED: use storeId instead
+  storeId: varchar("store_id").notNull(), // Store where count is performed
   countedAt: timestamp("counted_at").notNull().defaultNow(),
   userId: varchar("user_id").notNull(),
   note: text("note"),
@@ -317,7 +312,7 @@ export type InventoryCountLine = typeof inventoryCountLines.$inferSelect;
 export const purchaseOrders = pgTable("purchase_orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
-  storeId: varchar("store_id"), // Store receiving the order
+  storeId: varchar("store_id").notNull(), // Store receiving the order
   vendorId: varchar("vendor_id").notNull(),
   status: text("status").notNull().default("pending"), // pending, ordered, received
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -463,8 +458,6 @@ export const transferOrders = pgTable("transfer_orders", {
   companyId: varchar("company_id").notNull(),
   fromStoreId: varchar("from_store_id").notNull(), // Source company store
   toStoreId: varchar("to_store_id").notNull(), // Destination company store
-  fromLocationId: varchar("from_location_id"), // DEPRECATED: use fromStoreId instead
-  toLocationId: varchar("to_location_id"), // DEPRECATED: use toStoreId instead
   status: text("status").notNull().default("pending"), // pending, in_transit, completed
   createdAt: timestamp("created_at").notNull().defaultNow(),
   expectedDate: timestamp("expected_date"),
