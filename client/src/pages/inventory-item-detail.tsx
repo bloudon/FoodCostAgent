@@ -1,8 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
-import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2 } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
-import type { UploadResult } from "@uppy/core";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -462,44 +461,30 @@ export default function InventoryItemDetail() {
                   </div>
                 )}
                 <ObjectUploader
-                  maxNumberOfFiles={1}
                   maxFileSize={10485760}
-                  onGetUploadParameters={async () => {
-                    const response = await apiRequest("POST", "/api/objects/upload", {});
-                    const data = await response.json();
-                    return {
-                      method: "PUT" as const,
-                      url: data.uploadURL,
-                    };
-                  }}
-                  onComplete={async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
-                    if (result.successful && result.successful[0]) {
-                      const uploadUrl = result.successful[0].uploadURL;
-                      try {
-                        const response = await apiRequest("PUT", `/api/inventory-items/${id}/image`, {
-                          imageUrl: uploadUrl,
-                        });
-                        const data = await response.json();
-                        queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id] });
-                        queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
-                        toast({
-                          title: "Image uploaded",
-                          description: "The item image has been successfully uploaded.",
-                        });
-                      } catch (error: any) {
-                        toast({
-                          title: "Upload failed",
-                          description: error.message,
-                          variant: "destructive",
-                        });
-                      }
+                  onUploadComplete={async (objectPath: string) => {
+                    try {
+                      await apiRequest("PUT", `/api/inventory-items/${id}/image`, {
+                        imageUrl: objectPath,
+                      });
+                      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id] });
+                      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+                      toast({
+                        title: "Image uploaded",
+                        description: "The item image has been successfully uploaded.",
+                      });
+                    } catch (error: any) {
+                      toast({
+                        title: "Upload failed",
+                        description: error.message,
+                        variant: "destructive",
+                      });
                     }
                   }}
+                  buttonText={item.imageUrl ? "Change Image" : "Upload Image"}
                   buttonVariant="outline"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  {item.imageUrl ? "Change Image" : "Upload Image"}
-                </ObjectUploader>
+                  dataTestId="button-upload-image"
+                />
               </div>
               <p className="text-xs text-muted-foreground">
                 Upload a product image (max 10MB). Thumbnails will be automatically generated.

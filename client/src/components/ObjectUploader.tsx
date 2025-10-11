@@ -2,7 +2,6 @@ import { useState } from "react";
 import Uppy from "@uppy/core";
 import { DashboardModal } from "@uppy/react";
 import AwsS3 from "@uppy/aws-s3";
-import type { UploadResult } from "@uppy/core";
 import { Button } from "@/components/ui/button";
 
 interface SimpleObjectUploaderProps {
@@ -10,7 +9,7 @@ interface SimpleObjectUploaderProps {
   buttonText?: string;
   dataTestId?: string;
   maxFileSize?: number;
-  buttonVariant?: "default" | "outline" | "secondary" | "ghost" | "link" | "destructive";
+  buttonVariant?: "default" | "outline" | "secondary" | "ghost" | "destructive";
 }
 
 /**
@@ -55,7 +54,7 @@ export function ObjectUploader({
           };
         },
       })
-      .on("complete", (result: UploadResult) => {
+      .on("complete", (result) => {
         // Extract uploaded file URL and call completion handler
         if (result.successful && result.successful[0]) {
           const uploadedFile = result.successful[0];
