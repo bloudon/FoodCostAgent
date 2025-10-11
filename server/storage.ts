@@ -124,7 +124,7 @@ export interface IStorage {
 
 
   // Inventory Counts
-  getInventoryCounts(): Promise<InventoryCount[]>;
+  getInventoryCounts(storageLocationId?: string): Promise<InventoryCount[]>;
   getInventoryCount(id: string): Promise<InventoryCount | undefined>;
   createInventoryCount(count: InsertInventoryCount): Promise<InventoryCount>;
   deleteInventoryCount(id: string): Promise<void>;
@@ -643,7 +643,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Inventory Counts
-  async getInventoryCounts(): Promise<InventoryCount[]> {
+  async getInventoryCounts(storageLocationId?: string): Promise<InventoryCount[]> {
+    if (storageLocationId) {
+      return db.select().from(inventoryCounts).where(eq(inventoryCounts.storageLocationId, storageLocationId));
+    }
     return db.select().from(inventoryCounts);
   }
 

@@ -1331,7 +1331,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ INVENTORY COUNTS ============
   app.get("/api/inventory-counts", async (req, res) => {
-    const counts = await storage.getInventoryCounts();
+    const storageLocationId = req.query.storageLocationId as string | undefined;
+    const counts = await storage.getInventoryCounts(storageLocationId);
     res.json(counts);
   });
 

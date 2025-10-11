@@ -106,7 +106,8 @@ export default function InventoryCount() {
   });
 
   const { data: inventoryCounts, isLoading: countsLoading } = useQuery<any[]>({
-    queryKey: ["/api/inventory-counts"],
+    queryKey: [`/api/inventory-counts?storageLocationId=${selectedLocation}`, selectedLocation],
+    enabled: !!selectedLocation,
   });
 
   const saveCountMutation = useMutation({
@@ -119,8 +120,8 @@ export default function InventoryCount() {
         description: "Inventory count has been saved successfully",
       });
       setCountLines([]);
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory", selectedLocation] });
+      queryClient.invalidateQueries({ queryKey: [`/api/inventory-counts?storageLocationId=${selectedLocation}`, selectedLocation] });
     },
     onError: (error: any) => {
       toast({

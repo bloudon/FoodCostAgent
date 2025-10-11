@@ -1,11 +1,34 @@
 import { storage } from "./storage";
 import { hashPassword } from "./auth";
 
-// TODO: Update September counts seed to use inventory items instead of products
-// This function is temporarily disabled pending full seed data conversion
-async function seedSeptemberCounts() {
-  console.log("⚠️  September counts seeding temporarily disabled - awaiting seed data conversion");
-  return;
+// Create sample inventory count sessions for Store 2 to demonstrate multi-location inventory
+async function seedStore2Counts(adminUserId: string, store2Id: string) {
+  // Check if Store 2 counts already exist
+  const existingStore2Counts = await storage.getInventoryCounts(store2Id);
+  if (existingStore2Counts.length > 0) {
+    console.log("📊 Store 2 inventory count sessions already exist");
+    return;
+  }
+
+  // Create a sample count session for Store 2 from October 1, 2025
+  const oct1Date = new Date("2025-10-01T09:00:00");
+  await storage.createInventoryCount({
+    userId: adminUserId,
+    storageLocationId: store2Id,
+    countDate: oct1Date,
+    note: "Monthly count - Store 2"
+  });
+
+  // Create another count session for Store 2 from October 8, 2025
+  const oct8Date = new Date("2025-10-08T09:00:00");
+  await storage.createInventoryCount({
+    userId: adminUserId,
+    storageLocationId: store2Id,
+    countDate: oct8Date,
+    note: "Weekly count - Store 2"
+  });
+
+  console.log("📊 Created 2 inventory count sessions for Store 2");
 }
 
 export async function seedDatabase() {
@@ -1136,18 +1159,18 @@ export async function seedDatabase() {
     }
   }
 
-  // ============ SEPTEMBER 2025 INVENTORY COUNTS ============
-  await seedSeptemberCounts();
+  // ============ STORE 2 INVENTORY COUNTS ============
+  await seedStore2Counts(adminUser.id, locations.store2.id);
 
   console.log("✅ Database seeded successfully!");
   console.log("📊 Created:");
   console.log("   - 13 units");
-  console.log("   - 3 storage locations");
+  console.log("   - 4 storage locations (Store 1, Store 2, Walk-In Cooler, Dry Storage)");
   console.log("   - 2 vendors");
   console.log("   - 25+ products");
   console.log("   - 6 vendor products");
   console.log("   - 10 recipes (2 nested)");
   console.log("   - 8 menu items");
   console.log("   - 7 days of POS sales");
-  console.log("   - 4 September 2025 inventory counts");
+  console.log("   - 2 Store 2 inventory count sessions");
 }
