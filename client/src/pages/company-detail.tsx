@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { ChevronLeft, Building2, Store, Plus, Edit, Save, X } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -50,9 +50,11 @@ export default function CompanyDetail() {
   });
 
   // Update form when company data loads
-  if (company && !isEditingCompany) {
-    companyForm.reset(company);
-  }
+  useEffect(() => {
+    if (company && !isEditingCompany) {
+      companyForm.reset(company);
+    }
+  }, [company, isEditingCompany]);
 
   const storeForm = useForm<InsertCompanyStore>({
     resolver: zodResolver(insertCompanyStoreSchema),

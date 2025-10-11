@@ -30,6 +30,8 @@ import {
   insertWasteLogSchema,
   insertCompanySettingsSchema,
   insertSystemPreferencesSchema,
+  insertCompanySchema,
+  insertCompanyStoreSchema,
 } from "@shared/schema";
 
 // Swagger/OpenAPI Configuration

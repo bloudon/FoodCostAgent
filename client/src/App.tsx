@@ -106,8 +106,8 @@ function ProtectedLayout() {
           <main className="flex-1 overflow-auto">
             <Switch>
               <Route path="/" component={Dashboard} />
-              <Route path="/companies" component={Companies} />
               <Route path="/companies/:id" component={CompanyDetail} />
+              <Route path="/companies" component={Companies} />
               <Route path="/inventory-items" component={InventoryItems} />
               <Route path="/inventory-items/new" component={InventoryItemCreate} />
               <Route path="/inventory-items/:id" component={InventoryItemDetail} />

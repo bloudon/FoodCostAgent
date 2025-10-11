@@ -77,10 +77,13 @@ export default function Companies() {
   const handleSelectCompany = (companyId: string) => {
     // Store selected company in localStorage
     localStorage.setItem("selectedCompanyId", companyId);
-    // Redirect to dashboard
-    setLocation("/");
-    // Reload to apply company filter
-    window.location.reload();
+    // Redirect to dashboard and reload to apply company filter
+    window.location.href = "/";
+  };
+
+  const handleManageCompany = (companyId: string) => {
+    // Navigate to company detail page without reloading
+    setLocation(`/companies/${companyId}`);
   };
 
   return (
@@ -231,7 +234,10 @@ export default function Companies() {
                 <Button 
                   className="flex-1" 
                   size="sm"
-                  onClick={() => handleSelectCompany(company.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSelectCompany(company.id);
+                  }}
                   data-testid={`button-select-company-${company.id}`}
                 >
                   Select Company
@@ -239,7 +245,10 @@ export default function Companies() {
                 <Button 
                   variant="outline"
                   size="sm"
-                  onClick={() => setLocation(`/companies/${company.id}`)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleManageCompany(company.id);
+                  }}
                   data-testid={`button-manage-company-${company.id}`}
                 >
                   <Settings2 className="h-4 w-4" />
