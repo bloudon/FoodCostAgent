@@ -1520,6 +1520,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const vi = vendorItems.find((vi) => vi.id === line.vendorItemId);
       const item = inventoryItems.find((i) => i.id === vi?.inventoryItemId);
       const unit = units.find((u) => u.id === line.unitId);
+      
+      // For receiving workflow, use the current inventory item price
+      // This allows price adjustments during receiving
+      const currentPricePerUnit = item?.pricePerUnit || 0;
+      const caseSize = item?.caseSize || 1;
+      const priceEach = currentPricePerUnit * caseSize;
+      
       return {
         ...line,
         inventoryItemId: vi?.inventoryItemId,
@@ -1527,6 +1534,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         vendorSku: vi?.vendorSku || "",
         unitName: unit?.name || "",
         caseQuantity: line.caseQuantity,
+        priceEach: priceEach, // Override with current inventory item price
       };
     });
 

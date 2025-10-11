@@ -5,6 +5,7 @@ import { ArrowLeft, Save, PackageCheck, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -21,6 +22,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -74,6 +83,22 @@ type ReceiptLine = {
   priceEach: number;
 };
 
+type InventoryItem = {
+  id: string;
+  name: string;
+  categoryId: string | null;
+  pluSku: string;
+  unitId: string;
+  barcode: string | null;
+  active: number;
+  pricePerUnit: number;
+  caseSize: number;
+  storageLocationId: string;
+  yieldPercent: number | null;
+  parLevel: number | null;
+  reorderLevel: number | null;
+};
+
 export default function ReceivingDetail() {
   const { poId } = useParams<{ poId: string }>();
   const [, setLocation] = useLocation();
@@ -87,6 +112,17 @@ export default function ReceivingDetail() {
   const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
   const [savedLines, setSavedLines] = useState<Set<string>>(new Set());
   const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
+  // Item editing dialog state
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [itemEditForm, setItemEditForm] = useState({
+    name: "",
+    categoryId: "",
+    pricePerUnit: "",
+    caseSize: "",
+    parLevel: "",
+    reorderLevel: "",
+  });
 
   const { data: purchaseOrder, isLoading: loadingOrder } = useQuery<PurchaseOrderDetail>({
     queryKey: [`/api/purchase-orders/${poId}`],
@@ -192,6 +228,28 @@ export default function ReceivingDetail() {
     },
   });
 
+  const updateItemMutation = useMutation({
+    mutationFn: async (data: { id: string; updates: any }) => {
+      return await apiRequest("PATCH", `/api/inventory-items/${data.id}`, data.updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      toast({
+        title: "Success",
+        description: "Item updated successfully",
+      });
+      setEditingItem(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update item",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Update storage location when changed
   useEffect(() => {
     if (selectedStorageLocation && draftReceiptId && draftReceiptData?.receipt.storageLocationId !== selectedStorageLocation) {
@@ -290,6 +348,61 @@ export default function ReceivingDetail() {
     }
 
     completeReceivingMutation.mutate(draftReceiptId);
+  };
+
+  const handleOpenItemEdit = (inventoryItemId: string) => {
+    fetch(`/api/inventory-items/${inventoryItemId}`)
+      .then(response => response.json())
+      .then((item: InventoryItem) => {
+        setEditingItem(item);
+        setItemEditForm({
+          name: item.name,
+          categoryId: item.categoryId || "",
+          pricePerUnit: item.pricePerUnit.toString(),
+          caseSize: item.caseSize.toString(),
+          parLevel: item.parLevel?.toString() || "",
+          reorderLevel: item.reorderLevel?.toString() || "",
+        });
+      })
+      .catch((error) => {
+        toast({
+          title: "Error",
+          description: "Failed to load item details",
+          variant: "destructive",
+        });
+      });
+  };
+
+  const handleCloseItemEdit = () => {
+    setEditingItem(null);
+    setItemEditForm({
+      name: "",
+      categoryId: "",
+      pricePerUnit: "",
+      caseSize: "",
+      parLevel: "",
+      reorderLevel: "",
+    });
+  };
+
+  const handleSaveItem = () => {
+    if (!editingItem) return;
+
+    const updates: any = {
+      name: itemEditForm.name,
+      categoryId: itemEditForm.categoryId === "" ? null : itemEditForm.categoryId,
+      pricePerUnit: parseFloat(itemEditForm.pricePerUnit),
+      caseSize: parseFloat(itemEditForm.caseSize),
+    };
+
+    if (itemEditForm.parLevel !== "") {
+      updates.parLevel = parseFloat(itemEditForm.parLevel);
+    }
+    if (itemEditForm.reorderLevel !== "") {
+      updates.reorderLevel = parseFloat(itemEditForm.reorderLevel);
+    }
+
+    updateItemMutation.mutate({ id: editingItem.id, updates });
   };
 
   if (loadingOrder) {
@@ -473,7 +586,19 @@ export default function ReceivingDetail() {
                           data-testid={`row-receive-item-${line.id}`}
                           className={isShort && isSaved ? "bg-red-50 dark:bg-red-950/20" : ""}
                         >
-                          <TableCell className="font-medium">{line.itemName}</TableCell>
+                          <TableCell className="font-medium">
+                            {line.inventoryItemId ? (
+                              <button
+                                onClick={() => handleOpenItemEdit(line.inventoryItemId!)}
+                                className="hover:underline text-left"
+                                data-testid={`button-item-name-${line.id}`}
+                              >
+                                {line.itemName}
+                              </button>
+                            ) : (
+                              line.itemName
+                            )}
+                          </TableCell>
                           <TableCell className="text-muted-foreground">{line.vendorSku || '-'}</TableCell>
                           <TableCell className="text-right font-mono text-muted-foreground">
                             {line.orderedQty.toFixed(2)}
@@ -534,6 +659,114 @@ export default function ReceivingDetail() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!editingItem} onOpenChange={(open) => !open && handleCloseItemEdit()}>
+        <DialogContent className="max-w-2xl" data-testid="dialog-edit-item">
+          <DialogHeader>
+            <DialogTitle>Edit Inventory Item</DialogTitle>
+            <DialogDescription>
+              Update pricing and details for this item. Changes will apply system-wide.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="item-name">Name *</Label>
+              <Input
+                id="item-name"
+                value={itemEditForm.name}
+                onChange={(e) => setItemEditForm({ ...itemEditForm, name: e.target.value })}
+                data-testid="input-item-name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="item-category">Category</Label>
+              <Select
+                value={itemEditForm.categoryId || "none"}
+                onValueChange={(value) => setItemEditForm({ ...itemEditForm, categoryId: value === "none" ? "" : value })}
+              >
+                <SelectTrigger id="item-category" data-testid="select-item-category">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No category</SelectItem>
+                  {categories?.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="item-price">Price Per Unit *</Label>
+                <Input
+                  id="item-price"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.pricePerUnit}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, pricePerUnit: e.target.value })}
+                  data-testid="input-item-price"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="item-case-size">Case Size *</Label>
+                <Input
+                  id="item-case-size"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.caseSize}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, caseSize: e.target.value })}
+                  data-testid="input-item-case-size"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="item-par-level">Par Level</Label>
+                <Input
+                  id="item-par-level"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.parLevel}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, parLevel: e.target.value })}
+                  data-testid="input-item-par-level"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="item-reorder-level">Reorder Level</Label>
+                <Input
+                  id="item-reorder-level"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.reorderLevel}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, reorderLevel: e.target.value })}
+                  data-testid="input-item-reorder-level"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleCloseItemEdit}
+              data-testid="button-cancel-item"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveItem}
+              disabled={updateItemMutation.isPending}
+              data-testid="button-save-item"
+            >
+              {updateItemMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

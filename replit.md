@@ -21,6 +21,7 @@ Preferred communication style: Simple, everyday language.
 - **Routing**: Wouter for client-side routing.
 - **Key Features**: Dark/light theme, responsive navigation, search/filtering, real-time data updates via WebSockets.
 - **Dashboard**: Displays company information card (name, address, phone, email) with conditional rendering and proper icon formatting (October 2025).
+- **Receiving Module Enhancements** (October 2025): Clickable item names in receiving table open inventory item edit dialog for quick price adjustments during receiving; changes immediately reflect in the receiving table.
 
 ### Backend
 - **Runtime**: Node.js with TypeScript.
@@ -48,6 +49,11 @@ Preferred communication style: Simple, everyday language.
 - System-wide standardization from "product" to "inventory item" terminology.
 - Enhanced vendor management with CRUD operations for vendor items and dedicated vendor detail pages.
 - Robust unit conversion module with comprehensive cooking and metric conversions.
+- **Receiving Module** (October 2025):
+  - **Partial Receipt Workflow**: Draft receipts support resumable receiving sessions with per-line saves, visual indicators for short quantities (red/pink row background), and automatic state persistence across navigation
+  - **Clickable Item Names**: Item names in receiving table are interactive buttons that open inventory item edit dialog for quick price adjustments; updated prices immediately recalculate in the receiving table via real-time backend price queries
+  - **Unit-Based Receiving**: Orders placed in cases are received in units for precise quantity tracking; expected quantities calculated from case quantities × case size
+  - **Price Synchronization**: Purchase order detail endpoint returns current inventory item prices (pricePerUnit × caseSize) instead of locked PO line prices, enabling real-time price updates during receiving
 - **Vendor Integration Architecture** (October 2025):
   - **Order Guide Type Classification**: Vendors are classified as "electronic" (EDI/API/PunchOut enabled) or "manual" (local suppliers requiring manual entry). This field is stored in the vendors.orderGuideType column and displayed in the UI with badges and form controls.
   - **VendorAdapter Pattern**: Pluggable integration system for food distributors (Sysco, GFS, US Foods)
