@@ -2672,6 +2672,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // ============ COMPANIES ============
+  app.get("/api/companies", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.user!.id);
+    
+    // Only global admins can list all companies
+    if (user?.role !== "global_admin") {
+      return res.status(403).json({ error: "Only global admins can access companies" });
+    }
+    
+    const companies = await storage.getCompanies();
+    res.json(companies);
+  });
+
+  app.get("/api/companies/:id", requireAuth, async (req, res) => {
+    const company = await storage.getCompany(req.params.id);
+    if (!company) {
+      return res.status(404).json({ error: "Company not found" });
+    }
+    res.json(company);
+  });
+
+  app.get("/api/companies/:id/stores", requireAuth, async (req, res) => {
+    const stores = await storage.getCompanyStores(req.params.id);
+    res.json(stores);
+  });
+
   // ============ COMPANY SETTINGS ============
   app.get("/api/company-settings", async (req, res) => {
     const settings = await storage.getCompanySettings();

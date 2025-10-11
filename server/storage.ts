@@ -3,6 +3,8 @@ import { db } from "./db";
 import {
   users, type User, type InsertUser,
   authSessions, type AuthSession, type InsertAuthSession,
+  companies, type Company, type InsertCompany,
+  companyStores, type CompanyStore, type InsertCompanyStore,
   storageLocations, type StorageLocation, type InsertStorageLocation,
   categories, type Category, type InsertCategory,
   units, type Unit, type InsertUnit,
@@ -199,6 +201,18 @@ export interface IStorage {
   // Waste Logs
   getWasteLogs(inventoryItemId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]>;
   createWasteLog(waste: InsertWasteLog): Promise<WasteLog>;
+
+  // Companies
+  getCompanies(): Promise<Company[]>;
+  getCompany(id: string): Promise<Company | undefined>;
+  createCompany(company: InsertCompany): Promise<Company>;
+  updateCompany(id: string, company: Partial<Company>): Promise<Company | undefined>;
+
+  // Company Stores
+  getCompanyStores(companyId: string): Promise<CompanyStore[]>;
+  getCompanyStore(id: string): Promise<CompanyStore | undefined>;
+  createCompanyStore(store: InsertCompanyStore): Promise<CompanyStore>;
+  updateCompanyStore(id: string, store: Partial<CompanyStore>): Promise<CompanyStore | undefined>;
 
   // Company Settings
   getCompanySettings(): Promise<CompanySettings | undefined>;
@@ -945,6 +959,54 @@ export class DatabaseStorage implements IStorage {
   async createWasteLog(insertWaste: InsertWasteLog): Promise<WasteLog> {
     const [waste] = await db.insert(wasteLogs).values(insertWaste).returning();
     return waste;
+  }
+
+  // Companies
+  async getCompanies(): Promise<Company[]> {
+    return await db.select().from(companies);
+  }
+
+  async getCompany(id: string): Promise<Company | undefined> {
+    const [company] = await db.select().from(companies).where(eq(companies.id, id));
+    return company || undefined;
+  }
+
+  async createCompany(insertCompany: InsertCompany): Promise<Company> {
+    const [company] = await db.insert(companies).values(insertCompany).returning();
+    return company;
+  }
+
+  async updateCompany(id: string, updates: Partial<Company>): Promise<Company | undefined> {
+    const [company] = await db
+      .update(companies)
+      .set(updates)
+      .where(eq(companies.id, id))
+      .returning();
+    return company || undefined;
+  }
+
+  // Company Stores
+  async getCompanyStores(companyId: string): Promise<CompanyStore[]> {
+    return await db.select().from(companyStores).where(eq(companyStores.companyId, companyId));
+  }
+
+  async getCompanyStore(id: string): Promise<CompanyStore | undefined> {
+    const [store] = await db.select().from(companyStores).where(eq(companyStores.id, id));
+    return store || undefined;
+  }
+
+  async createCompanyStore(insertStore: InsertCompanyStore): Promise<CompanyStore> {
+    const [store] = await db.insert(companyStores).values(insertStore).returning();
+    return store;
+  }
+
+  async updateCompanyStore(id: string, updates: Partial<CompanyStore>): Promise<CompanyStore | undefined> {
+    const [store] = await db
+      .update(companyStores)
+      .set(updates)
+      .where(eq(companyStores.id, id))
+      .returning();
+    return store || undefined;
   }
 
   // Company Settings

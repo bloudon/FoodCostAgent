@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { GlobalAdminHeader } from "@/components/global-admin-header";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
@@ -35,6 +36,7 @@ import VarianceReport from "@/pages/variance-report";
 import StorageLocations from "@/pages/storage-locations";
 import Categories from "@/pages/categories";
 import Settings from "@/pages/settings";
+import Companies from "@/pages/companies";
 import Login from "@/pages/login";
 
 function ProtectedLayout() {
@@ -45,6 +47,14 @@ function ProtectedLayout() {
   useEffect(() => {
     if (!isLoading && !user && location !== "/login") {
       setLocation("/login");
+    }
+    
+    // Auto-redirect global admins to companies page if no company is selected
+    if (!isLoading && user && user.role === "global_admin") {
+      const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+      if (!selectedCompanyId && location !== "/companies") {
+        setLocation("/companies");
+      }
     }
   }, [isLoading, user, location, setLocation]);
 
@@ -67,11 +77,14 @@ function ProtectedLayout() {
     "--sidebar-width-icon": "3rem",
   };
 
+  const isGlobalAdmin = user.role === "global_admin";
+
   return (
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1">
+          {isGlobalAdmin && <GlobalAdminHeader />}
           <header className="flex items-center justify-between p-4 border-b sticky top-0 bg-background z-10">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <div className="flex items-center gap-2">
@@ -92,6 +105,7 @@ function ProtectedLayout() {
           <main className="flex-1 overflow-auto">
             <Switch>
               <Route path="/" component={Dashboard} />
+              <Route path="/companies" component={Companies} />
               <Route path="/inventory-items" component={InventoryItems} />
               <Route path="/inventory-items/new" component={InventoryItemCreate} />
               <Route path="/inventory-items/:id" component={InventoryItemDetail} />
