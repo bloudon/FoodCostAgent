@@ -163,6 +163,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const { ObjectPermission } = await import("./objectAcl");
   const sharp = await import("sharp");
 
+  // Diagnostic endpoint to verify object storage configuration
+  app.get("/api/objects/status", requireAuth, async (req, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const privateDir = objectStorageService.getPrivateObjectDir();
+      const publicPaths = objectStorageService.getPublicObjectSearchPaths();
+      
+      // Test sidecar connectivity
+      const sidecarUrl = "http://127.0.0.1:1106/credential";
+      let sidecarStatus = "unknown";
+      try {
+        const sidecarResponse = await fetch(sidecarUrl);
+        sidecarStatus = sidecarResponse.ok ? "connected" : `error: ${sidecarResponse.status}`;
+      } catch (e: any) {
+        sidecarStatus = `unreachable: ${e.message}`;
+      }
+      
+      res.json({
+        configured: true,
+        privateDir,
+        publicPaths,
+        sidecarStatus,
+        sidecarUrl,
+      });
+    } catch (error: any) {
+      res.status(500).json({ 
+        configured: false,
+        error: error.message 
+      });
+    }
+  });
+
   // Get upload URL for inventory item images
   app.post("/api/objects/upload", requireAuth, async (req, res) => {
     try {
@@ -171,7 +203,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ uploadUrl: uploadURL }); // Use camelCase to match frontend expectation
     } catch (error: any) {
       console.error("Error getting upload URL:", error);
-      res.status(500).json({ error: "Failed to generate upload URL" });
+      res.status(500).json({ error: "Failed to generate upload URL", details: error.message });
     }
   });
 
