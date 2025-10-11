@@ -1523,9 +1523,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // For receiving workflow, use the current inventory item price
       // This allows price adjustments during receiving
-      const currentPricePerUnit = item?.pricePerUnit || 0;
+      const pricePerUnit = item?.pricePerUnit || 0;
       const caseSize = item?.caseSize || 1;
-      const priceEach = currentPricePerUnit * caseSize;
       
       return {
         ...line,
@@ -1534,7 +1533,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         vendorSku: vi?.vendorSku || "",
         unitName: unit?.name || "",
         caseQuantity: line.caseQuantity,
-        priceEach: priceEach, // Override with current inventory item price
+        pricePerUnit: pricePerUnit, // Current unit price for real-time updates
+        caseSize: caseSize, // Need this to calculate totals
       };
     });
 
@@ -1849,18 +1849,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { poId } = req.params;
       
-      // Check if draft receipt already exists
+      // Check if any receipt already exists for this PO (draft or completed)
       const existingReceipts = await storage.getReceipts();
-      const draftReceipt = existingReceipts.find(
-        r => r.purchaseOrderId === poId && r.status === "draft"
+      const existingReceipt = existingReceipts.find(
+        r => r.purchaseOrderId === poId
       );
       
-      if (draftReceipt) {
-        // Get lines for this receipt
-        const lines = await storage.getReceiptLinesByReceiptId(draftReceipt.id);
-        res.json({ receipt: draftReceipt, lines });
+      if (existingReceipt) {
+        // Get lines for this receipt (works for both draft and completed)
+        const lines = await storage.getReceiptLinesByReceiptId(existingReceipt.id);
+        res.json({ receipt: existingReceipt, lines });
       } else {
-        // Create new draft receipt
+        // Create new draft receipt only if no receipt exists
         const newReceipt = await storage.createReceipt({
           purchaseOrderId: poId,
           status: "draft",
@@ -1885,12 +1885,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Update existing line
         await storage.updateReceiptLine(existingLine.id, {
           receivedQty: lineData.receivedQty,
-          priceEach: lineData.priceEach,
+          priceEach: lineData.pricePerUnit || lineData.priceEach, // Support both for backwards compatibility
         });
         res.json({ ...existingLine, ...lineData });
       } else {
-        // Create new line
-        const newLine = await storage.createReceiptLine(lineData);
+        // Create new line - convert pricePerUnit to priceEach if needed
+        const dataToSave = lineData.pricePerUnit 
+          ? { ...lineData, priceEach: lineData.pricePerUnit }
+          : lineData;
+        const newLine = await storage.createReceiptLine(dataToSave);
         res.status(201).json(newLine);
       }
     } catch (error: any) {
@@ -1905,6 +1908,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateReceipt(req.params.id, { storageLocationId });
       const receipt = await storage.getReceipt(req.params.id);
       res.json(receipt);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Reopen completed receipt for corrections
+  app.patch("/api/receipts/:id/reopen", async (req, res) => {
+    try {
+      const receipt = await storage.getReceipt(req.params.id);
+      if (!receipt) {
+        return res.status(404).json({ error: "Receipt not found" });
+      }
+      
+      if (receipt.status !== "completed") {
+        return res.status(400).json({ error: "Receipt is not completed" });
+      }
+
+      await storage.updateReceipt(receipt.id, { status: "draft" });
+      const updatedReceipt = await storage.getReceipt(receipt.id);
+      res.json(updatedReceipt);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

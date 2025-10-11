@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Save, PackageCheck, Search } from "lucide-react";
+import { ArrowLeft, Save, PackageCheck, Search, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -53,7 +53,8 @@ type POLineDisplay = {
   caseQuantity: number | null;
   unitId: string;
   unitName: string;
-  priceEach: number;
+  pricePerUnit: number;
+  caseSize: number;
   lineTotal: number;
 };
 
@@ -179,7 +180,7 @@ export default function ReceivingDetail() {
   }, [draftReceiptData, purchaseOrder]);
 
   const saveLineMutation = useMutation({
-    mutationFn: async (data: { receiptId: string; vendorItemId: string; receivedQty: number; unitId: string; priceEach: number }) => {
+    mutationFn: async (data: { receiptId: string; vendorItemId: string; receivedQty: number; unitId: string; pricePerUnit: number }) => {
       return await apiRequest("POST", "/api/receipt-lines", data);
     },
     onSuccess: () => {
@@ -223,6 +224,26 @@ export default function ReceivingDetail() {
       toast({
         title: "Error",
         description: error.message || "Failed to complete receiving",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const reopenReceiptMutation = useMutation({
+    mutationFn: async (receiptId: string) => {
+      return await apiRequest("PATCH", `/api/receipts/${receiptId}/reopen`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/receipts/draft/${poId}`] });
+      toast({
+        title: "Success",
+        description: "Receipt reopened for editing",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reopen receipt",
         variant: "destructive",
       });
     },
@@ -282,7 +303,7 @@ export default function ReceivingDetail() {
       vendorItemId: line.vendorItemId,
       receivedQty: receivedQuantities[lineId] || 0,
       unitId: line.unitId,
-      priceEach: line.priceEach,
+      pricePerUnit: line.pricePerUnit,
     }, {
       onSuccess: () => {
         setSavedLines(prev => new Set(prev).add(lineId));
@@ -438,8 +459,12 @@ export default function ReceivingDetail() {
     return matchesSearch && matchesCategory;
   });
 
-  const totalExpected = filteredLines.reduce((sum, line) => sum + (line.orderedQty * line.priceEach), 0);
+  const totalExpected = filteredLines.reduce((sum, line) => sum + (line.orderedQty * line.pricePerUnit), 0);
   const totalItems = filteredLines.length;
+
+  // Determine if this is a completed receipt (read-only mode)
+  const isCompleted = draftReceiptData?.receipt?.status === "completed";
+  const isReadOnly = isCompleted;
 
   return (
     <div className="h-full overflow-auto">
@@ -478,6 +503,14 @@ export default function ReceivingDetail() {
             >
               {purchaseOrder.status}
             </Badge>
+            {isCompleted && (
+              <Badge 
+                className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                data-testid="badge-receipt-status"
+              >
+                received
+              </Badge>
+            )}
           </div>
         </div>
 
@@ -488,6 +521,7 @@ export default function ReceivingDetail() {
               <Select 
                 value={selectedStorageLocation} 
                 onValueChange={setSelectedStorageLocation}
+                disabled={isReadOnly}
               >
                 <SelectTrigger className="w-[250px]" data-testid="select-storage-location">
                   <SelectValue placeholder="Select destination" />
@@ -577,7 +611,7 @@ export default function ReceivingDetail() {
                     filteredLines.map((line) => {
                       const receivedQty = receivedQuantities[line.id] || 0;
                       const isSaved = savedLines.has(line.id);
-                      const lineTotal = receivedQty * line.priceEach;
+                      const lineTotal = receivedQty * line.pricePerUnit;
                       const isShort = receivedQty < line.orderedQty;
                       
                       return (
@@ -613,23 +647,26 @@ export default function ReceivingDetail() {
                               onKeyDown={(e) => handleKeyDown(e, line.id, filteredLines)}
                               className="w-24 text-right font-mono"
                               data-testid={`input-received-qty-${line.id}`}
+                              disabled={isReadOnly}
                             />
                           </TableCell>
                           <TableCell>{line.unitName}</TableCell>
-                          <TableCell className="text-right font-mono">${line.priceEach.toFixed(4)}</TableCell>
+                          <TableCell className="text-right font-mono">${line.pricePerUnit.toFixed(4)}</TableCell>
                           <TableCell className="text-right font-mono font-semibold">
                             ${lineTotal.toFixed(2)}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              size="sm"
-                              onClick={() => handleSaveLine(line.id)}
-                              disabled={isSaved || saveLineMutation.isPending}
-                              variant={isSaved ? "outline" : "default"}
-                              data-testid={`button-save-line-${line.id}`}
-                            >
-                              {isSaved ? "Saved" : "Save"}
-                            </Button>
+                            {!isReadOnly && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleSaveLine(line.id)}
+                                disabled={isSaved || saveLineMutation.isPending}
+                                variant={isSaved ? "outline" : "default"}
+                                data-testid={`button-save-line-${line.id}`}
+                              >
+                                {isSaved ? "Saved" : "Save"}
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
@@ -640,21 +677,43 @@ export default function ReceivingDetail() {
             </div>
 
             <div className="flex justify-end mt-6 gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setLocation("/receiving")}
-                data-testid="button-cancel-receiving"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCompleteReceiving}
-                disabled={!selectedStorageLocation || completeReceivingMutation.isPending || !draftReceiptId}
-                data-testid="button-complete-receiving"
-              >
-                <PackageCheck className="h-4 w-4 mr-2" />
-                {completeReceivingMutation.isPending ? "Receiving..." : "Complete Receiving"}
-              </Button>
+              {isReadOnly ? (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => setLocation("/receiving")}
+                    data-testid="button-back-to-receiving-footer"
+                  >
+                    Back to Receiving
+                  </Button>
+                  <Button
+                    onClick={() => reopenReceiptMutation.mutate(draftReceiptId!)}
+                    disabled={!draftReceiptId || reopenReceiptMutation.isPending}
+                    data-testid="button-reopen-receipt"
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    {reopenReceiptMutation.isPending ? "Reopening..." : "Reopen Receipt"}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => setLocation("/receiving")}
+                    data-testid="button-cancel-receiving"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCompleteReceiving}
+                    disabled={!selectedStorageLocation || completeReceivingMutation.isPending || !draftReceiptId}
+                    data-testid="button-complete-receiving"
+                  >
+                    <PackageCheck className="h-4 w-4 mr-2" />
+                    {completeReceivingMutation.isPending ? "Receiving..." : "Complete Receiving"}
+                  </Button>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>

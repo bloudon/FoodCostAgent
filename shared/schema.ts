@@ -277,7 +277,9 @@ export const receiptLines = pgTable("receipt_lines", {
   priceEach: real("price_each").notNull(),
 });
 
-export const insertReceiptLineSchema = createInsertSchema(receiptLines).omit({ id: true });
+export const insertReceiptLineSchema = createInsertSchema(receiptLines).omit({ id: true }).extend({
+  pricePerUnit: z.number().optional(), // Support pricePerUnit for frontend (same as priceEach)
+});
 export type InsertReceiptLine = z.infer<typeof insertReceiptLineSchema>;
 export type ReceiptLine = typeof receiptLines.$inferSelect;
 
