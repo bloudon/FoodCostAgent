@@ -37,6 +37,7 @@ import StorageLocations from "@/pages/storage-locations";
 import Categories from "@/pages/categories";
 import Settings from "@/pages/settings";
 import Companies from "@/pages/companies";
+import CompanyDetail from "@/pages/company-detail";
 import Login from "@/pages/login";
 
 function ProtectedLayout() {
@@ -106,6 +107,7 @@ function ProtectedLayout() {
             <Switch>
               <Route path="/" component={Dashboard} />
               <Route path="/companies" component={Companies} />
+              <Route path="/companies/:id" component={CompanyDetail} />
               <Route path="/inventory-items" component={InventoryItems} />
               <Route path="/inventory-items/new" component={InventoryItemCreate} />
               <Route path="/inventory-items/:id" component={InventoryItemDetail} />
