@@ -25,6 +25,8 @@ import {
   menuItems, type MenuItem, type InsertMenuItem,
   recipeVersions, type RecipeVersion, type InsertRecipeVersion,
   transferLogs, type TransferLog, type InsertTransferLog,
+  transferOrders, type TransferOrder, type InsertTransferOrder,
+  transferOrderLines, type TransferOrderLine, type InsertTransferOrderLine,
   wasteLogs, type WasteLog, type InsertWasteLog,
   companySettings, type CompanySettings, type InsertCompanySettings,
   systemPreferences, type SystemPreferences, type InsertSystemPreferences,
@@ -180,6 +182,19 @@ export interface IStorage {
   // Transfer Logs
   getTransferLogs(inventoryItemId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]>;
   createTransferLog(transfer: InsertTransferLog): Promise<TransferLog>;
+
+  // Transfer Orders
+  getTransferOrders(): Promise<TransferOrder[]>;
+  getTransferOrder(id: string): Promise<TransferOrder | undefined>;
+  createTransferOrder(order: InsertTransferOrder): Promise<TransferOrder>;
+  updateTransferOrder(id: string, order: Partial<TransferOrder>): Promise<TransferOrder | undefined>;
+  deleteTransferOrder(id: string): Promise<void>;
+
+  // Transfer Order Lines
+  getTransferOrderLines(transferOrderId: string): Promise<TransferOrderLine[]>;
+  createTransferOrderLine(line: InsertTransferOrderLine): Promise<TransferOrderLine>;
+  updateTransferOrderLine(id: string, line: Partial<TransferOrderLine>): Promise<TransferOrderLine | undefined>;
+  deleteTransferOrderLine(id: string): Promise<void>;
 
   // Waste Logs
   getWasteLogs(inventoryItemId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]>;
@@ -845,6 +860,57 @@ export class DatabaseStorage implements IStorage {
   async createTransferLog(insertTransfer: InsertTransferLog): Promise<TransferLog> {
     const [transfer] = await db.insert(transferLogs).values(insertTransfer).returning();
     return transfer;
+  }
+
+  // Transfer Orders
+  async getTransferOrders(): Promise<TransferOrder[]> {
+    return db.select().from(transferOrders).orderBy(transferOrders.createdAt);
+  }
+
+  async getTransferOrder(id: string): Promise<TransferOrder | undefined> {
+    const [order] = await db.select().from(transferOrders).where(eq(transferOrders.id, id));
+    return order || undefined;
+  }
+
+  async createTransferOrder(insertOrder: InsertTransferOrder): Promise<TransferOrder> {
+    const [order] = await db.insert(transferOrders).values(insertOrder).returning();
+    return order;
+  }
+
+  async updateTransferOrder(id: string, updates: Partial<TransferOrder>): Promise<TransferOrder | undefined> {
+    const [order] = await db
+      .update(transferOrders)
+      .set(updates)
+      .where(eq(transferOrders.id, id))
+      .returning();
+    return order || undefined;
+  }
+
+  async deleteTransferOrder(id: string): Promise<void> {
+    await db.delete(transferOrders).where(eq(transferOrders.id, id));
+  }
+
+  // Transfer Order Lines
+  async getTransferOrderLines(transferOrderId: string): Promise<TransferOrderLine[]> {
+    return db.select().from(transferOrderLines).where(eq(transferOrderLines.transferOrderId, transferOrderId));
+  }
+
+  async createTransferOrderLine(insertLine: InsertTransferOrderLine): Promise<TransferOrderLine> {
+    const [line] = await db.insert(transferOrderLines).values(insertLine).returning();
+    return line;
+  }
+
+  async updateTransferOrderLine(id: string, updates: Partial<TransferOrderLine>): Promise<TransferOrderLine | undefined> {
+    const [line] = await db
+      .update(transferOrderLines)
+      .set(updates)
+      .where(eq(transferOrderLines.id, id))
+      .returning();
+    return line || undefined;
+  }
+
+  async deleteTransferOrderLine(id: string): Promise<void> {
+    await db.delete(transferOrderLines).where(eq(transferOrderLines.id, id));
   }
 
   // Waste Logs

@@ -197,6 +197,7 @@ export type RecipeComponent = typeof recipeComponents.$inferSelect;
 // Inventory Counts
 export const inventoryCounts = pgTable("inventory_counts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  storageLocationId: varchar("storage_location_id"), // Filter counts by location (store)
   countedAt: timestamp("counted_at").notNull().defaultNow(),
   userId: varchar("user_id").notNull(),
   note: text("note"),
@@ -358,6 +359,37 @@ export const transferLogs = pgTable("transfer_logs", {
 export const insertTransferLogSchema = createInsertSchema(transferLogs).omit({ id: true, transferredAt: true });
 export type InsertTransferLog = z.infer<typeof insertTransferLogSchema>;
 export type TransferLog = typeof transferLogs.$inferSelect;
+
+// Transfer Orders (for planning and tracking inventory transfers between locations)
+export const transferOrders = pgTable("transfer_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromLocationId: varchar("from_location_id").notNull(),
+  toLocationId: varchar("to_location_id").notNull(),
+  status: text("status").notNull().default("pending"), // pending, in_transit, completed
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expectedDate: timestamp("expected_date"),
+  completedAt: timestamp("completed_at"),
+  notes: text("notes"),
+  createdBy: varchar("created_by"),
+});
+
+export const insertTransferOrderSchema = createInsertSchema(transferOrders).omit({ id: true, createdAt: true, completedAt: true });
+export type InsertTransferOrder = z.infer<typeof insertTransferOrderSchema>;
+export type TransferOrder = typeof transferOrders.$inferSelect;
+
+// Transfer Order Lines
+export const transferOrderLines = pgTable("transfer_order_lines", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  transferOrderId: varchar("transfer_order_id").notNull(),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
+  requestedQty: real("requested_qty").notNull(), // quantity in base units
+  shippedQty: real("shipped_qty").default(0), // actual quantity shipped
+  unitId: varchar("unit_id").notNull(),
+});
+
+export const insertTransferOrderLineSchema = createInsertSchema(transferOrderLines).omit({ id: true });
+export type InsertTransferOrderLine = z.infer<typeof insertTransferOrderLineSchema>;
+export type TransferOrderLine = typeof transferOrderLines.$inferSelect;
 
 // Waste Logs (for tracking waste and spoilage)
 export const wasteLogs = pgTable("waste_logs", {
