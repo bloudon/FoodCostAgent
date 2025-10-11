@@ -763,7 +763,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createReceiptLine(insertLine: InsertReceiptLine): Promise<ReceiptLine> {
-    const [line] = await db.insert(receiptLines).values(insertLine).returning();
+    // Ensure priceEach is set (convert from pricePerUnit if needed)
+    const dataToInsert = {
+      ...insertLine,
+      priceEach: insertLine.priceEach ?? insertLine.pricePerUnit ?? 0
+    };
+    const [line] = await db.insert(receiptLines).values(dataToInsert).returning();
     return line;
   }
 

@@ -28,6 +28,7 @@ import PurchaseOrders from "@/pages/purchase-orders";
 import PurchaseOrderDetail from "@/pages/purchase-order-detail";
 import Receiving from "@/pages/receiving";
 import ReceivingDetail from "@/pages/receiving-detail";
+import TransferOrders from "@/pages/transfer-orders";
 import VarianceReport from "@/pages/variance-report";
 import StorageLocations from "@/pages/storage-locations";
 import Categories from "@/pages/categories";
@@ -103,6 +104,7 @@ function ProtectedLayout() {
               <Route path="/purchase-orders" component={PurchaseOrders} />
               <Route path="/receiving/:poId" component={ReceivingDetail} />
               <Route path="/receiving" component={Receiving} />
+              <Route path="/transfer-orders" component={TransferOrders} />
               <Route path="/variance" component={VarianceReport} />
               <Route path="/storage-locations" component={StorageLocations} />
               <Route path="/categories" component={Categories} />

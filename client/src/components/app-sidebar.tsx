@@ -62,6 +62,11 @@ const menuItems = [
     icon: PackageCheck,
   },
   {
+    title: "Transfer Orders",
+    url: "/transfer-orders",
+    icon: ArrowLeftRight,
+  },
+  {
     title: "Variance Report",
     url: "/variance",
     icon: BarChart3,

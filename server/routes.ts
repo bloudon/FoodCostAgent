@@ -2310,6 +2310,232 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(Object.values(trends));
   });
 
+  // ============ TRANSFER ORDERS ============
+  app.get("/api/transfer-orders", async (req, res) => {
+    const orders = await storage.getTransferOrders();
+    const locations = await storage.getStorageLocations();
+    
+    const ordersWithDetails = orders.map(order => {
+      const fromLocation = locations.find(l => l.id === order.fromLocationId);
+      const toLocation = locations.find(l => l.id === order.toLocationId);
+      return {
+        ...order,
+        fromLocationName: fromLocation?.name || "Unknown",
+        toLocationName: toLocation?.name || "Unknown",
+      };
+    });
+    
+    res.json(ordersWithDetails);
+  });
+
+  app.get("/api/transfer-orders/:id", async (req, res) => {
+    const order = await storage.getTransferOrder(req.params.id);
+    if (!order) {
+      return res.status(404).json({ error: "Transfer order not found" });
+    }
+    
+    const lines = await storage.getTransferOrderLines(order.id);
+    const locations = await storage.getStorageLocations();
+    const inventoryItems = await storage.getInventoryItems();
+    const units = await storage.getUnits();
+    
+    const linesWithDetails = lines.map(line => {
+      const item = inventoryItems.find(i => i.id === line.inventoryItemId);
+      const unit = units.find(u => u.id === line.unitId);
+      return {
+        ...line,
+        itemName: item?.name || "Unknown",
+        unitName: unit?.name || "Unknown",
+      };
+    });
+    
+    const fromLocation = locations.find(l => l.id === order.fromLocationId);
+    const toLocation = locations.find(l => l.id === order.toLocationId);
+    
+    res.json({
+      ...order,
+      fromLocationName: fromLocation?.name || "Unknown",
+      toLocationName: toLocation?.name || "Unknown",
+      lines: linesWithDetails,
+    });
+  });
+
+  app.post("/api/transfer-orders", async (req, res) => {
+    try {
+      const { insertTransferOrderSchema } = await import("@shared/schema");
+      const orderData = insertTransferOrderSchema.parse(req.body);
+      const order = await storage.createTransferOrder(orderData);
+      res.status(201).json(order);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/transfer-orders/:id", async (req, res) => {
+    try {
+      const order = await storage.getTransferOrder(req.params.id);
+      if (!order) {
+        return res.status(404).json({ error: "Transfer order not found" });
+      }
+      
+      // Prevent modification of completed orders
+      if (order.status === "completed") {
+        return res.status(409).json({ error: "Cannot modify completed transfer order" });
+      }
+      
+      // Only allow updating notes and expectedDate - not status or locations
+      const allowedUpdates: Partial<{
+        notes: string;
+        expectedDate: Date;
+      }> = {};
+      
+      if (req.body.notes !== undefined) allowedUpdates.notes = req.body.notes;
+      if (req.body.expectedDate) allowedUpdates.expectedDate = new Date(req.body.expectedDate);
+      
+      const updated = await storage.updateTransferOrder(req.params.id, allowedUpdates);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/transfer-orders/:id", async (req, res) => {
+    try {
+      const order = await storage.getTransferOrder(req.params.id);
+      if (!order) {
+        return res.status(404).json({ error: "Transfer order not found" });
+      }
+      
+      // Prevent deletion of completed orders
+      if (order.status === "completed") {
+        return res.status(409).json({ error: "Cannot delete completed transfer order" });
+      }
+      
+      await storage.deleteTransferOrder(req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Transfer Order Lines
+  app.post("/api/transfer-order-lines", async (req, res) => {
+    try {
+      const { insertTransferOrderLineSchema } = await import("@shared/schema");
+      const lineData = insertTransferOrderLineSchema.parse(req.body);
+      const line = await storage.createTransferOrderLine(lineData);
+      res.status(201).json(line);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/transfer-order-lines/:id", async (req, res) => {
+    try {
+      const line = await storage.updateTransferOrderLine(req.params.id, req.body);
+      if (!line) {
+        return res.status(404).json({ error: "Transfer order line not found" });
+      }
+      res.json(line);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/transfer-order-lines/:id", async (req, res) => {
+    try {
+      await storage.deleteTransferOrderLine(req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Execute transfer (complete the transfer and update inventory)
+  app.post("/api/transfer-orders/:id/execute", async (req, res) => {
+    try {
+      const order = await storage.getTransferOrder(req.params.id);
+      if (!order) {
+        return res.status(404).json({ error: "Transfer order not found" });
+      }
+      
+      if (order.status === "completed") {
+        return res.status(400).json({ error: "Transfer already completed" });
+      }
+      
+      const lines = await storage.getTransferOrderLines(order.id);
+      const inventoryItems = await storage.getInventoryItems();
+      
+      // Process each line
+      for (const line of lines) {
+        const shippedQty = line.shippedQty || line.requestedQty;
+        
+        // Get inventory at both locations
+        const fromItems = await storage.getInventoryItems(order.fromLocationId);
+        const toItems = await storage.getInventoryItems(order.toLocationId);
+        
+        const fromItem = fromItems.find(i => i.id === line.inventoryItemId);
+        const toItem = toItems.find(i => i.id === line.inventoryItemId);
+        
+        if (!fromItem) {
+          return res.status(400).json({ 
+            error: `Item not found at source location` 
+          });
+        }
+        
+        if (fromItem.onHandQty < shippedQty) {
+          return res.status(400).json({ 
+            error: `Insufficient quantity at source. Available: ${fromItem.onHandQty}, Needed: ${shippedQty}` 
+          });
+        }
+        
+        // Update source location inventory (decrease)
+        await storage.updateInventoryItem(fromItem.id, {
+          onHandQty: fromItem.onHandQty - shippedQty
+        });
+        
+        // Update destination location inventory (increase)
+        if (toItem) {
+          await storage.updateInventoryItem(toItem.id, {
+            onHandQty: toItem.onHandQty + shippedQty
+          });
+        } else {
+          // Create inventory at destination if it doesn't exist
+          const baseItem = inventoryItems.find(i => i.id === line.inventoryItemId);
+          if (baseItem) {
+            const { id, ...itemData } = baseItem;
+            await storage.createInventoryItem({
+              ...itemData,
+              storageLocationId: order.toLocationId,
+              onHandQty: shippedQty,
+            });
+          }
+        }
+        
+        // Create transfer log
+        await storage.createTransferLog({
+          inventoryItemId: line.inventoryItemId,
+          fromLocationId: order.fromLocationId,
+          toLocationId: order.toLocationId,
+          qty: shippedQty,
+          unitId: line.unitId,
+          transferredBy: (req as any).user?.id,
+          reason: `Transfer Order #${order.id.slice(0, 8)}`,
+        });
+      }
+      
+      // Mark order as completed
+      await storage.updateTransferOrder(order.id, {
+        status: "completed",
+        completedAt: new Date(),
+      });
+      
+      res.json({ success: true, message: "Transfer completed successfully" });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ COGS & COST ANALYSIS ============
   app.get("/api/reports/cogs-summary", async (req, res) => {
     const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
