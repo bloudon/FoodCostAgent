@@ -140,8 +140,8 @@ export interface IStorage {
   deleteInventoryCountLine(id: string): Promise<void>;
 
   // Purchase Orders
-  getPurchaseOrders(): Promise<PurchaseOrder[]>;
-  getPurchaseOrder(id: string): Promise<PurchaseOrder | undefined>;
+  getPurchaseOrders(companyId: string, storeId?: string): Promise<PurchaseOrder[]>;
+  getPurchaseOrder(id: string, companyId: string): Promise<PurchaseOrder | undefined>;
   createPurchaseOrder(po: InsertPurchaseOrder): Promise<PurchaseOrder>;
   updatePurchaseOrder(id: string, po: Partial<PurchaseOrder>): Promise<PurchaseOrder | undefined>;
   deletePurchaseOrder(id: string): Promise<void>;
@@ -737,12 +737,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Purchase Orders
-  async getPurchaseOrders(): Promise<PurchaseOrder[]> {
-    return db.select().from(purchaseOrders);
+  async getPurchaseOrders(companyId: string, storeId?: string): Promise<PurchaseOrder[]> {
+    const conditions = [eq(purchaseOrders.companyId, companyId)];
+    if (storeId) {
+      conditions.push(eq(purchaseOrders.storeId, storeId));
+    }
+    return db.select().from(purchaseOrders).where(and(...conditions));
   }
 
-  async getPurchaseOrder(id: string): Promise<PurchaseOrder | undefined> {
-    const [po] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id));
+  async getPurchaseOrder(id: string, companyId: string): Promise<PurchaseOrder | undefined> {
+    const [po] = await db.select().from(purchaseOrders).where(
+      and(
+        eq(purchaseOrders.id, id),
+        eq(purchaseOrders.companyId, companyId)
+      )
+    );
     return po || undefined;
   }
 
