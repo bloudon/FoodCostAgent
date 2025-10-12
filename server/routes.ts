@@ -1333,8 +1333,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ INVENTORY COUNTS ============
   app.get("/api/inventory-counts", async (req, res) => {
+    const companyId = req.query.companyId as string | undefined;
+    const storeId = req.query.storeId as string | undefined;
     const storageLocationId = req.query.storageLocationId as string | undefined;
-    const counts = await storage.getInventoryCounts(storageLocationId);
+    const counts = await storage.getInventoryCounts(companyId, storeId, storageLocationId);
     res.json(counts);
   });
 
@@ -1496,8 +1498,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Count not found" });
       }
 
-      // Get all counts and find the one immediately before this one
-      const allCounts = await storage.getInventoryCounts();
+      // Get counts from the same company and store, and find the one immediately before this one
+      const allCounts = await storage.getInventoryCounts(currentCount.companyId, currentCount.storeId);
       const previousCount = allCounts
         .filter(c => new Date(c.countedAt) < new Date(currentCount.countedAt))
         .sort((a, b) => new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime())[0];
@@ -2117,9 +2119,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
       const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
+      const companyId = req.query.companyId as string | undefined;
+      const storeId = req.query.storeId as string | undefined;
 
       const theoreticalUsage = await calculateTheoreticalUsage(startDate, endDate);
-      const actualUsage = await calculateActualUsage(startDate, endDate);
+      const actualUsage = await calculateActualUsage(startDate, endDate, companyId, storeId);
 
       // Get actual inventory items to access id and pricePerUnit
       const inventoryItems = await storage.getInventoryItems();
@@ -3165,9 +3169,11 @@ async function calculateRecipeUsage(
 
 async function calculateActualUsage(
   startDate?: Date,
-  endDate?: Date
+  endDate?: Date,
+  companyId?: string,
+  storeId?: string
 ): Promise<Record<string, number>> {
-  const counts = await storage.getInventoryCounts();
+  const counts = await storage.getInventoryCounts(companyId, storeId);
   const receipts = await storage.getReceipts();
   const usage: Record<string, number> = {};
 
