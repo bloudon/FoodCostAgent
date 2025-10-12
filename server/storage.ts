@@ -98,8 +98,8 @@ export interface IStorage {
   setInventoryItemLocations(inventoryItemId: string, locationIds: string[], primaryLocationId?: string): Promise<void>;
 
   // Vendors
-  getVendors(): Promise<Vendor[]>;
-  getVendor(id: string): Promise<Vendor | undefined>;
+  getVendors(companyId?: string): Promise<Vendor[]>;
+  getVendor(id: string, companyId?: string): Promise<Vendor | undefined>;
   createVendor(vendor: InsertVendor): Promise<Vendor>;
   updateVendor(id: string, vendor: Partial<Vendor>): Promise<Vendor | undefined>;
   deleteVendor(id: string): Promise<void>;
@@ -537,11 +537,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Vendors
-  async getVendors(): Promise<Vendor[]> {
+  async getVendors(companyId?: string): Promise<Vendor[]> {
+    if (companyId) {
+      return db.select().from(vendors).where(eq(vendors.companyId, companyId));
+    }
     return db.select().from(vendors);
   }
 
-  async getVendor(id: string): Promise<Vendor | undefined> {
+  async getVendor(id: string, companyId?: string): Promise<Vendor | undefined> {
+    if (companyId) {
+      const [vendor] = await db.select().from(vendors).where(
+        and(eq(vendors.id, id), eq(vendors.companyId, companyId))
+      );
+      return vendor || undefined;
+    }
     const [vendor] = await db.select().from(vendors).where(eq(vendors.id, id));
     return vendor || undefined;
   }
