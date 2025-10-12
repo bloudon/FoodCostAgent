@@ -10,7 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ChevronLeft, Building2, Store, Plus, Edit, Save, X } from "lucide-react";
+import { ChevronLeft, Building2, Store, Plus, Edit, Save, X, Pencil } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
@@ -30,6 +30,7 @@ export default function CompanyDetail() {
   const [isEditingCompany, setIsEditingCompany] = useState(false);
   const [editingStore, setEditingStore] = useState<CompanyStore | null>(null);
   const [isNewStoreDialogOpen, setIsNewStoreDialogOpen] = useState(false);
+  const [isEditStoreDialogOpen, setIsEditStoreDialogOpen] = useState(false);
 
   const { data: company, isLoading: loadingCompany } = useQuery<Company>({
     queryKey: [`/api/companies/${id}`],
@@ -66,6 +67,25 @@ export default function CompanyDetail() {
     },
   });
 
+  // Reset form when editing a store
+  useEffect(() => {
+    if (editingStore && isEditStoreDialogOpen) {
+      storeForm.reset({
+        companyId: editingStore.companyId,
+        name: editingStore.name,
+        code: editingStore.code,
+        phone: editingStore.phone ?? undefined,
+        addressLine1: editingStore.addressLine1 ?? undefined,
+        addressLine2: editingStore.addressLine2 ?? undefined,
+        city: editingStore.city ?? undefined,
+        state: editingStore.state ?? undefined,
+        postalCode: editingStore.postalCode ?? undefined,
+        tccLocationId: editingStore.tccLocationId ?? undefined,
+        status: editingStore.status,
+      });
+    }
+  }, [editingStore, isEditStoreDialogOpen]);
+
   const updateCompanyMutation = useMutation({
     mutationFn: async (data: Partial<InsertCompany>) => {
       const response = await fetch(`/api/companies/${id}`, {
@@ -100,6 +120,7 @@ export default function CompanyDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/companies/${id}/stores`] });
       setEditingStore(null);
+      setIsEditStoreDialogOpen(false);
       toast({ title: "Store updated successfully" });
     },
     onError: (error: Error) => {
@@ -133,10 +154,22 @@ export default function CompanyDetail() {
   };
 
   const handleStoreSubmit = (data: InsertCompanyStore) => {
+    // Normalize optional fields: convert empty strings to null for database
+    const normalizedData = {
+      ...data,
+      phone: data.phone?.trim() || null,
+      addressLine1: data.addressLine1?.trim() || null,
+      addressLine2: data.addressLine2?.trim() || null,
+      city: data.city?.trim() || null,
+      state: data.state?.trim() || null,
+      postalCode: data.postalCode?.trim() || null,
+      tccLocationId: data.tccLocationId?.trim() || null,
+    };
+    
     if (editingStore) {
-      updateStoreMutation.mutate({ storeId: editingStore.id, data });
+      updateStoreMutation.mutate({ storeId: editingStore.id, data: normalizedData });
     } else {
-      createStoreMutation.mutate(data);
+      createStoreMutation.mutate(normalizedData);
     }
   };
 
@@ -440,7 +473,7 @@ export default function CompanyDetail() {
                           <FormItem>
                             <FormLabel>Phone</FormLabel>
                             <FormControl>
-                              <Input {...field} value={field.value || ""} data-testid="input-store-phone" />
+                              <Input {...field} value={field.value ?? ""} data-testid="input-store-phone" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -448,12 +481,79 @@ export default function CompanyDetail() {
                       />
                       <FormField
                         control={storeForm.control}
+                        name="addressLine1"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Address Line 1</FormLabel>
+                            <FormControl>
+                              <Input {...field} value={field.value ?? ""} data-testid="input-address-line1" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={storeForm.control}
+                        name="addressLine2"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Address Line 2</FormLabel>
+                            <FormControl>
+                              <Input {...field} value={field.value ?? ""} placeholder="Apt, Suite, etc." data-testid="input-address-line2" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <div className="grid grid-cols-3 gap-4">
+                        <FormField
+                          control={storeForm.control}
+                          name="city"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>City</FormLabel>
+                              <FormControl>
+                                <Input {...field} value={field.value ?? ""} data-testid="input-city" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={storeForm.control}
+                          name="state"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>State</FormLabel>
+                              <FormControl>
+                                <Input {...field} value={field.value ?? ""} placeholder="TX" data-testid="input-state" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={storeForm.control}
+                          name="postalCode"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>ZIP Code</FormLabel>
+                              <FormControl>
+                                <Input {...field} value={field.value ?? ""} data-testid="input-postal-code" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <FormField
+                        control={storeForm.control}
                         name="tccLocationId"
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>TCC Location ID (Thrive POS)</FormLabel>
                             <FormControl>
-                              <Input {...field} value={field.value || ""} placeholder="6a459cda-a9b3-40da-b6a7-5c858b30a3a7" data-testid="input-tcc-location-id" />
+                              <Input {...field} value={field.value ?? ""} placeholder="6a459cda-a9b3-40da-b6a7-5c858b30a3a7" data-testid="input-tcc-location-id" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -507,6 +607,17 @@ export default function CompanyDetail() {
                       >
                         {store.status}
                       </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setEditingStore(store);
+                          setIsEditStoreDialogOpen(true);
+                        }}
+                        data-testid={`button-edit-store-${store.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
                       {store.status === "active" ? (
                         <Button
                           variant="outline"
@@ -534,6 +645,195 @@ export default function CompanyDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Edit Store Dialog */}
+      <Dialog open={isEditStoreDialogOpen} onOpenChange={(open) => {
+        setIsEditStoreDialogOpen(open);
+        if (!open) {
+          setEditingStore(null);
+          storeForm.reset({
+            companyId: id || "",
+            code: "",
+            name: "",
+            status: "active",
+          });
+        }
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Store</DialogTitle>
+            <DialogDescription>Update store information and settings</DialogDescription>
+          </DialogHeader>
+          {editingStore && (
+            <Form {...storeForm} key={editingStore.id}>
+              <form onSubmit={storeForm.handleSubmit(handleStoreSubmit)} className="space-y-4">
+                <FormField
+                  control={storeForm.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Store Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} data-testid="input-edit-store-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={storeForm.control}
+                  name="code"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Store Code</FormLabel>
+                      <FormControl>
+                        <Input {...field} data-testid="input-edit-store-code" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={storeForm.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value ?? ""} data-testid="input-edit-store-phone" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={storeForm.control}
+                  name="addressLine1"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Address Line 1</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value ?? ""} data-testid="input-edit-address-line1" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={storeForm.control}
+                  name="addressLine2"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Address Line 2</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value ?? ""} placeholder="Apt, Suite, etc." data-testid="input-edit-address-line2" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-3 gap-4">
+                  <FormField
+                    control={storeForm.control}
+                    name="city"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>City</FormLabel>
+                        <FormControl>
+                          <Input {...field} value={field.value ?? ""} data-testid="input-edit-city" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={storeForm.control}
+                    name="state"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>State</FormLabel>
+                        <FormControl>
+                          <Input {...field} value={field.value ?? ""} placeholder="TX" data-testid="input-edit-state" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={storeForm.control}
+                    name="postalCode"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>ZIP Code</FormLabel>
+                        <FormControl>
+                          <Input {...field} value={field.value ?? ""} data-testid="input-edit-postal-code" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <FormField
+                  control={storeForm.control}
+                  name="tccLocationId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>TCC Location ID (Thrive POS)</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value ?? ""} placeholder="6a459cda-a9b3-40da-b6a7-5c858b30a3a7" data-testid="input-edit-tcc-location-id" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={storeForm.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-edit-status">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditStoreDialogOpen(false);
+                      setEditingStore(null);
+                      storeForm.reset({
+                        companyId: id || "",
+                        code: "",
+                        name: "",
+                        status: "active",
+                      });
+                    }}
+                    data-testid="button-cancel-edit-store"
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={updateStoreMutation.isPending} data-testid="button-save-edit-store">
+                    {updateStoreMutation.isPending ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
