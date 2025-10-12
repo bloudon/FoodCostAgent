@@ -18,12 +18,16 @@ export const companies = pgTable("companies", {
   country: text("country").notNull().default("US"),
   timezone: text("timezone").notNull().default("America/New_York"),
   logoImagePath: text("logo_image_path"), // Company logo image path
-  tccAccountId: text("tcc_account_id"), // The Chef's Companion account ID
+  tccAccountId: text("tcc_account_id").notNull().default(sql`gen_random_uuid()`), // The Chef's Companion (Thrive POS) account ID
   status: text("status").notNull().default("active"), // active, inactive, suspended
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const insertCompanySchema = createInsertSchema(companies).omit({ id: true, createdAt: true });
+export const insertCompanySchema = createInsertSchema(companies)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    tccAccountId: z.string().uuid("TCC Account ID must be a valid UUID"),
+  });
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type Company = typeof companies.$inferSelect;
 
@@ -40,13 +44,17 @@ export const companyStores = pgTable("company_stores", {
   state: text("state"),
   postalCode: text("postal_code"),
   timezone: text("timezone"),
-  tccLocationId: text("tcc_location_id"), // The Chef's Companion location ID
+  tccLocationId: text("tcc_location_id").notNull().default(sql`gen_random_uuid()`), // The Chef's Companion (Thrive POS) location ID
   status: text("status").notNull().default("active"), // active, inactive, closed
   openedAt: timestamp("opened_at"),
   closedAt: timestamp("closed_at"),
 });
 
-export const insertCompanyStoreSchema = createInsertSchema(companyStores).omit({ id: true });
+export const insertCompanyStoreSchema = createInsertSchema(companyStores)
+  .omit({ id: true })
+  .extend({
+    tccLocationId: z.string().uuid("TCC Location ID must be a valid UUID"),
+  });
 export type InsertCompanyStore = z.infer<typeof insertCompanyStoreSchema>;
 export type CompanyStore = typeof companyStores.$inferSelect;
 

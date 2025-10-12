@@ -446,6 +446,19 @@ export default function CompanyDetail() {
                           </FormItem>
                         )}
                       />
+                      <FormField
+                        control={storeForm.control}
+                        name="tccLocationId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>TCC Location ID (Thrive POS)</FormLabel>
+                            <FormControl>
+                              <Input {...field} value={field.value || ""} placeholder="6a459cda-a9b3-40da-b6a7-5c858b30a3a7" data-testid="input-tcc-location-id" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                       <div className="flex justify-end gap-2">
                         <Button
                           type="button"

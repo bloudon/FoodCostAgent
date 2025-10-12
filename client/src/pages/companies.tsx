@@ -171,6 +171,19 @@ export default function Companies() {
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="tccAccountId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>TCC Account ID (Thrive POS)</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value || ""} placeholder="614fe428-d6f5-4c82-984e-383bc0344f85" data-testid="input-new-tcc-account-id" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <div className="flex justify-end gap-2">
                   <Button
                     type="button"
