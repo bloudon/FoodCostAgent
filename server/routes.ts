@@ -2821,6 +2821,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Simplified store routes (used by frontend)
+  app.get("/api/stores/:id", requireAuth, async (req, res) => {
+    try {
+      const store = await storage.getCompanyStore(req.params.id);
+      if (!store) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+      res.json(store);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.patch("/api/stores/:id", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.user!.id);
     

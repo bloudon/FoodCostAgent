@@ -39,6 +39,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { Company, CompanyStore } from "@shared/schema";
 
 export default function CountSession() {
   const params = useParams();
@@ -80,6 +81,17 @@ export default function CountSession() {
 
   const { data: count, isLoading: countLoading } = useQuery<any>({
     queryKey: ["/api/inventory-counts", countId],
+  });
+
+  // Fetch company and store information for this count
+  const { data: company } = useQuery<Company>({
+    queryKey: count?.companyId ? [`/api/companies/${count.companyId}`] : [],
+    enabled: !!count?.companyId,
+  });
+
+  const { data: store } = useQuery<CompanyStore>({
+    queryKey: count?.storeId ? [`/api/stores/${count.storeId}`] : [],
+    enabled: !!count?.storeId,
   });
 
   const { data: countLines, isLoading: linesLoading } = useQuery<any[]>({
@@ -367,7 +379,7 @@ export default function CountSession() {
         
         <div>
           <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-session-title">
-            Count Session Details
+            Count Session Details {company && store && `(${company.name} - ${store.name})`}
           </h1>
           <p className="text-muted-foreground mt-2">
             {countDate?.toLocaleDateString()} {countDate?.toLocaleTimeString()}
