@@ -2816,6 +2816,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Simplified store routes (used by frontend)
+  app.patch("/api/stores/:id", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.user!.id);
+    
+    // Only global admins can update stores
+    if (user?.role !== "global_admin") {
+      return res.status(403).json({ error: "Only global admins can update stores" });
+    }
+
+    try {
+      const data = insertCompanyStoreSchema.partial().parse(req.body);
+      const store = await storage.updateCompanyStore(req.params.id, data);
+      
+      if (!store) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+      
+      res.json(store);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/stores/:id", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.user!.id);
+    
+    // Only global admins can delete stores
+    if (user?.role !== "global_admin") {
+      return res.status(403).json({ error: "Only global admins can delete stores" });
+    }
+
+    try {
+      await storage.deleteCompanyStore(req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ============ COMPANY SETTINGS ============
   app.get("/api/company-settings", async (req, res) => {
     const settings = await storage.getCompanySettings();

@@ -213,6 +213,7 @@ export interface IStorage {
   getCompanyStore(id: string): Promise<CompanyStore | undefined>;
   createCompanyStore(store: InsertCompanyStore): Promise<CompanyStore>;
   updateCompanyStore(id: string, store: Partial<CompanyStore>): Promise<CompanyStore | undefined>;
+  deleteCompanyStore(id: string): Promise<void>;
 
   // Company Settings
   getCompanySettings(): Promise<CompanySettings | undefined>;
@@ -1007,6 +1008,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(companyStores.id, id))
       .returning();
     return store || undefined;
+  }
+
+  async deleteCompanyStore(id: string): Promise<void> {
+    await db.delete(companyStores).where(eq(companyStores.id, id));
   }
 
   // Company Settings

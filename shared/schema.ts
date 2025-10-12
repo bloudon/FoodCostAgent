@@ -44,7 +44,7 @@ export const companyStores = pgTable("company_stores", {
   state: text("state"),
   postalCode: text("postal_code"),
   timezone: text("timezone"),
-  tccLocationId: text("tcc_location_id").notNull().default(sql`gen_random_uuid()`), // The Chef's Companion (Thrive POS) location ID
+  tccLocationId: text("tcc_location_id"), // Thrive Control Center location ID (optional UUID)
   status: text("status").notNull().default("active"), // active, inactive, closed
   openedAt: timestamp("opened_at"),
   closedAt: timestamp("closed_at"),
@@ -53,7 +53,10 @@ export const companyStores = pgTable("company_stores", {
 export const insertCompanyStoreSchema = createInsertSchema(companyStores)
   .omit({ id: true })
   .extend({
-    tccLocationId: z.string().uuid("TCC Location ID must be a valid UUID"),
+    tccLocationId: z.preprocess(
+      (val) => val === "" ? null : val,
+      z.string().uuid("TCC Location ID must be a valid UUID").nullable().optional()
+    ),
   });
 export type InsertCompanyStore = z.infer<typeof insertCompanyStoreSchema>;
 export type CompanyStore = typeof companyStores.$inferSelect;

@@ -146,9 +146,7 @@ export default function Stores() {
     };
 
     const tccLocationId = formData.get("tccLocationId") as string;
-    if (tccLocationId) {
-      data.tccLocationId = tccLocationId;
-    }
+    data.tccLocationId = tccLocationId || null;
     
     createStoreMutation.mutate(data);
   };
@@ -172,9 +170,7 @@ export default function Stores() {
     };
 
     const tccLocationId = formData.get("tccLocationId") as string;
-    if (tccLocationId) {
-      data.tccLocationId = tccLocationId;
-    }
+    data.tccLocationId = tccLocationId || null;
     
     updateStoreMutation.mutate({ id: selectedStore.id, data });
   };
