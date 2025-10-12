@@ -1593,7 +1593,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ PURCHASE ORDERS ============
   app.get("/api/purchase-orders", requireAuth, async (req, res) => {
     const companyId = (req as any).companyId;
-    const orders = await storage.getPurchaseOrders();
+    const storeId = req.query.storeId as string | undefined;
+    
+    const orders = await storage.getPurchaseOrders(companyId, storeId);
     const vendors = await storage.getVendors(companyId);
     
     const enriched = await Promise.all(orders.map(async (po) => {
@@ -1616,8 +1618,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(enriched);
   });
 
-  app.get("/api/purchase-orders/:id", async (req, res) => {
-    const po = await storage.getPurchaseOrder(req.params.id);
+  app.get("/api/purchase-orders/:id", requireAuth, async (req, res) => {
+    const companyId = (req as any).companyId;
+    const po = await storage.getPurchaseOrder(req.params.id, companyId);
     if (!po) {
       return res.status(404).json({ error: "Purchase order not found" });
     }
@@ -1655,10 +1658,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  app.post("/api/purchase-orders", async (req, res) => {
+  app.post("/api/purchase-orders", requireAuth, async (req, res) => {
     try {
+      const companyId = (req as any).companyId;
       const { lines, ...poData } = req.body;
-      const poInput = insertPurchaseOrderSchema.parse(poData);
+      
+      // Add companyId from authenticated context
+      const poInput = insertPurchaseOrderSchema.parse({
+        ...poData,
+        companyId,
+      });
       const po = await storage.createPurchaseOrder(poInput);
 
       if (lines && Array.isArray(lines)) {
