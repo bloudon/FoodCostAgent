@@ -1028,14 +1028,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      const item = await storage.updateInventoryItem(req.params.id, updates);
-      if (!item) {
-        return res.status(404).json({ error: "Inventory item not found" });
+      // Only update inventory item if there are actual field updates
+      let item;
+      if (Object.keys(updates).length > 0) {
+        item = await storage.updateInventoryItem(req.params.id, updates);
+        if (!item) {
+          return res.status(404).json({ error: "Inventory item not found" });
+        }
+      } else {
+        // If only updating locations, fetch current item
+        item = await storage.getInventoryItem(req.params.id);
+        if (!item) {
+          return res.status(404).json({ error: "Inventory item not found" });
+        }
       }
       
       // Update locations if provided
       if (locationIds && Array.isArray(locationIds) && locationIds.length > 0) {
-        await storage.setInventoryItemLocations(req.params.id, locationIds, updates.storageLocationId || item.storageLocationId);
+        // Get current primary location from inventory_item_locations
+        const currentLocations = await storage.getInventoryItemLocations(req.params.id);
+        const currentPrimary = currentLocations.find(loc => loc.isPrimary === 1)?.storageLocationId;
+        
+        // Keep existing primary if still in the new list, otherwise use first location
+        const primaryLocationId = currentPrimary && locationIds.includes(currentPrimary)
+          ? currentPrimary
+          : locationIds[0];
+        
+        await storage.setInventoryItemLocations(req.params.id, locationIds, primaryLocationId);
       }
       
       res.json(item);

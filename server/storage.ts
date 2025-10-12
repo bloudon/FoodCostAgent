@@ -533,12 +533,6 @@ export class DatabaseStorage implements IStorage {
           isPrimary: locationId === primary ? 1 : 0
         }))
       );
-      
-      // Update the primary location in the inventory item
-      await db
-        .update(inventoryItems)
-        .set({ storageLocationId: primary })
-        .where(eq(inventoryItems.id, inventoryItemId));
     }
   }
 

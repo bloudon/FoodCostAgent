@@ -231,14 +231,9 @@ export default function InventoryItemDetail() {
     // Update state only if validation passes
     setSelectedLocations(newLocations);
     
-    // Update the mutation with new locations
-    const primaryLocationId = newLocations.includes(item!.storageLocationId)
-      ? item!.storageLocationId
-      : newLocations[0];
-    
+    // Update the mutation with new locations only (no storageLocationId field in new schema)
     updateMutation.mutate({
       locationIds: newLocations,
-      storageLocationId: primaryLocationId,
     });
   };
 
@@ -604,26 +599,29 @@ export default function InventoryItemDetail() {
                 <Label>Storage Locations</Label>
                 <p className="text-sm text-muted-foreground">Select all locations where this item is stored</p>
                 <div className="space-y-2 border rounded-md p-3">
-                  {locations?.map((loc) => (
-                    <div key={loc.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`location-${loc.id}`}
-                        checked={selectedLocations.includes(loc.id)}
-                        onCheckedChange={() => handleLocationToggle(loc.id)}
-                        disabled={updateMutation.isPending}
-                        data-testid={`checkbox-location-${loc.id}`}
-                      />
-                      <Label 
-                        htmlFor={`location-${loc.id}`}
-                        className="text-sm font-normal cursor-pointer flex-1"
-                      >
-                        {loc.name}
-                        {loc.id === item.storageLocationId && (
-                          <Badge variant="outline" className="ml-2">Primary</Badge>
-                        )}
-                      </Label>
-                    </div>
-                  ))}
+                  {locations?.map((loc) => {
+                    const isPrimary = itemLocations?.find(il => il.storageLocationId === loc.id)?.isPrimary === 1;
+                    return (
+                      <div key={loc.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`location-${loc.id}`}
+                          checked={selectedLocations.includes(loc.id)}
+                          onCheckedChange={() => handleLocationToggle(loc.id)}
+                          disabled={updateMutation.isPending}
+                          data-testid={`checkbox-location-${loc.id}`}
+                        />
+                        <Label 
+                          htmlFor={`location-${loc.id}`}
+                          className="text-sm font-normal cursor-pointer flex-1"
+                        >
+                          {loc.name}
+                          {isPrimary && (
+                            <Badge variant="outline" className="ml-2">Primary</Badge>
+                          )}
+                        </Label>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
               <div className="space-y-2">
