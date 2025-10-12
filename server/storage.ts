@@ -126,7 +126,7 @@ export interface IStorage {
 
 
   // Inventory Counts
-  getInventoryCounts(storageLocationId?: string): Promise<InventoryCount[]>;
+  getInventoryCounts(companyId?: string, storeId?: string, storageLocationId?: string): Promise<InventoryCount[]>;
   getInventoryCount(id: string): Promise<InventoryCount | undefined>;
   createInventoryCount(count: InsertInventoryCount): Promise<InventoryCount>;
   deleteInventoryCount(id: string): Promise<void>;
@@ -658,11 +658,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Inventory Counts
-  async getInventoryCounts(storageLocationId?: string): Promise<InventoryCount[]> {
-    if (storageLocationId) {
-      return db.select().from(inventoryCounts).where(eq(inventoryCounts.storageLocationId, storageLocationId));
+  async getInventoryCounts(companyId?: string, storeId?: string, storageLocationId?: string): Promise<InventoryCount[]> {
+    const conditions = [];
+    
+    if (companyId) {
+      conditions.push(eq(inventoryCounts.companyId, companyId));
     }
-    return db.select().from(inventoryCounts);
+    if (storeId) {
+      conditions.push(eq(inventoryCounts.storeId, storeId));
+    }
+    if (storageLocationId) {
+      conditions.push(eq(inventoryCounts.storageLocationId, storageLocationId));
+    }
+    
+    if (conditions.length === 0) {
+      return db.select().from(inventoryCounts);
+    }
+    
+    return db.select().from(inventoryCounts).where(and(...conditions));
   }
 
   async getInventoryCount(id: string): Promise<InventoryCount | undefined> {
