@@ -151,37 +151,27 @@ export default function Settings() {
     updateCompanyMutation.mutate(companyData);
   };
 
-  const handleTccSave = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleTccSave = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
     const tccAccountId = formData.get("tcc-account-id") as string;
     
     // Update company TCC Account ID
-    if (tccAccountId && tccAccountId !== company?.tccAccountId) {
-      updateCompanyMutation.mutate({ tccAccountId });
-    }
-    
-    // Update store TCC Location IDs
-    for (const store of stores) {
-      const tccLocationId = formData.get(`tcc-location-${store.id}`) as string;
-      if (tccLocationId && tccLocationId !== store.tccLocationId) {
-        try {
-          await apiRequest("PATCH", `/api/stores/${store.id}`, { tccLocationId });
-        } catch (error) {
-          console.error(`Failed to update TCC Location ID for store ${store.id}:`, error);
-        }
+    updateCompanyMutation.mutate({ tccAccountId }, {
+      onSuccess: () => {
+        toast({
+          title: "Success",
+          description: "TCC Account ID updated successfully",
+        });
+      },
+      onError: () => {
+        toast({
+          title: "Error",
+          description: "Failed to update TCC Account ID",
+          variant: "destructive",
+        });
       }
-    }
-    
-    // Invalidate stores query to refresh data
-    if (selectedCompanyId) {
-      queryClient.invalidateQueries({ queryKey: [`/api/companies/${selectedCompanyId}/stores`] });
-    }
-    
-    toast({
-      title: "Success",
-      description: "TCC integration settings updated successfully",
     });
   };
 
@@ -604,13 +594,13 @@ export default function Settings() {
 
           <Card>
             <CardHeader>
-              <CardTitle>The Chef's Companion (TCC) Integration</CardTitle>
+              <CardTitle>Thrive Control Center (TCC) Integration</CardTitle>
               <CardDescription>
-                Configure your TCC account and location IDs for Thrive POS integration
+                Configure your TCC Account ID for Thrive POS integration
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleTccSave} className="space-y-6">
+              <form onSubmit={handleTccSave} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="tcc-account-id">TCC Account ID</Label>
                   <Input
@@ -621,47 +611,8 @@ export default function Settings() {
                     data-testid="input-tcc-account-id"
                   />
                   <p className="text-xs text-muted-foreground">
-                    UUID format required for TCC account identification
+                    UUID format required for Thrive Control Center account identification
                   </p>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">Store Location IDs</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Configure TCC Location ID for each store
-                      </p>
-                    </div>
-                  </div>
-
-                  {storesLoading ? (
-                    <p className="text-muted-foreground">Loading stores...</p>
-                  ) : stores.length === 0 ? (
-                    <p className="text-muted-foreground">No stores found for this company.</p>
-                  ) : (
-                    <div className="space-y-4">
-                      {stores.map((store) => (
-                        <div key={store.id} className="space-y-2 p-4 border rounded-lg">
-                          <Label htmlFor={`tcc-location-${store.id}`}>
-                            {store.name} - TCC Location ID
-                          </Label>
-                          <Input
-                            id={`tcc-location-${store.id}`}
-                            name={`tcc-location-${store.id}`}
-                            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                            defaultValue={store.tccLocationId || ""}
-                            data-testid={`input-tcc-location-${store.id}`}
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Store Code: {store.code}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
 
                 <Separator />

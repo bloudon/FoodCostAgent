@@ -13,6 +13,7 @@ import {
   Settings,
   ArrowLeftRight,
   Tag,
+  Store,
 } from "lucide-react";
 import {
   Sidebar,
@@ -74,6 +75,11 @@ const menuItems = [
 ];
 
 const settingsItems = [
+  {
+    title: "Store Locations",
+    url: "/stores",
+    icon: Store,
+  },
   {
     title: "Storage Locations",
     url: "/storage-locations",
