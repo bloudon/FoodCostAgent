@@ -129,9 +129,16 @@ export default function InventorySessions() {
 
   const createSessionMutation = useMutation({
     mutationFn: async () => {
+      if (!selectedCompanyId) {
+        throw new Error("No company selected");
+      }
+      if (selectedStoreId === "all" || !selectedStoreId) {
+        throw new Error("Please select a store location to create a count session");
+      }
       const response = await apiRequest("POST", "/api/inventory-counts", {
         userId: "system",
-        lines: [],
+        companyId: selectedCompanyId,
+        storeId: selectedStoreId,
       });
       return response.json();
     },

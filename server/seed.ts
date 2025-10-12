@@ -52,15 +52,7 @@ export async function seedDatabase() {
   const alreadySeeded = existingUnits.length > 0;
   
   if (alreadySeeded) {
-    console.log("✅ Database already seeded, checking for September counts...");
-    
-    // Check if September counts exist
-    const existingCounts = await storage.getInventoryCounts();
-    if (existingCounts.length === 0) {
-      console.log("📊 Adding September 2025 inventory counts...");
-      await seedSeptemberCounts();
-      console.log("✅ September inventory counts added!");
-    }
+    console.log("✅ Database already seeded");
     return;
   }
 
