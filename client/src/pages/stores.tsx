@@ -458,7 +458,10 @@ export default function Stores() {
       )}
 
       {/* Edit Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+        setIsEditDialogOpen(open);
+        if (!open) setSelectedStore(null);
+      }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit Store</DialogTitle>
@@ -466,11 +469,14 @@ export default function Stores() {
               Update store information and settings
             </DialogDescription>
           </DialogHeader>
-          <StoreForm 
-            store={selectedStore} 
-            onSubmit={handleEditStore} 
-            isPending={updateStoreMutation.isPending} 
-          />
+          {selectedStore && (
+            <StoreForm 
+              key={selectedStore.id}
+              store={selectedStore} 
+              onSubmit={handleEditStore} 
+              isPending={updateStoreMutation.isPending} 
+            />
+          )}
         </DialogContent>
       </Dialog>
 
