@@ -16,6 +16,8 @@ Preferred communication style: Simple, everyday language.
 ### Multi-Company Enterprise Architecture
 The system features a multi-tenant structure supporting multiple companies and their respective physical store locations. Data is isolated per company, with operations like inventory counts, purchase orders, and waste logs operating at the store level. This includes a `company_id` on all domain tables (except global units/conversions) and `storeId` for all store-level tracking. Inventory quantities are tracked per store in `store_inventory_items`.
 
+**Thrive Control Center (TCC) Integration**: Companies have a `tcc_account_id` (company-level UUID) for Thrive POS connectivity. Individual stores have an optional `tcc_location_id` (store-level UUID). These IDs are managed through Settings → Data Connections (company-level) and Store Locations page (store-level). Store management includes full CRUD operations with TCC Location ID support, accessible via Settings → Store Locations.
+
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
 - **UI**: shadcn/ui with Radix UI, Tailwind CSS for styling, and custom theming with a warm orange primary color.
