@@ -92,6 +92,7 @@ export default function PurchaseOrderDetail() {
   const isNew = id === "new";
 
   const [selectedVendor, setSelectedVendor] = useState<string>("");
+  const [selectedStore, setSelectedStore] = useState<string>("");
   const [expectedDate, setExpectedDate] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -108,6 +109,12 @@ export default function PurchaseOrderDetail() {
 
   const { data: vendors } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors"],
+  });
+
+  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+  const { data: stores } = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}/stores`] : [],
+    enabled: !!selectedCompanyId,
   });
 
   const { data: categories } = useQuery<Category[]>({
@@ -194,6 +201,15 @@ export default function PurchaseOrderDetail() {
       return;
     }
 
+    if (!selectedStore) {
+      toast({
+        title: "Error",
+        description: "Please select a store",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const lines = Object.entries(caseQuantities)
       .filter(([_, qty]) => qty > 0)
       .map(([itemId, caseQty]) => {
@@ -231,6 +247,7 @@ export default function PurchaseOrderDetail() {
 
     const poData = {
       vendorId: selectedVendor,
+      storeId: selectedStore,
       expectedDate: expectedDate || null,
       status: "pending",
       notes: notes || null,
@@ -243,6 +260,7 @@ export default function PurchaseOrderDetail() {
   useEffect(() => {
     if (purchaseOrder && !isNew) {
       setSelectedVendor(purchaseOrder.vendorId);
+      setSelectedStore((purchaseOrder as any).storeId || "");
       setExpectedDate(purchaseOrder.expectedDate || "");
       setNotes((purchaseOrder as any).notes || "");
     }
@@ -357,7 +375,7 @@ export default function PurchaseOrderDetail() {
             )}
             <Button
               onClick={handleSave}
-              disabled={savePOMutation.isPending || !selectedVendor || itemsWithQuantity === 0}
+              disabled={savePOMutation.isPending || !selectedVendor || !selectedStore || itemsWithQuantity === 0}
               data-testid="button-save-po"
             >
               <Save className="h-4 w-4 mr-2" />
@@ -366,7 +384,7 @@ export default function PurchaseOrderDetail() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Vendor</label>
             <Select 
@@ -381,6 +399,26 @@ export default function PurchaseOrderDetail() {
                 {vendors?.map((vendor) => (
                   <SelectItem key={vendor.id} value={vendor.id}>
                     {vendor.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Store Location</label>
+            <Select 
+              value={selectedStore} 
+              onValueChange={setSelectedStore}
+              disabled={!isNew}
+            >
+              <SelectTrigger data-testid="select-store">
+                <SelectValue placeholder="Select store" />
+              </SelectTrigger>
+              <SelectContent>
+                {stores?.map((store) => (
+                  <SelectItem key={store.id} value={store.id}>
+                    {store.name}
                   </SelectItem>
                 ))}
               </SelectContent>
