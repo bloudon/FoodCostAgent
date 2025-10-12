@@ -258,7 +258,7 @@ export default function InventoryItems() {
               </TableHeader>
               <TableBody>
                 {paginatedItems.map((item) => {
-                  const quantity = item.onHandQty;
+                  const quantity = item.onHandQty || 0;
                   const inventoryStatus = getInventoryStatus(quantity, item.parLevel, item.reorderLevel);
 
                   return (
@@ -346,7 +346,7 @@ export default function InventoryItems() {
                         className="text-right font-mono cursor-pointer"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
-                        ${item.pricePerUnit.toFixed(2)}
+                        ${item.pricePerUnit ? item.pricePerUnit.toFixed(2) : '0.00'}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>

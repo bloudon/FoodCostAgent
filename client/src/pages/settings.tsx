@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
@@ -487,33 +488,6 @@ export default function Settings() {
                   Save User Profile
                 </Button>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="integrations" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Vendor Integrations</CardTitle>
-              <CardDescription>
-                Configure API credentials for food distributor integrations (Sysco, Gordon Food Service, US Foods)
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {vendorCredsLoading ? (
-                <p className="text-muted-foreground">Loading vendor credentials...</p>
-              ) : (
-                <>
-                  {/* Sysco */}
-                  {renderVendorCard("sysco", "Sysco", vendorCredentials?.find(vc => vc.vendorKey === "sysco"))}
-                  
-                  {/* Gordon Food Service */}
-                  {renderVendorCard("gfs", "Gordon Food Service", vendorCredentials?.find(vc => vc.vendorKey === "gfs"))}
-                  
-                  {/* US Foods */}
-                  {renderVendorCard("usfoods", "US Foods", vendorCredentials?.find(vc => vc.vendorKey === "usfoods"))}
-                </>
-              )}
             </CardContent>
           </Card>
         </TabsContent>
