@@ -335,7 +335,9 @@ export const purchaseOrders = pgTable("purchase_orders", {
   notes: text("notes"),
 });
 
-export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({ id: true, createdAt: true });
+export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({ id: true, createdAt: true }).extend({
+  expectedDate: z.string().nullable().optional().transform(val => val ? new Date(val) : null),
+});
 export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 
