@@ -188,14 +188,25 @@ export default function CountSession() {
 
   const updateItemMutation = useMutation({
     mutationFn: async (data: any) => {
-      return apiRequest("PATCH", `/api/inventory-items/${editingItem.id}`, data);
+      // Update the inventory item
+      await apiRequest("PATCH", `/api/inventory-items/${editingItem.id}`, data);
+      
+      // If price was updated and we're in a count session, update the count line's unitCost snapshot
+      if (data.pricePerUnit !== undefined && countId) {
+        const lineToUpdate = countLines?.find(line => line.inventoryItemId === editingItem.id);
+        if (lineToUpdate) {
+          await apiRequest("PATCH", `/api/inventory-count-lines/${lineToUpdate.id}`, {
+            unitCost: data.pricePerUnit,
+          });
+        }
+      }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
       toast({
         title: "Success",
-        description: "Item updated successfully",
+        description: "Item and count values updated successfully",
       });
       handleCloseItemEdit();
     },
