@@ -53,7 +53,9 @@ function ProtectedLayout() {
     // Auto-redirect global admins to companies page if no company is selected
     if (!isLoading && user && user.role === "global_admin") {
       const selectedCompanyId = localStorage.getItem("selectedCompanyId");
-      if (!selectedCompanyId && location !== "/companies") {
+      // Allow access to company detail pages (/companies/:id) even without selected company
+      const isOnCompaniesPage = location === "/companies" || location.startsWith("/companies/");
+      if (!selectedCompanyId && !isOnCompaniesPage) {
         setLocation("/companies");
       }
     }
