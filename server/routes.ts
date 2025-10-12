@@ -159,6 +159,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ id: user.id, email: user.email, role: user.role });
   });
 
+  app.post("/api/auth/select-company", requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.body;
+      const sessionId = (req as any).sessionId;
+      
+      if (!companyId) {
+        return res.status(400).json({ error: "companyId is required" });
+      }
+      
+      // Verify the company exists
+      const company = await storage.getCompany(companyId);
+      if (!company) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+      
+      // Update the session with the selected company
+      await storage.updateAuthSession(sessionId, { selectedCompanyId: companyId });
+      
+      res.json({ success: true, companyId });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ============ OBJECT STORAGE (IMAGE UPLOADS) ============
   // Integration with blueprint:javascript_object_storage for image uploads
   const { ObjectStorageService, ObjectNotFoundError } = await import("./objectStorage");
@@ -452,14 +476,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ VENDORS ============
   app.get("/api/vendors", requireAuth, async (req, res) => {
-    const user = req.user!;
-    const vendors = await storage.getVendors(user.companyId);
+    const companyId = (req as any).companyId;
+    const vendors = await storage.getVendors(companyId);
     res.json(vendors);
   });
 
   app.get("/api/vendors/:id", requireAuth, async (req, res) => {
-    const user = req.user!;
-    const vendor = await storage.getVendor(req.params.id, user.companyId);
+    const companyId = (req as any).companyId;
+    const vendor = await storage.getVendor(req.params.id, companyId);
     if (!vendor) {
       return res.status(404).json({ error: "Vendor not found" });
     }
@@ -468,12 +492,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/vendors", requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
-      // Ensure companyId comes from authenticated user, not request body
+      const companyId = (req as any).companyId;
+      
+      // Ensure user has a company context
+      if (!companyId) {
+        return res.status(400).json({ error: "Company context required to create vendors" });
+      }
+      
+      // Ensure companyId comes from authenticated context, not request body
       const { companyId: _, ...bodyData } = req.body;
       const data = insertVendorSchema.parse({
         ...bodyData,
-        companyId: user.companyId,
+        companyId,
       });
       const vendor = await storage.createVendor(data);
       res.status(201).json(vendor);
@@ -484,9 +514,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/vendors/:id", requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
-      // Verify vendor belongs to user's company before updating
-      const existing = await storage.getVendor(req.params.id, user.companyId);
+      const companyId = (req as any).companyId;
+      // Verify vendor belongs to current company before updating
+      const existing = await storage.getVendor(req.params.id, companyId);
       if (!existing) {
         return res.status(404).json({ error: "Vendor not found" });
       }
@@ -503,9 +533,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/vendors/:id", requireAuth, async (req, res) => {
     try {
-      const user = req.user!;
-      // Verify vendor belongs to user's company before deleting
-      const existing = await storage.getVendor(req.params.id, user.companyId);
+      const companyId = (req as any).companyId;
+      // Verify vendor belongs to current company before deleting
+      const existing = await storage.getVendor(req.params.id, companyId);
       if (!existing) {
         return res.status(404).json({ error: "Vendor not found" });
       }
@@ -744,8 +774,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.createOrderGuideLinesBatch(lines);
 
       // Get vendor to update vendor_items
-      const user = req.user!;
-      const vendors = await storage.getVendors(user.companyId);
+      const companyId = (req as any).companyId;
+      const vendors = await storage.getVendors(companyId);
       // Note: vendors table doesn't have a 'key' field - this line may need updating
       const vendor = vendors.find((v: any) => v.key === vendorKey);
       
@@ -1092,9 +1122,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/inventory-items/:id/vendor-items", requireAuth, async (req, res) => {
-    const user = req.user!;
+    const companyId = (req as any).companyId;
     const vendorItems = await storage.getVendorItemsByInventoryItem(req.params.id);
-    const vendors = await storage.getVendors(user.companyId);
+    const vendors = await storage.getVendors(companyId);
     const units = await storage.getUnits();
     
     const enriched = vendorItems.map((vi) => {
@@ -1562,9 +1592,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ PURCHASE ORDERS ============
   app.get("/api/purchase-orders", requireAuth, async (req, res) => {
-    const user = req.user!;
+    const companyId = (req as any).companyId;
     const orders = await storage.getPurchaseOrders();
-    const vendors = await storage.getVendors(user.companyId);
+    const vendors = await storage.getVendors(companyId);
     
     const enriched = await Promise.all(orders.map(async (po) => {
       const vendor = vendors.find((v) => v.id === po.vendorId);

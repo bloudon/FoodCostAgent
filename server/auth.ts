@@ -70,9 +70,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return res.status(401).json({ error: "User not found" });
   }
 
-  // Attach user to request
+  // Attach user and session to request
   (req as any).user = user;
+  (req as any).session = session;
   (req as any).sessionId = session.id;
+  
+  // Resolve company context: use user.companyId for regular users, session.selectedCompanyId for global_admin
+  const companyId = user.companyId || session.selectedCompanyId || null;
+  (req as any).companyId = companyId;
   
   next();
 }

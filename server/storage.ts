@@ -47,6 +47,7 @@ export interface IStorage {
   // Auth Sessions
   createAuthSession(session: InsertAuthSession): Promise<AuthSession>;
   getAuthSessionByToken(tokenHash: string): Promise<AuthSession | undefined>;
+  updateAuthSession(id: string, updates: Partial<AuthSession>): Promise<AuthSession | undefined>;
   revokeAuthSession(id: string): Promise<void>;
   cleanExpiredSessions(): Promise<void>;
 
@@ -310,6 +311,15 @@ export class DatabaseStorage implements IStorage {
         isNull(authSessions.revokedAt),
         gte(authSessions.expiresAt, new Date())
       ));
+    return session || undefined;
+  }
+
+  async updateAuthSession(id: string, updates: Partial<AuthSession>): Promise<AuthSession | undefined> {
+    const [session] = await db
+      .update(authSessions)
+      .set(updates)
+      .where(eq(authSessions.id, id))
+      .returning();
     return session || undefined;
   }
 

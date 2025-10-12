@@ -74,11 +74,24 @@ export default function Companies() {
     );
   }
 
-  const handleSelectCompany = (companyId: string) => {
-    // Store selected company in localStorage
-    localStorage.setItem("selectedCompanyId", companyId);
-    // Redirect to dashboard and reload to apply company filter
-    window.location.href = "/";
+  const handleSelectCompany = async (companyId: string) => {
+    try {
+      // Update session on backend
+      await apiRequest("POST", "/api/auth/select-company", { companyId });
+      
+      // Store selected company in localStorage for immediate UI updates
+      localStorage.setItem("selectedCompanyId", companyId);
+      
+      // Redirect to dashboard and reload to apply company filter
+      window.location.href = "/";
+    } catch (error) {
+      console.error("Failed to select company:", error);
+      toast({
+        title: "Error",
+        description: "Failed to select company",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleManageCompany = (companyId: string) => {

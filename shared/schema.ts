@@ -98,6 +98,7 @@ export const authSessions = pgTable("auth_sessions", {
   revokedAt: timestamp("revoked_at"),
   userAgent: text("user_agent"),
   ipAddress: text("ip_address"),
+  selectedCompanyId: varchar("selected_company_id"), // For global_admin users to track selected company
 });
 
 export const insertAuthSessionSchema = createInsertSchema(authSessions).omit({ id: true, createdAt: true });

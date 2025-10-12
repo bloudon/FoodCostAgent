@@ -46,6 +46,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertVendorSchema, type InsertVendor, type Vendor, type VendorItem } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { z } from "zod";
+
+// Form schema that omits companyId (added by backend from authenticated user)
+const vendorFormSchema = insertVendorSchema.omit({ companyId: true });
+type VendorFormData = z.infer<typeof vendorFormSchema>;
 
 export default function Vendors() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -63,8 +68,8 @@ export default function Vendors() {
     queryKey: ["/api/vendor-items"],
   });
 
-  const form = useForm<InsertVendor>({
-    resolver: zodResolver(insertVendorSchema),
+  const form = useForm<VendorFormData>({
+    resolver: zodResolver(vendorFormSchema),
     defaultValues: {
       name: "",
       accountNumber: "",
@@ -75,7 +80,7 @@ export default function Vendors() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: InsertVendor) => {
+    mutationFn: async (data: VendorFormData) => {
       return await apiRequest("POST", "/api/vendors", data);
     },
     onSuccess: () => {
@@ -97,7 +102,7 @@ export default function Vendors() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<InsertVendor> }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Partial<VendorFormData> }) => {
       return await apiRequest("PATCH", `/api/vendors/${id}`, data);
     },
     onSuccess: () => {
@@ -173,7 +178,7 @@ export default function Vendors() {
     setDeleteDialogOpen(true);
   };
 
-  const onSubmit = (data: InsertVendor) => {
+  const onSubmit = (data: VendorFormData) => {
     if (editingVendor) {
       updateMutation.mutate({ id: editingVendor.id, data });
     } else {
