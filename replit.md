@@ -16,6 +16,15 @@ Preferred communication style: Simple, everyday language.
 ### Multi-Company Enterprise Architecture
 The system features a multi-tenant structure supporting multiple companies and their respective physical store locations. Data is isolated per company, with operations like inventory counts, purchase orders, and waste logs operating at the store level. This includes a `company_id` on all domain tables (except global units/conversions) and `storeId` for all store-level tracking. Inventory quantities are tracked per store in `store_inventory_items`.
 
+**Company Context Resolution**: 
+- Regular users have a fixed `company_id` in the `users` table, automatically providing company context for all operations
+- Global admin users (`role = 'global_admin'`) have `company_id = null` and use session-based company selection via `auth_sessions.selected_company_id`
+- The `requireAuth` middleware resolves `req.companyId` from either `user.companyId` (regular users) or `session.selectedCompanyId` (global admins)
+- Global admins select their active company via POST `/api/auth/select-company`, which updates the session and persists company context across requests
+- All domain data queries (vendors, inventory items, recipes, etc.) filter by the resolved `companyId` to ensure strict data isolation
+
+**Vendor Company Isolation**: All vendor operations are isolated by company. The storage layer filters vendors by `companyId`, and API endpoints use the authenticated user's company context. Vendor creation automatically assigns the current company context. This ensures vendors cannot be accessed across company boundaries.
+
 **Thrive Control Center (TCC) Integration**: Companies have a `tcc_account_id` (company-level UUID) for Thrive POS connectivity. Individual stores have an optional `tcc_location_id` (store-level UUID). These IDs are managed through Settings → Data Connections (company-level) and Store Locations page (store-level). Store management includes full CRUD operations with TCC Location ID support, accessible via Settings → Store Locations.
 
 ### Frontend
@@ -32,6 +41,7 @@ The system features a multi-tenant structure supporting multiple companies and t
 - **Database Layer**: Drizzle ORM, PostgreSQL (Neon serverless), schema-first approach with migrations.
 - **Core Domain Models**: Users, Storage Locations, Units, Inventory Items (location-specific), Vendors, Recipes (nested), Inventory Counts, Purchase Orders, POS Sales, Transfer/Waste Logs.
 - **Business Logic**: Unit conversion, recursive recipe cost calculation with yield-based scaling, location-based inventory tracking, theoretical vs. actual usage variance, purchase order workflows, COGS analysis, and price change impact analysis.
+- **Authentication & Sessions**: Session-based authentication with `auth_sessions` table. Global admin company selection uses `selected_company_id` column (added manually via ALTER TABLE; formal Drizzle migration pending for deployment).
 
 ### Architectural Decisions
 - Single-page application with API and frontend served from the same Express server.
