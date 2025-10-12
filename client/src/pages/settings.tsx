@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, User, Plug, Settings as SettingsIcon, Truck } from "lucide-react";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import {
   Select,
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Company, SystemPreferences, VendorCredentials } from "@shared/schema";
+import type { Company, CompanyStore, SystemPreferences, VendorCredentials } from "@shared/schema";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -39,13 +39,33 @@ export default function Settings() {
     enabled: !!selectedCompanyId,
   });
 
+  const { data: stores = [], isLoading: storesLoading } = useQuery<CompanyStore[]>({
+    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}/stores`] : [],
+    enabled: !!selectedCompanyId,
+  });
+
   const { data: systemPrefs, isLoading: prefsLoading } = useQuery<SystemPreferences>({
     queryKey: ["/api/system-preferences"],
   });
 
-  const { data: vendorCredentials, isLoading: vendorCredsLoading } = useQuery<VendorCredentials[]>({
-    queryKey: ["/api/vendor-credentials"],
-  });
+  // Vendor credentials query disabled - integrations tab removed
+  // const { data: vendorCredentials = [], isLoading: vendorCredsLoading } = useQuery<VendorCredentials[]>({
+  //   queryKey: ["/api/vendor-credentials"],
+  //   queryFn: async () => {
+  //     const res = await fetch("/api/vendor-credentials", {
+  //       credentials: "include",
+  //     });
+  //     // Return empty array if forbidden (non-admin users)
+  //     if (res.status === 403) {
+  //       return [];
+  //     }
+  //     if (!res.ok) {
+  //       throw new Error(`${res.status}: ${res.statusText}`);
+  //     }
+  //     return await res.json();
+  //   },
+  //   retry: false,
+  // });
 
   const updateCompanyMutation = useMutation({
     mutationFn: async (data: Partial<Company>) => {
@@ -212,7 +232,7 @@ export default function Settings() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 max-w-3xl">
+        <TabsList className="grid w-full grid-cols-4 max-w-3xl">
           <TabsTrigger value="company" data-testid="tab-company">
             <Building2 className="h-4 w-4 mr-2" />
             Company
@@ -220,10 +240,6 @@ export default function Settings() {
           <TabsTrigger value="user" data-testid="tab-user">
             <User className="h-4 w-4 mr-2" />
             User Profile
-          </TabsTrigger>
-          <TabsTrigger value="integrations" data-testid="tab-integrations">
-            <Truck className="h-4 w-4 mr-2" />
-            Vendor Integrations
           </TabsTrigger>
           <TabsTrigger value="connections" data-testid="tab-connections">
             <Plug className="h-4 w-4 mr-2" />
@@ -363,6 +379,59 @@ export default function Settings() {
                   </Button>
                 </div>
               </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Store Locations</CardTitle>
+              <CardDescription>
+                Physical store locations for this company
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {storesLoading ? (
+                <div className="text-center py-4 text-muted-foreground">Loading stores...</div>
+              ) : stores.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground" data-testid="text-no-stores">
+                  No stores found for this company.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {stores.map((store) => (
+                    <div
+                      key={store.id}
+                      className="flex items-center justify-between p-4 border rounded-lg"
+                      data-testid={`store-item-${store.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Store className="h-5 w-5 text-muted-foreground" />
+                        <div>
+                          <div className="font-medium" data-testid={`text-store-name-${store.id}`}>
+                            {store.name}
+                          </div>
+                          <div className="text-sm text-muted-foreground" data-testid={`text-store-code-${store.id}`}>
+                            {store.code} • {store.phone || "No phone"}
+                          </div>
+                          {store.addressLine1 && (
+                            <div className="text-sm text-muted-foreground">
+                              {store.addressLine1}
+                              {store.city && `, ${store.city}`}
+                              {store.state && `, ${store.state}`}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <Badge
+                        variant={store.status === "active" ? "default" : "secondary"}
+                        data-testid={`badge-store-status-${store.id}`}
+                      >
+                        {store.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
