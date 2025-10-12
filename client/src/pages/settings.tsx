@@ -137,7 +137,8 @@ export default function Settings() {
   const handleCompanySave = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const data = {
+    
+    const companyData = {
       name: formData.get("company-name") as string,
       addressLine1: formData.get("company-address") as string,
       city: formData.get("company-city") as string,
@@ -146,7 +147,42 @@ export default function Settings() {
       phone: formData.get("company-phone") as string,
       contactEmail: formData.get("company-email") as string,
     };
-    updateCompanyMutation.mutate(data);
+    
+    updateCompanyMutation.mutate(companyData);
+  };
+
+  const handleTccSave = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    
+    const tccAccountId = formData.get("tcc-account-id") as string;
+    
+    // Update company TCC Account ID
+    if (tccAccountId && tccAccountId !== company?.tccAccountId) {
+      updateCompanyMutation.mutate({ tccAccountId });
+    }
+    
+    // Update store TCC Location IDs
+    for (const store of stores) {
+      const tccLocationId = formData.get(`tcc-location-${store.id}`) as string;
+      if (tccLocationId && tccLocationId !== store.tccLocationId) {
+        try {
+          await apiRequest("PATCH", `/api/stores/${store.id}`, { tccLocationId });
+        } catch (error) {
+          console.error(`Failed to update TCC Location ID for store ${store.id}:`, error);
+        }
+      }
+    }
+    
+    // Invalidate stores query to refresh data
+    if (selectedCompanyId) {
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${selectedCompanyId}/stores`] });
+    }
+    
+    toast({
+      title: "Success",
+      description: "TCC integration settings updated successfully",
+    });
   };
 
   const handlePrefsSave = (e: React.FormEvent<HTMLFormElement>) => {
@@ -560,6 +596,83 @@ export default function Settings() {
                     disabled={updatePrefsMutation.isPending}
                   >
                     {updatePrefsMutation.isPending ? "Saving..." : "Save POS Settings"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>The Chef's Companion (TCC) Integration</CardTitle>
+              <CardDescription>
+                Configure your TCC account and location IDs for Thrive POS integration
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleTccSave} className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="tcc-account-id">TCC Account ID</Label>
+                  <Input
+                    id="tcc-account-id"
+                    name="tcc-account-id"
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    defaultValue={company?.tccAccountId || ""}
+                    data-testid="input-tcc-account-id"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    UUID format required for TCC account identification
+                  </p>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">Store Location IDs</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Configure TCC Location ID for each store
+                      </p>
+                    </div>
+                  </div>
+
+                  {storesLoading ? (
+                    <p className="text-muted-foreground">Loading stores...</p>
+                  ) : stores.length === 0 ? (
+                    <p className="text-muted-foreground">No stores found for this company.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {stores.map((store) => (
+                        <div key={store.id} className="space-y-2 p-4 border rounded-lg">
+                          <Label htmlFor={`tcc-location-${store.id}`}>
+                            {store.name} - TCC Location ID
+                          </Label>
+                          <Input
+                            id={`tcc-location-${store.id}`}
+                            name={`tcc-location-${store.id}`}
+                            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                            defaultValue={store.tccLocationId || ""}
+                            data-testid={`input-tcc-location-${store.id}`}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Store Code: {store.code}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div className="flex justify-end">
+                  <Button 
+                    type="submit" 
+                    data-testid="button-save-tcc"
+                    disabled={updateCompanyMutation.isPending}
+                  >
+                    {updateCompanyMutation.isPending ? "Saving..." : "Save TCC Settings"}
                   </Button>
                 </div>
               </form>
