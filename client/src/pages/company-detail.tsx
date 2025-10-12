@@ -32,11 +32,11 @@ export default function CompanyDetail() {
   const [isNewStoreDialogOpen, setIsNewStoreDialogOpen] = useState(false);
 
   const { data: company, isLoading: loadingCompany } = useQuery<Company>({
-    queryKey: ["/api/companies", id],
+    queryKey: [`/api/companies/${id}`],
   });
 
   const { data: stores = [], isLoading: loadingStores } = useQuery<CompanyStore[]>({
-    queryKey: ["/api/companies", id, "stores"],
+    queryKey: [`/api/companies/${id}/stores`],
   });
 
   const companyForm = useForm<InsertCompany>({
@@ -77,6 +77,7 @@ export default function CompanyDetail() {
       return response.json();
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${id}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
       setIsEditingCompany(false);
       toast({ title: "Company updated successfully" });
@@ -97,7 +98,7 @@ export default function CompanyDetail() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", id, "stores"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${id}/stores`] });
       setEditingStore(null);
       toast({ title: "Store updated successfully" });
     },
@@ -117,7 +118,7 @@ export default function CompanyDetail() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", id, "stores"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${id}/stores`] });
       setIsNewStoreDialogOpen(false);
       storeForm.reset();
       toast({ title: "Store created successfully" });
