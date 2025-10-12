@@ -2739,6 +2739,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update company logo
+  app.put("/api/companies/:id/logo", requireAuth, async (req, res) => {
+    try {
+      const { imageUrl } = z.object({
+        imageUrl: z.string(),
+      }).parse(req.body);
+
+      const user = (req as any).user;
+      const objectStorageService = new ObjectStorageService();
+      
+      // Set ACL policy for the uploaded logo (public visibility)
+      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+        imageUrl,
+        {
+          owner: user.id,
+          visibility: "public",
+        }
+      );
+
+      // Update company with the normalized object path
+      const company = await storage.updateCompany(req.params.id, {
+        logoImagePath: objectPath,
+      });
+
+      if (!company) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      res.json({ objectPath });
+    } catch (error: any) {
+      console.error("Error updating company logo:", error);
+      res.status(500).json({ error: "Failed to update logo" });
+    }
+  });
+
   app.post("/api/companies/:id/stores", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.user!.id);
     

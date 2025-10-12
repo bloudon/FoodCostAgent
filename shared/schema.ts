@@ -17,6 +17,7 @@ export const companies = pgTable("companies", {
   postalCode: text("postal_code"),
   country: text("country").notNull().default("US"),
   timezone: text("timezone").notNull().default("America/New_York"),
+  logoImagePath: text("logo_image_path"), // Company logo image path
   tccAccountId: text("tcc_account_id"), // The Chef's Companion account ID
   status: text("status").notNull().default("active"), // active, inactive, suspended
   createdAt: timestamp("created_at").notNull().defaultNow(),

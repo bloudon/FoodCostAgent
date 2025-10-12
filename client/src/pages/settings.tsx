@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { CompanySettings, SystemPreferences, VendorCredentials } from "@shared/schema";
+import type { Company, SystemPreferences, VendorCredentials } from "@shared/schema";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -32,9 +32,11 @@ import { ObjectUploader } from "@/components/ObjectUploader";
 export default function Settings() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("company");
+  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
 
-  const { data: companySettings, isLoading: companyLoading } = useQuery<CompanySettings>({
-    queryKey: ["/api/company-settings"],
+  const { data: company, isLoading: companyLoading } = useQuery<Company>({
+    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}`] : [],
+    enabled: !!selectedCompanyId,
   });
 
   const { data: systemPrefs, isLoading: prefsLoading } = useQuery<SystemPreferences>({
@@ -46,11 +48,14 @@ export default function Settings() {
   });
 
   const updateCompanyMutation = useMutation({
-    mutationFn: async (data: Partial<CompanySettings>) => {
-      return await apiRequest("PATCH", "/api/company-settings", data);
+    mutationFn: async (data: Partial<Company>) => {
+      if (!selectedCompanyId) throw new Error("No company selected");
+      return await apiRequest("PATCH", `/api/companies/${selectedCompanyId}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/company-settings"] });
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/companies/${selectedCompanyId}`] });
+      }
       toast({
         title: "Success",
         description: "Company information updated successfully",
@@ -87,10 +92,13 @@ export default function Settings() {
 
   const updateLogoMutation = useMutation({
     mutationFn: async (imageUrl: string) => {
-      return await apiRequest("PUT", "/api/company-settings/logo", { imageUrl });
+      if (!selectedCompanyId) throw new Error("No company selected");
+      return await apiRequest("PUT", `/api/companies/${selectedCompanyId}/logo`, { imageUrl });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/company-settings"] });
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/companies/${selectedCompanyId}`] });
+      }
       toast({
         title: "Success",
         description: "Company logo updated successfully",
@@ -110,12 +118,12 @@ export default function Settings() {
     const formData = new FormData(e.currentTarget);
     const data = {
       name: formData.get("company-name") as string,
-      address: formData.get("company-address") as string,
+      addressLine1: formData.get("company-address") as string,
       city: formData.get("company-city") as string,
       state: formData.get("company-state") as string,
-      zip: formData.get("company-zip") as string,
+      postalCode: formData.get("company-zip") as string,
       phone: formData.get("company-phone") as string,
-      email: formData.get("company-email") as string,
+      contactEmail: formData.get("company-email") as string,
     };
     updateCompanyMutation.mutate(data);
   };
@@ -236,14 +244,14 @@ export default function Settings() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleCompanySave} className="space-y-4">
+              <form key={company?.id} onSubmit={handleCompanySave} className="space-y-4">
                 <div className="space-y-2">
                   <Label>Company Logo</Label>
                   <div className="flex items-center gap-4">
-                    {companySettings?.logoImagePath && (
+                    {company?.logoImagePath && (
                       <div className="flex-shrink-0">
                         <img 
-                          src={`${companySettings.logoImagePath}?thumbnail=true`}
+                          src={`${company.logoImagePath}?thumbnail=true`}
                           alt="Company logo"
                           className="max-h-[150px] object-contain rounded-md border"
                           data-testid="img-company-logo"
@@ -252,7 +260,7 @@ export default function Settings() {
                     )}
                     <ObjectUploader
                       onUploadComplete={(url) => updateLogoMutation.mutate(url)}
-                      buttonText={companySettings?.logoImagePath ? "Change Logo" : "Upload Logo"}
+                      buttonText={company?.logoImagePath ? "Change Logo" : "Upload Logo"}
                       dataTestId="button-upload-logo"
                     />
                   </div>
@@ -270,7 +278,7 @@ export default function Settings() {
                       id="company-name"
                       name="company-name"
                       placeholder="Your Restaurant Name"
-                      defaultValue={companySettings?.name || ""}
+                      defaultValue={company?.name || ""}
                       data-testid="input-company-name"
                     />
                   </div>
@@ -281,7 +289,7 @@ export default function Settings() {
                       name="company-phone"
                       type="tel"
                       placeholder="(555) 123-4567"
-                      defaultValue={companySettings?.phone || ""}
+                      defaultValue={company?.phone || ""}
                       data-testid="input-company-phone"
                     />
                   </div>
@@ -293,7 +301,7 @@ export default function Settings() {
                     id="company-address"
                     name="company-address"
                     placeholder="123 Main Street"
-                    defaultValue={companySettings?.address || ""}
+                    defaultValue={company?.addressLine1 || ""}
                     data-testid="input-company-address"
                   />
                 </div>
@@ -305,7 +313,7 @@ export default function Settings() {
                       id="company-city"
                       name="company-city"
                       placeholder="City"
-                      defaultValue={companySettings?.city || ""}
+                      defaultValue={company?.city || ""}
                       data-testid="input-company-city"
                     />
                   </div>
@@ -315,7 +323,7 @@ export default function Settings() {
                       id="company-state"
                       name="company-state"
                       placeholder="State"
-                      defaultValue={companySettings?.state || ""}
+                      defaultValue={company?.state || ""}
                       data-testid="input-company-state"
                     />
                   </div>
@@ -325,7 +333,7 @@ export default function Settings() {
                       id="company-zip"
                       name="company-zip"
                       placeholder="12345"
-                      defaultValue={companySettings?.zip || ""}
+                      defaultValue={company?.postalCode || ""}
                       data-testid="input-company-zip"
                     />
                   </div>
@@ -338,7 +346,7 @@ export default function Settings() {
                     name="company-email"
                     type="email"
                     placeholder="info@restaurant.com"
-                    defaultValue={companySettings?.email || ""}
+                    defaultValue={company?.contactEmail || ""}
                     data-testid="input-company-email"
                   />
                 </div>
