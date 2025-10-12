@@ -25,6 +25,8 @@ The system features a multi-tenant structure supporting multiple companies and t
 
 **Vendor Company Isolation**: All vendor operations are isolated by company. The storage layer filters vendors by `companyId`, and API endpoints use the authenticated user's company context. Vendor creation automatically assigns the current company context. This ensures vendors cannot be accessed across company boundaries.
 
+**Purchase Order Store Isolation**: Purchase orders are isolated by both company and store location. Each purchase order is associated with a specific company (from authenticated context) and store (selected by user in form). The storage layer filters purchase orders by `companyId` and optionally by `storeId`. All purchase order operations (create, read, update) respect company boundaries, and the frontend requires store selection when creating new orders. This ensures purchase orders are properly tracked at the store level for inventory management.
+
 **Thrive Control Center (TCC) Integration**: Companies have a `tcc_account_id` (company-level UUID) for Thrive POS connectivity. Individual stores have an optional `tcc_location_id` (store-level UUID). These IDs are managed through Settings → Data Connections (company-level) and Store Locations page (store-level). Store management includes full CRUD operations with TCC Location ID support, accessible via Settings → Store Locations.
 
 ### Frontend
