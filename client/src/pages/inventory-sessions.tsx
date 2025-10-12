@@ -15,6 +15,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useState } from "react";
+import type { Company, CompanyStore } from "@shared/schema";
 
 function SessionRow({ count, countDate, inventoryItems }: any) {
   const { toast } = useToast();
@@ -96,6 +105,19 @@ function SessionRow({ count, countDate, inventoryItems }: any) {
 export default function InventorySessions() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
+
+  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+
+  const { data: company } = useQuery<Company>({
+    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}`] : [],
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: stores = [] } = useQuery<CompanyStore[]>({
+    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}/stores`] : [],
+    enabled: !!selectedCompanyId,
+  });
 
   const { data: inventoryItems } = useQuery<any[]>({
     queryKey: ["/api/inventory-items"],
@@ -134,31 +156,55 @@ export default function InventorySessions() {
     createSessionMutation.mutate();
   };
 
-  // Sort counts by date descending
-  const sortedCounts = inventoryCounts?.sort((a, b) => 
+  // Filter counts by store if selected (don't mutate original array)
+  const filteredCounts = selectedStoreId === "all" 
+    ? inventoryCounts 
+    : inventoryCounts?.filter(count => count.storeId === selectedStoreId);
+
+  // Sort counts by date descending (clone array to avoid mutating cache)
+  const sortedCounts = filteredCounts ? [...filteredCounts].sort((a, b) => 
     new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime()
-  );
+  ) : [];
 
   return (
     <div className="p-8">
       <div className="mb-8">
         <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
+          <div className="flex-1">
             <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-sessions-title">
-              Inventory Sessions
+              Inventory Sessions {company && `(${company.name})`}
             </h1>
             <p className="text-muted-foreground mt-2">
               View all inventory count sessions or start a new count
             </p>
           </div>
-          <Button 
-            onClick={handleStartNewCount}
-            disabled={createSessionMutation.isPending}
-            data-testid="button-start-new-session"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            {createSessionMutation.isPending ? "Creating..." : "Start New Count"}
-          </Button>
+          <div className="flex items-center gap-4">
+            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+              <SelectTrigger className="w-[200px]" data-testid="select-store-filter">
+                <SelectValue placeholder="All Stores" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" data-testid="option-all-stores">All Stores</SelectItem>
+                {stores.map((store) => (
+                  <SelectItem 
+                    key={store.id} 
+                    value={store.id}
+                    data-testid={`option-store-${store.id}`}
+                  >
+                    {store.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button 
+              onClick={handleStartNewCount}
+              disabled={createSessionMutation.isPending}
+              data-testid="button-start-new-session"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              {createSessionMutation.isPending ? "Creating..." : "Start New Count"}
+            </Button>
+          </div>
         </div>
       </div>
 
