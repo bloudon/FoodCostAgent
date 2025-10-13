@@ -36,6 +36,7 @@ The system features a multi-tenant structure supporting multiple companies and t
 - **Transfer Orders**: Storage layer `getTransferOrders()` requires `companyId` with optional `storeId` filtering for both source and destination stores. Transfer order endpoints enforce company boundaries via `requireAuth`.
 - **Transfer Logs**: Schema includes `companyId` field (line 457). Storage layer `getTransferLogs()` filters by `companyId` with optional store-level filtering using `or()` for `fromStoreId`/`toStoreId`.
 - **Waste Logs**: Storage layer `getWasteLogs()` requires `companyId` parameter with optional `storeId` filtering. Waste reporting endpoints use `requireAuth` middleware and pass resolved `req.companyId`.
+- **Vendor Items**: GET `/api/vendor-items` endpoint uses `requireAuth` middleware and filters inventory items by `companyId`. Response includes full inventory item data (id, name, categoryId, storageLocationId, caseSize, pricePerUnit) to properly display item names on vendor detail pages.
 - All fixes documented in `SECURITY_FIXES_REQUIRED.md` with completion status and implementation details.
 
 **Thrive Control Center (TCC) Integration**: Companies have a `tcc_account_id` (company-level UUID) for Thrive POS connectivity. Individual stores have an optional `tcc_location_id` (store-level UUID). These IDs are managed through Settings → Data Connections (company-level) and Store Locations page (store-level). Store management includes full CRUD operations with TCC Location ID support, accessible via Settings → Store Locations.
