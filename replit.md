@@ -11,6 +11,11 @@ Preferred communication style: Simple, everyday language.
 - **Unit Abbreviation**: "Pound" displays as "lb." throughout the UI for compact display. The `formatUnitName()` utility function (in `client/src/lib/utils.ts`) handles abbreviation consistently across all pages including inventory items, vendor cards, purchase orders, receiving, recipes, and unit conversions.
 - **Yield Field**: Yield is stored as a percentage value (0-100), not a separate yield amount + unit
 - **Par Level & Reorder Level**: These fields are stored on the `inventory_items` table as default values that can be overridden at the store level via `store_inventory_items` table
+- **Active/Inactive Status**: Dual-level active status system
+  - **Global Status**: `inventory_items.active` (integer) controls company-wide active/inactive status
+  - **Store-Specific Status**: `store_inventory_items.active` (integer, default 1) allows independent active/inactive status per store
+  - **UI Behavior**: When a specific store is selected, toggling active/inactive only affects that store and shows "(this store)" indicator in the dropdown menu. When "All Stores" is selected, toggles the global status.
+  - **Security**: PATCH `/api/inventory-items/:id` requires authentication and validates both item and store ownership against the authenticated user's company before updating status
 - **Storage Locations**: Inventory items can be associated with multiple storage locations using checkboxes. At least one location is required. The primary location is indicated with a "(p)" badge.
   - **Display**: On the inventory items index page, all locations are displayed as a stacked vertical list within the table row. The primary location shows a "(p)" badge and appears first in the list.
   - **Performance**: Backend uses batched query pattern (`getInventoryItemLocationsBatch`) to fetch all item locations in a single database query, avoiding N+1 query problems.
@@ -37,6 +42,7 @@ The system features a multi-tenant structure supporting multiple companies and t
 - **Transfer Logs**: Schema includes `companyId` field (line 457). Storage layer `getTransferLogs()` filters by `companyId` with optional store-level filtering using `or()` for `fromStoreId`/`toStoreId`.
 - **Waste Logs**: Storage layer `getWasteLogs()` requires `companyId` parameter with optional `storeId` filtering. Waste reporting endpoints use `requireAuth` middleware and pass resolved `req.companyId`.
 - **Vendor Items**: GET `/api/vendor-items` endpoint uses `requireAuth` middleware and filters inventory items by `companyId`. Response includes full inventory item data (id, name, categoryId, storageLocationId, caseSize, pricePerUnit) to properly display item names on vendor detail pages.
+- **Inventory Items**: POST `/api/inventory-items` and PATCH `/api/inventory-items/:id` use `requireAuth` middleware. POST auto-injects `companyId` from authenticated context. PATCH validates both item and store ownership against authenticated user's company before allowing updates.
 - All fixes documented in `SECURITY_FIXES_REQUIRED.md` with completion status and implementation details.
 
 **Thrive Control Center (TCC) Integration**: Companies have a `tcc_account_id` (company-level UUID) for Thrive POS connectivity. Individual stores have an optional `tcc_location_id` (store-level UUID). These IDs are managed through Settings → Data Connections (company-level) and Store Locations page (store-level). Store management includes full CRUD operations with TCC Location ID support, accessible via Settings → Store Locations.
