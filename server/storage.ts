@@ -676,9 +676,12 @@ export class DatabaseStorage implements IStorage {
           vendorId: vendorItems.vendorId,
           inventoryItemId: vendorItems.inventoryItemId,
           vendorSku: vendorItems.vendorSku,
-          packSize: vendorItems.packSize,
-          pricePerPack: vendorItems.pricePerPack,
           purchaseUnitId: vendorItems.purchaseUnitId,
+          caseSize: vendorItems.caseSize,
+          innerPackSize: vendorItems.innerPackSize,
+          lastPrice: vendorItems.lastPrice,
+          leadTimeDays: vendorItems.leadTimeDays,
+          active: vendorItems.active,
         })
         .from(vendorItems)
         .innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
