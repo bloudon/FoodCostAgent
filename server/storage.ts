@@ -154,7 +154,7 @@ export interface IStorage {
   deletePOLine(id: string): Promise<void>;
 
   // Receipts
-  getReceipts(): Promise<Receipt[]>;
+  getReceipts(companyId: string, storeId?: string): Promise<Receipt[]>;
   getReceipt(id: string): Promise<Receipt | undefined>;
   createReceipt(receipt: InsertReceipt): Promise<Receipt>;
   updateReceipt(id: string, data: Partial<InsertReceipt>): Promise<void>;
@@ -185,11 +185,11 @@ export interface IStorage {
   createRecipeVersion(version: InsertRecipeVersion): Promise<RecipeVersion>;
 
   // Transfer Logs
-  getTransferLogs(inventoryItemId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]>;
+  getTransferLogs(companyId: string, inventoryItemId?: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]>;
   createTransferLog(transfer: InsertTransferLog): Promise<TransferLog>;
 
   // Transfer Orders
-  getTransferOrders(): Promise<TransferOrder[]>;
+  getTransferOrders(companyId: string, storeId?: string): Promise<TransferOrder[]>;
   getTransferOrder(id: string): Promise<TransferOrder | undefined>;
   createTransferOrder(order: InsertTransferOrder): Promise<TransferOrder>;
   updateTransferOrder(id: string, order: Partial<TransferOrder>): Promise<TransferOrder | undefined>;
@@ -202,7 +202,7 @@ export interface IStorage {
   deleteTransferOrderLine(id: string): Promise<void>;
 
   // Waste Logs
-  getWasteLogs(inventoryItemId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]>;
+  getWasteLogs(companyId: string, inventoryItemId?: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]>;
   createWasteLog(waste: InsertWasteLog): Promise<WasteLog>;
 
   // Companies
@@ -837,8 +837,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Receipts
-  async getReceipts(): Promise<Receipt[]> {
-    return db.select().from(receipts);
+  async getReceipts(companyId: string, storeId?: string): Promise<Receipt[]> {
+    const conditions = [eq(receipts.companyId, companyId)];
+    if (storeId) {
+      conditions.push(eq(receipts.storeId, storeId));
+    }
+    return db.select().from(receipts).where(and(...conditions));
   }
 
   async getReceipt(id: string): Promise<Receipt | undefined> {
@@ -944,12 +948,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Transfer Logs
-  async getTransferLogs(inventoryItemId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]> {
+  async getTransferLogs(companyId: string, inventoryItemId?: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]> {
     let query = db.select().from(transferLogs);
-    const conditions = [];
+    const conditions = [eq(transferLogs.companyId, companyId)];
     
     if (inventoryItemId) {
       conditions.push(eq(transferLogs.inventoryItemId, inventoryItemId));
+    }
+    if (storeId) {
+      conditions.push(
+        or(
+          eq(transferLogs.fromStoreId, storeId),
+          eq(transferLogs.toStoreId, storeId)
+        )!
+      );
     }
     if (startDate) {
       conditions.push(gte(transferLogs.transferredAt, startDate));
@@ -958,10 +970,7 @@ export class DatabaseStorage implements IStorage {
       conditions.push(lte(transferLogs.transferredAt, endDate));
     }
     
-    if (conditions.length > 0) {
-      return query.where(and(...conditions));
-    }
-    return query;
+    return query.where(and(...conditions));
   }
 
   async createTransferLog(insertTransfer: InsertTransferLog): Promise<TransferLog> {
@@ -970,8 +979,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Transfer Orders
-  async getTransferOrders(): Promise<TransferOrder[]> {
-    return db.select().from(transferOrders).orderBy(transferOrders.createdAt);
+  async getTransferOrders(companyId: string, storeId?: string): Promise<TransferOrder[]> {
+    const conditions = [eq(transferOrders.companyId, companyId)];
+    if (storeId) {
+      conditions.push(
+        or(
+          eq(transferOrders.fromStoreId, storeId),
+          eq(transferOrders.toStoreId, storeId)
+        )!
+      );
+    }
+    return db.select().from(transferOrders).where(and(...conditions)).orderBy(transferOrders.createdAt);
   }
 
   async getTransferOrder(id: string): Promise<TransferOrder | undefined> {
@@ -1021,12 +1039,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Waste Logs
-  async getWasteLogs(inventoryItemId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]> {
+  async getWasteLogs(companyId: string, inventoryItemId?: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]> {
     let query = db.select().from(wasteLogs);
-    const conditions = [];
+    const conditions = [eq(wasteLogs.companyId, companyId)];
     
     if (inventoryItemId) {
       conditions.push(eq(wasteLogs.inventoryItemId, inventoryItemId));
+    }
+    if (storeId) {
+      conditions.push(eq(wasteLogs.storeId, storeId));
     }
     if (startDate) {
       conditions.push(gte(wasteLogs.wastedAt, startDate));
@@ -1035,10 +1056,7 @@ export class DatabaseStorage implements IStorage {
       conditions.push(lte(wasteLogs.wastedAt, endDate));
     }
     
-    if (conditions.length > 0) {
-      return query.where(and(...conditions));
-    }
-    return query;
+    return query.where(and(...conditions));
   }
 
   async createWasteLog(insertWaste: InsertWasteLog): Promise<WasteLog> {
