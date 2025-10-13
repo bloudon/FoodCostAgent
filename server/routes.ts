@@ -1114,19 +1114,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      // Fetch current item to track price changes
+      const currentItem = await storage.getInventoryItem(req.params.id);
+      if (!currentItem) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      
       // Only update inventory item if there are actual field updates
       let item;
       if (Object.keys(updates).length > 0) {
+        // Check if price is changing
+        if (updates.pricePerUnit !== undefined && updates.pricePerUnit !== currentItem.pricePerUnit) {
+          // Create price history record
+          await storage.createInventoryItemPriceHistory({
+            inventoryItemId: req.params.id,
+            pricePerUnit: updates.pricePerUnit,
+            effectiveAt: new Date(),
+            note: 'Price updated via inventory item edit',
+          });
+        }
+        
         item = await storage.updateInventoryItem(req.params.id, updates);
         if (!item) {
           return res.status(404).json({ error: "Inventory item not found" });
         }
       } else {
-        // If only updating locations, fetch current item
-        item = await storage.getInventoryItem(req.params.id);
-        if (!item) {
-          return res.status(404).json({ error: "Inventory item not found" });
-        }
+        // If only updating locations, use current item
+        item = currentItem;
       }
       
       // Update locations if provided
@@ -2117,6 +2131,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (item) {
             const costPerCase = line.priceEach;
             const pricePerUnit = costPerCase / (item.caseSize || 1);
+            
+            // Track price history if price changed
+            if (pricePerUnit !== item.pricePerUnit) {
+              await storage.createInventoryItemPriceHistory({
+                inventoryItemId: vi.inventoryItemId,
+                pricePerUnit,
+                effectiveAt: new Date(),
+                vendorItemId: vi.id,
+                note: 'Price updated via receiving',
+              });
+            }
+            
             await storage.updateInventoryItem(vi.inventoryItemId, {
               pricePerUnit,
             });
@@ -2171,6 +2197,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (item) {
               const costPerCase = lineData.priceEach;
               const pricePerUnit = costPerCase / (item.caseSize || 1);
+              
+              // Track price history if price changed
+              if (pricePerUnit !== item.pricePerUnit) {
+                await storage.createInventoryItemPriceHistory({
+                  inventoryItemId: vi.inventoryItemId,
+                  pricePerUnit,
+                  effectiveAt: new Date(),
+                  vendorItemId: vi.id,
+                  note: 'Price updated via receiving',
+                });
+              }
+              
               await storage.updateInventoryItem(vi.inventoryItemId, {
                 pricePerUnit,
               });
