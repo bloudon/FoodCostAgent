@@ -8,6 +8,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Inventory Item Configuration
 - **Default Unit of Measure**: Pound should be the default unit when creating new inventory items
+- **Unit Abbreviation**: "Pound" displays as "lb." throughout the UI for compact display. The `formatUnitName()` utility function (in `client/src/lib/utils.ts`) handles abbreviation consistently across all pages including inventory items, vendor cards, purchase orders, receiving, recipes, and unit conversions.
 - **Yield Field**: Yield is stored as a percentage value (0-100), not a separate yield amount + unit
 - **Par Level & Reorder Level**: These fields are stored on the `inventory_items` table as default values that can be overridden at the store level via `store_inventory_items` table
 - **Storage Locations**: Inventory items can be associated with multiple storage locations using checkboxes. At least one location is required. The primary location is indicated with a "(p)" badge.
