@@ -105,18 +105,11 @@ export default function InventoryItems() {
   const [itemsPerPage, setItemsPerPage] = useState<number>(9999);
   const { toast } = useToast();
 
-  const { data: currentUser } = useQuery<{ companyId: string }>({
-    queryKey: ["/api/auth/me"],
-  });
-
-  const { data: company } = useQuery<{ id: string }>({
-    queryKey: ["/api/companies/default-company"],
-    enabled: !!currentUser,
-  });
+  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
 
   const { data: stores } = useQuery<CompanyStore[]>({
-    queryKey: [`/api/companies/${company?.id}/stores`],
-    enabled: !!company?.id,
+    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}/stores`] : [],
+    enabled: !!selectedCompanyId,
   });
 
   const { data: inventoryItems, isLoading } = useQuery<InventoryItemDisplay[]>({
