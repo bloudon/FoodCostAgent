@@ -2908,6 +2908,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertCompanySchema.parse(req.body);
       const company = await storage.createCompany(data);
+      
+      // Create default "Misc Grocery" vendor for unit-based ordering
+      await storage.createVendor({
+        companyId: company.id,
+        name: "Misc Grocery",
+        orderGuideType: "manual",
+      });
+      
       res.status(201).json(company);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
