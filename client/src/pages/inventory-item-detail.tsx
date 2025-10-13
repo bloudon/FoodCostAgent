@@ -712,7 +712,7 @@ export default function InventoryItemDetail() {
                         </div>
                         <div>
                           <span className="text-muted-foreground">Unit: </span>
-                          <span className="font-medium">{vi.unit?.name || "Unknown"}</span>
+                          <span className="font-medium">{formatUnitName(vi.unit?.name)}</span>
                         </div>
                         <div>
                           <span className="text-muted-foreground">Case Size: </span>
