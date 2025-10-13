@@ -209,7 +209,30 @@ export default function InventoryItems() {
           </Button>
         </div>
 
-        <div className="flex gap-4 flex-wrap">
+        {/* Store Selector - Primary Filter */}
+        <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-2">
+            <label className="text-sm font-medium text-muted-foreground">
+              Store Location
+            </label>
+            <Select value={selectedStore} onValueChange={setSelectedStore}>
+              <SelectTrigger className="w-[280px]" data-testid="select-store-filter">
+                <SelectValue placeholder="Select store location" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Stores</SelectItem>
+                {stores?.filter(s => s.status === 'active').map((store) => (
+                  <SelectItem key={store.id} value={store.id}>
+                    {store.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Secondary Filters */}
+        <div className="flex gap-4 flex-wrap border-t pt-4">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -229,19 +252,6 @@ export default function InventoryItems() {
               {categories?.map((category) => (
                 <SelectItem key={category.id} value={category.id}>
                   {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={selectedStore} onValueChange={setSelectedStore}>
-            <SelectTrigger className="w-[200px]" data-testid="select-store-filter">
-              <SelectValue placeholder="Filter by store" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Stores</SelectItem>
-              {stores?.filter(s => s.status === 'active').map((store) => (
-                <SelectItem key={store.id} value={store.id}>
-                  {store.name}
                 </SelectItem>
               ))}
             </SelectContent>
