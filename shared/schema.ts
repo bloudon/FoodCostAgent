@@ -168,6 +168,8 @@ export const inventoryItems = pgTable("inventory_items", {
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
   pricePerUnit: real("price_per_unit").notNull().default(0), // price per base unit (case cost = pricePerUnit × caseSize)
   yieldPercent: real("yield_percent"), // usable yield percentage after trimming/waste (0-100)
+  parLevel: real("par_level"), // default target inventory level (can be overridden at store level)
+  reorderLevel: real("reorder_level"), // default reorder level (can be overridden at store level)
   imageUrl: text("image_url"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
