@@ -980,10 +980,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const units = await storage.getUnits();
     const categories = await storage.getCategories();
     
+    // Fetch all item locations in one batched query
+    const itemIds = items.map(item => item.id);
+    const itemLocationsMap = await storage.getInventoryItemLocationsBatch(itemIds);
+    
     const enriched = items.map((item) => {
-      const location = locations.find((l) => l.id === item.storageLocationId);
       const unit = units.find((u) => u.id === item.unitId);
       const category = item.categoryId ? categories.find((c) => c.id === item.categoryId) : null;
+      
+      // Get all locations for this item from the batch result
+      const itemLocationRecords = itemLocationsMap.get(item.id) || [];
+      const itemLocations = itemLocationRecords
+        .map(il => {
+          const loc = locations.find(l => l.id === il.storageLocationId);
+          return loc ? {
+            id: loc.id,
+            name: loc.name,
+            isPrimary: il.isPrimary === 1,
+          } : null;
+        })
+        .filter((l): l is { id: string; name: string; isPrimary: boolean } => l !== null)
+        .sort((a, b) => {
+          // Primary location first
+          if (a.isPrimary && !b.isPrimary) return -1;
+          if (!a.isPrimary && b.isPrimary) return 1;
+          return a.name.localeCompare(b.name);
+        });
       
       return {
         id: item.id,
@@ -1000,7 +1022,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storageLocationId: item.storageLocationId,
         onHandQty: item.onHandQty,
         active: item.active,
-        location: location || { id: item.storageLocationId, name: '' },
+        locations: itemLocations,
         unit: unit || { id: item.unitId, name: '', abbreviation: '' },
       };
     });

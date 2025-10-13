@@ -45,10 +45,11 @@ type InventoryItemDisplay = {
   storageLocationId: string;
   onHandQty: number;
   active: number;
-  location: {
+  locations: Array<{
     id: string;
     name: string;
-  };
+    isPrimary: boolean;
+  }>;
   unit: {
     id: string;
     name: string;
@@ -129,7 +130,8 @@ export default function InventoryItems() {
   const filteredItems = inventoryItems?.filter((item) => {
     const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase()) ||
       item.pluSku?.toLowerCase().includes(search.toLowerCase());
-    const matchesLocation = selectedLocation === "all" || item.storageLocationId === selectedLocation;
+    const matchesLocation = selectedLocation === "all" || 
+      item.locations.some(loc => loc.id === selectedLocation);
     const matchesCategory = selectedCategory === "all" || item.categoryId === selectedCategory;
     const matchesActive = 
       activeFilter === "all" ? true :
@@ -308,7 +310,22 @@ export default function InventoryItems() {
                         className="cursor-pointer"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
-                        <span className="text-sm">{item.location.name}</span>
+                        {item.locations.length > 0 ? (
+                          <div className="flex flex-col gap-1">
+                            {item.locations.map((location) => (
+                              <div key={location.id} className="flex items-center gap-1">
+                                <span className="text-sm">{location.name}</span>
+                                {location.isPrimary && (
+                                  <Badge variant="outline" className="text-xs h-4 px-1">
+                                    Primary
+                                  </Badge>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell
                         className="cursor-pointer"

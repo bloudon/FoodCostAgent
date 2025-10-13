@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, isNull } from "drizzle-orm";
+import { eq, and, gte, lte, isNull, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, type User, type InsertUser,
@@ -96,6 +96,7 @@ export interface IStorage {
   
   // Inventory Item Locations
   getInventoryItemLocations(inventoryItemId: string): Promise<InventoryItemLocation[]>;
+  getInventoryItemLocationsBatch(inventoryItemIds: string[]): Promise<Map<string, InventoryItemLocation[]>>;
   setInventoryItemLocations(inventoryItemId: string, locationIds: string[], primaryLocationId?: string): Promise<void>;
 
   // Vendors
@@ -521,6 +522,27 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(inventoryItemLocations)
       .where(eq(inventoryItemLocations.inventoryItemId, inventoryItemId));
+  }
+
+  async getInventoryItemLocationsBatch(inventoryItemIds: string[]): Promise<Map<string, InventoryItemLocation[]>> {
+    if (inventoryItemIds.length === 0) {
+      return new Map();
+    }
+
+    const allLocations = await db
+      .select()
+      .from(inventoryItemLocations)
+      .where(inArray(inventoryItemLocations.inventoryItemId, inventoryItemIds));
+
+    // Group by inventory item ID
+    const grouped = new Map<string, InventoryItemLocation[]>();
+    for (const location of allLocations) {
+      const existing = grouped.get(location.inventoryItemId) || [];
+      existing.push(location);
+      grouped.set(location.inventoryItemId, existing);
+    }
+
+    return grouped;
   }
 
   async setInventoryItemLocations(
