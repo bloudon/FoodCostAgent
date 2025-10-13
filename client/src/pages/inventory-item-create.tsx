@@ -33,6 +33,13 @@ type Category = {
   sortOrder: number;
 };
 
+type Store = {
+  id: string;
+  name: string;
+  address?: string;
+  city?: string;
+};
+
 export default function InventoryItemCreate() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -49,6 +56,7 @@ export default function InventoryItemCreate() {
   const [reorderLevel, setReorderLevel] = useState("");
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [primaryLocationId, setPrimaryLocationId] = useState("");
+  const [selectedStores, setSelectedStores] = useState<string[]>([]);
 
   const { data: units } = useQuery<Unit[]>({
     queryKey: ["/api/units"],
@@ -64,6 +72,12 @@ export default function InventoryItemCreate() {
 
   const { data: categories } = useQuery<Category[]>({
     queryKey: ["/api/categories"],
+  });
+
+  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+  const { data: stores } = useQuery<Store[]>({
+    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}/stores`] : [],
+    enabled: !!selectedCompanyId,
   });
 
   // Set default unit to Pound when units are loaded
@@ -100,6 +114,7 @@ export default function InventoryItemCreate() {
         parLevel: parLevel.trim() !== "" ? parseFloat(parLevel.trim()) : null,
         reorderLevel: reorderLevel.trim() !== "" ? parseFloat(reorderLevel.trim()) : null,
         locationIds: selectedLocations,
+        storeIds: selectedStores,
       };
       const response = await apiRequest("POST", "/api/inventory-items", data);
       return response.json();
@@ -138,6 +153,23 @@ export default function InventoryItemCreate() {
     setSelectedLocations(newLocations);
   };
 
+  const handleStoreToggle = (storeId: string) => {
+    const newStores = selectedStores.includes(storeId)
+      ? selectedStores.filter(id => id !== storeId)
+      : [...selectedStores, storeId];
+
+    if (newStores.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "At least one store location is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSelectedStores(newStores);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -154,6 +186,15 @@ export default function InventoryItemCreate() {
       toast({
         title: "Validation Error",
         description: "Unit of measure is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (selectedStores.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "At least one store location is required.",
         variant: "destructive",
       });
       return;
@@ -316,6 +357,32 @@ export default function InventoryItemCreate() {
                   data-testid="input-yield-percent"
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Store Locations *</CardTitle>
+              <CardDescription>Select which stores will carry this item (at least one required)</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {stores?.map((store) => (
+                <div key={store.id} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`store-${store.id}`}
+                    checked={selectedStores.includes(store.id)}
+                    onCheckedChange={() => handleStoreToggle(store.id)}
+                    data-testid={`checkbox-store-${store.id}`}
+                  />
+                  <Label
+                    htmlFor={`store-${store.id}`}
+                    className="text-sm font-normal cursor-pointer flex-1"
+                  >
+                    {store.name}
+                    {store.city && <span className="text-muted-foreground ml-2">({store.city})</span>}
+                  </Label>
+                </div>
+              ))}
             </CardContent>
           </Card>
 
