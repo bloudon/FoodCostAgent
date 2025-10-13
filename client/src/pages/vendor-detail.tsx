@@ -6,6 +6,7 @@ import { ArrowLeft, Package, DollarSign, Clock, Box } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import type { Vendor } from "@shared/schema";
+import { formatUnitName } from "@/lib/utils";
 
 interface VendorItemWithDetails {
   id: string;
@@ -140,7 +141,7 @@ export default function VendorDetail() {
                               ${(item.inventoryItem?.pricePerUnit ?? item.lastPrice ?? 0).toFixed(2)}
                             </span>
                             {item.unit && (
-                              <span className="text-muted-foreground">/ {item.unit.name}</span>
+                              <span className="text-muted-foreground">/ {formatUnitName(item.unit.name)}</span>
                             )}
                           </div>
                           {(item.inventoryItem?.caseSize ?? item.caseSize) != null && (

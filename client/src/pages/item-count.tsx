@@ -15,6 +15,7 @@ import {
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatUnitName } from "@/lib/utils";
 
 export default function ItemCount() {
   const params = useParams();
@@ -207,7 +208,7 @@ export default function ItemCount() {
                   <SelectContent>
                     {units?.map((unit) => (
                       <SelectItem key={unit.id} value={unit.id}>
-                        {unit.name}
+                        {formatUnitName(unit.name)}
                       </SelectItem>
                     ))}
                   </SelectContent>

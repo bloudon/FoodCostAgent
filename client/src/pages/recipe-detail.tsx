@@ -43,7 +43,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { filterUnitsBySystem } from "@/lib/utils";
+import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import type { SystemPreferences } from "@shared/schema";
 
@@ -410,7 +410,7 @@ export default function RecipeDetail() {
                 <SelectContent>
                   {filterUnitsBySystem(units, systemPrefs?.unitSystem).map((unit) => (
                     <SelectItem key={unit.id} value={unit.id} data-testid={`option-unit-${unit.id}`}>
-                      {unit.name}
+                      {formatUnitName(unit.name)}
                     </SelectItem>
                   ))}
                 </SelectContent>

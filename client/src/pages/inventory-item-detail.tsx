@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { filterUnitsBySystem } from "@/lib/utils";
+import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import type { SystemPreferences } from "@shared/schema";
 
@@ -557,7 +557,7 @@ export default function InventoryItemDetail() {
                   <SelectContent>
                     {filteredUnits?.map((unit) => (
                       <SelectItem key={unit.id} value={unit.id}>
-                        {unit.name}
+                        {formatUnitName(unit.name)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -799,7 +799,7 @@ export default function InventoryItemDetail() {
                   <SelectContent>
                     {filteredUnits?.map((unit) => (
                       <SelectItem key={unit.id} value={unit.id}>
-                        {unit.name}
+                        {formatUnitName(unit.name)}
                       </SelectItem>
                     ))}
                   </SelectContent>

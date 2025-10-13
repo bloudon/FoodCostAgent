@@ -24,7 +24,7 @@ import {
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { filterUnitsBySystem } from "@/lib/utils";
+import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
 import type { SystemPreferences } from "@shared/schema";
 
 interface CountLine {
@@ -398,7 +398,7 @@ export default function InventoryCount() {
                             <SelectContent>
                               {filterUnitsBySystem(units, systemPrefs?.unitSystem).map((unit) => (
                                 <SelectItem key={unit.id} value={unit.id} data-testid={`option-unit-${unit.id}`}>
-                                  {unit.name}
+                                  {formatUnitName(unit.name)}
                                 </SelectItem>
                               ))}
                             </SelectContent>

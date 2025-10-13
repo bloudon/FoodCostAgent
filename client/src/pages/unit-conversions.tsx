@@ -32,6 +32,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatUnitName } from "@/lib/utils";
 
 type Unit = {
   id: string;
@@ -217,7 +218,7 @@ export default function UnitConversions() {
                   <SelectContent>
                     {units?.map((unit) => (
                       <SelectItem key={unit.id} value={unit.id}>
-                        {unit.name} ({unit.kind})
+                        {formatUnitName(unit.name)} ({unit.kind})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -248,7 +249,7 @@ export default function UnitConversions() {
                   <SelectContent>
                     {units?.map((unit) => (
                       <SelectItem key={unit.id} value={unit.id}>
-                        {unit.name} ({unit.kind})
+                        {formatUnitName(unit.name)} ({unit.kind})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -295,13 +296,13 @@ export default function UnitConversions() {
                 conversions.map((conversion) => (
                   <TableRow key={conversion.id} data-testid={`row-conversion-${conversion.id}`}>
                     <TableCell className="font-medium">
-                      {conversion.fromUnit?.name || "Unknown"}
+                      {formatUnitName(conversion.fromUnit?.name)}
                     </TableCell>
                     <TableCell className="font-mono">
                       1 : {conversion.conversionFactor}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {conversion.toUnit?.name || "Unknown"}
+                      {formatUnitName(conversion.toUnit?.name)}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatUnitName } from "@/lib/utils";
 
 type PurchaseOrderDetail = {
   id: string;
@@ -581,7 +582,7 @@ export default function PurchaseOrderDetail() {
                         itemName = item.name;
                         inventoryItemId = item.id;
                         categoryName = item.categoryName || '-';
-                        unitName = item.unitName || '-';
+                        unitName = formatUnitName(item.unitName);
                         unitPrice = item.pricePerUnit;
                         lineTotal = caseQty * unitPrice;
                       } else {

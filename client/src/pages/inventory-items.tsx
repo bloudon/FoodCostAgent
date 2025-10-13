@@ -29,6 +29,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { formatUnitName } from "@/lib/utils";
 
 type InventoryItemDisplay = {
   id: string;
@@ -377,7 +378,7 @@ export default function InventoryItems() {
                         className="cursor-pointer"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
-                        <span className="text-sm text-muted-foreground">{item.unit?.name ?? '—'}</span>
+                        <span className="text-sm text-muted-foreground">{formatUnitName(item.unit?.name)}</span>
                       </TableCell>
                       <TableCell 
                         className="text-right font-mono cursor-pointer"

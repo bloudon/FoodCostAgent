@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatUnitName } from "@/lib/utils";
 
 type PurchaseOrderDetail = {
   id: string;
@@ -655,7 +656,7 @@ export default function ReceivingDetail() {
                               disabled={isReadOnly}
                             />
                           </TableCell>
-                          <TableCell>{line.unitName}</TableCell>
+                          <TableCell>{formatUnitName(line.unitName)}</TableCell>
                           <TableCell className="text-right font-mono">${line.pricePerUnit.toFixed(4)}</TableCell>
                           <TableCell className="text-right font-mono font-semibold">
                             ${lineTotal.toFixed(2)}
