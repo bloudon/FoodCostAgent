@@ -1992,18 +1992,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ RECEIPTS ============
-  app.get("/api/receipts", async (req, res) => {
-    const receipts = await storage.getReceipts();
+  app.get("/api/receipts", requireAuth, async (req, res) => {
+    const receipts = await storage.getReceipts(req.companyId!);
     res.json(receipts);
   });
 
   // Get or create draft receipt for a purchase order
-  app.get("/api/receipts/draft/:poId", async (req, res) => {
+  app.get("/api/receipts/draft/:poId", requireAuth, async (req, res) => {
     try {
       const { poId } = req.params;
       
       // Check if any receipt already exists for this PO (draft or completed)
-      const existingReceipts = await storage.getReceipts();
+      const existingReceipts = await storage.getReceipts(req.companyId!);
       const existingReceipt = existingReceipts.find(
         r => r.purchaseOrderId === poId
       );
@@ -2013,8 +2013,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const lines = await storage.getReceiptLinesByReceiptId(existingReceipt.id);
         res.json({ receipt: existingReceipt, lines });
       } else {
+        // Get the purchase order to extract storeId and companyId
+        const po = await storage.getPurchaseOrder(poId, req.companyId!);
+        if (!po) {
+          return res.status(404).json({ error: "Purchase order not found" });
+        }
+        
         // Create new draft receipt only if no receipt exists
         const newReceipt = await storage.createReceipt({
+          companyId: po.companyId,
+          storeId: po.storeId,
           purchaseOrderId: poId,
           status: "draft",
         });
@@ -2411,11 +2419,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/reports/waste-trends", async (req, res) => {
+  app.get("/api/reports/waste-trends", requireAuth, async (req, res) => {
     const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
     const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
-    const wasteLogs = await storage.getWasteLogs(undefined, startDate, endDate);
-    const inventoryItems = await storage.getInventoryItems();
+    const wasteLogs = await storage.getWasteLogs(req.companyId!, undefined, undefined, startDate, endDate);
+    const inventoryItems = await storage.getInventoryItems(req.companyId!);
     const trends: Record<string, any> = {};
     for (const wasteLog of wasteLogs) {
       if (!trends[wasteLog.inventoryItemId]) {
@@ -2434,17 +2442,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ TRANSFER ORDERS ============
-  app.get("/api/transfer-orders", async (req, res) => {
-    const orders = await storage.getTransferOrders();
-    const locations = await storage.getStorageLocations();
+  app.get("/api/transfer-orders", requireAuth, async (req, res) => {
+    const orders = await storage.getTransferOrders(req.companyId!);
+    const stores = await storage.getCompanyStores(req.companyId!);
     
     const ordersWithDetails = orders.map(order => {
-      const fromLocation = locations.find(l => l.id === order.fromLocationId);
-      const toLocation = locations.find(l => l.id === order.toLocationId);
+      const fromStore = stores.find(s => s.id === order.fromStoreId);
+      const toStore = stores.find(s => s.id === order.toStoreId);
       return {
         ...order,
-        fromLocationName: fromLocation?.name || "Unknown",
-        toLocationName: toLocation?.name || "Unknown",
+        fromStoreName: fromStore?.name || "Unknown",
+        toStoreName: toStore?.name || "Unknown",
       };
     });
     
