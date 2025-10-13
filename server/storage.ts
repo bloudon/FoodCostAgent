@@ -100,6 +100,10 @@ export interface IStorage {
   getInventoryItemLocationsBatch(inventoryItemIds: string[]): Promise<Map<string, InventoryItemLocation[]>>;
   setInventoryItemLocations(inventoryItemId: string, locationIds: string[], primaryLocationId?: string): Promise<void>;
 
+  // Store Inventory Items
+  getStoreInventoryItem(storeId: string, inventoryItemId: string): Promise<StoreInventoryItem | undefined>;
+  updateStoreInventoryItemActive(storeId: string, inventoryItemId: string, active: number): Promise<void>;
+
   // Vendors
   getVendors(companyId?: string): Promise<Vendor[]>;
   getVendor(id: string, companyId?: string): Promise<Vendor | undefined>;
@@ -593,6 +597,32 @@ export class DatabaseStorage implements IStorage {
         }))
       );
     }
+  }
+
+  // Store Inventory Items
+  async getStoreInventoryItem(storeId: string, inventoryItemId: string): Promise<StoreInventoryItem | undefined> {
+    const [item] = await db
+      .select()
+      .from(storeInventoryItems)
+      .where(
+        and(
+          eq(storeInventoryItems.storeId, storeId),
+          eq(storeInventoryItems.inventoryItemId, inventoryItemId)
+        )
+      );
+    return item || undefined;
+  }
+
+  async updateStoreInventoryItemActive(storeId: string, inventoryItemId: string, active: number): Promise<void> {
+    await db
+      .update(storeInventoryItems)
+      .set({ active })
+      .where(
+        and(
+          eq(storeInventoryItems.storeId, storeId),
+          eq(storeInventoryItems.inventoryItemId, inventoryItemId)
+        )
+      );
   }
 
   // Vendors

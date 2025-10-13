@@ -217,6 +217,7 @@ export const storeInventoryItems = pgTable("store_inventory_items", {
   inventoryItemId: varchar("inventory_item_id").notNull(),
   primaryLocationId: varchar("primary_location_id"), // Primary storage location within the store
   onHandQty: real("on_hand_qty").notNull().default(0), // quantity on hand in base units
+  active: integer("active").notNull().default(1), // 1 = active at this store, 0 = inactive at this store
   parLevel: real("par_level"), // target inventory level for this store
   reorderLevel: real("reorder_level"), // reorder level for this store
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

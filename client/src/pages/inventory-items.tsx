@@ -142,14 +142,19 @@ export default function InventoryItems() {
   });
 
   const toggleActiveMutation = useMutation({
-    mutationFn: async ({ id, active }: { id: string; active: number }) => {
-      return await apiRequest("PATCH", `/api/inventory-items/${id}`, { active });
+    mutationFn: async ({ id, active, storeId }: { id: string; active: number; storeId?: string }) => {
+      const payload: { active: number; storeId?: string } = { active };
+      if (storeId) {
+        payload.storeId = storeId;
+      }
+      return await apiRequest("PATCH", `/api/inventory-items/${id}`, payload);
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      const scope = variables.storeId ? "at this store" : "globally";
       toast({
         title: "Success",
-        description: "Item status updated",
+        description: `Item status updated ${scope}`,
       });
     },
     onError: (error: Error) => {
@@ -437,11 +442,13 @@ export default function InventoryItems() {
                             <DropdownMenuItem
                               onClick={() => toggleActiveMutation.mutate({ 
                                 id: item.id, 
-                                active: item.active === 1 ? 0 : 1 
+                                active: item.active === 1 ? 0 : 1,
+                                storeId: selectedStore !== "all" ? selectedStore : undefined
                               })}
                               data-testid={`menu-toggle-active-${item.id}`}
                             >
                               {item.active === 1 ? "Mark as Inactive" : "Mark as Active"}
+                              {selectedStore !== "all" && <span className="text-xs ml-2 text-muted-foreground">(this store)</span>}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

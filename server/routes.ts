@@ -1054,10 +1054,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(item);
   });
 
-  app.post("/api/inventory-items", async (req, res) => {
+  app.post("/api/inventory-items", requireAuth, async (req, res) => {
     try {
+      const companyId = (req as any).companyId;
       const { locationIds, ...itemData } = req.body;
-      const data = insertInventoryItemSchema.parse(itemData);
+      
+      // Add companyId from authenticated context
+      const dataWithCompany = {
+        ...itemData,
+        companyId,
+      };
+      
+      const data = insertInventoryItemSchema.parse(dataWithCompany);
       
       // Validate locationIds if provided
       if (locationIds !== undefined) {
@@ -1082,10 +1090,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/inventory-items/:id", async (req, res) => {
+  app.patch("/api/inventory-items/:id", requireAuth, async (req, res) => {
     try {
-      const { locationIds, ...updateData } = req.body;
+      const companyId = (req as any).companyId;
+      const { locationIds, storeId, ...updateData } = req.body;
       const updates = insertInventoryItemSchema.partial().parse(updateData);
+      
+      // Fetch current item to verify company ownership
+      const currentItem = await storage.getInventoryItem(req.params.id);
+      if (!currentItem) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      if (currentItem.companyId !== companyId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      // Handle store-specific active status updates
+      if (storeId && updates.active !== undefined) {
+        // Verify store belongs to the same company
+        const store = await storage.getCompanyStore(storeId);
+        if (!store || store.companyId !== companyId) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+        await storage.updateStoreInventoryItemActive(storeId, req.params.id, updates.active);
+        // Remove active from updates to avoid updating global field
+        delete updates.active;
+      }
       
       // Validate numeric fields are not NaN
       if (updates.pricePerUnit !== undefined && isNaN(updates.pricePerUnit)) {
@@ -1112,12 +1142,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (locationIds.length === 0) {
           return res.status(400).json({ error: "At least one storage location is required" });
         }
-      }
-      
-      // Fetch current item to track price changes
-      const currentItem = await storage.getInventoryItem(req.params.id);
-      if (!currentItem) {
-        return res.status(404).json({ error: "Inventory item not found" });
       }
       
       // Only update inventory item if there are actual field updates
