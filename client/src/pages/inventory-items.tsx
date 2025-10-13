@@ -317,7 +317,7 @@ export default function InventoryItems() {
                                 <span className="text-sm">{location.name}</span>
                                 {location.isPrimary && (
                                   <Badge variant="outline" className="text-xs h-4 px-1">
-                                    Primary
+                                    (p)
                                   </Badge>
                                 )}
                               </div>
