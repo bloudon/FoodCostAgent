@@ -972,9 +972,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ INVENTORY ITEMS ============
-  app.get("/api/inventory-items", async (req, res) => {
+  app.get("/api/inventory-items", requireAuth, async (req, res) => {
     const locationId = req.query.location_id as string | undefined;
-    const items = await storage.getInventoryItems(locationId);
+    const storeId = req.query.store_id as string | undefined;
+    const companyId = (req as any).companyId as string;
+    
+    // Validate store belongs to company if storeId provided
+    if (storeId) {
+      const store = await storage.getCompanyStore(storeId);
+      if (!store || store.companyId !== companyId) {
+        return res.status(403).json({ error: "Access denied to this store" });
+      }
+    }
+    
+    const items = await storage.getInventoryItems(locationId, storeId, companyId);
     
     const locations = await storage.getStorageLocations();
     const units = await storage.getUnits();

@@ -12,6 +12,7 @@ import {
   inventoryItems, type InventoryItem, type InsertInventoryItem,
   inventoryItemLocations, type InventoryItemLocation, type InsertInventoryItemLocation,
   inventoryItemPriceHistory, type InventoryItemPriceHistory, type InsertInventoryItemPriceHistory,
+  storeInventoryItems, type StoreInventoryItem, type InsertStoreInventoryItem,
   vendors, type Vendor, type InsertVendor,
   vendorItems, type VendorItem, type InsertVendorItem,
   recipes, type Recipe, type InsertRecipe,
@@ -78,7 +79,7 @@ export interface IStorage {
   deleteUnitConversion(id: string): Promise<void>;
 
   // Inventory Items
-  getInventoryItems(locationId?: string): Promise<InventoryItem[]>;
+  getInventoryItems(locationId?: string, storeId?: string, companyId?: string): Promise<InventoryItem[]>;
   getInventoryItem(id: string): Promise<InventoryItem | undefined>;
   createInventoryItem(item: InsertInventoryItem): Promise<InventoryItem>;
   updateInventoryItem(id: string, item: Partial<InventoryItem>): Promise<InventoryItem | undefined>;
@@ -437,10 +438,36 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Inventory Items
-  async getInventoryItems(locationId?: string): Promise<InventoryItem[]> {
-    if (locationId) {
-      return db.select().from(inventoryItems).where(eq(inventoryItems.storageLocationId, locationId));
+  async getInventoryItems(locationId?: string, storeId?: string, companyId?: string): Promise<InventoryItem[]> {
+    // Build base query with company filtering
+    let query = db.select({ inventoryItem: inventoryItems }).from(inventoryItems);
+    const conditions = [];
+    
+    // Always filter by company if provided (multi-tenant safety)
+    if (companyId) {
+      conditions.push(eq(inventoryItems.companyId, companyId));
     }
+    
+    // Filter by store: show only items that have a store_inventory_items record for this store
+    if (storeId) {
+      query = query.innerJoin(storeInventoryItems, eq(storeInventoryItems.inventoryItemId, inventoryItems.id));
+      conditions.push(eq(storeInventoryItems.storeId, storeId));
+    }
+    
+    // Legacy: filter by storage location (DEPRECATED)
+    if (locationId) {
+      query = query.innerJoin(inventoryItemLocations, eq(inventoryItemLocations.inventoryItemId, inventoryItems.id));
+      conditions.push(eq(inventoryItemLocations.storageLocationId, locationId));
+    }
+    
+    // Apply all conditions
+    if (conditions.length > 0) {
+      const result = await query.where(and(...conditions));
+      // Extract just the inventory item from the joined results
+      return result.map(row => row.inventoryItem);
+    }
+    
+    // Fallback: return all items (should only happen if no filters provided)
     return db.select().from(inventoryItems);
   }
 

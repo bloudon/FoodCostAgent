@@ -69,6 +69,14 @@ type Category = {
   sortOrder: number;
 };
 
+type CompanyStore = {
+  id: string;
+  companyId: string;
+  code: string;
+  name: string;
+  status: string;
+};
+
 const categoryColors: Record<string, string> = {
   "Protein": "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
   "Produce": "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
@@ -88,6 +96,7 @@ function getInventoryStatus(quantity: number, parLevel: number | null, reorderLe
 
 export default function InventoryItems() {
   const [search, setSearch] = useState("");
+  const [selectedStore, setSelectedStore] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [activeFilter, setActiveFilter] = useState<"active" | "inactive" | "all">("active");
@@ -95,8 +104,32 @@ export default function InventoryItems() {
   const [itemsPerPage, setItemsPerPage] = useState<number>(9999);
   const { toast } = useToast();
 
+  const { data: currentUser } = useQuery<{ companyId: string }>({
+    queryKey: ["/api/auth/me"],
+  });
+
+  const { data: company } = useQuery<{ id: string }>({
+    queryKey: ["/api/companies/default-company"],
+    enabled: !!currentUser,
+  });
+
+  const { data: stores } = useQuery<CompanyStore[]>({
+    queryKey: [`/api/companies/${company?.id}/stores`],
+    enabled: !!company?.id,
+  });
+
   const { data: inventoryItems, isLoading } = useQuery<InventoryItemDisplay[]>({
-    queryKey: ["/api/inventory-items"],
+    queryKey: ["/api/inventory-items", selectedStore],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedStore !== "all") {
+        params.append("store_id", selectedStore);
+      }
+      const url = `/api/inventory-items${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch inventory items");
+      return response.json();
+    },
   });
 
   const { data: locations } = useQuery<StorageLocation[]>({
@@ -199,6 +232,19 @@ export default function InventoryItems() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={selectedStore} onValueChange={setSelectedStore}>
+            <SelectTrigger className="w-[200px]" data-testid="select-store-filter">
+              <SelectValue placeholder="Filter by store" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Stores</SelectItem>
+              {stores?.filter(s => s.status === 'active').map((store) => (
+                <SelectItem key={store.id} value={store.id}>
+                  {store.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={selectedLocation} onValueChange={setSelectedLocation}>
             <SelectTrigger className="w-[200px]" data-testid="select-location-filter">
               <SelectValue placeholder="Filter by location" />
@@ -236,7 +282,7 @@ export default function InventoryItems() {
             <Package className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-1">No inventory items found</h3>
             <p className="text-muted-foreground text-sm">
-              {search || selectedLocation !== "all" || selectedCategory !== "all"
+              {search || selectedStore !== "all" || selectedLocation !== "all" || selectedCategory !== "all"
                 ? "Try adjusting your filters"
                 : "Inventory items will appear here as stock is received"}
             </p>
