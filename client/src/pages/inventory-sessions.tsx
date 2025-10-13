@@ -25,12 +25,14 @@ import {
 import { useState } from "react";
 import type { Company, CompanyStore } from "@shared/schema";
 
-function SessionRow({ count, countDate, inventoryItems }: any) {
+function SessionRow({ count, countDate, inventoryItems, stores }: any) {
   const { toast } = useToast();
   
   const { data: countLines } = useQuery<any[]>({
     queryKey: ["/api/inventory-count-lines", count.id],
   });
+  
+  const store = stores?.find((s: CompanyStore) => s.id === count.storeId);
 
   const deleteSessionMutation = useMutation({
     mutationFn: async () => {
@@ -68,6 +70,7 @@ function SessionRow({ count, countDate, inventoryItems }: any) {
       <TableCell className="font-mono">
         {countDate.toLocaleDateString()} {countDate.toLocaleTimeString()}
       </TableCell>
+      <TableCell data-testid={`text-store-${count.id}`}>{store?.name || 'Unknown'}</TableCell>
       <TableCell>{count.userId}</TableCell>
       <TableCell className="text-right font-mono">{countLines?.length || 0}</TableCell>
       <TableCell className="text-right font-mono font-semibold" data-testid={`text-session-value-${count.id}`}>
@@ -234,6 +237,7 @@ export default function InventorySessions() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date & Time</TableHead>
+                  <TableHead>Store</TableHead>
                   <TableHead>User</TableHead>
                   <TableHead className="text-right">Items</TableHead>
                   <TableHead className="text-right">Total Value</TableHead>
@@ -250,6 +254,7 @@ export default function InventorySessions() {
                       count={count} 
                       countDate={countDate}
                       inventoryItems={inventoryItems}
+                      stores={stores}
                     />
                   );
                 })}
