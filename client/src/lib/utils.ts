@@ -14,3 +14,14 @@ export function filterUnitsBySystem(units: Unit[] | undefined, unitSystem: strin
     unit.system === unitSystem || unit.system === "both"
   );
 }
+
+export function formatUnitName(unitName: string | undefined): string {
+  if (!unitName) return '-';
+  
+  // Abbreviate "pound" to "lb."
+  if (unitName.toLowerCase() === 'pound') {
+    return 'lb.';
+  }
+  
+  return unitName;
+}
