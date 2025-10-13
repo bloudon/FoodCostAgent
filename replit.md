@@ -65,7 +65,7 @@ The system features a multi-tenant structure supporting multiple companies and t
 - Dedicated pages for managing storage locations, inventory items with status indicators, and detailed recipe views.
 - Robust settings module for company info, user profiles, data connections, and system preferences.
 - Purchase order management supports unit/case-based ordering, vendor-specific item filtering, and keyboard-optimized entry. The detail page features a full vendor product list view with search and filters.
-- Inventory count sessions auto-populate active items and support inline editing.
+- Inventory count sessions auto-populate active items associated with the selected store and support inline editing. Items are filtered by store association via `store_inventory_items` table to ensure only relevant items appear in each store's count.
 - System-wide standardization from "product" to "inventory item" terminology.
 - Enhanced vendor management with CRUD for vendor items and dedicated detail pages.
 - Robust unit conversion module with cooking and metric conversions.

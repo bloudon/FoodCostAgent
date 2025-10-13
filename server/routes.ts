@@ -1576,8 +1576,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const countInput = insertInventoryCountSchema.parse(req.body);
       const count = await storage.createInventoryCount(countInput);
 
-      // Auto-populate count lines for ALL active inventory items
-      const allItems = await storage.getInventoryItems();
+      // Auto-populate count lines for active inventory items associated with THIS STORE
+      const allItems = await storage.getInventoryItems(undefined, count.storeId, count.companyId);
       const activeItems = allItems.filter(item => item.active === 1);
 
       for (const item of activeItems) {
