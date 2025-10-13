@@ -832,7 +832,7 @@ export default function InventoryItemDetail() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="lastPrice">Price per Case ($) *</Label>
+                <Label htmlFor="lastPrice">Unit Price ($) *</Label>
                 <Input
                   id="lastPrice"
                   type="number"

@@ -1188,10 +1188,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ VENDOR ITEMS ============
-  app.get("/api/vendor-items", async (req, res) => {
+  app.get("/api/vendor-items", requireAuth, async (req, res) => {
+    const companyId = (req as any).companyId;
     const vendorId = req.query.vendor_id as string | undefined;
     const vendorItems = await storage.getVendorItems(vendorId);
-    const inventoryItems = await storage.getInventoryItems();
+    const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
     const units = await storage.getUnits();
     const categories = await storage.getCategories();
     
@@ -1206,6 +1207,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         categoryId: item?.categoryId || null,
         categoryName: category?.name || null,
         inventoryItem: item ? {
+          id: item.id,
+          name: item.name,
+          categoryId: item.categoryId,
+          storageLocationId: item.storageLocationId,
           caseSize: item.caseSize,
           pricePerUnit: item.pricePerUnit,
         } : undefined,
