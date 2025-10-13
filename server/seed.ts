@@ -162,6 +162,10 @@ export async function seedDatabase() {
 
   // ============ VENDORS ============
   const vendors = {
+    miscGrocery: await storage.createVendor({ 
+      name: "Misc Grocery", 
+      orderGuideType: "manual" 
+    }),
     sysco: await storage.createVendor({ name: "Sysco", accountNumber: "SYS-12345" }),
     usFoods: await storage.createVendor({ name: "US Foods", accountNumber: "USF-67890" }),
   };
