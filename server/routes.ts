@@ -1057,7 +1057,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/inventory-items", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
-      const { locationIds, ...itemData } = req.body;
+      const { locationIds, storeIds, ...itemData } = req.body;
       
       // Add companyId from authenticated context
       const dataWithCompany = {
@@ -1066,6 +1066,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       
       const data = insertInventoryItemSchema.parse(dataWithCompany);
+      
+      // Validate storeIds
+      if (!storeIds || !Array.isArray(storeIds) || storeIds.length === 0) {
+        return res.status(400).json({ error: "At least one store location is required" });
+      }
       
       // Validate locationIds if provided
       if (locationIds !== undefined) {
@@ -1082,6 +1087,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Set locations if provided
       if (locationIds && Array.isArray(locationIds) && locationIds.length > 0) {
         await storage.setInventoryItemLocations(item.id, locationIds, data.storageLocationId);
+      }
+      
+      // Create store_inventory_items records for each selected store
+      for (const storeId of storeIds) {
+        await storage.createStoreInventoryItem({
+          storeId,
+          inventoryItemId: item.id,
+          primaryLocationId: data.storageLocationId,
+          onHandQty: 0,
+          active: 1,
+          parLevel: data.parLevel || null,
+          reorderLevel: data.reorderLevel || null,
+        });
       }
       
       res.status(201).json(item);

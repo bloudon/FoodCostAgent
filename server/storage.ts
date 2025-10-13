@@ -102,6 +102,7 @@ export interface IStorage {
 
   // Store Inventory Items
   getStoreInventoryItem(storeId: string, inventoryItemId: string): Promise<StoreInventoryItem | undefined>;
+  createStoreInventoryItem(insertItem: InsertStoreInventoryItem): Promise<StoreInventoryItem>;
   updateStoreInventoryItemActive(storeId: string, inventoryItemId: string, active: number): Promise<void>;
 
   // Vendors
@@ -611,6 +612,11 @@ export class DatabaseStorage implements IStorage {
         )
       );
     return item || undefined;
+  }
+
+  async createStoreInventoryItem(insertItem: InsertStoreInventoryItem): Promise<StoreInventoryItem> {
+    const [item] = await db.insert(storeInventoryItems).values(insertItem).returning();
+    return item;
   }
 
   async updateStoreInventoryItemActive(storeId: string, inventoryItemId: string, active: number): Promise<void> {
