@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
-import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import {
   Dialog,
   DialogContent,
@@ -107,6 +113,7 @@ export default function InventoryItemDetail() {
   const [vendorItemDialogOpen, setVendorItemDialogOpen] = useState(false);
   const [editingVendorItem, setEditingVendorItem] = useState<VendorItem | null>(null);
   const [deleteVendorItemId, setDeleteVendorItemId] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState<string | undefined>(undefined);
   
   // Vendor item form state
   const [vendorItemForm, setVendorItemForm] = useState({
@@ -382,9 +389,10 @@ export default function InventoryItemDetail() {
   const caseCost = item.pricePerUnit * item.caseSize;
 
   return (
-    <div className="h-full overflow-auto">
-      <div className="p-6 space-y-6">
-        <div className="flex items-center gap-4 mb-6">
+    <div className="h-full flex flex-col">
+      {/* Fixed Header */}
+      <div className="sticky top-0 z-10 bg-background border-b">
+        <div className="flex items-center gap-4 px-6 py-4">
           <Button
             variant="ghost"
             size="icon"
@@ -393,23 +401,39 @@ export default function InventoryItemDetail() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold">Inventory Item Details</h1>
-            <p className="text-muted-foreground mt-1">
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold">{item.name}</h1>
+            <p className="text-sm text-muted-foreground">
               PLU/SKU: {item.pluSku}
             </p>
           </div>
-          <Badge variant={item.active ? "outline" : "secondary"} className="ml-auto">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSettingsOpen(settingsOpen ? undefined : "settings")}
+            data-testid="button-settings"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+          <Badge variant={item.active ? "outline" : "secondary"}>
             {item.active ? "Active" : "Inactive"}
           </Badge>
         </div>
+      </div>
 
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Basic Information</CardTitle>
-            <CardDescription>Item name, category, and image</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-auto">
+        <div className="p-6 space-y-6">
+          {/* Basic Information Accordion */}
+          <Accordion type="single" collapsible value={settingsOpen} onValueChange={setSettingsOpen}>
+            <AccordionItem value="settings" className="border rounded-lg px-4">
+              <AccordionTrigger className="hover:no-underline">
+                <div className="flex items-center gap-2">
+                  <Settings className="h-4 w-4" />
+                  <span className="font-semibold">Basic Settings</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pt-4 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">Item Name</Label>
               <Input
@@ -485,10 +509,11 @@ export default function InventoryItemDetail() {
                 Upload a product image (max 10MB). Thumbnails will be automatically generated.
               </p>
             </div>
-          </CardContent>
-        </Card>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
 
-        <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -743,6 +768,7 @@ export default function InventoryItemDetail() {
               )}
             </CardContent>
           </Card>
+        </div>
         </div>
       </div>
 
