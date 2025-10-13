@@ -445,7 +445,10 @@ export class DatabaseStorage implements IStorage {
   // Inventory Items
   async getInventoryItems(locationId?: string, storeId?: string, companyId?: string): Promise<InventoryItem[]> {
     // Build base query with company filtering
-    let query = db.select({ inventoryItem: inventoryItems }).from(inventoryItems);
+    let query = db.select({ 
+      inventoryItem: inventoryItems,
+      storeInventoryItem: storeInventoryItems 
+    }).from(inventoryItems);
     const conditions = [];
     
     // Always filter by company if provided (multi-tenant safety)
@@ -468,8 +471,15 @@ export class DatabaseStorage implements IStorage {
     // Apply all conditions
     if (conditions.length > 0) {
       const result = await query.where(and(...conditions));
-      // Extract just the inventory item from the joined results
-      return result.map(row => row.inventoryItem);
+      // Extract inventory item and override with store-specific active status if applicable
+      return result.map(row => {
+        const item = row.inventoryItem;
+        // If we have store-specific data, use the store's active status
+        if (row.storeInventoryItem) {
+          return { ...item, active: row.storeInventoryItem.active };
+        }
+        return item;
+      });
     }
     
     // Fallback: return all items (should only happen if no filters provided)
