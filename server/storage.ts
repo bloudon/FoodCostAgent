@@ -663,10 +663,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Vendor Items
-  async getVendorItems(vendorId?: string): Promise<VendorItem[]> {
+  async getVendorItems(vendorId?: string, companyId?: string): Promise<VendorItem[]> {
     if (vendorId) {
       return db.select().from(vendorItems).where(eq(vendorItems.vendorId, vendorId));
     }
+    
+    // Filter by company if provided - join with vendors table
+    if (companyId) {
+      return db
+        .select({
+          id: vendorItems.id,
+          vendorId: vendorItems.vendorId,
+          inventoryItemId: vendorItems.inventoryItemId,
+          vendorSku: vendorItems.vendorSku,
+          packSize: vendorItems.packSize,
+          pricePerPack: vendorItems.pricePerPack,
+          purchaseUnitId: vendorItems.purchaseUnitId,
+        })
+        .from(vendorItems)
+        .innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
+        .where(eq(vendors.companyId, companyId));
+    }
+    
     return db.select().from(vendorItems);
   }
 

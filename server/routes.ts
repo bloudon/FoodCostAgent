@@ -1215,7 +1215,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/vendor-items", requireAuth, async (req, res) => {
     const companyId = (req as any).companyId;
     const vendorId = req.query.vendor_id as string | undefined;
-    const vendorItems = await storage.getVendorItems(vendorId);
+    const vendorItems = await storage.getVendorItems(vendorId, companyId);
     const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
     const units = await storage.getUnits();
     const categories = await storage.getCategories();
@@ -1702,8 +1702,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const lines = await storage.getPOLines(req.params.id);
-    const vendorItems = await storage.getVendorItems();
-    const inventoryItems = await storage.getInventoryItems();
+    const vendorItems = await storage.getVendorItems(undefined, companyId);
+    const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
     const units = await storage.getUnits();
 
     const enrichedLines = lines.map((line) => {
@@ -1753,9 +1753,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Check if this is a misc grocery order with inventoryItemId instead
           if (line.inventoryItemId) {
             // Check if vendor item already exists for this vendor and inventory item
-            const vendorItems = await storage.getVendorItems();
+            const vendorItems = await storage.getVendorItems(po.vendorId);
             const existingVendorItem = vendorItems.find(
-              vi => vi.vendorId === po.vendorId && vi.inventoryItemId === line.inventoryItemId
+              vi => vi.inventoryItemId === line.inventoryItemId
             );
             
             if (existingVendorItem) {
@@ -1826,9 +1826,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Check if this is a misc grocery order with inventoryItemId instead
           if (line.inventoryItemId) {
             // Check if vendor item already exists for this vendor and inventory item
-            const vendorItems = await storage.getVendorItems();
+            const vendorItems = await storage.getVendorItems(po.vendorId);
             const existingVendorItem = vendorItems.find(
-              vi => vi.vendorId === po.vendorId && vi.inventoryItemId === line.inventoryItemId
+              vi => vi.inventoryItemId === line.inventoryItemId
             );
             
             if (existingVendorItem) {
@@ -2138,8 +2138,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Complete receiving - finalize draft receipt
-  app.patch("/api/receipts/:id/complete", async (req, res) => {
+  app.patch("/api/receipts/:id/complete", requireAuth, async (req, res) => {
     try {
+      const companyId = (req as any).companyId;
       const receipt = await storage.getReceipt(req.params.id);
       if (!receipt) {
         return res.status(404).json({ error: "Receipt not found" });
@@ -2150,7 +2151,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const lines = await storage.getReceiptLinesByReceiptId(receipt.id);
-      const vendorItems = await storage.getVendorItems();
+      const vendorItems = await storage.getVendorItems(undefined, companyId);
 
       // Update inventory and pricing
       for (const line of lines) {
@@ -2203,14 +2204,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/receipts", async (req, res) => {
+  app.post("/api/receipts", requireAuth, async (req, res) => {
     try {
+      const companyId = (req as any).companyId;
       const { lines, storageLocationId, ...receiptData } = req.body;
       const receiptInput = insertReceiptSchema.parse(receiptData);
       const receipt = await storage.createReceipt(receiptInput);
 
       if (lines && Array.isArray(lines)) {
-        const vendorItems = await storage.getVendorItems();
+        const vendorItems = await storage.getVendorItems(undefined, companyId);
 
         for (const line of lines) {
           const lineData = insertReceiptLineSchema.parse({
@@ -3377,7 +3379,7 @@ async function calculateActualUsage(
   storeId?: string
 ): Promise<Record<string, number>> {
   const counts = await storage.getInventoryCounts(companyId, storeId);
-  const receipts = await storage.getReceipts();
+  const receipts = await storage.getReceipts(companyId);
   const usage: Record<string, number> = {};
 
   const filteredCounts = counts.filter((c) => {
@@ -3417,7 +3419,7 @@ async function calculateActualUsage(
 
     for (const receipt of filteredReceipts) {
       const receiptLines = await storage.getReceiptLines(receipt.id);
-      const vendorItems = await storage.getVendorItems();
+      const vendorItems = await storage.getVendorItems(undefined, companyId);
       
       for (const rLine of receiptLines) {
         const vi = vendorItems.find((vi) => vi.id === rLine.vendorItemId);
