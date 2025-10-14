@@ -1229,6 +1229,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(enriched);
   });
 
+  app.get("/api/inventory-items/:id/stores", requireAuth, async (req, res) => {
+    const companyId = (req as any).companyId;
+    const storeAssociations = await storage.getInventoryItemStores(req.params.id);
+    
+    // Fetch all company stores to enrich the response
+    const allStores = await storage.getCompanyStores(companyId);
+    
+    res.json({
+      associations: storeAssociations,
+      allStores,
+    });
+  });
+
+  app.post("/api/inventory-items/:id/stores", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { storeIds } = req.body;
+      
+      if (!Array.isArray(storeIds)) {
+        return res.status(400).json({ error: "storeIds must be an array" });
+      }
+
+      // Verify the inventory item belongs to this company
+      const item = await storage.getInventoryItem(req.params.id);
+      if (!item || item.companyId !== companyId) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+
+      // Get current store associations
+      const currentAssociations = await storage.getInventoryItemStores(req.params.id);
+      const currentStoreIds = currentAssociations.map(a => a.storeId);
+
+      // Find stores to add and remove
+      const storesToAdd = storeIds.filter(id => !currentStoreIds.includes(id));
+      const storesToRemove = currentStoreIds.filter(id => !storeIds.includes(id));
+
+      // Verify all stores belong to this company
+      const allStores = await storage.getCompanyStores(companyId);
+      const validStoreIds = allStores.map(s => s.id);
+      const invalidStores = storeIds.filter(id => !validStoreIds.includes(id));
+      
+      if (invalidStores.length > 0) {
+        return res.status(400).json({ error: "Invalid store IDs" });
+      }
+
+      // Remove store associations
+      for (const storeId of storesToRemove) {
+        await storage.removeStoreInventoryItem(storeId, req.params.id);
+      }
+
+      // Add new store associations
+      for (const storeId of storesToAdd) {
+        await storage.createStoreInventoryItem({
+          storeId,
+          inventoryItemId: req.params.id,
+          primaryLocationId: item.storageLocationId,
+          onHandQty: 0,
+          active: 1,
+          parLevel: item.parLevel || null,
+          reorderLevel: item.reorderLevel || null,
+        });
+      }
+
+      // Return updated associations
+      const updatedAssociations = await storage.getInventoryItemStores(req.params.id);
+      res.json(updatedAssociations);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ VENDOR ITEMS ============
   app.get("/api/vendor-items", requireAuth, async (req, res) => {
     const companyId = (req as any).companyId;
