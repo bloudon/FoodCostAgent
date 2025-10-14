@@ -108,6 +108,9 @@ export default function PurchaseOrderDetail() {
     enabled: !isNew,
   });
 
+  // Check if order is received (locked state)
+  const isReceived = purchaseOrder?.status === "received";
+
   const { data: vendors } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors"],
   });
@@ -376,7 +379,7 @@ export default function PurchaseOrderDetail() {
             )}
             <Button
               onClick={handleSave}
-              disabled={savePOMutation.isPending || !selectedVendor || !selectedStore || itemsWithQuantity === 0}
+              disabled={savePOMutation.isPending || !selectedVendor || !selectedStore || itemsWithQuantity === 0 || isReceived}
               data-testid="button-save-po"
             >
               <Save className="h-4 w-4 mr-2" />
@@ -444,6 +447,7 @@ export default function PurchaseOrderDetail() {
               value={expectedDate}
               onChange={(e) => setExpectedDate(e.target.value)}
               data-testid="input-expected-date"
+              disabled={isReceived}
             />
           </div>
 
@@ -462,6 +466,7 @@ export default function PurchaseOrderDetail() {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             data-testid="input-notes"
+            disabled={isReceived}
           />
         </div>
 
@@ -647,6 +652,7 @@ export default function PurchaseOrderDetail() {
                                   className="text-center"
                                   placeholder="0"
                                   data-testid={`input-case-qty-${itemId}`}
+                                  disabled={isReceived}
                                 />
                               </TableCell>
                             </>
@@ -671,6 +677,7 @@ export default function PurchaseOrderDetail() {
                                   className="text-center"
                                   placeholder="0"
                                   data-testid={`input-qty-${itemId}`}
+                                  disabled={isReceived}
                                 />
                               </TableCell>
                             </>
