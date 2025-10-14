@@ -6,7 +6,7 @@ import { z } from "zod";
 import { createSession, requireAuth, verifyPassword } from "./auth";
 import { db } from "./db";
 import { eq, and, inArray } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import {
