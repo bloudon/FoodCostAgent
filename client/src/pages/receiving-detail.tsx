@@ -608,7 +608,7 @@ export default function ReceivingDetail() {
                           className={isShort && isSaved ? "bg-red-50 dark:bg-red-950/20" : ""}
                         >
                           <TableCell className="font-medium">
-                            {line.inventoryItemId ? (
+                            {line.inventoryItemId && !isReadOnly ? (
                               <button
                                 onClick={() => handleOpenItemEdit(line.inventoryItemId!)}
                                 className="hover:underline text-left"
@@ -634,7 +634,11 @@ export default function ReceivingDetail() {
                             {line.orderedQty.toFixed(2)}
                           </TableCell>
                           <TableCell className="text-right">
-                            {isSaved && !isEditing && !isReadOnly ? (
+                            {isReadOnly ? (
+                              <span className="font-mono" data-testid={`text-received-qty-${line.id}`}>
+                                {receivedQty.toFixed(2)}
+                              </span>
+                            ) : isSaved && !isEditing ? (
                               <button
                                 onClick={() => handleToggleEdit(line.id)}
                                 className="font-mono text-primary hover:underline"
@@ -652,7 +656,6 @@ export default function ReceivingDetail() {
                                 onKeyDown={(e) => handleKeyDown(e, line.id, filteredLines)}
                                 className="w-24 text-right font-mono"
                                 data-testid={`input-received-qty-${line.id}`}
-                                disabled={isReadOnly}
                               />
                             )}
                           </TableCell>
