@@ -51,6 +51,7 @@ export default function CountSession() {
   const sourceCountId = urlParams.get('from');
   
   const [showEmpty, setShowEmpty] = useState(true); // Default to showing all items
+  const [groupBy, setGroupBy] = useState<"location" | "category">("location"); // Toggle between location and category grouping
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [selectedItemId, setSelectedItemId] = useState<string>(filterItemId || "all");
@@ -542,16 +543,39 @@ export default function CountSession() {
                   Showing: <span className="font-medium">{filteredLines[0]?.inventoryItem?.name || 'Unknown Item'}</span>
                 </div>
               )}
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="show-empty"
-                  checked={showEmpty}
-                  onCheckedChange={setShowEmpty}
-                  data-testid="toggle-show-empty"
-                />
-                <Label htmlFor="show-empty" className="cursor-pointer">
-                  Show empty counts
-                </Label>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="show-empty"
+                    checked={showEmpty}
+                    onCheckedChange={setShowEmpty}
+                    data-testid="toggle-show-empty"
+                  />
+                  <Label htmlFor="show-empty" className="cursor-pointer">
+                    Show empty counts
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2 border-l pl-4">
+                  <Label className="text-sm text-muted-foreground">Group by:</Label>
+                  <Button
+                    variant={groupBy === "location" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setGroupBy("location")}
+                    data-testid="button-group-location"
+                  >
+                    <Layers className="h-4 w-4 mr-1" />
+                    Location
+                  </Button>
+                  <Button
+                    variant={groupBy === "category" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setGroupBy("category")}
+                    data-testid="button-group-category"
+                  >
+                    <Package className="h-4 w-4 mr-1" />
+                    Category
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
