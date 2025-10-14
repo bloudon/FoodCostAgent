@@ -47,7 +47,8 @@ function SessionRow({ count, inventoryItems, stores }: any) {
   });
   
   const store = stores?.find((s: CompanyStore) => s.id === count.storeId);
-  const countDate = new Date(count.countDate);
+  // Fallback to countedAt for legacy records without countDate
+  const countDate = new Date(count.countDate || count.countedAt);
   const createdAt = new Date(count.countedAt);
 
   const deleteSessionMutation = useMutation({
