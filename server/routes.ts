@@ -787,7 +787,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Update vendor_items: create if missing, update if exists
         for (const product of orderGuide.products) {
           // Check if vendor item already exists
-          const existingItems = await storage.getVendorItems(vendor.id);
+          const existingItems = await storage.getVendorItems(vendor.id, companyId);
           const existingItem = existingItems.find(vi => vi.vendorSku === product.vendorSku);
           
           if (existingItem) {
@@ -1310,7 +1310,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/vendor-items", requireAuth, async (req, res) => {
     const companyId = (req as any).companyId;
     const vendorId = req.query.vendor_id as string | undefined;
-    const vendorItems = await storage.getVendorItems(vendorId, companyId);
+    const storeId = req.query.store_id as string | undefined;
+    const vendorItems = await storage.getVendorItems(vendorId, companyId, storeId);
     const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
     const units = await storage.getUnits();
     const categories = await storage.getCategories();

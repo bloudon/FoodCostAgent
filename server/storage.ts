@@ -116,7 +116,7 @@ export interface IStorage {
   deleteVendor(id: string): Promise<void>;
 
   // Vendor Items
-  getVendorItems(vendorId?: string): Promise<VendorItem[]>;
+  getVendorItems(vendorId?: string, companyId?: string, storeId?: string): Promise<VendorItem[]>;
   getVendorItem(id: string): Promise<VendorItem | undefined>;
   createVendorItem(vendorItem: InsertVendorItem): Promise<VendorItem>;
   updateVendorItem(id: string, vendorItem: Partial<InsertVendorItem>): Promise<VendorItem | undefined>;
@@ -728,9 +728,38 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Vendor Items
-  async getVendorItems(vendorId?: string, companyId?: string): Promise<VendorItem[]> {
+  async getVendorItems(vendorId?: string, companyId?: string, storeId?: string): Promise<VendorItem[]> {
+    // Build conditions
+    const conditions = [];
+    
     if (vendorId) {
-      return db.select().from(vendorItems).where(eq(vendorItems.vendorId, vendorId));
+      conditions.push(eq(vendorItems.vendorId, vendorId));
+    }
+    
+    // Filter by store: only show vendor items where the inventory item is active at the selected store
+    if (storeId) {
+      const result = await db
+        .select({
+          id: vendorItems.id,
+          vendorId: vendorItems.vendorId,
+          inventoryItemId: vendorItems.inventoryItemId,
+          vendorSku: vendorItems.vendorSku,
+          purchaseUnitId: vendorItems.purchaseUnitId,
+          caseSize: vendorItems.caseSize,
+          innerPackSize: vendorItems.innerPackSize,
+          lastPrice: vendorItems.lastPrice,
+          leadTimeDays: vendorItems.leadTimeDays,
+          active: vendorItems.active,
+        })
+        .from(vendorItems)
+        .innerJoin(storeInventoryItems, and(
+          eq(storeInventoryItems.inventoryItemId, vendorItems.inventoryItemId),
+          eq(storeInventoryItems.storeId, storeId),
+          eq(storeInventoryItems.active, 1)
+        ))
+        .where(conditions.length > 0 ? and(...conditions) : undefined);
+      
+      return result;
     }
     
     // Filter by company if provided - join with vendors table
@@ -751,6 +780,10 @@ export class DatabaseStorage implements IStorage {
         .from(vendorItems)
         .innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
         .where(eq(vendors.companyId, companyId));
+    }
+    
+    if (conditions.length > 0) {
+      return db.select().from(vendorItems).where(and(...conditions));
     }
     
     return db.select().from(vendorItems);

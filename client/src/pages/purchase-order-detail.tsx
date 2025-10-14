@@ -127,13 +127,13 @@ export default function PurchaseOrderDetail() {
   const isMiscGrocery = selectedVendor === MISC_GROCERY_VENDOR_ID;
 
   const { data: vendorItems } = useQuery<VendorItem[]>({
-    queryKey: [`/api/vendor-items?vendor_id=${selectedVendor}`],
-    enabled: !!selectedVendor && !isMiscGrocery,
+    queryKey: [`/api/vendor-items?vendor_id=${selectedVendor}&store_id=${selectedStore}`],
+    enabled: !!selectedVendor && !!selectedStore && !isMiscGrocery,
   });
 
   const { data: inventoryItems } = useQuery<InventoryItem[]>({
-    queryKey: ["/api/inventory-items"],
-    enabled: !!selectedVendor && isMiscGrocery,
+    queryKey: [`/api/inventory-items?store_id=${selectedStore}`],
+    enabled: !!selectedVendor && !!selectedStore && isMiscGrocery,
   });
 
   const savePOMutation = useMutation({
@@ -148,7 +148,7 @@ export default function PurchaseOrderDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
       if (!isNew) {
         queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${id}`] });
-        queryClient.invalidateQueries({ queryKey: [`/api/vendor-items?vendor_id=${selectedVendor}`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/vendor-items?vendor_id=${selectedVendor}&store_id=${selectedStore}`] });
       }
       toast({
         title: "Success",
@@ -387,30 +387,17 @@ export default function PurchaseOrderDetail() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Vendor</label>
-            <Select 
-              value={selectedVendor} 
-              onValueChange={setSelectedVendor}
-              disabled={!isNew}
-            >
-              <SelectTrigger data-testid="select-vendor">
-                <SelectValue placeholder="Select vendor" />
-              </SelectTrigger>
-              <SelectContent>
-                {vendors?.map((vendor) => (
-                  <SelectItem key={vendor.id} value={vendor.id}>
-                    {vendor.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
             <label className="text-sm font-medium">Store Location</label>
             <Select 
               value={selectedStore} 
-              onValueChange={setSelectedStore}
+              onValueChange={(value) => {
+                setSelectedStore(value);
+                // Clear vendor and quantities when store changes
+                if (value !== selectedStore) {
+                  setSelectedVendor("");
+                  setCaseQuantities({});
+                }
+              }}
               disabled={!isNew}
             >
               <SelectTrigger data-testid="select-store">
@@ -420,6 +407,30 @@ export default function PurchaseOrderDetail() {
                 {stores?.map((store) => (
                   <SelectItem key={store.id} value={store.id}>
                     {store.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Vendor</label>
+            <Select 
+              value={selectedVendor} 
+              onValueChange={(value) => {
+                setSelectedVendor(value);
+                // Clear quantities when vendor changes
+                setCaseQuantities({});
+              }}
+              disabled={!isNew || !selectedStore}
+            >
+              <SelectTrigger data-testid="select-vendor">
+                <SelectValue placeholder={!selectedStore ? "Select store first" : "Select vendor"} />
+              </SelectTrigger>
+              <SelectContent>
+                {vendors?.map((vendor) => (
+                  <SelectItem key={vendor.id} value={vendor.id}>
+                    {vendor.name}
                   </SelectItem>
                 ))}
               </SelectContent>
