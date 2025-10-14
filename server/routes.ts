@@ -1593,30 +1593,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const inventoryItems = await storage.getInventoryItems();
     const categories = await storage.getCategories();
     
-    // Get the count to find which store this is for
+    // Get the count to find which company this is for (to get storage locations)
     const count = await storage.getInventoryCount(req.params.countId);
-    const storeId = count?.storeId;
+    const companyId = count?.companyId;
     
-    // Fetch store inventory items to get storage locations
-    const storeInventoryItems = storeId ? await storage.getStoreInventoryItems(storeId) : [];
+    // Fetch storage locations for the company
+    const storageLocations = companyId ? await storage.getStorageLocations(companyId) : [];
     
     const enriched = lines.map(line => {
       const unit = units.find(u => u.id === line.unitId);
       const item = inventoryItems.find(i => i.id === line.inventoryItemId);
       const category = item?.categoryId ? categories.find(c => c.id === item.categoryId) : null;
-      const storeItem = storeInventoryItems.find(si => si.inventoryItemId === line.inventoryItemId);
+      const storageLocation = storageLocations.find(sl => sl.id === line.storageLocationId);
       
       const enrichedItem = item ? {
         ...item,
         category: category?.name || null,
         lastCost: item.pricePerUnit * item.caseSize,
-        storageLocationId: storeItem?.primaryLocationId || null
+        storageLocationId: line.storageLocationId, // Use the location from the count line
+        storageLocationName: storageLocation?.name || null
       } : null;
       
       return {
         ...line,
         unitName: unit?.name || "unit",
-        inventoryItem: enrichedItem
+        inventoryItem: enrichedItem,
+        storageLocationName: storageLocation?.name || null
       };
     });
     
