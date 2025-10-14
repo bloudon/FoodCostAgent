@@ -133,6 +133,7 @@ export default function InventorySessions() {
   const [dialogStoreId, setDialogStoreId] = useState<string>("");
   const [countDate, setCountDate] = useState<Date>(new Date());
   const [note, setNote] = useState("");
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
 
@@ -294,7 +295,7 @@ export default function InventorySessions() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="count-date">Inventory Date of Record</Label>
-              <Popover>
+              <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     id="count-date"
@@ -313,7 +314,12 @@ export default function InventorySessions() {
                   <Calendar
                     mode="single"
                     selected={countDate}
-                    onSelect={(date) => date && setCountDate(date)}
+                    onSelect={(date) => {
+                      if (date) {
+                        setCountDate(date);
+                        setDatePickerOpen(false); // Close popover after selection
+                      }
+                    }}
                     initialFocus
                     data-testid="calendar-count-date"
                   />
