@@ -578,19 +578,28 @@ export default function CountSession() {
           <div className="space-y-2">
             {filteredLines && filteredLines.length > 0 ? (
               (() => {
-                // Group by inventory item
+                // Group by inventory item while preserving order
                 const groupedByItem: Record<string, any[]> = {};
+                const itemOrder: string[] = []; // Track the order items appear
+                
                 filteredLines.forEach(line => {
                   const itemId = line.inventoryItemId;
                   if (!groupedByItem[itemId]) {
                     groupedByItem[itemId] = [];
+                    itemOrder.push(itemId); // Preserve first appearance order
                   }
                   groupedByItem[itemId].push(line);
                 });
 
                 return (
-                  <Accordion type="multiple" defaultValue={Object.keys(groupedByItem)} className="w-full">
-                    {Object.entries(groupedByItem).map(([itemId, lines]) => {
+                  <Accordion 
+                    type="multiple" 
+                    defaultValue={itemOrder} 
+                    className="w-full"
+                    key={itemOrder.join(',')} // Force remount when filtered items change
+                  >
+                    {itemOrder.map((itemId) => {
+                      const lines = groupedByItem[itemId];
                       const firstLine = lines[0];
                       const item = firstLine.inventoryItem;
                       
@@ -601,7 +610,7 @@ export default function CountSession() {
                       
                       return (
                         <AccordionItem key={itemId} value={itemId} className="border rounded-md mb-2">
-                          <AccordionTrigger className="px-4 py-2 hover:no-underline hover:bg-muted/50" data-testid={`accordion-item-${itemId}`}>
+                          <AccordionTrigger className="px-4 py-2 hover:no-underline bg-muted/30 hover:bg-muted/50 data-[state=open]:bg-muted/40" data-testid={`accordion-item-${itemId}`}>
                             <div className="flex items-center justify-between w-full pr-4">
                               <div className="flex items-center gap-4 flex-1">
                                 <button
