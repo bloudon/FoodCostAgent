@@ -63,7 +63,7 @@ Thrive Control Center (TCC) integration is supported via `tcc_account_id` (compa
 - System-wide standardization from "product" to "inventory item" terminology.
 - Enhanced vendor management with CRUD for vendor items.
 - Robust unit conversion module.
-- **Receiving Module**: Supports partial receipts, resumable sessions, visual indicators for short quantities, unit-based receiving, and real-time price synchronization.
+- **Receiving Module**: Supports partial receipts, resumable sessions, visual indicators for short quantities, unit-based receiving, and real-time price synchronization. Storage location assignment was removed from the receiving process (Oct 14, 2025) - inventory on-hand quantities are updated for all items without location-based filtering.
 - **Vendor Integration Architecture**: Pluggable adapter pattern for distributors (Sysco, GFS, US Foods) supporting EDI (X12 bidirectional JSON conversion), PunchOut (cXML with HMAC validation), and CSV order guides (enhanced to handle `innerPack` and vendor-specific column mappings). `vendor_credentials` table stores integration settings.
 - **Object Storage Integration**: Google Cloud Storage via Replit's object storage for inventory item images, featuring presigned URLs, direct upload, ACL, and on-the-fly thumbnail generation using Sharp.
 

@@ -2342,19 +2342,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               });
             }
             
+            // Update price and on-hand quantity
+            const newOnHand = (item.onHandQty || 0) + line.receivedQty;
             await storage.updateInventoryItem(vi.inventoryItemId, {
               pricePerUnit,
+              onHandQty: newOnHand
             });
-          }
-
-          if (receipt.storageLocationId) {
-            const item = await storage.getInventoryItem(vi.inventoryItemId);
-            if (item && item.storageLocationId === receipt.storageLocationId) {
-              const newOnHand = (item.onHandQty || 0) + line.receivedQty;
-              await storage.updateInventoryItem(vi.inventoryItemId, {
-                onHandQty: newOnHand
-              });
-            }
           }
         }
       }
@@ -2409,19 +2402,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 });
               }
               
+              // Update price and on-hand quantity
+              const newOnHand = (item.onHandQty || 0) + lineData.receivedQty;
               await storage.updateInventoryItem(vi.inventoryItemId, {
                 pricePerUnit,
+                onHandQty: newOnHand
               });
-            }
-
-            if (storageLocationId) {
-              const item = await storage.getInventoryItem(vi.inventoryItemId);
-              if (item && item.storageLocationId === storageLocationId) {
-                const newOnHand = (item.onHandQty || 0) + lineData.receivedQty;
-                await storage.updateInventoryItem(vi.inventoryItemId, {
-                  onHandQty: newOnHand
-                });
-              }
             }
           }
         }

@@ -64,11 +64,6 @@ type Category = {
   name: string;
 };
 
-type StorageLocation = {
-  id: string;
-  name: string;
-};
-
 type DraftReceipt = {
   id: string;
   purchaseOrderId: string;
@@ -107,7 +102,6 @@ export default function ReceivingDetail() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [selectedStorageLocation, setSelectedStorageLocation] = useState<string>("");
   const [draftReceiptId, setDraftReceiptId] = useState<string | null>(null);
   
   // Track received quantities for each PO line (in units, not cases)
@@ -140,18 +134,10 @@ export default function ReceivingDetail() {
     queryKey: ["/api/categories"],
   });
 
-  const { data: storageLocations } = useQuery<StorageLocation[]>({
-    queryKey: ["/api/storage-locations"],
-  });
-
   // Load draft receipt data when available
   useEffect(() => {
     if (draftReceiptData?.receipt && purchaseOrder?.lines) {
       setDraftReceiptId(draftReceiptData.receipt.id);
-      
-      if (draftReceiptData.receipt.storageLocationId) {
-        setSelectedStorageLocation(draftReceiptData.receipt.storageLocationId);
-      }
 
       // Build complete received quantities object
       const allQtys: Record<string, number> = {};
@@ -194,17 +180,6 @@ export default function ReceivingDetail() {
         description: error.message || "Failed to save line",
         variant: "destructive",
       });
-    },
-  });
-
-  const updateStorageLocationMutation = useMutation({
-    mutationFn: async (data: { receiptId: string; storageLocationId: string }) => {
-      return await apiRequest("PATCH", `/api/receipts/${data.receiptId}/storage-location`, {
-        storageLocationId: data.storageLocationId,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/receipts/draft/${poId}`] });
     },
   });
 
@@ -272,16 +247,6 @@ export default function ReceivingDetail() {
       });
     },
   });
-
-  // Update storage location when changed
-  useEffect(() => {
-    if (selectedStorageLocation && draftReceiptId && draftReceiptData?.receipt.storageLocationId !== selectedStorageLocation) {
-      updateStorageLocationMutation.mutate({
-        receiptId: draftReceiptId,
-        storageLocationId: selectedStorageLocation,
-      });
-    }
-  }, [selectedStorageLocation, draftReceiptId]);
 
   const handleReceivedQuantityChange = (lineId: string, value: number) => {
     setReceivedQuantities(prev => ({
@@ -377,15 +342,6 @@ export default function ReceivingDetail() {
   };
 
   const handleCompleteReceiving = () => {
-    if (!selectedStorageLocation) {
-      toast({
-        title: "Error",
-        description: "Please select a storage location",
-        variant: "destructive",
-      });
-      return;
-    }
-
     if (!draftReceiptId) {
       toast({
         title: "Error",
@@ -555,30 +511,6 @@ export default function ReceivingDetail() {
             )}
           </div>
         </div>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <CardTitle>Storage Location</CardTitle>
-              <Select 
-                value={selectedStorageLocation} 
-                onValueChange={setSelectedStorageLocation}
-                disabled={isReadOnly}
-              >
-                <SelectTrigger className="w-[250px]" data-testid="select-storage-location">
-                  <SelectValue placeholder="Select destination" />
-                </SelectTrigger>
-                <SelectContent>
-                  {storageLocations?.map((location) => (
-                    <SelectItem key={location.id} value={location.id}>
-                      {location.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </CardHeader>
-        </Card>
 
         <Card>
           <CardHeader>
@@ -780,7 +712,7 @@ export default function ReceivingDetail() {
                   </Button>
                   <Button
                     onClick={handleCompleteReceiving}
-                    disabled={!selectedStorageLocation || completeReceivingMutation.isPending || !draftReceiptId || !allLinesSaved}
+                    disabled={completeReceivingMutation.isPending || !draftReceiptId || !allLinesSaved}
                     data-testid="button-complete-receiving"
                   >
                     <PackageCheck className="h-4 w-4 mr-2" />
