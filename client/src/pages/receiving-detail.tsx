@@ -598,7 +598,9 @@ export default function ReceivingDetail() {
                   <TableRow>
                     <TableHead>Item</TableHead>
                     <TableHead>SKU</TableHead>
-                    <TableHead className="text-right">Expected</TableHead>
+                    <TableHead className="text-right">Cases Ordered</TableHead>
+                    <TableHead className="text-right">Case Price</TableHead>
+                    <TableHead className="text-right">Unit Total</TableHead>
                     <TableHead className="text-right">Units Received</TableHead>
                     <TableHead>Unit</TableHead>
                     <TableHead className="text-right">Unit Price</TableHead>
@@ -609,7 +611,7 @@ export default function ReceivingDetail() {
                 <TableBody>
                   {filteredLines.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground">
+                      <TableCell colSpan={10} className="text-center text-muted-foreground">
                         No items found
                       </TableCell>
                     </TableRow>
@@ -619,6 +621,7 @@ export default function ReceivingDetail() {
                       const isSaved = savedLines.has(line.id);
                       const lineTotal = receivedQty * line.pricePerUnit;
                       const isShort = receivedQty < line.orderedQty;
+                      const casePrice = line.caseQuantity && line.caseQuantity > 0 ? line.pricePerUnit * line.caseSize : null;
                       
                       return (
                         <TableRow 
@@ -640,7 +643,13 @@ export default function ReceivingDetail() {
                             )}
                           </TableCell>
                           <TableCell className="text-muted-foreground">{line.vendorSku || '-'}</TableCell>
-                          <TableCell className="text-right font-mono text-muted-foreground">
+                          <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-cases-ordered-${line.id}`}>
+                            {line.caseQuantity && line.caseQuantity > 0 ? line.caseQuantity.toFixed(0) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-case-price-${line.id}`}>
+                            {casePrice !== null ? `$${casePrice.toFixed(2)}` : '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-unit-total-${line.id}`}>
                             {line.orderedQty.toFixed(2)}
                           </TableCell>
                           <TableCell className="text-right">
