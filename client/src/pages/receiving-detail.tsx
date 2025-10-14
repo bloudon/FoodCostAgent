@@ -491,6 +491,13 @@ export default function ReceivingDetail() {
   const totalCases = filteredLines.reduce((sum, line) => {
     return sum + (line.caseQuantity && line.caseQuantity > 0 ? line.caseQuantity : 0);
   }, 0);
+  const totalActual = filteredLines.reduce((sum, line) => {
+    const receivedQty = receivedQuantities[line.id] || 0;
+    return sum + (receivedQty * line.pricePerUnit);
+  }, 0);
+
+  // Check if all lines are saved
+  const allLinesSaved = purchaseOrder?.lines.length === savedLines.size;
 
   // Determine if this is a completed receipt (read-only mode)
   const isCompleted = draftReceiptData?.receipt?.status === "completed";
@@ -594,6 +601,10 @@ export default function ReceivingDetail() {
                 <div className="text-right">
                   <div className="text-sm text-muted-foreground">Expected Value</div>
                   <div className="text-2xl font-bold">${totalExpected.toFixed(2)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm text-muted-foreground">Actual Value</div>
+                  <div className="text-2xl font-bold" data-testid="text-actual-value">${totalActual.toFixed(2)}</div>
                 </div>
               </div>
             </div>
@@ -769,7 +780,7 @@ export default function ReceivingDetail() {
                   </Button>
                   <Button
                     onClick={handleCompleteReceiving}
-                    disabled={!selectedStorageLocation || completeReceivingMutation.isPending || !draftReceiptId}
+                    disabled={!selectedStorageLocation || completeReceivingMutation.isPending || !draftReceiptId || !allLinesSaved}
                     data-testid="button-complete-receiving"
                   >
                     <PackageCheck className="h-4 w-4 mr-2" />
