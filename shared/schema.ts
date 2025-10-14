@@ -299,12 +299,15 @@ export const inventoryCounts = pgTable("inventory_counts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   storeId: varchar("store_id").notNull(), // Store where count is performed
-  countedAt: timestamp("counted_at").notNull().defaultNow(),
+  countDate: timestamp("count_date").notNull(), // Official inventory date of record (chosen by user)
+  countedAt: timestamp("counted_at").notNull().defaultNow(), // When the count session was created
   userId: varchar("user_id").notNull(),
   note: text("note"),
 });
 
-export const insertInventoryCountSchema = createInsertSchema(inventoryCounts).omit({ id: true, countedAt: true });
+export const insertInventoryCountSchema = createInsertSchema(inventoryCounts).omit({ id: true, countedAt: true }).extend({
+  countDate: z.string().transform(val => new Date(val)),
+});
 export type InsertInventoryCount = z.infer<typeof insertInventoryCountSchema>;
 export type InventoryCount = typeof inventoryCounts.$inferSelect;
 
