@@ -988,7 +988,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     const items = await storage.getInventoryItems(locationId, storeId, companyId);
     
-    const locations = await storage.getStorageLocations();
+    const locations = await storage.getStorageLocations(companyId);
     const units = await storage.getUnits();
     const categories = await storage.getCategories();
     
@@ -1530,11 +1530,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ INVENTORY ============
   // Legacy endpoint - redirects to inventory items
-  app.get("/api/inventory", async (req, res) => {
+  app.get("/api/inventory", requireAuth, async (req, res) => {
     const locationId = req.query.location_id as string | undefined;
     const items = await storage.getInventoryItems(locationId);
     
-    const locations = await storage.getStorageLocations();
+    const locations = await storage.getStorageLocations(req.companyId!);
     const units = await storage.getUnits();
     const categories = await storage.getCategories();
     
@@ -2618,14 +2618,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(ordersWithDetails);
   });
 
-  app.get("/api/transfer-orders/:id", async (req, res) => {
+  app.get("/api/transfer-orders/:id", requireAuth, async (req, res) => {
     const order = await storage.getTransferOrder(req.params.id);
     if (!order) {
       return res.status(404).json({ error: "Transfer order not found" });
     }
     
     const lines = await storage.getTransferOrderLines(order.id);
-    const locations = await storage.getStorageLocations();
+    const locations = await storage.getStorageLocations(req.companyId!);
     const inventoryItems = await storage.getInventoryItems();
     const units = await storage.getUnits();
     
