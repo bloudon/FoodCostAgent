@@ -47,6 +47,8 @@ export default function Categories() {
   const [deletingCategory, setDeletingCategory] = useState<any | null>(null);
   const { toast } = useToast();
 
+  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+
   const { data: categories, isLoading } = useQuery<any[]>({
     queryKey: ["/api/categories"],
   });
@@ -56,6 +58,7 @@ export default function Categories() {
     defaultValues: {
       name: "",
       sortOrder: 0,
+      companyId: selectedCompanyId || "",
     },
   });
 
@@ -129,7 +132,11 @@ export default function Categories() {
   );
 
   const handleAddCategory = () => {
-    form.reset({ name: "", sortOrder: 0 });
+    form.reset({ 
+      name: "", 
+      sortOrder: 0,
+      companyId: selectedCompanyId || "",
+    });
     setIsAddDialogOpen(true);
   };
 
@@ -137,11 +144,21 @@ export default function Categories() {
     form.reset({
       name: category.name,
       sortOrder: category.sortOrder,
+      companyId: category.companyId,
     });
     setEditingCategory(category);
   };
 
   const onSubmit = (data: CategoryForm) => {
+    if (!selectedCompanyId) {
+      toast({
+        title: "Error",
+        description: "No company selected. Please select a company first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (editingCategory) {
       updateMutation.mutate({ id: editingCategory.id, updates: data });
     } else {
