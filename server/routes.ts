@@ -4,6 +4,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { z } from "zod";
 import { createSession, requireAuth, verifyPassword } from "./auth";
+import { db } from "./db";
+import { eq, and } from "drizzle-orm";
+import { inventoryItems, storeInventoryItems } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import {
@@ -1706,21 +1709,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const countInput = insertInventoryCountSchema.parse(req.body);
       const count = await storage.createInventoryCount(countInput);
 
-      // Auto-populate count lines for active inventory items associated with THIS STORE
-      // Get items for this store
-      const allItems = await storage.getInventoryItems(undefined, count.storeId, count.companyId);
+      // Auto-populate count lines for GLOBALLY ACTIVE inventory items associated with THIS STORE
+      // Query database directly to get items where BOTH global active AND store-active = 1
+      const activeItemsQuery = await db
+        .select({
+          inventoryItem: inventoryItems,
+        })
+        .from(inventoryItems)
+        .innerJoin(
+          storeInventoryItems,
+          and(
+            eq(storeInventoryItems.inventoryItemId, inventoryItems.id),
+            eq(storeInventoryItems.storeId, count.storeId)
+          )
+        )
+        .where(
+          and(
+            eq(inventoryItems.companyId, count.companyId),
+            eq(inventoryItems.active, 1), // GLOBAL active
+            eq(storeInventoryItems.active, 1) // STORE active
+          )
+        );
       
-      // Filter for GLOBALLY active items only (not just store-active)
-      // When storeId is provided, getInventoryItems returns store-active status in the 'active' field
-      // We need to ensure items are globally active by checking against the inventory_items table
-      const globallyActiveItemIds = (await storage.getInventoryItems(undefined, undefined, count.companyId))
-        .filter(item => item.active === 1)
-        .map(item => item.id);
-      
-      const activeItems = allItems.filter(item => 
-        item.active === 1 && // Store-active
-        globallyActiveItemIds.includes(item.id) // AND globally active
-      );
+      const activeItems = activeItemsQuery.map(row => row.inventoryItem);
 
       // Batch fetch all storage locations for all items
       const itemIds = activeItems.map(item => item.id);
