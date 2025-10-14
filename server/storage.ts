@@ -54,10 +54,10 @@ export interface IStorage {
 
   // Storage Locations
   getStorageLocations(companyId: string): Promise<StorageLocation[]>;
-  getStorageLocation(id: string): Promise<StorageLocation | undefined>;
+  getStorageLocation(id: string, companyId: string): Promise<StorageLocation | undefined>;
   createStorageLocation(location: InsertStorageLocation): Promise<StorageLocation>;
-  updateStorageLocation(id: string, location: Partial<StorageLocation>): Promise<StorageLocation | undefined>;
-  deleteStorageLocation(id: string): Promise<void>;
+  updateStorageLocation(id: string, companyId: string, location: Partial<StorageLocation>): Promise<StorageLocation | undefined>;
+  deleteStorageLocation(id: string, companyId: string): Promise<void>;
 
   // Categories
   getCategories(): Promise<Category[]>;
@@ -352,8 +352,12 @@ export class DatabaseStorage implements IStorage {
       .orderBy(storageLocations.sortOrder);
   }
 
-  async getStorageLocation(id: string): Promise<StorageLocation | undefined> {
-    const [location] = await db.select().from(storageLocations).where(eq(storageLocations.id, id));
+  async getStorageLocation(id: string, companyId: string): Promise<StorageLocation | undefined> {
+    const [location] = await db.select().from(storageLocations)
+      .where(and(
+        eq(storageLocations.id, id),
+        eq(storageLocations.companyId, companyId)
+      ));
     return location || undefined;
   }
 
@@ -362,17 +366,24 @@ export class DatabaseStorage implements IStorage {
     return location;
   }
 
-  async updateStorageLocation(id: string, updates: Partial<StorageLocation>): Promise<StorageLocation | undefined> {
+  async updateStorageLocation(id: string, companyId: string, updates: Partial<StorageLocation>): Promise<StorageLocation | undefined> {
     const [location] = await db
       .update(storageLocations)
       .set(updates)
-      .where(eq(storageLocations.id, id))
+      .where(and(
+        eq(storageLocations.id, id),
+        eq(storageLocations.companyId, companyId)
+      ))
       .returning();
     return location || undefined;
   }
 
-  async deleteStorageLocation(id: string): Promise<void> {
-    await db.delete(storageLocations).where(eq(storageLocations.id, id));
+  async deleteStorageLocation(id: string, companyId: string): Promise<void> {
+    await db.delete(storageLocations)
+      .where(and(
+        eq(storageLocations.id, id),
+        eq(storageLocations.companyId, companyId)
+      ));
   }
 
   // Categories
