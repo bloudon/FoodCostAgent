@@ -599,6 +599,7 @@ export default function ReceivingDetail() {
                     <TableHead>Item</TableHead>
                     <TableHead>SKU</TableHead>
                     <TableHead className="text-right">Cases Ordered</TableHead>
+                    <TableHead className="text-right">Case Size</TableHead>
                     <TableHead className="text-right">Case Price</TableHead>
                     <TableHead className="text-right">Unit Total</TableHead>
                     <TableHead className="text-right">Units Received</TableHead>
@@ -611,7 +612,7 @@ export default function ReceivingDetail() {
                 <TableBody>
                   {filteredLines.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground">
+                      <TableCell colSpan={11} className="text-center text-muted-foreground">
                         No items found
                       </TableCell>
                     </TableRow>
@@ -645,6 +646,9 @@ export default function ReceivingDetail() {
                           <TableCell className="text-muted-foreground">{line.vendorSku || '-'}</TableCell>
                           <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-cases-ordered-${line.id}`}>
                             {line.caseQuantity && line.caseQuantity > 0 ? line.caseQuantity.toFixed(0) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-case-size-${line.id}`}>
+                            {line.caseQuantity && line.caseQuantity > 0 ? line.caseSize.toFixed(0) : '-'}
                           </TableCell>
                           <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-case-price-${line.id}`}>
                             {casePrice !== null ? `$${casePrice.toFixed(2)}` : '-'}
