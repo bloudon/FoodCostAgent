@@ -338,16 +338,14 @@ export default function CountSession() {
     return nameA.localeCompare(nameB);
   });
 
-  // Create a lookup map for previous values by inventory item ID
-  // Aggregate all previous lines for the same item (handles edge cases where duplicates exist)
-  // Note: Count sessions typically have one line per inventory item, but we sum to handle any duplicates
-  // This shows the TOTAL previous value for each item, matching the user requirement
-  const previousValuesByItemId = (previousLines || []).reduce((acc: any, line) => {
-    const previousValue = line.qty * (line.unitCost || 0);
+  // Create a lookup map for previous quantities by inventory item ID
+  // Aggregate all previous lines for the same item across all locations
+  // This shows the TOTAL previous quantity count for each item
+  const previousQuantitiesByItemId = (previousLines || []).reduce((acc: any, line) => {
     if (!acc[line.inventoryItemId]) {
       acc[line.inventoryItemId] = 0;
     }
-    acc[line.inventoryItemId] += previousValue;
+    acc[line.inventoryItemId] += line.qty;
     return acc;
   }, {});
 
@@ -594,7 +592,7 @@ export default function CountSession() {
                 <TableHead>Unit</TableHead>
                 <TableHead className="text-right">Unit Cost</TableHead>
                 <TableHead className="text-right">Total Value</TableHead>
-                <TableHead className="text-right">Previous Value</TableHead>
+                <TableHead className="text-right">Previous Qty</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -725,13 +723,13 @@ export default function CountSession() {
                             <TableCell className="text-right font-mono">${(line.unitCost || 0).toFixed(4)}</TableCell>
                             <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
                             <TableCell className="text-right font-mono text-muted-foreground">
-                              {previousValuesByItemId[line.inventoryItemId] !== undefined && previousCountId ? (
+                              {previousQuantitiesByItemId[line.inventoryItemId] !== undefined && previousCountId ? (
                                 <Link 
                                   href={`/count/${previousCountId}?item=${line.inventoryItemId}&from=${countId}`}
                                   className="hover:underline cursor-pointer inline-block"
                                   data-testid={`link-previous-value-${line.id}`}
                                 >
-                                  ${previousValuesByItemId[line.inventoryItemId].toFixed(2)}
+                                  {previousQuantitiesByItemId[line.inventoryItemId]}
                                 </Link>
                               ) : (
                                 '-'
