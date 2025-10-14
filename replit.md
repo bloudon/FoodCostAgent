@@ -55,7 +55,8 @@ Thrive Control Center (TCC) integration is supported via `tcc_account_id` (compa
 - WebSocket for real-time POS data streaming.
 - Micro-unit system for precise inventory and recursive recipe cost calculation.
 - Automated inventory adjustments for transfers and waste, with historical recipe versioning.
-- Comprehensive inventory count interface supporting case counts and open units, with dual-active status filtering (global and store-specific) for data integrity.
+- **Inventory Count Sessions**: Auto-populate items with dual-active status filtering (global `inventory_items.active=1` AND store `store_inventory_items.active=1`) plus strict company match for data integrity.
+  - **Cross-Company Protection (Oct 14, 2025)**: Added `company_id` column to `store_inventory_items` with PostgreSQL trigger `enforce_store_inventory_item_company` that validates both store and inventory item belong to the same company before INSERT/UPDATE. Cleaned up 18 cross-company associations from data pollution. Count creation enforces company isolation via direct database query.
 - Dedicated pages for managing storage locations, inventory items, and detailed recipe views.
 - Robust settings module for company info, user profiles, data connections, and system preferences.
 - Purchase order management supports unit/case-based ordering, vendor-specific item filtering, and keyboard-optimized entry.

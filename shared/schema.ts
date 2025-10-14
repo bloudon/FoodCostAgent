@@ -214,6 +214,7 @@ export type InventoryItemPriceHistory = typeof inventoryItemPriceHistory.$inferS
 // Store Inventory Items (store-level quantities for company catalog items)
 export const storeInventoryItems = pgTable("store_inventory_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(), // Denormalized for constraint enforcement
   storeId: varchar("store_id").notNull(),
   inventoryItemId: varchar("inventory_item_id").notNull(),
   primaryLocationId: varchar("primary_location_id"), // Primary storage location within the store

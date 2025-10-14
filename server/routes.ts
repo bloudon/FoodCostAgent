@@ -1096,6 +1096,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create store_inventory_items records for each selected store
       for (const storeId of storeIds) {
         await storage.createStoreInventoryItem({
+          companyId: req.companyId,
           storeId,
           inventoryItemId: item.id,
           primaryLocationId: data.storageLocationId,
@@ -1286,6 +1287,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Add new store associations
       for (const storeId of storesToAdd) {
         await storage.createStoreInventoryItem({
+          companyId: req.companyId,
           storeId,
           inventoryItemId: req.params.id,
           primaryLocationId: item.storageLocationId,
