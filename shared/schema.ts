@@ -311,17 +311,21 @@ export const insertInventoryCountSchema = createInsertSchema(inventoryCounts).om
 export type InsertInventoryCount = z.infer<typeof insertInventoryCountSchema>;
 export type InventoryCount = typeof inventoryCounts.$inferSelect;
 
-// Inventory Count Lines
+// Inventory Count Lines - Per-Location Tracking
 export const inventoryCountLines = pgTable("inventory_count_lines", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   inventoryCountId: varchar("inventory_count_id").notNull(),
   inventoryItemId: varchar("inventory_item_id").notNull(),
+  storageLocationId: varchar("storage_location_id").notNull(), // Track qty per storage location
   qty: real("qty").notNull().default(0), // quantity in base units
   unitId: varchar("unit_id").notNull(),
   unitCost: real("unit_cost").notNull().default(0), // price per unit at time of count (snapshot)
   userId: varchar("user_id"),
   countedAt: timestamp("counted_at").defaultNow(),
-});
+}, (table) => ({
+  // Ensure one line per item per location per count
+  uniqueCountItemLocation: unique().on(table.inventoryCountId, table.inventoryItemId, table.storageLocationId),
+}));
 
 export const insertInventoryCountLineSchema = createInsertSchema(inventoryCountLines).omit({ 
   id: true,
