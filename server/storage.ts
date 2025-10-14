@@ -452,12 +452,13 @@ export class DatabaseStorage implements IStorage {
     }
     
     // When filtering by store, we need to join with store_inventory_items and use store-specific active status
+    // Use INNER JOIN to only show items that have been associated with this store
     if (storeId) {
       let query = db.select({ 
         inventoryItem: inventoryItems,
         storeActive: storeInventoryItems.active
       }).from(inventoryItems)
-        .leftJoin(storeInventoryItems, and(
+        .innerJoin(storeInventoryItems, and(
           eq(storeInventoryItems.inventoryItemId, inventoryItems.id),
           eq(storeInventoryItems.storeId, storeId)
         ));
@@ -469,11 +470,10 @@ export class DatabaseStorage implements IStorage {
       }
       
       const result = await query.where(conditions.length > 0 ? and(...conditions) : undefined);
-      // Override with store-specific active status if available, otherwise use global
+      // Use store-specific active status
       return result.map(row => ({
         ...row.inventoryItem,
-        // Use store-specific active if available (not null), otherwise fall back to global active
-        active: row.storeActive !== null ? row.storeActive : row.inventoryItem.active
+        active: row.storeActive
       }));
     }
     
