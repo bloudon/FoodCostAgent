@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import { z } from "zod";
 import { createSession, requireAuth, verifyPassword } from "./auth";
 import { db } from "./db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { inventoryItems, storeInventoryItems } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
@@ -1735,9 +1735,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const activeItems = activeItemsQuery.map(row => row.inventoryItem);
 
-      // Batch fetch all storage locations for all items
+      // Batch fetch storage locations for all items, filtering by company
       const itemIds = activeItems.map(item => item.id);
-      const itemLocationsMap = await storage.getInventoryItemLocationsBatch(itemIds);
+      
+      // Query storage locations with company filter
+      const itemLocationsQuery = await db
+        .select({
+          inventoryItemId: inventoryItemLocations.inventoryItemId,
+          storageLocationId: inventoryItemLocations.storageLocationId,
+          isPrimary: inventoryItemLocations.isPrimary,
+        })
+        .from(inventoryItemLocations)
+        .innerJoin(
+          storageLocations,
+          eq(inventoryItemLocations.storageLocationId, storageLocations.id)
+        )
+        .where(
+          and(
+            inArray(inventoryItemLocations.inventoryItemId, itemIds),
+            eq(storageLocations.companyId, count.companyId) // Only locations from this company
+          )
+        );
+
+      // Group by inventory item ID
+      const itemLocationsMap = new Map<string, typeof itemLocationsQuery>();
+      for (const location of itemLocationsQuery) {
+        const existing = itemLocationsMap.get(location.inventoryItemId) || [];
+        existing.push(location);
+        itemLocationsMap.set(location.inventoryItemId, existing);
+      }
 
       // Create count lines for EACH storage location per item
       for (const item of activeItems) {
