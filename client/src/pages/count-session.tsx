@@ -613,16 +613,16 @@ export default function CountSession() {
                           <AccordionTrigger className="px-4 py-2 hover:no-underline bg-muted/30 hover:bg-muted/50 data-[state=open]:bg-muted/40" data-testid={`accordion-item-${itemId}`}>
                             <div className="flex items-center justify-between w-full pr-4">
                               <div className="flex items-center gap-4 flex-1">
-                                <button
+                                <span
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleOpenItemEdit(item);
                                   }}
-                                  className="font-medium hover:underline text-left"
+                                  className="font-medium hover:underline text-left cursor-pointer"
                                   data-testid={`button-edit-item-${itemId}`}
                                 >
                                   {item?.name || 'Unknown'}
-                                </button>
+                                </span>
                                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                                   <span>{item?.category || 'Uncategorized'}</span>
                                   <span>•</span>
