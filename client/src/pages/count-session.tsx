@@ -575,177 +575,174 @@ export default function CountSession() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Inventory Item</TableHead>
-                {groupBy === "location" ? (
-                  <TableHead>Category</TableHead>
-                ) : (
-                  <TableHead>Location</TableHead>
-                )}
-                <TableHead className="text-right">Quantity (click to edit)</TableHead>
-                <TableHead>Unit</TableHead>
-                <TableHead className="text-right">Unit Cost</TableHead>
-                <TableHead className="text-right">Total Value</TableHead>
-                <TableHead className="text-right">Previous Qty</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredLines && filteredLines.length > 0 ? (
-                (() => {
-                  // Calculate item totals across all locations (for display when grouping by location)
-                  const itemTotals: Record<string, number> = {};
-                  if (groupBy === "location") {
-                    filteredLines.forEach(line => {
-                      const itemId = line.inventoryItemId;
-                      if (!itemTotals[itemId]) {
-                        itemTotals[itemId] = 0;
-                      }
-                      itemTotals[itemId] += line.qty;
-                    });
+          <div className="space-y-2">
+            {filteredLines && filteredLines.length > 0 ? (
+              (() => {
+                // Group by inventory item
+                const groupedByItem: Record<string, any[]> = {};
+                filteredLines.forEach(line => {
+                  const itemId = line.inventoryItemId;
+                  if (!groupedByItem[itemId]) {
+                    groupedByItem[itemId] = [];
                   }
+                  groupedByItem[itemId].push(line);
+                });
 
-                  // Group lines based on groupBy setting
-                  const grouped: Record<string, any[]> = {};
-                  
-                  filteredLines.forEach(line => {
-                    const groupKey = groupBy === "location" 
-                      ? (line.storageLocationName || "Unknown Location")
-                      : (line.inventoryItem?.category || "Uncategorized");
-                    
-                    if (!grouped[groupKey]) {
-                      grouped[groupKey] = [];
-                    }
-                    grouped[groupKey].push(line);
-                  });
-
-                  // Render grouped sections
-                  return Object.entries(grouped).map(([groupName, lines]) => (
-                    <Fragment key={groupName}>
-                      <TableRow className="bg-muted/50 hover:bg-muted/50">
-                        <TableCell colSpan={7} className="font-semibold py-2">
-                          {groupBy === "location" ? <Layers className="inline h-4 w-4 mr-2" /> : <Package className="inline h-4 w-4 mr-2" />}
-                          {groupName}
-                        </TableCell>
-                      </TableRow>
-                      {lines.map((line) => {
-                        const item = line.inventoryItem;
-                        const value = line.qty * (line.unitCost || 0);
-                        const itemTotal = groupBy === "location" ? itemTotals[line.inventoryItemId] : null;
-                        const showTotal = itemTotal !== null && itemTotal !== line.qty; // Only show if different from line qty
-                        
-                        return (
-                          <TableRow key={line.id} data-testid={`row-line-${line.id}`}>
-                            <TableCell className="font-medium pl-8">
-                              <button
-                                onClick={() => handleOpenItemEdit(item)}
-                                className="hover:underline text-left cursor-pointer"
-                                data-testid={`button-edit-item-${line.id}`}
-                              >
-                                {item?.name || 'Unknown'}
-                                {showTotal && (
-                                  <span className="ml-2 text-xs text-muted-foreground font-normal">
-                                    (Total: {itemTotal})
-                                  </span>
+                return (
+                  <Accordion type="multiple" defaultValue={Object.keys(groupedByItem)} className="w-full">
+                    {Object.entries(groupedByItem).map(([itemId, lines]) => {
+                      const firstLine = lines[0];
+                      const item = firstLine.inventoryItem;
+                      
+                      // Calculate aggregate totals for this item
+                      const totalQty = lines.reduce((sum, l) => sum + l.qty, 0);
+                      const totalValue = lines.reduce((sum, l) => sum + (l.qty * (l.unitCost || 0)), 0);
+                      const previousQty = previousQuantitiesByItemId[itemId] || 0;
+                      
+                      return (
+                        <AccordionItem key={itemId} value={itemId} className="border rounded-md mb-2">
+                          <AccordionTrigger className="px-4 py-2 hover:no-underline hover:bg-muted/50" data-testid={`accordion-item-${itemId}`}>
+                            <div className="flex items-center justify-between w-full pr-4">
+                              <div className="flex items-center gap-4 flex-1">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenItemEdit(item);
+                                  }}
+                                  className="font-medium hover:underline text-left"
+                                  data-testid={`button-edit-item-${itemId}`}
+                                >
+                                  {item?.name || 'Unknown'}
+                                </button>
+                                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                  <span>{item?.category || 'Uncategorized'}</span>
+                                  <span>•</span>
+                                  <span>{firstLine.unitName || '-'}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-6 text-sm">
+                                <div className="text-right">
+                                  <div className="font-mono font-semibold">{totalQty}</div>
+                                  <div className="text-xs text-muted-foreground">Total Qty</div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="font-mono font-semibold">${totalValue.toFixed(2)}</div>
+                                  <div className="text-xs text-muted-foreground">Total Value</div>
+                                </div>
+                                {previousQty > 0 && previousCountId && (
+                                  <div className="text-right">
+                                    <Link 
+                                      href={`/count/${previousCountId}?item=${itemId}&from=${countId}`}
+                                      className="font-mono text-muted-foreground hover:underline"
+                                      onClick={(e) => e.stopPropagation()}
+                                      data-testid={`link-previous-${itemId}`}
+                                    >
+                                      {previousQty}
+                                    </Link>
+                                    <div className="text-xs text-muted-foreground">Previous</div>
+                                  </div>
                                 )}
-                              </button>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {groupBy === "location" ? (item?.category || '-') : (line.storageLocationName || '-')}
-                            </TableCell>
-                            <TableCell className="text-right font-mono">
-                              {editingLineId === line.id ? (
-                                <div className="flex items-center gap-2 justify-end">
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    value={editingQty}
-                                    onChange={(e) => setEditingQty(e.target.value)}
-                                    onBlur={(e) => {
-                                      // Only save if blur is NOT to Save/Cancel buttons (unless Tab was pressed)
-                                      const relatedTarget = e.relatedTarget as HTMLElement;
-                                      const isBlurToActionButton = relatedTarget && 
-                                        (relatedTarget.getAttribute('data-testid')?.includes('button-save-') ||
-                                         relatedTarget.getAttribute('data-testid')?.includes('button-cancel-'));
-                                      
-                                      if (wasTabPressed || !isBlurToActionButton) {
-                                        handleSaveEdit(line.id);
-                                      }
-                                      setWasTabPressed(false);
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        handleSaveEdit(line.id);
-                                      } else if (e.key === 'Escape') {
-                                        handleCancelEdit();
-                                      } else if (e.key === 'Tab') {
-                                        // Mark that Tab was pressed, blur will handle the save
-                                        setWasTabPressed(true);
-                                      }
-                                    }}
-                                    className="w-24 h-8"
-                                    autoFocus
-                                    data-testid={`input-qty-${line.id}`}
-                                  />
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleSaveEdit(line.id)}
-                                    disabled={updateMutation.isPending}
-                                    data-testid={`button-save-${line.id}`}
-                                  >
-                                    Save
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={handleCancelEdit}
-                                    data-testid={`button-cancel-${line.id}`}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div
-                                  className="cursor-pointer hover:underline"
-                                  onClick={() => handleStartEdit(line)}
-                                  data-testid={`text-qty-${line.id}`}
-                                >
-                                  {line.qty}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell>{line.unitName || '-'}</TableCell>
-                            <TableCell className="text-right font-mono">${(line.unitCost || 0).toFixed(4)}</TableCell>
-                            <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
-                            <TableCell className="text-right font-mono text-muted-foreground">
-                              {previousQuantitiesByItemId[line.inventoryItemId] !== undefined && previousCountId ? (
-                                <Link 
-                                  href={`/count/${previousCountId}?item=${line.inventoryItemId}&from=${countId}`}
-                                  className="hover:underline cursor-pointer inline-block"
-                                  data-testid={`link-previous-value-${line.id}`}
-                                >
-                                  {previousQuantitiesByItemId[line.inventoryItemId]}
-                                </Link>
-                              ) : (
-                                '-'
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </Fragment>
-                  ));
-                })()
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                    {showEmpty ? "No items in this count" : "No items with quantities found"}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                              </div>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="w-[40%]">Location</TableHead>
+                                  <TableHead className="text-right">Quantity (click to edit)</TableHead>
+                                  <TableHead className="text-right">Unit Cost</TableHead>
+                                  <TableHead className="text-right">Total Value</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {lines.map((line) => {
+                                  const value = line.qty * (line.unitCost || 0);
+                                  
+                                  return (
+                                    <TableRow key={line.id} data-testid={`row-line-${line.id}`}>
+                                      <TableCell className="font-medium">
+                                        {line.storageLocationName || 'Unknown Location'}
+                                      </TableCell>
+                                      <TableCell className="text-right font-mono">
+                                        {editingLineId === line.id ? (
+                                          <div className="flex items-center gap-2 justify-end">
+                                            <Input
+                                              type="number"
+                                              step="0.01"
+                                              value={editingQty}
+                                              onChange={(e) => setEditingQty(e.target.value)}
+                                              onBlur={(e) => {
+                                                const relatedTarget = e.relatedTarget as HTMLElement;
+                                                const isBlurToActionButton = relatedTarget && 
+                                                  (relatedTarget.getAttribute('data-testid')?.includes('button-save-') ||
+                                                   relatedTarget.getAttribute('data-testid')?.includes('button-cancel-'));
+                                                
+                                                if (wasTabPressed || !isBlurToActionButton) {
+                                                  handleSaveEdit(line.id);
+                                                }
+                                                setWasTabPressed(false);
+                                              }}
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                  handleSaveEdit(line.id);
+                                                } else if (e.key === 'Escape') {
+                                                  handleCancelEdit();
+                                                } else if (e.key === 'Tab') {
+                                                  setWasTabPressed(true);
+                                                }
+                                              }}
+                                              className="w-24 h-8"
+                                              autoFocus
+                                              data-testid={`input-qty-${line.id}`}
+                                            />
+                                            <Button
+                                              size="sm"
+                                              onClick={() => handleSaveEdit(line.id)}
+                                              disabled={updateMutation.isPending}
+                                              data-testid={`button-save-${line.id}`}
+                                            >
+                                              Save
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={handleCancelEdit}
+                                              data-testid={`button-cancel-${line.id}`}
+                                            >
+                                              Cancel
+                                            </Button>
+                                          </div>
+                                        ) : (
+                                          <div
+                                            className="cursor-pointer hover:underline"
+                                            onClick={() => handleStartEdit(line)}
+                                            data-testid={`text-qty-${line.id}`}
+                                          >
+                                            {line.qty}
+                                          </div>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className="text-right font-mono">${(line.unitCost || 0).toFixed(4)}</TableCell>
+                                      <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </AccordionContent>
+                        </AccordionItem>
+                      );
+                    })}
+                  </Accordion>
+                );
+              })()
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                No items to display
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
