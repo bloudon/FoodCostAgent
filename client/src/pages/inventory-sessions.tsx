@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Calendar, Trash2 } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -22,10 +22,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 import { useState } from "react";
 import type { Company, CompanyStore } from "@shared/schema";
 
-function SessionRow({ count, countDate, inventoryItems, stores }: any) {
+function SessionRow({ count, inventoryItems, stores }: any) {
   const { toast } = useToast();
   
   const { data: countLines } = useQuery<any[]>({
@@ -33,6 +47,8 @@ function SessionRow({ count, countDate, inventoryItems, stores }: any) {
   });
   
   const store = stores?.find((s: CompanyStore) => s.id === count.storeId);
+  const countDate = new Date(count.countDate);
+  const createdAt = new Date(count.countedAt);
 
   const deleteSessionMutation = useMutation({
     mutationFn: async () => {
@@ -67,8 +83,11 @@ function SessionRow({ count, countDate, inventoryItems, stores }: any) {
 
   return (
     <TableRow data-testid={`row-session-${count.id}`}>
-      <TableCell className="font-mono">
-        {countDate.toLocaleDateString()} {countDate.toLocaleTimeString()}
+      <TableCell>
+        <div className="font-medium">{format(countDate, "PPP")}</div>
+        <div className="text-xs text-muted-foreground">
+          Created {format(createdAt, "p")}
+        </div>
       </TableCell>
       <TableCell data-testid={`text-store-${count.id}`}>{store?.name || 'Unknown'}</TableCell>
       <TableCell>{count.userId}</TableCell>
@@ -109,6 +128,9 @@ export default function InventorySessions() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [countDate, setCountDate] = useState<Date>(new Date());
+  const [note, setNote] = useState("");
 
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
 
@@ -142,6 +164,8 @@ export default function InventorySessions() {
         userId: "system",
         companyId: selectedCompanyId,
         storeId: selectedStoreId,
+        countDate: countDate.toISOString(),
+        note: note || undefined,
       });
       return response.json();
     },
@@ -151,6 +175,9 @@ export default function InventorySessions() {
         title: "Session Created",
         description: "New inventory count session has been created",
       });
+      setDialogOpen(false);
+      setNote("");
+      setCountDate(new Date());
       setLocation(`/count/${data.id}`);
     },
     onError: (error: any) => {
@@ -163,6 +190,10 @@ export default function InventorySessions() {
   });
 
   const handleStartNewCount = () => {
+    setDialogOpen(true);
+  };
+
+  const handleCreateSession = () => {
     createSessionMutation.mutate();
   };
 
@@ -212,11 +243,78 @@ export default function InventorySessions() {
               data-testid="button-start-new-session"
             >
               <Plus className="h-4 w-4 mr-2" />
-              {createSessionMutation.isPending ? "Creating..." : "Start New Count"}
+              Start New Count
             </Button>
           </div>
         </div>
       </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent data-testid="dialog-new-session">
+          <DialogHeader>
+            <DialogTitle>Start New Inventory Count</DialogTitle>
+            <DialogDescription>
+              Select the official inventory date and add any notes for this count session
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="count-date">Inventory Date of Record</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="count-date"
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !countDate && "text-muted-foreground"
+                    )}
+                    data-testid="button-select-date"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {countDate ? format(countDate, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={countDate}
+                    onSelect={(date) => date && setCountDate(date)}
+                    initialFocus
+                    data-testid="calendar-count-date"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="note">Note (Optional)</Label>
+              <Input
+                id="note"
+                placeholder="e.g., Monthly count, End of quarter..."
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                data-testid="input-count-note"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
+              data-testid="button-cancel-session"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateSession}
+              disabled={createSessionMutation.isPending}
+              data-testid="button-create-session"
+            >
+              {createSessionMutation.isPending ? "Creating..." : "Create Session"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>
@@ -236,7 +334,7 @@ export default function InventorySessions() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date & Time</TableHead>
+                  <TableHead>Inventory Date</TableHead>
                   <TableHead>Store</TableHead>
                   <TableHead>User</TableHead>
                   <TableHead className="text-right">Items</TableHead>
@@ -246,18 +344,14 @@ export default function InventorySessions() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedCounts.map((count) => {
-                  const countDate = new Date(count.countedAt);
-                  return (
-                    <SessionRow 
-                      key={count.id} 
-                      count={count} 
-                      countDate={countDate}
-                      inventoryItems={inventoryItems}
-                      stores={stores}
-                    />
-                  );
-                })}
+                {sortedCounts.map((count) => (
+                  <SessionRow 
+                    key={count.id} 
+                    count={count}
+                    inventoryItems={inventoryItems}
+                    stores={stores}
+                  />
+                ))}
               </TableBody>
             </Table>
           ) : (
