@@ -110,6 +110,7 @@ export default function InventoryItemDetail() {
   const { toast } = useToast();
   const [editedFields, setEditedFields] = useState<Record<string, any>>({});
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [selectedStores, setSelectedStores] = useState<string[]>([]);
   const [vendorItemDialogOpen, setVendorItemDialogOpen] = useState(false);
   const [editingVendorItem, setEditingVendorItem] = useState<VendorItem | null>(null);
   const [deleteVendorItemId, setDeleteVendorItemId] = useState<string | null>(null);
@@ -161,11 +162,25 @@ export default function InventoryItemDetail() {
     enabled: !!id,
   });
 
+  const { data: storeData } = useQuery<{
+    associations: { id: string; storeId: string; inventoryItemId: string }[];
+    allStores: { id: string; name: string }[];
+  }>({
+    queryKey: ["/api/inventory-items", id, "stores"],
+    enabled: !!id,
+  });
+
   useEffect(() => {
     if (itemLocations) {
       setSelectedLocations(itemLocations.map(loc => loc.storageLocationId));
     }
   }, [itemLocations]);
+
+  useEffect(() => {
+    if (storeData?.associations) {
+      setSelectedStores(storeData.associations.map(assoc => assoc.storeId));
+    }
+  }, [storeData]);
 
   const updateMutation = useMutation({
     mutationFn: async (updates: Partial<InventoryItem> & { locationIds?: string[] }) => {
@@ -242,6 +257,47 @@ export default function InventoryItemDetail() {
     updateMutation.mutate({
       locationIds: newLocations,
     });
+  };
+
+  const updateStoresMutation = useMutation({
+    mutationFn: async (storeIds: string[]) => {
+      return apiRequest("POST", `/api/inventory-items/${id}/stores`, { storeIds });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "stores"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      toast({
+        title: "Stores updated",
+        description: "Store locations have been successfully updated.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Update failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleStoreToggle = (storeId: string) => {
+    const newStores = selectedStores.includes(storeId)
+      ? selectedStores.filter(id => id !== storeId)
+      : [...selectedStores, storeId];
+    
+    // Check if this would result in zero stores
+    if (newStores.length === 0) {
+      toast({
+        title: "At least one store required",
+        description: "An inventory item must be available in at least one store.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Update state and trigger mutation
+    setSelectedStores(newStores);
+    updateStoresMutation.mutate(newStores);
   };
 
   const createVendorItemMutation = useMutation({
@@ -607,6 +663,45 @@ export default function InventoryItemDetail() {
                   <div className="flex items-center px-3 text-muted-foreground">%</div>
                 </div>
                 <p className="text-xs text-muted-foreground">Usable yield after trimming/waste</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Store Locations
+              </CardTitle>
+              <CardDescription>Physical stores where this item is available</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Available Stores</Label>
+                <p className="text-sm text-muted-foreground">
+                  Select all store locations where this item should be available. Items are identified by PLU/SKU: {item?.pluSku || "Not set"}
+                </p>
+                <div className="space-y-2 border rounded-md p-3">
+                  {storeData?.allStores?.map((store) => {
+                    return (
+                      <div key={store.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`store-${store.id}`}
+                          checked={selectedStores.includes(store.id)}
+                          onCheckedChange={() => handleStoreToggle(store.id)}
+                          disabled={updateStoresMutation.isPending}
+                          data-testid={`checkbox-store-${store.id}`}
+                        />
+                        <Label 
+                          htmlFor={`store-${store.id}`}
+                          className="text-sm font-normal cursor-pointer flex-1"
+                        >
+                          {store.name}
+                        </Label>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </CardContent>
           </Card>
