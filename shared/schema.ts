@@ -108,6 +108,7 @@ export type AuthSession = typeof authSessions.$inferSelect;
 // Storage Locations
 export const storageLocations = pgTable("storage_locations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
 });

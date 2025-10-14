@@ -383,8 +383,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ STORAGE LOCATIONS ============
-  app.get("/api/storage-locations", async (req, res) => {
-    const locations = await storage.getStorageLocations();
+  app.get("/api/storage-locations", requireAuth, async (req: AuthRequest, res) => {
+    const locations = await storage.getStorageLocations(req.companyId!);
     res.json(locations);
   });
 
@@ -396,10 +396,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(location);
   });
 
-  app.post("/api/storage-locations", async (req, res) => {
+  app.post("/api/storage-locations", requireAuth, async (req: AuthRequest, res) => {
     try {
       const data = insertStorageLocationSchema.parse(req.body);
-      const location = await storage.createStorageLocation(data);
+      // Auto-inject companyId from authenticated user
+      const location = await storage.createStorageLocation({ ...data, companyId: req.companyId! });
       res.status(201).json(location);
     } catch (error: any) {
       res.status(400).json({ error: error.message });

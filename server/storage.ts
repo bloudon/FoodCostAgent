@@ -53,7 +53,7 @@ export interface IStorage {
   cleanExpiredSessions(): Promise<void>;
 
   // Storage Locations
-  getStorageLocations(): Promise<StorageLocation[]>;
+  getStorageLocations(companyId: string): Promise<StorageLocation[]>;
   getStorageLocation(id: string): Promise<StorageLocation | undefined>;
   createStorageLocation(location: InsertStorageLocation): Promise<StorageLocation>;
   updateStorageLocation(id: string, location: Partial<StorageLocation>): Promise<StorageLocation | undefined>;
@@ -346,8 +346,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Storage Locations
-  async getStorageLocations(): Promise<StorageLocation[]> {
-    return db.select().from(storageLocations).orderBy(storageLocations.sortOrder);
+  async getStorageLocations(companyId: string): Promise<StorageLocation[]> {
+    return db.select().from(storageLocations)
+      .where(eq(storageLocations.companyId, companyId))
+      .orderBy(storageLocations.sortOrder);
   }
 
   async getStorageLocation(id: string): Promise<StorageLocation | undefined> {
