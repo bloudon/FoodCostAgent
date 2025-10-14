@@ -130,6 +130,7 @@ export default function InventorySessions() {
   const [, setLocation] = useLocation();
   const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogStoreId, setDialogStoreId] = useState<string>("");
   const [countDate, setCountDate] = useState<Date>(new Date());
   const [note, setNote] = useState("");
 
@@ -158,13 +159,13 @@ export default function InventorySessions() {
       if (!selectedCompanyId) {
         throw new Error("No company selected");
       }
-      if (selectedStoreId === "all" || !selectedStoreId) {
+      if (!dialogStoreId) {
         throw new Error("Please select a store location to create a count session");
       }
       const response = await apiRequest("POST", "/api/inventory-counts", {
         userId: "system",
         companyId: selectedCompanyId,
-        storeId: selectedStoreId,
+        storeId: dialogStoreId,
         countDate: countDate.toISOString(),
         note: note || undefined,
       });
@@ -177,6 +178,7 @@ export default function InventorySessions() {
         description: "New inventory count session has been created",
       });
       setDialogOpen(false);
+      setDialogStoreId("");
       setNote("");
       setCountDate(new Date());
       setLocation(`/count/${data.id}`);
@@ -191,10 +193,22 @@ export default function InventorySessions() {
   });
 
   const handleStartNewCount = () => {
+    // Pre-select store if one is already selected in the filter
+    if (selectedStoreId !== "all") {
+      setDialogStoreId(selectedStoreId);
+    }
     setDialogOpen(true);
   };
 
   const handleCreateSession = () => {
+    if (!dialogStoreId) {
+      toast({
+        title: "Store Required",
+        description: "Please select a store location for this count session",
+        variant: "destructive",
+      });
+      return;
+    }
     createSessionMutation.mutate();
   };
 
@@ -255,10 +269,29 @@ export default function InventorySessions() {
           <DialogHeader>
             <DialogTitle>Start New Inventory Count</DialogTitle>
             <DialogDescription>
-              Select the official inventory date and add any notes for this count session
+              Select the store location, inventory date, and add any notes for this count session
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="dialog-store">Store Location *</Label>
+              <Select value={dialogStoreId} onValueChange={setDialogStoreId}>
+                <SelectTrigger id="dialog-store" data-testid="select-dialog-store">
+                  <SelectValue placeholder="Select a store..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores.map((store) => (
+                    <SelectItem 
+                      key={store.id} 
+                      value={store.id}
+                      data-testid={`option-dialog-store-${store.id}`}
+                    >
+                      {store.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="count-date">Inventory Date of Record</Label>
               <Popover>
@@ -320,7 +353,7 @@ export default function InventorySessions() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <Calendar className="h-5 w-5 text-muted-foreground" />
+            <CalendarIcon className="h-5 w-5 text-muted-foreground" />
             <CardTitle>All Count Sessions</CardTitle>
           </div>
         </CardHeader>
