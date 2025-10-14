@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -600,6 +600,18 @@ export default function CountSession() {
             <TableBody>
               {filteredLines && filteredLines.length > 0 ? (
                 (() => {
+                  // Calculate item totals across all locations (for display when grouping by location)
+                  const itemTotals: Record<string, number> = {};
+                  if (groupBy === "location") {
+                    filteredLines.forEach(line => {
+                      const itemId = line.inventoryItemId;
+                      if (!itemTotals[itemId]) {
+                        itemTotals[itemId] = 0;
+                      }
+                      itemTotals[itemId] += line.qty;
+                    });
+                  }
+
                   // Group lines based on groupBy setting
                   const grouped: Record<string, any[]> = {};
                   
@@ -616,7 +628,7 @@ export default function CountSession() {
 
                   // Render grouped sections
                   return Object.entries(grouped).map(([groupName, lines]) => (
-                    <React.Fragment key={groupName}>
+                    <Fragment key={groupName}>
                       <TableRow className="bg-muted/50 hover:bg-muted/50">
                         <TableCell colSpan={7} className="font-semibold py-2">
                           {groupBy === "location" ? <Layers className="inline h-4 w-4 mr-2" /> : <Package className="inline h-4 w-4 mr-2" />}
@@ -626,6 +638,9 @@ export default function CountSession() {
                       {lines.map((line) => {
                         const item = line.inventoryItem;
                         const value = line.qty * (line.unitCost || 0);
+                        const itemTotal = groupBy === "location" ? itemTotals[line.inventoryItemId] : null;
+                        const showTotal = itemTotal !== null && itemTotal !== line.qty; // Only show if different from line qty
+                        
                         return (
                           <TableRow key={line.id} data-testid={`row-line-${line.id}`}>
                             <TableCell className="font-medium pl-8">
@@ -635,6 +650,11 @@ export default function CountSession() {
                                 data-testid={`button-edit-item-${line.id}`}
                               >
                                 {item?.name || 'Unknown'}
+                                {showTotal && (
+                                  <span className="ml-2 text-xs text-muted-foreground font-normal">
+                                    (Total: {itemTotal})
+                                  </span>
+                                )}
                               </button>
                             </TableCell>
                             <TableCell className="text-muted-foreground">
@@ -720,7 +740,7 @@ export default function CountSession() {
                           </TableRow>
                         );
                       })}
-                    </React.Fragment>
+                    </Fragment>
                   ));
                 })()
               ) : (
