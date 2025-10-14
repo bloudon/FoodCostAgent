@@ -113,6 +113,7 @@ export default function ReceivingDetail() {
   // Track received quantities for each PO line (in units, not cases)
   const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
   const [savedLines, setSavedLines] = useState<Set<string>>(new Set());
+  const [editingLines, setEditingLines] = useState<Set<string>>(new Set());
   const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   // Item editing dialog state
@@ -308,10 +309,35 @@ export default function ReceivingDetail() {
     }, {
       onSuccess: () => {
         setSavedLines(prev => new Set(prev).add(lineId));
+        setEditingLines(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(lineId);
+          return newSet;
+        });
         toast({
           description: "Quantity confirmed",
         });
       }
+    });
+  };
+
+  const handleToggleEdit = (lineId: string) => {
+    setEditingLines(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(lineId)) {
+        newSet.delete(lineId);
+      } else {
+        newSet.add(lineId);
+        // Focus the input after state updates
+        setTimeout(() => {
+          const input = inputRefs.current[lineId];
+          if (input) {
+            input.focus();
+            input.select();
+          }
+        }, 0);
+      }
+      return newSet;
     });
   };
 
@@ -462,6 +488,9 @@ export default function ReceivingDetail() {
 
   const totalExpected = filteredLines.reduce((sum, line) => sum + (line.orderedQty * line.pricePerUnit), 0);
   const totalItems = filteredLines.length;
+  const totalCases = filteredLines.reduce((sum, line) => {
+    return sum + (line.caseQuantity && line.caseQuantity > 0 ? line.caseQuantity : 0);
+  }, 0);
 
   // Determine if this is a completed receipt (read-only mode)
   const isCompleted = draftReceiptData?.receipt?.status === "completed";
@@ -493,12 +522,12 @@ export default function ReceivingDetail() {
               {purchaseOrder.vendorName} • PO #{purchaseOrder.id.slice(0, 8)}
             </p>
             {purchaseOrder.expectedDate && (
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="text-xl font-semibold mt-2" data-testid="text-expected-date">
                 Expected: {new Date(purchaseOrder.expectedDate).toLocaleDateString()}
               </p>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-start">
             <Badge 
               className={
                 purchaseOrder.status === "ordered" 
@@ -553,7 +582,11 @@ export default function ReceivingDetail() {
                   Enter actual units received (weights may vary)
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-4">
+                <div className="text-right">
+                  <div className="text-sm text-muted-foreground">Total Cases</div>
+                  <div className="text-2xl font-bold" data-testid="text-total-cases">{totalCases}</div>
+                </div>
                 <div className="text-right">
                   <div className="text-sm text-muted-foreground">Total Items</div>
                   <div className="text-2xl font-bold">{totalItems}</div>
@@ -620,6 +653,7 @@ export default function ReceivingDetail() {
                     filteredLines.map((line) => {
                       const receivedQty = receivedQuantities[line.id] || 0;
                       const isSaved = savedLines.has(line.id);
+                      const isEditing = editingLines.has(line.id);
                       const lineTotal = receivedQty * line.pricePerUnit;
                       const isShort = receivedQty < line.orderedQty;
                       const casePrice = line.caseQuantity && line.caseQuantity > 0 ? line.pricePerUnit * line.caseSize : null;
@@ -657,17 +691,27 @@ export default function ReceivingDetail() {
                             {line.orderedQty.toFixed(2)}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Input
-                              ref={(el) => inputRefs.current[line.id] = el}
-                              type="number"
-                              step="0.01"
-                              value={receivedQty}
-                              onChange={(e) => handleReceivedQuantityChange(line.id, parseFloat(e.target.value) || 0)}
-                              onKeyDown={(e) => handleKeyDown(e, line.id, filteredLines)}
-                              className="w-24 text-right font-mono"
-                              data-testid={`input-received-qty-${line.id}`}
-                              disabled={isReadOnly}
-                            />
+                            {isSaved && !isEditing && !isReadOnly ? (
+                              <button
+                                onClick={() => handleToggleEdit(line.id)}
+                                className="font-mono text-primary hover:underline"
+                                data-testid={`link-edit-qty-${line.id}`}
+                              >
+                                {receivedQty.toFixed(2)}
+                              </button>
+                            ) : (
+                              <Input
+                                ref={(el) => inputRefs.current[line.id] = el}
+                                type="number"
+                                step="0.01"
+                                value={receivedQty}
+                                onChange={(e) => handleReceivedQuantityChange(line.id, parseFloat(e.target.value) || 0)}
+                                onKeyDown={(e) => handleKeyDown(e, line.id, filteredLines)}
+                                className="w-24 text-right font-mono"
+                                data-testid={`input-received-qty-${line.id}`}
+                                disabled={isReadOnly}
+                              />
+                            )}
                           </TableCell>
                           <TableCell>{formatUnitName(line.unitName)}</TableCell>
                           <TableCell className="text-right font-mono">${line.pricePerUnit.toFixed(4)}</TableCell>
