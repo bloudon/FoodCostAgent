@@ -1707,8 +1707,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const count = await storage.createInventoryCount(countInput);
 
       // Auto-populate count lines for active inventory items associated with THIS STORE
+      // Get items for this store
       const allItems = await storage.getInventoryItems(undefined, count.storeId, count.companyId);
-      const activeItems = allItems.filter(item => item.active === 1);
+      
+      // Filter for GLOBALLY active items only (not just store-active)
+      // When storeId is provided, getInventoryItems returns store-active status in the 'active' field
+      // We need to ensure items are globally active by checking against the inventory_items table
+      const globallyActiveItemIds = (await storage.getInventoryItems(undefined, undefined, count.companyId))
+        .filter(item => item.active === 1)
+        .map(item => item.id);
+      
+      const activeItems = allItems.filter(item => 
+        item.active === 1 && // Store-active
+        globallyActiveItemIds.includes(item.id) // AND globally active
+      );
 
       // Batch fetch all storage locations for all items
       const itemIds = activeItems.map(item => item.id);
