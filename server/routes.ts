@@ -1708,17 +1708,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allItems = await storage.getInventoryItems(undefined, count.storeId, count.companyId);
       const activeItems = allItems.filter(item => item.active === 1);
 
-      for (const item of activeItems) {
-        const lineData = {
-          inventoryCountId: count.id,
-          inventoryItemId: item.id,
-          qty: 0,
-          unitId: item.unitId,
-          unitCost: item.pricePerUnit, // Snapshot the current price
-          userId: countInput.userId,
-        };
+      // Batch fetch all storage locations for all items
+      const itemIds = activeItems.map(item => item.id);
+      const itemLocationsMap = await storage.getInventoryItemLocationsBatch(itemIds);
 
-        await storage.createInventoryCountLine(lineData);
+      // Create count lines for EACH storage location per item
+      for (const item of activeItems) {
+        const locations = itemLocationsMap.get(item.id) || [];
+        
+        // If item has no assigned locations, skip it (shouldn't happen for properly configured items)
+        if (locations.length === 0) continue;
+
+        // Create one line per location where this item is stored
+        for (const location of locations) {
+          const lineData = {
+            inventoryCountId: count.id,
+            inventoryItemId: item.id,
+            storageLocationId: location.storageLocationId,
+            qty: 0,
+            unitId: item.unitId,
+            unitCost: item.pricePerUnit, // Snapshot the current price
+            userId: countInput.userId,
+          };
+
+          await storage.createInventoryCountLine(lineData);
+        }
       }
 
       res.status(201).json(count);
