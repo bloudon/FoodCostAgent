@@ -1959,9 +1959,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/purchase-orders/:id", async (req, res) => {
+  app.patch("/api/purchase-orders/:id", requireAuth, async (req, res) => {
     try {
-      const po = await storage.getPurchaseOrder(req.params.id);
+      const companyId = (req as any).companyId;
+      const po = await storage.getPurchaseOrder(req.params.id, companyId);
       if (!po) {
         return res.status(404).json({ error: "Purchase order not found" });
       }
@@ -1993,7 +1994,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Check if this is a misc grocery order with inventoryItemId instead
           if (line.inventoryItemId) {
             // Check if vendor item already exists for this vendor and inventory item
-            const vendorItems = await storage.getVendorItems(po.vendorId);
+            const vendorItems = await storage.getVendorItems(po.vendorId, companyId);
             const existingVendorItem = vendorItems.find(
               vi => vi.inventoryItemId === line.inventoryItemId
             );
@@ -2026,16 +2027,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const updatedPO = await storage.getPurchaseOrder(req.params.id);
+      const updatedPO = await storage.getPurchaseOrder(req.params.id, companyId);
       res.json(updatedPO);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
   });
 
-  app.delete("/api/purchase-orders/:id", async (req, res) => {
+  app.delete("/api/purchase-orders/:id", requireAuth, async (req, res) => {
     try {
-      const po = await storage.getPurchaseOrder(req.params.id);
+      const companyId = (req as any).companyId;
+      const po = await storage.getPurchaseOrder(req.params.id, companyId);
       if (!po) {
         return res.status(404).json({ error: "Purchase order not found" });
       }
