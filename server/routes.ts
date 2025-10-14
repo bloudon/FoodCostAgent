@@ -3034,7 +3034,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create default storage locations for new company
       const defaultLocations = [
         { name: "Walk-In Cooler", sortOrder: 1 },
-        { name: "Dry Storage", sortOrder: 2 },
+        { name: "Pantry", sortOrder: 2 },
         { name: "Drink Cooler", sortOrder: 3 },
         { name: "Walk-In Freezer", sortOrder: 4 },
         { name: "Prep Table", sortOrder: 5 },

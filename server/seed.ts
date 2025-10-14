@@ -159,7 +159,7 @@ export async function seedDatabase() {
     store2: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Store 2", sortOrder: 2 }),
     // Keep legacy locations for backward compatibility
     walkIn: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Walk-In Cooler", sortOrder: 3 }),
-    dryStorage: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Dry Storage", sortOrder: 4 }),
+    dryStorage: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Pantry", sortOrder: 4 }),
     prepTable: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Prep Table", sortOrder: 5 }),
   };
 
@@ -1164,7 +1164,7 @@ export async function seedDatabase() {
   console.log("✅ Database seeded successfully!");
   console.log("📊 Created:");
   console.log("   - 13 units");
-  console.log("   - 4 storage locations (Store 1, Store 2, Walk-In Cooler, Dry Storage)");
+  console.log("   - 4 storage locations (Store 1, Store 2, Walk-In Cooler, Pantry)");
   console.log("   - 2 vendors");
   console.log("   - 25+ products");
   console.log("   - 6 vendor products");
