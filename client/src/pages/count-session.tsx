@@ -331,12 +331,8 @@ export default function CountSession() {
     filteredLines = filteredLines.filter(line => line.inventoryItemId === selectedItemId);
   }
 
-  // Sort alphabetically by item name (ascending)
-  filteredLines = [...filteredLines].sort((a, b) => {
-    const nameA = a.inventoryItem?.name?.toLowerCase() || '';
-    const nameB = b.inventoryItem?.name?.toLowerCase() || '';
-    return nameA.localeCompare(nameB);
-  });
+  // Note: Items maintain their natural order (as created in database)
+  // This prevents items from jumping around when counts are recorded
 
   // Create a lookup map for previous quantities by inventory item ID
   // Aggregate all previous lines for the same item across all locations
