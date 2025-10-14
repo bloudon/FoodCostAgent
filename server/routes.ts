@@ -3006,6 +3006,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         orderGuideType: "manual",
       });
       
+      // Create default storage locations for new company
+      const defaultLocations = [
+        { name: "Walk-In Cooler", sortOrder: 1 },
+        { name: "Dry Storage", sortOrder: 2 },
+        { name: "Drink Cooler", sortOrder: 3 },
+        { name: "Walk-In Freezer", sortOrder: 4 },
+        { name: "Prep Table", sortOrder: 5 },
+        { name: "Front Counter", sortOrder: 6 },
+      ];
+      
+      for (const location of defaultLocations) {
+        await storage.createStorageLocation({
+          companyId: company.id,
+          ...location,
+        });
+      }
+      
       res.status(201).json(company);
     } catch (error: any) {
       res.status(400).json({ error: error.message });

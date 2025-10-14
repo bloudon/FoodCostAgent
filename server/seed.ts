@@ -150,14 +150,17 @@ export async function seedDatabase() {
   console.log("✅ Unit conversions created!");
 
   // ============ STORAGE LOCATIONS ============
+  // Use default company for seeding
+  const defaultCompanyId = "default-company";
+  
   // Create Store 1 and Store 2 as separate locations for multi-location inventory
   const locations = {
-    store1: await storage.createStorageLocation({ name: "Store 1", sortOrder: 1 }),
-    store2: await storage.createStorageLocation({ name: "Store 2", sortOrder: 2 }),
+    store1: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Store 1", sortOrder: 1 }),
+    store2: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Store 2", sortOrder: 2 }),
     // Keep legacy locations for backward compatibility
-    walkIn: await storage.createStorageLocation({ name: "Walk-In Cooler", sortOrder: 3 }),
-    dryStorage: await storage.createStorageLocation({ name: "Dry Storage", sortOrder: 4 }),
-    prepTable: await storage.createStorageLocation({ name: "Prep Table", sortOrder: 5 }),
+    walkIn: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Walk-In Cooler", sortOrder: 3 }),
+    dryStorage: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Dry Storage", sortOrder: 4 }),
+    prepTable: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Prep Table", sortOrder: 5 }),
   };
 
   // ============ VENDORS ============
