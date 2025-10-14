@@ -377,14 +377,16 @@ export default function PurchaseOrderDetail() {
                 </Link>
               </Button>
             )}
-            <Button
-              onClick={handleSave}
-              disabled={savePOMutation.isPending || !selectedVendor || !selectedStore || itemsWithQuantity === 0 || isReceived}
-              data-testid="button-save-po"
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {savePOMutation.isPending ? "Saving..." : "Save Order"}
-            </Button>
+            {!isReceived && (
+              <Button
+                onClick={handleSave}
+                disabled={savePOMutation.isPending || !selectedVendor || !selectedStore || itemsWithQuantity === 0}
+                data-testid="button-save-po"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {savePOMutation.isPending ? "Saving..." : "Save Order"}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -442,13 +444,18 @@ export default function PurchaseOrderDetail() {
 
           <div className="space-y-2">
             <label className="text-sm font-medium">Expected Date</label>
-            <Input
-              type="date"
-              value={expectedDate}
-              onChange={(e) => setExpectedDate(e.target.value)}
-              data-testid="input-expected-date"
-              disabled={isReceived}
-            />
+            {isReceived ? (
+              <div className="py-2 text-sm" data-testid="text-expected-date">
+                {expectedDate ? new Date(expectedDate).toLocaleDateString() : '-'}
+              </div>
+            ) : (
+              <Input
+                type="date"
+                value={expectedDate}
+                onChange={(e) => setExpectedDate(e.target.value)}
+                data-testid="input-expected-date"
+              />
+            )}
           </div>
 
           <div className="space-y-2">
@@ -461,13 +468,18 @@ export default function PurchaseOrderDetail() {
 
         <div className="space-y-2">
           <label className="text-sm font-medium">Notes</label>
-          <Input
-            placeholder="Add notes or comments about this order..."
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            data-testid="input-notes"
-            disabled={isReceived}
-          />
+          {isReceived ? (
+            <div className="py-2 text-sm text-muted-foreground" data-testid="text-notes">
+              {notes || 'No notes'}
+            </div>
+          ) : (
+            <Input
+              placeholder="Add notes or comments about this order..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              data-testid="input-notes"
+            />
+          )}
         </div>
 
         {selectedVendor && (
@@ -641,19 +653,24 @@ export default function PurchaseOrderDetail() {
                                 ${casePrice.toFixed(2)}
                               </TableCell>
                               <TableCell>
-                                <Input
-                                  ref={el => inputRefs.current[itemId] = el}
-                                  type="number"
-                                  step="1"
-                                  min="0"
-                                  value={caseQty || ""}
-                                  onChange={(e) => handleCaseQuantityChange(itemId, parseInt(e.target.value) || 0)}
-                                  onKeyDown={(e) => handleKeyDown(e, itemId, displayItems)}
-                                  className="text-center"
-                                  placeholder="0"
-                                  data-testid={`input-case-qty-${itemId}`}
-                                  disabled={isReceived}
-                                />
+                                {isReceived ? (
+                                  <div className="text-center font-mono" data-testid={`text-case-qty-${itemId}`}>
+                                    {caseQty || 0}
+                                  </div>
+                                ) : (
+                                  <Input
+                                    ref={el => inputRefs.current[itemId] = el}
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={caseQty || ""}
+                                    onChange={(e) => handleCaseQuantityChange(itemId, parseInt(e.target.value) || 0)}
+                                    onKeyDown={(e) => handleKeyDown(e, itemId, displayItems)}
+                                    className="text-center"
+                                    placeholder="0"
+                                    data-testid={`input-case-qty-${itemId}`}
+                                  />
+                                )}
                               </TableCell>
                             </>
                           )}
@@ -666,19 +683,24 @@ export default function PurchaseOrderDetail() {
                                 ${unitPrice.toFixed(2)}
                               </TableCell>
                               <TableCell>
-                                <Input
-                                  ref={el => inputRefs.current[itemId] = el}
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  value={caseQty || ""}
-                                  onChange={(e) => handleCaseQuantityChange(itemId, parseFloat(e.target.value) || 0)}
-                                  onKeyDown={(e) => handleKeyDown(e, itemId, displayItems)}
-                                  className="text-center"
-                                  placeholder="0"
-                                  data-testid={`input-qty-${itemId}`}
-                                  disabled={isReceived}
-                                />
+                                {isReceived ? (
+                                  <div className="text-center font-mono" data-testid={`text-qty-${itemId}`}>
+                                    {caseQty ? caseQty.toFixed(2) : '0.00'}
+                                  </div>
+                                ) : (
+                                  <Input
+                                    ref={el => inputRefs.current[itemId] = el}
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={caseQty || ""}
+                                    onChange={(e) => handleCaseQuantityChange(itemId, parseFloat(e.target.value) || 0)}
+                                    onKeyDown={(e) => handleKeyDown(e, itemId, displayItems)}
+                                    className="text-center"
+                                    placeholder="0"
+                                    data-testid={`input-qty-${itemId}`}
+                                  />
+                                )}
                               </TableCell>
                             </>
                           )}
