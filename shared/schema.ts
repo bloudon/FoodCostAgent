@@ -80,13 +80,32 @@ export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
-  role: text("role").notNull().default("user"), // global_admin, company_admin, user
-  companyId: varchar("company_id"), // nullable for global_admin
+  role: text("role").notNull().default("store_user"), // global_admin, company_admin, store_manager, store_user
+  companyId: varchar("company_id"), // nullable for global_admin, required for all others
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  active: integer("active").notNull().default(1), // 1=active, 0=inactive
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({ id: true });
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+// User-Store assignments (for store_manager and store_user roles)
+export const userStores = pgTable("user_stores", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  storeId: varchar("store_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  uniqueUserStore: unique().on(table.userId, table.storeId),
+}));
+
+export const insertUserStoreSchema = createInsertSchema(userStores).omit({ id: true, createdAt: true });
+export type InsertUserStore = z.infer<typeof insertUserStoreSchema>;
+export type UserStore = typeof userStores.$inferSelect;
 
 // Auth Sessions
 export const authSessions = pgTable("auth_sessions", {
