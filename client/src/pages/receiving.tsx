@@ -204,6 +204,7 @@ export default function Receiving() {
                           <TableHead className="text-right">Items</TableHead>
                           <TableHead className="text-right">Amount</TableHead>
                           <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -226,6 +227,18 @@ export default function Receiving() {
                               <Badge className={statusColors[order.status]}>
                                 {order.status}
                               </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                asChild
+                                data-testid={`button-view-receipt-${order.id}`}
+                              >
+                                <Link href={`/receiving/${order.id}`}>
+                                  View
+                                </Link>
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))}
