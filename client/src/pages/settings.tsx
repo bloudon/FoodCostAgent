@@ -29,6 +29,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ObjectUploader } from "@/components/ObjectUploader";
+import { UsersManagement } from "@/components/UsersManagement";
 
 export default function Settings() {
   const { toast } = useToast();
@@ -259,14 +260,18 @@ export default function Settings() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 max-w-3xl">
+        <TabsList className="grid w-full grid-cols-5 max-w-4xl">
           <TabsTrigger value="company" data-testid="tab-company">
             <Building2 className="h-4 w-4 mr-2" />
             Company
           </TabsTrigger>
+          <TabsTrigger value="users" data-testid="tab-users">
+            <User className="h-4 w-4 mr-2" />
+            Users
+          </TabsTrigger>
           <TabsTrigger value="user" data-testid="tab-user">
             <User className="h-4 w-4 mr-2" />
-            User Profile
+            Profile
           </TabsTrigger>
           <TabsTrigger value="connections" data-testid="tab-connections">
             <Plug className="h-4 w-4 mr-2" />
@@ -461,6 +466,21 @@ export default function Settings() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="users" className="space-y-6">
+          {selectedCompanyId ? (
+            <UsersManagement companyId={selectedCompanyId} />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>User Management</CardTitle>
+                <CardDescription>
+                  Please select a company first
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="user" className="space-y-6">

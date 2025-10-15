@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { z } from "zod";
-import { createSession, requireAuth, verifyPassword } from "./auth";
+import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth";
 import { db } from "./db";
 import { eq, and, inArray } from "drizzle-orm";
 import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations } from "@shared/schema";
@@ -181,6 +181,210 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateAuthSession(sessionId, { selectedCompanyId: companyId });
       
       res.json({ success: true, companyId });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============ USER MANAGEMENT ============
+  // Get users for a company
+  app.get("/api/users", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const companyId = (req as any).companyId;
+      
+      // Only global admins and company admins can list users
+      if (user.role === "global_admin") {
+        // Global admins can list all users or filter by company
+        const targetCompanyId = req.query.companyId as string | undefined;
+        const users = await storage.getUsers(targetCompanyId);
+        res.json(users);
+      } else if (user.role === "company_admin" && user.companyId) {
+        // Company admins can only list users in their company
+        const users = await storage.getUsers(user.companyId);
+        res.json(users);
+      } else {
+        return res.status(403).json({ error: "Insufficient permissions" });
+      }
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create a new user
+  app.post("/api/users", requireAuth, async (req, res) => {
+    try {
+      const currentUser = (req as any).user;
+      const { storeIds, ...userData } = req.body;
+      
+      // Only global admins and company admins can create users
+      if (currentUser.role !== "global_admin" && currentUser.role !== "company_admin") {
+        return res.status(403).json({ error: "Insufficient permissions" });
+      }
+      
+      // Company admins can only create users in their company
+      if (currentUser.role === "company_admin") {
+        if (!userData.companyId || userData.companyId !== currentUser.companyId) {
+          return res.status(403).json({ error: "Can only create users in your company" });
+        }
+        
+        // Company admins cannot create global admins
+        if (userData.role === "global_admin") {
+          return res.status(403).json({ error: "Cannot create global admin users" });
+        }
+        
+        // Company admins must assign companyId (cannot be null)
+        if (!userData.companyId) {
+          return res.status(403).json({ error: "Company ID required" });
+        }
+      }
+      
+      // Global admins cannot create global admins without explicitly setting null companyId
+      if (currentUser.role === "global_admin" && userData.role === "global_admin" && userData.companyId) {
+        return res.status(400).json({ error: "Global admins must have null companyId" });
+      }
+      
+      // Hash the password
+      const passwordHash = await hashPassword(userData.password);
+      delete userData.password;
+      
+      // Create the user
+      const newUser = await storage.createUser({
+        ...userData,
+        passwordHash,
+      });
+      
+      // Assign user to stores if specified
+      if (storeIds && Array.isArray(storeIds)) {
+        // Validate store assignments
+        for (const storeId of storeIds) {
+          const store = await storage.getCompanyStore(storeId);
+          if (!store) {
+            return res.status(400).json({ error: `Store ${storeId} not found` });
+          }
+          
+          // Company admins can only assign to stores in their company
+          if (currentUser.role === "company_admin" && store.companyId !== currentUser.companyId) {
+            return res.status(403).json({ error: "Cannot assign users to stores outside your company" });
+          }
+          
+          // Store must belong to the new user's company
+          if (store.companyId !== newUser.companyId) {
+            return res.status(400).json({ error: `Store ${storeId} does not belong to user's company` });
+          }
+          
+          await storage.assignUserToStore(newUser.id, storeId);
+        }
+      }
+      
+      res.status(201).json(newUser);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Update a user
+  app.patch("/api/users/:id", requireAuth, async (req, res) => {
+    try {
+      const currentUser = (req as any).user;
+      const { storeIds, password, ...updates } = req.body;
+      
+      // Get the target user
+      const targetUser = await storage.getUser(req.params.id);
+      if (!targetUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Only global admins and company admins can update users
+      if (currentUser.role === "company_admin") {
+        // Company admins can only update users in their company
+        if (targetUser.companyId !== currentUser.companyId) {
+          return res.status(403).json({ error: "Can only update users in your company" });
+        }
+        
+        // Company admins cannot elevate users to global admin
+        if (updates.role === "global_admin") {
+          return res.status(403).json({ error: "Cannot elevate users to global admin" });
+        }
+        
+        // Company admins cannot change companyId
+        if (updates.companyId && updates.companyId !== currentUser.companyId) {
+          return res.status(403).json({ error: "Cannot change user's company" });
+        }
+        
+        // Prevent setting companyId to null
+        if (updates.companyId === null) {
+          return res.status(403).json({ error: "Cannot remove user's company" });
+        }
+      } else if (currentUser.role !== "global_admin") {
+        return res.status(403).json({ error: "Insufficient permissions" });
+      }
+      
+      // Handle password update if provided
+      if (password) {
+        updates.passwordHash = await hashPassword(password);
+      }
+      
+      // Update the user
+      const updatedUser = await storage.updateUser(req.params.id, updates);
+      
+      // Update store assignments if provided
+      if (storeIds !== undefined && Array.isArray(storeIds)) {
+        // Validate store assignments
+        for (const storeId of storeIds) {
+          const store = await storage.getCompanyStore(storeId);
+          if (!store) {
+            return res.status(400).json({ error: `Store ${storeId} not found` });
+          }
+          
+          // Company admins can only assign to stores in their company
+          if (currentUser.role === "company_admin" && store.companyId !== currentUser.companyId) {
+            return res.status(403).json({ error: "Cannot assign users to stores outside your company" });
+          }
+          
+          // Store must belong to the target user's company
+          if (store.companyId !== targetUser.companyId) {
+            return res.status(400).json({ error: `Store ${storeId} does not belong to user's company` });
+          }
+        }
+        
+        // Remove all existing assignments
+        const currentStores = await storage.getUserStores(req.params.id);
+        for (const userStore of currentStores) {
+          await storage.removeUserFromStore(req.params.id, userStore.storeId);
+        }
+        
+        // Add new assignments
+        for (const storeId of storeIds) {
+          await storage.assignUserToStore(req.params.id, storeId);
+        }
+      }
+      
+      res.json(updatedUser);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Get user's assigned stores
+  app.get("/api/users/:userId/stores", requireAuth, async (req, res) => {
+    try {
+      const currentUser = (req as any).user;
+      const targetUser = await storage.getUser(req.params.userId);
+      
+      if (!targetUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Check permissions
+      if (currentUser.role === "company_admin" && targetUser.companyId !== currentUser.companyId) {
+        return res.status(403).json({ error: "Access denied" });
+      } else if (currentUser.role !== "global_admin" && currentUser.role !== "company_admin") {
+        return res.status(403).json({ error: "Insufficient permissions" });
+      }
+      
+      const userStores = await storage.getUserStores(req.params.userId);
+      res.json(userStores);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
