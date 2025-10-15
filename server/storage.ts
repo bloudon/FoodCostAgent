@@ -37,6 +37,7 @@ import {
   ediMessages, type EdiMessage, type InsertEdiMessage,
   orderGuides, type OrderGuide, type InsertOrderGuide,
   orderGuideLines, type OrderGuideLine, type InsertOrderGuideLine,
+  userStores, type UserStore, type InsertUserStore,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -44,6 +45,13 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, user: Partial<User>): Promise<User | undefined>;
+  getUsers(companyId?: string): Promise<User[]>;
+  
+  // User-Store assignments
+  getUserStores(userId: string): Promise<UserStore[]>;
+  assignUserToStore(userId: string, storeId: string): Promise<UserStore>;
+  removeUserFromStore(userId: string, storeId: string): Promise<void>;
 
   // Auth Sessions
   createAuthSession(session: InsertAuthSession): Promise<AuthSession>;
@@ -304,6 +312,41 @@ export class DatabaseStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const [user] = await db.update(users)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return user || undefined;
+  }
+
+  async getUsers(companyId?: string): Promise<User[]> {
+    if (companyId) {
+      return await db.select().from(users).where(eq(users.companyId, companyId));
+    }
+    return await db.select().from(users);
+  }
+
+  // User-Store assignments
+  async getUserStores(userId: string): Promise<UserStore[]> {
+    return await db.select().from(userStores).where(eq(userStores.userId, userId));
+  }
+
+  async assignUserToStore(userId: string, storeId: string): Promise<UserStore> {
+    const [userStore] = await db.insert(userStores)
+      .values({ userId, storeId })
+      .returning();
+    return userStore;
+  }
+
+  async removeUserFromStore(userId: string, storeId: string): Promise<void> {
+    await db.delete(userStores)
+      .where(and(
+        eq(userStores.userId, userId),
+        eq(userStores.storeId, storeId)
+      ));
   }
 
   // Auth Sessions
