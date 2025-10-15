@@ -49,6 +49,17 @@ Thrive Control Center (TCC) integration is supported via `tcc_account_id` (compa
 - **Core Domain Models**: Users, Storage Locations, Units, Inventory Items, Vendors, Recipes (nested), Inventory Counts, Purchase Orders, POS Sales, Transfer/Waste Logs.
 - **Business Logic**: Unit conversion, recursive recipe cost calculation, location-based inventory, theoretical vs. actual usage variance, purchase order workflows, COGS analysis, price change impact analysis.
 - **Authentication & Sessions**: Session-based authentication with `auth_sessions` table; global admin company selection via `selected_company_id`.
+- **Role-Based Access Control (Oct 15, 2025)**: Hierarchical permission system with four user roles:
+  - **`global_admin`**: Full system access across all companies; can use "become company" feature via `selectedCompanyId`
+  - **`company_admin`**: Full access within assigned company; equivalent to global_admin permissions but scoped to their company; can manage all stores and users within their company
+  - **`store_manager`**: Full access to assigned store(s); can perform operations but cannot modify company-wide settings
+  - **`store_user`**: Read-only or limited access to assigned store(s); can perform daily operations (counts, receiving, etc.)
+  
+  **Data Structure**: `users.companyId` links user to company (null for global_admin); `users.role` defines permission level; `user_stores` junction table tracks store assignments for store_manager/store_user roles.
+  
+  **Permission Utilities** (`server/permissions.ts`): Helper functions for access control (isGlobalAdmin, hasCompanyAccess, canAccessStore, getAccessibleStores, canManageUsers).
+  
+  **Middleware** (`server/auth.ts`): Permission enforcement via `requireGlobalAdmin`, `requireCompanyAdmin`, `requireStoreAccess` middleware functions.
 
 ### Architectural Decisions
 - Single-page application with API and frontend served from the same Express server.

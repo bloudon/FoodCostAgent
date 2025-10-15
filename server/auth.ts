@@ -105,3 +105,88 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
   
   next();
 }
+
+/**
+ * Middleware to require global admin role
+ */
+export function requireGlobalAdmin(req: Request, res: Response, next: NextFunction) {
+  const user = (req as any).user;
+  
+  if (!user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  
+  if (user.role !== "global_admin") {
+    return res.status(403).json({ error: "Global admin access required" });
+  }
+  
+  next();
+}
+
+/**
+ * Middleware to require company admin or global admin role
+ */
+export function requireCompanyAdmin(req: Request, res: Response, next: NextFunction) {
+  const user = (req as any).user;
+  const companyId = (req as any).companyId;
+  
+  if (!user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  
+  // Global admins have full access
+  if (user.role === "global_admin") {
+    return next();
+  }
+  
+  // Company admins need to match the company
+  if (user.role === "company_admin" && user.companyId === companyId) {
+    return next();
+  }
+  
+  return res.status(403).json({ error: "Company admin access required" });
+}
+
+/**
+ * Middleware to validate store access
+ */
+export async function requireStoreAccess(req: Request, res: Response, next: NextFunction) {
+  const user = (req as any).user;
+  const storeId = req.params.storeId || req.body.storeId || req.query.storeId;
+  
+  if (!user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  
+  if (!storeId) {
+    return res.status(400).json({ error: "Store ID required" });
+  }
+  
+  // Global admins have full access
+  if (user.role === "global_admin") {
+    return next();
+  }
+  
+  // Check if store belongs to user's company
+  const store = await storage.getCompanyStore(storeId);
+  if (!store) {
+    return res.status(404).json({ error: "Store not found" });
+  }
+  
+  // Company admins can access all stores in their company
+  if (user.role === "company_admin" && user.companyId === store.companyId) {
+    return next();
+  }
+  
+  // Store managers and users need explicit assignment
+  if (user.role === "store_manager" || user.role === "store_user") {
+    const userStores = await storage.getUserStores(user.id);
+    const hasAccess = userStores.some(us => us.storeId === storeId);
+    
+    if (hasAccess) {
+      return next();
+    }
+  }
+  
+  return res.status(403).json({ error: "Store access denied" });
+}
