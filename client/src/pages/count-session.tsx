@@ -50,7 +50,6 @@ export default function CountSession() {
   const filterItemId = urlParams.get('item');
   const sourceCountId = urlParams.get('from');
   
-  const [showEmpty, setShowEmpty] = useState(true); // Default to showing all items
   const [groupBy, setGroupBy] = useState<"location" | "category">("location"); // Toggle between location and category grouping
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
@@ -247,11 +246,8 @@ export default function CountSession() {
     inventoryItems?.map((p: any) => p.category).filter(Boolean) || []
   )).sort();
 
-  // Filter lines based on toggle and location (for category accordion)
+  // Filter lines based on location (for category accordion)
   let linesForCategoryTotals = countLines || [];
-  if (!showEmpty) {
-    linesForCategoryTotals = linesForCategoryTotals.filter(line => line.qty > 0);
-  }
   if (selectedLocation !== "all") {
     linesForCategoryTotals = linesForCategoryTotals.filter(line => {
       const item = line.inventoryItem;
@@ -275,11 +271,8 @@ export default function CountSession() {
     return acc;
   }, {}) || {};
 
-  // Filter lines based on toggle and category (for location accordion)
+  // Filter lines based on category (for location accordion)
   let linesForLocationTotals = countLines || [];
-  if (!showEmpty) {
-    linesForLocationTotals = linesForLocationTotals.filter(line => line.qty > 0);
-  }
   if (selectedCategory !== "all") {
     linesForLocationTotals = linesForLocationTotals.filter(line => {
       const item = line.inventoryItem;
@@ -306,10 +299,6 @@ export default function CountSession() {
 
   // Filter lines for display (all filters applied)
   let filteredLines = countLines || [];
-  
-  if (!showEmpty) {
-    filteredLines = filteredLines.filter(line => line.qty > 0);
-  }
   
   if (selectedCategory !== "all") {
     filteredLines = filteredLines.filter(line => {
@@ -539,17 +528,6 @@ export default function CountSession() {
               )}
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <Switch
-                    id="show-empty"
-                    checked={showEmpty}
-                    onCheckedChange={setShowEmpty}
-                    data-testid="toggle-show-empty"
-                  />
-                  <Label htmlFor="show-empty" className="cursor-pointer">
-                    Show empty counts
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2 border-l pl-4">
                   <Label className="text-sm text-muted-foreground">Group by:</Label>
                   <Button
                     variant={groupBy === "location" ? "default" : "outline"}
