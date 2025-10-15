@@ -192,7 +192,7 @@ export default function Receiving() {
             {receivedOrders.length > 0 && (
               <Card>
                 <CardContent className="pt-6">
-                  <h2 className="text-lg font-semibold mb-4">Recently Received</h2>
+                  <h2 className="text-lg font-semibold mb-4">Received Orders</h2>
                   <div className="border rounded-lg">
                     <Table>
                       <TableHeader>

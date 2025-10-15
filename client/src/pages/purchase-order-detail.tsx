@@ -86,6 +86,15 @@ type Category = {
   name: string;
 };
 
+type Receipt = {
+  id: string;
+  companyId: string;
+  storeId: string;
+  purchaseOrderId: string;
+  status: string;
+  receivedAt: string;
+};
+
 export default function PurchaseOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
@@ -123,6 +132,12 @@ export default function PurchaseOrderDetail() {
 
   const { data: categories } = useQuery<Category[]>({
     queryKey: ["/api/categories"],
+  });
+
+  // Fetch receipts for this purchase order
+  const { data: receipts } = useQuery<Receipt[]>({
+    queryKey: [`/api/purchase-orders/${id}/receipts`],
+    enabled: !isNew && !!id,
   });
 
   // Check if selected vendor is Misc Grocery
@@ -724,6 +739,54 @@ export default function PurchaseOrderDetail() {
             <p className="text-muted-foreground text-sm">
               Select a vendor to view available items
             </p>
+          </div>
+        )}
+
+        {/* Received Orders Section - Only show completed receipts */}
+        {receipts && receipts.filter(r => r.status === "completed").length > 0 && (
+          <div className="mt-6">
+            <h2 className="text-lg font-semibold mb-4">Received Orders</h2>
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Receipt #</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Received At</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {receipts.filter(r => r.status === "completed").map((receipt) => (
+                    <TableRow key={receipt.id} data-testid={`row-receipt-${receipt.id}`}>
+                      <TableCell className="font-mono">
+                        {receipt.id.slice(0, 8)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="default">
+                          {receipt.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {new Date(receipt.receivedAt).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          asChild
+                          data-testid={`button-view-receipt-${receipt.id}`}
+                        >
+                          <Link href={`/receiving/${receipt.purchaseOrderId}?receiptId=${receipt.id}`}>
+                            View Receipt
+                          </Link>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         )}
       </div>

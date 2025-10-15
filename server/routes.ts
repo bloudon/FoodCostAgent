@@ -2209,16 +2209,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(receipts);
   });
 
+  // Get receipts for a specific purchase order
+  app.get("/api/purchase-orders/:poId/receipts", requireAuth, async (req, res) => {
+    try {
+      const { poId } = req.params;
+      const allReceipts = await storage.getReceipts(req.companyId!);
+      const poReceipts = allReceipts.filter(r => r.purchaseOrderId === poId);
+      res.json(poReceipts);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // Get or create draft receipt for a purchase order
   app.get("/api/receipts/draft/:poId", requireAuth, async (req, res) => {
     try {
       const { poId } = req.params;
+      const { receiptId } = req.query;
       
-      // Check if any receipt already exists for this PO (draft or completed)
       const existingReceipts = await storage.getReceipts(req.companyId!);
-      const existingReceipt = existingReceipts.find(
-        r => r.purchaseOrderId === poId
-      );
+      
+      // If receiptId is provided, load that specific receipt
+      if (receiptId && typeof receiptId === 'string') {
+        const specificReceipt = existingReceipts.find(r => r.id === receiptId && r.purchaseOrderId === poId);
+        if (specificReceipt) {
+          const lines = await storage.getReceiptLinesByReceiptId(specificReceipt.id);
+          return res.json({ receipt: specificReceipt, lines });
+        }
+      }
+      
+      // Otherwise, check if any receipt already exists for this PO (draft or completed)
+      const poReceipts = existingReceipts.filter(r => r.purchaseOrderId === poId);
+      
+      // Prefer completed receipt over draft if both exist
+      const existingReceipt = poReceipts.find(r => r.status === "completed") || poReceipts[0];
       
       if (existingReceipt) {
         // Get lines for this receipt (works for both draft and completed)

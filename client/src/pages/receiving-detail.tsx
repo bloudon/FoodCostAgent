@@ -98,8 +98,12 @@ type InventoryItem = {
 
 export default function ReceivingDetail() {
   const { poId } = useParams<{ poId: string }>();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
+  
+  // Get receiptId from query parameter if present
+  const searchParams = new URLSearchParams(location.split('?')[1]);
+  const receiptIdParam = searchParams.get('receiptId');
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [draftReceiptId, setDraftReceiptId] = useState<string | null>(null);
@@ -121,12 +125,17 @@ export default function ReceivingDetail() {
     reorderLevel: "",
   });
 
-  const { data: purchaseOrder, isLoading: loadingOrder } = useQuery<PurchaseOrderDetail>({
+  const { data: purchaseOrder, isLoading: loadingOrder} = useQuery<PurchaseOrderDetail>({
     queryKey: [`/api/purchase-orders/${poId}`],
   });
 
+  // Build consistent query key for receipt data (used for both fetch and invalidation)
+  const receiptQueryKey = receiptIdParam 
+    ? [`/api/receipts/draft/${poId}?receiptId=${receiptIdParam}`] 
+    : [`/api/receipts/draft/${poId}`];
+
   const { data: draftReceiptData } = useQuery<{ receipt: DraftReceipt; lines: ReceiptLine[] }>({
-    queryKey: [`/api/receipts/draft/${poId}`],
+    queryKey: receiptQueryKey,
     enabled: !!poId,
   });
 
@@ -172,7 +181,7 @@ export default function ReceivingDetail() {
       return await apiRequest("POST", "/api/receipt-lines", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/receipts/draft/${poId}`] });
+      queryClient.invalidateQueries({ queryKey: receiptQueryKey });
     },
     onError: (error: any) => {
       toast({
@@ -211,7 +220,7 @@ export default function ReceivingDetail() {
       return await apiRequest("PATCH", `/api/receipts/${receiptId}/reopen`, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/receipts/draft/${poId}`] });
+      queryClient.invalidateQueries({ queryKey: receiptQueryKey });
       toast({
         title: "Success",
         description: "Receipt reopened for editing",
