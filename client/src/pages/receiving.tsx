@@ -31,6 +31,7 @@ type PurchaseOrderDisplay = {
   expectedDate: string | null;
   lineCount: number;
   totalAmount: number;
+  receivedAmount: number;
 };
 
 type Vendor = {
@@ -221,7 +222,7 @@ export default function Receiving() {
                             </TableCell>
                             <TableCell className="text-right">{order.lineCount}</TableCell>
                             <TableCell className="text-right font-mono">
-                              ${order.totalAmount.toFixed(2)}
+                              ${order.receivedAmount.toFixed(2)}
                             </TableCell>
                             <TableCell>
                               <Badge className={statusColors[order.status]}>

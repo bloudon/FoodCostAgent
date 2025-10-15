@@ -1847,11 +1847,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const lineCount = lines.length;
       const totalAmount = lines.reduce((sum, line) => sum + (line.orderedQty * line.priceEach), 0);
       
+      // For received orders, calculate actual received amount from receipts
+      let receivedAmount = 0;
+      if (po.status === "received") {
+        const allReceipts = await storage.getReceipts(companyId);
+        const poReceipts = allReceipts.filter(r => r.purchaseOrderId === po.id && r.status === "completed");
+        
+        for (const receipt of poReceipts) {
+          const receiptLines = await storage.getReceiptLinesByReceiptId(receipt.id);
+          receivedAmount += receiptLines.reduce((sum, line) => sum + (line.receivedQty * line.priceEach), 0);
+        }
+      }
+      
       return {
         ...po,
         vendorName: vendor?.name || "Unknown",
         lineCount,
         totalAmount,
+        receivedAmount,
       };
     }));
     
