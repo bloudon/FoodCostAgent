@@ -1878,9 +1878,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const item = inventoryItems.find((i) => i.id === vi?.inventoryItemId);
       const unit = units.find((u) => u.id === line.unitId);
       
-      // For receiving workflow, use the current inventory item price
-      // This allows price adjustments during receiving
-      const pricePerUnit = item?.pricePerUnit || 0;
+      // Use the original PO price (priceEach) - this is the price per unit when ordered
+      const pricePerUnit = line.priceEach;
       const caseSize = item?.caseSize || 1;
       
       return {
@@ -1890,7 +1889,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         vendorSku: vi?.vendorSku || "",
         unitName: unit?.name || "",
         caseQuantity: line.caseQuantity,
-        pricePerUnit: pricePerUnit, // Current unit price for real-time updates
+        pricePerUnit: pricePerUnit, // Use PO line price (price per unit when ordered)
         caseSize: caseSize, // Need this to calculate totals
       };
     });
