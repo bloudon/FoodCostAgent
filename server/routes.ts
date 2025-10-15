@@ -1124,15 +1124,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!currentItem) {
         return res.status(404).json({ error: "Inventory item not found" });
       }
-      if (currentItem.companyId !== companyId) {
+      
+      // Check if user is global admin
+      const user = await storage.getUser(req.user!.id);
+      const isGlobalAdmin = user?.role === "global_admin";
+      
+      // Global admins can edit items from any company, others must own the item
+      if (!isGlobalAdmin && currentItem.companyId !== companyId) {
         return res.status(403).json({ error: "Access denied" });
       }
       
       // Handle store-specific active status updates
       if (storeId && updates.active !== undefined) {
-        // Verify store belongs to the same company
+        // Verify store belongs to the item's company
         const store = await storage.getCompanyStore(storeId);
-        if (!store || store.companyId !== companyId) {
+        if (!store || store.companyId !== currentItem.companyId) {
           return res.status(403).json({ error: "Access denied" });
         }
         await storage.updateStoreInventoryItemActive(storeId, req.params.id, updates.active);
