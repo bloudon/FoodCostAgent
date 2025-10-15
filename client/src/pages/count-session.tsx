@@ -556,79 +556,70 @@ export default function CountSession() {
           <div className="space-y-2">
             {filteredLines && filteredLines.length > 0 ? (
               (() => {
-                // Group by inventory item while preserving order
-                const groupedByItem: Record<string, any[]> = {};
-                const itemOrder: string[] = []; // Track the order items appear
+                // Group by location or category based on groupBy state
+                const grouped: Record<string, any[]> = {};
+                const groupOrder: string[] = []; // Track the order groups appear
                 
                 filteredLines.forEach(line => {
-                  const itemId = line.inventoryItemId;
-                  if (!groupedByItem[itemId]) {
-                    groupedByItem[itemId] = [];
-                    itemOrder.push(itemId); // Preserve first appearance order
+                  let groupKey: string;
+                  if (groupBy === "location") {
+                    const item = line.inventoryItem;
+                    groupKey = item?.storageLocationId || "unknown";
+                  } else {
+                    const item = line.inventoryItem;
+                    groupKey = item?.category || "Uncategorized";
                   }
-                  groupedByItem[itemId].push(line);
+                  
+                  if (!grouped[groupKey]) {
+                    grouped[groupKey] = [];
+                    groupOrder.push(groupKey); // Preserve first appearance order
+                  }
+                  grouped[groupKey].push(line);
                 });
 
                 return (
                   <Accordion 
                     type="multiple" 
-                    defaultValue={itemOrder} 
+                    defaultValue={groupOrder} 
                     className="w-full"
-                    key={itemOrder.join(',')} // Force remount when filtered items change
+                    key={groupOrder.join(',') + groupBy} // Force remount when filtered items or groupBy changes
                   >
-                    {itemOrder.map((itemId) => {
-                      const lines = groupedByItem[itemId];
-                      const firstLine = lines[0];
-                      const item = firstLine.inventoryItem;
+                    {groupOrder.map((groupKey) => {
+                      const lines = grouped[groupKey];
                       
-                      // Calculate aggregate totals for this item
+                      // Get group name
+                      let groupName: string;
+                      if (groupBy === "location") {
+                        groupName = storageLocations?.find(l => l.id === groupKey)?.name || "Unknown Location";
+                      } else {
+                        groupName = groupKey;
+                      }
+                      
+                      // Calculate aggregate totals for this group
                       const totalQty = lines.reduce((sum, l) => sum + l.qty, 0);
                       const totalValue = lines.reduce((sum, l) => sum + (l.qty * (l.unitCost || 0)), 0);
-                      const previousQty = previousQuantitiesByItemId[itemId] || 0;
                       
                       return (
-                        <AccordionItem key={itemId} value={itemId} className="border rounded-md mb-2">
-                          <AccordionTrigger className="px-4 py-2 hover:no-underline bg-muted/30 hover:bg-muted/50 data-[state=open]:bg-muted/40" data-testid={`accordion-item-${itemId}`}>
+                        <AccordionItem key={groupKey} value={groupKey} className="border rounded-md mb-2">
+                          <AccordionTrigger className="px-4 py-2 hover:no-underline bg-muted/30 hover:bg-muted/50 data-[state=open]:bg-muted/40" data-testid={`accordion-group-${groupKey}`}>
                             <div className="flex items-center justify-between w-full pr-4">
                               <div className="flex items-center gap-4 flex-1">
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenItemEdit(item);
-                                  }}
-                                  className="font-medium hover:underline text-left cursor-pointer"
-                                  data-testid={`button-edit-item-${itemId}`}
-                                >
-                                  {item?.name || 'Unknown'}
+                                <span className="font-medium text-left">
+                                  {groupName}
                                 </span>
                                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                                  <span>{item?.category || 'Uncategorized'}</span>
-                                  <span>•</span>
-                                  <span>{firstLine.unitName || '-'}</span>
+                                  <span>{lines.length} items</span>
                                 </div>
                               </div>
                               <div className="flex items-center gap-6 text-sm">
                                 <div className="text-right">
-                                  <div className="font-mono font-semibold">{totalQty}</div>
+                                  <div className="font-mono font-semibold">{totalQty.toFixed(2)}</div>
                                   <div className="text-xs text-muted-foreground">Total Qty</div>
                                 </div>
                                 <div className="text-right">
                                   <div className="font-mono font-semibold">${totalValue.toFixed(2)}</div>
                                   <div className="text-xs text-muted-foreground">Total Value</div>
                                 </div>
-                                {previousQty > 0 && previousCountId && (
-                                  <div className="text-right">
-                                    <Link 
-                                      href={`/count/${previousCountId}?item=${itemId}&from=${countId}`}
-                                      className="font-mono text-muted-foreground hover:underline"
-                                      onClick={(e) => e.stopPropagation()}
-                                      data-testid={`link-previous-${itemId}`}
-                                    >
-                                      {previousQty}
-                                    </Link>
-                                    <div className="text-xs text-muted-foreground">Previous</div>
-                                  </div>
-                                )}
                               </div>
                             </div>
                           </AccordionTrigger>
@@ -636,7 +627,8 @@ export default function CountSession() {
                             <Table>
                               <TableHeader>
                                 <TableRow>
-                                  <TableHead className="w-[40%]">Location</TableHead>
+                                  <TableHead className="w-[40%]">Item</TableHead>
+                                  <TableHead className="w-[30%]">{groupBy === "location" ? "Category" : "Location"}</TableHead>
                                   <TableHead className="text-right">Quantity (click to edit)</TableHead>
                                   <TableHead className="text-right">Unit Cost</TableHead>
                                   <TableHead className="text-right">Total Value</TableHead>
@@ -645,11 +637,21 @@ export default function CountSession() {
                               <TableBody>
                                 {lines.map((line) => {
                                   const value = line.qty * (line.unitCost || 0);
+                                  const item = line.inventoryItem;
                                   
                                   return (
                                     <TableRow key={line.id} data-testid={`row-line-${line.id}`}>
                                       <TableCell className="font-medium">
-                                        {line.storageLocationName || 'Unknown Location'}
+                                        <span
+                                          onClick={() => handleOpenItemEdit(item)}
+                                          className="hover:underline cursor-pointer"
+                                          data-testid={`button-edit-item-${line.inventoryItemId}`}
+                                        >
+                                          {item?.name || 'Unknown'}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell className="text-muted-foreground">
+                                        {groupBy === "location" ? (item?.category || 'Uncategorized') : (line.storageLocationName || 'Unknown Location')}
                                       </TableCell>
                                       <TableCell className="text-right font-mono">
                                         {editingLineId === line.id ? (
