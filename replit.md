@@ -60,6 +60,13 @@ Thrive Control Center (TCC) integration is supported via `tcc_account_id` (compa
   **Permission Utilities** (`server/permissions.ts`): Helper functions for access control (isGlobalAdmin, hasCompanyAccess, canAccessStore, getAccessibleStores, canManageUsers).
   
   **Middleware** (`server/auth.ts`): Permission enforcement via `requireGlobalAdmin`, `requireCompanyAdmin`, `requireStoreAccess` middleware functions.
+  
+  **Security Hardening (Oct 15, 2025)**: Comprehensive security measures to prevent privilege escalation and scope bypass:
+  - **Role Creation Constraints**: Company admins cannot create or elevate users to `global_admin` role; global admins must explicitly set `companyId=null` when creating other global admins
+  - **Store Assignment Validation**: All store assignments validated against company boundaries; company admins restricted to assigning users to stores within their company only; store must belong to target user's company
+  - **Update Restrictions**: Company admins cannot change user's `companyId`, set it to null, or elevate users to global admin via PATCH `/api/users/:id`
+  - **Query Scoping**: Frontend user queries keyed by `companyId` (`["/api/users", companyId]`) to eliminate cross-company cache leakage
+  - **User Management UI**: Settings > Users tab provides CRUD interface with role badges, active status toggles, and store assignment checkboxes; enforces security constraints at UI level
 
 ### Architectural Decisions
 - Single-page application with API and frontend served from the same Express server.
