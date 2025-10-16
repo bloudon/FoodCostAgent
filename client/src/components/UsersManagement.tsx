@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
   Dialog,
   DialogContent,
@@ -52,9 +53,7 @@ export function UsersManagement({ companyId }: { companyId: string }) {
     },
   });
 
-  const { data: stores = [] } = useQuery<CompanyStore[]>({
-    queryKey: [`/api/companies/${companyId}/stores`],
-  });
+  const { data: stores = [] } = useAccessibleStores();
 
   const createUserMutation = useMutation({
     mutationFn: async (data: any) => {

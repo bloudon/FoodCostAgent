@@ -12,6 +12,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import type { SystemPreferences } from "@shared/schema";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 
 type Unit = {
   id: string;
@@ -74,11 +75,7 @@ export default function InventoryItemCreate() {
     queryKey: ["/api/categories"],
   });
 
-  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
-  const { data: stores } = useQuery<Store[]>({
-    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}/stores`] : [],
-    enabled: !!selectedCompanyId,
-  });
+  const { data: stores } = useAccessibleStores();
 
   // Set default unit to Pound when units are loaded
   useEffect(() => {

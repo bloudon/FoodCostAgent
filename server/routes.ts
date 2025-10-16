@@ -3298,6 +3298,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(stores);
   });
 
+  // Get accessible stores for current user (filtered by role and assignments)
+  app.get("/api/stores/accessible", requireAuth, async (req, res) => {
+    try {
+      const currentUser = (req as any).user;
+      const stores = await getAccessibleStores(currentUser, storage);
+      res.json(stores);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/companies", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.user!.id);
     
