@@ -1793,7 +1793,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const storeId = req.query.storeId as string | undefined;
     const storageLocationId = req.query.storageLocationId as string | undefined;
     const counts = await storage.getInventoryCounts(companyId, storeId, storageLocationId);
-    res.json(counts);
+    
+    // Enrich counts with store information
+    // Get unique company IDs from counts to fetch all relevant stores
+    const companyIds = [...new Set(counts.map(c => c.companyId))];
+    const allStores = await Promise.all(
+      companyIds.map(id => storage.getCompanyStores(id))
+    );
+    const storesMap = new Map(allStores.flat().map(s => [s.id, s]));
+    
+    const enrichedCounts = counts.map(count => {
+      const store = storesMap.get(count.storeId);
+      return {
+        ...count,
+        storeName: store?.name || 'Unknown Store',
+      };
+    });
+    
+    res.json(enrichedCounts);
   });
 
   app.get("/api/inventory-counts/:id", async (req, res) => {

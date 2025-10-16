@@ -47,7 +47,8 @@ function SessionRow({ count, inventoryItems, stores }: any) {
     queryKey: ["/api/inventory-count-lines", count.id],
   });
   
-  const store = stores?.find((s: CompanyStore) => s.id === count.storeId);
+  // Use storeName from count data (includes store name even if user doesn't have access)
+  const storeName = count.storeName || 'Unknown Store';
   // Fallback to countedAt for legacy records without countDate
   const countDate = new Date(count.countDate || count.countedAt);
   const createdAt = new Date(count.countedAt);
@@ -91,7 +92,7 @@ function SessionRow({ count, inventoryItems, stores }: any) {
           Created {format(createdAt, "p")}
         </div>
       </TableCell>
-      <TableCell data-testid={`text-store-${count.id}`}>{store?.name || 'Unknown'}</TableCell>
+      <TableCell data-testid={`text-store-${count.id}`}>{storeName}</TableCell>
       <TableCell>{count.userId}</TableCell>
       <TableCell className="text-right font-mono">{countLines?.length || 0}</TableCell>
       <TableCell className="text-right font-mono font-semibold" data-testid={`text-session-value-${count.id}`}>
