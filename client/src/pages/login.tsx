@@ -13,7 +13,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [, setLocation] = useLocation();
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const { toast } = useToast();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -22,7 +22,25 @@ export default function Login() {
 
     try {
       await login(email, password);
-      setLocation("/");
+      
+      // Check the user's role from the auth context after login
+      // Note: The login function updates the user in the auth context
+      const response = await fetch("/api/auth/me", {
+        credentials: "include",
+      });
+      
+      if (response.ok) {
+        const userData = await response.json();
+        
+        // Global admins should land on the companies page
+        if (userData.role === "global_admin") {
+          setLocation("/companies");
+        } else {
+          setLocation("/");
+        }
+      } else {
+        setLocation("/");
+      }
     } catch (error: any) {
       toast({
         variant: "destructive",
