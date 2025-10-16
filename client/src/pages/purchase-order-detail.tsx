@@ -277,7 +277,18 @@ export default function PurchaseOrderDetail() {
     if (purchaseOrder && !isNew) {
       setSelectedVendor(purchaseOrder.vendorId);
       setSelectedStore((purchaseOrder as any).storeId || "");
-      setExpectedDate(purchaseOrder.expectedDate || "");
+      
+      // Format expected date for date input (YYYY-MM-DD)
+      if (purchaseOrder.expectedDate) {
+        const date = new Date(purchaseOrder.expectedDate);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        setExpectedDate(`${year}-${month}-${day}`);
+      } else {
+        setExpectedDate("");
+      }
+      
       setNotes((purchaseOrder as any).notes || "");
     }
   }, [purchaseOrder, isNew]);

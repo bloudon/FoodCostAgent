@@ -2209,11 +2209,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { lines, ...poData } = req.body;
       
-      // Convert date string to Date object if provided
-      if (poData.expectedDate && typeof poData.expectedDate === 'string') {
-        poData.expectedDate = new Date(poData.expectedDate);
-      }
-      
       // Validate and update the purchase order
       const validatedData = insertPurchaseOrderSchema.partial().parse(poData);
       
