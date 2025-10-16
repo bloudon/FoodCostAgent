@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
   Dialog,
   DialogContent,
@@ -52,10 +53,7 @@ export default function Stores() {
   const [selectedStore, setSelectedStore] = useState<CompanyStore | null>(null);
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
 
-  const { data: stores = [], isLoading } = useQuery<CompanyStore[]>({
-    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}/stores`] : [],
-    enabled: !!selectedCompanyId,
-  });
+  const { data: stores = [], isLoading } = useAccessibleStores();
 
   const createStoreMutation = useMutation({
     mutationFn: async (data: Partial<CompanyStore>) => {

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
   Select,
   SelectContent,
@@ -41,10 +42,7 @@ export default function Settings() {
     enabled: !!selectedCompanyId,
   });
 
-  const { data: stores = [], isLoading: storesLoading } = useQuery<CompanyStore[]>({
-    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}/stores`] : [],
-    enabled: !!selectedCompanyId,
-  });
+  const { data: stores = [], isLoading: storesLoading } = useAccessibleStores();
 
   const { data: systemPrefs, isLoading: prefsLoading } = useQuery<SystemPreferences>({
     queryKey: ["/api/system-preferences"],

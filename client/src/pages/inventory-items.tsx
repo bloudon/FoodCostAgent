@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
   Table,
   TableBody,
@@ -107,10 +108,7 @@ export default function InventoryItems() {
 
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
 
-  const { data: stores } = useQuery<CompanyStore[]>({
-    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}/stores`] : [],
-    enabled: !!selectedCompanyId,
-  });
+  const { data: stores } = useAccessibleStores();
 
   const { data: inventoryItems, isLoading } = useQuery<InventoryItemDisplay[]>({
     queryKey: ["/api/inventory-items", selectedStore],

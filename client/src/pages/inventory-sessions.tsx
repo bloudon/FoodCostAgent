@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Calendar as CalendarIcon, Trash2 } from "lucide-react";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
   Table,
   TableBody,
@@ -142,10 +143,7 @@ export default function InventorySessions() {
     enabled: !!selectedCompanyId,
   });
 
-  const { data: stores = [] } = useQuery<CompanyStore[]>({
-    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}/stores`] : [],
-    enabled: !!selectedCompanyId,
-  });
+  const { data: stores = [] } = useAccessibleStores();
 
   const { data: inventoryItems } = useQuery<any[]>({
     queryKey: ["/api/inventory-items"],

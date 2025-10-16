@@ -5,6 +5,7 @@ import { ArrowLeft, Save, Package, Search, PackageCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
   Table,
   TableBody,
@@ -124,11 +125,7 @@ export default function PurchaseOrderDetail() {
     queryKey: ["/api/vendors"],
   });
 
-  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
-  const { data: stores } = useQuery<Array<{ id: string; name: string }>>({
-    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}/stores`] : [],
-    enabled: !!selectedCompanyId,
-  });
+  const { data: stores } = useAccessibleStores();
 
   const { data: categories } = useQuery<Category[]>({
     queryKey: ["/api/categories"],
