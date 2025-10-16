@@ -673,10 +673,12 @@ export default function CountSession() {
                                             <div className="font-mono">
                                               ${(firstLine.unitCost || 0).toFixed(4)}
                                             </div>
-                                            {previousTotal > 0 && (
-                                              <div className="text-muted-foreground">
-                                                Prev: <span className="font-mono">{previousTotal.toFixed(2)}</span> {formatUnitName(unitName)}
-                                              </div>
+                                            {previousTotal > 0 && previousCountId && (
+                                              <Link href={`/count/${previousCountId}?from=${countId}&item=${itemId}`}>
+                                                <div className="text-muted-foreground hover:underline cursor-pointer" data-testid={`link-previous-${itemId}`}>
+                                                  Prev: <span className="font-mono">{previousTotal.toFixed(2)}</span> {formatUnitName(unitName)}
+                                                </div>
+                                              </Link>
                                             )}
                                           </div>
                                         </div>
@@ -734,102 +736,99 @@ export default function CountSession() {
                                 })()}
                               </div>
                             ) : (
-                              // Location view: Keep original table format
-                              <Table>
-                                <TableHeader>
-                                  <TableRow>
-                                    <TableHead className="w-[40%]">Item</TableHead>
-                                    <TableHead className="w-[30%]">Category</TableHead>
-                                    <TableHead className="text-right">Quantity (click to edit)</TableHead>
-                                    <TableHead className="text-right">Unit Cost</TableHead>
-                                    <TableHead className="text-right">Total Value</TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {lines.map((line) => {
-                                    const value = line.qty * (line.unitCost || 0);
-                                    const item = line.inventoryItem;
-                                    
-                                    return (
-                                      <TableRow key={line.id} data-testid={`row-line-${line.id}`}>
-                                        <TableCell className="font-medium">
-                                          <span
+                              // Location view: Compact layout similar to category view
+                              <div className="space-y-3 p-4">
+                                {lines.map((line, idx) => {
+                                  const item = line.inventoryItem;
+                                  const unitName = item?.unitName || 'unit';
+                                  
+                                  // Get previous quantity for this specific item at this location
+                                  const previousLine = previousLines.find(
+                                    pl => pl.inventoryItemId === line.inventoryItemId && 
+                                          pl.storageLocationId === line.storageLocationId
+                                  );
+                                  const previousQty = previousLine?.qty || 0;
+                                  
+                                  return (
+                                    <div key={line.id} className="border rounded-lg p-3 space-y-2" data-testid={`item-input-${line.id}`}>
+                                      {/* Item Info Header */}
+                                      <div className="flex items-center justify-between gap-4 pb-2 border-b">
+                                        <div className="flex items-center gap-4 flex-1">
+                                          <button
                                             onClick={() => handleOpenItemEdit(item)}
-                                            className="hover:underline cursor-pointer"
+                                            className="text-left hover:underline font-medium"
                                             data-testid={`button-edit-item-${line.inventoryItemId}`}
                                           >
                                             {item?.name || 'Unknown'}
+                                          </button>
+                                          <span className="text-sm text-muted-foreground">
+                                            {item?.category || 'Uncategorized'}
                                           </span>
-                                        </TableCell>
-                                        <TableCell className="text-muted-foreground">
-                                          {item?.category || 'Uncategorized'}
-                                        </TableCell>
-                                        <TableCell className="text-right font-mono">
-                                          {editingLineId === line.id ? (
-                                            <div className="flex items-center gap-2 justify-end">
-                                              <Input
-                                                type="number"
-                                                step="0.01"
-                                                value={editingQty}
-                                                onChange={(e) => setEditingQty(e.target.value)}
-                                                onBlur={(e) => {
-                                                  const relatedTarget = e.relatedTarget as HTMLElement;
-                                                  const isBlurToActionButton = relatedTarget && 
-                                                    (relatedTarget.getAttribute('data-testid')?.includes('button-save-') ||
-                                                     relatedTarget.getAttribute('data-testid')?.includes('button-cancel-'));
-                                                  
-                                                  if (wasTabPressed || !isBlurToActionButton) {
-                                                    handleSaveEdit(line.id);
-                                                  }
-                                                  setWasTabPressed(false);
-                                                }}
-                                                onKeyDown={(e) => {
-                                                  if (e.key === 'Enter') {
-                                                    handleSaveEdit(line.id);
-                                                  } else if (e.key === 'Escape') {
-                                                    handleCancelEdit();
-                                                  } else if (e.key === 'Tab') {
-                                                    setWasTabPressed(true);
-                                                  }
-                                                }}
-                                                className="w-24 h-8"
-                                                autoFocus
-                                                data-testid={`input-qty-${line.id}`}
-                                              />
-                                              <Button
-                                                size="sm"
-                                                onClick={() => handleSaveEdit(line.id)}
-                                                disabled={updateMutation.isPending}
-                                                data-testid={`button-save-${line.id}`}
-                                              >
-                                                Save
-                                              </Button>
-                                              <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={handleCancelEdit}
-                                                data-testid={`button-cancel-${line.id}`}
-                                              >
-                                                Cancel
-                                              </Button>
-                                            </div>
-                                          ) : (
-                                            <div
-                                              className="cursor-pointer hover:underline"
-                                              onClick={() => handleStartEdit(line)}
-                                              data-testid={`text-qty-${line.id}`}
-                                            >
-                                              {line.qty}
-                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-6 text-sm">
+                                          <div className="text-muted-foreground">
+                                            {formatUnitName(unitName)}
+                                          </div>
+                                          <div className="font-mono">
+                                            ${(line.unitCost || 0).toFixed(4)}
+                                          </div>
+                                          {previousQty > 0 && previousCountId && (
+                                            <Link href={`/count/${previousCountId}?from=${countId}&item=${line.inventoryItemId}`}>
+                                              <div className="text-muted-foreground hover:underline cursor-pointer" data-testid={`link-previous-${line.id}`}>
+                                                Prev: <span className="font-mono">{previousQty.toFixed(2)}</span> {formatUnitName(unitName)}
+                                              </div>
+                                            </Link>
                                           )}
-                                        </TableCell>
-                                        <TableCell className="text-right font-mono">${(line.unitCost || 0).toFixed(4)}</TableCell>
-                                        <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
-                                      </TableRow>
-                                    );
-                                  })}
-                                </TableBody>
-                              </Table>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Quantity Input */}
+                                      <div className="flex items-center gap-3">
+                                        <label className="w-20 text-sm text-muted-foreground">
+                                          Quantity:
+                                        </label>
+                                        <Input
+                                          type="number"
+                                          step="0.01"
+                                          value={editingLineId === line.id ? editingQty : line.qty}
+                                          onFocus={() => {
+                                            setEditingLineId(line.id);
+                                            setEditingQty(line.qty.toString());
+                                          }}
+                                          onChange={(e) => {
+                                            if (editingLineId === line.id) {
+                                              setEditingQty(e.target.value);
+                                            }
+                                          }}
+                                          onBlur={() => {
+                                            if (editingLineId === line.id) {
+                                              handleSaveEdit(line.id);
+                                            }
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              handleSaveEdit(line.id);
+                                              // Focus next input if available
+                                              if (idx < lines.length - 1) {
+                                                const nextLine = lines[idx + 1];
+                                                setEditingLineId(nextLine.id);
+                                                setEditingQty(nextLine.qty.toString());
+                                              }
+                                            } else if (e.key === 'Escape') {
+                                              handleCancelEdit();
+                                            }
+                                          }}
+                                          className="w-32 h-9"
+                                          data-testid={`input-qty-${line.id}`}
+                                        />
+                                        <div className="text-sm text-muted-foreground font-mono ml-2">
+                                          = ${(line.qty * (line.unitCost || 0)).toFixed(2)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             )}
                           </AccordionContent>
                         </AccordionItem>

@@ -2043,10 +2043,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get counts from the same company and store, and find the one immediately before this one
+      // Use countDate (official inventory date) not countedAt (session creation time)
       const allCounts = await storage.getInventoryCounts(currentCount.companyId, currentCount.storeId);
       const previousCount = allCounts
-        .filter(c => new Date(c.countedAt) < new Date(currentCount.countedAt))
-        .sort((a, b) => new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime())[0];
+        .filter(c => new Date(c.countDate) < new Date(currentCount.countDate))
+        .sort((a, b) => new Date(b.countDate).getTime() - new Date(a.countDate).getTime())[0];
 
       if (!previousCount) {
         return res.json({ previousCountId: null, lines: [] }); // No previous count exists
