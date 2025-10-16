@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ export function UsersManagement({ companyId }: { companyId: string }) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [selectedStoreIds, setSelectedStoreIds] = useState<Set<string>>(new Set());
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ["/api/users", companyId],
@@ -54,6 +55,27 @@ export function UsersManagement({ companyId }: { companyId: string }) {
   });
 
   const { data: stores = [] } = useAccessibleStores();
+
+  // Fetch store assignments for the selected user
+  const { data: userStoreAssignments = [] } = useQuery<Array<{ id: string; userId: string; storeId: string }>>({
+    queryKey: ["/api/users", selectedUser?.id, "stores"],
+    queryFn: async () => {
+      if (!selectedUser) return [];
+      const res = await fetch(`/api/users/${selectedUser.id}/stores`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+      return await res.json();
+    },
+    enabled: !!selectedUser && editDialogOpen,
+  });
+
+  // Update controlled checkbox state when store assignments load
+  useEffect(() => {
+    if (userStoreAssignments.length >= 0) {
+      setSelectedStoreIds(new Set(userStoreAssignments.map(assignment => assignment.storeId)));
+    }
+  }, [userStoreAssignments]);
 
   const createUserMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -121,9 +143,6 @@ export function UsersManagement({ companyId }: { companyId: string }) {
     if (!selectedUser) return;
 
     const formData = new FormData(e.currentTarget);
-    const storeIds = stores
-      .filter((store) => formData.get(`store-${store.id}`) === "on")
-      .map((store) => store.id);
 
     const updates: any = {
       email: formData.get("email"),
@@ -131,7 +150,7 @@ export function UsersManagement({ companyId }: { companyId: string }) {
       lastName: formData.get("lastName"),
       role: formData.get("role"),
       active: formData.get("active") === "1" ? 1 : 0,
-      storeIds,
+      storeIds: Array.from(selectedStoreIds),
     };
 
     const password = formData.get("password") as string;
@@ -140,6 +159,18 @@ export function UsersManagement({ companyId }: { companyId: string }) {
     }
 
     updateUserMutation.mutate({ id: selectedUser.id, data: updates });
+  };
+
+  const handleStoreToggle = (storeId: string) => {
+    setSelectedStoreIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(storeId)) {
+        newSet.delete(storeId);
+      } else {
+        newSet.add(storeId);
+      }
+      return newSet;
+    });
   };
 
   const getRoleBadgeVariant = (role: string) => {
@@ -316,7 +347,10 @@ export function UsersManagement({ companyId }: { companyId: string }) {
         {/* Edit User Dialog */}
         <Dialog open={editDialogOpen} onOpenChange={(open) => {
           setEditDialogOpen(open);
-          if (!open) setSelectedUser(null);
+          if (!open) {
+            setSelectedUser(null);
+            setSelectedStoreIds(new Set());
+          }
         }}>
           <DialogContent className="max-w-md">
             <DialogHeader>
@@ -379,7 +413,8 @@ export function UsersManagement({ companyId }: { companyId: string }) {
                           <div key={store.id} className="flex items-center space-x-2">
                             <Checkbox
                               id={`edit-store-${store.id}`}
-                              name={`store-${store.id}`}
+                              checked={selectedStoreIds.has(store.id)}
+                              onCheckedChange={() => handleStoreToggle(store.id)}
                               data-testid={`checkbox-edit-store-${store.id}`}
                             />
                             <Label htmlFor={`edit-store-${store.id}`} className="text-sm font-normal cursor-pointer">
