@@ -137,7 +137,16 @@ export default function InventorySessions() {
   const [note, setNote] = useState("");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
 
-  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+  // Get authenticated user to determine company ID
+  const { data: user } = useQuery<any>({
+    queryKey: ["/api/auth/me"],
+  });
+
+  // For global_admin: use selected company from localStorage
+  // For other roles: use user's assigned company
+  const selectedCompanyId = user?.role === "global_admin" 
+    ? localStorage.getItem("selectedCompanyId")
+    : user?.companyId;
 
   const { data: company } = useQuery<Company>({
     queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}`] : [],

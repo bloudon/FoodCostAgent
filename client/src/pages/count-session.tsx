@@ -39,6 +39,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatUnitName } from "@/lib/utils";
 import type { Company, CompanyStore } from "@shared/schema";
 
 export default function CountSession() {
@@ -624,101 +625,212 @@ export default function CountSession() {
                             </div>
                           </AccordionTrigger>
                           <AccordionContent>
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead className="w-[40%]">Item</TableHead>
-                                  <TableHead className="w-[30%]">{groupBy === "location" ? "Category" : "Location"}</TableHead>
-                                  <TableHead className="text-right">Quantity (click to edit)</TableHead>
-                                  <TableHead className="text-right">Unit Cost</TableHead>
-                                  <TableHead className="text-right">Total Value</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {lines.map((line) => {
-                                  const value = line.qty * (line.unitCost || 0);
-                                  const item = line.inventoryItem;
+                            {groupBy === "category" ? (
+                              // Category view: Group by item, show locations underneath
+                              <div className="space-y-4 p-4">
+                                {(() => {
+                                  // Group lines by inventory item
+                                  const itemGroups: Record<string, any[]> = {};
+                                  lines.forEach(line => {
+                                    const itemId = line.inventoryItemId;
+                                    if (!itemGroups[itemId]) {
+                                      itemGroups[itemId] = [];
+                                    }
+                                    itemGroups[itemId].push(line);
+                                  });
                                   
-                                  return (
-                                    <TableRow key={line.id} data-testid={`row-line-${line.id}`}>
-                                      <TableCell className="font-medium">
-                                        <span
-                                          onClick={() => handleOpenItemEdit(item)}
-                                          className="hover:underline cursor-pointer"
-                                          data-testid={`button-edit-item-${line.inventoryItemId}`}
-                                        >
-                                          {item?.name || 'Unknown'}
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="text-muted-foreground">
-                                        {groupBy === "location" ? (item?.category || 'Uncategorized') : (line.storageLocationName || 'Unknown Location')}
-                                      </TableCell>
-                                      <TableCell className="text-right font-mono">
-                                        {editingLineId === line.id ? (
-                                          <div className="flex items-center gap-2 justify-end">
-                                            <Input
-                                              type="number"
-                                              step="0.01"
-                                              value={editingQty}
-                                              onChange={(e) => setEditingQty(e.target.value)}
-                                              onBlur={(e) => {
-                                                const relatedTarget = e.relatedTarget as HTMLElement;
-                                                const isBlurToActionButton = relatedTarget && 
-                                                  (relatedTarget.getAttribute('data-testid')?.includes('button-save-') ||
-                                                   relatedTarget.getAttribute('data-testid')?.includes('button-cancel-'));
-                                                
-                                                if (wasTabPressed || !isBlurToActionButton) {
-                                                  handleSaveEdit(line.id);
-                                                }
-                                                setWasTabPressed(false);
-                                              }}
-                                              onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                  handleSaveEdit(line.id);
-                                                } else if (e.key === 'Escape') {
-                                                  handleCancelEdit();
-                                                } else if (e.key === 'Tab') {
-                                                  setWasTabPressed(true);
-                                                }
-                                              }}
-                                              className="w-24 h-8"
-                                              autoFocus
-                                              data-testid={`input-qty-${line.id}`}
-                                            />
-                                            <Button
-                                              size="sm"
-                                              onClick={() => handleSaveEdit(line.id)}
-                                              disabled={updateMutation.isPending}
-                                              data-testid={`button-save-${line.id}`}
+                                  return Object.entries(itemGroups).map(([itemId, itemLines]) => {
+                                    const firstLine = itemLines[0];
+                                    const item = firstLine.inventoryItem;
+                                    
+                                    // Calculate current total for this item across all locations
+                                    const currentTotal = itemLines.reduce((sum, l) => sum + l.qty, 0);
+                                    
+                                    // Get previous total from previous session (aggregated across all locations)
+                                    const previousTotal = previousLines
+                                      .filter(pl => pl.inventoryItemId === itemId)
+                                      .reduce((sum, pl) => sum + (pl.qty || 0), 0);
+                                    
+                                    const unitName = item?.unitName || 'unit';
+                                    
+                                    return (
+                                      <div key={itemId} className="border rounded-lg p-3 space-y-3" data-testid={`item-group-${itemId}`}>
+                                        {/* Item Header */}
+                                        <div className="flex items-center justify-between gap-4 pb-2 border-b">
+                                          <div className="flex-1">
+                                            <button
+                                              onClick={() => handleOpenItemEdit(item)}
+                                              className="text-left hover:underline font-medium"
+                                              data-testid={`button-edit-item-${itemId}`}
                                             >
-                                              Save
-                                            </Button>
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              onClick={handleCancelEdit}
-                                              data-testid={`button-cancel-${line.id}`}
-                                            >
-                                              Cancel
-                                            </Button>
+                                              {item?.name || 'Unknown'}
+                                            </button>
                                           </div>
-                                        ) : (
-                                          <div
-                                            className="cursor-pointer hover:underline"
-                                            onClick={() => handleStartEdit(line)}
-                                            data-testid={`text-qty-${line.id}`}
+                                          <div className="flex items-center gap-6 text-sm">
+                                            <div className="text-muted-foreground">
+                                              {formatUnitName(unitName)}
+                                            </div>
+                                            <div className="font-mono">
+                                              ${(firstLine.unitCost || 0).toFixed(4)}
+                                            </div>
+                                            {previousTotal > 0 && (
+                                              <div className="text-muted-foreground">
+                                                Prev: <span className="font-mono">{previousTotal.toFixed(2)}</span> {formatUnitName(unitName)}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Location Inputs */}
+                                        <div className="grid grid-cols-1 gap-2">
+                                          {itemLines.map((line, idx) => (
+                                            <div key={line.id} className="flex items-center gap-3" data-testid={`location-input-${line.id}`}>
+                                              <label className="w-40 text-sm text-muted-foreground">
+                                                {line.storageLocationName || 'Unknown'}:
+                                              </label>
+                                              <Input
+                                                type="number"
+                                                step="0.01"
+                                                value={editingLineId === line.id ? editingQty : line.qty}
+                                                onFocus={() => {
+                                                  setEditingLineId(line.id);
+                                                  setEditingQty(line.qty.toString());
+                                                }}
+                                                onChange={(e) => {
+                                                  if (editingLineId === line.id) {
+                                                    setEditingQty(e.target.value);
+                                                  }
+                                                }}
+                                                onBlur={() => {
+                                                  if (editingLineId === line.id) {
+                                                    handleSaveEdit(line.id);
+                                                  }
+                                                }}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    handleSaveEdit(line.id);
+                                                    // Focus next input if available
+                                                    if (idx < itemLines.length - 1) {
+                                                      const nextLine = itemLines[idx + 1];
+                                                      setEditingLineId(nextLine.id);
+                                                      setEditingQty(nextLine.qty.toString());
+                                                    }
+                                                  } else if (e.key === 'Escape') {
+                                                    handleCancelEdit();
+                                                  }
+                                                }}
+                                                className="w-32 h-9"
+                                                data-testid={`input-qty-${line.id}`}
+                                              />
+                                              <div className="text-sm text-muted-foreground font-mono ml-2">
+                                                = ${(line.qty * (line.unitCost || 0)).toFixed(2)}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            ) : (
+                              // Location view: Keep original table format
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead className="w-[40%]">Item</TableHead>
+                                    <TableHead className="w-[30%]">Category</TableHead>
+                                    <TableHead className="text-right">Quantity (click to edit)</TableHead>
+                                    <TableHead className="text-right">Unit Cost</TableHead>
+                                    <TableHead className="text-right">Total Value</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {lines.map((line) => {
+                                    const value = line.qty * (line.unitCost || 0);
+                                    const item = line.inventoryItem;
+                                    
+                                    return (
+                                      <TableRow key={line.id} data-testid={`row-line-${line.id}`}>
+                                        <TableCell className="font-medium">
+                                          <span
+                                            onClick={() => handleOpenItemEdit(item)}
+                                            className="hover:underline cursor-pointer"
+                                            data-testid={`button-edit-item-${line.inventoryItemId}`}
                                           >
-                                            {line.qty}
-                                          </div>
-                                        )}
-                                      </TableCell>
-                                      <TableCell className="text-right font-mono">${(line.unitCost || 0).toFixed(4)}</TableCell>
-                                      <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
-                                    </TableRow>
-                                  );
-                                })}
-                              </TableBody>
-                            </Table>
+                                            {item?.name || 'Unknown'}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="text-muted-foreground">
+                                          {item?.category || 'Uncategorized'}
+                                        </TableCell>
+                                        <TableCell className="text-right font-mono">
+                                          {editingLineId === line.id ? (
+                                            <div className="flex items-center gap-2 justify-end">
+                                              <Input
+                                                type="number"
+                                                step="0.01"
+                                                value={editingQty}
+                                                onChange={(e) => setEditingQty(e.target.value)}
+                                                onBlur={(e) => {
+                                                  const relatedTarget = e.relatedTarget as HTMLElement;
+                                                  const isBlurToActionButton = relatedTarget && 
+                                                    (relatedTarget.getAttribute('data-testid')?.includes('button-save-') ||
+                                                     relatedTarget.getAttribute('data-testid')?.includes('button-cancel-'));
+                                                  
+                                                  if (wasTabPressed || !isBlurToActionButton) {
+                                                    handleSaveEdit(line.id);
+                                                  }
+                                                  setWasTabPressed(false);
+                                                }}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    handleSaveEdit(line.id);
+                                                  } else if (e.key === 'Escape') {
+                                                    handleCancelEdit();
+                                                  } else if (e.key === 'Tab') {
+                                                    setWasTabPressed(true);
+                                                  }
+                                                }}
+                                                className="w-24 h-8"
+                                                autoFocus
+                                                data-testid={`input-qty-${line.id}`}
+                                              />
+                                              <Button
+                                                size="sm"
+                                                onClick={() => handleSaveEdit(line.id)}
+                                                disabled={updateMutation.isPending}
+                                                data-testid={`button-save-${line.id}`}
+                                              >
+                                                Save
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={handleCancelEdit}
+                                                data-testid={`button-cancel-${line.id}`}
+                                              >
+                                                Cancel
+                                              </Button>
+                                            </div>
+                                          ) : (
+                                            <div
+                                              className="cursor-pointer hover:underline"
+                                              onClick={() => handleStartEdit(line)}
+                                              data-testid={`text-qty-${line.id}`}
+                                            >
+                                              {line.qty}
+                                            </div>
+                                          )}
+                                        </TableCell>
+                                        <TableCell className="text-right font-mono">${(line.unitCost || 0).toFixed(4)}</TableCell>
+                                        <TableCell className="text-right font-mono font-semibold">${value.toFixed(2)}</TableCell>
+                                      </TableRow>
+                                    );
+                                  })}
+                                </TableBody>
+                              </Table>
+                            )}
                           </AccordionContent>
                         </AccordionItem>
                       );
