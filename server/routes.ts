@@ -1813,12 +1813,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(enrichedCounts);
   });
 
-  app.get("/api/inventory-counts/:id", async (req, res) => {
+  app.get("/api/inventory-counts/:id", requireAuth, async (req, res) => {
     const count = await storage.getInventoryCount(req.params.id);
     if (!count) {
       return res.status(404).json({ error: "Count not found" });
     }
-    res.json(count);
+    
+    const user = (req as any).user;
+    
+    // Determine if this is the latest count for the store
+    const allCounts = await storage.getInventoryCounts(count.companyId, count.storeId);
+    const sortedCounts = allCounts.sort((a, b) => 
+      new Date(b.countDate).getTime() - new Date(a.countDate).getTime()
+    );
+    const isLatest = sortedCounts.length > 0 && sortedCounts[0].id === count.id;
+    
+    // Check if user has admin permissions (can edit historical data)
+    const isAdmin = user.role === "global_admin" || user.role === "company_admin";
+    
+    res.json({
+      ...count,
+      isLatest,
+      canEdit: isAdmin || isLatest, // Admins can always edit, non-admins can only edit latest
+    });
   });
 
   app.get("/api/inventory-count-lines/:countId", async (req, res) => {
