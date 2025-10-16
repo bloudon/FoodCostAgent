@@ -42,6 +42,7 @@ export function UsersManagement({ companyId }: { companyId: string }) {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedStoreIds, setSelectedStoreIds] = useState<Set<string>>(new Set());
+  const [createUserRole, setCreateUserRole] = useState<string>("store_user");
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ["/api/users", companyId],
@@ -123,16 +124,27 @@ export function UsersManagement({ companyId }: { companyId: string }) {
   const handleCreateUser = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const role = formData.get("role") as string;
     const storeIds = stores
       .filter((store) => formData.get(`store-${store.id}`) === "on")
       .map((store) => store.id);
+
+    // Validate store selection for store_user and store_manager
+    if ((role === "store_user" || role === "store_manager") && storeIds.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Store Users and Store Managers must be assigned to at least 1 store",
+        variant: "destructive",
+      });
+      return;
+    }
 
     createUserMutation.mutate({
       email: formData.get("email"),
       password: formData.get("password"),
       firstName: formData.get("firstName"),
       lastName: formData.get("lastName"),
-      role: formData.get("role"),
+      role: role,
       companyId: companyId,
       storeIds,
     });
@@ -143,14 +155,26 @@ export function UsersManagement({ companyId }: { companyId: string }) {
     if (!selectedUser) return;
 
     const formData = new FormData(e.currentTarget);
+    const role = formData.get("role") as string;
+    const storeIds = Array.from(selectedStoreIds);
+
+    // Validate store selection for store_user and store_manager
+    if ((role === "store_user" || role === "store_manager") && storeIds.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Store Users and Store Managers must be assigned to at least 1 store",
+        variant: "destructive",
+      });
+      return;
+    }
 
     const updates: any = {
       email: formData.get("email"),
       firstName: formData.get("firstName"),
       lastName: formData.get("lastName"),
-      role: formData.get("role"),
+      role: role,
       active: formData.get("active") === "1" ? 1 : 0,
-      storeIds: Array.from(selectedStoreIds),
+      storeIds: storeIds,
     };
 
     const password = formData.get("password") as string;
@@ -215,7 +239,12 @@ export function UsersManagement({ companyId }: { companyId: string }) {
               Manage users and their roles within your company
             </CardDescription>
           </div>
-          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+          <Dialog open={createDialogOpen} onOpenChange={(open) => {
+            setCreateDialogOpen(open);
+            if (!open) {
+              setCreateUserRole("store_user");
+            }
+          }}>
             <DialogTrigger asChild>
               <Button data-testid="button-create-user">
                 <UserPlus className="h-4 w-4 mr-2" />
@@ -251,7 +280,7 @@ export function UsersManagement({ companyId }: { companyId: string }) {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="role">Role</Label>
-                    <Select name="role" defaultValue="store_user" required>
+                    <Select name="role" defaultValue="store_user" onValueChange={setCreateUserRole} required>
                       <SelectTrigger data-testid="select-role">
                         <SelectValue />
                       </SelectTrigger>
@@ -264,7 +293,12 @@ export function UsersManagement({ companyId }: { companyId: string }) {
                   </div>
                   {stores.length > 0 && (
                     <div className="space-y-2">
-                      <Label>Store Assignments</Label>
+                      <Label>
+                        Store Assignments
+                        {(createUserRole === "store_user" || createUserRole === "store_manager") && (
+                          <span className="text-destructive ml-1">*</span>
+                        )}
+                      </Label>
                       <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto">
                         {stores.map((store) => (
                           <div key={store.id} className="flex items-center space-x-2">
