@@ -212,14 +212,22 @@ export default function InventorySessions() {
     createSessionMutation.mutate();
   };
 
-  // Filter counts by store if selected (don't mutate original array)
+  // Get accessible store IDs
+  const accessibleStoreIds = new Set(stores.map(s => s.id));
+  
+  // Filter counts to only show sessions from accessible stores
+  const accessibleCounts = inventoryCounts?.filter(count => 
+    accessibleStoreIds.has(count.storeId)
+  );
+  
+  // Filter by selected store if not "all"
   const filteredCounts = selectedStoreId === "all" 
-    ? inventoryCounts 
-    : inventoryCounts?.filter(count => count.storeId === selectedStoreId);
+    ? accessibleCounts 
+    : accessibleCounts?.filter(count => count.storeId === selectedStoreId);
 
   // Sort counts by date descending (clone array to avoid mutating cache)
   const sortedCounts = filteredCounts ? [...filteredCounts].sort((a, b) => 
-    new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime()
+    new Date(b.countDate || b.countedAt).getTime() - new Date(a.countDate || a.countedAt).getTime()
   ) : [];
 
   return (
@@ -235,23 +243,29 @@ export default function InventorySessions() {
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-              <SelectTrigger className="w-[200px]" data-testid="select-store-filter">
-                <SelectValue placeholder="All Stores" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" data-testid="option-all-stores">All Stores</SelectItem>
-                {stores.map((store) => (
-                  <SelectItem 
-                    key={store.id} 
-                    value={store.id}
-                    data-testid={`option-store-${store.id}`}
-                  >
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {stores.length === 1 ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md border bg-muted/50" data-testid="text-single-store">
+                <span className="text-sm font-medium">{stores[0].name}</span>
+              </div>
+            ) : (
+              <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+                <SelectTrigger className="w-[200px]" data-testid="select-store-filter">
+                  <SelectValue placeholder="All Stores" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" data-testid="option-all-stores">All Stores</SelectItem>
+                  {stores.map((store) => (
+                    <SelectItem 
+                      key={store.id} 
+                      value={store.id}
+                      data-testid={`option-store-${store.id}`}
+                    >
+                      {store.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Button 
               onClick={handleStartNewCount}
               disabled={createSessionMutation.isPending}
