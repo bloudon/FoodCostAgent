@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { z } from "zod";
 import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth";
+import { getAccessibleStores } from "./permissions";
 import { db } from "./db";
 import { eq, and, inArray } from "drizzle-orm";
 import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations } from "@shared/schema";
@@ -3301,8 +3302,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get accessible stores for current user (filtered by role and assignments)
   app.get("/api/stores/accessible", requireAuth, async (req, res) => {
     try {
-      const currentUser = (req as any).user;
-      const stores = await getAccessibleStores(currentUser, storage);
+      const currentUser = await storage.getUser(req.user!.id);
+      if (!currentUser) {
+        return res.status(401).json({ error: "User not found" });
+      }
+
+      // Get effective company ID from request context (already resolved by auth middleware)
+      const effectiveCompanyId = (req as any).companyId;
+
+      // Get accessible store IDs
+      const storeIds = await getAccessibleStores(currentUser, effectiveCompanyId || undefined);
+      
+      // Fetch full store objects
+      const stores = [];
+      for (const storeId of storeIds) {
+        const store = await storage.getCompanyStore(storeId);
+        if (store) {
+          stores.push(store);
+        }
+      }
+      
       res.json(stores);
     } catch (error: any) {
       res.status(500).json({ error: error.message });

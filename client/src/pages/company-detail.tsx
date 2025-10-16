@@ -119,6 +119,7 @@ export default function CompanyDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/companies/${id}/stores`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
       setEditingStore(null);
       setIsEditStoreDialogOpen(false);
       toast({ title: "Store updated successfully" });
@@ -140,6 +141,7 @@ export default function CompanyDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/companies/${id}/stores`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
       setIsNewStoreDialogOpen(false);
       storeForm.reset();
       toast({ title: "Store created successfully" });

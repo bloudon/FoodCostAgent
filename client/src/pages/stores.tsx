@@ -64,6 +64,7 @@ export default function Stores() {
       if (selectedCompanyId) {
         queryClient.invalidateQueries({ queryKey: [`/api/companies/${selectedCompanyId}/stores`] });
       }
+      queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
       setIsCreateDialogOpen(false);
       toast({
         title: "Success",
@@ -87,6 +88,7 @@ export default function Stores() {
       if (selectedCompanyId) {
         queryClient.invalidateQueries({ queryKey: [`/api/companies/${selectedCompanyId}/stores`] });
       }
+      queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
       setIsEditDialogOpen(false);
       setSelectedStore(null);
       toast({
@@ -111,6 +113,7 @@ export default function Stores() {
       if (selectedCompanyId) {
         queryClient.invalidateQueries({ queryKey: [`/api/companies/${selectedCompanyId}/stores`] });
       }
+      queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
       setIsDeleteDialogOpen(false);
       setSelectedStore(null);
       toast({
