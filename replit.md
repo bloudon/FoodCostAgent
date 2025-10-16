@@ -67,6 +67,29 @@ Thrive Control Center (TCC) integration is supported via `tcc_account_id` (compa
   - **Update Restrictions**: Company admins cannot change user's `companyId`, set it to null, or elevate users to global admin via PATCH `/api/users/:id`
   - **Query Scoping**: Frontend user queries keyed by `companyId` (`["/api/users", companyId]`) to eliminate cross-company cache leakage
   - **User Management UI**: Settings > Users tab provides CRUD interface with role badges, active status toggles, and store assignment checkboxes; enforces security constraints at UI level
+  
+  **Store Isolation (Oct 16, 2025)**: Complete store-level access control ensuring users only see stores they're authorized to access:
+  - **Backend API**: GET `/api/stores/accessible` endpoint returns filtered stores based on user role and assignments
+    - Uses `getAccessibleStores(user, companyId)` from `server/permissions.ts`
+    - Returns all stores for `global_admin` and `company_admin`
+    - Returns only assigned stores (via `user_stores` table) for `store_manager` and `store_user`
+    - Leverages `req.companyId` from auth middleware for proper company context resolution
+  - **Frontend Hook**: `useAccessibleStores()` custom hook in `client/src/hooks/use-accessible-stores.ts`
+    - Fetches from `/api/stores/accessible` with 5-minute cache
+    - Returns typed `CompanyStore[]` array
+    - Used across all store selector components for consistent isolation
+  - **Updated Components**: All store selectors use `useAccessibleStores()` hook:
+    - `client/src/pages/inventory-item-create.tsx`
+    - `client/src/pages/inventory-items.tsx`
+    - `client/src/pages/inventory-sessions.tsx`
+    - `client/src/pages/purchase-order-detail.tsx`
+    - `client/src/pages/settings.tsx`
+    - `client/src/pages/stores.tsx`
+    - `client/src/components/UsersManagement.tsx`
+  - **Cache Invalidation**: All store CRUD mutations invalidate `["/api/stores/accessible"]` cache key:
+    - Create/update/delete operations in `stores.tsx` and `company-detail.tsx`
+    - Ensures real-time updates without waiting for cache expiration
+    - Maintains data consistency across all store selectors
 
 ### Architectural Decisions
 - Single-page application with API and frontend served from the same Express server.
