@@ -1,4 +1,4 @@
-import { eq, and, or, gte, lte, isNull, inArray } from "drizzle-orm";
+import { eq, and, or, gte, lte, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, type User, type InsertUser,
@@ -156,6 +156,20 @@ export interface IStorage {
   createInventoryCountLine(line: InsertInventoryCountLine): Promise<InventoryCountLine>;
   updateInventoryCountLine(id: string, line: Partial<InventoryCountLine>): Promise<InventoryCountLine | undefined>;
   deleteInventoryCountLine(id: string): Promise<void>;
+
+  // Item Usage Calculation
+  getItemUsageBetweenCounts(storeId: string, previousCountId: string, currentCountId: string): Promise<Array<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    category: string | null;
+    previousQty: number;
+    receivedQty: number;
+    currentQty: number;
+    usage: number;
+    unitId: string;
+    unitName: string;
+    isNegativeUsage: boolean;
+  }>>;
 
   // Purchase Orders
   getPurchaseOrders(companyId: string, storeId?: string): Promise<PurchaseOrder[]>;
@@ -975,6 +989,121 @@ export class DatabaseStorage implements IStorage {
 
   async deleteInventoryCountLine(id: string): Promise<void> {
     await db.delete(inventoryCountLines).where(eq(inventoryCountLines.id, id));
+  }
+
+  // Item Usage Calculation
+  async getItemUsageBetweenCounts(storeId: string, previousCountId: string, currentCountId: string): Promise<Array<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    category: string | null;
+    previousQty: number;
+    receivedQty: number;
+    currentQty: number;
+    usage: number;
+    unitId: string;
+    unitName: string;
+    isNegativeUsage: boolean;
+  }>> {
+    // Get both count records to retrieve their count dates
+    const [previousCount] = await db.select().from(inventoryCounts).where(eq(inventoryCounts.id, previousCountId));
+    const [currentCount] = await db.select().from(inventoryCounts).where(eq(inventoryCounts.id, currentCountId));
+
+    if (!previousCount || !currentCount) {
+      return [];
+    }
+
+    // Get all count lines for previous count, aggregated by inventoryItemId
+    const previousLines = await db
+      .select({
+        inventoryItemId: inventoryCountLines.inventoryItemId,
+        totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+        unitId: inventoryCountLines.unitId,
+      })
+      .from(inventoryCountLines)
+      .where(eq(inventoryCountLines.inventoryCountId, previousCountId))
+      .groupBy(inventoryCountLines.inventoryItemId, inventoryCountLines.unitId);
+
+    // Get all count lines for current count, aggregated by inventoryItemId
+    const currentLines = await db
+      .select({
+        inventoryItemId: inventoryCountLines.inventoryItemId,
+        totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+        unitId: inventoryCountLines.unitId,
+      })
+      .from(inventoryCountLines)
+      .where(eq(inventoryCountLines.inventoryCountId, currentCountId))
+      .groupBy(inventoryCountLines.inventoryItemId, inventoryCountLines.unitId);
+
+    // Get all receipts between the two count dates for this store
+    const receivedItems = await db
+      .select({
+        inventoryItemId: vendorItems.inventoryItemId,
+        totalReceivedQty: sql<number>`SUM(${receiptLines.receivedQty})`.as('total_received_qty'),
+      })
+      .from(receiptLines)
+      .innerJoin(receipts, eq(receiptLines.receiptId, receipts.id))
+      .innerJoin(vendorItems, eq(receiptLines.vendorItemId, vendorItems.id))
+      .where(
+        and(
+          eq(receipts.storeId, storeId),
+          gte(receipts.receivedAt, previousCount.countDate),
+          lte(receipts.receivedAt, currentCount.countDate),
+          eq(receipts.status, 'completed')
+        )
+      )
+      .groupBy(vendorItems.inventoryItemId);
+
+    // Create maps for easy lookup
+    const previousMap = new Map(previousLines.map(l => [l.inventoryItemId, { qty: l.totalQty, unitId: l.unitId }]));
+    const currentMap = new Map(currentLines.map(l => [l.inventoryItemId, { qty: l.totalQty, unitId: l.unitId }]));
+    const receivedMap = new Map(receivedItems.map(r => [r.inventoryItemId, r.totalReceivedQty]));
+
+    // Get all unique inventory item IDs from all sources
+    const allItemIds = new Set([
+      ...Array.from(previousMap.keys()),
+      ...Array.from(currentMap.keys()),
+    ]);
+
+    // Get inventory item details for all items
+    const itemDetails = await db
+      .select({
+        id: inventoryItems.id,
+        name: inventoryItems.name,
+        categoryId: inventoryItems.categoryId,
+        unitId: inventoryItems.unitId,
+        unitName: units.name,
+      })
+      .from(inventoryItems)
+      .innerJoin(units, eq(inventoryItems.unitId, units.id))
+      .where(inArray(inventoryItems.id, Array.from(allItemIds)));
+
+    const itemDetailsMap = new Map(itemDetails.map(item => [item.id, item]));
+
+    // Calculate usage for each item
+    const usageData = Array.from(allItemIds).map(itemId => {
+      const item = itemDetailsMap.get(itemId);
+      const previousQty = previousMap.get(itemId)?.qty || 0;
+      const currentQty = currentMap.get(itemId)?.qty || 0;
+      const receivedQty = receivedMap.get(itemId) || 0;
+      
+      const usage = (previousQty + receivedQty) - currentQty;
+      const isNegativeUsage = usage < 0;
+
+      return {
+        inventoryItemId: itemId,
+        inventoryItemName: item?.name || 'Unknown',
+        category: item?.categoryId || null,
+        previousQty,
+        receivedQty,
+        currentQty,
+        usage,
+        unitId: item?.unitId || '',
+        unitName: item?.unitName || 'unit',
+        isNegativeUsage,
+      };
+    });
+
+    return usageData;
   }
 
   // Purchase Orders
