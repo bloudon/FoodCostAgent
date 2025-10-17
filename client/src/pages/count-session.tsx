@@ -449,7 +449,7 @@ export default function CountSession() {
       <Card className="mb-8">
         <Accordion type="single" collapsible>
           <AccordionItem value="categories" className="border-0">
-            <AccordionTrigger className="px-6 pt-6 pb-2 hover:no-underline">
+            <AccordionTrigger className="px-6 pt-6 pb-2 hover:no-underline" tabIndex={-1}>
               <div className="flex flex-col items-start gap-1">
                 <CardTitle>Categories</CardTitle>
                 <p className="text-sm text-muted-foreground font-normal">Click a category to filter items below</p>
@@ -464,6 +464,7 @@ export default function CountSession() {
                       selectedCategory === category ? 'bg-accent border-accent-border' : ''
                     }`}
                     onClick={() => setSelectedCategory(selectedCategory === category ? "all" : category)}
+                    tabIndex={-1}
                     data-testid={`card-category-${category.toLowerCase().replace(/\s+/g, '-')}`}
                   >
                     <div className="font-semibold mb-2">{category}</div>
@@ -489,7 +490,7 @@ export default function CountSession() {
       <Card className="mb-8">
         <Accordion type="single" collapsible>
           <AccordionItem value="locations" className="border-0">
-            <AccordionTrigger className="px-6 pt-6 pb-2 hover:no-underline">
+            <AccordionTrigger className="px-6 pt-6 pb-2 hover:no-underline" tabIndex={-1}>
               <div className="flex flex-col items-start gap-1">
                 <CardTitle>Locations</CardTitle>
                 <p className="text-sm text-muted-foreground font-normal">Click a location to filter items below</p>
@@ -504,6 +505,7 @@ export default function CountSession() {
                       selectedLocation === locationId ? 'bg-accent border-accent-border' : ''
                     }`}
                     onClick={() => setSelectedLocation(selectedLocation === locationId ? "all" : locationId)}
+                    tabIndex={-1}
                     data-testid={`card-location-${data.name.toLowerCase().replace(/\s+/g, '-')}`}
                   >
                     <div className="font-semibold mb-2">{data.name}</div>
@@ -626,7 +628,7 @@ export default function CountSession() {
                       
                       return (
                         <AccordionItem key={groupKey} value={groupKey} className="border rounded-md mb-2">
-                          <AccordionTrigger className="px-4 py-2 hover:no-underline bg-muted/30 hover:bg-muted/50 data-[state=open]:bg-muted/40" data-testid={`accordion-group-${groupKey}`}>
+                          <AccordionTrigger className="px-4 py-2 hover:no-underline bg-muted/30 hover:bg-muted/50 data-[state=open]:bg-muted/40" tabIndex={-1} data-testid={`accordion-group-${groupKey}`}>
                             <div className="flex items-center justify-between w-full pr-4">
                               <div className="flex items-center gap-4 flex-1">
                                 <span className="font-medium text-left">
@@ -690,6 +692,7 @@ export default function CountSession() {
                                               <button
                                                 onClick={() => handleOpenItemEdit(item)}
                                                 className="text-left hover:underline font-medium"
+                                                tabIndex={-1}
                                                 data-testid={`button-edit-item-${itemId}`}
                                               >
                                                 {item?.name || 'Unknown'}
@@ -744,13 +747,12 @@ export default function CountSession() {
                                                     }
                                                   }}
                                                   onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' || e.key === 'Tab') {
+                                                    if (e.key === 'Enter') {
                                                       e.preventDefault();
                                                       handleSaveEdit(line.id);
                                                       // Focus next input if available
                                                       if (idx < itemLines.length - 1) {
                                                         const nextLine = itemLines[idx + 1];
-                                                        // Use setTimeout to allow state to update before focusing
                                                         setTimeout(() => {
                                                           const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
                                                           if (nextInput) {
@@ -805,6 +807,7 @@ export default function CountSession() {
                                             <button
                                               onClick={() => handleOpenItemEdit(item)}
                                               className="text-left hover:underline font-medium"
+                                              tabIndex={-1}
                                               data-testid={`button-edit-item-${line.inventoryItemId}`}
                                             >
                                               {item?.name || 'Unknown'}
@@ -860,13 +863,12 @@ export default function CountSession() {
                                               }
                                             }}
                                             onKeyDown={(e) => {
-                                              if (e.key === 'Enter' || e.key === 'Tab') {
+                                              if (e.key === 'Enter') {
                                                 e.preventDefault();
                                                 handleSaveEdit(line.id);
                                                 // Focus next input if available
                                                 if (idx < lines.length - 1) {
                                                   const nextLine = lines[idx + 1];
-                                                  // Use setTimeout to allow state to update before focusing
                                                   setTimeout(() => {
                                                     const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
                                                     if (nextInput) {
