@@ -163,6 +163,9 @@ export default function PurchaseOrderDetail() {
     unitId: string;
     unitName: string;
     isNegativeUsage: boolean;
+    previousCountId: string;
+    currentCountId: string;
+    receiptIds: string[];
   };
 
   const { data: usageData } = useQuery<UsageData[]>({
@@ -730,13 +733,47 @@ export default function PurchaseOrderDetail() {
                                 ${casePrice.toFixed(2)}
                               </TableCell>
                               <TableCell className="text-right font-mono text-sm">
-                                {usage ? usage.previousQty.toFixed(2) : '-'}
+                                {usage ? (
+                                  <Link 
+                                    href={`/inventory-sessions/${usage.previousCountId}`}
+                                    className="hover:text-primary hover:underline"
+                                    data-testid={`link-prev-count-${itemId}`}
+                                  >
+                                    {usage.previousQty.toFixed(2)}
+                                  </Link>
+                                ) : '-'}
                               </TableCell>
                               <TableCell className="text-right font-mono text-sm">
-                                {usage ? usage.receivedQty.toFixed(2) : '-'}
+                                {usage && usage.receiptIds.length > 0 ? (
+                                  usage.receiptIds.length === 1 ? (
+                                    <Link 
+                                      href={`/receiving/${receipts?.find(r => r.id === usage.receiptIds[0])?.purchaseOrderId}?receiptId=${usage.receiptIds[0]}`}
+                                      className="hover:text-primary hover:underline"
+                                      data-testid={`link-received-${itemId}`}
+                                    >
+                                      {usage.receivedQty.toFixed(2)}
+                                    </Link>
+                                  ) : (
+                                    <span 
+                                      className="hover:text-primary cursor-help underline decoration-dotted"
+                                      title={`${usage.receiptIds.length} receipts`}
+                                      data-testid={`text-received-multiple-${itemId}`}
+                                    >
+                                      {usage.receivedQty.toFixed(2)}
+                                    </span>
+                                  )
+                                ) : usage ? usage.receivedQty.toFixed(2) : '-'}
                               </TableCell>
                               <TableCell className="text-right font-mono text-sm">
-                                {usage ? usage.currentQty.toFixed(2) : '-'}
+                                {usage ? (
+                                  <Link 
+                                    href={`/inventory-sessions/${usage.currentCountId}`}
+                                    className="hover:text-primary hover:underline"
+                                    data-testid={`link-current-count-${itemId}`}
+                                  >
+                                    {usage.currentQty.toFixed(2)}
+                                  </Link>
+                                ) : '-'}
                               </TableCell>
                               <TableCell className="text-right">
                                 {(() => {
@@ -785,13 +822,47 @@ export default function PurchaseOrderDetail() {
                                 ${unitPrice.toFixed(2)}
                               </TableCell>
                               <TableCell className="text-right font-mono text-sm">
-                                {usage ? usage.previousQty.toFixed(2) : '-'}
+                                {usage ? (
+                                  <Link 
+                                    href={`/inventory-sessions/${usage.previousCountId}`}
+                                    className="hover:text-primary hover:underline"
+                                    data-testid={`link-prev-count-${itemId}`}
+                                  >
+                                    {usage.previousQty.toFixed(2)}
+                                  </Link>
+                                ) : '-'}
                               </TableCell>
                               <TableCell className="text-right font-mono text-sm">
-                                {usage ? usage.receivedQty.toFixed(2) : '-'}
+                                {usage && usage.receiptIds.length > 0 ? (
+                                  usage.receiptIds.length === 1 ? (
+                                    <Link 
+                                      href={`/receiving/${receipts?.find(r => r.id === usage.receiptIds[0])?.purchaseOrderId}?receiptId=${usage.receiptIds[0]}`}
+                                      className="hover:text-primary hover:underline"
+                                      data-testid={`link-received-${itemId}`}
+                                    >
+                                      {usage.receivedQty.toFixed(2)}
+                                    </Link>
+                                  ) : (
+                                    <span 
+                                      className="hover:text-primary cursor-help underline decoration-dotted"
+                                      title={`${usage.receiptIds.length} receipts`}
+                                      data-testid={`text-received-multiple-${itemId}`}
+                                    >
+                                      {usage.receivedQty.toFixed(2)}
+                                    </span>
+                                  )
+                                ) : usage ? usage.receivedQty.toFixed(2) : '-'}
                               </TableCell>
                               <TableCell className="text-right font-mono text-sm">
-                                {usage ? usage.currentQty.toFixed(2) : '-'}
+                                {usage ? (
+                                  <Link 
+                                    href={`/inventory-sessions/${usage.currentCountId}`}
+                                    className="hover:text-primary hover:underline"
+                                    data-testid={`link-current-count-${itemId}`}
+                                  >
+                                    {usage.currentQty.toFixed(2)}
+                                  </Link>
+                                ) : '-'}
                               </TableCell>
                               <TableCell className="text-right">
                                 {(() => {
