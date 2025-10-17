@@ -169,6 +169,9 @@ export interface IStorage {
     unitId: string;
     unitName: string;
     isNegativeUsage: boolean;
+    previousCountId: string;
+    currentCountId: string;
+    receiptIds: string[];
   }>>;
 
   // Purchase Orders
@@ -1003,6 +1006,9 @@ export class DatabaseStorage implements IStorage {
     unitId: string;
     unitName: string;
     isNegativeUsage: boolean;
+    previousCountId: string;
+    currentCountId: string;
+    receiptIds: string[];
   }>> {
     // Get both count records to retrieve their count dates
     const [previousCount] = await db.select().from(inventoryCounts).where(eq(inventoryCounts.id, previousCountId));
@@ -1034,11 +1040,12 @@ export class DatabaseStorage implements IStorage {
       .where(eq(inventoryCountLines.inventoryCountId, currentCountId))
       .groupBy(inventoryCountLines.inventoryItemId, inventoryCountLines.unitId);
 
-    // Get all receipts between the two count dates for this store
+    // Get all receipts between the two count dates for this store with receipt IDs
     const receivedItems = await db
       .select({
         inventoryItemId: vendorItems.inventoryItemId,
-        totalReceivedQty: sql<number>`SUM(${receiptLines.receivedQty})`.as('total_received_qty'),
+        receiptId: receipts.id,
+        receivedQty: receiptLines.receivedQty,
       })
       .from(receiptLines)
       .innerJoin(receipts, eq(receiptLines.receiptId, receipts.id))
@@ -1050,13 +1057,22 @@ export class DatabaseStorage implements IStorage {
           lte(receipts.receivedAt, currentCount.countDate),
           eq(receipts.status, 'completed')
         )
-      )
-      .groupBy(vendorItems.inventoryItemId);
+      );
 
     // Create maps for easy lookup
     const previousMap = new Map(previousLines.map(l => [l.inventoryItemId, { qty: l.totalQty, unitId: l.unitId }]));
     const currentMap = new Map(currentLines.map(l => [l.inventoryItemId, { qty: l.totalQty, unitId: l.unitId }]));
-    const receivedMap = new Map(receivedItems.map(r => [r.inventoryItemId, r.totalReceivedQty]));
+    
+    // Aggregate received items by inventory item with receipt IDs
+    const receivedMap = new Map<string, { qty: number; receiptIds: Set<string> }>();
+    for (const item of receivedItems) {
+      if (!receivedMap.has(item.inventoryItemId)) {
+        receivedMap.set(item.inventoryItemId, { qty: 0, receiptIds: new Set() });
+      }
+      const existing = receivedMap.get(item.inventoryItemId)!;
+      existing.qty += item.receivedQty;
+      existing.receiptIds.add(item.receiptId);
+    }
 
     // Get all unique inventory item IDs from all sources
     const allItemIds = new Set([
@@ -1084,7 +1100,9 @@ export class DatabaseStorage implements IStorage {
       const item = itemDetailsMap.get(itemId);
       const previousQty = previousMap.get(itemId)?.qty || 0;
       const currentQty = currentMap.get(itemId)?.qty || 0;
-      const receivedQty = receivedMap.get(itemId) || 0;
+      const receivedData = receivedMap.get(itemId);
+      const receivedQty = receivedData?.qty || 0;
+      const receiptIds = receivedData ? Array.from(receivedData.receiptIds) : [];
       
       const usage = (previousQty + receivedQty) - currentQty;
       const isNegativeUsage = usage < 0;
@@ -1100,6 +1118,9 @@ export class DatabaseStorage implements IStorage {
         unitId: item?.unitId || '',
         unitName: item?.unitName || 'unit',
         isNegativeUsage,
+        previousCountId,
+        currentCountId,
+        receiptIds,
       };
     });
 
