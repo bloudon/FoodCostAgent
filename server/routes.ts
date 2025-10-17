@@ -1893,13 +1893,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(enriched);
   });
 
-  app.post("/api/inventory-count-lines", async (req, res) => {
+  app.post("/api/inventory-count-lines", requireAuth, async (req, res) => {
     try {
       const lineData = insertInventoryCountLineSchema.parse(req.body);
 
       const count = await storage.getInventoryCount(lineData.inventoryCountId);
       if (!count) {
         return res.status(404).json({ error: "Count not found" });
+      }
+
+      const user = (req as any).user;
+      
+      // Determine if this is the latest count for the store
+      const allCounts = await storage.getInventoryCounts(count.companyId, count.storeId);
+      const sortedCounts = allCounts.sort((a, b) => 
+        new Date(b.countDate).getTime() - new Date(a.countDate).getTime()
+      );
+      const isLatest = sortedCounts.length > 0 && sortedCounts[0].id === count.id;
+      
+      // Check if user has permission to edit (admin or latest session)
+      const isAdmin = user.role === "global_admin" || user.role === "company_admin";
+      const canEdit = isAdmin || isLatest;
+      
+      if (!canEdit) {
+        return res.status(403).json({ 
+          error: "Cannot edit historical inventory sessions. Only administrators can modify historical data." 
+        });
       }
 
       const line = await storage.createInventoryCountLine(lineData);
@@ -1913,13 +1932,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/inventory-count-lines/:id", async (req, res) => {
+  app.patch("/api/inventory-count-lines/:id", requireAuth, async (req, res) => {
     try {
       const lineData = insertInventoryCountLineSchema.partial().parse(req.body);
       const existingLine = await storage.getInventoryCountLine(req.params.id);
       
       if (!existingLine) {
         return res.status(404).json({ error: "Count line not found" });
+      }
+
+      // Get the count session to check permissions
+      const count = await storage.getInventoryCount(existingLine.inventoryCountId);
+      if (!count) {
+        return res.status(404).json({ error: "Count session not found" });
+      }
+
+      const user = (req as any).user;
+      
+      // Determine if this is the latest count for the store
+      const allCounts = await storage.getInventoryCounts(count.companyId, count.storeId);
+      const sortedCounts = allCounts.sort((a, b) => 
+        new Date(b.countDate).getTime() - new Date(a.countDate).getTime()
+      );
+      const isLatest = sortedCounts.length > 0 && sortedCounts[0].id === count.id;
+      
+      // Check if user has permission to edit (admin or latest session)
+      const isAdmin = user.role === "global_admin" || user.role === "company_admin";
+      const canEdit = isAdmin || isLatest;
+      
+      if (!canEdit) {
+        return res.status(403).json({ 
+          error: "Cannot edit historical inventory sessions. Only administrators can modify historical data." 
+        });
       }
 
       const updatedLine = await storage.updateInventoryCountLine(req.params.id, lineData);
@@ -1933,12 +1977,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/inventory-count-lines/:id", async (req, res) => {
+  app.delete("/api/inventory-count-lines/:id", requireAuth, async (req, res) => {
     try {
       const line = await storage.getInventoryCountLine(req.params.id);
       
       if (!line) {
         return res.status(404).json({ error: "Count line not found" });
+      }
+
+      // Get the count session to check permissions
+      const count = await storage.getInventoryCount(line.inventoryCountId);
+      if (!count) {
+        return res.status(404).json({ error: "Count session not found" });
+      }
+
+      const user = (req as any).user;
+      
+      // Determine if this is the latest count for the store
+      const allCounts = await storage.getInventoryCounts(count.companyId, count.storeId);
+      const sortedCounts = allCounts.sort((a, b) => 
+        new Date(b.countDate).getTime() - new Date(a.countDate).getTime()
+      );
+      const isLatest = sortedCounts.length > 0 && sortedCounts[0].id === count.id;
+      
+      // Check if user has permission to edit (admin or latest session)
+      const isAdmin = user.role === "global_admin" || user.role === "company_admin";
+      const canEdit = isAdmin || isLatest;
+      
+      if (!canEdit) {
+        return res.status(403).json({ 
+          error: "Cannot edit historical inventory sessions. Only administrators can modify historical data." 
+        });
       }
 
       await storage.deleteInventoryCountLine(req.params.id);
@@ -2040,8 +2109,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/inventory-counts/:id", async (req, res) => {
+  app.delete("/api/inventory-counts/:id", requireAuth, async (req, res) => {
     try {
+      const count = await storage.getInventoryCount(req.params.id);
+      if (!count) {
+        return res.status(404).json({ error: "Count session not found" });
+      }
+
+      const user = (req as any).user;
+      
+      // Determine if this is the latest count for the store
+      const allCounts = await storage.getInventoryCounts(count.companyId, count.storeId);
+      const sortedCounts = allCounts.sort((a, b) => 
+        new Date(b.countDate).getTime() - new Date(a.countDate).getTime()
+      );
+      const isLatest = sortedCounts.length > 0 && sortedCounts[0].id === count.id;
+      
+      // Check if user has permission to delete (admin or latest session)
+      const isAdmin = user.role === "global_admin" || user.role === "company_admin";
+      const canDelete = isAdmin || isLatest;
+      
+      if (!canDelete) {
+        return res.status(403).json({ 
+          error: "Cannot delete historical inventory sessions. Only administrators can delete historical data." 
+        });
+      }
+
       await storage.deleteInventoryCount(req.params.id);
       res.status(204).send();
     } catch (error: any) {
