@@ -151,6 +151,30 @@ export default function PurchaseOrderDetail() {
     enabled: !!selectedVendor && !!selectedStore && isMiscGrocery,
   });
 
+  // Fetch item usage data for the selected store
+  type UsageData = {
+    inventoryItemId: string;
+    inventoryItemName: string;
+    category: string | null;
+    previousQty: number;
+    receivedQty: number;
+    currentQty: number;
+    usage: number;
+    unitId: string;
+    unitName: string;
+    isNegativeUsage: boolean;
+  };
+
+  const { data: usageData } = useQuery<UsageData[]>({
+    queryKey: [`/api/stores/${selectedStore}/usage`],
+    enabled: !!selectedStore,
+  });
+
+  // Create a map for quick usage lookup by inventory item ID
+  const usageMap = new Map(
+    (usageData || []).map(item => [item.inventoryItemId, item])
+  );
+
   const savePOMutation = useMutation({
     mutationFn: async (data: any) => {
       if (isNew) {
@@ -601,6 +625,7 @@ export default function PurchaseOrderDetail() {
                           <TableHead className="text-right">Case Size</TableHead>
                           <TableHead className="text-right">Unit Price</TableHead>
                           <TableHead className="text-right">Case Price</TableHead>
+                          <TableHead className="text-right">Usage</TableHead>
                           <TableHead className="w-[150px]">Case Qty</TableHead>
                         </>
                       )}
@@ -608,6 +633,7 @@ export default function PurchaseOrderDetail() {
                         <>
                           <TableHead>Unit</TableHead>
                           <TableHead className="text-right">Price Each</TableHead>
+                          <TableHead className="text-right">Usage</TableHead>
                           <TableHead className="w-[150px]">Quantity</TableHead>
                         </>
                       )}
@@ -675,6 +701,19 @@ export default function PurchaseOrderDetail() {
                               <TableCell className="text-right font-mono font-semibold">
                                 ${casePrice.toFixed(2)}
                               </TableCell>
+                              <TableCell className="text-right">
+                                {(() => {
+                                  const usage = usageMap.get(inventoryItemId);
+                                  if (!usage) {
+                                    return <span className="text-sm text-muted-foreground">N/A</span>;
+                                  }
+                                  return (
+                                    <div className={`font-mono text-sm ${usage.isNegativeUsage ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}>
+                                      {usage.usage.toFixed(2)} {formatUnitName(usage.unitName)}
+                                    </div>
+                                  );
+                                })()}
+                              </TableCell>
                               <TableCell>
                                 {isReceived ? (
                                   <div className="text-center font-mono" data-testid={`text-case-qty-${itemId}`}>
@@ -704,6 +743,19 @@ export default function PurchaseOrderDetail() {
                               </TableCell>
                               <TableCell className="text-right font-mono">
                                 ${unitPrice.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {(() => {
+                                  const usage = usageMap.get(inventoryItemId);
+                                  if (!usage) {
+                                    return <span className="text-sm text-muted-foreground">N/A</span>;
+                                  }
+                                  return (
+                                    <div className={`font-mono text-sm ${usage.isNegativeUsage ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}>
+                                      {usage.usage.toFixed(2)} {formatUnitName(usage.unitName)}
+                                    </div>
+                                  );
+                                })()}
                               </TableCell>
                               <TableCell>
                                 {isReceived ? (
