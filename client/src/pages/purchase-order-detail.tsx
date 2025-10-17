@@ -705,10 +705,14 @@ export default function PurchaseOrderDetail() {
                                 {(() => {
                                   const usage = usageMap.get(inventoryItemId);
                                   if (!usage) {
-                                    return <span className="text-sm text-muted-foreground">N/A</span>;
+                                    return <span className="text-sm text-muted-foreground" data-testid={`text-usage-na-${itemId}`}>N/A</span>;
                                   }
                                   return (
-                                    <div className={`font-mono text-sm ${usage.isNegativeUsage ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}>
+                                    <div 
+                                      className={`font-mono text-sm ${usage.isNegativeUsage ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}
+                                      data-testid={`text-usage-${itemId}`}
+                                      data-negative={usage.isNegativeUsage ? 'true' : 'false'}
+                                    >
                                       {usage.usage.toFixed(2)} {formatUnitName(usage.unitName)}
                                     </div>
                                   );
@@ -748,10 +752,14 @@ export default function PurchaseOrderDetail() {
                                 {(() => {
                                   const usage = usageMap.get(inventoryItemId);
                                   if (!usage) {
-                                    return <span className="text-sm text-muted-foreground">N/A</span>;
+                                    return <span className="text-sm text-muted-foreground" data-testid={`text-usage-na-${itemId}`}>N/A</span>;
                                   }
                                   return (
-                                    <div className={`font-mono text-sm ${usage.isNegativeUsage ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}>
+                                    <div 
+                                      className={`font-mono text-sm ${usage.isNegativeUsage ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}
+                                      data-testid={`text-usage-${itemId}`}
+                                      data-negative={usage.isNegativeUsage ? 'true' : 'false'}
+                                    >
                                       {usage.usage.toFixed(2)} {formatUnitName(usage.unitName)}
                                     </div>
                                   );
