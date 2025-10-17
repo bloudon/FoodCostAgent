@@ -2172,6 +2172,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get item usage between latest two inventory counts for a store
+  app.get("/api/stores/:storeId/usage", requireAuth, async (req, res) => {
+    try {
+      const storeId = req.params.storeId;
+      const companyId = (req as any).companyId;
+      
+      // Get store to verify it exists and belongs to the company
+      const store = await storage.getCompanyStore(storeId);
+      if (!store) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+      
+      if (store.companyId !== companyId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Get all counts for this store, sorted by count date descending
+      const allCounts = await storage.getInventoryCounts(companyId, storeId);
+      const sortedCounts = allCounts.sort((a, b) => 
+        new Date(b.countDate).getTime() - new Date(a.countDate).getTime()
+      );
+
+      if (sortedCounts.length < 2) {
+        // Need at least two counts to calculate usage
+        return res.json([]);
+      }
+
+      const currentCount = sortedCounts[0];
+      const previousCount = sortedCounts[1];
+
+      // Calculate usage between the two counts
+      const usageData = await storage.getItemUsageBetweenCounts(
+        storeId,
+        previousCount.id,
+        currentCount.id
+      );
+
+      res.json(usageData);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ============ PURCHASE ORDERS ============
   app.get("/api/purchase-orders", requireAuth, async (req, res) => {
     const companyId = (req as any).companyId;
