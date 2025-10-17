@@ -666,7 +666,7 @@ export default function PurchaseOrderDetail() {
                         return sortedCategories.map(categoryName => (
                           <>
                             <TableRow key={`category-${categoryName}`} className="bg-muted/50">
-                              <TableCell colSpan={isMiscGrocery ? 8 : 10} className="font-semibold py-2">
+                              <TableCell colSpan={isMiscGrocery ? 9 : 10} className="font-semibold py-2">
                                 {categoryName}
                               </TableCell>
                             </TableRow>
