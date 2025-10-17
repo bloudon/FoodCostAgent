@@ -744,13 +744,20 @@ export default function CountSession() {
                                                     }
                                                   }}
                                                   onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
+                                                    if (e.key === 'Enter' || e.key === 'Tab') {
+                                                      e.preventDefault();
                                                       handleSaveEdit(line.id);
                                                       // Focus next input if available
                                                       if (idx < itemLines.length - 1) {
                                                         const nextLine = itemLines[idx + 1];
-                                                        setEditingLineId(nextLine.id);
-                                                        setEditingQty(nextLine.qty.toString());
+                                                        // Use setTimeout to allow state to update before focusing
+                                                        setTimeout(() => {
+                                                          const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
+                                                          if (nextInput) {
+                                                            nextInput.focus();
+                                                            nextInput.select();
+                                                          }
+                                                        }, 0);
                                                       }
                                                     } else if (e.key === 'Escape') {
                                                       handleCancelEdit();
@@ -853,13 +860,20 @@ export default function CountSession() {
                                               }
                                             }}
                                             onKeyDown={(e) => {
-                                              if (e.key === 'Enter') {
+                                              if (e.key === 'Enter' || e.key === 'Tab') {
+                                                e.preventDefault();
                                                 handleSaveEdit(line.id);
                                                 // Focus next input if available
                                                 if (idx < lines.length - 1) {
                                                   const nextLine = lines[idx + 1];
-                                                  setEditingLineId(nextLine.id);
-                                                  setEditingQty(nextLine.qty.toString());
+                                                  // Use setTimeout to allow state to update before focusing
+                                                  setTimeout(() => {
+                                                    const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
+                                                    if (nextInput) {
+                                                      nextInput.focus();
+                                                      nextInput.select();
+                                                    }
+                                                  }, 0);
                                                 }
                                               } else if (e.key === 'Escape') {
                                                 handleCancelEdit();
