@@ -34,17 +34,18 @@ async function seedStore2Counts(adminUserId: string, store2Id: string) {
 export async function seedDatabase() {
   console.log("🌱 Seeding database with pizza restaurant data...");
 
-  // Ensure admin user exists
+  // Ensure global admin user exists
   let adminUser = await storage.getUserByEmail("admin@pizza.com");
   if (!adminUser) {
-    console.log("👤 Creating admin user...");
+    console.log("👤 Creating global admin user...");
     const passwordHash = await hashPassword("admin123");
     adminUser = await storage.createUser({
       email: "admin@pizza.com",
       passwordHash,
-      role: "admin",
+      role: "global_admin",
+      companyId: null,
     });
-    console.log("✅ Admin user created (email: admin@pizza.com, password: admin123)");
+    console.log("✅ Global admin user created (email: admin@pizza.com, password: admin123)");
   }
 
   // Check if database is already seeded
