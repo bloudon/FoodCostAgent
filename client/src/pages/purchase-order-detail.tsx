@@ -617,24 +617,28 @@ export default function PurchaseOrderDetail() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[300px]">Item</TableHead>
-                      <TableHead>Category</TableHead>
+                      <TableHead className="w-[300px]">Item/SKU</TableHead>
                       {!isMiscGrocery && (
                         <>
-                          <TableHead>Vendor SKU</TableHead>
                           <TableHead className="text-right">Case Size</TableHead>
                           <TableHead className="text-right">Unit Price</TableHead>
                           <TableHead className="text-right">Case Price</TableHead>
+                          <TableHead className="text-right">Prev Count</TableHead>
+                          <TableHead className="text-right">Received</TableHead>
+                          <TableHead className="text-right">Current</TableHead>
                           <TableHead className="text-right">Usage</TableHead>
-                          <TableHead className="w-[150px]">Case Qty</TableHead>
+                          <TableHead className="w-[120px]">Cases</TableHead>
                         </>
                       )}
                       {isMiscGrocery && (
                         <>
                           <TableHead>Unit</TableHead>
                           <TableHead className="text-right">Price Each</TableHead>
+                          <TableHead className="text-right">Prev Count</TableHead>
+                          <TableHead className="text-right">Received</TableHead>
+                          <TableHead className="text-right">Current</TableHead>
                           <TableHead className="text-right">Usage</TableHead>
-                          <TableHead className="w-[150px]">Quantity</TableHead>
+                          <TableHead className="w-[120px]">Qty</TableHead>
                         </>
                       )}
                       <TableHead className="text-right">Total</TableHead>
@@ -673,6 +677,8 @@ export default function PurchaseOrderDetail() {
                         lineTotal = caseQty * casePrice;
                       }
 
+                      const usage = usageMap.get(inventoryItemId);
+
                       return (
                         <TableRow key={itemId} data-testid={`row-item-${itemId}`}>
                           <TableCell>
@@ -682,16 +688,13 @@ export default function PurchaseOrderDetail() {
                               data-testid={`link-item-${inventoryItemId}`}
                             >
                               {itemName}
+                              {!isMiscGrocery && vendorSku !== '-' && (
+                                <span className="text-muted-foreground font-normal ml-1">{vendorSku}</span>
+                              )}
                             </Link>
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {categoryName}
                           </TableCell>
                           {!isMiscGrocery && (
                             <>
-                              <TableCell className="text-sm text-muted-foreground">
-                                {vendorSku}
-                              </TableCell>
                               <TableCell className="text-right font-mono">
                                 {caseSize || 1}
                               </TableCell>
@@ -701,9 +704,17 @@ export default function PurchaseOrderDetail() {
                               <TableCell className="text-right font-mono font-semibold">
                                 ${casePrice.toFixed(2)}
                               </TableCell>
+                              <TableCell className="text-right font-mono text-sm">
+                                {usage ? usage.previousQty.toFixed(2) : '-'}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-sm">
+                                {usage ? usage.receivedQty.toFixed(2) : '-'}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-sm">
+                                {usage ? usage.currentQty.toFixed(2) : '-'}
+                              </TableCell>
                               <TableCell className="text-right">
                                 {(() => {
-                                  const usage = usageMap.get(inventoryItemId);
                                   if (!usage) {
                                     return <span className="text-sm text-muted-foreground" data-testid={`text-usage-na-${itemId}`}>N/A</span>;
                                   }
@@ -713,7 +724,7 @@ export default function PurchaseOrderDetail() {
                                       data-testid={`text-usage-${itemId}`}
                                       data-negative={usage.isNegativeUsage ? 'true' : 'false'}
                                     >
-                                      {usage.usage.toFixed(2)} {formatUnitName(usage.unitName)}
+                                      {usage.usage.toFixed(2)}
                                     </div>
                                   );
                                 })()}
@@ -748,9 +759,17 @@ export default function PurchaseOrderDetail() {
                               <TableCell className="text-right font-mono">
                                 ${unitPrice.toFixed(2)}
                               </TableCell>
+                              <TableCell className="text-right font-mono text-sm">
+                                {usage ? usage.previousQty.toFixed(2) : '-'}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-sm">
+                                {usage ? usage.receivedQty.toFixed(2) : '-'}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-sm">
+                                {usage ? usage.currentQty.toFixed(2) : '-'}
+                              </TableCell>
                               <TableCell className="text-right">
                                 {(() => {
-                                  const usage = usageMap.get(inventoryItemId);
                                   if (!usage) {
                                     return <span className="text-sm text-muted-foreground" data-testid={`text-usage-na-${itemId}`}>N/A</span>;
                                   }
@@ -760,7 +779,7 @@ export default function PurchaseOrderDetail() {
                                       data-testid={`text-usage-${itemId}`}
                                       data-negative={usage.isNegativeUsage ? 'true' : 'false'}
                                     >
-                                      {usage.usage.toFixed(2)} {formatUnitName(usage.unitName)}
+                                      {usage.usage.toFixed(2)}
                                     </div>
                                   );
                                 })()}
