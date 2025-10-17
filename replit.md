@@ -101,7 +101,21 @@ Thrive Control Center (TCC) integration is supported via `tcc_account_id` (compa
 - Dedicated pages for managing storage locations, inventory items, and detailed recipe views.
 - Robust settings module for company info, user profiles, data connections, and system preferences.
 - Purchase order management supports unit/case-based ordering, vendor-specific item filtering, and keyboard-optimized entry.
-  - **Item Usage Display (Oct 17, 2025)**: Purchase order creation page now displays "Usage Since Last Count" column showing item usage between the two most recent inventory counts. Usage calculated as: (Previous Count + Received) - Current Count. Negative usage (indicating potential receiving errors or count discrepancies) is highlighted in red. Shows "N/A" for items without previous count data. API endpoint GET `/api/stores/:storeId/usage` provides usage data aggregated across storage locations.
+  - **Item Usage Display (Oct 17, 2025)**: Purchase order creation page displays usage equation components for transparency:
+    - **Previous Count**: Quantity from previous inventory count
+    - **Received**: Total received from purchase orders between counts
+    - **Current Count**: Most recent inventory count quantity
+    - **Usage**: Calculated as (Previous Count + Received) - Current Count
+    - Negative usage values highlighted in red (indicates potential receiving errors or count discrepancies)
+    - Shows "N/A" for items without previous count data
+    - API endpoint GET `/api/stores/:storeId/item-usage` provides usage data aggregated across storage locations
+  - **Table Redesign (Oct 17, 2025)**: Streamlined purchase order table layout for clarity:
+    - **Item/SKU Column**: Combined item name and vendor SKU into single column (SKU shown in muted text after item name)
+    - **Category Grouping**: When "All Categories" filter selected, items grouped by category name (alphabetically sorted) with header rows
+    - **Category Filtering**: When specific category selected, items shown without grouping in flat list
+    - **Case-based Layout**: Item/SKU, Case Size, Unit Price, Case Price, Prev Count, Received, Current, Usage, Cases, Total (10 columns)
+    - **Unit-based Layout**: Item/SKU, Unit, Price Each, Prev Count, Received, Current, Usage, Qty, Total (9 columns for Misc Grocery)
+    - Category grouping headers use correct colSpan (10 for case-based, 9 for unit-based) to span all columns including Total
 - System-wide standardization from "product" to "inventory item" terminology.
 - Enhanced vendor management with CRUD for vendor items.
 - Robust unit conversion module.
