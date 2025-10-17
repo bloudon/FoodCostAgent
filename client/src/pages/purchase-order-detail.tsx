@@ -645,7 +645,32 @@ export default function PurchaseOrderDetail() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {displayItems.map((item: any) => {
+                    {(() => {
+                      // Group items by category if no category filter is active
+                      if (selectedCategory === "all") {
+                        // Group items by category
+                        const groupedItems = displayItems.reduce((acc: Record<string, any[]>, item: any) => {
+                          const categoryName = isMiscGrocery 
+                            ? (item.categoryName || 'Uncategorized')
+                            : (item.categoryName || 'Uncategorized');
+                          if (!acc[categoryName]) {
+                            acc[categoryName] = [];
+                          }
+                          acc[categoryName].push(item);
+                          return acc;
+                        }, {});
+
+                        // Sort categories alphabetically
+                        const sortedCategories = Object.keys(groupedItems).sort((a, b) => a.localeCompare(b));
+
+                        return sortedCategories.map(categoryName => (
+                          <>
+                            <TableRow key={`category-${categoryName}`} className="bg-muted/50">
+                              <TableCell colSpan={isMiscGrocery ? 8 : 10} className="font-semibold py-2">
+                                {categoryName}
+                              </TableCell>
+                            </TableRow>
+                            {groupedItems[categoryName].map((item: any) => {
                       const itemId = item.id;
                       const caseQty = caseQuantities[itemId] || 0;
                       
@@ -811,7 +836,180 @@ export default function PurchaseOrderDetail() {
                           </TableCell>
                         </TableRow>
                       );
-                    })}
+                            })}
+                          </>
+                        ));
+                      } else {
+                        // When a category filter is active, show items without grouping
+                        return displayItems.map((item: any) => {
+                          const itemId = item.id;
+                          const caseQty = caseQuantities[itemId] || 0;
+                          
+                          let itemName: string;
+                          let inventoryItemId: string;
+                          let categoryName: string;
+                          let vendorSku: string = '-';
+                          let caseSize: number = 1;
+                          let unitPrice: number;
+                          let casePrice: number = 0;
+                          let unitName: string = '-';
+                          let lineTotal: number;
+                          
+                          if (isMiscGrocery) {
+                            itemName = item.name;
+                            inventoryItemId = item.id;
+                            categoryName = item.categoryName || '-';
+                            unitName = formatUnitName(item.unitName);
+                            unitPrice = item.pricePerUnit;
+                            lineTotal = caseQty * unitPrice;
+                          } else {
+                            itemName = item.inventoryItemName;
+                            inventoryItemId = item.inventoryItemId;
+                            categoryName = item.categoryName || '-';
+                            vendorSku = item.vendorSku || '-';
+                            caseSize = item.inventoryItem?.caseSize || 1;
+                            unitPrice = item.inventoryItem?.pricePerUnit || item.lastPrice || 0;
+                            casePrice = unitPrice * caseSize;
+                            lineTotal = caseQty * casePrice;
+                          }
+
+                          const usage = usageMap.get(inventoryItemId);
+
+                          return (
+                            <TableRow key={itemId} data-testid={`row-item-${itemId}`}>
+                              <TableCell>
+                                <Link 
+                                  href={`/inventory-items/${inventoryItemId}`}
+                                  className="font-medium hover:text-primary hover:underline"
+                                  data-testid={`link-item-${inventoryItemId}`}
+                                >
+                                  {itemName}
+                                  {!isMiscGrocery && vendorSku !== '-' && (
+                                    <span className="text-muted-foreground font-normal ml-1">{vendorSku}</span>
+                                  )}
+                                </Link>
+                              </TableCell>
+                              {!isMiscGrocery && (
+                                <>
+                                  <TableCell className="text-right font-mono">
+                                    {caseSize || 1}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono">
+                                    ${unitPrice.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono font-semibold">
+                                    ${casePrice.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-sm">
+                                    {usage ? usage.previousQty.toFixed(2) : '-'}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-sm">
+                                    {usage ? usage.receivedQty.toFixed(2) : '-'}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-sm">
+                                    {usage ? usage.currentQty.toFixed(2) : '-'}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {(() => {
+                                      if (!usage) {
+                                        return <span className="text-sm text-muted-foreground" data-testid={`text-usage-na-${itemId}`}>N/A</span>;
+                                      }
+                                      return (
+                                        <div 
+                                          className={`font-mono text-sm ${usage.isNegativeUsage ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}
+                                          data-testid={`text-usage-${itemId}`}
+                                          data-negative={usage.isNegativeUsage ? 'true' : 'false'}
+                                        >
+                                          {usage.usage.toFixed(2)}
+                                        </div>
+                                      );
+                                    })()}
+                                  </TableCell>
+                                  <TableCell>
+                                    {isReceived ? (
+                                      <div className="text-center font-mono" data-testid={`text-case-qty-${itemId}`}>
+                                        {caseQty || 0}
+                                      </div>
+                                    ) : (
+                                      <Input
+                                        ref={el => inputRefs.current[itemId] = el}
+                                        type="number"
+                                        step="1"
+                                        min="0"
+                                        value={caseQty || ""}
+                                        onChange={(e) => handleCaseQuantityChange(itemId, parseInt(e.target.value) || 0)}
+                                        onKeyDown={(e) => handleKeyDown(e, itemId, displayItems)}
+                                        className="text-center"
+                                        placeholder="0"
+                                        data-testid={`input-case-qty-${itemId}`}
+                                      />
+                                    )}
+                                  </TableCell>
+                                </>
+                              )}
+                              {isMiscGrocery && (
+                                <>
+                                  <TableCell className="text-sm text-muted-foreground">
+                                    {unitName}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono">
+                                    ${unitPrice.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-sm">
+                                    {usage ? usage.previousQty.toFixed(2) : '-'}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-sm">
+                                    {usage ? usage.receivedQty.toFixed(2) : '-'}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-sm">
+                                    {usage ? usage.currentQty.toFixed(2) : '-'}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {(() => {
+                                      if (!usage) {
+                                        return <span className="text-sm text-muted-foreground" data-testid={`text-usage-na-${itemId}`}>N/A</span>;
+                                      }
+                                      return (
+                                        <div 
+                                          className={`font-mono text-sm ${usage.isNegativeUsage ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}
+                                          data-testid={`text-usage-${itemId}`}
+                                          data-negative={usage.isNegativeUsage ? 'true' : 'false'}
+                                        >
+                                          {usage.usage.toFixed(2)}
+                                        </div>
+                                      );
+                                    })()}
+                                  </TableCell>
+                                  <TableCell>
+                                    {isReceived ? (
+                                      <div className="text-center font-mono" data-testid={`text-qty-${itemId}`}>
+                                        {caseQty ? caseQty.toFixed(2) : '0.00'}
+                                      </div>
+                                    ) : (
+                                      <Input
+                                        ref={el => inputRefs.current[itemId] = el}
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={caseQty || ""}
+                                        onChange={(e) => handleCaseQuantityChange(itemId, parseFloat(e.target.value) || 0)}
+                                        onKeyDown={(e) => handleKeyDown(e, itemId, displayItems)}
+                                        className="text-center"
+                                        placeholder="0"
+                                        data-testid={`input-qty-${itemId}`}
+                                      />
+                                    )}
+                                  </TableCell>
+                                </>
+                              )}
+                              <TableCell className="text-right font-mono font-semibold">
+                                ${lineTotal.toFixed(2)}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        });
+                      }
+                    })()}
                   </TableBody>
                 </Table>
               </div>
