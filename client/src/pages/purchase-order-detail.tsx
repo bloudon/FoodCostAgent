@@ -735,7 +735,7 @@ export default function PurchaseOrderDetail() {
                               <TableCell className="text-right font-mono text-sm">
                                 {usage ? (
                                   <Link 
-                                    href={`/inventory-sessions/${usage.previousCountId}`}
+                                    href={`/count/${usage.previousCountId}`}
                                     className="hover:text-primary hover:underline"
                                     data-testid={`link-prev-count-${itemId}`}
                                   >
@@ -767,7 +767,7 @@ export default function PurchaseOrderDetail() {
                               <TableCell className="text-right font-mono text-sm">
                                 {usage ? (
                                   <Link 
-                                    href={`/inventory-sessions/${usage.currentCountId}`}
+                                    href={`/count/${usage.currentCountId}`}
                                     className="hover:text-primary hover:underline"
                                     data-testid={`link-current-count-${itemId}`}
                                   >
@@ -824,7 +824,7 @@ export default function PurchaseOrderDetail() {
                               <TableCell className="text-right font-mono text-sm">
                                 {usage ? (
                                   <Link 
-                                    href={`/inventory-sessions/${usage.previousCountId}`}
+                                    href={`/count/${usage.previousCountId}`}
                                     className="hover:text-primary hover:underline"
                                     data-testid={`link-prev-count-${itemId}`}
                                   >
@@ -856,7 +856,7 @@ export default function PurchaseOrderDetail() {
                               <TableCell className="text-right font-mono text-sm">
                                 {usage ? (
                                   <Link 
-                                    href={`/inventory-sessions/${usage.currentCountId}`}
+                                    href={`/count/${usage.currentCountId}`}
                                     className="hover:text-primary hover:underline"
                                     data-testid={`link-current-count-${itemId}`}
                                   >
