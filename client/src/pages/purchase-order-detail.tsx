@@ -21,6 +21,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatUnitName } from "@/lib/utils";
@@ -135,6 +140,12 @@ export default function PurchaseOrderDetail() {
   const { data: receipts } = useQuery<Receipt[]>({
     queryKey: [`/api/purchase-orders/${id}/receipts`],
     enabled: !isNew && !!id,
+  });
+
+  // Fetch all receipts for the selected store (for usage equation links)
+  const { data: storeReceipts } = useQuery<Receipt[]>({
+    queryKey: [`/api/receipts?storeId=${selectedStore}`],
+    enabled: !!selectedStore,
   });
 
   // Check if selected vendor is Misc Grocery
@@ -744,25 +755,61 @@ export default function PurchaseOrderDetail() {
                                 ) : '-'}
                               </TableCell>
                               <TableCell className="text-right font-mono text-sm">
-                                {usage && usage.receiptIds.length > 0 ? (
-                                  usage.receiptIds.length === 1 ? (
-                                    <Link 
-                                      href={`/receiving/${receipts?.find(r => r.id === usage.receiptIds[0])?.purchaseOrderId}?receiptId=${usage.receiptIds[0]}`}
-                                      className="hover:text-primary hover:underline"
-                                      data-testid={`link-received-${itemId}`}
-                                    >
-                                      {usage.receivedQty.toFixed(2)}
-                                    </Link>
-                                  ) : (
-                                    <span 
-                                      className="hover:text-primary cursor-help underline decoration-dotted"
-                                      title={`${usage.receiptIds.length} receipts`}
-                                      data-testid={`text-received-multiple-${itemId}`}
-                                    >
-                                      {usage.receivedQty.toFixed(2)}
-                                    </span>
-                                  )
-                                ) : usage ? usage.receivedQty.toFixed(2) : '-'}
+                                {(() => {
+                                  if (!usage || usage.receiptIds.length === 0) {
+                                    return usage ? usage.receivedQty.toFixed(2) : '-';
+                                  }
+                                  
+                                  if (usage.receiptIds.length === 1) {
+                                    const receipt = storeReceipts?.find(r => r.id === usage.receiptIds[0]);
+                                    if (receipt?.purchaseOrderId) {
+                                      return (
+                                        <Link 
+                                          href={`/receiving/${receipt.purchaseOrderId}?receiptId=${usage.receiptIds[0]}`}
+                                          className="hover:text-primary hover:underline"
+                                          data-testid={`link-received-${itemId}`}
+                                        >
+                                          {usage.receivedQty.toFixed(2)}
+                                        </Link>
+                                      );
+                                    }
+                                    return usage.receivedQty.toFixed(2);
+                                  }
+                                  
+                                  // Multiple receipts - show hover card with links
+                                  return (
+                                    <HoverCard>
+                                      <HoverCardTrigger asChild>
+                                        <span 
+                                          className="cursor-help underline decoration-dotted"
+                                          data-testid={`text-received-multiple-${itemId}`}
+                                        >
+                                          {usage.receivedQty.toFixed(2)}
+                                        </span>
+                                      </HoverCardTrigger>
+                                      <HoverCardContent className="w-auto p-3">
+                                        <div className="text-sm font-semibold mb-2">{usage.receiptIds.length} Receipts:</div>
+                                        <div className="space-y-1">
+                                          {usage.receiptIds.map((receiptId, idx) => {
+                                            const receipt = storeReceipts?.find(r => r.id === receiptId);
+                                            if (!receipt?.purchaseOrderId) return null;
+                                            return (
+                                              <div key={receiptId}>
+                                                <Link
+                                                  href={`/receiving/${receipt.purchaseOrderId}?receiptId=${receiptId}`}
+                                                  className="text-primary hover:underline text-sm block"
+                                                  data-testid={`link-receipt-${idx}-${itemId}`}
+                                                >
+                                                  Receipt {idx + 1}
+                                                </Link>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </HoverCardContent>
+                                    </HoverCard>
+                                  );
+                                })()}
                               </TableCell>
                               <TableCell className="text-right font-mono text-sm">
                                 {usage ? (
@@ -833,25 +880,61 @@ export default function PurchaseOrderDetail() {
                                 ) : '-'}
                               </TableCell>
                               <TableCell className="text-right font-mono text-sm">
-                                {usage && usage.receiptIds.length > 0 ? (
-                                  usage.receiptIds.length === 1 ? (
-                                    <Link 
-                                      href={`/receiving/${receipts?.find(r => r.id === usage.receiptIds[0])?.purchaseOrderId}?receiptId=${usage.receiptIds[0]}`}
-                                      className="hover:text-primary hover:underline"
-                                      data-testid={`link-received-${itemId}`}
-                                    >
-                                      {usage.receivedQty.toFixed(2)}
-                                    </Link>
-                                  ) : (
-                                    <span 
-                                      className="hover:text-primary cursor-help underline decoration-dotted"
-                                      title={`${usage.receiptIds.length} receipts`}
-                                      data-testid={`text-received-multiple-${itemId}`}
-                                    >
-                                      {usage.receivedQty.toFixed(2)}
-                                    </span>
-                                  )
-                                ) : usage ? usage.receivedQty.toFixed(2) : '-'}
+                                {(() => {
+                                  if (!usage || usage.receiptIds.length === 0) {
+                                    return usage ? usage.receivedQty.toFixed(2) : '-';
+                                  }
+                                  
+                                  if (usage.receiptIds.length === 1) {
+                                    const receipt = storeReceipts?.find(r => r.id === usage.receiptIds[0]);
+                                    if (receipt?.purchaseOrderId) {
+                                      return (
+                                        <Link 
+                                          href={`/receiving/${receipt.purchaseOrderId}?receiptId=${usage.receiptIds[0]}`}
+                                          className="hover:text-primary hover:underline"
+                                          data-testid={`link-received-${itemId}`}
+                                        >
+                                          {usage.receivedQty.toFixed(2)}
+                                        </Link>
+                                      );
+                                    }
+                                    return usage.receivedQty.toFixed(2);
+                                  }
+                                  
+                                  // Multiple receipts - show hover card with links
+                                  return (
+                                    <HoverCard>
+                                      <HoverCardTrigger asChild>
+                                        <span 
+                                          className="cursor-help underline decoration-dotted"
+                                          data-testid={`text-received-multiple-${itemId}`}
+                                        >
+                                          {usage.receivedQty.toFixed(2)}
+                                        </span>
+                                      </HoverCardTrigger>
+                                      <HoverCardContent className="w-auto p-3">
+                                        <div className="text-sm font-semibold mb-2">{usage.receiptIds.length} Receipts:</div>
+                                        <div className="space-y-1">
+                                          {usage.receiptIds.map((receiptId, idx) => {
+                                            const receipt = storeReceipts?.find(r => r.id === receiptId);
+                                            if (!receipt?.purchaseOrderId) return null;
+                                            return (
+                                              <div key={receiptId}>
+                                                <Link
+                                                  href={`/receiving/${receipt.purchaseOrderId}?receiptId=${receiptId}`}
+                                                  className="text-primary hover:underline text-sm block"
+                                                  data-testid={`link-receipt-${idx}-${itemId}`}
+                                                >
+                                                  Receipt {idx + 1}
+                                                </Link>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </HoverCardContent>
+                                    </HoverCard>
+                                  );
+                                })()}
                               </TableCell>
                               <TableCell className="text-right font-mono text-sm">
                                 {usage ? (
