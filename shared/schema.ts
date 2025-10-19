@@ -142,6 +142,7 @@ export const categories = pgTable("categories", {
   companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
+  showAsIngredient: integer("show_as_ingredient").notNull().default(1), // 1 if items in this category can be used as ingredients
 }, (table) => ({
   uniqueCompanyCategory: unique().on(table.companyId, table.name),
 }));

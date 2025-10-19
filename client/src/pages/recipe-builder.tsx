@@ -60,7 +60,7 @@ import {
   Package,
   Plus,
 } from "lucide-react";
-import type { Recipe, RecipeComponent } from "@shared/schema";
+import type { Recipe, RecipeComponent, Category } from "@shared/schema";
 
 type InventoryItem = {
   id: string;
@@ -236,6 +236,7 @@ export default function RecipeBuilder() {
   const [components, setComponents] = useState<ComponentWithDetails[]>([]);
   const [draggedItem, setDraggedItem] = useState<DraggableItem | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [pendingItem, setPendingItem] = useState<DraggableItem | null>(null);
   const [dialogQty, setDialogQty] = useState("");
@@ -268,6 +269,10 @@ export default function RecipeBuilder() {
 
   const { data: units } = useQuery<Unit[]>({
     queryKey: ["/api/units"],
+  });
+
+  const { data: categories } = useQuery<Category[]>({
+    queryKey: ["/api/categories"],
   });
 
   // Calculate component cost
@@ -546,30 +551,49 @@ export default function RecipeBuilder() {
   });
 
   // Filter source items
-  const filteredInventoryItems = inventoryItems?.filter((item) =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredInventoryItems = inventoryItems?.filter((item) => {
+    // Search filter
+    if (!item.name.toLowerCase().includes(searchTerm.toLowerCase())) {
+      return false;
+    }
+    
+    // Category filter
+    if (selectedCategoryId !== "all" && item.categoryId !== selectedCategoryId) {
+      return false;
+    }
+    
+    // showAsIngredient filter - exclude items from categories marked as hidden
+    if (item.categoryId) {
+      const category = categories?.find((c) => c.id === item.categoryId);
+      if (category && category.showAsIngredient === 0) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
 
-  const filteredRecipes = recipes?.filter(
+  const filteredBaseRecipes = recipes?.filter(
     (recipe) =>
-      recipe.id !== id && recipe.name.toLowerCase().includes(searchTerm.toLowerCase())
+      recipe.id !== id && 
+      recipe.canBeIngredient === 1 &&
+      recipe.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const sourceItems: DraggableItem[] = [
-    ...(filteredInventoryItems?.map((item) => ({
-      id: item.id,
-      name: item.name,
-      type: "inventory_item" as const,
-      unitId: item.unitId,
-      unitName: item.unitName,
-      pricePerUnit: item.pricePerUnit,
-    })) || []),
-    ...(filteredRecipes?.map((recipe) => ({
-      id: recipe.id,
-      name: recipe.name,
-      type: "recipe" as const,
-    })) || []),
-  ];
+  const inventoryItemsSource: DraggableItem[] = filteredInventoryItems?.map((item) => ({
+    id: item.id,
+    name: item.name,
+    type: "inventory_item" as const,
+    unitId: item.unitId,
+    unitName: item.unitName,
+    pricePerUnit: item.pricePerUnit,
+  })) || [];
+
+  const baseRecipesSource: DraggableItem[] = filteredBaseRecipes?.map((recipe) => ({
+    id: recipe.id,
+    name: recipe.name,
+    type: "recipe" as const,
+  })) || [];
 
   // Load recipe data when editing
   useEffect(() => {
@@ -664,8 +688,28 @@ export default function RecipeBuilder() {
           <div className="h-full grid grid-cols-12 gap-6 p-6">
             {/* Left panel - Source items */}
             <div className="col-span-4 flex flex-col gap-4 overflow-hidden">
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Available Ingredients</h2>
+              <div className="space-y-3">
+                <h2 className="text-lg font-semibold">Available Ingredients</h2>
+                
+                {/* Category filter */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Category Filter</label>
+                  <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
+                    <SelectTrigger data-testid="select-category-filter">
+                      <SelectValue placeholder="All Categories" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      {categories?.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Search */}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -678,16 +722,51 @@ export default function RecipeBuilder() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-auto">
-                <div className="space-y-2">
-                  {sourceItems.map((item) => (
-                    <DraggableSourceItem 
-                      key={item.id} 
-                      item={item} 
-                      onAdd={handleClickToAdd}
-                    />
-                  ))}
-                </div>
+              <div className="flex-1 overflow-auto space-y-4">
+                {/* Base Recipes Section */}
+                {baseRecipesSource.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
+                      <ChefHat className="h-4 w-4" />
+                      Base Recipes
+                    </h3>
+                    <div className="space-y-2">
+                      {baseRecipesSource.map((item) => (
+                        <DraggableSourceItem 
+                          key={item.id} 
+                          item={item} 
+                          onAdd={handleClickToAdd}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Inventory Items Section */}
+                {inventoryItemsSource.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
+                      <Package className="h-4 w-4" />
+                      Inventory Items
+                    </h3>
+                    <div className="space-y-2">
+                      {inventoryItemsSource.map((item) => (
+                        <DraggableSourceItem 
+                          key={item.id} 
+                          item={item} 
+                          onAdd={handleClickToAdd}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {baseRecipesSource.length === 0 && inventoryItemsSource.length === 0 && (
+                  <div className="text-center text-muted-foreground py-8">
+                    No ingredients found
+                  </div>
+                )}
               </div>
             </div>
 
