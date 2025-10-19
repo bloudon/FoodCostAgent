@@ -968,7 +968,10 @@ export class DatabaseStorage implements IStorage {
 
   // Inventory Count Lines
   async getInventoryCountLines(countId: string): Promise<InventoryCountLine[]> {
-    return db.select().from(inventoryCountLines).where(eq(inventoryCountLines.inventoryCountId, countId));
+    return db.select()
+      .from(inventoryCountLines)
+      .where(eq(inventoryCountLines.inventoryCountId, countId))
+      .orderBy(inventoryCountLines.id); // Maintain stable order by insertion (ID)
   }
 
   async getInventoryCountLine(id: string): Promise<InventoryCountLine | undefined> {

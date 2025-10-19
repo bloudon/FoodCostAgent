@@ -50,7 +50,7 @@ The system employs a multi-tenant architecture, isolating data per company with 
 - WebSocket for real-time POS data streaming.
 - Micro-unit system for precise inventory and recursive recipe cost calculation.
 - Automated inventory adjustments for transfers and waste, with historical recipe versioning.
-- **Inventory Count Sessions**: Auto-populate items based on dual-active status filtering and company match. Implements cross-company protection via PostgreSQL triggers.
+- **Inventory Count Sessions**: Auto-populate items based on dual-active status filtering and company match. Implements cross-company protection via PostgreSQL triggers. Count page maintains stable item order (ORDER BY id) during entry to prevent page jumping when quantities are updated (Oct 19, 2025).
 - Purchase order management supports unit/case-based ordering, vendor-specific item filtering, and keyboard-optimized entry. The purchase order creation page displays usage equation components (Previous Count, Received, Current Count, Usage) with navigable links to associated records.
 - System-wide standardization from "product" to "inventory item" terminology.
 - **Receiving Module**: Supports partial receipts, resumable sessions, visual indicators for short quantities, and correct PO pricing based on original order prices.
