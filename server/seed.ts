@@ -1,5 +1,264 @@
 import { storage } from "./storage";
 import { hashPassword } from "./auth";
+import { db } from "./db";
+import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, recipes, recipeComponents } from "@shared/schema";
+
+// Seed Brian's Pizza company, stores, ingredients, and recipes
+async function seedBriansPizza() {
+  console.log("🏢 Creating Brian's Pizza company and stores...");
+  
+  // Get units first
+  const allUnits = await storage.getUnits();
+  const units = {
+    pound: allUnits.find((u: any) => u.name === "pound"),
+    ounce: allUnits.find((u: any) => u.name === "ounce (weight)"),
+  };
+  
+  if (!units.pound || !units.ounce) {
+    console.log("⚠️  Units not created yet, skipping Brian's Pizza seed");
+    return;
+  }
+  
+  // Check if Brian's Pizza already exists
+  const existingCompanies = await db.select().from(companies).where(eq(companies.name, "Brian's Pizza"));
+  let briansPizza;
+  if (existingCompanies.length > 0) {
+    briansPizza = existingCompanies[0];
+  } else {
+    const result = await db.insert(companies).values({
+      name: "Brian's Pizza",
+      legalName: "Brian's Pizza LLC",
+      contactEmail: "brian@brianspizza.com",
+      status: "active",
+    }).returning();
+    briansPizza = result[0];
+    console.log("✅ Created Brian's Pizza company");
+  }
+
+  // Create stores for Brian's Pizza
+  const existingStores = await db.select().from(companyStores).where(eq(companyStores.companyId, briansPizza.id));
+  let store1, store2;
+  
+  if (existingStores.length === 0) {
+    const stores = await db.insert(companyStores).values([
+      {
+        companyId: briansPizza.id,
+        code: "S001",
+        name: "Downtown Location",
+        status: "active",
+      },
+      {
+        companyId: briansPizza.id,
+        code: "S002",
+        name: "Airport Location",
+        status: "active",
+      }
+    ]).returning();
+    store1 = stores[0];
+    store2 = stores[1];
+    console.log("✅ Created 2 stores for Brian's Pizza");
+    
+    // Create storage locations for each store
+    await db.insert(storeStorageLocations).values([
+      { storeId: store1.id, name: "Walk-In Cooler", type: "cooler", isDefault: 1, sortOrder: 1 },
+      { storeId: store1.id, name: "Dry Storage", type: "dry_storage", isDefault: 0, sortOrder: 2 },
+      { storeId: store1.id, name: "Freezer", type: "freezer", isDefault: 0, sortOrder: 3 },
+      { storeId: store2.id, name: "Walk-In Cooler", type: "cooler", isDefault: 1, sortOrder: 1 },
+      { storeId: store2.id, name: "Dry Storage", type: "dry_storage", isDefault: 0, sortOrder: 2 },
+      { storeId: store2.id, name: "Freezer", type: "freezer", isDefault: 0, sortOrder: 3 },
+    ]);
+    console.log("✅ Created storage locations for both stores");
+  } else {
+    store1 = existingStores[0];
+    store2 = existingStores.length > 1 ? existingStores[1] : store1;
+  }
+
+  // Check if ingredients already exist
+  const existingItems = await db.select().from(inventoryItems)
+    .where(eq(inventoryItems.companyId, briansPizza.id));
+  
+  let pizzaFlour, pizzaYeast, pizzaSalt, pizzaWater, pizzaOliveOil, pizzaSugar;
+  
+  if (existingItems.length === 0 || !existingItems.find((i: any) => i.name === "Bread Flour")) {
+    console.log("🍕 Creating pizza dough ingredients for Brian's Pizza...");
+    
+    // Create vendors for Brian's Pizza
+    try {
+      await db.insert(vendors).values({
+        companyId: briansPizza.id,
+        name: "Misc Grocery",
+        orderGuideType: "manual",
+      });
+    } catch (e) {
+      // Vendor might already exist
+    }
+    
+    // Create pizza dough ingredients with $2/lb cost and 95% yield
+    const doughIngredients = await db.insert(inventoryItems).values([
+      {
+        companyId: briansPizza.id,
+        name: "Bread Flour",
+        unitId: units.pound.id,
+        pricePerUnit: 2,
+        yieldPercent: 95,
+        caseSize: 50,
+        active: 1,
+      },
+      {
+        companyId: briansPizza.id,
+        name: "Active Dry Yeast",
+        unitId: units.pound.id,
+        pricePerUnit: 2,
+        yieldPercent: 95,
+        caseSize: 1,
+        active: 1,
+      },
+      {
+        companyId: briansPizza.id,
+        name: "Kosher Salt",
+        unitId: units.pound.id,
+        pricePerUnit: 2,
+        yieldPercent: 95,
+        caseSize: 3,
+        active: 1,
+      },
+      {
+        companyId: briansPizza.id,
+        name: "Water",
+        unitId: units.pound.id,
+        pricePerUnit: 2,
+        yieldPercent: 95,
+        caseSize: 8,
+        active: 1,
+      },
+      {
+        companyId: briansPizza.id,
+        name: "Extra Virgin Olive Oil",
+        unitId: units.pound.id,
+        pricePerUnit: 2,
+        yieldPercent: 95,
+        caseSize: 2,
+        active: 1,
+      },
+      {
+        companyId: briansPizza.id,
+        name: "Granulated Sugar",
+        unitId: units.pound.id,
+        pricePerUnit: 2,
+        yieldPercent: 95,
+        caseSize: 10,
+        active: 1,
+      },
+    ]).returning();
+    
+    pizzaFlour = doughIngredients[0];
+    pizzaYeast = doughIngredients[1];
+    pizzaSalt = doughIngredients[2];
+    pizzaWater = doughIngredients[3];
+    pizzaOliveOil = doughIngredients[4];
+    pizzaSugar = doughIngredients[5];
+    
+    // Link ingredients to stores
+    await db.insert(storeInventoryItems).values([
+      // Store 1
+      { companyId: briansPizza.id, storeId: store1.id, inventoryItemId: pizzaFlour.id, onHandQty: 500, active: 1 },
+      { companyId: briansPizza.id, storeId: store1.id, inventoryItemId: pizzaYeast.id, onHandQty: 10, active: 1 },
+      { companyId: briansPizza.id, storeId: store1.id, inventoryItemId: pizzaSalt.id, onHandQty: 20, active: 1 },
+      { companyId: briansPizza.id, storeId: store1.id, inventoryItemId: pizzaWater.id, onHandQty: 0, active: 1 },
+      { companyId: briansPizza.id, storeId: store1.id, inventoryItemId: pizzaOliveOil.id, onHandQty: 15, active: 1 },
+      { companyId: briansPizza.id, storeId: store1.id, inventoryItemId: pizzaSugar.id, onHandQty: 25, active: 1 },
+      // Store 2
+      { companyId: briansPizza.id, storeId: store2.id, inventoryItemId: pizzaFlour.id, onHandQty: 300, active: 1 },
+      { companyId: briansPizza.id, storeId: store2.id, inventoryItemId: pizzaYeast.id, onHandQty: 8, active: 1 },
+      { companyId: briansPizza.id, storeId: store2.id, inventoryItemId: pizzaSalt.id, onHandQty: 15, active: 1 },
+      { companyId: briansPizza.id, storeId: store2.id, inventoryItemId: pizzaWater.id, onHandQty: 0, active: 1 },
+      { companyId: briansPizza.id, storeId: store2.id, inventoryItemId: pizzaOliveOil.id, onHandQty: 10, active: 1 },
+      { companyId: briansPizza.id, storeId: store2.id, inventoryItemId: pizzaSugar.id, onHandQty: 20, active: 1 },
+    ]);
+    
+    console.log("✅ Created 6 pizza dough ingredients");
+  } else {
+    pizzaFlour = existingItems.find((i: any) => i.name === "Bread Flour");
+    pizzaYeast = existingItems.find((i: any) => i.name === "Active Dry Yeast");
+    pizzaSalt = existingItems.find((i: any) => i.name === "Kosher Salt");
+    pizzaWater = existingItems.find((i: any) => i.name === "Water");
+    pizzaOliveOil = existingItems.find((i: any) => i.name === "Extra Virgin Olive Oil");
+    pizzaSugar = existingItems.find((i: any) => i.name === "Granulated Sugar");
+  }
+
+  // ============ PIZZA DOUGH RECIPE ============
+  const existingRecipes = await db.select().from(recipes)
+    .where(eq(recipes.companyId, briansPizza.id));
+  
+  if (existingRecipes.length === 0 && pizzaFlour && pizzaYeast && pizzaSalt && pizzaWater && pizzaOliveOil && pizzaSugar) {
+    console.log("📝 Creating Pizza Dough recipe...");
+    
+    const pizzaDoughRecipe = await db.insert(recipes).values({
+      companyId: briansPizza.id,
+      name: "Pizza Dough (100 lb Batch)",
+      yieldQty: 166.5,
+      yieldUnitId: units.pound.id,
+      wastePercent: 0,
+      computedCost: 0,
+    }).returning();
+    
+    const recipe = pizzaDoughRecipe[0];
+    
+    // Add recipe components in ounces (micro units)
+    await db.insert(recipeComponents).values([
+      {
+        recipeId: recipe.id,
+        componentType: "inventory_item",
+        componentId: pizzaFlour.id,
+        qty: 1600, // 100 lbs = 1600 oz
+        unitId: units.ounce.id,
+        sortOrder: 0,
+      },
+      {
+        recipeId: recipe.id,
+        componentType: "inventory_item",
+        componentId: pizzaWater.id,
+        qty: 960, // 60 lbs = 960 oz
+        unitId: units.ounce.id,
+        sortOrder: 1,
+      },
+      {
+        recipeId: recipe.id,
+        componentType: "inventory_item",
+        componentId: pizzaSalt.id,
+        qty: 32, // 2 lbs = 32 oz
+        unitId: units.ounce.id,
+        sortOrder: 2,
+      },
+      {
+        recipeId: recipe.id,
+        componentType: "inventory_item",
+        componentId: pizzaYeast.id,
+        qty: 24, // 1.5 lbs = 24 oz
+        unitId: units.ounce.id,
+        sortOrder: 3,
+      },
+      {
+        recipeId: recipe.id,
+        componentType: "inventory_item",
+        componentId: pizzaOliveOil.id,
+        qty: 32, // 2 lbs = 32 oz
+        unitId: units.ounce.id,
+        sortOrder: 4,
+      },
+      {
+        recipeId: recipe.id,
+        componentType: "inventory_item",
+        componentId: pizzaSugar.id,
+        qty: 16, // 1 lb = 16 oz
+        unitId: units.ounce.id,
+        sortOrder: 5,
+      },
+    ]);
+    
+    console.log("✅ Created Pizza Dough recipe with 6 ingredients (measured in ounces)");
+  }
+}
 
 // Create sample inventory count sessions for Store 2 to demonstrate multi-location inventory
 async function seedStore2Counts(adminUserId: string, store2Id: string) {
@@ -54,6 +313,8 @@ export async function seedDatabase() {
   
   if (alreadySeeded) {
     console.log("✅ Database already seeded");
+    // ============ BRIAN'S PIZZA SETUP (Always runs) ============
+    await seedBriansPizza();
     return;
   }
 
@@ -149,6 +410,256 @@ export async function seedDatabase() {
   });
 
   console.log("✅ Unit conversions created!");
+
+  // ============ COMPANY & STORES ============
+  console.log("🏢 Creating Brian's Pizza company and stores...");
+  
+  // Check if Brian's Pizza already exists
+  const existingCompanies = await db.select().from(companies).where(eq(companies.name, "Brian's Pizza"));
+  let briansPizza;
+  if (existingCompanies.length > 0) {
+    briansPizza = existingCompanies[0];
+    console.log("✅ Brian's Pizza company already exists");
+  } else {
+    const result = await db.insert(companies).values({
+      name: "Brian's Pizza",
+      legalName: "Brian's Pizza LLC",
+      contactEmail: "brian@brianspizza.com",
+      status: "active",
+    }).returning();
+    briansPizza = result[0];
+    console.log("✅ Created Brian's Pizza company");
+  }
+
+  // Create stores for Brian's Pizza
+  const existingStores = await db.select().from(companyStores).where(eq(companyStores.companyId, briansPizza.id));
+  let store1, store2;
+  
+  if (existingStores.length === 0) {
+    const stores = await db.insert(companyStores).values([
+      {
+        companyId: briansPizza.id,
+        code: "S001",
+        name: "Downtown Location",
+        status: "active",
+      },
+      {
+        companyId: briansPizza.id,
+        code: "S002",
+        name: "Airport Location",
+        status: "active",
+      }
+    ]).returning();
+    store1 = stores[0];
+    store2 = stores[1];
+    console.log("✅ Created 2 stores for Brian's Pizza");
+    
+    // Create storage locations for each store
+    await db.insert(storeStorageLocations).values([
+      { storeId: store1.id, name: "Walk-In Cooler", type: "cooler", isDefault: 1, sortOrder: 1 },
+      { storeId: store1.id, name: "Dry Storage", type: "dry_storage", isDefault: 0, sortOrder: 2 },
+      { storeId: store1.id, name: "Freezer", type: "freezer", isDefault: 0, sortOrder: 3 },
+      { storeId: store2.id, name: "Walk-In Cooler", type: "cooler", isDefault: 1, sortOrder: 1 },
+      { storeId: store2.id, name: "Dry Storage", type: "dry_storage", isDefault: 0, sortOrder: 2 },
+      { storeId: store2.id, name: "Freezer", type: "freezer", isDefault: 0, sortOrder: 3 },
+    ]);
+    console.log("✅ Created storage locations for both stores");
+  } else {
+    store1 = existingStores[0];
+    store2 = existingStores.length > 1 ? existingStores[1] : store1;
+    console.log("✅ Brian's Pizza stores already exist");
+  }
+
+  // ============ PIZZA DOUGH INGREDIENTS ============
+  console.log("🍕 Creating pizza dough ingredients for Brian's Pizza...");
+  
+  // Create vendors for Brian's Pizza
+  const briansMiscVendor = await db.insert(vendors).values({
+    companyId: briansPizza.id,
+    name: "Misc Grocery",
+    orderGuideType: "manual",
+  }).returning().catch(() => []);
+  
+  // Check if ingredients already exist
+  const existingItems = await db.select().from(inventoryItems)
+    .where(eq(inventoryItems.companyId, briansPizza.id));
+  
+  let pizzaFlour, pizzaYeast, pizzaSalt, pizzaWater, pizzaOliveOil, pizzaSugar;
+  
+  if (existingItems.length === 0) {
+    // Create pizza dough ingredients with $2/lb cost and 95% yield
+    const doughIngredients = await db.insert(inventoryItems).values([
+      {
+        companyId: briansPizza.id,
+        name: "Bread Flour",
+        unitId: units.pound.id,
+        pricePerUnit: 2, // $2/lb as requested
+        yieldPercent: 95, // 95% yield as requested
+        caseSize: 50, // 50 lb bag
+        active: 1,
+      },
+      {
+        companyId: briansPizza.id,
+        name: "Active Dry Yeast",
+        unitId: units.pound.id,
+        pricePerUnit: 2, // $2/lb
+        yieldPercent: 95, // 95% yield
+        caseSize: 1,
+        active: 1,
+      },
+      {
+        companyId: briansPizza.id,
+        name: "Kosher Salt",
+        unitId: units.pound.id,
+        pricePerUnit: 2, // $2/lb
+        yieldPercent: 95, // 95% yield
+        caseSize: 3,
+        active: 1,
+      },
+      {
+        companyId: briansPizza.id,
+        name: "Water",
+        unitId: units.pound.id, // Water measured in lbs for baking
+        pricePerUnit: 2, // $2/lb
+        yieldPercent: 95, // 95% yield
+        caseSize: 8, // 8 lb gallon
+        active: 1,
+      },
+      {
+        companyId: briansPizza.id,
+        name: "Extra Virgin Olive Oil",
+        unitId: units.pound.id,
+        pricePerUnit: 2, // $2/lb
+        yieldPercent: 95, // 95% yield
+        caseSize: 2,
+        active: 1,
+      },
+      {
+        companyId: briansPizza.id,
+        name: "Granulated Sugar",
+        unitId: units.pound.id,
+        pricePerUnit: 2, // $2/lb
+        yieldPercent: 95, // 95% yield
+        caseSize: 10,
+        active: 1,
+      },
+    ]).returning();
+    
+    pizzaFlour = doughIngredients[0];
+    pizzaYeast = doughIngredients[1];
+    pizzaSalt = doughIngredients[2];
+    pizzaWater = doughIngredients[3];
+    pizzaOliveOil = doughIngredients[4];
+    pizzaSugar = doughIngredients[5];
+    
+    // Link ingredients to stores
+    await db.insert(storeInventoryItems).values([
+      // Store 1
+      { companyId: briansPizza.id, storeId: store1.id, inventoryItemId: pizzaFlour.id, onHandQty: 500, active: 1 },
+      { companyId: briansPizza.id, storeId: store1.id, inventoryItemId: pizzaYeast.id, onHandQty: 10, active: 1 },
+      { companyId: briansPizza.id, storeId: store1.id, inventoryItemId: pizzaSalt.id, onHandQty: 20, active: 1 },
+      { companyId: briansPizza.id, storeId: store1.id, inventoryItemId: pizzaWater.id, onHandQty: 0, active: 1 },
+      { companyId: briansPizza.id, storeId: store1.id, inventoryItemId: pizzaOliveOil.id, onHandQty: 15, active: 1 },
+      { companyId: briansPizza.id, storeId: store1.id, inventoryItemId: pizzaSugar.id, onHandQty: 25, active: 1 },
+      // Store 2
+      { companyId: briansPizza.id, storeId: store2.id, inventoryItemId: pizzaFlour.id, onHandQty: 300, active: 1 },
+      { companyId: briansPizza.id, storeId: store2.id, inventoryItemId: pizzaYeast.id, onHandQty: 8, active: 1 },
+      { companyId: briansPizza.id, storeId: store2.id, inventoryItemId: pizzaSalt.id, onHandQty: 15, active: 1 },
+      { companyId: briansPizza.id, storeId: store2.id, inventoryItemId: pizzaWater.id, onHandQty: 0, active: 1 },
+      { companyId: briansPizza.id, storeId: store2.id, inventoryItemId: pizzaOliveOil.id, onHandQty: 10, active: 1 },
+      { companyId: briansPizza.id, storeId: store2.id, inventoryItemId: pizzaSugar.id, onHandQty: 20, active: 1 },
+    ]);
+    
+    console.log("✅ Created 6 pizza dough ingredients");
+  } else {
+    console.log("✅ Pizza dough ingredients already exist");
+    pizzaFlour = existingItems.find((i: any) => i.name === "Bread Flour");
+    pizzaYeast = existingItems.find((i: any) => i.name === "Active Dry Yeast");
+    pizzaSalt = existingItems.find((i: any) => i.name === "Kosher Salt");
+    pizzaWater = existingItems.find((i: any) => i.name === "Water");
+    pizzaOliveOil = existingItems.find((i: any) => i.name === "Extra Virgin Olive Oil");
+    pizzaSugar = existingItems.find((i: any) => i.name === "Granulated Sugar");
+  }
+
+  // ============ PIZZA DOUGH RECIPE ============
+  console.log("📝 Creating Pizza Dough recipe...");
+  
+  // Check if recipe already exists
+  const existingRecipes = await db.select().from(recipes)
+    .where(eq(recipes.companyId, briansPizza.id));
+  
+  if (existingRecipes.length === 0 && pizzaFlour && pizzaYeast && pizzaSalt && pizzaWater && pizzaOliveOil && pizzaSugar) {
+    // Standard baker's percentages for pizza dough based on 100 lbs flour:
+    // Flour: 100 lbs, Water: 60 lbs, Salt: 2 lbs, Yeast: 1.5 lbs, Olive Oil: 2 lbs, Sugar: 1 lb
+    // Total yield: ~166.5 lbs of dough
+    
+    const pizzaDoughRecipe = await db.insert(recipes).values({
+      companyId: briansPizza.id,
+      name: "Pizza Dough (100 lb Batch)",
+      yieldQty: 166.5, // Total weight of dough produced
+      yieldUnitId: units.pound.id,
+      wastePercent: 0,
+      computedCost: 0, // Will be calculated
+    }).returning();
+    
+    const recipe = pizzaDoughRecipe[0];
+    
+    // Add recipe components in ounces (micro units as requested)
+    await db.insert(recipeComponents).values([
+      {
+        recipeId: recipe.id,
+        componentType: "inventory_item",
+        componentId: pizzaFlour.id,
+        qty: 1600, // 100 lbs = 1600 oz
+        unitId: units.ounce.id,
+        sortOrder: 0,
+      },
+      {
+        recipeId: recipe.id,
+        componentType: "inventory_item",
+        componentId: pizzaWater.id,
+        qty: 960, // 60 lbs = 960 oz
+        unitId: units.ounce.id,
+        sortOrder: 1,
+      },
+      {
+        recipeId: recipe.id,
+        componentType: "inventory_item",
+        componentId: pizzaSalt.id,
+        qty: 32, // 2 lbs = 32 oz
+        unitId: units.ounce.id,
+        sortOrder: 2,
+      },
+      {
+        recipeId: recipe.id,
+        componentType: "inventory_item",
+        componentId: pizzaYeast.id,
+        qty: 24, // 1.5 lbs = 24 oz
+        unitId: units.ounce.id,
+        sortOrder: 3,
+      },
+      {
+        recipeId: recipe.id,
+        componentType: "inventory_item",
+        componentId: pizzaOliveOil.id,
+        qty: 32, // 2 lbs = 32 oz
+        unitId: units.ounce.id,
+        sortOrder: 4,
+      },
+      {
+        recipeId: recipe.id,
+        componentType: "inventory_item",
+        componentId: pizzaSugar.id,
+        qty: 16, // 1 lb = 16 oz
+        unitId: units.ounce.id,
+        sortOrder: 5,
+      },
+    ]);
+    
+    console.log("✅ Created Pizza Dough recipe with 6 ingredients (measured in ounces)");
+  } else {
+    console.log("✅ Pizza Dough recipe already exists");
+  }
 
   // ============ STORAGE LOCATIONS ============
   // Use default company for seeding
