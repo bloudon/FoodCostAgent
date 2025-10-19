@@ -22,7 +22,7 @@ import InventoryItems from "@/pages/inventory-items";
 import InventoryItemDetail from "@/pages/inventory-item-detail";
 import InventoryItemCreate from "@/pages/inventory-item-create";
 import Recipes from "@/pages/recipes";
-import RecipeDetail from "@/pages/recipe-detail";
+import RecipeBuilder from "@/pages/recipe-builder";
 import UnitConversions from "@/pages/unit-conversions";
 import Vendors from "@/pages/vendors";
 import VendorDetail from "@/pages/vendor-detail";
@@ -119,7 +119,7 @@ function ProtectedLayout() {
               <Route path="/inventory-count" component={InventoryCount} />
               <Route path="/count/:id" component={CountSession} />
               <Route path="/item-count/:id" component={ItemCount} />
-              <Route path="/recipes/:id" component={RecipeDetail} />
+              <Route path="/recipes/:id" component={RecipeBuilder} />
               <Route path="/recipes" component={Recipes} />
               <Route path="/vendors/:id" component={VendorDetail} />
               <Route path="/vendors" component={Vendors} />

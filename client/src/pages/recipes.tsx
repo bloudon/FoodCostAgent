@@ -35,9 +35,11 @@ export default function Recipes() {
             Manage recipe BOMs with nested components and cost tracking
           </p>
         </div>
-        <Button data-testid="button-create-recipe">
-          <Plus className="h-4 w-4 mr-2" />
-          New Recipe
+        <Button asChild data-testid="button-create-recipe">
+          <Link href="/recipes/new">
+            <Plus className="h-4 w-4 mr-2" />
+            New Recipe
+          </Link>
         </Button>
       </div>
 

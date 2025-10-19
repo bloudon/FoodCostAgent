@@ -1695,6 +1695,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(enriched);
   });
 
+  app.post("/api/recipe-components", async (req, res) => {
+    try {
+      const data = insertRecipeComponentSchema.parse(req.body);
+      const component = await storage.createRecipeComponent(data);
+      
+      const updatedCost = await calculateRecipeCost(data.recipeId);
+      await storage.updateRecipe(data.recipeId, { computedCost: updatedCost });
+      
+      res.status(201).json(component);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   app.patch("/api/recipe-components/:id", async (req, res) => {
     try {
       const component = await storage.getRecipeComponent(req.params.id);
@@ -1705,6 +1719,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updateData = {
         qty: req.body.qty !== undefined ? req.body.qty : component.qty,
         unitId: req.body.unitId || component.unitId,
+        sortOrder: req.body.sortOrder !== undefined ? req.body.sortOrder : component.sortOrder,
       };
 
       await storage.updateRecipeComponent(req.params.id, updateData);

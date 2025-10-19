@@ -1,0 +1,872 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useRef } from "react";
+import { useLocation, useParams, Link } from "wouter";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatUnitName } from "@/lib/utils";
+import {
+  ArrowLeft,
+  Save,
+  Search,
+  GripVertical,
+  Trash2,
+  ChefHat,
+  Package,
+} from "lucide-react";
+import type { Recipe, RecipeComponent } from "@shared/schema";
+
+type InventoryItem = {
+  id: string;
+  name: string;
+  unitId: string;
+  unitName: string;
+  pricePerUnit: number;
+  categoryId: string | null;
+  categoryName: string | null;
+};
+
+type Unit = {
+  id: string;
+  name: string;
+  toBaseRatio: number;
+};
+
+type DraggableItem = {
+  id: string;
+  name: string;
+  type: "inventory_item" | "recipe";
+  unitId?: string;
+  unitName?: string;
+  pricePerUnit?: number;
+};
+
+type ComponentWithDetails = RecipeComponent & {
+  name: string;
+  unitName: string;
+  cost: number;
+};
+
+// Sortable ingredient row component
+function SortableIngredientRow({
+  component,
+  onEdit,
+  onDelete,
+}: {
+  component: ComponentWithDetails;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: component.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <TableRow ref={setNodeRef} style={style} data-testid={`row-ingredient-${component.id}`}>
+      <TableCell className="w-8">
+        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </div>
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          {component.componentType === "recipe" ? (
+            <ChefHat className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <Package className="h-4 w-4 text-muted-foreground" />
+          )}
+          <span data-testid={`text-ingredient-name-${component.id}`}>{component.name}</span>
+        </div>
+      </TableCell>
+      <TableCell className="text-right font-mono" data-testid={`text-ingredient-qty-${component.id}`}>
+        {component.qty.toFixed(2)}
+      </TableCell>
+      <TableCell data-testid={`text-ingredient-unit-${component.id}`}>
+        {formatUnitName(component.unitName)}
+      </TableCell>
+      <TableCell className="text-right font-mono" data-testid={`text-ingredient-cost-${component.id}`}>
+        ${component.cost.toFixed(2)}
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex gap-2 justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onEdit}
+            data-testid={`button-edit-ingredient-${component.id}`}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            data-testid={`button-delete-ingredient-${component.id}`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+// Draggable inventory/recipe item from left panel
+function DraggableSourceItem({ item }: { item: DraggableItem }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useSortable({
+    id: `source-${item.id}`,
+  });
+
+  return (
+    <Card
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      className={`cursor-grab active:cursor-grabbing hover-elevate ${
+        isDragging ? "opacity-50" : ""
+      }`}
+      data-testid={`draggable-item-${item.id}`}
+    >
+      <CardContent className="p-3">
+        <div className="flex items-center gap-2">
+          {item.type === "recipe" ? (
+            <ChefHat className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          ) : (
+            <Package className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-sm truncate">{item.name}</div>
+            {item.type === "inventory_item" && (
+              <div className="text-xs text-muted-foreground">
+                ${item.pricePerUnit?.toFixed(2)} / {formatUnitName(item.unitName || "")}
+              </div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function RecipeBuilder() {
+  const { id } = useParams<{ id?: string }>();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const isNew = id === "new";
+
+  // Recipe metadata state
+  const [recipeName, setRecipeName] = useState("");
+  const [yieldQty, setYieldQty] = useState("");
+  const [yieldUnitId, setYieldUnitId] = useState("");
+  const [wastePercent, setWastePercent] = useState("");
+
+  // Component management state
+  const [components, setComponents] = useState<ComponentWithDetails[]>([]);
+  const [draggedItem, setDraggedItem] = useState<DraggableItem | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [pendingItem, setPendingItem] = useState<DraggableItem | null>(null);
+  const [dialogQty, setDialogQty] = useState("");
+  const [dialogUnitId, setDialogUnitId] = useState("");
+
+  // Edit dialog state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingComponent, setEditingComponent] = useState<ComponentWithDetails | null>(null);
+  const [editQty, setEditQty] = useState("");
+  const [editUnitId, setEditUnitId] = useState("");
+
+  // Queries
+  const { data: recipe, isLoading: recipeLoading } = useQuery<Recipe>({
+    queryKey: ["/api/recipes", id],
+    enabled: !isNew && !!id,
+  });
+
+  const { data: recipeComponents } = useQuery<RecipeComponent[]>({
+    queryKey: ["/api/recipe-components", id],
+    enabled: !isNew && !!id,
+  });
+
+  const { data: inventoryItems } = useQuery<InventoryItem[]>({
+    queryKey: ["/api/inventory-items"],
+  });
+
+  const { data: recipes } = useQuery<Recipe[]>({
+    queryKey: ["/api/recipes"],
+  });
+
+  const { data: units } = useQuery<Unit[]>({
+    queryKey: ["/api/units"],
+  });
+
+  // Calculate component cost
+  const calculateComponentCost = (comp: ComponentWithDetails): number => {
+    const unit = units?.find((u) => u.id === comp.unitId);
+    const qtyInBaseUnits = unit ? comp.qty * unit.toBaseRatio : comp.qty;
+
+    if (comp.componentType === "inventory_item") {
+      const item = inventoryItems?.find((i) => i.id === comp.componentId);
+      if (item) {
+        return qtyInBaseUnits * item.pricePerUnit;
+      }
+    } else if (comp.componentType === "recipe") {
+      const subRecipe = recipes?.find((r) => r.id === comp.componentId);
+      if (subRecipe) {
+        const subRecipeUnit = units?.find((u) => u.id === subRecipe.yieldUnitId);
+        const subRecipeYieldQty = subRecipeUnit
+          ? subRecipe.yieldQty * subRecipeUnit.toBaseRatio
+          : subRecipe.yieldQty;
+        const costPerUnit = subRecipeYieldQty > 0 ? subRecipe.computedCost / subRecipeYieldQty : 0;
+        return qtyInBaseUnits * costPerUnit;
+      }
+    }
+    return 0;
+  };
+
+  // Calculate total recipe cost
+  const totalCost = components.reduce((sum, comp) => sum + comp.cost, 0);
+  const wasteMultiplier = 1 + (parseFloat(wastePercent) || 0) / 100;
+  const finalCost = totalCost * wasteMultiplier;
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  // Handle drag start
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const sourceId = active.id.toString();
+
+    if (sourceId.startsWith("source-")) {
+      const itemId = sourceId.replace("source-", "");
+      const inventoryItem = inventoryItems?.find((i) => i.id === itemId);
+      const recipeItem = recipes?.find((r) => r.id === itemId);
+
+      if (inventoryItem) {
+        setDraggedItem({
+          id: inventoryItem.id,
+          name: inventoryItem.name,
+          type: "inventory_item",
+          unitId: inventoryItem.unitId,
+          unitName: inventoryItem.unitName,
+          pricePerUnit: inventoryItem.pricePerUnit,
+        });
+      } else if (recipeItem) {
+        setDraggedItem({
+          id: recipeItem.id,
+          name: recipeItem.name,
+          type: "recipe",
+        });
+      }
+    }
+  };
+
+  // Handle drag end
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over) {
+      setDraggedItem(null);
+      return;
+    }
+
+    const activeId = active.id.toString();
+    const overId = over.id.toString();
+
+    // Handle dropping from source list to canvas
+    if (activeId.startsWith("source-") && overId === "recipe-canvas") {
+      const itemId = activeId.replace("source-", "");
+      const inventoryItem = inventoryItems?.find((i) => i.id === itemId);
+      const recipeItem = recipes?.find((r) => r.id === itemId);
+
+      if (inventoryItem) {
+        setPendingItem({
+          id: inventoryItem.id,
+          name: inventoryItem.name,
+          type: "inventory_item",
+          unitId: inventoryItem.unitId,
+          unitName: inventoryItem.unitName,
+          pricePerUnit: inventoryItem.pricePerUnit,
+        });
+        setDialogUnitId(inventoryItem.unitId);
+        setShowAddDialog(true);
+      } else if (recipeItem) {
+        setPendingItem({
+          id: recipeItem.id,
+          name: recipeItem.name,
+          type: "recipe",
+        });
+        setDialogUnitId(recipeItem.yieldUnitId);
+        setShowAddDialog(true);
+      }
+    }
+    // Handle reordering within canvas
+    else if (!activeId.startsWith("source-") && !overId.startsWith("source-")) {
+      const oldIndex = components.findIndex((c) => c.id === activeId);
+      const newIndex = components.findIndex((c) => c.id === overId);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        setComponents(arrayMove(components, oldIndex, newIndex));
+      }
+    }
+
+    setDraggedItem(null);
+  };
+
+  // Add ingredient from dialog
+  const handleAddIngredient = () => {
+    if (!pendingItem || !dialogQty || !dialogUnitId) {
+      toast({
+        title: "Missing information",
+        description: "Please enter quantity and unit",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newComponent: ComponentWithDetails = {
+      id: `temp-${Date.now()}`,
+      recipeId: id || "",
+      componentType: pendingItem.type,
+      componentId: pendingItem.id,
+      qty: parseFloat(dialogQty),
+      unitId: dialogUnitId,
+      sortOrder: components.length,
+      name: pendingItem.name,
+      unitName: units?.find((u) => u.id === dialogUnitId)?.name || "",
+      cost: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    newComponent.cost = calculateComponentCost(newComponent);
+    setComponents([...components, newComponent]);
+    setShowAddDialog(false);
+    setPendingItem(null);
+    setDialogQty("");
+    setDialogUnitId("");
+  };
+
+  // Edit ingredient
+  const handleEditIngredient = (component: ComponentWithDetails) => {
+    setEditingComponent(component);
+    setEditQty(component.qty.toString());
+    setEditUnitId(component.unitId);
+    setEditDialogOpen(true);
+  };
+
+  // Save edited ingredient
+  const handleSaveEdit = () => {
+    if (!editingComponent || !editQty || !editUnitId) return;
+
+    const updatedComponents = components.map((comp) => {
+      if (comp.id === editingComponent.id) {
+        const updated = {
+          ...comp,
+          qty: parseFloat(editQty),
+          unitId: editUnitId,
+          unitName: units?.find((u) => u.id === editUnitId)?.name || "",
+        };
+        updated.cost = calculateComponentCost(updated);
+        return updated;
+      }
+      return comp;
+    });
+
+    setComponents(updatedComponents);
+    setEditDialogOpen(false);
+    setEditingComponent(null);
+  };
+
+  // Delete ingredient
+  const handleDeleteIngredient = (componentId: string) => {
+    setComponents(components.filter((c) => c.id !== componentId));
+  };
+
+  // Save recipe mutation
+  const saveRecipeMutation = useMutation({
+    mutationFn: async () => {
+      const recipeData = {
+        name: recipeName,
+        yieldQty: parseFloat(yieldQty),
+        yieldUnitId,
+        wastePercent: parseFloat(wastePercent) || 0,
+        computedCost: finalCost,
+      };
+
+      let recipeId = id;
+
+      if (isNew) {
+        const result = await apiRequest("/api/recipes", "POST", recipeData) as any;
+        recipeId = result.id;
+      } else {
+        await apiRequest(`/api/recipes/${id}`, "PATCH", recipeData);
+      }
+
+      // Save components
+      const componentPromises = components.map((comp, index) => {
+        const compData = {
+          recipeId,
+          componentType: comp.componentType,
+          componentId: comp.componentId,
+          qty: comp.qty,
+          unitId: comp.unitId,
+          sortOrder: index,
+        };
+
+        if (comp.id.startsWith("temp-")) {
+          return apiRequest("/api/recipe-components", "POST", compData);
+        } else {
+          return apiRequest(`/api/recipe-components/${comp.id}`, "PATCH", compData);
+        }
+      });
+
+      await Promise.all(componentPromises);
+      return recipeId;
+    },
+    onSuccess: (recipeId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipe-components"] });
+      toast({ title: "Recipe saved successfully" });
+      setLocation(`/recipes/${recipeId}`);
+    },
+    onError: () => {
+      toast({ title: "Failed to save recipe", variant: "destructive" });
+    },
+  });
+
+  // Filter source items
+  const filteredInventoryItems = inventoryItems?.filter((item) =>
+    item.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredRecipes = recipes?.filter(
+    (recipe) =>
+      recipe.id !== id && recipe.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const sourceItems: DraggableItem[] = [
+    ...(filteredInventoryItems?.map((item) => ({
+      id: item.id,
+      name: item.name,
+      type: "inventory_item" as const,
+      unitId: item.unitId,
+      unitName: item.unitName,
+      pricePerUnit: item.pricePerUnit,
+    })) || []),
+    ...(filteredRecipes?.map((recipe) => ({
+      id: recipe.id,
+      name: recipe.name,
+      type: "recipe" as const,
+    })) || []),
+  ];
+
+  // Load recipe data when editing
+  if (!isNew && recipe && recipeComponents && components.length === 0) {
+    setRecipeName(recipe.name);
+    setYieldQty(recipe.yieldQty.toString());
+    setYieldUnitId(recipe.yieldUnitId);
+    setWastePercent(recipe.wastePercent.toString());
+
+    const componentsWithDetails: ComponentWithDetails[] = recipeComponents.map((comp) => {
+      let name = "";
+      if (comp.componentType === "inventory_item") {
+        name = inventoryItems?.find((i) => i.id === comp.componentId)?.name || "Unknown";
+      } else {
+        name = recipes?.find((r) => r.id === comp.componentId)?.name || "Unknown";
+      }
+
+      const unitName = units?.find((u) => u.id === comp.unitId)?.name || "";
+      const compWithDetails = {
+        ...comp,
+        name,
+        unitName,
+        cost: 0,
+      };
+      compWithDetails.cost = calculateComponentCost(compWithDetails);
+      return compWithDetails;
+    });
+
+    setComponents(componentsWithDetails);
+  }
+
+  if (recipeLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-muted-foreground">Loading recipe...</div>
+      </div>
+    );
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="h-full flex flex-col">
+        {/* Header */}
+        <div className="sticky top-0 z-10 bg-background border-b">
+          <div className="p-6 pb-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setLocation("/recipes")}
+                  data-testid="button-back"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </Button>
+                <div>
+                  <h1 className="text-3xl font-bold">
+                    {isNew ? "New Recipe" : "Edit Recipe"}
+                  </h1>
+                  <p className="text-muted-foreground mt-1">
+                    Drag ingredients from the left to build your recipe
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => saveRecipeMutation.mutate()}
+                disabled={
+                  saveRecipeMutation.isPending ||
+                  !recipeName ||
+                  !yieldQty ||
+                  !yieldUnitId ||
+                  components.length === 0
+                }
+                data-testid="button-save-recipe"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {saveRecipeMutation.isPending ? "Saving..." : "Save Recipe"}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Main content */}
+        <div className="flex-1 overflow-hidden">
+          <div className="h-full grid grid-cols-12 gap-6 p-6">
+            {/* Left panel - Source items */}
+            <div className="col-span-4 flex flex-col gap-4 overflow-hidden">
+              <div>
+                <h2 className="text-lg font-semibold mb-2">Available Ingredients</h2>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search items and recipes..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9"
+                    data-testid="input-search-ingredients"
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-auto">
+                <SortableContext
+                  items={sourceItems.map((item) => `source-${item.id}`)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {sourceItems.map((item) => (
+                      <DraggableSourceItem key={item.id} item={item} />
+                    ))}
+                  </div>
+                </SortableContext>
+              </div>
+            </div>
+
+            {/* Right panel - Recipe canvas */}
+            <div className="col-span-8 flex flex-col gap-4 overflow-hidden">
+              {/* Recipe metadata */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recipe Details</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Recipe Name</label>
+                      <Input
+                        value={recipeName}
+                        onChange={(e) => setRecipeName(e.target.value)}
+                        placeholder="e.g., Margherita Pizza"
+                        data-testid="input-recipe-name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Waste %</label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={wastePercent}
+                        onChange={(e) => setWastePercent(e.target.value)}
+                        placeholder="0"
+                        data-testid="input-waste-percent"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Yield Quantity</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={yieldQty}
+                        onChange={(e) => setYieldQty(e.target.value)}
+                        placeholder="1"
+                        data-testid="input-yield-qty"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Yield Unit</label>
+                      <Select value={yieldUnitId} onValueChange={setYieldUnitId}>
+                        <SelectTrigger data-testid="select-yield-unit">
+                          <SelectValue placeholder="Select unit" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {units?.map((unit) => (
+                            <SelectItem key={unit.id} value={unit.id}>
+                              {formatUnitName(unit.name)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center pt-4 border-t">
+                    <span className="text-lg font-semibold">Total Recipe Cost:</span>
+                    <span
+                      className="text-2xl font-bold text-primary"
+                      data-testid="text-total-cost"
+                    >
+                      ${finalCost.toFixed(2)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Ingredients list */}
+              <Card
+                id="recipe-canvas"
+                className="flex-1 overflow-hidden flex flex-col min-h-0"
+              >
+                <CardHeader>
+                  <CardTitle>Ingredients</CardTitle>
+                </CardHeader>
+                <CardContent className="flex-1 overflow-auto">
+                  {components.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed rounded-lg">
+                      <ChefHat className="h-12 w-12 text-muted-foreground mb-4" />
+                      <h3 className="text-lg font-semibold mb-1">No ingredients yet</h3>
+                      <p className="text-muted-foreground">
+                        Drag items from the left panel to add ingredients
+                      </p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-8"></TableHead>
+                          <TableHead>Ingredient</TableHead>
+                          <TableHead className="text-right">Quantity</TableHead>
+                          <TableHead>Unit</TableHead>
+                          <TableHead className="text-right">Cost</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <SortableContext
+                          items={components.map((c) => c.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          {components.map((component) => (
+                            <SortableIngredientRow
+                              key={component.id}
+                              component={component}
+                              onEdit={() => handleEditIngredient(component)}
+                              onDelete={() => handleDeleteIngredient(component.id)}
+                            />
+                          ))}
+                        </SortableContext>
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Add ingredient dialog */}
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent data-testid="dialog-add-ingredient">
+          <DialogHeader>
+            <DialogTitle>Add Ingredient</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Ingredient</label>
+              <p className="text-sm text-muted-foreground mt-1">{pendingItem?.name}</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Quantity</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={dialogQty}
+                onChange={(e) => setDialogQty(e.target.value)}
+                placeholder="Enter quantity"
+                data-testid="input-dialog-qty"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Unit</label>
+              <Select value={dialogUnitId} onValueChange={setDialogUnitId}>
+                <SelectTrigger data-testid="select-dialog-unit">
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {units?.map((unit) => (
+                    <SelectItem key={unit.id} value={unit.id}>
+                      {formatUnitName(unit.name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddIngredient} data-testid="button-confirm-add">
+              Add Ingredient
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit ingredient dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent data-testid="dialog-edit-ingredient">
+          <DialogHeader>
+            <DialogTitle>Edit Ingredient</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Ingredient</label>
+              <p className="text-sm text-muted-foreground mt-1">{editingComponent?.name}</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Quantity</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={editQty}
+                onChange={(e) => setEditQty(e.target.value)}
+                data-testid="input-edit-qty"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Unit</label>
+              <Select value={editUnitId} onValueChange={setEditUnitId}>
+                <SelectTrigger data-testid="select-edit-unit">
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {units?.map((unit) => (
+                    <SelectItem key={unit.id} value={unit.id}>
+                      {formatUnitName(unit.name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} data-testid="button-confirm-edit">
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Drag overlay */}
+      <DragOverlay>
+        {draggedItem ? (
+          <Card className="w-64 opacity-90">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2">
+                {draggedItem.type === "recipe" ? (
+                  <ChefHat className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                )}
+                <div className="font-medium text-sm">{draggedItem.name}</div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}

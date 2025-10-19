@@ -308,9 +308,16 @@ export const recipeComponents = pgTable("recipe_components", {
   componentId: varchar("component_id").notNull(), // inventory_item_id or recipe_id
   qty: real("qty").notNull(),
   unitId: varchar("unit_id").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0), // For drag-and-drop ordering
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const insertRecipeComponentSchema = createInsertSchema(recipeComponents).omit({ id: true });
+export const insertRecipeComponentSchema = createInsertSchema(recipeComponents).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
 export type InsertRecipeComponent = z.infer<typeof insertRecipeComponentSchema>;
 export type RecipeComponent = typeof recipeComponents.$inferSelect;
 
