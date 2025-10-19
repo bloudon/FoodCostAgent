@@ -10,6 +10,8 @@ import {
   useSensor,
   useSensors,
   closestCenter,
+  useDroppable,
+  useDraggable,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -55,6 +57,7 @@ import {
   Trash2,
   ChefHat,
   Package,
+  Plus,
 } from "lucide-react";
 import type { Recipe, RecipeComponent } from "@shared/schema";
 
@@ -159,36 +162,56 @@ function SortableIngredientRow({
 }
 
 // Draggable inventory/recipe item from left panel
-function DraggableSourceItem({ item }: { item: DraggableItem }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useSortable({
+function DraggableSourceItem({ 
+  item, 
+  onAdd 
+}: { 
+  item: DraggableItem;
+  onAdd: (item: DraggableItem) => void;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `source-${item.id}`,
   });
 
   return (
     <Card
       ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      className={`cursor-grab active:cursor-grabbing hover-elevate ${
-        isDragging ? "opacity-50" : ""
-      }`}
+      className={`hover-elevate ${isDragging ? "opacity-50" : ""}`}
       data-testid={`draggable-item-${item.id}`}
     >
       <CardContent className="p-3">
         <div className="flex items-center gap-2">
-          {item.type === "recipe" ? (
-            <ChefHat className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          ) : (
-            <Package className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="font-medium text-sm truncate">{item.name}</div>
-            {item.type === "inventory_item" && (
-              <div className="text-xs text-muted-foreground">
-                ${item.pricePerUnit?.toFixed(2)} / {formatUnitName(item.unitName || "")}
-              </div>
+          <div 
+            {...attributes}
+            {...listeners}
+            className="flex-1 min-w-0 flex items-center gap-2 cursor-grab active:cursor-grabbing"
+          >
+            {item.type === "recipe" ? (
+              <ChefHat className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            ) : (
+              <Package className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             )}
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-sm truncate">{item.name}</div>
+              {item.type === "inventory_item" && (
+                <div className="text-xs text-muted-foreground">
+                  ${item.pricePerUnit?.toFixed(2)} / {formatUnitName(item.unitName || "")}
+                </div>
+              )}
+            </div>
           </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAdd(item);
+            }}
+            data-testid={`button-add-item-${item.id}`}
+            className="flex-shrink-0"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -283,6 +306,11 @@ export default function RecipeBuilder() {
     })
   );
 
+  // Setup droppable zone for recipe canvas
+  const { setNodeRef: setCanvasRef } = useDroppable({
+    id: "recipe-canvas",
+  });
+
   // Handle drag start
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
@@ -325,7 +353,8 @@ export default function RecipeBuilder() {
     const overId = over.id.toString();
 
     // Handle dropping from source list to canvas
-    if (activeId.startsWith("source-") && overId === "recipe-canvas") {
+    // Accept drops on the canvas OR on any existing ingredient (user doesn't need to aim for empty space)
+    if (activeId.startsWith("source-") && (overId === "recipe-canvas" || !overId.startsWith("source-"))) {
       const itemId = activeId.replace("source-", "");
       const inventoryItem = inventoryItems?.find((i) => i.id === itemId);
       const recipeItem = recipes?.find((r) => r.id === itemId);
@@ -351,8 +380,8 @@ export default function RecipeBuilder() {
         setShowAddDialog(true);
       }
     }
-    // Handle reordering within canvas
-    else if (!activeId.startsWith("source-") && !overId.startsWith("source-")) {
+    // Handle reordering within canvas (only if both source and target are existing components)
+    else if (!activeId.startsWith("source-") && !overId.startsWith("source-") && overId !== "recipe-canvas") {
       const oldIndex = components.findIndex((c) => c.id === activeId);
       const newIndex = components.findIndex((c) => c.id === overId);
 
@@ -362,6 +391,33 @@ export default function RecipeBuilder() {
     }
 
     setDraggedItem(null);
+  };
+
+  // Click to add item (keyboard/accessibility alternative to drag-and-drop)
+  const handleClickToAdd = (item: DraggableItem) => {
+    if (item.type === "inventory_item" && item.unitId) {
+      setPendingItem({
+        id: item.id,
+        name: item.name,
+        type: "inventory_item",
+        unitId: item.unitId,
+        unitName: item.unitName || "",
+        pricePerUnit: item.pricePerUnit || 0,
+      });
+      setDialogUnitId(item.unitId);
+      setShowAddDialog(true);
+    } else if (item.type === "recipe") {
+      const recipe = recipes?.find((r) => r.id === item.id);
+      if (recipe) {
+        setPendingItem({
+          id: item.id,
+          name: item.name,
+          type: "recipe",
+        });
+        setDialogUnitId(recipe.yieldUnitId);
+        setShowAddDialog(true);
+      }
+    }
   };
 
   // Add ingredient from dialog
@@ -617,16 +673,15 @@ export default function RecipeBuilder() {
               </div>
 
               <div className="flex-1 overflow-auto">
-                <SortableContext
-                  items={sourceItems.map((item) => `source-${item.id}`)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="space-y-2">
-                    {sourceItems.map((item) => (
-                      <DraggableSourceItem key={item.id} item={item} />
-                    ))}
-                  </div>
-                </SortableContext>
+                <div className="space-y-2">
+                  {sourceItems.map((item) => (
+                    <DraggableSourceItem 
+                      key={item.id} 
+                      item={item} 
+                      onAdd={handleClickToAdd}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -702,6 +757,7 @@ export default function RecipeBuilder() {
 
               {/* Ingredients list */}
               <Card
+                ref={setCanvasRef}
                 id="recipe-canvas"
                 className="flex-1 overflow-hidden flex flex-col min-h-0"
               >
