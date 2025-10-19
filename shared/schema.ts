@@ -294,6 +294,7 @@ export const recipes = pgTable("recipes", {
   yieldUnitId: varchar("yield_unit_id").notNull(),
   wastePercent: real("waste_percent").notNull().default(0),
   computedCost: real("computed_cost").notNull().default(0), // cached cost
+  canBeIngredient: integer("can_be_ingredient").notNull().default(0), // 1 if recipe can be used as ingredient in other recipes
 });
 
 export const insertRecipeSchema = createInsertSchema(recipes).omit({ id: true });

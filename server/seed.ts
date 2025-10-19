@@ -1,6 +1,7 @@
 import { storage } from "./storage";
 import { hashPassword } from "./auth";
 import { db } from "./db";
+import { eq } from "drizzle-orm";
 import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, recipes, recipeComponents } from "@shared/schema";
 
 // Seed Brian's Pizza company, stores, ingredients, and recipes
@@ -200,6 +201,7 @@ async function seedBriansPizza() {
       yieldUnitId: units.pound.id,
       wastePercent: 0,
       computedCost: 0,
+      canBeIngredient: 1,
     }).returning();
     
     const recipe = pizzaDoughRecipe[0];

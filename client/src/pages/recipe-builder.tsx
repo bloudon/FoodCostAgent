@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -229,6 +230,7 @@ export default function RecipeBuilder() {
   const [yieldQty, setYieldQty] = useState("");
   const [yieldUnitId, setYieldUnitId] = useState("");
   const [wastePercent, setWastePercent] = useState("");
+  const [canBeIngredient, setCanBeIngredient] = useState(false);
 
   // Component management state
   const [components, setComponents] = useState<ComponentWithDetails[]>([]);
@@ -499,6 +501,7 @@ export default function RecipeBuilder() {
         yieldUnitId,
         wastePercent: parseFloat(wastePercent) || 0,
         computedCost: finalCost,
+        canBeIngredient: canBeIngredient ? 1 : 0,
       };
 
       let recipeId = id;
@@ -575,6 +578,7 @@ export default function RecipeBuilder() {
       setYieldQty(recipe.yieldQty.toString());
       setYieldUnitId(recipe.yieldUnitId);
       setWastePercent(recipe.wastePercent.toString());
+      setCanBeIngredient(recipe.canBeIngredient === 1);
 
       const componentsWithDetails: ComponentWithDetails[] = recipeComponents.map((comp) => {
         let name = "";
@@ -716,6 +720,20 @@ export default function RecipeBuilder() {
                         data-testid="input-waste-percent"
                       />
                     </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="can-be-ingredient"
+                      checked={canBeIngredient}
+                      onCheckedChange={(checked) => setCanBeIngredient(checked === true)}
+                      data-testid="checkbox-can-be-ingredient"
+                    />
+                    <label
+                      htmlFor="can-be-ingredient"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Can be used as ingredient in other recipes
+                    </label>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">

@@ -1641,6 +1641,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/recipes/:id", async (req, res) => {
+    try {
+      const recipe = await storage.getRecipe(req.params.id);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+
+      // Validate using partial schema
+      const updateSchema = insertRecipeSchema.partial();
+      const validatedData = updateSchema.parse(req.body);
+
+      const updateData = {
+        name: validatedData.name !== undefined ? validatedData.name : recipe.name,
+        yieldQty: validatedData.yieldQty !== undefined ? validatedData.yieldQty : recipe.yieldQty,
+        yieldUnitId: validatedData.yieldUnitId || recipe.yieldUnitId,
+        wastePercent: validatedData.wastePercent !== undefined ? validatedData.wastePercent : recipe.wastePercent,
+        computedCost: validatedData.computedCost !== undefined ? validatedData.computedCost : recipe.computedCost,
+        canBeIngredient: validatedData.canBeIngredient !== undefined ? validatedData.canBeIngredient : recipe.canBeIngredient,
+      };
+
+      await storage.updateRecipe(req.params.id, updateData);
+      const updated = await storage.getRecipe(req.params.id);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   app.post("/api/recipes/:id/components", async (req, res) => {
     try {
       const data = insertRecipeComponentSchema.parse(req.body);
