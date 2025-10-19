@@ -23,6 +23,16 @@ Preferred communication style: Simple, everyday language.
   - **Display**: On the inventory items index page, all locations are displayed as a stacked vertical list within the table row. The primary location shows a "(p)" badge and appears first in the list.
   - **Performance**: Backend uses batched query pattern (`getInventoryItemLocationsBatch`) to fetch all item locations in a single database query, avoiding N+1 query problems.
 
+### Recipe Configuration
+- **Can Be Used as Ingredient**: Recipes include a `canBeIngredient` checkbox field (stored as integer 0/1 in the database) that marks whether a recipe can be used as an ingredient in other recipes (nested recipes).
+  - **UI**: Checkbox labeled "Can be used as ingredient in other recipes" in the Recipe Builder form
+  - **Database**: `recipes.can_be_ingredient` (integer, default 0)
+  - **API**: 
+    - POST `/api/recipes` - Creates recipe with canBeIngredient field
+    - PATCH `/api/recipes/:id` - Updates recipe including canBeIngredient (validates with Zod schema)
+  - **Seed Data**: Only "Pizza Dough (100 lb Batch)" is marked as can_be_ingredient=1 in Brian's Pizza test data
+  - **Date Added**: October 19, 2025
+
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
