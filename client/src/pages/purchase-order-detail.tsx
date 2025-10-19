@@ -748,6 +748,7 @@ export default function PurchaseOrderDetail() {
                                   <Link 
                                     href={`/count/${usage.previousCountId}`}
                                     className="hover:text-primary hover:underline"
+                                    tabIndex={-1}
                                     data-testid={`link-prev-count-${itemId}`}
                                   >
                                     {usage.previousQty.toFixed(2)}
@@ -767,6 +768,7 @@ export default function PurchaseOrderDetail() {
                                         <Link 
                                           href={`/receiving/${receipt.purchaseOrderId}?receiptId=${usage.receiptIds[0]}`}
                                           className="hover:text-primary hover:underline"
+                                          tabIndex={-1}
                                           data-testid={`link-received-${itemId}`}
                                         >
                                           {usage.receivedQty.toFixed(2)}
@@ -798,6 +800,7 @@ export default function PurchaseOrderDetail() {
                                                 <Link
                                                   href={`/receiving/${receipt.purchaseOrderId}?receiptId=${receiptId}`}
                                                   className="text-primary hover:underline text-sm block"
+                                                  tabIndex={-1}
                                                   data-testid={`link-receipt-${idx}-${itemId}`}
                                                 >
                                                   Receipt {idx + 1}
@@ -816,6 +819,7 @@ export default function PurchaseOrderDetail() {
                                   <Link 
                                     href={`/count/${usage.currentCountId}`}
                                     className="hover:text-primary hover:underline"
+                                    tabIndex={-1}
                                     data-testid={`link-current-count-${itemId}`}
                                   >
                                     {usage.currentQty.toFixed(2)}
@@ -873,6 +877,7 @@ export default function PurchaseOrderDetail() {
                                   <Link 
                                     href={`/count/${usage.previousCountId}`}
                                     className="hover:text-primary hover:underline"
+                                    tabIndex={-1}
                                     data-testid={`link-prev-count-${itemId}`}
                                   >
                                     {usage.previousQty.toFixed(2)}
@@ -892,6 +897,7 @@ export default function PurchaseOrderDetail() {
                                         <Link 
                                           href={`/receiving/${receipt.purchaseOrderId}?receiptId=${usage.receiptIds[0]}`}
                                           className="hover:text-primary hover:underline"
+                                          tabIndex={-1}
                                           data-testid={`link-received-${itemId}`}
                                         >
                                           {usage.receivedQty.toFixed(2)}
@@ -923,6 +929,7 @@ export default function PurchaseOrderDetail() {
                                                 <Link
                                                   href={`/receiving/${receipt.purchaseOrderId}?receiptId=${receiptId}`}
                                                   className="text-primary hover:underline text-sm block"
+                                                  tabIndex={-1}
                                                   data-testid={`link-receipt-${idx}-${itemId}`}
                                                 >
                                                   Receipt {idx + 1}
@@ -941,6 +948,7 @@ export default function PurchaseOrderDetail() {
                                   <Link 
                                     href={`/count/${usage.currentCountId}`}
                                     className="hover:text-primary hover:underline"
+                                    tabIndex={-1}
                                     data-testid={`link-current-count-${itemId}`}
                                   >
                                     {usage.currentQty.toFixed(2)}
