@@ -404,52 +404,60 @@ export default function PurchaseOrderDetail() {
   }
 
   return (
-    <div className="h-full overflow-auto">
-      <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setLocation("/purchase-orders")}
-              data-testid="button-back"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-3xl font-bold">
-                {isNew ? "New Purchase Order" : `Purchase Order #${id?.slice(0, 8)}`}
-              </h1>
-              <p className="text-muted-foreground mt-1">
-                {isNew ? "Create a new purchase order" : "Edit purchase order details"}
-              </p>
+    <div className="h-full flex flex-col">
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-10 bg-background border-b">
+        <div className="p-6 pb-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setLocation("/purchase-orders")}
+                data-testid="button-back"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div>
+                <h1 className="text-3xl font-bold">
+                  {isNew ? "New Purchase Order" : `Purchase Order #${id?.slice(0, 8)}`}
+                </h1>
+                <p className="text-muted-foreground mt-1">
+                  {isNew ? "Create a new purchase order" : "Edit purchase order details"}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {purchaseOrder && purchaseOrder.status !== "received" && !isNew && (
+                <Button
+                  asChild
+                  variant="outline"
+                  data-testid="button-receive-po"
+                >
+                  <Link href={`/receiving/${purchaseOrder.id}`}>
+                    <PackageCheck className="h-4 w-4 mr-2" />
+                    Receive Order
+                  </Link>
+                </Button>
+              )}
+              {!isReceived && (
+                <Button
+                  onClick={handleSave}
+                  disabled={savePOMutation.isPending || !selectedVendor || !selectedStore || itemsWithQuantity === 0}
+                  data-testid="button-save-po"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {savePOMutation.isPending ? "Saving..." : "Save Order"}
+                </Button>
+              )}
             </div>
           </div>
-          <div className="flex gap-2">
-            {purchaseOrder && purchaseOrder.status !== "received" && !isNew && (
-              <Button
-                asChild
-                variant="outline"
-                data-testid="button-receive-po"
-              >
-                <Link href={`/receiving/${purchaseOrder.id}`}>
-                  <PackageCheck className="h-4 w-4 mr-2" />
-                  Receive Order
-                </Link>
-              </Button>
-            )}
-            {!isReceived && (
-              <Button
-                onClick={handleSave}
-                disabled={savePOMutation.isPending || !selectedVendor || !selectedStore || itemsWithQuantity === 0}
-                data-testid="button-save-po"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                {savePOMutation.isPending ? "Saving..." : "Save Order"}
-              </Button>
-            )}
-          </div>
         </div>
+      </div>
+
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-auto">
+        <div className="p-6 pt-2 space-y-6">
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="space-y-2">
@@ -1236,6 +1244,7 @@ export default function PurchaseOrderDetail() {
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
