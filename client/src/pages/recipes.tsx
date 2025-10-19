@@ -1,12 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, ChefHat } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export default function Recipes() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -56,75 +64,92 @@ export default function Recipes() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {isLoading ? (
-          Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-6 w-3/4" />
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-5/6" />
-                  <Skeleton className="h-4 w-2/3" />
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        ) : filteredRecipes && filteredRecipes.length > 0 ? (
-          <>
-            {filteredRecipes.map((recipe) => (
-              <Link key={recipe.id} href={`/recipes/${recipe.id}`}>
-                <Card className="hover-elevate cursor-pointer transition-all" data-testid={`card-recipe-${recipe.id}`}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-lg" data-testid={`text-recipe-name-${recipe.id}`}>{recipe.name}</CardTitle>
-                      {recipe.name.includes("Dough") || recipe.name.includes("Sauce") ? (
-                        <Badge variant="secondary" className="text-xs" data-testid={`badge-recipe-base-${recipe.id}`}>
-                          Base Recipe
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Yield:</span>
-                        <span className="font-mono" data-testid={`text-recipe-yield-${recipe.id}`}>{recipe.yieldQty} unit</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Cost:</span>
+      {isLoading ? (
+        <Card>
+          <CardContent className="p-0">
+            <div className="space-y-2 p-6">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : filteredRecipes && filteredRecipes.length > 0 ? (
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Recipe Name</TableHead>
+                  <TableHead className="text-right">Yield</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="text-right">Waste %</TableHead>
+                  <TableHead className="w-[100px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredRecipes.map((recipe) => (
+                  <TableRow 
+                    key={recipe.id} 
+                    className="cursor-pointer hover-elevate" 
+                    data-testid={`row-recipe-${recipe.id}`}
+                  >
+                    <TableCell>
+                      <Link href={`/recipes/${recipe.id}`} className="block w-full">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium" data-testid={`text-recipe-name-${recipe.id}`}>
+                            {recipe.name}
+                          </span>
+                          {recipe.canBeIngredient === 1 && (
+                            <Badge variant="secondary" className="text-xs gap-1" data-testid={`badge-recipe-base-${recipe.id}`}>
+                              <ChefHat className="h-3 w-3" />
+                              Base Recipe
+                            </Badge>
+                          )}
+                        </div>
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Link href={`/recipes/${recipe.id}`} className="block w-full">
+                        <span className="font-mono text-sm" data-testid={`text-recipe-yield-${recipe.id}`}>
+                          {recipe.yieldQty} unit
+                        </span>
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Link href={`/recipes/${recipe.id}`} className="block w-full">
                         <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${recipe.id}`}>
                           ${recipe.computedCost?.toFixed(2) || "0.00"}
                         </span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Waste:</span>
-                        <span className="font-mono" data-testid={`text-recipe-waste-${recipe.id}`}>{recipe.wastePercent}%</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
-            <Card className="border-dashed border-2 hover-elevate cursor-pointer transition-all" data-testid="button-add-new-recipe">
-              <CardContent className="flex items-center justify-center h-full min-h-[180px]">
-                <div className="text-center">
-                  <Plus className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Add New Recipe</p>
-                </div>
-              </CardContent>
-            </Card>
-          </>
-        ) : (
-          <Card className="col-span-full">
-            <CardContent className="pt-6 text-center text-muted-foreground">
-              {searchQuery ? "No recipes match your search" : "No recipes found. Create your first recipe to get started."}
-            </CardContent>
-          </Card>
-        )}
-      </div>
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Link href={`/recipes/${recipe.id}`} className="block w-full">
+                        <span className="font-mono text-sm" data-testid={`text-recipe-waste-${recipe.id}`}>
+                          {recipe.wastePercent}%
+                        </span>
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Link href={`/recipes/${recipe.id}`}>
+                        <Button variant="ghost" size="sm" data-testid={`button-view-recipe-${recipe.id}`}>
+                          View
+                        </Button>
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="pt-6 text-center text-muted-foreground">
+            {searchQuery ? "No recipes match your search" : "No recipes found. Create your first recipe to get started."}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
