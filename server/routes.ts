@@ -1634,7 +1634,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/recipes", async (req, res) => {
     try {
       const data = insertRecipeSchema.parse(req.body);
-      const recipe = await storage.createRecipe(data);
+      const recipe = await storage.createRecipe({ ...data, companyId: req.companyId! });
       res.status(201).json(recipe);
     } catch (error: any) {
       res.status(400).json({ error: error.message });

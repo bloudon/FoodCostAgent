@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation, useParams, Link } from "wouter";
 import {
   DndContext,
@@ -504,10 +504,10 @@ export default function RecipeBuilder() {
       let recipeId = id;
 
       if (isNew) {
-        const result = await apiRequest("/api/recipes", "POST", recipeData) as any;
+        const result = await apiRequest("POST", "/api/recipes", recipeData) as any;
         recipeId = result.id;
       } else {
-        await apiRequest(`/api/recipes/${id}`, "PATCH", recipeData);
+        await apiRequest("PATCH", `/api/recipes/${id}`, recipeData);
       }
 
       // Save components
@@ -522,9 +522,9 @@ export default function RecipeBuilder() {
         };
 
         if (comp.id.startsWith("temp-")) {
-          return apiRequest("/api/recipe-components", "POST", compData);
+          return apiRequest("POST", "/api/recipe-components", compData);
         } else {
-          return apiRequest(`/api/recipe-components/${comp.id}`, "PATCH", compData);
+          return apiRequest("PATCH", `/api/recipe-components/${comp.id}`, compData);
         }
       });
 
@@ -569,33 +569,35 @@ export default function RecipeBuilder() {
   ];
 
   // Load recipe data when editing
-  if (!isNew && recipe && recipeComponents && components.length === 0) {
-    setRecipeName(recipe.name);
-    setYieldQty(recipe.yieldQty.toString());
-    setYieldUnitId(recipe.yieldUnitId);
-    setWastePercent(recipe.wastePercent.toString());
+  useEffect(() => {
+    if (!isNew && recipe && recipeComponents && components.length === 0 && inventoryItems && recipes && units) {
+      setRecipeName(recipe.name);
+      setYieldQty(recipe.yieldQty.toString());
+      setYieldUnitId(recipe.yieldUnitId);
+      setWastePercent(recipe.wastePercent.toString());
 
-    const componentsWithDetails: ComponentWithDetails[] = recipeComponents.map((comp) => {
-      let name = "";
-      if (comp.componentType === "inventory_item") {
-        name = inventoryItems?.find((i) => i.id === comp.componentId)?.name || "Unknown";
-      } else {
-        name = recipes?.find((r) => r.id === comp.componentId)?.name || "Unknown";
-      }
+      const componentsWithDetails: ComponentWithDetails[] = recipeComponents.map((comp) => {
+        let name = "";
+        if (comp.componentType === "inventory_item") {
+          name = inventoryItems?.find((i) => i.id === comp.componentId)?.name || "Unknown";
+        } else {
+          name = recipes?.find((r) => r.id === comp.componentId)?.name || "Unknown";
+        }
 
-      const unitName = units?.find((u) => u.id === comp.unitId)?.name || "";
-      const compWithDetails = {
-        ...comp,
-        name,
-        unitName,
-        cost: 0,
-      };
-      compWithDetails.cost = calculateComponentCost(compWithDetails);
-      return compWithDetails;
-    });
+        const unitName = units?.find((u) => u.id === comp.unitId)?.name || "";
+        const compWithDetails = {
+          ...comp,
+          name,
+          unitName,
+          cost: 0,
+        };
+        compWithDetails.cost = calculateComponentCost(compWithDetails);
+        return compWithDetails;
+      });
 
-    setComponents(componentsWithDetails);
-  }
+      setComponents(componentsWithDetails);
+    }
+  }, [isNew, recipe, recipeComponents, inventoryItems, recipes, units]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (recipeLoading) {
     return (
