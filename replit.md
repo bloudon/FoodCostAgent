@@ -33,6 +33,13 @@ Preferred communication style: Simple, everyday language.
   - **Seed Data**: Only "Pizza Dough (100 lb Batch)" is marked as can_be_ingredient=1 in Brian's Pizza test data
   - **Date Added**: October 19, 2025
 
+- **Category Filtering in Recipe Builder**: Categories include a `showAsIngredient` field (stored as integer 0/1 in the database, default 1) that controls whether inventory items in that category appear in the recipe builder's ingredient selection.
+  - **UI**: Recipe builder displays a category filter dropdown in the left panel. Users can select "All Categories" or a specific category to filter available ingredients. The ingredient list is organized into two sections: "Base Recipes" (recipes with canBeIngredient=1) and "Inventory Items" (regular inventory items).
+  - **Database**: `categories.show_as_ingredient` (integer, default 1)
+  - **Filtering Logic**: Inventory items are filtered by: (1) search term match, (2) selected category (if not "All Categories"), and (3) `showAsIngredient=1` status on the item's category. This allows exclusion of non-recipe categories like "Beverages" from the recipe builder.
+  - **Seed Data**: "Beverages" category is marked as showAsIngredient=0 to exclude beverages from recipe ingredient selection
+  - **Date Added**: October 19, 2025
+
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
