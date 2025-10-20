@@ -131,8 +131,8 @@ export interface IStorage {
   deleteVendorItem(id: string): Promise<void>;
 
   // Recipes
-  getRecipes(): Promise<Recipe[]>;
-  getRecipe(id: string): Promise<Recipe | undefined>;
+  getRecipes(companyId?: string): Promise<Recipe[]>;
+  getRecipe(id: string, companyId?: string): Promise<Recipe | undefined>;
   createRecipe(recipe: InsertRecipe): Promise<Recipe>;
   updateRecipe(id: string, recipe: Partial<Recipe>): Promise<Recipe | undefined>;
 
