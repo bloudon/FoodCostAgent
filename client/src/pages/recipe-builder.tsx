@@ -283,7 +283,12 @@ export default function RecipeBuilder() {
     if (comp.componentType === "inventory_item") {
       const item = inventoryItems?.find((i) => i.id === comp.componentId);
       if (item) {
-        return qtyInBaseUnits * item.pricePerUnit;
+        // Convert item's pricePerUnit to price per base unit
+        const itemUnit = units?.find((u) => u.id === item.unitId);
+        const itemPricePerBaseUnit = itemUnit 
+          ? item.pricePerUnit / itemUnit.toBaseRatio 
+          : item.pricePerUnit;
+        return qtyInBaseUnits * itemPricePerBaseUnit;
       }
     } else if (comp.componentType === "recipe") {
       const subRecipe = recipes?.find((r) => r.id === comp.componentId);
