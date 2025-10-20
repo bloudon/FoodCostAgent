@@ -26,6 +26,12 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -227,7 +233,7 @@ export default function RecipeBuilder() {
 
   // Recipe metadata state
   const [recipeName, setRecipeName] = useState("");
-  const [yieldQty, setYieldQty] = useState("");
+  const [yieldQty, setYieldQty] = useState("1");
   const [yieldUnitId, setYieldUnitId] = useState("");
   const [canBeIngredient, setCanBeIngredient] = useState(false);
 
@@ -596,6 +602,16 @@ export default function RecipeBuilder() {
     type: "recipe" as const,
   })) || [];
 
+  // Set default unit to "each" for new recipes
+  useEffect(() => {
+    if (isNew && units && !yieldUnitId) {
+      const eachUnit = units.find((u) => u.name.toLowerCase() === "each");
+      if (eachUnit) {
+        setYieldUnitId(eachUnit.id);
+      }
+    }
+  }, [isNew, units, yieldUnitId]);
+
   // Load recipe data when editing
   useEffect(() => {
     if (!isNew && recipe && recipeComponents && components.length === 0 && inventoryItems && recipes && units) {
@@ -774,70 +790,81 @@ export default function RecipeBuilder() {
             <div className="col-span-8 flex flex-col gap-4 overflow-hidden">
               {/* Recipe metadata */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Recipe Details</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Recipe Name</label>
-                    <Input
-                      value={recipeName}
-                      onChange={(e) => setRecipeName(e.target.value)}
-                      placeholder="e.g., Margherita Pizza"
-                      data-testid="input-recipe-name"
-                    />
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="can-be-ingredient"
-                      checked={canBeIngredient}
-                      onCheckedChange={(checked) => setCanBeIngredient(checked === true)}
-                      data-testid="checkbox-can-be-ingredient"
-                    />
-                    <label
-                      htmlFor="can-be-ingredient"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                    >
-                      Can be used as ingredient in other recipes
-                    </label>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Yield Quantity</label>
+                <CardContent className="pt-6 space-y-4">
+                  {/* Recipe name and cost on same line */}
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1 space-y-2">
+                      <label className="text-sm font-medium">Recipe Name</label>
                       <Input
-                        type="number"
-                        step="0.01"
-                        value={yieldQty}
-                        onChange={(e) => setYieldQty(e.target.value)}
-                        placeholder="1"
-                        data-testid="input-yield-qty"
+                        value={recipeName}
+                        onChange={(e) => setRecipeName(e.target.value)}
+                        placeholder="e.g., Margherita Pizza"
+                        data-testid="input-recipe-name"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Yield Unit</label>
-                      <Select value={yieldUnitId} onValueChange={setYieldUnitId}>
-                        <SelectTrigger data-testid="select-yield-unit">
-                          <SelectValue placeholder="Select unit" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {units?.map((unit) => (
-                            <SelectItem key={unit.id} value={unit.id}>
-                              {formatUnitName(unit.name)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    <div className="w-48 space-y-2">
+                      <label className="text-sm font-medium">Cost:</label>
+                      <div
+                        className="text-2xl font-bold text-primary text-right"
+                        data-testid="text-total-cost"
+                      >
+                        ${totalCost.toFixed(2)}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex justify-between items-center pt-4 border-t">
-                    <span className="text-lg font-semibold">Total Recipe Cost:</span>
-                    <span
-                      className="text-2xl font-bold text-primary"
-                      data-testid="text-total-cost"
-                    >
-                      ${totalCost.toFixed(2)}
-                    </span>
-                  </div>
+
+                  {/* Yield and canBeIngredient in closed accordion */}
+                  <Accordion type="single" collapsible>
+                    <AccordionItem value="yield-details" className="border-0">
+                      <AccordionTrigger className="text-sm font-medium py-2">
+                        Recipe Yield & Options
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-4 pt-2">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Yield Quantity</label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={yieldQty}
+                              onChange={(e) => setYieldQty(e.target.value)}
+                              placeholder="1"
+                              data-testid="input-yield-qty"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Yield Unit</label>
+                            <Select value={yieldUnitId} onValueChange={setYieldUnitId}>
+                              <SelectTrigger data-testid="select-yield-unit">
+                                <SelectValue placeholder="Select unit" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {units?.map((unit) => (
+                                  <SelectItem key={unit.id} value={unit.id}>
+                                    {formatUnitName(unit.name)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="can-be-ingredient"
+                            checked={canBeIngredient}
+                            onCheckedChange={(checked) => setCanBeIngredient(checked === true)}
+                            data-testid="checkbox-can-be-ingredient"
+                          />
+                          <label
+                            htmlFor="can-be-ingredient"
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                          >
+                            Can be used as ingredient in other recipes
+                          </label>
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
                 </CardContent>
               </Card>
 
@@ -847,8 +874,8 @@ export default function RecipeBuilder() {
                 id="recipe-canvas"
                 className="flex-1 overflow-hidden flex flex-col min-h-0"
               >
-                <CardHeader>
-                  <CardTitle>Ingredients</CardTitle>
+                <CardHeader className="pb-3">
+                  <h3 className="text-sm font-medium">Ingredients</h3>
                 </CardHeader>
                 <CardContent className="flex-1 overflow-auto">
                   {components.length === 0 ? (

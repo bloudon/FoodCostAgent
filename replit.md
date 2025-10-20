@@ -68,6 +68,24 @@ Preferred communication style: Simple, everyday language.
   - **Defense-in-Depth**: Component creation/updates validate that referenced inventory items and sub-recipes belong to the same company, preventing cross-company data linkage
   - **Date Implemented**: October 20, 2025
 
+- **Recipe Builder UI Redesign**: Optimized layout to maximize ingredients window space and improve usability.
+  - **Top Section Layout**: Recipe name input and total cost now share the same row:
+    - Recipe name field takes up flex-1 (majority of horizontal space)
+    - Cost display is right-aligned with fixed width (w-48)
+    - Cost label simplified to "Cost:" (from "Total Recipe Cost:")
+    - Removed "Recipe Details" header to reduce vertical space
+  - **Default Values**: New recipes default to yield of 1 "each" unit
+    - Yield quantity: "1" (set via useState)
+    - Yield unit: "each" (set via useEffect finding unit by name)
+  - **Collapsed Accordion**: Yield fields and "Can be used as ingredient" checkbox are now inside a "Recipe Yield & Options" accordion
+    - Default state: collapsed
+    - Contains: Yield Quantity, Yield Unit, and canBeIngredient checkbox
+    - Reduces visual clutter and maximizes vertical space for ingredients
+  - **Ingredients Section**: Reduced heading font size from CardTitle to text-sm font-medium (matches other labels)
+    - Provides more vertical space for the ingredients table
+    - Maintains visual hierarchy while being less prominent
+  - **Date Redesigned**: October 20, 2025
+
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
