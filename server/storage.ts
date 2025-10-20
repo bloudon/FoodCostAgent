@@ -877,12 +877,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Recipes
-  async getRecipes(): Promise<Recipe[]> {
+  async getRecipes(companyId?: string): Promise<Recipe[]> {
+    if (companyId) {
+      return db.select().from(recipes).where(eq(recipes.companyId, companyId));
+    }
     return db.select().from(recipes);
   }
 
-  async getRecipe(id: string): Promise<Recipe | undefined> {
-    const [recipe] = await db.select().from(recipes).where(eq(recipes.id, id));
+  async getRecipe(id: string, companyId?: string): Promise<Recipe | undefined> {
+    let query = db.select().from(recipes).where(eq(recipes.id, id));
+    if (companyId) {
+      query = query.where(eq(recipes.companyId, companyId)) as any;
+    }
+    const [recipe] = await query;
     return recipe || undefined;
   }
 
