@@ -297,7 +297,7 @@ export const recipes = pgTable("recipes", {
   canBeIngredient: integer("can_be_ingredient").notNull().default(0), // 1 if recipe can be used as ingredient in other recipes
 });
 
-export const insertRecipeSchema = createInsertSchema(recipes).omit({ id: true });
+export const insertRecipeSchema = createInsertSchema(recipes).omit({ id: true, companyId: true });
 export type InsertRecipe = z.infer<typeof insertRecipeSchema>;
 export type Recipe = typeof recipes.$inferSelect;
 
