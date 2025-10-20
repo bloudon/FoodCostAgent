@@ -1586,20 +1586,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ RECIPES ============
   app.get("/api/recipes", async (req, res) => {
-    const recipes = await storage.getRecipes();
+    const recipes = await storage.getRecipes(req.companyId);
     res.json(recipes);
   });
 
   app.get("/api/recipes/:id", async (req, res) => {
-    const recipe = await storage.getRecipe(req.params.id);
+    const recipe = await storage.getRecipe(req.params.id, req.companyId);
     if (!recipe) {
       return res.status(404).json({ error: "Recipe not found" });
     }
 
     const components = await storage.getRecipeComponents(req.params.id);
     const units = await storage.getUnits();
-    const inventoryItems = await storage.getInventoryItems();
-    const recipes = await storage.getRecipes();
+    const inventoryItems = await storage.getInventoryItems(req.companyId);
+    const recipes = await storage.getRecipes(req.companyId);
 
     const expandedComponents = await Promise.all(
       components.map(async (comp) => {
@@ -1643,7 +1643,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/recipes/:id", async (req, res) => {
     try {
-      const recipe = await storage.getRecipe(req.params.id);
+      const recipe = await storage.getRecipe(req.params.id, req.companyId);
       if (!recipe) {
         return res.status(404).json({ error: "Recipe not found" });
       }
@@ -1661,7 +1661,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       await storage.updateRecipe(req.params.id, updateData);
-      const updated = await storage.getRecipe(req.params.id);
+      const updated = await storage.getRecipe(req.params.id, req.companyId);
       res.json(updated);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -1689,8 +1689,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/recipe-components/:recipeId", async (req, res) => {
     const components = await storage.getRecipeComponents(req.params.recipeId);
     const units = await storage.getUnits();
-    const inventoryItems = await storage.getInventoryItems();
-    const recipes = await storage.getRecipes();
+    const inventoryItems = await storage.getInventoryItems(req.companyId);
+    const recipes = await storage.getRecipes(req.companyId);
 
     const enriched = await Promise.all(
       components.map(async (comp) => {
