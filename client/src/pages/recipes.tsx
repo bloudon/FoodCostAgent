@@ -83,7 +83,6 @@ export default function Recipes() {
                   <TableHead>Recipe Name</TableHead>
                   <TableHead className="text-right">Yield</TableHead>
                   <TableHead className="text-right">Cost</TableHead>
-                  <TableHead className="text-right">Waste %</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -120,13 +119,6 @@ export default function Recipes() {
                       <Link href={`/recipes/${recipe.id}`} className="block w-full">
                         <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${recipe.id}`}>
                           ${recipe.computedCost?.toFixed(2) || "0.00"}
-                        </span>
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Link href={`/recipes/${recipe.id}`} className="block w-full">
-                        <span className="font-mono text-sm" data-testid={`text-recipe-waste-${recipe.id}`}>
-                          {recipe.wastePercent}%
                         </span>
                       </Link>
                     </TableCell>

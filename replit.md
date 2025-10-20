@@ -40,6 +40,18 @@ Preferred communication style: Simple, everyday language.
   - **Seed Data**: "Beverages" category is marked as showAsIngredient=0 to exclude beverages from recipe ingredient selection
   - **Date Added**: October 19, 2025
 
+- **Waste Percentage Removal**: The waste percentage field has been removed from recipes. Waste tracking will be implemented later as a separate waste chart feature.
+  - **Database**: Removed `waste_percent` column from `recipes` table
+  - **Cost Calculation**: Recipe costs now represent raw ingredient costs without any waste multiplier
+  - **UI Changes**: Removed waste percentage input from recipe builder, removed waste column from recipes list, removed waste card from recipe detail page
+  - **Date Removed**: October 20, 2025
+
+- **Cost Calculation Fix**: Fixed critical bug in recipe cost calculations where ingredient prices were not being converted to base unit prices before multiplication.
+  - **Issue**: Multiplying quantity in base units (grams) by price per item unit (pounds) without conversion resulted in incorrect costs (e.g., 4 oz of $2/lb yeast showing as $226.80 instead of $0.50)
+  - **Fix**: Convert item's pricePerUnit to price per base unit by dividing by the item's unit toBaseRatio before multiplying by quantity in base units
+  - **Applied To**: Frontend recipe builder, backend calculateRecipeCost function, and calculateInventoryItemImpactInRecipe function
+  - **Date Fixed**: October 20, 2025
+
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture

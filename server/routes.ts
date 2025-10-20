@@ -1656,7 +1656,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: validatedData.name !== undefined ? validatedData.name : recipe.name,
         yieldQty: validatedData.yieldQty !== undefined ? validatedData.yieldQty : recipe.yieldQty,
         yieldUnitId: validatedData.yieldUnitId || recipe.yieldUnitId,
-        wastePercent: validatedData.wastePercent !== undefined ? validatedData.wastePercent : recipe.wastePercent,
         computedCost: validatedData.computedCost !== undefined ? validatedData.computedCost : recipe.computedCost,
         canBeIngredient: validatedData.canBeIngredient !== undefined ? validatedData.canBeIngredient : recipe.canBeIngredient,
       };
@@ -3921,10 +3920,12 @@ async function calculateRecipeCost(recipeId: string): Promise<number> {
     if (comp.componentType === "inventory_item") {
       const item = inventoryItems.find((i) => i.id === comp.componentId);
       if (item) {
-        totalCost += qty * item.pricePerUnit;
+        // Convert item's pricePerUnit to price per base unit
+        const itemUnit = units.find((u) => u.id === item.unitId);
+        const itemPricePerBaseUnit = itemUnit ? item.pricePerUnit / itemUnit.toBaseRatio : item.pricePerUnit;
+        totalCost += qty * itemPricePerBaseUnit;
       }
     } else if (comp.componentType === "recipe") {
-      // Get sub-recipe's cost (already includes its waste)
       const subRecipe = await storage.getRecipe(comp.componentId);
       if (subRecipe) {
         const subRecipeCost = await calculateRecipeCost(comp.componentId);
@@ -3937,8 +3938,7 @@ async function calculateRecipeCost(recipeId: string): Promise<number> {
     }
   }
 
-  const wasteMultiplier = 1 + recipe.wastePercent / 100;
-  return totalCost * wasteMultiplier;
+  return totalCost;
 }
 
 async function calculateInventoryItemImpactInRecipe(recipeId: string, targetItemId: string): Promise<{ usesItem: boolean, qty: number, costContribution: number }> {
@@ -3957,7 +3957,10 @@ async function calculateInventoryItemImpactInRecipe(recipeId: string, targetItem
       const item = inventoryItems.find((i) => i.id === targetItemId);
       if (item) {
         totalQty += qty;
-        totalCostContribution += qty * item.pricePerUnit;
+        // Convert item's pricePerUnit to price per base unit
+        const itemUnit = units.find((u) => u.id === item.unitId);
+        const itemPricePerBaseUnit = itemUnit ? item.pricePerUnit / itemUnit.toBaseRatio : item.pricePerUnit;
+        totalCostContribution += qty * itemPricePerBaseUnit;
       }
     } else if (comp.componentType === "recipe") {
       const subRecipe = await storage.getRecipe(comp.componentId);

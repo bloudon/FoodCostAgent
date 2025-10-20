@@ -234,22 +234,6 @@ export default function RecipeDetail() {
             </p>
           </CardContent>
         </Card>
-
-        <Card data-testid="card-waste">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Waste %
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-mono" data-testid="text-waste">
-              {recipe.wastePercent}%
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Estimated waste
-            </p>
-          </CardContent>
-        </Card>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2 mb-8">

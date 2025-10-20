@@ -229,7 +229,6 @@ export default function RecipeBuilder() {
   const [recipeName, setRecipeName] = useState("");
   const [yieldQty, setYieldQty] = useState("");
   const [yieldUnitId, setYieldUnitId] = useState("");
-  const [wastePercent, setWastePercent] = useState("");
   const [canBeIngredient, setCanBeIngredient] = useState(false);
 
   // Component management state
@@ -306,8 +305,6 @@ export default function RecipeBuilder() {
 
   // Calculate total recipe cost
   const totalCost = components.reduce((sum, comp) => sum + comp.cost, 0);
-  const wasteMultiplier = 1 + (parseFloat(wastePercent) || 0) / 100;
-  const finalCost = totalCost * wasteMultiplier;
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -509,8 +506,7 @@ export default function RecipeBuilder() {
         name: recipeName,
         yieldQty: parseFloat(yieldQty),
         yieldUnitId,
-        wastePercent: parseFloat(wastePercent) || 0,
-        computedCost: finalCost,
+        computedCost: totalCost,
         canBeIngredient: canBeIngredient ? 1 : 0,
       };
 
@@ -606,7 +602,6 @@ export default function RecipeBuilder() {
       setRecipeName(recipe.name);
       setYieldQty(recipe.yieldQty.toString());
       setYieldUnitId(recipe.yieldUnitId);
-      setWastePercent(recipe.wastePercent.toString());
       setCanBeIngredient(recipe.canBeIngredient === 1);
 
       const componentsWithDetails: ComponentWithDetails[] = recipeComponents.map((comp) => {
@@ -783,27 +778,14 @@ export default function RecipeBuilder() {
                   <CardTitle>Recipe Details</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Recipe Name</label>
-                      <Input
-                        value={recipeName}
-                        onChange={(e) => setRecipeName(e.target.value)}
-                        placeholder="e.g., Margherita Pizza"
-                        data-testid="input-recipe-name"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Waste %</label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={wastePercent}
-                        onChange={(e) => setWastePercent(e.target.value)}
-                        placeholder="0"
-                        data-testid="input-waste-percent"
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Recipe Name</label>
+                    <Input
+                      value={recipeName}
+                      onChange={(e) => setRecipeName(e.target.value)}
+                      placeholder="e.g., Margherita Pizza"
+                      data-testid="input-recipe-name"
+                    />
                   </div>
                   <div className="flex items-center space-x-2">
                     <Checkbox
@@ -853,7 +835,7 @@ export default function RecipeBuilder() {
                       className="text-2xl font-bold text-primary"
                       data-testid="text-total-cost"
                     >
-                      ${finalCost.toFixed(2)}
+                      ${totalCost.toFixed(2)}
                     </span>
                   </div>
                 </CardContent>

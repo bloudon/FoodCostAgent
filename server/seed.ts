@@ -199,7 +199,6 @@ async function seedBriansPizza() {
       name: "Pizza Dough (100 lb Batch)",
       yieldQty: 166.5,
       yieldUnitId: units.pound.id,
-      wastePercent: 0,
       computedCost: 0,
       canBeIngredient: 1,
     }).returning();
@@ -600,7 +599,6 @@ export async function seedDatabase() {
       name: "Pizza Dough (100 lb Batch)",
       yieldQty: 166.5, // Total weight of dough produced
       yieldUnitId: units.pound.id,
-      wastePercent: 0,
       computedCost: 0, // Will be calculated
     }).returning();
     
@@ -1058,7 +1056,6 @@ export async function seedDatabase() {
     name: "Pizza Dough",
     yieldQty: 1,
     yieldUnitId: units.pound.id,
-    wastePercent: 2,
     computedCost: 0,
   });
 
@@ -1115,7 +1112,6 @@ export async function seedDatabase() {
     name: "Marinara Pizza Sauce",
     yieldQty: 1,
     yieldUnitId: units.cup.id,
-    wastePercent: 1,
     computedCost: 0,
   });
 
@@ -1180,7 +1176,6 @@ export async function seedDatabase() {
     name: "Margherita Pizza",
     yieldQty: 1,
     yieldUnitId: units.each.id,
-    wastePercent: 3,
     computedCost: 0,
   });
 
@@ -1229,7 +1224,6 @@ export async function seedDatabase() {
     name: "Pepperoni Pizza",
     yieldQty: 1,
     yieldUnitId: units.each.id,
-    wastePercent: 3,
     computedCost: 0,
   });
 
@@ -1270,7 +1264,6 @@ export async function seedDatabase() {
     name: "Supreme Pizza",
     yieldQty: 1,
     yieldUnitId: units.each.id,
-    wastePercent: 3,
     computedCost: 0,
   });
 
@@ -1351,7 +1344,6 @@ export async function seedDatabase() {
     name: "BBQ Chicken Pizza",
     yieldQty: 1,
     yieldUnitId: units.each.id,
-    wastePercent: 3,
     computedCost: 0,
   });
 
@@ -1400,7 +1392,6 @@ export async function seedDatabase() {
     name: "Veggie Pizza",
     yieldQty: 1,
     yieldUnitId: units.each.id,
-    wastePercent: 3,
     computedCost: 0,
   });
 
@@ -1473,7 +1464,6 @@ export async function seedDatabase() {
     name: "Chicken Wings (8pc)",
     yieldQty: 1,
     yieldUnitId: units.each.id,
-    wastePercent: 5,
     computedCost: 0,
   });
 
@@ -1498,7 +1488,6 @@ export async function seedDatabase() {
     name: "Garlic Breadsticks (6pc)",
     yieldQty: 1,
     yieldUnitId: units.each.id,
-    wastePercent: 2,
     computedCost: 0,
   });
 
@@ -1547,7 +1536,6 @@ export async function seedDatabase() {
     name: "Mozzarella Sticks (6pc)",
     yieldQty: 1,
     yieldUnitId: units.each.id,
-    wastePercent: 1,
     computedCost: 0,
   });
 
