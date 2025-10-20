@@ -1585,21 +1585,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ RECIPES ============
-  app.get("/api/recipes", async (req, res) => {
-    const recipes = await storage.getRecipes(req.companyId);
+  app.get("/api/recipes", requireAuth, async (req, res) => {
+    const recipes = await storage.getRecipes((req as any).companyId);
     res.json(recipes);
   });
 
-  app.get("/api/recipes/:id", async (req, res) => {
-    const recipe = await storage.getRecipe(req.params.id, req.companyId);
+  app.get("/api/recipes/:id", requireAuth, async (req, res) => {
+    const recipe = await storage.getRecipe(req.params.id, (req as any).companyId);
     if (!recipe) {
       return res.status(404).json({ error: "Recipe not found" });
     }
 
     const components = await storage.getRecipeComponents(req.params.id);
     const units = await storage.getUnits();
-    const inventoryItems = await storage.getInventoryItems(req.companyId);
-    const recipes = await storage.getRecipes(req.companyId);
+    const inventoryItems = await storage.getInventoryItems((req as any).companyId);
+    const recipes = await storage.getRecipes((req as any).companyId);
 
     const expandedComponents = await Promise.all(
       components.map(async (comp) => {
@@ -1631,19 +1631,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  app.post("/api/recipes", async (req, res) => {
+  app.post("/api/recipes", requireAuth, async (req, res) => {
     try {
       const data = insertRecipeSchema.parse(req.body);
-      const recipe = await storage.createRecipe({ ...data, companyId: req.companyId! });
+      const recipe = await storage.createRecipe({ ...data, companyId: (req as any).companyId! });
       res.status(201).json(recipe);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
   });
 
-  app.patch("/api/recipes/:id", async (req, res) => {
+  app.patch("/api/recipes/:id", requireAuth, async (req, res) => {
     try {
-      const recipe = await storage.getRecipe(req.params.id, req.companyId);
+      const recipe = await storage.getRecipe(req.params.id, (req as any).companyId);
       if (!recipe) {
         return res.status(404).json({ error: "Recipe not found" });
       }
@@ -1661,16 +1661,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       await storage.updateRecipe(req.params.id, updateData);
-      const updated = await storage.getRecipe(req.params.id, req.companyId);
+      const updated = await storage.getRecipe(req.params.id, (req as any).companyId);
       res.json(updated);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
   });
 
-  app.post("/api/recipes/:id/components", async (req, res) => {
+  app.post("/api/recipes/:id/components", requireAuth, async (req, res) => {
     try {
+      // Verify recipe belongs to user's company
+      const recipe = await storage.getRecipe(req.params.id, (req as any).companyId);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+
       const data = insertRecipeComponentSchema.parse(req.body);
+      
+      // Verify component reference belongs to same company
+      if (data.componentType === "inventory_item") {
+        const item = await storage.getInventoryItem(data.componentId, (req as any).companyId);
+        if (!item) {
+          return res.status(404).json({ error: "Inventory item not found" });
+        }
+      } else if (data.componentType === "sub_recipe") {
+        const subRecipe = await storage.getRecipe(data.componentId, (req as any).companyId);
+        if (!subRecipe) {
+          return res.status(404).json({ error: "Sub-recipe not found" });
+        }
+      }
+
       const component = await storage.createRecipeComponent({
         ...data,
         recipeId: req.params.id,
@@ -1686,11 +1706,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ RECIPE COMPONENTS ============
-  app.get("/api/recipe-components/:recipeId", async (req, res) => {
+  app.get("/api/recipe-components/:recipeId", requireAuth, async (req, res) => {
+    // Verify recipe belongs to user's company
+    const recipe = await storage.getRecipe(req.params.recipeId, (req as any).companyId);
+    if (!recipe) {
+      return res.status(404).json({ error: "Recipe not found" });
+    }
+
     const components = await storage.getRecipeComponents(req.params.recipeId);
     const units = await storage.getUnits();
-    const inventoryItems = await storage.getInventoryItems(req.companyId);
-    const recipes = await storage.getRecipes(req.companyId);
+    const inventoryItems = await storage.getInventoryItems((req as any).companyId);
+    const recipes = await storage.getRecipes((req as any).companyId);
 
     const enriched = await Promise.all(
       components.map(async (comp) => {
@@ -1722,9 +1748,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(enriched);
   });
 
-  app.post("/api/recipe-components", async (req, res) => {
+  app.post("/api/recipe-components", requireAuth, async (req, res) => {
     try {
       const data = insertRecipeComponentSchema.parse(req.body);
+      
+      // Verify recipe belongs to user's company
+      const recipe = await storage.getRecipe(data.recipeId, (req as any).companyId);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+
+      // Verify component reference belongs to same company
+      if (data.componentType === "inventory_item") {
+        const item = await storage.getInventoryItem(data.componentId, (req as any).companyId);
+        if (!item) {
+          return res.status(404).json({ error: "Inventory item not found" });
+        }
+      } else if (data.componentType === "sub_recipe") {
+        const subRecipe = await storage.getRecipe(data.componentId, (req as any).companyId);
+        if (!subRecipe) {
+          return res.status(404).json({ error: "Sub-recipe not found" });
+        }
+      }
+
       const component = await storage.createRecipeComponent(data);
       
       const updatedCost = await calculateRecipeCost(data.recipeId);
@@ -1736,11 +1782,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/recipe-components/:id", async (req, res) => {
+  app.patch("/api/recipe-components/:id", requireAuth, async (req, res) => {
     try {
       const component = await storage.getRecipeComponent(req.params.id);
       if (!component) {
         return res.status(404).json({ error: "Component not found" });
+      }
+
+      // Verify recipe belongs to user's company
+      const recipe = await storage.getRecipe(component.recipeId, (req as any).companyId);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+
+      // If componentId is being updated, verify new component belongs to same company
+      if (req.body.componentId && req.body.componentId !== component.componentId) {
+        if (component.componentType === "inventory_item") {
+          const item = await storage.getInventoryItem(req.body.componentId, (req as any).companyId);
+          if (!item) {
+            return res.status(404).json({ error: "Inventory item not found" });
+          }
+        } else if (component.componentType === "sub_recipe") {
+          const subRecipe = await storage.getRecipe(req.body.componentId, (req as any).companyId);
+          if (!subRecipe) {
+            return res.status(404).json({ error: "Sub-recipe not found" });
+          }
+        }
       }
 
       const updateData = {
@@ -1761,11 +1828,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/recipe-components/:id", async (req, res) => {
+  app.delete("/api/recipe-components/:id", requireAuth, async (req, res) => {
     try {
       const component = await storage.getRecipeComponent(req.params.id);
       if (!component) {
         return res.status(404).json({ error: "Component not found" });
+      }
+
+      // Verify recipe belongs to user's company
+      const recipe = await storage.getRecipe(component.recipeId, (req as any).companyId);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
       }
 
       const recipeId = component.recipeId;

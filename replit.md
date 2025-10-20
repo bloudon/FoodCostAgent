@@ -52,6 +52,22 @@ Preferred communication style: Simple, everyday language.
   - **Applied To**: Frontend recipe builder, backend calculateRecipeCost function, and calculateInventoryItemImpactInRecipe function
   - **Date Fixed**: October 20, 2025
 
+- **Recipe Company Isolation**: Implemented comprehensive company-level isolation for recipes and recipe components to prevent cross-company data access.
+  - **Storage Layer**: Updated `getRecipes(companyId?)` and `getRecipe(id, companyId?)` to filter by company
+  - **Authentication**: Added `requireAuth` middleware to all recipe and recipe component routes
+  - **Security Validation**: All endpoints verify recipe ownership before operations:
+    - GET /api/recipes - filters by user's company
+    - GET /api/recipes/:id - returns 404 if recipe doesn't belong to company
+    - POST /api/recipes - auto-injects companyId on create
+    - PATCH /api/recipes/:id - verifies ownership before update
+    - GET /api/recipe-components/:recipeId - verifies recipe ownership
+    - POST /api/recipes/:id/components - verifies recipe ownership and validates referenced inventory items/sub-recipes belong to same company
+    - POST /api/recipe-components - verifies recipe ownership and validates component references
+    - PATCH /api/recipe-components/:id - verifies recipe ownership and validates updated component references
+    - DELETE /api/recipe-components/:id - verifies recipe ownership before deletion
+  - **Defense-in-Depth**: Component creation/updates validate that referenced inventory items and sub-recipes belong to the same company, preventing cross-company data linkage
+  - **Date Implemented**: October 20, 2025
+
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
