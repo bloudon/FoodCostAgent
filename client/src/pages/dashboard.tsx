@@ -11,7 +11,7 @@ import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 
 export default function Dashboard() {
   // Get current user to determine which company to display
-  const { data: currentUser } = useQuery<User>({
+  const { data: currentUser, isLoading: userLoading } = useQuery<User>({
     queryKey: ["/api/auth/me"],
   });
 
@@ -123,7 +123,7 @@ export default function Dashboard() {
     },
   ];
 
-  if (storesLoading || companyLoading) {
+  if (userLoading || storesLoading || companyLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="text-center">
@@ -139,7 +139,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-dashboard-title">
-              {company?.name || "Dashboard"}
+              {company?.name}
             </h1>
             <p className="text-muted-foreground mt-2">
               {selectedStore ? `${selectedStore.name} - ` : ""}Overview of your restaurant inventory and operations
