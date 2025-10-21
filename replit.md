@@ -69,7 +69,7 @@ Preferred communication style: Simple, everyday language.
     - Contains: Yield Quantity, Yield Unit, and canBeIngredient checkbox
     - Reduces visual clutter and maximizes vertical space for ingredients
   - **Ingredients Section**: Reduced heading font size from CardTitle to text-sm font-medium (matches other labels)
-- **Recipe Cost Recalculation on Inventory Price Changes**: Implemented comprehensive automatic recipe cost updates when inventory item prices change, including nested recipe support.
+- **Recipe Cost Recalculation on Inventory Price Changes**: Implemented comprehensive automatic recipe cost updates when inventory item prices changes, including nested recipe support.
   - **Problem**: Previously, when an inventory item's price changed, recipe costs (stored in `recipes.computedCost`) remained stale until manually recalculated
   - **Solution**: PATCH `/api/inventory-items/:id` now automatically recalculates all affected recipes when `pricePerUnit` changes
   - **Dependency Graph**: Helper function `findAffectedRecipesByInventoryItem` builds a complete dependency graph to find:
@@ -113,6 +113,20 @@ The system utilizes a multi-tenant architecture with data isolated per company a
 - **Receiving Module**: Supports partial receipts, resumable sessions, visual indicators for short quantities, and correct PO pricing based on original order prices.
 - **Vendor Integration Architecture**: Pluggable adapter pattern for distributors (Sysco, GFS, US Foods) supporting EDI, PunchOut, and CSV order guides.
 - **Object Storage Integration**: Google Cloud Storage via Replit's object storage for inventory item images, featuring presigned URLs and on-the-fly thumbnail generation.
+- **Unified Orders Page**: Combined Purchase Orders and Receiving into single `/orders` page with status-specific navigation and store location column.
+  - **Page**: `/orders` (replaces separate `/purchase-orders` and `/receiving` index routes)
+  - **Store Column**: Added "Store" column showing store location for each order
+  - **Filters**: Search, Store, Vendor, and Status filters
+  - **Status-Based Navigation**:
+    - **Pending Orders**: Row click and "Edit Order" button → `/purchase-orders/{id}` (editable detail page)
+    - **Ordered Orders**: Row click and "Receive" button → `/receiving/{id}` (receiving workflow)
+    - **Received Orders**: Row click and "View Details" button → `/purchase-orders/{id}` (read-only detail page)
+  - **Redirects After Actions**: 
+    - After creating new order → redirects to `/orders`
+    - After completing receiving → redirects to `/orders`
+    - All back buttons in detail pages → navigate to `/orders`
+  - **Navigation Menu**: Single "Orders" menu item replaces separate "Purchase Orders" and "Receiving" links
+  - **Store User Access**: Store users see "Orders" in their limited menu (Dashboard, Inventory Sessions, Orders)
 
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
