@@ -160,7 +160,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    res.json({ id: user.id, email: user.email, role: user.role });
+    res.json({ 
+      id: user.id, 
+      email: user.email, 
+      role: user.role, 
+      companyId: user.companyId,
+      firstName: user.firstName,
+      lastName: user.lastName
+    });
   });
 
   app.post("/api/auth/select-company", requireAuth, async (req, res) => {
