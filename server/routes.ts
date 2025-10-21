@@ -1415,6 +1415,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.setInventoryItemLocations(req.params.id, locationIds, primaryLocationId);
       }
       
+      // If price changed, recalculate costs for all affected recipes (including nested dependencies)
+      if (updates.pricePerUnit !== undefined && updates.pricePerUnit !== currentItem.pricePerUnit) {
+        const affectedRecipeIds = await findAffectedRecipesByInventoryItem(req.params.id, currentItem.companyId);
+        // Recalculate in topological order (children before parents) to ensure accuracy
+        for (const recipeId of affectedRecipeIds) {
+          const newCost = await calculateRecipeCost(recipeId);
+          await storage.updateRecipe(recipeId, { computedCost: newCost });
+        }
+      }
+      
       res.json(item);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -3977,6 +3987,98 @@ async function calculateComponentCost(comp: any): Promise<number> {
   }
   
   return 0;
+}
+
+/**
+ * Find all recipes affected by an inventory item change, including nested dependencies.
+ * Returns recipe IDs in topological order (children before parents) for proper recalculation.
+ */
+async function findAffectedRecipesByInventoryItem(inventoryItemId: string, companyId: string): Promise<string[]> {
+  const allRecipes = await storage.getRecipes(companyId);
+  
+  // Build component maps for all recipes upfront
+  const recipeComponents = new Map<string, any[]>();
+  for (const recipe of allRecipes) {
+    const components = await storage.getRecipeComponents(recipe.id);
+    recipeComponents.set(recipe.id, components);
+  }
+  
+  // Build dependency graph: recipeId -> parent recipe IDs that use it as a component
+  const recipeToParents = new Map<string, Set<string>>();
+  const recipeToChildren = new Map<string, Set<string>>();
+  
+  for (const recipe of allRecipes) {
+    const components = recipeComponents.get(recipe.id) || [];
+    for (const comp of components) {
+      if (comp.componentType === 'recipe') {
+        if (!recipeToParents.has(comp.componentId)) {
+          recipeToParents.set(comp.componentId, new Set());
+        }
+        recipeToParents.get(comp.componentId)!.add(recipe.id);
+        
+        if (!recipeToChildren.has(recipe.id)) {
+          recipeToChildren.set(recipe.id, new Set());
+        }
+        recipeToChildren.get(recipe.id)!.add(comp.componentId);
+      }
+    }
+  }
+  
+  // Find recipes that directly use the inventory item
+  const affectedRecipes = new Set<string>();
+  for (const recipe of allRecipes) {
+    const components = recipeComponents.get(recipe.id) || [];
+    const usesItem = components.some(c => c.componentType === 'inventory_item' && c.componentId === inventoryItemId);
+    if (usesItem) {
+      affectedRecipes.add(recipe.id);
+    }
+  }
+  
+  // Find all parent recipes (transitive closure)
+  const toProcess = Array.from(affectedRecipes);
+  while (toProcess.length > 0) {
+    const recipeId = toProcess.pop()!;
+    const parents = recipeToParents.get(recipeId);
+    if (parents) {
+      for (const parentId of parents) {
+        if (!affectedRecipes.has(parentId)) {
+          affectedRecipes.add(parentId);
+          toProcess.push(parentId);
+        }
+      }
+    }
+  }
+  
+  // Topological sort: children before parents
+  const sorted: string[] = [];
+  const visited = new Set<string>();
+  
+  function visit(recipeId: string) {
+    if (visited.has(recipeId)) return;
+    visited.add(recipeId);
+    
+    // Visit child recipes first (recipes this recipe depends on)
+    const children = recipeToChildren.get(recipeId);
+    if (children) {
+      for (const childId of children) {
+        if (affectedRecipes.has(childId) && !visited.has(childId)) {
+          visit(childId);
+        }
+      }
+    }
+    
+    // Add this recipe after all its children
+    sorted.push(recipeId);
+  }
+  
+  // Sort all affected recipes
+  for (const recipeId of affectedRecipes) {
+    if (!visited.has(recipeId)) {
+      visit(recipeId);
+    }
+  }
+  
+  return sorted;
 }
 
 async function calculateRecipeCost(recipeId: string): Promise<number> {
