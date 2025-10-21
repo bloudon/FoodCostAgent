@@ -3608,23 +3608,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get effective company ID from request context (already resolved by auth middleware)
       const effectiveCompanyId = (req as any).companyId;
 
-      console.log(`[STORE ACCESS DEBUG] User: ${currentUser.email}, Role: ${currentUser.role}, User CompanyId: ${currentUser.companyId}, Effective CompanyId: ${effectiveCompanyId}`);
-
       // Get accessible store IDs
       const storeIds = await getAccessibleStores(currentUser, effectiveCompanyId || undefined);
-      console.log(`[STORE ACCESS DEBUG] Accessible store IDs:`, storeIds);
       
       // Fetch full store objects
       const stores = [];
       for (const storeId of storeIds) {
         const store = await storage.getCompanyStore(storeId);
         if (store) {
-          console.log(`[STORE ACCESS DEBUG] Store fetched: ${store.name}, CompanyId: ${store.companyId}`);
           stores.push(store);
         }
       }
       
-      console.log(`[STORE ACCESS DEBUG] Total stores returned: ${stores.length}`);
       res.json(stores);
     } catch (error: any) {
       res.status(500).json({ error: error.message });

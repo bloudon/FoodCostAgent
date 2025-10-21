@@ -4,10 +4,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Package, DollarSign, TrendingUp, AlertTriangle, ClipboardList, ArrowRight, Building2, MapPin, Phone, Mail } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Company } from "@shared/schema";
+import type { Company, User } from "@shared/schema";
 
 export default function Dashboard() {
-  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+  // Get current user to determine which company to display
+  const { data: currentUser } = useQuery<User>({
+    queryKey: ["/api/auth/me"],
+  });
+
+  // For global admins, use selectedCompanyId from localStorage
+  // For regular users, use their own companyId
+  const selectedCompanyId = currentUser?.role === "global_admin" 
+    ? localStorage.getItem("selectedCompanyId")
+    : currentUser?.companyId;
   
   const { data: company, isLoading: companyLoading } = useQuery<Company>({
     queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}`] : [],
