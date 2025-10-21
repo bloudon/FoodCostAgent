@@ -1416,8 +1416,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.setInventoryItemLocations(req.params.id, locationIds, primaryLocationId);
       }
       
-      // If price changed, recalculate costs for all affected recipes (including nested dependencies)
-      if (updates.pricePerUnit !== undefined && updates.pricePerUnit !== currentItem.pricePerUnit) {
+      // If price or yield changed, recalculate costs for all affected recipes (including nested dependencies)
+      const priceChanged = updates.pricePerUnit !== undefined && updates.pricePerUnit !== currentItem.pricePerUnit;
+      const yieldChanged = updates.yieldPercent !== undefined && updates.yieldPercent !== currentItem.yieldPercent;
+      
+      if (priceChanged || yieldChanged) {
         const affectedRecipeIds = await findAffectedRecipesByInventoryItem(req.params.id, currentItem.companyId);
         // Recalculate in topological order (children before parents) to ensure accuracy
         for (const recipeId of affectedRecipeIds) {
