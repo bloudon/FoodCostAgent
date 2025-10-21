@@ -136,7 +136,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
-      res.json({ user: { id: user.id, email: user.email, role: user.role } });
+      res.json({ 
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          role: user.role,
+          companyId: user.companyId,
+          firstName: user.firstName,
+          lastName: user.lastName
+        } 
+      });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
