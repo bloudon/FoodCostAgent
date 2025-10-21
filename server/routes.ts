@@ -1586,11 +1586,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ RECIPES ============
   app.get("/api/recipes", requireAuth, async (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const recipes = await storage.getRecipes((req as any).companyId);
     res.json(recipes);
   });
 
   app.get("/api/recipes/:id", requireAuth, async (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const recipe = await storage.getRecipe(req.params.id, (req as any).companyId);
     if (!recipe) {
       return res.status(404).json({ error: "Recipe not found" });
@@ -1707,6 +1709,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ RECIPE COMPONENTS ============
   app.get("/api/recipe-components/:recipeId", requireAuth, async (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     // Verify recipe belongs to user's company
     const recipe = await storage.getRecipe(req.params.recipeId, (req as any).companyId);
     if (!recipe) {

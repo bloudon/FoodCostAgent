@@ -190,6 +190,13 @@ export default function InventoryItemDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "locations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      // Invalidate all recipe queries (list, detail, components) because recipe costs depend on ingredient prices
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          Array.isArray(query.queryKey) && 
+          (query.queryKey[0] === "/api/recipes" || query.queryKey[0] === "/api/recipe-components"),
+        refetchType: "active"
+      });
       toast({
         title: "Item updated",
         description: "The inventory item has been successfully updated.",
