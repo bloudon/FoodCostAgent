@@ -133,13 +133,46 @@ export default function Dashboard() {
     );
   }
 
+  // Simplified dashboard for store users
+  if (currentUser?.role === 'store_user') {
+    return (
+      <div className="p-8">
+        <Card className="max-w-2xl mx-auto">
+          <CardHeader>
+            <div className="text-center space-y-2">
+              <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-dashboard-title">
+                {company?.name || "Welcome"}
+              </h1>
+              {selectedStore && (
+                <p className="text-xl text-muted-foreground">
+                  {selectedStore.name}
+                </p>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center space-y-4">
+              <p className="text-lg">
+                Welcome, {currentUser.firstName || currentUser.email}!
+              </p>
+              <p className="text-muted-foreground">
+                Use the navigation menu to access Inventory Sessions and Receiving.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Full dashboard for admins and managers
   return (
     <div className="p-8">
       <div className="mb-8">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-dashboard-title">
-              {company?.name}
+              {company?.name || "Dashboard"}
             </h1>
             <p className="text-muted-foreground mt-2">
               {selectedStore ? `${selectedStore.name} - ` : ""}Overview of your restaurant inventory and operations

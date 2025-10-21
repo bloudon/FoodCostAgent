@@ -107,13 +107,13 @@ export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
 
-  // Store level users should only see Inventory Sessions and Receiving
+  // Store level users should only see Dashboard, Inventory Sessions and Receiving
   const isStoreUser = user?.role === 'store_user';
   
   // Filter menu items based on user role
   const visibleMenuItems = isStoreUser 
     ? menuItems.filter(item => 
-        item.title === 'Inventory Sessions' || item.title === 'Receiving'
+        item.title === 'Dashboard' || item.title === 'Inventory Sessions' || item.title === 'Receiving'
       )
     : menuItems;
 
