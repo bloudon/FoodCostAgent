@@ -52,7 +52,7 @@ export default function InventoryItemCreate() {
   const [caseSize, setCaseSize] = useState("20");
   const [barcode, setBarcode] = useState("");
   const [pricePerUnit, setPricePerUnit] = useState("0");
-  const [yieldPercent, setYieldPercent] = useState("");
+  const [yieldPercent, setYieldPercent] = useState("95");
   const [parLevel, setParLevel] = useState("");
   const [reorderLevel, setReorderLevel] = useState("");
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
@@ -107,7 +107,7 @@ export default function InventoryItemCreate() {
         barcode: barcode.trim() || null,
         pricePerUnit: parseFloat(pricePerUnit) || 0,
         storageLocationId: primaryLocationId,
-        yieldPercent: yieldPercent.trim() !== "" ? parseFloat(yieldPercent.trim()) : null,
+        yieldPercent: parseFloat(yieldPercent) || 95,
         parLevel: parLevel.trim() !== "" ? parseFloat(parLevel.trim()) : null,
         reorderLevel: reorderLevel.trim() !== "" ? parseFloat(reorderLevel.trim()) : null,
         locationIds: selectedLocations,
@@ -183,6 +183,15 @@ export default function InventoryItemCreate() {
       toast({
         title: "Validation Error",
         description: "Unit of measure is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!yieldPercent || parseFloat(yieldPercent) < 1 || parseFloat(yieldPercent) > 100) {
+      toast({
+        title: "Validation Error",
+        description: "Yield percentage must be between 1 and 100.",
         variant: "destructive",
       });
       return;
@@ -341,18 +350,22 @@ export default function InventoryItemCreate() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="yieldPercent">Yield Percentage</Label>
+                <Label htmlFor="yieldPercent">Yield Percentage *</Label>
                 <Input
                   id="yieldPercent"
                   type="number"
                   step="0.1"
-                  min="0"
+                  min="1"
                   max="100"
                   value={yieldPercent}
                   onChange={(e) => setYieldPercent(e.target.value)}
-                  placeholder="e.g., 85"
+                  placeholder="95"
+                  required
                   data-testid="input-yield-percent"
                 />
+                <p className="text-sm text-muted-foreground">
+                  Usable percentage after trimming/waste. Default is 95%.
+                </p>
               </div>
             </CardContent>
           </Card>

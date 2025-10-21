@@ -50,7 +50,7 @@ type InventoryItem = {
   pricePerUnit: number;
   caseSize: number;
   storageLocationId: string;
-  yieldPercent: number | null;
+  yieldPercent: number;
   imageUrl: string | null;
   parLevel: number | null;
   reorderLevel: number | null;
@@ -222,9 +222,26 @@ export default function InventoryItemDetail() {
       if (["pricePerUnit", "caseSize", "parLevel", "reorderLevel", "yieldPercent"].includes(field)) {
         const numValue = parseFloat(value);
         if (value !== "" && !isNaN(numValue)) {
+          // Validate yieldPercent range
+          if (field === "yieldPercent" && (numValue < 1 || numValue > 100)) {
+            toast({
+              title: "Validation Error",
+              description: "Yield percentage must be between 1 and 100.",
+              variant: "destructive",
+            });
+            setEditedFields(prev => {
+              const newFields = { ...prev };
+              delete newFields[field];
+              return newFields;
+            });
+            return;
+          }
           updateMutation.mutate({ [field]: numValue });
-        } else if (value === "" && (field === "parLevel" || field === "reorderLevel" || field === "yieldPercent")) {
+        } else if (value === "" && (field === "parLevel" || field === "reorderLevel")) {
           updateMutation.mutate({ [field]: null });
+        } else if (value === "" && field === "yieldPercent") {
+          // Default to 95 if empty
+          updateMutation.mutate({ [field]: 95 });
         }
       } else {
         updateMutation.mutate({ [field]: value });
@@ -652,24 +669,25 @@ export default function InventoryItemDetail() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="yieldPercent">Yield Percentage</Label>
+                <Label htmlFor="yieldPercent">Yield Percentage *</Label>
                 <div className="flex gap-2">
                   <Input
                     id="yieldPercent"
                     type="number"
-                    step="1"
-                    min="0"
+                    step="0.1"
+                    min="1"
                     max="100"
-                    value={getFieldValue("yieldPercent", item.yieldPercent ?? "")}
-                    placeholder="e.g., 75"
+                    value={getFieldValue("yieldPercent", item.yieldPercent ?? 95)}
+                    placeholder="95"
                     onChange={(e) => handleFieldChange("yieldPercent", e.target.value)}
                     onBlur={() => handleFieldBlur("yieldPercent")}
                     disabled={updateMutation.isPending}
+                    required
                     data-testid="input-yield-percent"
                   />
                   <div className="flex items-center px-3 text-muted-foreground">%</div>
                 </div>
-                <p className="text-xs text-muted-foreground">Usable yield after trimming/waste</p>
+                <p className="text-xs text-muted-foreground">Usable percentage after trimming/waste. Default is 95%.</p>
               </div>
             </CardContent>
           </Card>
