@@ -1,10 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Package, DollarSign, TrendingUp, AlertTriangle, ClipboardList, ArrowRight, Building2, MapPin, Phone, Mail } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Package, DollarSign, TrendingUp, AlertTriangle, ClipboardList, ArrowRight, Store, PackageCheck, Truck } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Company, User } from "@shared/schema";
+import type { Company, User, CompanyStore } from "@shared/schema";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 
 export default function Dashboard() {
   // Get current user to determine which company to display
@@ -23,8 +26,23 @@ export default function Dashboard() {
     enabled: !!selectedCompanyId,
   });
 
+  // Get accessible stores for the current user
+  const { data: stores = [], isLoading: storesLoading } = useAccessibleStores();
+
+  // Store selection state - default to first store
+  const [selectedStoreId, setSelectedStoreId] = useState<string>("");
+
+  // Auto-select first store when stores are loaded
+  if (!selectedStoreId && stores.length > 0) {
+    setSelectedStoreId(stores[0].id);
+  }
+
+  const selectedStore = stores.find(s => s.id === selectedStoreId);
+
+  // Fetch data filtered by selected store
   const { data: inventoryItems, isLoading: itemsLoading } = useQuery<any[]>({
-    queryKey: ["/api/inventory-items"],
+    queryKey: ["/api/inventory-items", selectedStoreId],
+    enabled: !!selectedStoreId,
   });
 
   const { data: recipes, isLoading: recipesLoading } = useQuery<any[]>({
@@ -39,8 +57,15 @@ export default function Dashboard() {
     queryKey: ["/api/storage-locations"],
   });
 
-  // Get most recent count
-  const mostRecentCount = inventoryCounts?.sort((a, b) => 
+  const { data: receipts = [] } = useQuery<any[]>({
+    queryKey: ["/api/receipts"],
+  });
+
+  // Filter counts by selected store
+  const storeCounts = inventoryCounts?.filter(c => c.storeId === selectedStoreId) || [];
+  
+  // Get most recent count for this store
+  const mostRecentCount = storeCounts.sort((a, b) => 
     new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime()
   )[0];
 
@@ -49,10 +74,18 @@ export default function Dashboard() {
     enabled: !!mostRecentCount,
   });
 
+  // Filter receipts by selected store and get most recent 3
+  const storeReceipts = receipts
+    .filter(r => r.storeId === selectedStoreId)
+    .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
+    .slice(0, 3);
+
+  // Stats filtered by selected store
   const totalItems = inventoryItems?.filter(i => i.active === 1).length || 0;
   const avgRecipeCost = recipes?.length
     ? recipes.reduce((sum, r) => sum + (r.computedCost || 0), 0) / recipes.length
     : 0;
+  const lowStockItems = 0; // TODO: Implement low stock calculation based on par levels
 
   const stats = [
     {
@@ -75,68 +108,56 @@ export default function Dashboard() {
     },
     {
       title: "Low Stock Items",
-      value: "0",
+      value: lowStockItems.toString(),
       icon: AlertTriangle,
       description: "Items below threshold",
     },
   ];
 
+  if (storesLoading || companyLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="text-lg">Loading dashboard...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-dashboard-title">
-          Dashboard
-        </h1>
-        <p className="text-muted-foreground mt-2">
-          Overview of your restaurant inventory and operations
-        </p>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-dashboard-title">
+              {company?.name || "Dashboard"}
+            </h1>
+            <p className="text-muted-foreground mt-2">
+              Overview of your restaurant inventory and operations
+            </p>
+          </div>
+          
+          {/* Store Selector */}
+          <div className="flex items-center gap-3">
+            <Store className="h-5 w-5 text-muted-foreground" />
+            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+              <SelectTrigger className="w-[200px]" data-testid="select-store">
+                <SelectValue placeholder="Select store" />
+              </SelectTrigger>
+              <SelectContent>
+                {stores.map((store) => (
+                  <SelectItem key={store.id} value={store.id} data-testid={`option-store-${store.id}`}>
+                    {store.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
       </div>
 
-      {/* Company Info Card */}
-      {company && (company.name || company.addressLine1) && (
-        <Card className="mb-8" data-testid="card-company-info">
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-muted-foreground" />
-              <CardTitle>{company.name || "Restaurant"}</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-              {company.addressLine1 && (
-                <div className="flex items-start gap-2" data-testid="company-address">
-                  <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                  <div className="text-sm">
-                    <p className="font-medium">{company.addressLine1}</p>
-                    {company.addressLine2 && <p className="font-medium">{company.addressLine2}</p>}
-                    {(company.city || company.state || company.postalCode) && (
-                      <p className="text-muted-foreground">
-                        {[company.city, company.state, company.postalCode]
-                          .filter(Boolean)
-                          .join(", ")}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-              {company.phone && (
-                <div className="flex items-center gap-2" data-testid="company-phone">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">{company.phone}</span>
-                </div>
-              )}
-              {company.contactEmail && (
-                <div className="flex items-center gap-2" data-testid="company-email">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">{company.contactEmail}</span>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-12">
+      {/* Stats Grid */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
         {stats.map((stat) => (
           <Card key={stat.title} data-testid={`card-stat-${stat.title.toLowerCase().replace(/\s+/g, "-")}`}>
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
@@ -157,55 +178,19 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-sm text-muted-foreground">
-              Navigate to Inventory Count, Recipes, or Reports to manage your restaurant
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              {inventoryItems && inventoryItems.length > 0 
-                ? `${inventoryItems.length} inventory items in catalog` 
-                : "No recent activity"}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>System Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-green-600 dark:text-green-400">
-              ✓ All systems operational
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="mt-8">
+      {/* Quicklinks Section */}
+      <div className="grid gap-6 md:grid-cols-2 mb-8">
+        {/* Recent Inventory Count */}
         <Card data-testid="card-recent-inventory">
           <CardHeader>
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <ClipboardList className="h-5 w-5 text-muted-foreground" />
-                <CardTitle>Most Recent Inventory Count</CardTitle>
+                <CardTitle>Recent Inventory Count</CardTitle>
               </div>
               <Link href="/inventory-sessions">
-                <Button data-testid="button-new-count">
-                  View All Sessions
-                  <ArrowRight className="ml-2 h-4 w-4" />
+                <Button variant="ghost" size="sm" data-testid="button-view-counts">
+                  <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
             </div>
@@ -217,60 +202,139 @@ export default function Dashboard() {
                 <Skeleton className="h-4 w-3/4" />
               </div>
             ) : mostRecentCount ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Date</p>
-                    <p className="font-medium font-mono" data-testid="text-recent-count-date">
+                    <p className="font-medium font-mono text-sm" data-testid="text-recent-count-date">
                       {new Date(mostRecentCount.countedAt).toLocaleDateString()}
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Location</p>
-                    <p className="font-medium" data-testid="text-recent-count-location">
-                      {storageLocations?.find(l => l.id === mostRecentCount.storageLocationId)?.name || "Unknown"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Items</p>
-                    <p className="font-medium font-mono" data-testid="text-recent-count-items">
+                    <p className="text-sm text-muted-foreground">Items</p>
+                    <p className="font-medium font-mono text-sm" data-testid="text-recent-count-items">
                       {recentCountLines?.length || 0}
                     </p>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Value</p>
-                    <p className="font-medium font-mono" data-testid="text-recent-count-value">
-                      ${recentCountLines?.reduce((sum, line) => {
-                        const item = inventoryItems?.find(i => i.id === line.inventoryItemId);
-                        return sum + (line.derivedMicroUnits * (item?.pricePerUnit || 0));
-                      }, 0).toFixed(2) || "0.00"}
-                    </p>
-                  </div>
                 </div>
-                {mostRecentCount.note && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Note</p>
-                    <p className="text-sm" data-testid="text-recent-count-note">{mostRecentCount.note}</p>
-                  </div>
-                )}
                 <div className="pt-2">
                   <Link href={`/count/${mostRecentCount.id}`}>
-                    <Button variant="outline" size="sm" data-testid="button-view-count-details">
-                      View Full Details
+                    <Button variant="outline" size="sm" className="w-full" data-testid="button-view-count-details">
+                      View Details
                     </Button>
                   </Link>
                 </div>
               </div>
             ) : (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground mb-4">No inventory counts yet</p>
+              <div className="text-center py-6">
+                <p className="text-sm text-muted-foreground mb-3">No counts for this store yet</p>
                 <Link href="/inventory-sessions">
-                  <Button data-testid="button-first-count">
-                    Go to Sessions
+                  <Button size="sm" data-testid="button-first-count">
+                    Start Count
                   </Button>
                 </Link>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Recent Receipts */}
+        <Card data-testid="card-recent-receipts">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <PackageCheck className="h-5 w-5 text-muted-foreground" />
+                <CardTitle>Recent Receipts</CardTitle>
+              </div>
+              <Link href="/receiving">
+                <Button variant="ghost" size="sm" data-testid="button-view-receipts">
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {storeReceipts.length > 0 ? (
+              <div className="space-y-3">
+                {storeReceipts.map((receipt) => (
+                  <div key={receipt.id} className="flex items-center justify-between border-b last:border-0 pb-2 last:pb-0">
+                    <div>
+                      <p className="font-medium text-sm" data-testid={`text-receipt-date-${receipt.id}`}>
+                        {new Date(receipt.receivedAt).toLocaleDateString()}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        PO #{receipt.poId?.slice(0, 8)}
+                      </p>
+                    </div>
+                    <Link href={`/receiving/${receipt.poId}`}>
+                      <Button variant="ghost" size="sm" data-testid={`button-view-receipt-${receipt.id}`}>
+                        View
+                      </Button>
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <p className="text-sm text-muted-foreground mb-3">No receipts for this store yet</p>
+                <Link href="/receiving">
+                  <Button size="sm" data-testid="button-first-receipt">
+                    View Receiving
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid gap-6 md:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <ClipboardList className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-base">Inventory</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Link href="/inventory-sessions">
+              <Button className="w-full" data-testid="button-new-count-session">
+                New Count Session
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Truck className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-base">Purchase Orders</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Link href="/purchase-orders">
+              <Button className="w-full" data-testid="button-view-pos">
+                View Orders
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-base">Variance Report</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Link href="/variance">
+              <Button className="w-full" data-testid="button-view-variance">
+                View Report
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>
