@@ -188,7 +188,7 @@ export const inventoryItems = pgTable("inventory_items", {
   barcode: text("barcode"),
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
   pricePerUnit: real("price_per_unit").notNull().default(0), // price per base unit (case cost = pricePerUnit × caseSize)
-  yieldPercent: real("yield_percent"), // usable yield percentage after trimming/waste (0-100)
+  yieldPercent: real("yield_percent").notNull().default(95), // usable yield percentage after trimming/waste (0-100), defaults to 95%
   parLevel: real("par_level"), // default target inventory level (can be overridden at store level)
   reorderLevel: real("reorder_level"), // default reorder level (can be overridden at store level)
   imageUrl: text("image_url"),
@@ -197,6 +197,7 @@ export const inventoryItems = pgTable("inventory_items", {
 
 export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({ id: true, updatedAt: true }).extend({
   categoryId: z.string().optional(),
+  yieldPercent: z.number().min(1).max(100).default(95),
 });
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 export type InventoryItem = typeof inventoryItems.$inferSelect;

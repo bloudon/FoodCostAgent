@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system for food service businesses, especially pizza restaurants. It offers tools for managing inventory, vendors, recipes, and purchase orders. Key features include complex unit conversions, nested recipes, real-time POS sales data integration, and detailed variance reporting. The system aims to boost operational efficiency, reduce waste, and improve profitability. It supports multi-company enterprises with robust data isolation and integrates with food distributors.
+This project is a comprehensive inventory management and recipe costing system designed for food service businesses, particularly pizza restaurants. It provides tools for managing inventory, vendors, recipes, and purchase orders. Key capabilities include complex unit conversions, nested recipes, real-time POS sales data integration, and detailed variance reporting. The system aims to enhance operational efficiency, minimize waste, and improve profitability. It supports multi-company enterprises with robust data isolation and integrates with various food distributors.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -30,24 +30,18 @@ Preferred communication style: Simple, everyday language.
   - **API**: 
     - POST `/api/recipes` - Creates recipe with canBeIngredient field
     - PATCH `/api/recipes/:id` - Updates recipe including canBeIngredient (validates with Zod schema)
-  - **Seed Data**: Only "Pizza Dough (100 lb Batch)" is marked as can_be_ingredient=1 in Brian's Pizza test data
-
 - **Category Filtering in Recipe Builder**: Categories include a `showAsIngredient` field (stored as integer 0/1 in the database, default 1) that controls whether inventory items in that category appear in the recipe builder's ingredient selection.
   - **UI**: Recipe builder displays a category filter dropdown in the left panel. Users can select "All Categories" or a specific category to filter available ingredients. The ingredient list is organized into two sections: "Base Recipes" (recipes with canBeIngredient=1) and "Inventory Items" (regular inventory items).
   - **Database**: `categories.show_as_ingredient` (integer, default 1)
   - **Filtering Logic**: Inventory items are filtered by: (1) search term match, (2) selected category (if not "All Categories"), and (3) `showAsIngredient=1` status on the item's category. This allows exclusion of non-recipe categories like "Beverages" from the recipe builder.
-  - **Seed Data**: "Beverages" category is marked as showAsIngredient=0 to exclude beverages from recipe ingredient selection
-
 - **Waste Percentage Removal**: The waste percentage field has been removed from recipes. Waste tracking will be implemented later as a separate waste chart feature.
   - **Database**: Removed `waste_percent` column from `recipes` table
   - **Cost Calculation**: Recipe costs now represent raw ingredient costs without any waste multiplier
   - **UI Changes**: Removed waste percentage input from recipe builder, removed waste column from recipes list, removed waste card from recipe detail page
-
 - **Cost Calculation Fix**: Fixed critical bug in recipe cost calculations where ingredient prices were not being converted to base unit prices before multiplication.
   - **Issue**: Multiplying quantity in base units (grams) by price per item unit (pounds) without conversion resulted in incorrect costs (e.g., 4 oz of $2/lb yeast showing as $226.80 instead of $0.50)
   - **Fix**: Convert item's pricePerUnit to price per base unit by dividing by the item's unit toBaseRatio before multiplying by quantity in base units
   - **Applied To**: Frontend recipe builder, backend calculateRecipeCost function, and calculateInventoryItemImpactInRecipe function
-
 - **Recipe Company Isolation**: Implemented comprehensive company-level isolation for recipes and recipe components to prevent cross-company data access.
   - **Storage Layer**: Updated `getRecipes(companyId?)` and `getRecipe(id, companyId?)` to filter by company
   - **Authentication**: Added `requireAuth` middleware to all recipe and recipe component routes
@@ -61,8 +55,6 @@ Preferred communication style: Simple, everyday language.
     - POST /api/recipe-components - verifies recipe ownership and validates component references
     - PATCH /api/recipe-components/:id - verifies recipe ownership and validates updated component references
     - DELETE /api/recipe-components/:id - verifies recipe ownership before deletion
-  - **Defense-in-Depth**: Component creation/updates validate that referenced inventory items and sub-recipes belong to the same company, preventing cross-company data linkage
-
 - **Recipe Builder UI Redesign**: Optimized layout to maximize ingredients window space and improve usability.
   - **Top Section Layout**: Recipe name input and total cost now share the same row:
     - Recipe name field takes up flex-1 (majority of horizontal space)
@@ -77,9 +69,6 @@ Preferred communication style: Simple, everyday language.
     - Contains: Yield Quantity, Yield Unit, and canBeIngredient checkbox
     - Reduces visual clutter and maximizes vertical space for ingredients
   - **Ingredients Section**: Reduced heading font size from CardTitle to text-sm font-medium (matches other labels)
-    - Provides more vertical space for the ingredients table
-    - Maintains visual hierarchy while being less prominent
-
 - **Recipe Cost Recalculation on Inventory Price Changes**: Implemented comprehensive automatic recipe cost updates when inventory item prices change, including nested recipe support.
   - **Problem**: Previously, when an inventory item's price changed, recipe costs (stored in `recipes.computedCost`) remained stale until manually recalculated
   - **Solution**: PATCH `/api/inventory-items/:id` now automatically recalculates all affected recipes when `pricePerUnit` changes
@@ -90,17 +79,15 @@ Preferred communication style: Simple, everyday language.
   - **Recalculation Order**: Recipes are recalculated in dependency order (children first, then parents) to ensure accurate nested cost propagation
   - **Client-Side**: Predicate-based cache invalidation ensures all recipe queries (list, detail, components) refresh after inventory updates
   - **Server-Side**: Cache-Control: no-store headers on recipe endpoints prevent browser-level caching
-  - **Example**: Changing tomato price updates: (1) Marinara Sauce cost, (2) Pizza recipe cost (which uses Marinara Sauce), (3) Any other recipes using those recipes
-  - **Performance**: Uses efficient dependency graph traversal with Map/Set data structures; O(R + E) complexity where R = recipes, E = component edges
 
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
-The system employs a multi-tenant architecture with data isolated per company and store. All domain tables include `company_id`, and store-level tracking uses `storeId`. Company context is resolved via `req.companyId` for strict data isolation. A default "Misc Grocery" vendor is created for every new company. Thrive Control Center (TCC) integration is supported via `tcc_account_id` (company-level) and `tcc_location_id` (store-level) for POS connectivity.
+The system utilizes a multi-tenant architecture with data isolated per company and store. All relevant tables include `company_id`, and store-level tracking uses `storeId`. Company context is resolved via `req.companyId` for strict data isolation. Integration with Thrive Control Center (TCC) is supported via `tcc_account_id` (company-level) and `tcc_location_id` (store-level) for POS connectivity.
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
-- **UI**: shadcn/ui with Radix UI, Tailwind CSS, custom theming (warm orange primary color).
+- **UI**: shadcn/ui built with Radix UI, Tailwind CSS, and custom theming (warm orange primary color).
 - **State Management**: TanStack Query for server state, local component state.
 - **Routing**: Wouter.
 - **Features**: Dark/light theme, responsive navigation, search/filtering, real-time data updates via WebSockets, dashboard, quick price adjustments.
@@ -108,20 +95,20 @@ The system employs a multi-tenant architecture with data isolated per company an
 ### Backend
 - **Runtime**: Node.js with TypeScript.
 - **Web Framework**: Express.js for REST APIs.
-- **API Design**: RESTful, WebSocket server, Zod validation.
+- **API Design**: RESTful, WebSocket server for real-time data, Zod for validation.
 - **Database Layer**: Drizzle ORM, PostgreSQL (Neon serverless), schema-first with migrations.
 - **Core Domain Models**: Users, Storage Locations, Units, Inventory Items, Vendors, Recipes (nested), Inventory Counts, Purchase Orders, POS Sales, Transfer/Waste Logs.
 - **Business Logic**: Unit conversion, recursive recipe cost calculation, location-based inventory, theoretical vs. actual usage variance, purchase order workflows, COGS analysis.
 - **Authentication & Sessions**: Session-based authentication with `auth_sessions` table; global admin company selection via `selected_company_id`.
-- **Role-Based Access Control**: Hierarchical permission system with `global_admin`, `company_admin`, `store_manager`, `store_user` roles, enforcing data isolation and preventing privilege escalation. Store isolation ensures users only see authorized stores via a dedicated API endpoint and frontend hook.
+- **Role-Based Access Control**: Hierarchical permission system (`global_admin`, `company_admin`, `store_manager`, `store_user` roles) enforcing data isolation and preventing privilege escalation.
 
 ### Architectural Decisions
 - Single-page application with API and frontend served from the same Express server.
 - WebSocket for real-time POS data streaming.
 - Micro-unit system for precise inventory and recursive recipe cost calculation.
 - Automated inventory adjustments for transfers and waste, with historical recipe versioning.
-- **Inventory Count Sessions**: Auto-populate items based on dual-active status filtering and company match. Implements cross-company protection via PostgreSQL triggers. Count page maintains stable item order (ORDER BY id) during entry to prevent page jumping when quantities are updated.
-- Purchase order management supports unit/case-based ordering, vendor-specific item filtering, and keyboard-optimized entry. The purchase order creation page displays usage equation components (Previous Count, Received, Current Count, Usage) with navigable links to associated records.
+- **Inventory Count Sessions**: Auto-populate items based on dual-active status filtering and company match. Implements cross-company protection via PostgreSQL triggers.
+- Purchase order management supports unit/case-based ordering, vendor-specific item filtering, and keyboard-optimized entry.
 - System-wide standardization from "product" to "inventory item" terminology.
 - **Receiving Module**: Supports partial receipts, resumable sessions, visual indicators for short quantities, and correct PO pricing based on original order prices.
 - **Vendor Integration Architecture**: Pluggable adapter pattern for distributors (Sysco, GFS, US Foods) supporting EDI, PunchOut, and CSV order guides.
@@ -132,4 +119,4 @@ The system employs a multi-tenant architecture with data isolated per company an
 - **Database Services**: Neon serverless PostgreSQL, `@neondatabase/serverless`.
 - **Real-time Communication**: `ws` (WebSockets).
 - **Image Processing**: Sharp (for thumbnail generation).
-- **Vendor Integrations**: Sysco, GFS, US Foods (via custom adapters for EDI, PunchOut, CSV).
+- **Vendor Integrations**: Sysco, GFS, US Foods (via custom adapters).
