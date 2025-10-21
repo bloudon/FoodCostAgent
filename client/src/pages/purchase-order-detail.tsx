@@ -208,7 +208,7 @@ export default function PurchaseOrderDetail() {
         description: `Purchase order ${isNew ? "created" : "updated"} successfully`,
       });
       if (isNew) {
-        setLocation("/purchase-orders");
+        setLocation("/orders");
       }
     },
     onError: (error: any) => {
@@ -413,7 +413,7 @@ export default function PurchaseOrderDetail() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setLocation("/purchase-orders")}
+                onClick={() => setLocation("/orders")}
                 data-testid="button-back"
               >
                 <ArrowLeft className="h-5 w-5" />

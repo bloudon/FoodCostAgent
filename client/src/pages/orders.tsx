@@ -227,8 +227,8 @@ export default function Orders() {
                       data-testid={`row-order-${order.id}`}
                       className="cursor-pointer hover-elevate"
                       onClick={() => {
-                        // Navigate to receiving page if status is pending/ordered, otherwise PO detail
-                        const targetUrl = order.status === "pending" || order.status === "ordered"
+                        // Pending → PO detail (editable), Ordered → receiving, Received → PO detail (read-only)
+                        const targetUrl = order.status === "ordered"
                           ? `/receiving/${order.id}`
                           : `/purchase-orders/${order.id}`;
                         setLocation(targetUrl);
@@ -266,7 +266,19 @@ export default function Orders() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {order.status === "pending" || order.status === "ordered" ? (
+                          {order.status === "pending" ? (
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              data-testid={`button-edit-order-${order.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLocation(`/purchase-orders/${order.id}`);
+                              }}
+                            >
+                              Edit Order
+                            </Button>
+                          ) : order.status === "ordered" ? (
                             <Button 
                               variant="default" 
                               size="sm"

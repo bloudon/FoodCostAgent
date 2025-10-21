@@ -204,7 +204,7 @@ export default function ReceivingDetail() {
         title: "Success",
         description: "Items received successfully",
       });
-      setLocation("/receiving");
+      setLocation("/orders");
     },
     onError: (error: any) => {
       toast({
@@ -699,10 +699,10 @@ export default function ReceivingDetail() {
                 <>
                   <Button
                     variant="outline"
-                    onClick={() => setLocation("/receiving")}
+                    onClick={() => setLocation("/orders")}
                     data-testid="button-back-to-receiving-footer"
                   >
-                    Back to Receiving
+                    Back to Orders
                   </Button>
                   <Button
                     onClick={() => reopenReceiptMutation.mutate(draftReceiptId!)}
@@ -717,7 +717,7 @@ export default function ReceivingDetail() {
                 <>
                   <Button
                     variant="outline"
-                    onClick={() => setLocation("/receiving")}
+                    onClick={() => setLocation("/orders")}
                     data-testid="button-cancel-receiving"
                   >
                     Cancel
