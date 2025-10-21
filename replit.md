@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system designed for food service businesses, particularly pizza restaurants. It provides tools for managing inventory, vendors, recipes, and purchase orders. Key capabilities include complex unit conversions, nested recipes, real-time POS sales data integration, and detailed variance reporting. The system aims to enhance operational efficiency, reduce waste, and improve profitability for food service operators. It supports a multi-company enterprise with robust tenant and store-level data isolation and integrates deeply with food distributors.
+This project is a comprehensive inventory management and recipe costing system for food service businesses, especially pizza restaurants. It offers tools for managing inventory, vendors, recipes, and purchase orders. Key features include complex unit conversions, nested recipes, real-time POS sales data integration, and detailed variance reporting. The system aims to boost operational efficiency, reduce waste, and improve profitability. It supports multi-company enterprises with robust data isolation and integrates with food distributors.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -96,7 +96,7 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
-The system utilizes a multi-tenant architecture with data isolated per company and store-level operations. All domain tables include `company_id`, and store-level tracking uses `storeId`. Company context is resolved via `req.companyId` for strict data isolation. A default "Misc Grocery" vendor is created for every new company. Thrive Control Center (TCC) integration is supported via `tcc_account_id` (company-level) and `tcc_location_id` (store-level) for POS connectivity.
+The system employs a multi-tenant architecture with data isolated per company and store. All domain tables include `company_id`, and store-level tracking uses `storeId`. Company context is resolved via `req.companyId` for strict data isolation. A default "Misc Grocery" vendor is created for every new company. Thrive Control Center (TCC) integration is supported via `tcc_account_id` (company-level) and `tcc_location_id` (store-level) for POS connectivity.
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
@@ -113,7 +113,7 @@ The system utilizes a multi-tenant architecture with data isolated per company a
 - **Core Domain Models**: Users, Storage Locations, Units, Inventory Items, Vendors, Recipes (nested), Inventory Counts, Purchase Orders, POS Sales, Transfer/Waste Logs.
 - **Business Logic**: Unit conversion, recursive recipe cost calculation, location-based inventory, theoretical vs. actual usage variance, purchase order workflows, COGS analysis.
 - **Authentication & Sessions**: Session-based authentication with `auth_sessions` table; global admin company selection via `selected_company_id`.
-- **Role-Based Access Control**: Hierarchical permission system with `global_admin`, `company_admin`, `store_manager`, `store_user` roles. Enforces data isolation and prevents privilege escalation. Store isolation ensures users only see authorized stores via a dedicated API endpoint and frontend hook.
+- **Role-Based Access Control**: Hierarchical permission system with `global_admin`, `company_admin`, `store_manager`, `store_user` roles, enforcing data isolation and preventing privilege escalation. Store isolation ensures users only see authorized stores via a dedicated API endpoint and frontend hook.
 
 ### Architectural Decisions
 - Single-page application with API and frontend served from the same Express server.
