@@ -1236,6 +1236,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pricePerUnit: item.pricePerUnit,
         unitId: item.unitId,
         caseSize: item.caseSize,
+        yieldPercent: item.yieldPercent,
         imageUrl: item.imageUrl,
         parLevel: item.parLevel,
         reorderLevel: item.reorderLevel,
@@ -1696,7 +1697,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!item) {
           return res.status(404).json({ error: "Inventory item not found" });
         }
-      } else if (data.componentType === "sub_recipe") {
+      } else if (data.componentType === "recipe") {
         const subRecipe = await storage.getRecipe(data.componentId, (req as any).companyId);
         if (!subRecipe) {
           return res.status(404).json({ error: "Sub-recipe not found" });
@@ -1777,7 +1778,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!item) {
           return res.status(404).json({ error: "Inventory item not found" });
         }
-      } else if (data.componentType === "sub_recipe") {
+      } else if (data.componentType === "recipe") {
         const subRecipe = await storage.getRecipe(data.componentId, (req as any).companyId);
         if (!subRecipe) {
           return res.status(404).json({ error: "Sub-recipe not found" });
@@ -1815,7 +1816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (!item) {
             return res.status(404).json({ error: "Inventory item not found" });
           }
-        } else if (component.componentType === "sub_recipe") {
+        } else if (component.componentType === "recipe") {
           const subRecipe = await storage.getRecipe(req.body.componentId, (req as any).companyId);
           if (!subRecipe) {
             return res.status(404).json({ error: "Sub-recipe not found" });
