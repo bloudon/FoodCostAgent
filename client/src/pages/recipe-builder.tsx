@@ -293,7 +293,10 @@ export default function RecipeBuilder() {
         const itemPricePerBaseUnit = itemUnit 
           ? item.pricePerUnit / itemUnit.toBaseRatio 
           : item.pricePerUnit;
-        return qtyInBaseUnits * itemPricePerBaseUnit;
+        // Adjust for yield percentage to get effective cost (e.g., $3/lb at 70% yield = $4.29/lb effective)
+        const yieldFactor = item.yieldPercent / 100;
+        const effectiveCost = yieldFactor > 0 ? itemPricePerBaseUnit / yieldFactor : itemPricePerBaseUnit;
+        return qtyInBaseUnits * effectiveCost;
       }
     } else if (comp.componentType === "recipe") {
       const subRecipe = recipes?.find((r) => r.id === comp.componentId);
