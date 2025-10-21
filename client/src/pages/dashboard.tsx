@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, DollarSign, TrendingUp, AlertTriangle, ClipboardList, ArrowRight, Store, PackageCheck, Truck } from "lucide-react";
+import { Package, DollarSign, ClipboardList, ArrowRight, Store, PackageCheck, Truck, TrendingUp } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Company, User, CompanyStore } from "@shared/schema";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -29,88 +29,97 @@ export default function Dashboard() {
   // Get accessible stores for the current user
   const { data: stores = [], isLoading: storesLoading } = useAccessibleStores();
 
-  // Store selection state - default to first store
+  // Store selection state
   const [selectedStoreId, setSelectedStoreId] = useState<string>("");
 
-  // Auto-select first store when stores are loaded
-  if (!selectedStoreId && stores.length > 0) {
-    setSelectedStoreId(stores[0].id);
-  }
+  // Initialize selectedStoreId when stores are loaded
+  useEffect(() => {
+    if (stores.length > 0 && !selectedStoreId) {
+      setSelectedStoreId(stores[0].id);
+    }
+  }, [stores, selectedStoreId]);
 
   const selectedStore = stores.find(s => s.id === selectedStoreId);
 
-  // Fetch data filtered by selected store
+  // Fetch data filtered by selected store using proper query parameters
+  // Note: queryKey is joined with "/" so we use query string in the first element
   const { data: inventoryItems, isLoading: itemsLoading } = useQuery<any[]>({
     queryKey: [`/api/inventory-items?store_id=${selectedStoreId}`],
     enabled: !!selectedStoreId,
   });
 
-  const { data: recipes, isLoading: recipesLoading } = useQuery<any[]>({
-    queryKey: ["/api/recipes"],
-  });
-
+  // Use server-side filtering for inventory counts by storeId
   const { data: inventoryCounts, isLoading: countsLoading } = useQuery<any[]>({
-    queryKey: ["/api/inventory-counts"],
+    queryKey: [`/api/inventory-counts?storeId=${selectedStoreId}`],
+    enabled: !!selectedStoreId,
   });
 
   const { data: storageLocations } = useQuery<any[]>({
     queryKey: ["/api/storage-locations"],
   });
 
-  const { data: receipts = [] } = useQuery<any[]>({
+  // Receipts - fetch all and filter client-side (no server-side store filter available)
+  const { data: allReceipts = [] } = useQuery<any[]>({
     queryKey: ["/api/receipts"],
   });
 
-  // Filter counts by selected store
-  const storeCounts = inventoryCounts?.filter(c => c.storeId === selectedStoreId) || [];
+  // Filter receipts by selected store client-side (copy array to avoid mutation)
+  const storeReceiptsAll = [...allReceipts].filter(r => r.storeId === selectedStoreId);
   
-  // Get most recent count for this store
-  const mostRecentCount = storeCounts.sort((a, b) => 
-    new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime()
-  )[0];
+  // Get last 3 receipts for quicklink display
+  const storeReceiptsRecent = [...storeReceiptsAll]
+    .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
+    .slice(0, 3);
+  
+  // Get most recent count for this store (already filtered server-side, copy to avoid cache mutation)
+  const mostRecentCount = inventoryCounts && inventoryCounts.length > 0
+    ? [...inventoryCounts].sort((a, b) => 
+        new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime()
+      )[0]
+    : undefined;
 
   const { data: recentCountLines } = useQuery<any[]>({
     queryKey: ["/api/inventory-count-lines", mostRecentCount?.id],
     enabled: !!mostRecentCount,
   });
 
-  // Filter receipts by selected store and get most recent 3
-  const storeReceipts = receipts
-    .filter(r => r.storeId === selectedStoreId)
-    .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
-    .slice(0, 3);
-
   // Stats filtered by selected store
   const totalItems = inventoryItems?.filter(i => i.active === 1).length || 0;
-  const avgRecipeCost = recipes?.length
-    ? recipes.reduce((sum, r) => sum + (r.computedCost || 0), 0) / recipes.length
-    : 0;
-  const lowStockItems = 0; // TODO: Implement low stock calculation based on par levels
+  const totalCounts = inventoryCounts?.length || 0;
+  const totalReceipts = storeReceiptsAll.length;
+  
+  // Calculate total inventory value for this store
+  const totalInventoryValue = inventoryItems?.reduce((sum, item) => {
+    if (item.active === 1) {
+      return sum + (item.pricePerUnit || 0);
+    }
+    return sum;
+  }, 0) || 0;
 
   const stats = [
     {
-      title: "Total Items",
+      title: "Active Items",
       value: itemsLoading ? "..." : totalItems.toString(),
       icon: Package,
-      description: "Active inventory items",
+      description: "Inventory items at this store",
     },
     {
-      title: "Avg Recipe Cost",
-      value: recipesLoading ? "..." : `$${avgRecipeCost.toFixed(2)}`,
+      title: "Inventory Value",
+      value: itemsLoading ? "..." : `$${totalInventoryValue.toFixed(2)}`,
       icon: DollarSign,
-      description: "Average cost per recipe",
+      description: "Total value of inventory items",
     },
     {
-      title: "Total Recipes",
-      value: recipesLoading ? "..." : (recipes?.length || 0).toString(),
-      icon: TrendingUp,
-      description: "Menu item recipes",
+      title: "Inventory Counts",
+      value: countsLoading ? "..." : totalCounts.toString(),
+      icon: ClipboardList,
+      description: "Count sessions for this store",
     },
     {
-      title: "Low Stock Items",
-      value: lowStockItems.toString(),
-      icon: AlertTriangle,
-      description: "Items below threshold",
+      title: "Recent Receipts",
+      value: totalReceipts.toString(),
+      icon: PackageCheck,
+      description: "Last 3 receipts received",
     },
   ];
 
@@ -133,7 +142,7 @@ export default function Dashboard() {
               {company?.name || "Dashboard"}
             </h1>
             <p className="text-muted-foreground mt-2">
-              Overview of your restaurant inventory and operations
+              {selectedStore ? `${selectedStore.name} - ` : ""}Overview of your restaurant inventory and operations
             </p>
           </div>
           
@@ -254,9 +263,9 @@ export default function Dashboard() {
             </div>
           </CardHeader>
           <CardContent>
-            {storeReceipts.length > 0 ? (
+            {storeReceiptsRecent.length > 0 ? (
               <div className="space-y-3">
-                {storeReceipts.map((receipt) => (
+                {storeReceiptsRecent.map((receipt) => (
                   <div key={receipt.id} className="flex items-center justify-between border-b last:border-0 pb-2 last:pb-0">
                     <div>
                       <p className="font-medium text-sm" data-testid={`text-receipt-date-${receipt.id}`}>
