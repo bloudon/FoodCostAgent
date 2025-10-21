@@ -41,7 +41,7 @@ export default function Dashboard() {
 
   // Fetch data filtered by selected store
   const { data: inventoryItems, isLoading: itemsLoading } = useQuery<any[]>({
-    queryKey: ["/api/inventory-items", selectedStoreId],
+    queryKey: [`/api/inventory-items?store_id=${selectedStoreId}`],
     enabled: !!selectedStoreId,
   });
 
