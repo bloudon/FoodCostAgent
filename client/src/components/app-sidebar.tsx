@@ -54,14 +54,9 @@ const menuItems = [
     icon: Users,
   },
   {
-    title: "Purchase Orders",
-    url: "/purchase-orders",
+    title: "Orders",
+    url: "/orders",
     icon: ShoppingCart,
-  },
-  {
-    title: "Receiving",
-    url: "/receiving",
-    icon: PackageCheck,
   },
   {
     title: "Transfer Orders",
@@ -107,13 +102,13 @@ export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
 
-  // Store level users should only see Dashboard, Inventory Sessions and Receiving
+  // Store level users should only see Dashboard, Inventory Sessions and Orders
   const isStoreUser = user?.role === 'store_user';
   
   // Filter menu items based on user role
   const visibleMenuItems = isStoreUser 
     ? menuItems.filter(item => 
-        item.title === 'Dashboard' || item.title === 'Inventory Sessions' || item.title === 'Receiving'
+        item.title === 'Dashboard' || item.title === 'Inventory Sessions' || item.title === 'Orders'
       )
     : menuItems;
 

@@ -26,9 +26,8 @@ import RecipeBuilder from "@/pages/recipe-builder";
 import UnitConversions from "@/pages/unit-conversions";
 import Vendors from "@/pages/vendors";
 import VendorDetail from "@/pages/vendor-detail";
-import PurchaseOrders from "@/pages/purchase-orders";
+import Orders from "@/pages/orders";
 import PurchaseOrderDetail from "@/pages/purchase-order-detail";
-import Receiving from "@/pages/receiving";
 import ReceivingDetail from "@/pages/receiving-detail";
 import TransferOrders from "@/pages/transfer-orders";
 import TransferOrderDetail from "@/pages/transfer-order-detail";
@@ -123,10 +122,9 @@ function ProtectedLayout() {
               <Route path="/recipes" component={Recipes} />
               <Route path="/vendors/:id" component={VendorDetail} />
               <Route path="/vendors" component={Vendors} />
+              <Route path="/orders" component={Orders} />
               <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
-              <Route path="/purchase-orders" component={PurchaseOrders} />
               <Route path="/receiving/:poId" component={ReceivingDetail} />
-              <Route path="/receiving" component={Receiving} />
               <Route path="/transfer-orders/:id" component={TransferOrderDetail} />
               <Route path="/transfer-orders" component={TransferOrders} />
               <Route path="/variance" component={VarianceReport} />
