@@ -4101,7 +4101,10 @@ async function calculateRecipeCost(recipeId: string): Promise<number> {
         // Convert item's pricePerUnit to price per base unit
         const itemUnit = units.find((u) => u.id === item.unitId);
         const itemPricePerBaseUnit = itemUnit ? item.pricePerUnit / itemUnit.toBaseRatio : item.pricePerUnit;
-        totalCost += qty * itemPricePerBaseUnit;
+        // Adjust for yield percentage to get effective cost (e.g., $3/lb at 70% yield = $4.29/lb effective)
+        const yieldFactor = item.yieldPercent / 100;
+        const effectiveCost = yieldFactor > 0 ? itemPricePerBaseUnit / yieldFactor : itemPricePerBaseUnit;
+        totalCost += qty * effectiveCost;
       }
     } else if (comp.componentType === "recipe") {
       const subRecipe = await storage.getRecipe(comp.componentId);
@@ -4138,7 +4141,10 @@ async function calculateInventoryItemImpactInRecipe(recipeId: string, targetItem
         // Convert item's pricePerUnit to price per base unit
         const itemUnit = units.find((u) => u.id === item.unitId);
         const itemPricePerBaseUnit = itemUnit ? item.pricePerUnit / itemUnit.toBaseRatio : item.pricePerUnit;
-        totalCostContribution += qty * itemPricePerBaseUnit;
+        // Adjust for yield percentage to get effective cost
+        const yieldFactor = item.yieldPercent / 100;
+        const effectiveCost = yieldFactor > 0 ? itemPricePerBaseUnit / yieldFactor : itemPricePerBaseUnit;
+        totalCostContribution += qty * effectiveCost;
       }
     } else if (comp.componentType === "recipe") {
       const subRecipe = await storage.getRecipe(comp.componentId);
