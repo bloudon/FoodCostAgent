@@ -44,7 +44,7 @@ export default function TransferOrderDetail() {
 
   // Fetch transfer order lines if editing
   const { data: lines } = useQuery<TransferOrderLine[]>({
-    queryKey: ["/api/transfer-order-lines", { transferOrderId: id }],
+    queryKey: [`/api/transfer-order-lines?transferOrderId=${id}`],
     enabled: !isNewOrder,
   });
 
@@ -104,7 +104,7 @@ export default function TransferOrderDetail() {
       return await apiRequest("POST", "/api/transfer-order-lines", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/transfer-order-lines", { transferOrderId: id }] });
+      queryClient.invalidateQueries({ queryKey: [`/api/transfer-order-lines?transferOrderId=${id}`] });
     },
   });
 

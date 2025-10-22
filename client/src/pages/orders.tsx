@@ -33,14 +33,15 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
-type PurchaseOrderDisplay = {
+type UnifiedOrder = {
   id: string;
-  storeId: string;
-  vendorId: string;
-  vendorName: string;
+  type: "purchase" | "transfer";
   status: string;
   createdAt: string;
   expectedDate: string | null;
+  vendorName: string;
+  fromStore?: string;
+  toStore?: string;
   lineCount: number;
   totalAmount: number;
 };
@@ -59,20 +60,23 @@ type Store = {
 const statusColors: Record<string, string> = {
   "pending": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
   "ordered": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  "in_transit": "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
   "received": "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  "completed": "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
 };
 
 export default function Orders() {
   const [search, setSearch] = useState("");
   const [selectedVendor, setSelectedVendor] = useState<string>("all");
+  const [selectedType, setSelectedType] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [selectedStore, setSelectedStore] = useState<string>("all");
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const { data: purchaseOrders, isLoading } = useQuery<PurchaseOrderDisplay[]>({
-    queryKey: ["/api/purchase-orders"],
+  const { data: orders, isLoading } = useQuery<UnifiedOrder[]>({
+    queryKey: ["/api/orders/unified"],
   });
 
   const { data: vendors } = useQuery<Vendor[]>({
@@ -88,23 +92,24 @@ export default function Orders() {
       await apiRequest("DELETE", `/api/purchase-orders/${id}`);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
       toast({
         title: "Success",
-        description: "Purchase order deleted successfully",
+        description: "Order deleted successfully",
       });
       setOrderToDelete(null);
     },
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete purchase order",
+        description: error.message || "Failed to delete order",
         variant: "destructive",
       });
     },
   });
 
-  const filteredOrders = purchaseOrders?.filter((order) => {
+  const filteredOrders = orders?.filter((order) => {
     const createdDate = new Date(order.createdAt).toLocaleDateString();
     const expectedDate = order.expectedDate ? new Date(order.expectedDate).toLocaleDateString() : '';
     
@@ -112,10 +117,20 @@ export default function Orders() {
       order.id?.toLowerCase().includes(search.toLowerCase()) ||
       createdDate.toLowerCase().includes(search.toLowerCase()) ||
       expectedDate.toLowerCase().includes(search.toLowerCase());
-    const matchesVendor = selectedVendor === "all" || order.vendorId === selectedVendor;
+    const matchesType = selectedType === "all" || order.type === selectedType;
+    
+    // For vendor filter, use name-based matching since unified API returns vendorName (not vendorId)
+    const matchesVendor = selectedVendor === "all" || 
+      order.vendorName.trim().toLowerCase().includes(selectedVendor);
+    
     const matchesStatus = selectedStatus === "all" || order.status === selectedStatus;
-    const matchesStore = selectedStore === "all" || order.storeId === selectedStore;
-    return matchesSearch && matchesVendor && matchesStatus && matchesStore;
+    
+    // For store filter, use name-based matching since unified API returns store names
+    const matchesStore = selectedStore === "all" || 
+      order.fromStore?.trim().toLowerCase().includes(selectedStore) ||
+      order.toStore?.trim().toLowerCase().includes(selectedStore);
+      
+    return matchesSearch && matchesType && matchesVendor && matchesStatus && matchesStore;
   }) || [];
 
   // Get store name by ID
@@ -159,7 +174,7 @@ export default function Orders() {
             <SelectContent>
               <SelectItem value="all">All Stores</SelectItem>
               {stores?.map((store) => (
-                <SelectItem key={store.id} value={store.id}>
+                <SelectItem key={store.id} value={store.name.toLowerCase()}>
                   {store.name}
                 </SelectItem>
               ))}
@@ -172,10 +187,20 @@ export default function Orders() {
             <SelectContent>
               <SelectItem value="all">All Vendors</SelectItem>
               {vendors?.map((vendor) => (
-                <SelectItem key={vendor.id} value={vendor.id}>
+                <SelectItem key={vendor.id} value={vendor.name.toLowerCase()}>
                   {vendor.name}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+          <Select value={selectedType} onValueChange={setSelectedType}>
+            <SelectTrigger className="w-[200px]" data-testid="select-type-filter">
+              <SelectValue placeholder="Filter by type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="purchase">Purchase Orders</SelectItem>
+              <SelectItem value="transfer">Transfer Orders</SelectItem>
             </SelectContent>
           </Select>
           <Select value={selectedStatus} onValueChange={setSelectedStatus}>
@@ -186,7 +211,9 @@ export default function Orders() {
               <SelectItem value="all">All Statuses</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="ordered">Ordered</SelectItem>
+              <SelectItem value="in_transit">In Transit</SelectItem>
               <SelectItem value="received">Received</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -210,9 +237,9 @@ export default function Orders() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[120px]">PO Number</TableHead>
-                  <TableHead>Store</TableHead>
-                  <TableHead>Vendor</TableHead>
+                  <TableHead className="w-[100px]">Number</TableHead>
+                  <TableHead className="w-[80px]">Type</TableHead>
+                  <TableHead>Details</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead>Expected</TableHead>
                   <TableHead className="text-right">Items</TableHead>
@@ -226,24 +253,31 @@ export default function Orders() {
                   const createdDate = new Date(order.createdAt);
                   const expectedDate = order.expectedDate ? new Date(order.expectedDate) : null;
 
+                  // Determine navigation URL based on order type and status
+                  let targetUrl = '';
+                  if (order.type === 'purchase') {
+                    targetUrl = order.status === "pending"
+                      ? `/purchase-orders/${order.id}`
+                      : `/receiving/${order.id}`;
+                  } else {
+                    // Transfer orders
+                    targetUrl = `/transfer-orders/${order.id}`;
+                  }
+
                   return (
                     <TableRow 
                       key={order.id} 
                       data-testid={`row-order-${order.id}`}
                       className="cursor-pointer hover-elevate"
-                      onClick={() => {
-                        // Pending → PO detail (editable), Ordered/Received → receiving view
-                        const targetUrl = order.status === "pending"
-                          ? `/purchase-orders/${order.id}`
-                          : `/receiving/${order.id}`;
-                        setLocation(targetUrl);
-                      }}
+                      onClick={() => setLocation(targetUrl)}
                     >
                       <TableCell className="font-mono text-sm">
                         #{order.id.slice(0, 8)}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium text-sm">{getStoreName(order.storeId)}</div>
+                        <Badge variant="outline" className="capitalize">
+                          {order.type}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">{order.vendorName}</div>
@@ -266,60 +300,79 @@ export default function Orders() {
                           className={statusColors[order.status] || ""}
                           data-testid={`badge-status-${order.id}`}
                         >
-                          {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                          {order.status.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {order.status === "pending" ? (
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              data-testid={`button-edit-order-${order.id}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setLocation(`/purchase-orders/${order.id}`);
-                              }}
-                            >
-                              Edit Order
-                            </Button>
-                          ) : order.status === "ordered" ? (
-                            <Button 
-                              variant="default" 
-                              size="sm"
-                              data-testid={`button-receive-order-${order.id}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setLocation(`/receiving/${order.id}`);
-                              }}
-                            >
-                              Receive
-                            </Button>
+                          {order.type === "purchase" ? (
+                            <>
+                              {order.status === "pending" ? (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  data-testid={`button-edit-order-${order.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/purchase-orders/${order.id}`);
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              ) : order.status === "ordered" ? (
+                                <Button 
+                                  variant="default" 
+                                  size="sm"
+                                  data-testid={`button-receive-order-${order.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/receiving/${order.id}`);
+                                  }}
+                                >
+                                  Receive
+                                </Button>
+                              ) : (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  data-testid={`button-view-receipt-${order.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/receiving/${order.id}`);
+                                  }}
+                                >
+                                  View
+                                </Button>
+                              )}
+                            </>
                           ) : (
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              data-testid={`button-view-order-${order.id}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setLocation(`/receiving/${order.id}`);
-                              }}
-                            >
-                              View Receipt
-                            </Button>
-                          )}
-                          {order.status !== "received" && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOrderToDelete(order.id);
-                              }}
-                              data-testid={`button-delete-order-${order.id}`}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
+                            <>
+                              {order.status === "pending" ? (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  data-testid={`button-edit-transfer-${order.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/transfer-orders/${order.id}`);
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              ) : (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  data-testid={`button-view-transfer-${order.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/transfer-orders/${order.id}`);
+                                  }}
+                                >
+                                  View
+                                </Button>
+                              )}
+                            </>
                           )}
                         </div>
                       </TableCell>

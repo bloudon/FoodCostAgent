@@ -2363,6 +2363,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ UNIFIED ORDERS (Purchase + Transfer) ============
+  app.get("/api/orders/unified", requireAuth, async (req, res) => {
+    try {
+      const companyId = req.companyId!;
+      const storeId = req.query.storeId as string | undefined;
+      const status = req.query.status as string | undefined;
+      
+      // Fetch both purchase orders and transfer orders
+      const [purchaseOrders, transferOrders, vendors, stores] = await Promise.all([
+        storage.getPurchaseOrders(companyId, storeId),
+        storage.getTransferOrders(companyId, storeId),
+        storage.getVendors(companyId),
+        storage.getCompanyStores(companyId)
+      ]);
+      
+      // Transform purchase orders
+      const poPromises = purchaseOrders.map(async (po) => {
+        const vendor = vendors.find(v => v.id === po.vendorId);
+        const store = stores.find(s => s.id === po.storeId);
+        const lines = await storage.getPOLines(po.id);
+        const lineCount = lines.length;
+        const totalAmount = lines.reduce((sum, line) => sum + (line.orderedQty * line.priceEach), 0);
+        
+        return {
+          id: po.id,
+          type: "purchase" as const,
+          status: po.status,
+          createdAt: po.createdAt,
+          expectedDate: po.expectedDeliveryDate,
+          vendorName: vendor?.name || "Unknown",
+          fromStore: vendor?.name, // Vendor as "source" for purchase orders
+          toStore: store?.name, // Receiving store
+          lineCount,
+          totalAmount,
+        };
+      });
+      
+      // Transform transfer orders
+      const toPromises = transferOrders.map(async (to) => {
+        const fromStore = stores.find(s => s.id === to.fromStoreId);
+        const toStore = stores.find(s => s.id === to.toStoreId);
+        const lines = await storage.getTransferOrderLines(to.id);
+        const lineCount = lines.length;
+        
+        // Calculate approximate total (items may not have prices, so this is best effort)
+        const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
+        let totalAmount = 0;
+        for (const line of lines) {
+          const item = inventoryItems.find(i => i.id === line.inventoryItemId);
+          if (item && item.pricePerUnit) {
+            totalAmount += line.requestedQty * item.pricePerUnit;
+          }
+        }
+        
+        return {
+          id: to.id,
+          type: "transfer" as const,
+          status: to.status,
+          createdAt: to.createdAt,
+          expectedDate: to.expectedDate,
+          vendorName: `${fromStore?.name || "Unknown"} → ${toStore?.name || "Unknown"}`,
+          fromStore: fromStore?.name,
+          toStore: toStore?.name,
+          lineCount,
+          totalAmount,
+        };
+      });
+      
+      // Wait for all enrichment
+      const enrichedPOs = await Promise.all(poPromises);
+      const enrichedTOs = await Promise.all(toPromises);
+      
+      // Combine and filter by status if provided
+      let unified = [...enrichedPOs, ...enrichedTOs];
+      if (status) {
+        unified = unified.filter(order => order.status === status);
+      }
+      
+      // Sort by created date descending (newest first)
+      unified.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      res.json(unified);
+    } catch (error: any) {
+      console.error("Unified orders error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ============ PURCHASE ORDERS ============
   app.get("/api/purchase-orders", requireAuth, async (req, res) => {
     const companyId = (req as any).companyId;
@@ -3380,88 +3468,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Execute transfer (complete the transfer and update inventory)
-  app.post("/api/transfer-orders/:id/execute", async (req, res) => {
+  // Execute transfer (ship from source store)
+  app.post("/api/transfer-orders/:id/execute", requireAuth, async (req, res) => {
     try {
       const order = await storage.getTransferOrder(req.params.id);
       if (!order) {
         return res.status(404).json({ error: "Transfer order not found" });
       }
       
-      if (order.status === "completed") {
-        return res.status(400).json({ error: "Transfer already completed" });
+      // Validate company ownership
+      if (order.companyId !== req.companyId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      if (order.status !== "pending") {
+        return res.status(400).json({ error: "Transfer can only be executed from pending status" });
       }
       
       const lines = await storage.getTransferOrderLines(order.id);
-      const inventoryItems = await storage.getInventoryItems();
+      if (lines.length === 0) {
+        return res.status(400).json({ error: "Transfer order has no items" });
+      }
       
-      // Process each line
+      // Validate inventory availability at source store
+      const validationErrors: string[] = [];
       for (const line of lines) {
+        const sourceInventory = await storage.getStoreInventoryItem(order.fromStoreId, line.inventoryItemId);
         const shippedQty = line.shippedQty || line.requestedQty;
         
-        // Get inventory at both locations
-        const fromItems = await storage.getInventoryItems(order.fromLocationId);
-        const toItems = await storage.getInventoryItems(order.toLocationId);
-        
-        const fromItem = fromItems.find(i => i.id === line.inventoryItemId);
-        const toItem = toItems.find(i => i.id === line.inventoryItemId);
-        
-        if (!fromItem) {
-          return res.status(400).json({ 
-            error: `Item not found at source location` 
-          });
+        if (!sourceInventory) {
+          const item = await storage.getInventoryItem(line.inventoryItemId);
+          validationErrors.push(`${item?.name || 'Item'} not available at source store`);
+          continue;
         }
         
-        if (fromItem.onHandQty < shippedQty) {
-          return res.status(400).json({ 
-            error: `Insufficient quantity at source. Available: ${fromItem.onHandQty}, Needed: ${shippedQty}` 
-          });
+        if (sourceInventory.onHandQty < shippedQty) {
+          const item = await storage.getInventoryItem(line.inventoryItemId);
+          validationErrors.push(
+            `${item?.name || 'Item'}: insufficient inventory (available: ${sourceInventory.onHandQty}, needed: ${shippedQty})`
+          );
         }
-        
-        // Update source location inventory (decrease)
-        await storage.updateInventoryItem(fromItem.id, {
-          onHandQty: fromItem.onHandQty - shippedQty
-        });
-        
-        // Update destination location inventory (increase)
-        if (toItem) {
-          await storage.updateInventoryItem(toItem.id, {
-            onHandQty: toItem.onHandQty + shippedQty
-          });
-        } else {
-          // Create inventory at destination if it doesn't exist
-          const baseItem = inventoryItems.find(i => i.id === line.inventoryItemId);
-          if (baseItem) {
-            const { id, ...itemData } = baseItem;
-            await storage.createInventoryItem({
-              ...itemData,
-              storageLocationId: order.toLocationId,
-              onHandQty: shippedQty,
-            });
-          }
-        }
-        
-        // Create transfer log
-        await storage.createTransferLog({
-          inventoryItemId: line.inventoryItemId,
-          fromLocationId: order.fromLocationId,
-          toLocationId: order.toLocationId,
-          qty: shippedQty,
-          unitId: line.unitId,
-          transferredBy: (req as any).user?.id,
-          reason: `Transfer Order #${order.id.slice(0, 8)}`,
+      }
+      
+      if (validationErrors.length > 0) {
+        return res.status(400).json({ 
+          error: "Inventory validation failed", 
+          details: validationErrors 
         });
       }
       
-      // Mark order as completed
-      await storage.updateTransferOrder(order.id, {
-        status: "completed",
-        completedAt: new Date(),
-      });
+      // Process each line - reduce inventory at source
+      for (const line of lines) {
+        const shippedQty = line.shippedQty || line.requestedQty;
+        await storage.updateStoreInventoryItemQuantity(
+          order.fromStoreId,
+          line.inventoryItemId,
+          -shippedQty
+        );
+      }
       
-      res.json({ success: true, message: "Transfer completed successfully" });
+      // Update transfer order status to in_transit
+      const updatedOrder = await storage.updateTransferOrder(order.id, { status: "in_transit" });
+      res.json(updatedOrder);
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      console.error("Transfer execution error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Receive transfer (receive at destination store)
+  app.post("/api/transfer-orders/:id/receive", requireAuth, async (req, res) => {
+    try {
+      const order = await storage.getTransferOrder(req.params.id);
+      if (!order) {
+        return res.status(404).json({ error: "Transfer order not found" });
+      }
+      
+      // Validate company ownership
+      if (order.companyId !== req.companyId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      if (order.status !== "in_transit") {
+        return res.status(400).json({ error: "Transfer must be in_transit to receive" });
+      }
+      
+      const lines = await storage.getTransferOrderLines(order.id);
+      
+      // Process each line - increase inventory at destination (or create if doesn't exist)
+      for (const line of lines) {
+        const receivedQty = line.receivedQty || line.shippedQty || line.requestedQty;
+        const destinationInventory = await storage.getStoreInventoryItem(order.toStoreId, line.inventoryItemId);
+        
+        if (destinationInventory) {
+          // Update existing inventory
+          await storage.updateStoreInventoryItemQuantity(
+            order.toStoreId,
+            line.inventoryItemId,
+            receivedQty
+          );
+        } else {
+          // Create new store inventory item
+          await storage.createStoreInventoryItem({
+            companyId: order.companyId,
+            storeId: order.toStoreId,
+            inventoryItemId: line.inventoryItemId,
+            onHandQty: receivedQty,
+            active: 1
+          });
+        }
+      }
+      
+      // Update transfer order status to completed
+      const updatedOrder = await storage.updateTransferOrder(order.id, { status: "completed" });
+      res.json(updatedOrder);
+    } catch (error: any) {
+      console.error("Transfer receive error:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 

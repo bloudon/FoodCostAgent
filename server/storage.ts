@@ -114,6 +114,7 @@ export interface IStorage {
   getInventoryItemStores(inventoryItemId: string): Promise<StoreInventoryItem[]>;
   createStoreInventoryItem(insertItem: InsertStoreInventoryItem): Promise<StoreInventoryItem>;
   updateStoreInventoryItemActive(storeId: string, inventoryItemId: string, active: number): Promise<void>;
+  updateStoreInventoryItemQuantity(storeId: string, inventoryItemId: string, quantityDelta: number): Promise<StoreInventoryItem | undefined>;
   removeStoreInventoryItem(storeId: string, inventoryItemId: string): Promise<void>;
 
   // Vendors
@@ -723,6 +724,23 @@ export class DatabaseStorage implements IStorage {
           eq(storeInventoryItems.inventoryItemId, inventoryItemId)
         )
       );
+  }
+
+  async updateStoreInventoryItemQuantity(storeId: string, inventoryItemId: string, quantityDelta: number): Promise<StoreInventoryItem | undefined> {
+    const [updated] = await db
+      .update(storeInventoryItems)
+      .set({ 
+        onHandQty: sql`${storeInventoryItems.onHandQty} + ${quantityDelta}`,
+        updatedAt: new Date()
+      })
+      .where(
+        and(
+          eq(storeInventoryItems.storeId, storeId),
+          eq(storeInventoryItems.inventoryItemId, inventoryItemId)
+        )
+      )
+      .returning();
+    return updated || undefined;
   }
 
   async getStoreInventoryItems(storeId: string): Promise<StoreInventoryItem[]> {
