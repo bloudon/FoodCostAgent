@@ -11,14 +11,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Save, Package } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { InventoryItem, StorageLocation, TransferOrder, TransferOrderLine } from "@shared/schema";
+import type { InventoryItem, CompanyStore, TransferOrder, TransferOrderLine } from "@shared/schema";
 
 export default function TransferOrderDetail() {
   const { id } = useParams();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [fromLocationId, setFromLocationId] = useState("");
-  const [toLocationId, setToLocationId] = useState("");
+  const [fromStoreId, setFromStoreId] = useState("");
+  const [toStoreId, setToStoreId] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -26,9 +26,9 @@ export default function TransferOrderDetail() {
   
   const isNewOrder = id === "new";
 
-  // Fetch locations
-  const { data: locations } = useQuery<StorageLocation[]>({
-    queryKey: ["/api/storage-locations"],
+  // Fetch stores
+  const { data: stores } = useQuery<CompanyStore[]>({
+    queryKey: ["/api/stores/accessible"],
   });
 
   // Fetch inventory items
@@ -51,8 +51,8 @@ export default function TransferOrderDetail() {
   // Load existing data
   useEffect(() => {
     if (transferOrder) {
-      setFromLocationId(transferOrder.fromLocationId);
-      setToLocationId(transferOrder.toLocationId);
+      setFromStoreId(transferOrder.fromStoreId);
+      setToStoreId(transferOrder.toStoreId);
       const date = transferOrder.expectedDate ? new Date(transferOrder.expectedDate) : null;
       setExpectedDate(date ? date.toISOString().split("T")[0] : "");
       setNotes(transferOrder.notes || "");
@@ -73,7 +73,7 @@ export default function TransferOrderDetail() {
 
   // Mutations
   const createOrderMutation = useMutation({
-    mutationFn: async (data: { fromLocationId: string; toLocationId: string; expectedDate?: string; notes?: string }) => {
+    mutationFn: async (data: { fromStoreId: string; toStoreId: string; expectedDate?: string; notes?: string; companyId: string }) => {
       const response = await apiRequest("POST", "/api/transfer-orders", data);
       return await response.json();
     },
@@ -121,19 +121,27 @@ export default function TransferOrderDetail() {
   });
 
   const handleCreateOrder = async () => {
-    if (!fromLocationId || !toLocationId) {
-      toast({ title: "Please select both locations", variant: "destructive" });
+    if (!fromStoreId || !toStoreId) {
+      toast({ title: "Please select both stores", variant: "destructive" });
       return;
     }
     
-    if (fromLocationId === toLocationId) {
-      toast({ title: "Source and destination must be different", variant: "destructive" });
+    if (fromStoreId === toStoreId) {
+      toast({ title: "Source and destination stores must be different", variant: "destructive" });
+      return;
+    }
+
+    // Get companyId from first store (all accessible stores belong to same company)
+    const companyId = stores?.[0]?.companyId;
+    if (!companyId) {
+      toast({ title: "Unable to determine company", variant: "destructive" });
       return;
     }
 
     createOrderMutation.mutate({
-      fromLocationId,
-      toLocationId,
+      fromStoreId,
+      toStoreId,
+      companyId,
       expectedDate: expectedDate || undefined,
       notes: notes || undefined,
     });
@@ -184,10 +192,8 @@ export default function TransferOrderDetail() {
     executeTransferMutation.mutate();
   };
 
-  // Filter items by source location
-  const displayItems = inventoryItems?.filter(item => 
-    fromLocationId ? item.storageLocationId === fromLocationId : true
-  ) || [];
+  // Filter items by source store
+  const displayItems = inventoryItems || [];
 
   const totalValue = displayItems.reduce((sum, item) => {
     const qty = quantities[item.id] || 0;
@@ -252,38 +258,38 @@ export default function TransferOrderDetail() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="from-location">From Location</Label>
+              <Label htmlFor="from-store">From Store</Label>
               <Select
-                value={fromLocationId}
-                onValueChange={setFromLocationId}
+                value={fromStoreId}
+                onValueChange={setFromStoreId}
                 disabled={!isNewOrder}
               >
-                <SelectTrigger id="from-location" data-testid="select-from-location">
-                  <SelectValue placeholder="Select location" />
+                <SelectTrigger id="from-store" data-testid="select-from-store">
+                  <SelectValue placeholder="Select store" />
                 </SelectTrigger>
                 <SelectContent>
-                  {locations?.map(loc => (
-                    <SelectItem key={loc.id} value={loc.id}>
-                      {loc.name}
+                  {stores?.map(store => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="to-location">To Location</Label>
+              <Label htmlFor="to-store">To Store</Label>
               <Select
-                value={toLocationId}
-                onValueChange={setToLocationId}
+                value={toStoreId}
+                onValueChange={setToStoreId}
                 disabled={!isNewOrder}
               >
-                <SelectTrigger id="to-location" data-testid="select-to-location">
-                  <SelectValue placeholder="Select location" />
+                <SelectTrigger id="to-store" data-testid="select-to-store">
+                  <SelectValue placeholder="Select store" />
                 </SelectTrigger>
                 <SelectContent>
-                  {locations?.map(loc => (
-                    <SelectItem key={loc.id} value={loc.id}>
-                      {loc.name}
+                  {stores?.map(store => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
