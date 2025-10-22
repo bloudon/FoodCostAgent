@@ -3186,12 +3186,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
               });
             }
             
-            // Update price and on-hand quantity
-            const newOnHand = (item.onHandQty || 0) + line.receivedQty;
+            // Update price per unit on the company-level catalog
             await storage.updateInventoryItem(vi.inventoryItemId, {
               pricePerUnit,
-              onHandQty: newOnHand
             });
+            
+            // Update on-hand quantity at the store level
+            await storage.updateStoreInventoryItemQuantity(
+              receipt.storeId,
+              vi.inventoryItemId,
+              line.receivedQty
+            );
           }
         }
       }
@@ -3246,12 +3251,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 });
               }
               
-              // Update price and on-hand quantity
-              const newOnHand = (item.onHandQty || 0) + lineData.receivedQty;
+              // Update price per unit on the company-level catalog
               await storage.updateInventoryItem(vi.inventoryItemId, {
                 pricePerUnit,
-                onHandQty: newOnHand
               });
+              
+              // Update on-hand quantity at the store level
+              await storage.updateStoreInventoryItemQuantity(
+                receipt.storeId,
+                vi.inventoryItemId,
+                lineData.receivedQty
+              );
             }
           }
         }
