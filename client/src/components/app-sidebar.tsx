@@ -15,6 +15,7 @@ import {
   Tag,
   Store,
   Key,
+  UtensilsCrossed,
 } from "lucide-react";
 import {
   Sidebar,
@@ -48,6 +49,11 @@ const menuItems = [
     title: "Recipes",
     url: "/recipes",
     icon: ChefHat,
+  },
+  {
+    title: "Menu Items",
+    url: "/menu-items",
+    icon: UtensilsCrossed,
   },
   {
     title: "Vendors",
