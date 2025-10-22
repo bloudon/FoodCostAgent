@@ -110,13 +110,25 @@ export default function TransferOrderDetail() {
 
   const executeTransferMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("POST", `/api/transfer-orders/${id}/execute`);
+      const response = await apiRequest("POST", `/api/transfer-orders/${id}/execute`);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details ? error.details.join(", ") : error.error || "Failed to execute transfer");
+      }
+      return response;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders", id] });
       toast({ title: "Transfer executed", description: "Items have been shipped from source store" });
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: "Failed to execute transfer", 
+        description: error.message,
+        variant: "destructive" 
+      });
     },
   });
 
