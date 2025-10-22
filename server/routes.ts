@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import crypto from "crypto";
 import { storage } from "./storage";
 import { z } from "zod";
 import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth";
@@ -198,6 +199,200 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateAuthSession(sessionId, { selectedCompanyId: companyId });
       
       res.json({ success: true, companyId });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============ API CREDENTIALS (HMAC AUTH) ============
+  // Get all API credentials for a company
+  app.get("/api/api-credentials", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const credentials = await storage.getApiCredentials(companyId);
+      
+      // Never expose secret keys in list view
+      const sanitizedCredentials = credentials.map(cred => ({
+        id: cred.id,
+        name: cred.name,
+        description: cred.description,
+        apiKeyId: cred.apiKeyId,
+        isActive: cred.isActive,
+        locationCount: cred.locationCount,
+        allowedIps: cred.allowedIps,
+        lastUsedAt: cred.lastUsedAt,
+        createdAt: cred.createdAt,
+      }));
+      
+      res.json(sanitizedCredentials);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get single API credential with locations
+  app.get("/api/api-credentials/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = (req as any).companyId;
+      
+      const credential = await storage.getApiCredential(id, companyId);
+      if (!credential) {
+        return res.status(404).json({ error: "API credential not found" });
+      }
+      
+      const locations = await storage.getApiCredentialLocations(id);
+      
+      // Never expose secret key (even in detail view)
+      res.json({
+        id: credential.id,
+        name: credential.name,
+        description: credential.description,
+        apiKeyId: credential.apiKeyId,
+        isActive: credential.isActive,
+        allowedIps: credential.allowedIps,
+        lastUsedAt: credential.lastUsedAt,
+        createdAt: credential.createdAt,
+        locations: locations,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create new API credential
+  app.post("/api/api-credentials", requireAuth, async (req, res) => {
+    try {
+      const { name, description, storeIds, allowedIps } = req.body;
+      const companyId = (req as any).companyId;
+      const userId = (req as any).user.id;
+      
+      if (!name || !storeIds || !Array.isArray(storeIds) || storeIds.length === 0) {
+        return res.status(400).json({ error: "Name and at least one store location required" });
+      }
+      
+      // Generate cryptographically secure API key ID and secret
+      const apiKeyId = crypto.randomBytes(32).toString('hex'); // 64 character public ID
+      const secretKey = crypto.randomBytes(64).toString('hex'); // 128 character secret
+      
+      // Create the credential
+      const credential = await storage.createApiCredential({
+        companyId,
+        name,
+        description: description || null,
+        apiKeyId,
+        secretKey,
+        isActive: 1,
+        allowedIps: allowedIps || null,
+        createdBy: userId,
+      });
+      
+      // Set location mappings
+      await storage.setApiCredentialLocations(credential.id, storeIds);
+      
+      // Return credential with secret key (ONLY shown once at creation)
+      res.status(201).json({
+        id: credential.id,
+        name: credential.name,
+        description: credential.description,
+        apiKeyId: credential.apiKeyId,
+        secretKey: credential.secretKey, // WARNING: Only exposed at creation time
+        isActive: credential.isActive,
+        allowedIps: credential.allowedIps,
+        createdAt: credential.createdAt,
+        storeIds: storeIds,
+        _warning: "Save the secret key now - it will not be shown again"
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update API credential (name, description, active status, IP whitelist)
+  app.patch("/api/api-credentials/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, description, isActive, allowedIps } = req.body;
+      const companyId = (req as any).companyId;
+      
+      const updates: any = {};
+      if (name !== undefined) updates.name = name;
+      if (description !== undefined) updates.description = description;
+      if (isActive !== undefined) updates.isActive = isActive;
+      if (allowedIps !== undefined) updates.allowedIps = allowedIps;
+      
+      const updated = await storage.updateApiCredential(id, companyId, updates);
+      if (!updated) {
+        return res.status(404).json({ error: "API credential not found" });
+      }
+      
+      res.json({
+        id: updated.id,
+        name: updated.name,
+        description: updated.description,
+        apiKeyId: updated.apiKeyId,
+        isActive: updated.isActive,
+        allowedIps: updated.allowedIps,
+        lastUsedAt: updated.lastUsedAt,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete API credential
+  app.delete("/api/api-credentials/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = (req as any).companyId;
+      
+      await storage.deleteApiCredential(id, companyId);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get locations for an API credential
+  app.get("/api/api-credentials/:id/locations", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = (req as any).companyId;
+      
+      // Verify credential belongs to company
+      const credential = await storage.getApiCredential(id, companyId);
+      if (!credential) {
+        return res.status(404).json({ error: "API credential not found" });
+      }
+      
+      const locations = await storage.getApiCredentialLocations(id);
+      res.json(locations);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update locations for an API credential
+  app.put("/api/api-credentials/:id/locations", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { storeIds } = req.body;
+      const companyId = (req as any).companyId;
+      
+      if (!Array.isArray(storeIds) || storeIds.length === 0) {
+        return res.status(400).json({ error: "At least one store location required" });
+      }
+      
+      // Verify credential belongs to company
+      const credential = await storage.getApiCredential(id, companyId);
+      if (!credential) {
+        return res.status(404).json({ error: "API credential not found" });
+      }
+      
+      await storage.setApiCredentialLocations(id, storeIds);
+      const locations = await storage.getApiCredentialLocations(id);
+      
+      res.json(locations);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

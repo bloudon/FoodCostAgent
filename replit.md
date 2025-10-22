@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system for food service businesses, particularly pizza restaurants. It offers tools for managing inventory, vendors, recipes, and purchase orders, including complex unit conversions, nested recipes, real-time POS sales data integration, and detailed variance reporting. The system aims to enhance operational efficiency, reduce waste, and improve profitability. It supports multi-company operations with data isolation and integrates with various food distributors.
+This project is a comprehensive inventory management and recipe costing system designed for food service businesses, particularly pizza restaurants. It provides tools for managing inventory, vendors, recipes, and purchase orders, including advanced unit conversions, nested recipes, real-time POS sales data integration, and detailed variance reporting. The system aims to enhance operational efficiency, reduce waste, and improve profitability for multi-company operations.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -87,7 +87,7 @@ The system utilizes a multi-tenant architecture with data isolation at company a
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
-- **UI**: `shadcn/ui` components (Radix UI, Tailwind CSS), custom theming (warm orange primary).
+- **UI**: `shadcn/ui` components (Radix UI, Tailwind CSS), custom theming.
 - **State Management**: TanStack Query for server-side state.
 - **Routing**: Wouter.
 - **Features**: Dark/light theme, responsive navigation, search, filtering, real-time data via WebSockets, dashboard, quick price adjustments.
@@ -113,8 +113,9 @@ The system utilizes a multi-tenant architecture with data isolation at company a
 - **Receiving Module**: Partial receipts, resumable sessions, visual indicators, correct PO pricing.
 - **Vendor Integration**: Pluggable adapter pattern for distributors (Sysco, GFS, US Foods) via EDI, PunchOut, CSV.
 - **Object Storage**: Google Cloud Storage via Replit's object storage for inventory item images (presigned URLs, on-the-fly thumbnails).
-- **Unified Orders Page**: Consolidated Purchase Orders, Receiving, and Transfer Orders into a single `/orders` page. This page displays both purchase and transfer orders with a Type column and filter. It includes store, vendor, type, and status filters, and provides type/status-based navigation to appropriate detail pages (purchase orders → PO detail/receiving, transfer orders → transfer detail). A single "Orders" menu item provides access to all order types.
-- **Store-to-Store Transfer Orders**: Transfer orders track inventory movement between stores (fromStoreId/toStoreId). The workflow is: create order → add items with auto-save → execute (status changes to in_transit, reduces source inventory) → receive (status changes to completed, increases destination inventory). Transfer orders integrate with the unified Orders page with proper filtering and cache invalidation.
+- **Unified Orders Page**: Consolidates Purchase Orders, Receiving, and Transfer Orders, providing filtering and navigation to detail pages.
+- **Store-to-Store Transfer Orders**: Tracks inventory movement between stores with a defined workflow (create, add items, execute, receive) and integration into the unified Orders page.
+- **HMAC Authentication for Inbound Data Feeds**: Implemented hierarchical HMAC-SHA256 bearer token authentication for securing inbound API integrations (POS, vendor EDI). This includes company-level credentials with store-level location mappings, cryptographically secure keys, timestamp and nonce validation for replay attack protection, content MD5 integrity checking, and optional IP whitelisting.
 
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
