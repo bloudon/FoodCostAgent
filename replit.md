@@ -113,7 +113,8 @@ The system utilizes a multi-tenant architecture with data isolation at company a
 - **Receiving Module**: Partial receipts, resumable sessions, visual indicators, correct PO pricing.
 - **Vendor Integration**: Pluggable adapter pattern for distributors (Sysco, GFS, US Foods) via EDI, PunchOut, CSV.
 - **Object Storage**: Google Cloud Storage via Replit's object storage for inventory item images (presigned URLs, on-the-fly thumbnails).
-- **Unified Orders Page**: Consolidated Purchase Orders and Receiving into a single `/orders` page. This page includes store, vendor, and status filters, and provides status-based navigation to editable, receiving, or read-only detail pages. A single "Orders" menu item replaces separate links.
+- **Unified Orders Page**: Consolidated Purchase Orders, Receiving, and Transfer Orders into a single `/orders` page. This page displays both purchase and transfer orders with a Type column and filter. It includes store, vendor, type, and status filters, and provides type/status-based navigation to appropriate detail pages (purchase orders → PO detail/receiving, transfer orders → transfer detail). A single "Orders" menu item provides access to all order types.
+- **Store-to-Store Transfer Orders**: Transfer orders track inventory movement between stores (fromStoreId/toStoreId). The workflow is: create order → add items with auto-save → execute (status changes to in_transit, reduces source inventory) → receive (status changes to completed, increases destination inventory). Transfer orders integrate with the unified Orders page with proper filtering and cache invalidation.
 
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
