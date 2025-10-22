@@ -116,8 +116,19 @@ export default function TransferOrderDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders", id] });
-      toast({ title: "Transfer completed successfully" });
-      navigate("/transfer-orders");
+      toast({ title: "Transfer executed", description: "Items have been shipped from source store" });
+    },
+  });
+
+  const receiveTransferMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", `/api/transfer-orders/${id}/receive`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders", id] });
+      toast({ title: "Transfer completed", description: "Items have been received at destination store" });
     },
   });
 
@@ -193,6 +204,10 @@ export default function TransferOrderDetail() {
     executeTransferMutation.mutate();
   };
 
+  const handleReceiveTransfer = async () => {
+    receiveTransferMutation.mutate();
+  };
+
   // Filter items by source store
   const displayItems = inventoryItems || [];
 
@@ -203,6 +218,7 @@ export default function TransferOrderDetail() {
 
   const canEdit = !transferOrder || transferOrder.status === "pending";
   const canExecute = !isNewOrder && transferOrder?.status === "pending";
+  const canReceive = !isNewOrder && transferOrder?.status === "in_transit";
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -247,6 +263,17 @@ export default function TransferOrderDetail() {
             >
               <Package className="h-4 w-4 mr-2" />
               Execute Transfer
+            </Button>
+          )}
+          {canReceive && (
+            <Button
+              onClick={handleReceiveTransfer}
+              disabled={receiveTransferMutation.isPending}
+              variant="default"
+              data-testid="button-receive"
+            >
+              <Package className="h-4 w-4 mr-2" />
+              Receive Transfer
             </Button>
           )}
         </div>
