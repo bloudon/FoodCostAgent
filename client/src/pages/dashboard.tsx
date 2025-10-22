@@ -317,7 +317,7 @@ export default function Dashboard() {
                 {storePurchaseOrdersRecent.map((order) => (
                   <Link 
                     key={order.id} 
-                    href={order.status === "ordered" ? `/receiving/${order.id}` : `/purchase-orders/${order.id}`}
+                    href={order.status === "pending" ? `/purchase-orders/${order.id}` : `/receiving/${order.id}`}
                   >
                     <div 
                       className="flex items-center justify-between border-b last:border-0 pb-2 last:pb-0 cursor-pointer hover-elevate rounded p-2"
