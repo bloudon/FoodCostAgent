@@ -14,6 +14,7 @@ import {
   ArrowLeftRight,
   Tag,
   Store,
+  Key,
 } from "lucide-react";
 import {
   Sidebar,
@@ -90,6 +91,11 @@ const settingsItems = [
     title: "Unit Conversions",
     url: "/unit-conversions",
     icon: ArrowLeftRight,
+  },
+  {
+    title: "API Credentials",
+    url: "/api-credentials",
+    icon: Key,
   },
   {
     title: "System",

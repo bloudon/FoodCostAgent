@@ -34,6 +34,7 @@ import TransferOrderDetail from "@/pages/transfer-order-detail";
 import VarianceReport from "@/pages/variance-report";
 import StorageLocations from "@/pages/storage-locations";
 import Categories from "@/pages/categories";
+import ApiCredentials from "@/pages/api-credentials";
 import Settings from "@/pages/settings";
 import Companies from "@/pages/companies";
 import CompanyDetail from "@/pages/company-detail";
@@ -131,6 +132,7 @@ function ProtectedLayout() {
               <Route path="/storage-locations" component={StorageLocations} />
               <Route path="/categories" component={Categories} />
               <Route path="/unit-conversions" component={UnitConversions} />
+              <Route path="/api-credentials" component={ApiCredentials} />
               <Route path="/settings" component={Settings} />
               <Route component={NotFound} />
             </Switch>
