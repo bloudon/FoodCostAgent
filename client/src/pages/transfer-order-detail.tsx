@@ -113,6 +113,7 @@ export default function TransferOrderDetail() {
       return await apiRequest("POST", `/api/transfer-orders/${id}/execute`);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders", id] });
       toast({ title: "Transfer completed successfully" });
