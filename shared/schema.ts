@@ -124,6 +124,45 @@ export const insertAuthSessionSchema = createInsertSchema(authSessions).omit({ i
 export type InsertAuthSession = z.infer<typeof insertAuthSessionSchema>;
 export type AuthSession = typeof authSessions.$inferSelect;
 
+// API Credentials (for HMAC authentication of inbound data feeds)
+export const apiCredentials = pgTable("api_credentials", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(), // e.g., "POS System Feed", "Sysco EDI Feed"
+  description: text("description"), // Optional notes about this credential
+  apiKeyId: varchar("api_key_id").notNull().unique(), // Public identifier (shown to external systems)
+  secretKey: text("secret_key").notNull(), // HMAC secret (encrypted at rest, never shown again after creation)
+  isActive: integer("is_active").notNull().default(1), // 1=active, 0=inactive
+  allowedIps: text("allowed_ips").array(), // Optional IP whitelist (e.g., ["192.168.1.100", "10.0.0.0/24"])
+  lastUsedAt: timestamp("last_used_at"), // Last successful authentication timestamp
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: varchar("created_by"), // User ID who created this credential
+});
+
+export const insertApiCredentialSchema = createInsertSchema(apiCredentials)
+  .omit({ id: true, createdAt: true, lastUsedAt: true })
+  .extend({
+    apiKeyId: z.string().min(32, "API Key ID must be at least 32 characters"),
+    secretKey: z.string().min(32, "Secret key must be at least 32 characters"),
+  });
+export type InsertApiCredential = z.infer<typeof insertApiCredentialSchema>;
+export type ApiCredential = typeof apiCredentials.$inferSelect;
+
+// API Credential Locations (maps credentials to specific store locations)
+export const apiCredentialLocations = pgTable("api_credential_locations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  apiCredentialId: varchar("api_credential_id").notNull(),
+  storeId: varchar("store_id").notNull(), // Store location this credential can access
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  uniqueCredentialStore: unique().on(table.apiCredentialId, table.storeId),
+}));
+
+export const insertApiCredentialLocationSchema = createInsertSchema(apiCredentialLocations)
+  .omit({ id: true, createdAt: true });
+export type InsertApiCredentialLocation = z.infer<typeof insertApiCredentialLocationSchema>;
+export type ApiCredentialLocation = typeof apiCredentialLocations.$inferSelect;
+
 // Storage Locations
 export const storageLocations = pgTable("storage_locations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
