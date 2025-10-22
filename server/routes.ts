@@ -2538,13 +2538,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Mark count as applied
+      // Mark count as applied and lock it (make read-only)
       await db
         .update(inventoryCounts)
         .set({ 
           applied: 1,
           appliedAt: new Date(),
-          appliedBy: user.id
+          appliedBy: user.id,
+          canEdit: 0
         })
         .where(eq(inventoryCounts.id, count.id));
 

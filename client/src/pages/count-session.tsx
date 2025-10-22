@@ -250,20 +250,11 @@ export default function CountSession() {
 
   const applyCountMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`/api/inventory-counts/${countId}/apply`, {
-        method: "POST",
-        credentials: "include",
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to apply inventory count");
-      }
-      
-      return await response.json();
+      return apiRequest("POST", `/api/inventory-counts/${countId}/apply`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts", countId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
       toast({
         title: "Inventory Count Applied",
@@ -400,7 +391,7 @@ export default function CountSession() {
     );
   }
 
-  const isReadOnly = count && count.canEdit === false;
+  const isReadOnly = count && (count.canEdit === false || count.applied === 1);
   
   return (
     <div className="p-8">
