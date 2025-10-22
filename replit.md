@@ -115,6 +115,8 @@ The system utilizes a multi-tenant architecture with data isolation at company a
 - **Object Storage**: Google Cloud Storage via Replit's object storage for inventory item images (presigned URLs, on-the-fly thumbnails).
 - **Unified Orders Page**: Consolidates Purchase Orders, Receiving, and Transfer Orders, providing filtering and navigation to detail pages.
 - **Store-to-Store Transfer Orders**: Tracks inventory movement between stores with a defined workflow (create, add items, execute, receive) and integration into the unified Orders page.
+  - **Status Workflow**: pending → Execute Transfer (removes from source) → in_transit → Receive Transfer (adds to destination) → completed
+  - **Recent Fix (Oct 22, 2025)**: Added missing "Receive Transfer" button and mutation to frontend. Previously, transfers were stuck in pending status because the UI only implemented Execute but not Receive.
 - **HMAC Authentication for Inbound Data Feeds**: Implemented hierarchical HMAC-SHA256 bearer token authentication for securing inbound API integrations (POS, vendor EDI). This includes company-level credentials with store-level location mappings, cryptographically secure keys, timestamp and nonce validation for replay attack protection, content MD5 integrity checking, and optional IP whitelisting.
 
 ## External Dependencies
