@@ -110,6 +110,16 @@ export default function InventoryItems() {
 
   const { data: stores } = useAccessibleStores();
 
+  // Auto-select first store if none selected
+  useEffect(() => {
+    if (stores && stores.length > 0 && selectedStore === "all") {
+      const activeStores = stores.filter(s => s.status === 'active');
+      if (activeStores.length > 0) {
+        setSelectedStore(activeStores[0].id);
+      }
+    }
+  }, [stores, selectedStore]);
+
   const { data: inventoryItems, isLoading } = useQuery<InventoryItemDisplay[]>({
     queryKey: ["/api/inventory-items", selectedStore],
     queryFn: async () => {
