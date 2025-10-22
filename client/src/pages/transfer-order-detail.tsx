@@ -110,12 +110,17 @@ export default function TransferOrderDetail() {
 
   const executeTransferMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", `/api/transfer-orders/${id}/execute`);
+      const response = await fetch(`/api/transfer-orders/${id}/execute`, {
+        method: "POST",
+        credentials: "include",
+      });
+      
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.details ? error.details.join(", ") : error.error || "Failed to execute transfer");
       }
-      return response;
+      
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
@@ -134,13 +139,30 @@ export default function TransferOrderDetail() {
 
   const receiveTransferMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("POST", `/api/transfer-orders/${id}/receive`);
+      const response = await fetch(`/api/transfer-orders/${id}/receive`, {
+        method: "POST",
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details ? error.details.join(", ") : error.error || "Failed to receive transfer");
+      }
+      
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders", id] });
       toast({ title: "Transfer completed", description: "Items have been received at destination store" });
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: "Failed to receive transfer", 
+        description: error.message,
+        variant: "destructive" 
+      });
     },
   });
 
