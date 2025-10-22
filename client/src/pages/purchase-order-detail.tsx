@@ -732,6 +732,7 @@ export default function PurchaseOrderDetail() {
                             <Link 
                               href={`/inventory-items/${inventoryItemId}`}
                               className="font-medium hover:text-primary hover:underline"
+                              tabIndex={-1}
                               data-testid={`link-item-${inventoryItemId}`}
                             >
                               {itemName}
@@ -1051,6 +1052,7 @@ export default function PurchaseOrderDetail() {
                                 <Link 
                                   href={`/inventory-items/${inventoryItemId}`}
                                   className="font-medium hover:text-primary hover:underline"
+                                  tabIndex={-1}
                                   data-testid={`link-item-${inventoryItemId}`}
                                 >
                                   {itemName}
