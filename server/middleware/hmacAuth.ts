@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import ipaddr from 'ipaddr.js';
 import { storage } from '../storage';
 
 // In-memory nonce cache (in production, use Redis)
@@ -115,10 +116,31 @@ export async function verifyHmacSignature(
 
     // 7. Optional: Check IP whitelist
     if (credential.allowedIps && credential.allowedIps.length > 0) {
-      const clientIp = req.ip || req.connection.remoteAddress || '';
+      const rawClientIp = req.ip || req.connection.remoteAddress || '';
+      
+      // Normalize client IP (converts IPv6-mapped IPv4 to canonical IPv4)
+      let normalizedClientIp: string;
+      try {
+        const addr = ipaddr.process(rawClientIp);
+        normalizedClientIp = addr.toString();
+      } catch {
+        // If parsing fails, use raw IP (better to allow than block on parse error)
+        normalizedClientIp = rawClientIp;
+      }
+      
       const isIpAllowed = credential.allowedIps.some(allowedIp => {
-        // Simple IP match (for CIDR support, use a library like 'ip-range-check')
-        return clientIp.includes(allowedIp) || allowedIp === clientIp;
+        // Normalize configured IP for comparison
+        let normalizedAllowedIp: string;
+        try {
+          const addr = ipaddr.process(allowedIp);
+          normalizedAllowedIp = addr.toString();
+        } catch {
+          // If parsing fails, use raw configured IP
+          normalizedAllowedIp = allowedIp;
+        }
+        
+        // Strict equality after normalization prevents substring vulnerabilities
+        return normalizedClientIp === normalizedAllowedIp;
       });
       
       if (!isIpAllowed) {
@@ -150,10 +172,19 @@ export async function verifyHmacSignature(
       .digest('base64');
 
     // 11. Constant-time comparison to prevent timing attacks
-    const isValid = crypto.timingSafeEqual(
-      Buffer.from(clientSignature),
-      Buffer.from(serverSignature)
-    );
+    // Convert both signatures to buffers and validate length before comparison
+    const clientSigBuffer = Buffer.from(clientSignature, 'base64');
+    const serverSigBuffer = Buffer.from(serverSignature, 'base64');
+    
+    // Prevent timing oracle from different-length signatures
+    if (clientSigBuffer.length !== serverSigBuffer.length) {
+      return res.status(401).json({ 
+        error: 'Invalid signature',
+        message: 'Signature verification failed'
+      });
+    }
+    
+    const isValid = crypto.timingSafeEqual(clientSigBuffer, serverSigBuffer);
 
     if (!isValid) {
       return res.status(401).json({ 
