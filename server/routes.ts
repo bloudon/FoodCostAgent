@@ -8,7 +8,7 @@ import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth
 import { getAccessibleStores } from "./permissions";
 import { db } from "./db";
 import { eq, and, inArray } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import {
@@ -3291,17 +3291,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ MENU ITEMS ============
-  app.get("/api/menu-items", async (req, res) => {
-    const items = await storage.getMenuItems();
+  app.get("/api/menu-items", requireAuth, async (req, res) => {
+    const companyId = req.companyId;
+    const items = await db.select().from(menuItems).where(eq(menuItems.companyId, companyId!));
     res.json(items);
   });
 
-  app.post("/api/menu-items", async (req, res) => {
+  app.post("/api/menu-items", requireAuth, async (req, res) => {
     try {
       const data = insertMenuItemSchema.parse(req.body);
-      const item = await storage.createMenuItem(data);
+      const item = await storage.createMenuItem({ ...data, companyId: req.companyId! });
       res.status(201).json(item);
     } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Upload and parse POS menu CSV
+  app.post("/api/menu-items/import-csv", requireAuth, async (req, res) => {
+    try {
+      const { csvContent } = req.body;
+      
+      if (!csvContent) {
+        return res.status(400).json({ error: "CSV content is required" });
+      }
+
+      const { parsePosMenuCsv } = await import("./utils/pos-csv-parser");
+      const parseResult = parsePosMenuCsv(csvContent);
+
+      res.json(parseResult);
+    } catch (error: any) {
+      console.error("[CSV Import Error]", error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Bulk create menu items from parsed CSV data
+  app.post("/api/menu-items/bulk-create", requireAuth, async (req, res) => {
+    try {
+      const { items, storeId } = req.body;
+      const companyId = req.companyId!;
+
+      if (!items || !Array.isArray(items)) {
+        return res.status(400).json({ error: "Items array is required" });
+      }
+
+      if (!storeId) {
+        return res.status(400).json({ error: "Store ID is required" });
+      }
+
+      // SECURITY: Validate store belongs to authenticated company
+      const accessibleStores = await getAccessibleStores(req);
+      const store = accessibleStores.find(s => s.id === storeId);
+      
+      if (!store) {
+        return res.status(403).json({ 
+          error: "Access denied: Store not found or does not belong to your company" 
+        });
+      }
+
+      // Create menu items
+      const createdItems = [];
+      for (const item of items) {
+        const menuItemData = {
+          companyId,
+          name: item.name,
+          department: item.department || null,
+          category: item.category || null,
+          size: item.size || null,
+          pluSku: item.pluSku,
+          isRecipeItem: item.isRecipeItem ? 1 : 0,
+          active: 1,
+        };
+
+        const [created] = await db.insert(menuItems).values(menuItemData).returning();
+        createdItems.push(created);
+
+        // Assign to store (now validated to belong to company)
+        await db.insert(storeMenuItems).values({
+          storeId,
+          menuItemId: created.id,
+          active: 1,
+        });
+      }
+
+      res.status(201).json({
+        created: createdItems.length,
+        items: createdItems,
+      });
+    } catch (error: any) {
+      console.error("[Bulk Create Error]", error);
       res.status(400).json({ error: error.message });
     }
   });

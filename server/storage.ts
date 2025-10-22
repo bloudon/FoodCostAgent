@@ -28,6 +28,7 @@ import {
   posSales, type POSSale, type InsertPOSSale,
   posSalesLines, type POSSalesLine, type InsertPOSSalesLine,
   menuItems, type MenuItem, type InsertMenuItem,
+  storeMenuItems, type StoreMenuItem, type InsertStoreMenuItem,
   recipeVersions, type RecipeVersion, type InsertRecipeVersion,
   transferLogs, type TransferLog, type InsertTransferLog,
   transferOrders, type TransferOrder, type InsertTransferOrder,
