@@ -45,6 +45,7 @@ export const companyStores = pgTable("company_stores", {
   postalCode: text("postal_code"),
   timezone: text("timezone"),
   tccLocationId: text("tcc_location_id"), // Thrive Control Center location ID (optional UUID)
+  posLocationId: text("pos_location_id"), // POS system location identifier (e.g., "City View Pizza- Spring Garden")
   status: text("status").notNull().default("active"), // active, inactive, closed
   openedAt: timestamp("opened_at"),
   closedAt: timestamp("closed_at"),
@@ -497,10 +498,15 @@ export const menuItems = pgTable("menu_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
-  pluSku: text("plu_sku").notNull(),
-  recipeId: varchar("recipe_id").notNull(),
-  servingSizeQty: real("serving_size_qty").notNull().default(1),
-  servingUnitId: varchar("serving_unit_id").notNull(),
+  department: text("department"), // e.g., "Pizza", "Appetizers", "Beverages"
+  category: text("category"), // e.g., "Specialty Pizza*", "Chicken Fingers"
+  size: text("size"), // e.g., "Lg", "Sm", blank for no size
+  pluSku: text("plu_sku").notNull(), // Unique identifier: "{Item}|{Size}" or actual PLU code
+  recipeId: varchar("recipe_id"), // Nullable - menu items can exist without recipes initially
+  servingSizeQty: real("serving_size_qty").default(1),
+  servingUnitId: varchar("serving_unit_id"), // Nullable until recipe is linked
+  isRecipeItem: integer("is_recipe_item").notNull().default(1), // 0 for non-recipe items (napkins, plates)
+  active: integer("active").notNull().default(1), // 0 = inactive, 1 = active
 }, (table) => ({
   uniqueCompanyPlu: unique().on(table.companyId, table.pluSku),
 }));
@@ -508,6 +514,20 @@ export const menuItems = pgTable("menu_items", {
 export const insertMenuItemSchema = createInsertSchema(menuItems).omit({ id: true });
 export type InsertMenuItem = z.infer<typeof insertMenuItemSchema>;
 export type MenuItem = typeof menuItems.$inferSelect;
+
+// Store Menu Items (junction table - which menu items are available at which stores)
+export const storeMenuItems = pgTable("store_menu_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  storeId: varchar("store_id").notNull(),
+  menuItemId: varchar("menu_item_id").notNull(),
+  active: integer("active").notNull().default(1), // Store-specific active status
+}, (table) => ({
+  uniqueStoreMenuItem: unique().on(table.storeId, table.menuItemId),
+}));
+
+export const insertStoreMenuItemSchema = createInsertSchema(storeMenuItems).omit({ id: true });
+export type InsertStoreMenuItem = z.infer<typeof insertStoreMenuItemSchema>;
+export type StoreMenuItem = typeof storeMenuItems.$inferSelect;
 
 // Recipe Versions (for cost change tracking)
 export const recipeVersions = pgTable("recipe_versions", {
