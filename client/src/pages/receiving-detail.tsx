@@ -430,8 +430,8 @@ export default function ReceivingDetail() {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <h2 className="text-2xl font-semibold mb-2">Purchase Order Not Found</h2>
-        <Link href="/receiving">
-          <Button variant="ghost">Back to Receiving</Button>
+        <Link href="/orders">
+          <Button variant="ghost">Back to Orders</Button>
         </Link>
       </div>
     );
@@ -472,10 +472,10 @@ export default function ReceivingDetail() {
     <div className="h-full overflow-auto">
       <div className="p-6 space-y-6">
         <div className="flex items-center gap-4 flex-wrap">
-          <Link href="/receiving">
-            <Button variant="ghost" data-testid="button-back-to-receiving">
+          <Link href="/orders">
+            <Button variant="ghost" data-testid="button-back-to-orders">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Receiving
+              Back to Orders
             </Button>
           </Link>
           <Link href={`/purchase-orders/${poId}`}>

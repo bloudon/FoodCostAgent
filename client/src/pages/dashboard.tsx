@@ -156,7 +156,7 @@ export default function Dashboard() {
                 Welcome, {currentUser.firstName || currentUser.email}!
               </p>
               <p className="text-muted-foreground">
-                Use the navigation menu to access Inventory Sessions and Receiving.
+                Use the navigation menu to access Inventory Sessions and Orders.
               </p>
             </div>
           </CardContent>
@@ -288,7 +288,7 @@ export default function Dashboard() {
                 <PackageCheck className="h-5 w-5 text-muted-foreground" />
                 <CardTitle>Recent Receipts</CardTitle>
               </div>
-              <Link href="/receiving">
+              <Link href="/orders">
                 <Button variant="ghost" size="sm" data-testid="button-view-receipts">
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -319,9 +319,9 @@ export default function Dashboard() {
             ) : (
               <div className="text-center py-6">
                 <p className="text-sm text-muted-foreground mb-3">No receipts for this store yet</p>
-                <Link href="/receiving">
+                <Link href="/orders">
                   <Button size="sm" data-testid="button-first-receipt">
-                    View Receiving
+                    View Orders
                   </Button>
                 </Link>
               </div>
@@ -356,7 +356,7 @@ export default function Dashboard() {
             </div>
           </CardHeader>
           <CardContent>
-            <Link href="/purchase-orders">
+            <Link href="/orders">
               <Button className="w-full" data-testid="button-view-pos">
                 View Orders
               </Button>

@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system designed for food service businesses, particularly pizza restaurants. It provides tools for managing inventory, vendors, recipes, and purchase orders. Key capabilities include complex unit conversions, nested recipes, real-time POS sales data integration, and detailed variance reporting. The system aims to enhance operational efficiency, minimize waste, and improve profitability. It supports multi-company enterprises with robust data isolation and integrates with various food distributors.
+This project is a comprehensive inventory management and recipe costing system for food service businesses, particularly pizza restaurants. It offers tools for managing inventory, vendors, recipes, and purchase orders, including complex unit conversions, nested recipes, real-time POS sales data integration, and detailed variance reporting. The system aims to enhance operational efficiency, reduce waste, and improve profitability. It supports multi-company operations with data isolation and integrates with various food distributors.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -83,54 +83,41 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
-The system utilizes a multi-tenant architecture with data isolated per company and store. All relevant tables include `company_id`, and store-level tracking uses `storeId`. Company context is resolved via `req.companyId` for strict data isolation. Integration with Thrive Control Center (TCC) is supported via `tcc_account_id` (company-level) and `tcc_location_id` (store-level) for POS connectivity.
+The system utilizes a multi-tenant architecture with data isolation at company and store levels, enforcing `company_id` and `storeId` context via `req.companyId`. Integration with Thrive Control Center (TCC) for POS connectivity uses `tcc_account_id` and `tcc_location_id`.
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
-- **UI**: shadcn/ui built with Radix UI, Tailwind CSS, and custom theming (warm orange primary color).
-- **State Management**: TanStack Query for server state, local component state.
+- **UI**: `shadcn/ui` components (Radix UI, Tailwind CSS), custom theming (warm orange primary).
+- **State Management**: TanStack Query for server-side state.
 - **Routing**: Wouter.
-- **Features**: Dark/light theme, responsive navigation, search/filtering, real-time data updates via WebSockets, dashboard, quick price adjustments.
+- **Features**: Dark/light theme, responsive navigation, search, filtering, real-time data via WebSockets, dashboard, quick price adjustments.
 
 ### Backend
 - **Runtime**: Node.js with TypeScript.
-- **Web Framework**: Express.js for REST APIs.
-- **API Design**: RESTful, WebSocket server for real-time data, Zod for validation.
+- **Web Framework**: Express.js (RESTful APIs).
+- **API Design**: RESTful, WebSocket server, Zod validation.
 - **Database Layer**: Drizzle ORM, PostgreSQL (Neon serverless), schema-first with migrations.
 - **Core Domain Models**: Users, Storage Locations, Units, Inventory Items, Vendors, Recipes (nested), Inventory Counts, Purchase Orders, POS Sales, Transfer/Waste Logs.
-- **Business Logic**: Unit conversion, recursive recipe cost calculation, location-based inventory, theoretical vs. actual usage variance, purchase order workflows, COGS analysis.
-- **Authentication & Sessions**: Session-based authentication with `auth_sessions` table; global admin company selection via `selected_company_id`.
-- **Role-Based Access Control**: Hierarchical permission system (`global_admin`, `company_admin`, `store_manager`, `store_user` roles) enforcing data isolation and preventing privilege escalation.
+- **Business Logic**: Unit conversion, recursive recipe costing, location-based inventory, theoretical vs. actual usage variance, purchase order workflows, COGS analysis.
+- **Authentication & Sessions**: Session-based authentication (`auth_sessions` table), `selected_company_id` for global admin.
+- **Role-Based Access Control**: Hierarchical permissions (`global_admin`, `company_admin`, `store_manager`, `store_user`) for data isolation and security.
 
 ### Architectural Decisions
-- Single-page application with API and frontend served from the same Express server.
-- WebSocket for real-time POS data streaming.
-- Micro-unit system for precise inventory and recursive recipe cost calculation.
-- Automated inventory adjustments for transfers and waste, with historical recipe versioning.
-- **Inventory Count Sessions**: Auto-populate items based on dual-active status filtering and company match. Implements cross-company protection via PostgreSQL triggers.
-- Purchase order management supports unit/case-based ordering, vendor-specific item filtering, and keyboard-optimized entry.
-- System-wide standardization from "product" to "inventory item" terminology.
-- **Receiving Module**: Supports partial receipts, resumable sessions, visual indicators for short quantities, and correct PO pricing based on original order prices.
-- **Vendor Integration Architecture**: Pluggable adapter pattern for distributors (Sysco, GFS, US Foods) supporting EDI, PunchOut, and CSV order guides.
-- **Object Storage Integration**: Google Cloud Storage via Replit's object storage for inventory item images, featuring presigned URLs and on-the-fly thumbnail generation.
-- **Unified Orders Page**: Combined Purchase Orders and Receiving into single `/orders` page with status-specific navigation and store location column.
-  - **Page**: `/orders` (replaces separate `/purchase-orders` and `/receiving` index routes)
-  - **Store Column**: Added "Store" column showing store location for each order
-  - **Filters**: Search, Store, Vendor, and Status filters
-  - **Status-Based Navigation**:
-    - **Pending Orders**: Row click and "Edit Order" button → `/purchase-orders/{id}` (editable detail page)
-    - **Ordered Orders**: Row click and "Receive" button → `/receiving/{id}` (receiving workflow)
-    - **Received Orders**: Row click and "View Details" button → `/purchase-orders/{id}` (read-only detail page)
-  - **Redirects After Actions**: 
-    - After creating new order → redirects to `/orders`
-    - After completing receiving → redirects to `/orders`
-    - All back buttons in detail pages → navigate to `/orders`
-  - **Navigation Menu**: Single "Orders" menu item replaces separate "Purchase Orders" and "Receiving" links
-  - **Store User Access**: Store users see "Orders" in their limited menu (Dashboard, Inventory Sessions, Orders)
+- **Application Structure**: Single-page application with co-served API and frontend.
+- **Real-time Data**: WebSocket for streaming POS data.
+- **Precision**: Micro-unit system for accurate tracking and costing.
+- **Inventory Adjustments**: Automated adjustments for transfers/waste, historical recipe versioning.
+- **Inventory Count Sessions**: Auto-populates items based on dual-active status and company, with cross-company protection.
+- **Purchase Order Management**: Unit/case ordering, vendor-specific filtering, keyboard-optimized entry.
+- **Terminology Standardization**: Consistent use of "inventory item."
+- **Receiving Module**: Partial receipts, resumable sessions, visual indicators, correct PO pricing.
+- **Vendor Integration**: Pluggable adapter pattern for distributors (Sysco, GFS, US Foods) via EDI, PunchOut, CSV.
+- **Object Storage**: Google Cloud Storage via Replit's object storage for inventory item images (presigned URLs, on-the-fly thumbnails).
+- **Unified Orders Page**: Consolidated Purchase Orders and Receiving into a single `/orders` page. This page includes store, vendor, and status filters, and provides status-based navigation to editable, receiving, or read-only detail pages. A single "Orders" menu item replaces separate links.
 
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
 - **Database Services**: Neon serverless PostgreSQL, `@neondatabase/serverless`.
 - **Real-time Communication**: `ws` (WebSockets).
-- **Image Processing**: Sharp (for thumbnail generation).
+- **Image Processing**: Sharp.
 - **Vendor Integrations**: Sysco, GFS, US Foods (via custom adapters).
