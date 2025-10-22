@@ -148,9 +148,9 @@ export default function PurchaseOrderDetail() {
     enabled: !!selectedStore,
   });
 
-  // Check if selected vendor is Misc Grocery
-  const MISC_GROCERY_VENDOR_ID = "d3c1ebe2-3ca9-4858-ac08-e7f00e0edb1a";
-  const isMiscGrocery = selectedVendor === MISC_GROCERY_VENDOR_ID;
+  // Check if selected vendor is Misc Grocery (by name, not hardcoded ID)
+  const selectedVendorData = vendors?.find(v => v.id === selectedVendor);
+  const isMiscGrocery = selectedVendorData?.name?.toLowerCase().includes('misc grocery') || false;
 
   const { data: vendorItems } = useQuery<VendorItem[]>({
     queryKey: [`/api/vendor-items?vendor_id=${selectedVendor}&store_id=${selectedStore}`],
@@ -335,7 +335,8 @@ export default function PurchaseOrderDetail() {
   useEffect(() => {
     if (purchaseOrder && !isNew && (vendorItems || inventoryItems)) {
       const quantities: Record<string, number> = {};
-      const isMiscGroceryOrder = purchaseOrder.vendorId === MISC_GROCERY_VENDOR_ID;
+      const purchaseVendor = vendors?.find(v => v.id === purchaseOrder.vendorId);
+      const isMiscGroceryOrder = purchaseVendor?.name?.toLowerCase().includes('misc grocery') || false;
       
       purchaseOrder.lines.forEach((line) => {
         let itemId: string;
@@ -359,7 +360,7 @@ export default function PurchaseOrderDetail() {
       
       setCaseQuantities(quantities);
     }
-  }, [purchaseOrder, isNew, vendorItems, inventoryItems, MISC_GROCERY_VENDOR_ID]);
+  }, [purchaseOrder, isNew, vendorItems, inventoryItems, vendors]);
 
   // Filter items based on search and category
   const filteredVendorItems = vendorItems?.filter(item => {
