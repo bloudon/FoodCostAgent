@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system designed for food service businesses, particularly pizza restaurants. It provides tools for managing inventory, vendors, recipes, and purchase orders, including advanced unit conversions, nested recipes, real-time POS sales data integration, and detailed variance reporting. The system aims to enhance operational efficiency, reduce waste, and improve profitability for multi-company operations.
+This project is a comprehensive inventory management and recipe costing system for food service businesses, particularly pizza restaurants. It provides tools for managing inventory, vendors, recipes, and purchase orders, including advanced unit conversions, nested recipes, real-time POS sales data integration, and detailed variance reporting. The system aims to enhance operational efficiency, reduce waste, and improve profitability for multi-company operations.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -123,45 +123,3 @@ The system utilizes a multi-tenant architecture with data isolation at company a
 - **Real-time Communication**: `ws` (WebSockets).
 - **Image Processing**: Sharp.
 - **Vendor Integrations**: Sysco, GFS, US Foods (via custom adapters).
-
-## Recent Bug Fixes (October 22, 2025)
-
-### Critical Bugs Fixed
-1. **Database Schema Sync Issue** - Fixed missing columns in menu_items table
-   - **Problem**: The menu_items table was missing columns (department, category, size, is_recipe_item, active) that were defined in the schema, causing SQL errors when creating menu items
-   - **Fix**: Added missing columns using ALTER TABLE SQL commands
-   - **Impact**: Menu item creation now works correctly
-
-2. **Receipt Processing Schema Mismatch** - Fixed critical bug in receipt ingestion
-   - **Problem**: Receipt processing endpoints were trying to update `onHandQty` directly on the `inventoryItems` table, but this column has been moved to the `storeInventoryItems` table as part of the schema refactoring
-   - **Affected Endpoints**: POST /api/receipts, PATCH /api/receipts/:id/complete
-   - **Fix**: Updated both endpoints to:
-     - Update `pricePerUnit` on the company-level `inventoryItems` catalog
-     - Update `onHandQty` using `updateStoreInventoryItemQuantity()` on the store-level `storeInventoryItems` table
-   - **Impact**: Receipt processing no longer crashes with SQL errors and correctly updates inventory quantities at the store level
-
-### Non-Critical Issues
-1. **Vite HMR WebSocket Warning** - Browser console shows WebSocket error with undefined port
-   - **Error**: "Failed to construct 'WebSocket': The URL 'wss://localhost:undefined/?token=...' is invalid"
-   - **Cause**: Vite's Hot Module Replacement (HMR) client trying to establish WebSocket connection through Replit's proxy
-   - **Impact**: Benign warning that doesn't affect application functionality; the application's /ws/pos WebSocket works correctly
-   - **Action**: No fix needed - this is expected behavior when running Vite through a proxy
-
-### Known Technical Debt
-1. **TypeScript Type Safety** - 77 LSP diagnostics in server/routes.ts
-   - **Issue**: Code uses type assertions `(req as any)` to add custom properties (user, companyId, etc.) to Express Request objects
-   - **Impact**: Runtime code works correctly, but lacks compile-time type safety
-   - **Recommendation**: Create proper TypeScript interfaces extending Express.Request for better type safety
-   - **Examples**:
-     - Missing `AuthRequest` interface for authenticated request properties
-     - Properties like `companyId`, `user`, `session` not properly typed on Request
-
-2. **API Response Schema Inconsistencies**
-   - **Issue**: Some GET endpoints return `undefined` for properties that were removed from tables (e.g., `storageLocationId`, `onHandQty` on inventory items)
-   - **Impact**: API responses include undefined values that could confuse frontend consumers
-   - **Recommendation**: Update API response schemas to match current database structure
-
-3. **Store Inventory Item Creation**
-   - **Issue**: Receipt processing calls `updateStoreInventoryItemQuantity` which returns undefined if the store inventory item doesn't exist yet
-   - **Impact**: Could silently fail to update quantities if store inventory records are missing
-   - **Recommendation**: Add preflight check to create store inventory items if missing before receipt processing
