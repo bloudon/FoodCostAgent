@@ -35,16 +35,16 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 
 type TransferOrderDisplay = {
   id: string;
-  fromLocationId: string;
-  toLocationId: string;
-  fromLocationName: string;
-  toLocationName: string;
+  fromStoreId: string;
+  toStoreId: string;
+  fromStoreName: string;
+  toStoreName: string;
   status: string;
   createdAt: string;
   expectedDate: string | null;
 };
 
-type StorageLocation = {
+type Store = {
   id: string;
   name: string;
 };
@@ -57,7 +57,7 @@ const statusColors: Record<string, string> = {
 
 export default function TransferOrders() {
   const [search, setSearch] = useState("");
-  const [selectedLocation, setSelectedLocation] = useState<string>("all");
+  const [selectedStore, setSelectedStore] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const { toast } = useToast();
@@ -66,8 +66,8 @@ export default function TransferOrders() {
     queryKey: ["/api/transfer-orders"],
   });
 
-  const { data: locations } = useQuery<StorageLocation[]>({
-    queryKey: ["/api/storage-locations"],
+  const { data: stores } = useQuery<Store[]>({
+    queryKey: ["/api/stores/accessible"],
   });
 
   const deleteMutation = useMutation({
@@ -92,14 +92,14 @@ export default function TransferOrders() {
   });
 
   const filteredOrders = transferOrders?.filter((order) => {
-    const matchesSearch = order.fromLocationName?.toLowerCase().includes(search.toLowerCase()) ||
-      order.toLocationName?.toLowerCase().includes(search.toLowerCase()) ||
+    const matchesSearch = order.fromStoreName?.toLowerCase().includes(search.toLowerCase()) ||
+      order.toStoreName?.toLowerCase().includes(search.toLowerCase()) ||
       order.id?.toLowerCase().includes(search.toLowerCase());
-    const matchesLocation = selectedLocation === "all" || 
-      order.fromLocationId === selectedLocation || 
-      order.toLocationId === selectedLocation;
+    const matchesStore = selectedStore === "all" || 
+      order.fromStoreId === selectedStore || 
+      order.toStoreId === selectedStore;
     const matchesStatus = selectedStatus === "all" || order.status === selectedStatus;
-    return matchesSearch && matchesLocation && matchesStatus;
+    return matchesSearch && matchesStore && matchesStatus;
   }) || [];
 
   return (
@@ -109,7 +109,7 @@ export default function TransferOrders() {
           <div>
             <h1 className="text-3xl font-bold">Transfer Orders</h1>
             <p className="text-muted-foreground mt-1">
-              Move inventory between locations
+              Move inventory between stores
             </p>
           </div>
           <Button asChild data-testid="button-create-transfer">
@@ -131,15 +131,15 @@ export default function TransferOrders() {
               data-testid="input-search-transfer"
             />
           </div>
-          <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-            <SelectTrigger className="w-[200px]" data-testid="select-location-filter">
-              <SelectValue placeholder="Filter by location" />
+          <Select value={selectedStore} onValueChange={setSelectedStore}>
+            <SelectTrigger className="w-[200px]" data-testid="select-store-filter">
+              <SelectValue placeholder="Filter by store" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Locations</SelectItem>
-              {locations?.map((location) => (
-                <SelectItem key={location.id} value={location.id}>
-                  {location.name}
+              <SelectItem value="all">All Stores</SelectItem>
+              {stores?.map((store) => (
+                <SelectItem key={store.id} value={store.id}>
+                  {store.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -166,7 +166,7 @@ export default function TransferOrders() {
             <ArrowLeftRight className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-1">No transfer orders found</h3>
             <p className="text-muted-foreground text-sm">
-              {search || selectedLocation !== "all" || selectedStatus !== "all"
+              {search || selectedStore !== "all" || selectedStatus !== "all"
                 ? "Try adjusting your filters"
                 : "Create your first transfer order to get started"}
             </p>
@@ -177,8 +177,8 @@ export default function TransferOrders() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Transfer ID</TableHead>
-                  <TableHead>From Location</TableHead>
-                  <TableHead>To Location</TableHead>
+                  <TableHead>From Store</TableHead>
+                  <TableHead>To Store</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead>Expected Date</TableHead>
@@ -195,8 +195,8 @@ export default function TransferOrders() {
                         </Button>
                       </Link>
                     </TableCell>
-                    <TableCell>{order.fromLocationName}</TableCell>
-                    <TableCell>{order.toLocationName}</TableCell>
+                    <TableCell>{order.fromStoreName}</TableCell>
+                    <TableCell>{order.toStoreName}</TableCell>
                     <TableCell>
                       <Badge className={statusColors[order.status]} data-testid={`badge-status-${order.id}`}>
                         {order.status.replace('_', ' ')}

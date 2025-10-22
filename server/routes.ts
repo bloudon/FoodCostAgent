@@ -3251,7 +3251,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     const lines = await storage.getTransferOrderLines(order.id);
-    const locations = await storage.getStorageLocations(req.companyId!);
+    const stores = await storage.getCompanyStores(req.companyId!);
     const inventoryItems = await storage.getInventoryItems();
     const units = await storage.getUnits();
     
@@ -3265,13 +3265,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
     });
     
-    const fromLocation = locations.find(l => l.id === order.fromLocationId);
-    const toLocation = locations.find(l => l.id === order.toLocationId);
+    const fromStore = stores.find(s => s.id === order.fromStoreId);
+    const toStore = stores.find(s => s.id === order.toStoreId);
     
     res.json({
       ...order,
-      fromLocationName: fromLocation?.name || "Unknown",
-      toLocationName: toLocation?.name || "Unknown",
+      fromStoreName: fromStore?.name || "Unknown",
+      toStoreName: toStore?.name || "Unknown",
       lines: linesWithDetails,
     });
   });
