@@ -327,6 +327,9 @@ export default function Dashboard() {
                         <p className="font-medium text-sm" data-testid={`text-order-date-${order.id}`}>
                           {new Date(order.createdAt).toLocaleDateString()}
                         </p>
+                        <p className="text-xs text-muted-foreground" data-testid={`text-order-vendor-${order.id}`}>
+                          {order.vendorName}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           #{order.id.slice(0, 8)}
                         </p>
