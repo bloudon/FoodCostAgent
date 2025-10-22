@@ -58,17 +58,17 @@ export default function Dashboard() {
     queryKey: ["/api/storage-locations"],
   });
 
-  // Receipts - fetch all and filter client-side (no server-side store filter available)
-  const { data: allReceipts = [] } = useQuery<any[]>({
-    queryKey: ["/api/receipts"],
+  // Purchase Orders - fetch all and filter client-side
+  const { data: allPurchaseOrders = [] } = useQuery<any[]>({
+    queryKey: ["/api/purchase-orders"],
   });
 
-  // Filter receipts by selected store client-side (copy array to avoid mutation)
-  const storeReceiptsAll = [...allReceipts].filter(r => r.storeId === selectedStoreId);
+  // Filter purchase orders by selected store client-side (copy array to avoid mutation)
+  const storePurchaseOrdersAll = [...allPurchaseOrders].filter(po => po.storeId === selectedStoreId);
   
-  // Get last 3 receipts for quicklink display
-  const storeReceiptsRecent = [...storeReceiptsAll]
-    .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
+  // Get last 3 purchase orders for quicklink display
+  const storePurchaseOrdersRecent = [...storePurchaseOrdersAll]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 3);
   
   // Get most recent count for this store (already filtered server-side, copy to avoid cache mutation)
@@ -83,10 +83,20 @@ export default function Dashboard() {
     enabled: !!mostRecentCount,
   });
 
+  // Calculate total $ value of recent inventory count
+  const recentCountValue = recentCountLines?.reduce((sum, line) => {
+    // Each line has quantityCounted and the item's pricePerUnit
+    const item = inventoryItems?.find(i => i.id === line.inventoryItemId);
+    if (item && line.quantityCounted && item.pricePerUnit !== undefined) {
+      return sum + (line.quantityCounted * item.pricePerUnit);
+    }
+    return sum;
+  }, 0) || 0;
+
   // Stats filtered by selected store
   const totalItems = inventoryItems?.filter(i => i.active === 1).length || 0;
   const totalCounts = inventoryCounts?.length || 0;
-  const totalReceipts = storeReceiptsAll.length;
+  const totalOrders = storePurchaseOrdersAll.length;
   
   // Calculate total inventory value for this store
   const totalInventoryValue = inventoryItems?.reduce((sum, item) => {
@@ -116,10 +126,10 @@ export default function Dashboard() {
       description: "Count sessions for this store",
     },
     {
-      title: "Recent Receipts",
-      value: totalReceipts.toString(),
+      title: "Recent Orders",
+      value: totalOrders.toString(),
       icon: PackageCheck,
-      description: "Last 3 receipts received",
+      description: "Last 3 purchase orders",
     },
   ];
 
@@ -222,13 +232,13 @@ export default function Dashboard() {
 
       {/* Quicklinks Section */}
       <div className="grid gap-6 md:grid-cols-2 mb-8">
-        {/* Recent Inventory Count */}
+        {/* Recent Inventory */}
         <Card data-testid="card-recent-inventory">
           <CardHeader>
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <ClipboardList className="h-5 w-5 text-muted-foreground" />
-                <CardTitle>Recent Inventory Count</CardTitle>
+                <CardTitle>Recent Inventory</CardTitle>
               </div>
               <Link href="/inventory-sessions">
                 <Button variant="ghost" size="sm" data-testid="button-view-counts">
@@ -258,6 +268,12 @@ export default function Dashboard() {
                       {recentCountLines?.length || 0}
                     </p>
                   </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total Value</p>
+                    <p className="font-medium font-mono text-sm" data-testid="text-recent-count-value">
+                      ${recentCountValue.toFixed(2)}
+                    </p>
+                  </div>
                 </div>
                 <div className="pt-2">
                   <Link href={`/count/${mostRecentCount.id}`}>
@@ -280,47 +296,60 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Recent Receipts */}
-        <Card data-testid="card-recent-receipts">
+        {/* Recent Orders */}
+        <Card data-testid="card-recent-orders">
           <CardHeader>
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <PackageCheck className="h-5 w-5 text-muted-foreground" />
-                <CardTitle>Recent Receipts</CardTitle>
+                <CardTitle>Recent Orders</CardTitle>
               </div>
               <Link href="/orders">
-                <Button variant="ghost" size="sm" data-testid="button-view-receipts">
+                <Button variant="ghost" size="sm" data-testid="button-view-orders">
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
             </div>
           </CardHeader>
           <CardContent>
-            {storeReceiptsRecent.length > 0 ? (
-              <div className="space-y-3">
-                {storeReceiptsRecent.map((receipt) => (
-                  <div key={receipt.id} className="flex items-center justify-between border-b last:border-0 pb-2 last:pb-0">
-                    <div>
-                      <p className="font-medium text-sm" data-testid={`text-receipt-date-${receipt.id}`}>
-                        {new Date(receipt.receivedAt).toLocaleDateString()}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        PO #{receipt.poId?.slice(0, 8)}
-                      </p>
+            {storePurchaseOrdersRecent.length > 0 ? (
+              <div className="space-y-2">
+                {storePurchaseOrdersRecent.map((order) => (
+                  <Link 
+                    key={order.id} 
+                    href={order.status === "ordered" ? `/receiving/${order.id}` : `/purchase-orders/${order.id}`}
+                  >
+                    <div 
+                      className="flex items-center justify-between border-b last:border-0 pb-2 last:pb-0 cursor-pointer hover-elevate rounded p-2"
+                      data-testid={`row-order-${order.id}`}
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium text-sm" data-testid={`text-order-date-${order.id}`}>
+                          {new Date(order.createdAt).toLocaleDateString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          #{order.id.slice(0, 8)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className="text-xs text-muted-foreground capitalize" data-testid={`text-order-status-${order.id}`}>
+                            {order.status}
+                          </p>
+                          <p className="font-medium text-sm font-mono" data-testid={`text-order-total-${order.id}`}>
+                            ${(order.totalAmount || 0).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <Link href={`/receiving/${receipt.poId}`}>
-                      <Button variant="ghost" size="sm" data-testid={`button-view-receipt-${receipt.id}`}>
-                        View
-                      </Button>
-                    </Link>
-                  </div>
+                  </Link>
                 ))}
               </div>
             ) : (
               <div className="text-center py-6">
-                <p className="text-sm text-muted-foreground mb-3">No receipts for this store yet</p>
+                <p className="text-sm text-muted-foreground mb-3">No orders for this store yet</p>
                 <Link href="/orders">
-                  <Button size="sm" data-testid="button-first-receipt">
+                  <Button size="sm" data-testid="button-first-order">
                     View Orders
                   </Button>
                 </Link>
