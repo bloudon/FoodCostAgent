@@ -3,6 +3,8 @@ import { db } from "./db";
 import {
   users, type User, type InsertUser,
   authSessions, type AuthSession, type InsertAuthSession,
+  apiCredentials, type ApiCredential, type InsertApiCredential,
+  apiCredentialLocations, type ApiCredentialLocation, type InsertApiCredentialLocation,
   companies, type Company, type InsertCompany,
   companyStores, type CompanyStore, type InsertCompanyStore,
   storageLocations, type StorageLocation, type InsertStorageLocation,
@@ -59,6 +61,20 @@ export interface IStorage {
   updateAuthSession(id: string, updates: Partial<AuthSession>): Promise<AuthSession | undefined>;
   revokeAuthSession(id: string): Promise<void>;
   cleanExpiredSessions(): Promise<void>;
+
+  // API Credentials (HMAC authentication for inbound data feeds)
+  getApiCredentials(companyId: string): Promise<Array<ApiCredential & { locationCount: number }>>;
+  getApiCredential(id: string, companyId: string): Promise<ApiCredential | undefined>;
+  getApiCredentialByKeyId(apiKeyId: string): Promise<ApiCredential | undefined>;
+  createApiCredential(credential: InsertApiCredential): Promise<ApiCredential>;
+  updateApiCredential(id: string, companyId: string, updates: Partial<ApiCredential>): Promise<ApiCredential | undefined>;
+  deleteApiCredential(id: string, companyId: string): Promise<void>;
+  updateApiCredentialLastUsed(apiKeyId: string): Promise<void>;
+  
+  // API Credential Locations
+  getApiCredentialLocations(apiCredentialId: string): Promise<ApiCredentialLocation[]>;
+  setApiCredentialLocations(apiCredentialId: string, storeIds: string[]): Promise<void>;
+  verifyApiCredentialLocation(apiCredentialId: string, storeId: string): Promise<boolean>;
 
   // Storage Locations
   getStorageLocations(companyId: string): Promise<StorageLocation[]>;
@@ -405,6 +421,109 @@ export class DatabaseStorage implements IStorage {
     await db
       .delete(authSessions)
       .where(lte(authSessions.expiresAt, new Date()));
+  }
+
+  // API Credentials
+  async getApiCredentials(companyId: string): Promise<Array<ApiCredential & { locationCount: number }>> {
+    const credentials = await db.select().from(apiCredentials)
+      .where(eq(apiCredentials.companyId, companyId))
+      .orderBy(apiCredentials.createdAt);
+    
+    // Get location counts for each credential
+    const credentialsWithCounts = await Promise.all(
+      credentials.map(async (cred) => {
+        const locations = await db.select().from(apiCredentialLocations)
+          .where(eq(apiCredentialLocations.apiCredentialId, cred.id));
+        return {
+          ...cred,
+          locationCount: locations.length
+        };
+      })
+    );
+    
+    return credentialsWithCounts;
+  }
+
+  async getApiCredential(id: string, companyId: string): Promise<ApiCredential | undefined> {
+    const [credential] = await db.select().from(apiCredentials)
+      .where(and(
+        eq(apiCredentials.id, id),
+        eq(apiCredentials.companyId, companyId)
+      ));
+    return credential;
+  }
+
+  async getApiCredentialByKeyId(apiKeyId: string): Promise<ApiCredential | undefined> {
+    const [credential] = await db.select().from(apiCredentials)
+      .where(eq(apiCredentials.apiKeyId, apiKeyId));
+    return credential;
+  }
+
+  async createApiCredential(credential: InsertApiCredential): Promise<ApiCredential> {
+    const [newCredential] = await db.insert(apiCredentials)
+      .values(credential)
+      .returning();
+    return newCredential;
+  }
+
+  async updateApiCredential(id: string, companyId: string, updates: Partial<ApiCredential>): Promise<ApiCredential | undefined> {
+    const [updated] = await db.update(apiCredentials)
+      .set(updates)
+      .where(and(
+        eq(apiCredentials.id, id),
+        eq(apiCredentials.companyId, companyId)
+      ))
+      .returning();
+    return updated;
+  }
+
+  async deleteApiCredential(id: string, companyId: string): Promise<void> {
+    // First delete all location mappings
+    await db.delete(apiCredentialLocations)
+      .where(eq(apiCredentialLocations.apiCredentialId, id));
+    
+    // Then delete the credential
+    await db.delete(apiCredentials)
+      .where(and(
+        eq(apiCredentials.id, id),
+        eq(apiCredentials.companyId, companyId)
+      ));
+  }
+
+  async updateApiCredentialLastUsed(apiKeyId: string): Promise<void> {
+    await db.update(apiCredentials)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(apiCredentials.apiKeyId, apiKeyId));
+  }
+
+  // API Credential Locations
+  async getApiCredentialLocations(apiCredentialId: string): Promise<ApiCredentialLocation[]> {
+    return db.select().from(apiCredentialLocations)
+      .where(eq(apiCredentialLocations.apiCredentialId, apiCredentialId));
+  }
+
+  async setApiCredentialLocations(apiCredentialId: string, storeIds: string[]): Promise<void> {
+    // Delete existing location mappings
+    await db.delete(apiCredentialLocations)
+      .where(eq(apiCredentialLocations.apiCredentialId, apiCredentialId));
+    
+    // Insert new location mappings
+    if (storeIds.length > 0) {
+      await db.insert(apiCredentialLocations)
+        .values(storeIds.map(storeId => ({
+          apiCredentialId,
+          storeId
+        })));
+    }
+  }
+
+  async verifyApiCredentialLocation(apiCredentialId: string, storeId: string): Promise<boolean> {
+    const [location] = await db.select().from(apiCredentialLocations)
+      .where(and(
+        eq(apiCredentialLocations.apiCredentialId, apiCredentialId),
+        eq(apiCredentialLocations.storeId, storeId)
+      ));
+    return !!location;
   }
 
   // Storage Locations
