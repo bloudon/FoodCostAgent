@@ -105,8 +105,13 @@ export default function Orders() {
   });
 
   const filteredOrders = purchaseOrders?.filter((order) => {
+    const createdDate = new Date(order.createdAt).toLocaleDateString();
+    const expectedDate = order.expectedDate ? new Date(order.expectedDate).toLocaleDateString() : '';
+    
     const matchesSearch = order.vendorName?.toLowerCase().includes(search.toLowerCase()) ||
-      order.id?.toLowerCase().includes(search.toLowerCase());
+      order.id?.toLowerCase().includes(search.toLowerCase()) ||
+      createdDate.toLowerCase().includes(search.toLowerCase()) ||
+      expectedDate.toLowerCase().includes(search.toLowerCase());
     const matchesVendor = selectedVendor === "all" || order.vendorId === selectedVendor;
     const matchesStatus = selectedStatus === "all" || order.status === selectedStatus;
     const matchesStore = selectedStore === "all" || order.storeId === selectedStore;
