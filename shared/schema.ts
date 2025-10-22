@@ -372,6 +372,9 @@ export const inventoryCounts = pgTable("inventory_counts", {
   countedAt: timestamp("counted_at").notNull().defaultNow(), // When the count session was created
   userId: varchar("user_id").notNull(),
   note: text("note"),
+  applied: integer("applied").notNull().default(0), // 0 = not applied, 1 = applied to on-hand quantities
+  appliedAt: timestamp("applied_at"), // When the count was applied
+  appliedBy: varchar("applied_by"), // User who applied the count
 });
 
 export const insertInventoryCountSchema = createInsertSchema(inventoryCounts).omit({ id: true, countedAt: true }).extend({

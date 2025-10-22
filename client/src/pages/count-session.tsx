@@ -247,6 +247,37 @@ export default function CountSession() {
 
     updateItemMutation.mutate(updates);
   };
+
+  const applyCountMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/inventory-counts/${countId}/apply`, {
+        method: "POST",
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to apply inventory count");
+      }
+      
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts", countId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      toast({
+        title: "Inventory Count Applied",
+        description: "On-hand quantities have been updated to match the counted values",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to apply count",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
   
   // Get unique categories from inventory items
   const categories = Array.from(new Set(
@@ -381,21 +412,35 @@ export default function CountSession() {
           </Button>
         </Link>
         
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-session-title">
-            Count Session Details {company && store && `(${company.name} - ${store.name})`}
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            {countDate?.toLocaleDateString()} {countDate?.toLocaleTimeString()}
-          </p>
-          {!isReadOnly ? (
-            <p className="text-sm text-muted-foreground mt-1">
-              Click on a quantity to edit. Use filters below to view items by category or location.
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-session-title">
+              Count Session Details {company && store && `(${company.name} - ${store.name})`}
+            </h1>
+            <p className="text-muted-foreground mt-2">
+              {countDate?.toLocaleDateString()} {countDate?.toLocaleTimeString()}
             </p>
-          ) : (
-            <p className="text-sm text-muted-foreground mt-1">
-              This is a historical count session. Use filters below to view items by category or location.
-            </p>
+            {!isReadOnly ? (
+              <p className="text-sm text-muted-foreground mt-1">
+                Click on a quantity to edit. Use filters below to view items by category or location.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground mt-1">
+                This is a historical count session. Use filters below to view items by category or location.
+              </p>
+            )}
+          </div>
+          
+          {count && !count.applied && !isReadOnly && (
+            <Button
+              onClick={() => applyCountMutation.mutate()}
+              disabled={applyCountMutation.isPending}
+              variant="default"
+              data-testid="button-apply-count"
+            >
+              <Package className="h-4 w-4 mr-2" />
+              Apply Count to Inventory
+            </Button>
           )}
         </div>
       </div>

@@ -2485,6 +2485,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Apply inventory count to update on-hand quantities
+  app.post("/api/inventory-counts/:id/apply", requireAuth, async (req, res) => {
+    try {
+      const count = await storage.getInventoryCount(req.params.id);
+      if (!count) {
+        return res.status(404).json({ error: "Count session not found" });
+      }
+
+      // Validate company ownership
+      if (count.companyId !== (req as any).companyId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Check if already applied
+      if ((count as any).applied === 1) {
+        return res.status(400).json({ error: "This inventory count has already been applied" });
+      }
+
+      const user = (req as any).user;
+      const lines = await storage.getInventoryCountLines(count.id);
+
+      if (lines.length === 0) {
+        return res.status(400).json({ error: "Cannot apply empty inventory count" });
+      }
+
+      // Group lines by inventory item (sum quantities across storage locations)
+      const itemTotals = new Map<string, number>();
+      for (const line of lines) {
+        const currentTotal = itemTotals.get(line.inventoryItemId) || 0;
+        itemTotals.set(line.inventoryItemId, currentTotal + line.qty);
+      }
+
+      // Update on-hand quantities for each item
+      for (const [inventoryItemId, totalQty] of itemTotals.entries()) {
+        // Check if store inventory record exists
+        const storeItem = await storage.getStoreInventoryItem(count.storeId, inventoryItemId);
+        
+        if (storeItem) {
+          // Calculate the difference to update
+          const qtyDifference = totalQty - storeItem.onHandQty;
+          await storage.updateStoreInventoryItemQuantity(count.storeId, inventoryItemId, qtyDifference);
+        } else {
+          // Create new store inventory item with counted quantity
+          await storage.createStoreInventoryItem({
+            companyId: count.companyId,
+            storeId: count.storeId,
+            inventoryItemId: inventoryItemId,
+            onHandQty: totalQty,
+            active: 1
+          });
+        }
+      }
+
+      // Mark count as applied
+      await db
+        .update(inventoryCounts)
+        .set({ 
+          applied: 1,
+          appliedAt: new Date(),
+          appliedBy: user.id
+        })
+        .where(eq(inventoryCounts.id, count.id));
+
+      const updatedCount = await storage.getInventoryCount(count.id);
+      res.json(updatedCount);
+    } catch (error: any) {
+      console.error("Apply inventory count error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get previous inventory count session (for comparison)
   app.get("/api/inventory-counts/:id/previous-lines", async (req, res) => {
     try {
