@@ -227,10 +227,10 @@ export default function Orders() {
                       data-testid={`row-order-${order.id}`}
                       className="cursor-pointer hover-elevate"
                       onClick={() => {
-                        // Pending → PO detail (editable), Ordered → receiving, Received → PO detail (read-only)
-                        const targetUrl = order.status === "ordered"
-                          ? `/receiving/${order.id}`
-                          : `/purchase-orders/${order.id}`;
+                        // Pending → PO detail (editable), Ordered/Received → receiving view
+                        const targetUrl = order.status === "pending"
+                          ? `/purchase-orders/${order.id}`
+                          : `/receiving/${order.id}`;
                         setLocation(targetUrl);
                       }}
                     >
@@ -297,10 +297,10 @@ export default function Orders() {
                               data-testid={`button-view-order-${order.id}`}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setLocation(`/purchase-orders/${order.id}`);
+                                setLocation(`/receiving/${order.id}`);
                               }}
                             >
-                              View Details
+                              View Receipt
                             </Button>
                           )}
                           {order.status !== "received" && (
