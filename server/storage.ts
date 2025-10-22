@@ -653,7 +653,10 @@ export class DatabaseStorage implements IStorage {
     if (storeId) {
       let query = db.select({ 
         inventoryItem: inventoryItems,
-        storeActive: storeInventoryItems.active
+        storeActive: storeInventoryItems.active,
+        onHandQty: storeInventoryItems.onHandQty,
+        parLevel: storeInventoryItems.parLevel,
+        reorderLevel: storeInventoryItems.reorderLevel
       }).from(inventoryItems)
         .innerJoin(storeInventoryItems, and(
           eq(storeInventoryItems.inventoryItemId, inventoryItems.id),
@@ -667,10 +670,13 @@ export class DatabaseStorage implements IStorage {
       }
       
       const result = await query.where(conditions.length > 0 ? and(...conditions) : undefined);
-      // Use store-specific active status
+      // Use store-specific values (active status, onHandQty, par/reorder levels)
       return result.map(row => ({
         ...row.inventoryItem,
-        active: row.storeActive
+        active: row.storeActive,
+        onHandQty: row.onHandQty,
+        parLevel: row.parLevel ?? row.inventoryItem.parLevel,
+        reorderLevel: row.reorderLevel ?? row.inventoryItem.reorderLevel
       }));
     }
     
