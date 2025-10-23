@@ -511,6 +511,7 @@ export const menuItems = pgTable("menu_items", {
   servingUnitId: varchar("serving_unit_id"), // Nullable until recipe is linked
   isRecipeItem: integer("is_recipe_item").notNull().default(1), // 0 for non-recipe items (napkins, plates)
   active: integer("active").notNull().default(1), // 0 = inactive, 1 = active
+  price: real("price"), // Menu item price (nullable until set)
 }, (table) => ({
   uniqueCompanyPlu: unique().on(table.companyId, table.pluSku),
 }));
