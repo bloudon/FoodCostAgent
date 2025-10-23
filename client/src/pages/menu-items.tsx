@@ -14,6 +14,11 @@ import { Upload, Package, Search, Filter, Plus, MoreVertical } from "lucide-reac
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { insertMenuItemSchema } from "@shared/schema";
+import { z } from "zod";
 
 interface MenuItem {
   id: string;
@@ -54,6 +59,21 @@ interface ParseResult {
   };
 }
 
+// Form schema for manual menu item creation
+const addMenuItemFormSchema = insertMenuItemSchema
+  .omit({ companyId: true }) // companyId will be added by backend
+  .extend({
+    name: z.string().min(1, "Item name is required"),
+    pluSku: z.string().min(1, "PLU/SKU is required"),
+    department: z.string().optional(),
+    category: z.string().optional(),
+    size: z.string().optional(),
+    isRecipeItem: z.number(),
+    active: z.number(),
+  });
+
+type AddMenuItemForm = z.infer<typeof addMenuItemFormSchema>;
+
 export default function MenuItemsPage() {
   const [search, setSearch] = useState("");
   const [selectedStore, setSelectedStore] = useState<string>("all");
@@ -63,13 +83,23 @@ export default function MenuItemsPage() {
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [selectedStoreForImport, setSelectedStoreForImport] = useState<string>("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [newItemName, setNewItemName] = useState("");
-  const [newItemDepartment, setNewItemDepartment] = useState("");
-  const [newItemCategory, setNewItemCategory] = useState("");
-  const [newItemSize, setNewItemSize] = useState("");
-  const [newItemPluSku, setNewItemPluSku] = useState("");
-  const [newItemIsRecipe, setNewItemIsRecipe] = useState(true);
   const { toast } = useToast();
+
+  const form = useForm<AddMenuItemForm>({
+    resolver: zodResolver(addMenuItemFormSchema),
+    defaultValues: {
+      name: "",
+      department: "",
+      category: "",
+      size: "",
+      pluSku: "",
+      isRecipeItem: 1,
+      active: 1,
+      recipeId: null,
+      servingSizeQty: 1,
+      servingUnitId: null,
+    },
+  });
 
   const { data: stores } = useAccessibleStores();
 
@@ -132,7 +162,7 @@ export default function MenuItemsPage() {
   });
 
   const createItemMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: AddMenuItemForm) => {
       const response = await apiRequest("POST", "/api/menu-items", data);
       return await response.json();
     },
@@ -143,12 +173,7 @@ export default function MenuItemsPage() {
         description: "Successfully created menu item",
       });
       setAddDialogOpen(false);
-      setNewItemName("");
-      setNewItemDepartment("");
-      setNewItemCategory("");
-      setNewItemSize("");
-      setNewItemPluSku("");
-      setNewItemIsRecipe(true);
+      form.reset();
     },
     onError: (error: Error) => {
       toast({
@@ -209,25 +234,15 @@ export default function MenuItemsPage() {
     });
   };
 
-  const handleAddMenuItem = () => {
-    if (!newItemName || !newItemPluSku) {
-      toast({
-        title: "Missing Information",
-        description: "Name and PLU/SKU are required",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    createItemMutation.mutate({
-      name: newItemName,
-      department: newItemDepartment || null,
-      category: newItemCategory || null,
-      size: newItemSize || null,
-      pluSku: newItemPluSku,
-      isRecipeItem: newItemIsRecipe ? 1 : 0,
-      active: 1,
-    });
+  const handleAddMenuItem = (data: AddMenuItemForm) => {
+    // Transform empty strings to null for optional fields
+    const payload = {
+      ...data,
+      department: data.department || null,
+      category: data.category || null,
+      size: data.size || null,
+    };
+    createItemMutation.mutate(payload);
   };
 
   const handleToggleActive = (item: MenuItem) => {
@@ -271,87 +286,136 @@ export default function MenuItemsPage() {
                   Create a new menu item manually
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Item Name *</label>
-                  <Input
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
-                    placeholder="e.g., Pepperoni Pizza"
-                    data-testid="input-new-item-name"
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(handleAddMenuItem)} className="space-y-4 py-4">
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Item Name *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., Pepperoni Pizza"
+                            data-testid="input-new-item-name"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Department</label>
-                    <Input
-                      value={newItemDepartment}
-                      onChange={(e) => setNewItemDepartment(e.target.value)}
-                      placeholder="e.g., Pizza"
-                      data-testid="input-new-item-department"
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="department"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Department</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="e.g., Pizza"
+                              data-testid="input-new-item-department"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="category"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Category</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="e.g., Specialty Pizzas"
+                              data-testid="input-new-item-category"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Category</label>
-                    <Input
-                      value={newItemCategory}
-                      onChange={(e) => setNewItemCategory(e.target.value)}
-                      placeholder="e.g., Specialty Pizzas"
-                      data-testid="input-new-item-category"
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="size"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Size</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="e.g., Large"
+                              data-testid="input-new-item-size"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="pluSku"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>PLU/SKU *</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="e.g., PPP001"
+                              data-testid="input-new-item-plu"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Size</label>
-                    <Input
-                      value={newItemSize}
-                      onChange={(e) => setNewItemSize(e.target.value)}
-                      placeholder="e.g., Large"
-                      data-testid="input-new-item-size"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">PLU/SKU *</label>
-                    <Input
-                      value={newItemPluSku}
-                      onChange={(e) => setNewItemPluSku(e.target.value)}
-                      placeholder="e.g., PPP001"
-                      data-testid="input-new-item-plu"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="is-recipe"
-                    checked={newItemIsRecipe}
-                    onCheckedChange={(checked) => setNewItemIsRecipe(checked as boolean)}
-                    data-testid="checkbox-new-item-is-recipe"
+                  <FormField
+                    control={form.control}
+                    name="isRecipeItem"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center space-x-2 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value === 1}
+                            onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
+                            data-testid="checkbox-new-item-is-recipe"
+                          />
+                        </FormControl>
+                        <FormLabel className="!mt-0">This is a recipe item</FormLabel>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
-                  <label
-                    htmlFor="is-recipe"
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                  >
-                    This is a recipe item
-                  </label>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setAddDialogOpen(false)}
-                  data-testid="button-cancel-add-item"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleAddMenuItem}
-                  disabled={createItemMutation.isPending}
-                  data-testid="button-confirm-add-item"
-                >
-                  {createItemMutation.isPending ? "Creating..." : "Add Item"}
-                </Button>
-              </DialogFooter>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setAddDialogOpen(false);
+                        form.reset();
+                      }}
+                      data-testid="button-cancel-add-item"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={createItemMutation.isPending}
+                      data-testid="button-confirm-add-item"
+                    >
+                      {createItemMutation.isPending ? "Creating..." : "Add Item"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
             </DialogContent>
           </Dialog>
           <Dialog open={csvDialogOpen} onOpenChange={setCsvDialogOpen}>
@@ -473,6 +537,7 @@ export default function MenuItemsPage() {
             )}
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Card>
