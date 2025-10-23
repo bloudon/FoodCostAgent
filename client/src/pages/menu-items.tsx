@@ -88,6 +88,8 @@ export default function MenuItemsPage() {
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [selectedStoreForImport, setSelectedStoreForImport] = useState<string>("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const { toast } = useToast();
 
   const form = useForm<AddMenuItemForm>({
@@ -103,6 +105,24 @@ export default function MenuItemsPage() {
       recipeId: null,
       servingSizeQty: 1,
       servingUnitId: null,
+      price: null,
+    },
+  });
+
+  const editForm = useForm<AddMenuItemForm>({
+    resolver: zodResolver(addMenuItemFormSchema),
+    defaultValues: {
+      name: "",
+      department: "",
+      category: "",
+      size: "",
+      pluSku: "",
+      isRecipeItem: 1,
+      active: 1,
+      recipeId: null,
+      servingSizeQty: 1,
+      servingUnitId: null,
+      price: null,
     },
   });
 
@@ -196,10 +216,36 @@ export default function MenuItemsPage() {
     },
     onSuccess: (data: MenuItem) => {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
       toast({
         title: "Status Updated",
         description: `Menu item ${data.active ? "activated" : "deactivated"}`,
       });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateItemMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<AddMenuItemForm> }) => {
+      const response = await apiRequest("PATCH", `/api/menu-items/${id}`, data);
+      return await response.json();
+    },
+    onSuccess: (data: MenuItem) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      toast({
+        title: "Menu Item Updated",
+        description: "Successfully updated menu item",
+      });
+      setEditDialogOpen(false);
+      setEditingItem(null);
+      editForm.reset();
     },
     onError: (error: Error) => {
       toast({
@@ -255,6 +301,38 @@ export default function MenuItemsPage() {
       id: item.id,
       active: item.active ? 0 : 1,
     });
+  };
+
+  const handleEditMenuItem = (item: MenuItem) => {
+    setEditingItem(item);
+    editForm.reset({
+      name: item.name,
+      department: item.department || "",
+      category: item.category || "",
+      size: item.size || "",
+      pluSku: item.pluSku,
+      isRecipeItem: item.isRecipeItem,
+      active: item.active,
+      recipeId: item.recipeId,
+      servingSizeQty: 1,
+      servingUnitId: null,
+      price: item.price,
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdateMenuItem = (data: AddMenuItemForm) => {
+    if (!editingItem) return;
+    
+    // Transform empty strings to undefined for optional fields
+    const payload = {
+      ...data,
+      department: data.department || undefined,
+      category: data.category || undefined,
+      size: data.size || undefined,
+      price: data.price ?? undefined,
+    };
+    updateItemMutation.mutate({ id: editingItem.id, data: payload });
   };
 
   // Get unique departments and categories for filters
@@ -437,6 +515,171 @@ export default function MenuItemsPage() {
               </Form>
             </DialogContent>
           </Dialog>
+
+          {/* Edit Menu Item Dialog */}
+          <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Edit Menu Item</DialogTitle>
+                <DialogDescription>
+                  Update menu item details and price
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...editForm}>
+                <form onSubmit={editForm.handleSubmit(handleUpdateMenuItem)} className="space-y-4 py-4">
+                  <FormField
+                    control={editForm.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Item Name *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g., Pepperoni Pizza"
+                            data-testid="input-edit-item-name"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={editForm.control}
+                      name="department"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Department</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="e.g., Pizza"
+                              data-testid="input-edit-item-department"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="category"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Category</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="e.g., Specialty Pizzas"
+                              data-testid="input-edit-item-category"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={editForm.control}
+                      name="size"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Size</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="e.g., Large"
+                              data-testid="input-edit-item-size"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="pluSku"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>PLU/SKU *</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="e.g., PPP001"
+                              data-testid="input-edit-item-plu"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <FormField
+                    control={editForm.control}
+                    name="price"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Price</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="number"
+                            step="0.01"
+                            placeholder="e.g., 12.99"
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                            data-testid="input-edit-item-price"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="isRecipeItem"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center space-x-2 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value === 1}
+                            onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
+                            data-testid="checkbox-edit-item-is-recipe"
+                          />
+                        </FormControl>
+                        <FormLabel className="!mt-0">This is a recipe item</FormLabel>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setEditDialogOpen(false);
+                        setEditingItem(null);
+                        editForm.reset();
+                      }}
+                      data-testid="button-cancel-edit-item"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={updateItemMutation.isPending}
+                      data-testid="button-confirm-edit-item"
+                    >
+                      {updateItemMutation.isPending ? "Saving..." : "Save Changes"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={csvDialogOpen} onOpenChange={setCsvDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" data-testid="button-upload-csv">
@@ -669,7 +912,13 @@ export default function MenuItemsPage() {
                         data-testid={`row-menu-item-${item.id}`}
                         className={item.active === 0 ? "opacity-60" : ""}
                       >
-                        <TableCell className="font-medium">{item.name}</TableCell>
+                        <TableCell 
+                          className="font-medium cursor-pointer hover-elevate" 
+                          onClick={() => handleEditMenuItem(item)}
+                          data-testid={`cell-item-name-${item.id}`}
+                        >
+                          {item.name}
+                        </TableCell>
                         <TableCell>{item.department || "-"}</TableCell>
                         <TableCell>{item.category || "-"}</TableCell>
                         <TableCell>{item.size || "-"}</TableCell>
@@ -719,6 +968,12 @@ export default function MenuItemsPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => handleEditMenuItem(item)}
+                                data-testid={`button-edit-${item.id}`}
+                              >
+                                Edit
+                              </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => handleToggleActive(item)}
                                 disabled={toggleActiveMutation.isPending}

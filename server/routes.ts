@@ -3406,7 +3406,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update menu item
       const [updated] = await db.update(menuItems)
-        .set({ ...req.body, updatedAt: new Date() })
+        .set(req.body)
         .where(eq(menuItems.id, id))
         .returning();
       
