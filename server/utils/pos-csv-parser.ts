@@ -11,9 +11,13 @@ export interface ParsedMenuItem {
 
 export interface CsvParseResult {
   items: ParsedMenuItem[];
-  totalRows: number;
-  uniqueItems: number;
   posLocationId: string | null; // POS location identifier from CSV
+  stats: {
+    totalRows: number;
+    uniqueItems: number;
+    recipeItems: number;
+    nonRecipeItems: number;
+  };
 }
 
 interface PosCsvRecord {
@@ -90,11 +94,19 @@ export function parsePosMenuCsv(csvContent: string): CsvParseResult {
   }
 
   const items = Array.from(itemsMap.values());
+  
+  // Count recipe vs non-recipe items
+  const recipeItems = items.filter(item => item.isRecipeItem).length;
+  const nonRecipeItems = items.length - recipeItems;
 
   return {
     items,
-    totalRows: records.length,
-    uniqueItems: items.length,
     posLocationId,
+    stats: {
+      totalRows: records.length,
+      uniqueItems: items.length,
+      recipeItems,
+      nonRecipeItems,
+    },
   };
 }
