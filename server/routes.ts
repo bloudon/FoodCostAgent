@@ -3424,13 +3424,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // SECURITY: Validate store belongs to authenticated company
-      const accessibleStores = await getAccessibleStores(req);
+      const accessibleStoreIds = await getAccessibleStores(req.user!, req.companyId);
       console.log('[Bulk Create] Requested storeId:', storeId);
-      console.log('[Bulk Create] Accessible store IDs:', accessibleStores.map(s => s.id));
-      const store = accessibleStores.find(s => s.id === storeId);
+      console.log('[Bulk Create] Accessible store IDs:', accessibleStoreIds);
+      const storeIsAccessible = accessibleStoreIds.includes(storeId);
       
-      if (!store) {
-        console.error('[Bulk Create] Store not found! Requested:', storeId, 'Available:', accessibleStores.map(s => ({ id: s.id, name: s.name })));
+      if (!storeIsAccessible) {
+        console.error('[Bulk Create] Store not accessible! Requested:', storeId, 'User has access to:', accessibleStoreIds);
         return res.status(403).json({ 
           error: "Access denied: Store not found or does not belong to your company" 
         });
