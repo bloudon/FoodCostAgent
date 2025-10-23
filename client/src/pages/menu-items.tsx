@@ -26,6 +26,12 @@ interface MenuItem {
   active: number;
 }
 
+interface Recipe {
+  id: string;
+  name: string;
+  isPlaceholder: number;
+}
+
 interface ParsedMenuItem {
   name: string;
   department: string;
@@ -60,6 +66,10 @@ export default function MenuItemsPage() {
 
   const { data: menuItems, isLoading } = useQuery<MenuItem[]>({
     queryKey: ["/api/menu-items"],
+  });
+
+  const { data: recipes } = useQuery<Recipe[]>({
+    queryKey: ["/api/recipes"],
   });
 
   const parseCSVMutation = useMutation({
@@ -360,9 +370,21 @@ export default function MenuItemsPage() {
                       </TableCell>
                       <TableCell>
                         {item.recipeId ? (
-                          <Badge variant="outline">Linked</Badge>
+                          (() => {
+                            const recipe = recipes?.find((r) => r.id === item.recipeId);
+                            if (recipe?.isPlaceholder) {
+                              return (
+                                <Badge variant="secondary" className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200">
+                                  Placeholder
+                                </Badge>
+                              );
+                            }
+                            return <Badge variant="default">Complete</Badge>;
+                          })()
+                        ) : item.isRecipeItem ? (
+                          <Badge variant="destructive">Needs Recipe</Badge>
                         ) : (
-                          <span className="text-muted-foreground text-sm">Not linked</span>
+                          <span className="text-muted-foreground text-sm">N/A</span>
                         )}
                       </TableCell>
                       <TableCell>

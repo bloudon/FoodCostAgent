@@ -3439,6 +3439,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create menu items
       const createdItems = [];
       for (const item of items) {
+        let recipeId = null;
+
+        // Create placeholder recipe for recipe items
+        if (item.isRecipeItem) {
+          try {
+            recipeId = await createPlaceholderRecipe(companyId, item.name, storeId);
+            console.log(`[Placeholder Recipe] Created for "${item.name}" with ID: ${recipeId}`);
+          } catch (error: any) {
+            console.error(`[Placeholder Recipe Error] Failed to create for "${item.name}":`, error.message);
+            // Continue without recipe - it will be null
+          }
+        }
+
         const menuItemData = {
           companyId,
           name: item.name,
@@ -3446,6 +3459,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           category: item.category || null,
           size: item.size || null,
           pluSku: item.pluSku,
+          recipeId, // Link the placeholder recipe
           isRecipeItem: item.isRecipeItem ? 1 : 0,
           active: 1,
         };
@@ -4465,6 +4479,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
 }
 
 // ============ HELPER FUNCTIONS ============
+
+/**
+ * Create a placeholder recipe for a menu item during CSV import onboarding.
+ * The placeholder recipe contains 1 oz of a "Placeholder Ingredient" inventory item
+ * and is flagged as isPlaceholder = 1 for easy identification.
+ */
+async function createPlaceholderRecipe(companyId: string, menuItemName: string, storeId: string): Promise<string> {
+  const units = await storage.getUnits();
+  const ounceUnit = units.find(u => u.name === 'ounce (weight)');
+  const poundUnit = units.find(u => u.name === 'pound');
+  const yieldUnitId = ounceUnit?.id || poundUnit?.id;
+  
+  if (!yieldUnitId) {
+    throw new Error('No weight unit found for placeholder recipe');
+  }
+
+  // Find or create "Placeholder Ingredient" inventory item for this company
+  let placeholderItem = await db.query.inventoryItems.findFirst({
+    where: and(
+      eq(inventoryItems.companyId, companyId),
+      eq(inventoryItems.name, 'Placeholder Ingredient')
+    ),
+  });
+
+  if (!placeholderItem) {
+    // Create placeholder ingredient
+    const [created] = await db.insert(inventoryItems).values({
+      companyId,
+      name: 'Placeholder Ingredient',
+      unitId: yieldUnitId,
+      pricePerUnit: 0.01, // $0.01 per oz
+      yieldPercent: 100,
+      caseSize: 1,
+      active: 1,
+    }).returning();
+    placeholderItem = created;
+
+    // Assign to the store
+    await db.insert(storeInventoryItems).values({
+      companyId,
+      storeId,
+      inventoryItemId: placeholderItem.id,
+      onHandQty: 0,
+      active: 1,
+    });
+  }
+
+  // Create placeholder recipe
+  const recipe = await storage.createRecipe({
+    companyId,
+    name: `[Placeholder] ${menuItemName}`,
+    yieldQty: 1,
+    yieldUnitId,
+    computedCost: 0.01,
+    canBeIngredient: 0,
+    isPlaceholder: 1, // Flag as placeholder
+  });
+
+  // Add 1 oz of placeholder ingredient
+  await storage.createRecipeComponent({
+    recipeId: recipe.id,
+    componentType: 'inventory_item',
+    componentId: placeholderItem.id,
+    qty: 1,
+    unitId: yieldUnitId,
+    sortOrder: 0,
+  });
+
+  return recipe.id;
+}
 
 async function calculateComponentCost(comp: any): Promise<number> {
   const units = await storage.getUnits();
