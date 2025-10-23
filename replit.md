@@ -19,6 +19,7 @@ Preferred communication style: Simple, everyday language.
 - **Recipe Company Isolation**: Implement comprehensive company-level isolation for recipes and recipe components.
 - **Recipe Builder UI Redesign**: Optimized layout for ingredients window space, with recipe name and total cost on the same row, yield fields and "Can be used as ingredient" checkbox within a collapsed accordion, and reduced heading font size for ingredients section.
 - **Recipe Cost Recalculation on Inventory Price Changes**: Automatically recalculate all affected recipes when an inventory item's price changes, including nested recipes, ensuring recalculation in dependency order.
+- **Number Input Fields**: All number input fields throughout the application have spinner controls (up/down arrows) removed for a cleaner interface.
 
 ## System Architecture
 
