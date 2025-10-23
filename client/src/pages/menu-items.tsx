@@ -90,7 +90,9 @@ export default function MenuItemsPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
-  const { toast } = useToast();
+  const [selectedStoresForAdd, setSelectedStoresForAdd] = useState<string[]>([]);
+  const [selectedStoresForEdit, setSelectedStoresForEdit] = useState<string[]>([]);
+  const { toast} = useToast();
 
   const form = useForm<AddMenuItemForm>({
     resolver: zodResolver(addMenuItemFormSchema),
@@ -189,7 +191,16 @@ export default function MenuItemsPage() {
   const createItemMutation = useMutation({
     mutationFn: async (data: AddMenuItemForm) => {
       const response = await apiRequest("POST", "/api/menu-items", data);
-      return await response.json();
+      const menuItem = await response.json();
+      
+      // Create store assignments
+      const storeAssignments = await Promise.all(
+        selectedStoresForAdd.map(storeId =>
+          apiRequest("POST", `/api/store-menu-items/${menuItem.id}/${storeId}`, {})
+        )
+      );
+      
+      return menuItem;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
@@ -198,6 +209,7 @@ export default function MenuItemsPage() {
         description: "Successfully created menu item",
       });
       setAddDialogOpen(false);
+      setSelectedStoresForAdd([]);
       form.reset();
     },
     onError: (error: Error) => {
@@ -234,7 +246,32 @@ export default function MenuItemsPage() {
   const updateItemMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<AddMenuItemForm> }) => {
       const response = await apiRequest("PATCH", `/api/menu-items/${id}`, data);
-      return await response.json();
+      const menuItem = await response.json();
+      
+      // Fetch current store assignments
+      const currentAssignmentsResponse = await apiRequest("GET", `/api/store-menu-items/${id}`, {});
+      const currentAssignments = await currentAssignmentsResponse.json();
+      const currentStoreIds = currentAssignments.map((a: any) => a.storeId);
+      
+      // Determine which stores to add and remove
+      const storesToAdd = selectedStoresForEdit.filter(sid => !currentStoreIds.includes(sid));
+      const storesToRemove = currentStoreIds.filter((sid: string) => !selectedStoresForEdit.includes(sid));
+      
+      // Create new assignments
+      await Promise.all(
+        storesToAdd.map(storeId =>
+          apiRequest("POST", `/api/store-menu-items/${id}/${storeId}`, {})
+        )
+      );
+      
+      // Remove old assignments
+      await Promise.all(
+        storesToRemove.map((storeId: string) =>
+          apiRequest("DELETE", `/api/store-menu-items/${id}/${storeId}`, {})
+        )
+      );
+      
+      return menuItem;
     },
     onSuccess: (data: MenuItem) => {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
@@ -245,6 +282,7 @@ export default function MenuItemsPage() {
       });
       setEditDialogOpen(false);
       setEditingItem(null);
+      setSelectedStoresForEdit([]);
       editForm.reset();
     },
     onError: (error: Error) => {
@@ -286,6 +324,16 @@ export default function MenuItemsPage() {
   };
 
   const handleAddMenuItem = (data: AddMenuItemForm) => {
+    // Validate at least one store is selected
+    if (selectedStoresForAdd.length === 0) {
+      toast({
+        title: "Store Required",
+        description: "Please select at least one store location",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     // Transform empty strings to undefined for optional fields
     const payload = {
       ...data,
@@ -303,7 +351,7 @@ export default function MenuItemsPage() {
     });
   };
 
-  const handleEditMenuItem = (item: MenuItem) => {
+  const handleEditMenuItem = async (item: MenuItem) => {
     setEditingItem(item);
     editForm.reset({
       name: item.name,
@@ -318,11 +366,32 @@ export default function MenuItemsPage() {
       servingUnitId: null,
       price: item.price,
     });
+    
+    // Fetch existing store assignments
+    try {
+      const response = await apiRequest("GET", `/api/store-menu-items/${item.id}`, {});
+      const assignments = await response.json();
+      setSelectedStoresForEdit(assignments.map((a: any) => a.storeId));
+    } catch (error) {
+      console.error("Failed to fetch store assignments:", error);
+      setSelectedStoresForEdit([]);
+    }
+    
     setEditDialogOpen(true);
   };
 
   const handleUpdateMenuItem = (data: AddMenuItemForm) => {
     if (!editingItem) return;
+    
+    // Validate at least one store is selected
+    if (selectedStoresForEdit.length === 0) {
+      toast({
+        title: "Store Required",
+        description: "Please select at least one store location",
+        variant: "destructive",
+      });
+      return;
+    }
     
     // Transform empty strings to undefined for optional fields
     const payload = {
@@ -474,6 +543,31 @@ export default function MenuItemsPage() {
                       )}
                     />
                   </div>
+                  <div className="space-y-3">
+                    <FormLabel>Store Locations *</FormLabel>
+                    <div className="space-y-2">
+                      {stores?.map((store) => (
+                        <div key={store.id} className="flex items-center gap-2">
+                          <Checkbox
+                            id={`add-store-${store.id}`}
+                            checked={selectedStoresForAdd.includes(store.id)}
+                            onCheckedChange={() => {
+                              setSelectedStoresForAdd(prev =>
+                                prev.includes(store.id)
+                                  ? prev.filter(id => id !== store.id)
+                                  : [...prev, store.id]
+                              );
+                            }}
+                            data-testid={`checkbox-add-store-${store.id}`}
+                          />
+                          <label htmlFor={`add-store-${store.id}`} className="text-sm font-normal cursor-pointer flex-1">
+                            {store.name}
+                            {store.city && <span className="text-muted-foreground ml-2">({store.city})</span>}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   <FormField
                     control={form.control}
                     name="isRecipeItem"
@@ -497,6 +591,7 @@ export default function MenuItemsPage() {
                       variant="outline"
                       onClick={() => {
                         setAddDialogOpen(false);
+                        setSelectedStoresForAdd([]);
                         form.reset();
                       }}
                       data-testid="button-cancel-add-item"
@@ -637,6 +732,31 @@ export default function MenuItemsPage() {
                       </FormItem>
                     )}
                   />
+                  <div className="space-y-3">
+                    <FormLabel>Store Locations *</FormLabel>
+                    <div className="space-y-2">
+                      {stores?.map((store) => (
+                        <div key={store.id} className="flex items-center gap-2">
+                          <Checkbox
+                            id={`edit-store-${store.id}`}
+                            checked={selectedStoresForEdit.includes(store.id)}
+                            onCheckedChange={() => {
+                              setSelectedStoresForEdit(prev =>
+                                prev.includes(store.id)
+                                  ? prev.filter(id => id !== store.id)
+                                  : [...prev, store.id]
+                              );
+                            }}
+                            data-testid={`checkbox-edit-store-${store.id}`}
+                          />
+                          <label htmlFor={`edit-store-${store.id}`} className="text-sm font-normal cursor-pointer flex-1">
+                            {store.name}
+                            {store.city && <span className="text-muted-foreground ml-2">({store.city})</span>}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   <FormField
                     control={editForm.control}
                     name="isRecipeItem"
@@ -661,6 +781,7 @@ export default function MenuItemsPage() {
                       onClick={() => {
                         setEditDialogOpen(false);
                         setEditingItem(null);
+                        setSelectedStoresForEdit([]);
                         editForm.reset();
                       }}
                       data-testid="button-cancel-edit-item"
