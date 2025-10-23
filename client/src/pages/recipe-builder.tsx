@@ -676,7 +676,13 @@ export default function RecipeBuilder() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setLocation("/recipes")}
+                  onClick={() => {
+                    if (window.history.length > 1) {
+                      window.history.back();
+                    } else {
+                      setLocation("/recipes");
+                    }
+                  }}
                   data-testid="button-back"
                 >
                   <ArrowLeft className="h-5 w-5" />
