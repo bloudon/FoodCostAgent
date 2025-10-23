@@ -558,6 +558,7 @@ export default function RecipeBuilder() {
     onSuccess: (recipeId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/recipe-components"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
       toast({ title: "Recipe saved successfully" });
       setLocation(`/recipes/${recipeId}`);
     },
