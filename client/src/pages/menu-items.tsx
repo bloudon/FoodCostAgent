@@ -82,6 +82,7 @@ export default function MenuItemsPage() {
   const [activeFilter, setActiveFilter] = useState<"active" | "inactive" | "all">("active");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<"recipe" | "non-recipe" | "all">("all");
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [csvContent, setCsvContent] = useState("");
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
@@ -273,7 +274,11 @@ export default function MenuItemsPage() {
       item.active === 0;
     const matchesDepartment = departmentFilter === "all" || item.department === departmentFilter;
     const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
-    return matchesSearch && matchesActive && matchesDepartment && matchesCategory;
+    const matchesType = 
+      typeFilter === "all" ? true :
+      typeFilter === "recipe" ? item.isRecipeItem === 1 :
+      item.isRecipeItem === 0;
+    return matchesSearch && matchesActive && matchesDepartment && matchesCategory && matchesType;
   }) || [];
 
   return (
@@ -598,6 +603,17 @@ export default function MenuItemsPage() {
                 </SelectContent>
               </Select>
 
+              <Select value={typeFilter} onValueChange={(val) => setTypeFilter(val as any)}>
+                <SelectTrigger className="w-[160px]" data-testid="select-type-filter">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="recipe">Recipe Items</SelectItem>
+                  <SelectItem value="non-recipe">Non-Recipe Items</SelectItem>
+                </SelectContent>
+              </Select>
+
               <Select value={activeFilter} onValueChange={(val) => setActiveFilter(val as any)}>
                 <SelectTrigger className="w-[140px]" data-testid="select-active-filter">
                   <Filter className="h-4 w-4 mr-2" />
@@ -622,7 +638,7 @@ export default function MenuItemsPage() {
               <Package className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-1">No menu items found</h3>
               <p className="text-muted-foreground text-sm">
-                {search || activeFilter !== "active" || departmentFilter !== "all" || categoryFilter !== "all"
+                {search || activeFilter !== "active" || departmentFilter !== "all" || categoryFilter !== "all" || typeFilter !== "all"
                   ? "Try adjusting your filters"
                   : "Upload a POS CSV to import menu items"}
               </p>
