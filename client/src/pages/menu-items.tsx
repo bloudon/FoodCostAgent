@@ -623,6 +623,34 @@ export default function MenuItemsPage() {
                       )}
                     />
                   </div>
+                  <FormField
+                    control={form.control}
+                    name="recipeId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Recipe (Optional)</FormLabel>
+                        <Select
+                          value={field.value || "none"}
+                          onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-new-item-recipe">
+                              <SelectValue placeholder="Select a recipe..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {recipes?.map((recipe) => (
+                              <SelectItem key={recipe.id} value={recipe.id}>
+                                {recipe.name} {recipe.isPlaceholder === 1 && "(Placeholder)"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <div className="space-y-3">
                     <FormLabel>Store Locations *</FormLabel>
                     <div className="space-y-2">
@@ -808,6 +836,34 @@ export default function MenuItemsPage() {
                             data-testid="input-edit-item-price"
                           />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="recipeId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Recipe (Optional)</FormLabel>
+                        <Select
+                          value={field.value || "none"}
+                          onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-edit-item-recipe">
+                              <SelectValue placeholder="Select a recipe..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {recipes?.map((recipe) => (
+                              <SelectItem key={recipe.id} value={recipe.id}>
+                                {recipe.name} {recipe.isPlaceholder === 1 && "(Placeholder)"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
