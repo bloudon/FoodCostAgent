@@ -78,6 +78,8 @@ export default function MenuItemsPage() {
   const [search, setSearch] = useState("");
   const [selectedStore, setSelectedStore] = useState<string>("all");
   const [activeFilter, setActiveFilter] = useState<"active" | "inactive" | "all">("active");
+  const [departmentFilter, setDepartmentFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [csvContent, setCsvContent] = useState("");
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
@@ -235,12 +237,12 @@ export default function MenuItemsPage() {
   };
 
   const handleAddMenuItem = (data: AddMenuItemForm) => {
-    // Transform empty strings to null for optional fields
+    // Transform empty strings to undefined for optional fields
     const payload = {
       ...data,
-      department: data.department || null,
-      category: data.category || null,
-      size: data.size || null,
+      department: data.department || undefined,
+      category: data.category || undefined,
+      size: data.size || undefined,
     };
     createItemMutation.mutate(payload);
   };
@@ -252,6 +254,14 @@ export default function MenuItemsPage() {
     });
   };
 
+  // Get unique departments and categories for filters
+  const uniqueDepartments = Array.from(new Set(
+    menuItems?.map(item => item.department).filter((dept): dept is string => Boolean(dept)) || []
+  )).sort();
+  const uniqueCategories = Array.from(new Set(
+    menuItems?.map(item => item.category).filter((cat): cat is string => Boolean(cat)) || []
+  )).sort();
+
   const filteredItems = menuItems?.filter((item) => {
     const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase()) ||
       item.pluSku?.toLowerCase().includes(search.toLowerCase());
@@ -259,7 +269,9 @@ export default function MenuItemsPage() {
       activeFilter === "all" ? true :
       activeFilter === "active" ? item.active === 1 :
       item.active === 0;
-    return matchesSearch && matchesActive;
+    const matchesDepartment = departmentFilter === "all" || item.department === departmentFilter;
+    const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
+    return matchesSearch && matchesActive && matchesDepartment && matchesCategory;
   }) || [];
 
   return (
@@ -555,7 +567,35 @@ export default function MenuItemsPage() {
                 />
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                <SelectTrigger className="w-[160px]" data-testid="select-department-filter">
+                  <SelectValue placeholder="Department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Departments</SelectItem>
+                  {uniqueDepartments.map((dept) => (
+                    <SelectItem key={dept} value={dept}>
+                      {dept}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="w-[160px]" data-testid="select-category-filter">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {uniqueCategories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
               <Select value={activeFilter} onValueChange={(val) => setActiveFilter(val as any)}>
                 <SelectTrigger className="w-[140px]" data-testid="select-active-filter">
                   <Filter className="h-4 w-4 mr-2" />
@@ -580,7 +620,7 @@ export default function MenuItemsPage() {
               <Package className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-1">No menu items found</h3>
               <p className="text-muted-foreground text-sm">
-                {search || activeFilter !== "active"
+                {search || activeFilter !== "active" || departmentFilter !== "all" || categoryFilter !== "all"
                   ? "Try adjusting your filters"
                   : "Upload a POS CSV to import menu items"}
               </p>

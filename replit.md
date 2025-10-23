@@ -21,6 +21,7 @@ Preferred communication style: Simple, everyday language.
 - **Recipe Cost Recalculation on Inventory Price Changes**: Automatically recalculate all affected recipes when an inventory item's price changes, including nested recipes, ensuring recalculation in dependency order.
 - **Number Input Fields**: All number input fields throughout the application have spinner controls (up/down arrows) removed for a cleaner interface.
 - **Placeholder Recipe System**: During CSV menu import onboarding, placeholder recipes are automatically created for all recipe items (isRecipeItem=1), containing 1 oz of a "Placeholder Ingredient" and flagged with isPlaceholder=1. This enables immediate CSV import while allowing gradual recipe building. Menu Items page displays recipe status badges (Placeholder/Complete/Needs Recipe/N/A), and Recipe Builder shows a warning banner for placeholder recipes that automatically converts them to complete recipes upon save.
+- **Menu Item Management**: Menu items can be created manually via "Add Menu Item" dialog with form validation (required: name, PLU/SKU; optional: department, category, size, isRecipeItem flag). Active/inactive status toggle via dropdown actions menu. Department and category filters enable easy sorting and filtering of menu items.
 
 ## System Architecture
 
