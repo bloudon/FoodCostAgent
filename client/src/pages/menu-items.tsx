@@ -31,12 +31,14 @@ interface MenuItem {
   recipeId: string | null;
   isRecipeItem: number;
   active: number;
+  price: number | null;
 }
 
 interface Recipe {
   id: string;
   name: string;
   isPlaceholder: number;
+  computedCost: number;
 }
 
 interface ParsedMenuItem {
@@ -635,83 +637,85 @@ export default function MenuItemsPage() {
                     <TableHead>Category</TableHead>
                     <TableHead>Size</TableHead>
                     <TableHead>PLU/SKU</TableHead>
-                    <TableHead>Type</TableHead>
                     <TableHead>Recipe</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Recipe Cost</TableHead>
+                    <TableHead className="text-right">Price</TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredItems.map((item) => (
-                    <TableRow 
-                      key={item.id} 
-                      data-testid={`row-menu-item-${item.id}`}
-                      className={item.active === 0 ? "opacity-60" : ""}
-                    >
-                      <TableCell className="font-medium">{item.name}</TableCell>
-                      <TableCell>{item.department || "-"}</TableCell>
-                      <TableCell>{item.category || "-"}</TableCell>
-                      <TableCell>{item.size || "-"}</TableCell>
-                      <TableCell className="font-mono text-sm">{item.pluSku}</TableCell>
-                      <TableCell>
-                        <Badge variant={item.isRecipeItem ? "default" : "secondary"}>
-                          {item.isRecipeItem ? "Recipe" : "Non-Recipe"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {item.recipeId ? (
-                          <Link href={`/recipes/${item.recipeId}`} data-testid={`link-recipe-${item.recipeId}`}>
-                            {(() => {
-                              const recipe = recipes?.find((r) => r.id === item.recipeId);
-                              if (recipe?.isPlaceholder) {
-                                return (
-                                  <Badge variant="secondary" className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 hover-elevate cursor-pointer">
-                                    Placeholder
-                                  </Badge>
-                                );
-                              }
-                              return (
+                  {filteredItems.map((item) => {
+                    const recipe = item.recipeId ? recipes?.find((r) => r.id === item.recipeId) : null;
+                    
+                    return (
+                      <TableRow 
+                        key={item.id} 
+                        data-testid={`row-menu-item-${item.id}`}
+                        className={item.active === 0 ? "opacity-60" : ""}
+                      >
+                        <TableCell className="font-medium">{item.name}</TableCell>
+                        <TableCell>{item.department || "-"}</TableCell>
+                        <TableCell>{item.category || "-"}</TableCell>
+                        <TableCell>{item.size || "-"}</TableCell>
+                        <TableCell className="font-mono text-sm">{item.pluSku}</TableCell>
+                        <TableCell>
+                          {item.recipeId ? (
+                            <Link href={`/recipes/${item.recipeId}`} data-testid={`link-recipe-${item.recipeId}`}>
+                              {recipe?.isPlaceholder ? (
+                                <Badge variant="secondary" className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 hover-elevate cursor-pointer">
+                                  Placeholder
+                                </Badge>
+                              ) : (
                                 <Badge variant="default" className="hover-elevate cursor-pointer">
                                   Complete
                                 </Badge>
-                              );
-                            })()}
-                          </Link>
-                        ) : item.isRecipeItem ? (
-                          <Badge variant="destructive">Needs Recipe</Badge>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">N/A</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={item.active ? "default" : "secondary"}>
-                          {item.active ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              data-testid={`button-menu-item-actions-${item.id}`}
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => handleToggleActive(item)}
-                              disabled={toggleActiveMutation.isPending}
-                              data-testid={`button-toggle-active-${item.id}`}
-                            >
-                              {item.active ? "Deactivate" : "Activate"}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                              )}
+                            </Link>
+                          ) : item.isRecipeItem ? (
+                            <Badge variant="destructive">Needs Recipe</Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">N/A</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {recipe && !recipe.isPlaceholder ? (
+                            `$${recipe.computedCost.toFixed(2)}`
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {item.price != null ? (
+                            `$${item.price.toFixed(2)}`
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                data-testid={`button-menu-item-actions-${item.id}`}
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => handleToggleActive(item)}
+                                disabled={toggleActiveMutation.isPending}
+                                data-testid={`button-toggle-active-${item.id}`}
+                              >
+                                {item.active ? "Deactivate" : "Activate"}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
