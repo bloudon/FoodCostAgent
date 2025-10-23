@@ -3425,9 +3425,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // SECURITY: Validate store belongs to authenticated company
       const accessibleStores = await getAccessibleStores(req);
+      console.log('[Bulk Create] Requested storeId:', storeId);
+      console.log('[Bulk Create] Accessible store IDs:', accessibleStores.map(s => s.id));
       const store = accessibleStores.find(s => s.id === storeId);
       
       if (!store) {
+        console.error('[Bulk Create] Store not found! Requested:', storeId, 'Available:', accessibleStores.map(s => ({ id: s.id, name: s.name })));
         return res.status(403).json({ 
           error: "Access denied: Store not found or does not belong to your company" 
         });
