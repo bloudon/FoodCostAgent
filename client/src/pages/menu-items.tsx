@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Upload, Package, Search, Filter, Plus, MoreVertical } from "lucide-react";
+import { Upload, Package, Search, Filter, Plus, MoreVertical, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -92,6 +92,8 @@ export default function MenuItemsPage() {
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [selectedStoresForAdd, setSelectedStoresForAdd] = useState<string[]>([]);
   const [selectedStoresForEdit, setSelectedStoresForEdit] = useState<string[]>([]);
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const { toast} = useToast();
 
   const form = useForm<AddMenuItemForm>({
@@ -412,6 +414,27 @@ export default function MenuItemsPage() {
     menuItems?.map(item => item.category).filter((cat): cat is string => Boolean(cat)) || []
   )).sort();
 
+  // Handle sorting
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const getSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="ml-2 h-4 w-4" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="ml-2 h-4 w-4" />
+    ) : (
+      <ArrowDown className="ml-2 h-4 w-4" />
+    );
+  };
+
   const filteredItems = menuItems?.filter((item) => {
     const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase()) ||
       item.pluSku?.toLowerCase().includes(search.toLowerCase());
@@ -427,6 +450,63 @@ export default function MenuItemsPage() {
       item.isRecipeItem === 0;
     return matchesSearch && matchesActive && matchesDepartment && matchesCategory && matchesType;
   }) || [];
+
+  // Apply sorting
+  const sortedItems = [...filteredItems].sort((a, b) => {
+    if (!sortField) return 0;
+
+    const recipe_a = a.recipeId ? recipes?.find((r) => r.id === a.recipeId) : null;
+    const recipe_b = b.recipeId ? recipes?.find((r) => r.id === b.recipeId) : null;
+
+    let aValue: any;
+    let bValue: any;
+
+    switch (sortField) {
+      case "name":
+        aValue = a.name?.toLowerCase() || "";
+        bValue = b.name?.toLowerCase() || "";
+        break;
+      case "department":
+        aValue = a.department?.toLowerCase() || "";
+        bValue = b.department?.toLowerCase() || "";
+        break;
+      case "category":
+        aValue = a.category?.toLowerCase() || "";
+        bValue = b.category?.toLowerCase() || "";
+        break;
+      case "size":
+        aValue = a.size?.toLowerCase() || "";
+        bValue = b.size?.toLowerCase() || "";
+        break;
+      case "pluSku":
+        aValue = a.pluSku?.toLowerCase() || "";
+        bValue = b.pluSku?.toLowerCase() || "";
+        break;
+      case "recipeCost":
+        aValue = recipe_a?.computedCost ?? -1;
+        bValue = recipe_b?.computedCost ?? -1;
+        break;
+      case "price":
+        aValue = a.price ?? -1;
+        bValue = b.price ?? -1;
+        break;
+      case "foodCostPercent":
+        const costA = recipe_a?.computedCost ?? 0;
+        const priceA = a.price ?? 0;
+        aValue = priceA > 0 ? (costA / priceA) * 100 : -1;
+        
+        const costB = recipe_b?.computedCost ?? 0;
+        const priceB = b.price ?? 0;
+        bValue = priceB > 0 ? (costB / priceB) * 100 : -1;
+        break;
+      default:
+        return 0;
+    }
+
+    if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+    if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+    return 0;
+  });
 
   return (
     <div className="p-6 space-y-6">
@@ -997,7 +1077,7 @@ export default function MenuItemsPage() {
             <div className="flex items-center justify-center py-12">
               <div className="text-muted-foreground">Loading menu items...</div>
             </div>
-          ) : filteredItems.length === 0 ? (
+          ) : sortedItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Package className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-1">No menu items found</h3>
@@ -1012,19 +1092,91 @@ export default function MenuItemsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Item Name</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Size</TableHead>
-                    <TableHead>PLU/SKU</TableHead>
-                    <TableHead>Recipe</TableHead>
-                    <TableHead className="text-right">Recipe Cost</TableHead>
-                    <TableHead className="text-right">Price</TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover-elevate"
+                      onClick={() => handleSort("name")}
+                      data-testid="header-name"
+                    >
+                      <div className="flex items-center">
+                        Item Name
+                        {getSortIcon("name")}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover-elevate"
+                      onClick={() => handleSort("department")}
+                      data-testid="header-department"
+                    >
+                      <div className="flex items-center">
+                        Department
+                        {getSortIcon("department")}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover-elevate"
+                      onClick={() => handleSort("category")}
+                      data-testid="header-category"
+                    >
+                      <div className="flex items-center">
+                        Category
+                        {getSortIcon("category")}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover-elevate"
+                      onClick={() => handleSort("size")}
+                      data-testid="header-size"
+                    >
+                      <div className="flex items-center">
+                        Size
+                        {getSortIcon("size")}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover-elevate"
+                      onClick={() => handleSort("pluSku")}
+                      data-testid="header-pluSku"
+                    >
+                      <div className="flex items-center">
+                        PLU/SKU
+                        {getSortIcon("pluSku")}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="text-right cursor-pointer hover-elevate"
+                      onClick={() => handleSort("recipeCost")}
+                      data-testid="header-recipeCost"
+                    >
+                      <div className="flex items-center justify-end">
+                        Recipe Cost
+                        {getSortIcon("recipeCost")}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="text-right cursor-pointer hover-elevate"
+                      onClick={() => handleSort("price")}
+                      data-testid="header-price"
+                    >
+                      <div className="flex items-center justify-end">
+                        Price
+                        {getSortIcon("price")}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="text-right cursor-pointer hover-elevate"
+                      onClick={() => handleSort("foodCostPercent")}
+                      data-testid="header-foodCostPercent"
+                    >
+                      <div className="flex items-center justify-end">
+                        Food Cost %
+                        {getSortIcon("foodCostPercent")}
+                      </div>
+                    </TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredItems.map((item) => {
+                  {sortedItems.map((item) => {
                     const recipe = item.recipeId ? recipes?.find((r) => r.id === item.recipeId) : null;
                     
                     return (
@@ -1044,25 +1196,6 @@ export default function MenuItemsPage() {
                         <TableCell>{item.category || "-"}</TableCell>
                         <TableCell>{item.size || "-"}</TableCell>
                         <TableCell className="font-mono text-sm">{item.pluSku}</TableCell>
-                        <TableCell>
-                          {item.recipeId ? (
-                            <Link href={`/recipes/${item.recipeId}`} data-testid={`link-recipe-${item.recipeId}`}>
-                              {recipe?.isPlaceholder ? (
-                                <Badge variant="secondary" className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 hover-elevate cursor-pointer">
-                                  Placeholder
-                                </Badge>
-                              ) : (
-                                <Badge variant="default" className="hover-elevate cursor-pointer">
-                                  Complete
-                                </Badge>
-                              )}
-                            </Link>
-                          ) : item.isRecipeItem ? (
-                            <Badge variant="destructive">Needs Recipe</Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">N/A</span>
-                          )}
-                        </TableCell>
                         <TableCell className="text-right font-mono text-sm">
                           {recipe ? (
                             `$${recipe.computedCost.toFixed(2)}`
@@ -1073,6 +1206,13 @@ export default function MenuItemsPage() {
                         <TableCell className="text-right font-mono text-sm">
                           {item.price != null ? (
                             `$${item.price.toFixed(2)}`
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm" data-testid={`cell-food-cost-percent-${item.id}`}>
+                          {recipe && item.price && item.price > 0 ? (
+                            `${((recipe.computedCost / item.price) * 100).toFixed(1)}%`
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
@@ -1113,9 +1253,9 @@ export default function MenuItemsPage() {
             </div>
           )}
 
-          {filteredItems.length > 0 && (
+          {sortedItems.length > 0 && (
             <div className="mt-4 text-sm text-muted-foreground">
-              Showing {filteredItems.length} menu item{filteredItems.length !== 1 ? "s" : ""}
+              Showing {sortedItems.length} menu item{sortedItems.length !== 1 ? "s" : ""}
             </div>
           )}
         </CardContent>
