@@ -131,12 +131,8 @@ export default function CountSession() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
-      toast({
-        title: "Success",
-        description: "Count updated successfully",
-      });
-      setEditingLineId(null);
-      setEditingQty("");
+      // Don't show toast for every field change - it's too noisy
+      // Don't clear editing state here - let the next field's onFocus handle it
     },
     onError: (error: any) => {
       toast({
