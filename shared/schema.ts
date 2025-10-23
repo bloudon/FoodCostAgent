@@ -523,6 +523,7 @@ export type MenuItem = typeof menuItems.$inferSelect;
 // Store Menu Items (junction table - which menu items are available at which stores)
 export const storeMenuItems = pgTable("store_menu_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(), // Denormalized for constraint enforcement
   storeId: varchar("store_id").notNull(),
   menuItemId: varchar("menu_item_id").notNull(),
   active: integer("active").notNull().default(1), // Store-specific active status

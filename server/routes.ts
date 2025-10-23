@@ -3512,6 +3512,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ STORE MENU ITEMS ============
+  // Get store assignments for a menu item
+  app.get("/api/store-menu-items/:menuItemId", requireAuth, async (req, res) => {
+    try {
+      const { menuItemId } = req.params;
+      const companyId = req.companyId!;
+
+      // Verify the menu item belongs to the user's company
+      const [menuItem] = await db.select().from(menuItems).where(
+        and(
+          eq(menuItems.id, menuItemId),
+          eq(menuItems.companyId, companyId)
+        )
+      );
+
+      if (!menuItem) {
+        return res.status(404).json({ error: "Menu item not found" });
+      }
+
+      const assignments = await db.select().from(storeMenuItems).where(
+        eq(storeMenuItems.menuItemId, menuItemId)
+      );
+
+      res.json(assignments);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Assign menu item to a store
+  app.post("/api/store-menu-items/:menuItemId/:storeId", requireAuth, async (req, res) => {
+    try {
+      const { menuItemId, storeId } = req.params;
+      const companyId = req.companyId!;
+
+      // Verify the menu item belongs to the user's company
+      const [menuItem] = await db.select().from(menuItems).where(
+        and(
+          eq(menuItems.id, menuItemId),
+          eq(menuItems.companyId, companyId)
+        )
+      );
+
+      if (!menuItem) {
+        return res.status(404).json({ error: "Menu item not found" });
+      }
+
+      // Verify the store belongs to the user's company
+      const [store] = await db.select().from(stores).where(
+        and(
+          eq(stores.id, storeId),
+          eq(stores.companyId, companyId)
+        )
+      );
+
+      if (!store) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+
+      // Check if assignment already exists
+      const [existing] = await db.select().from(storeMenuItems).where(
+        and(
+          eq(storeMenuItems.menuItemId, menuItemId),
+          eq(storeMenuItems.storeId, storeId)
+        )
+      );
+
+      if (existing) {
+        return res.json(existing);
+      }
+
+      // Create new assignment
+      const [assignment] = await db.insert(storeMenuItems).values({
+        companyId,
+        storeId,
+        menuItemId,
+        active: 1,
+      }).returning();
+
+      res.status(201).json(assignment);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Remove menu item from a store
+  app.delete("/api/store-menu-items/:menuItemId/:storeId", requireAuth, async (req, res) => {
+    try {
+      const { menuItemId, storeId } = req.params;
+      const companyId = req.companyId!;
+
+      // Verify the menu item belongs to the user's company
+      const [menuItem] = await db.select().from(menuItems).where(
+        and(
+          eq(menuItems.id, menuItemId),
+          eq(menuItems.companyId, companyId)
+        )
+      );
+
+      if (!menuItem) {
+        return res.status(404).json({ error: "Menu item not found" });
+      }
+
+      await db.delete(storeMenuItems).where(
+        and(
+          eq(storeMenuItems.menuItemId, menuItemId),
+          eq(storeMenuItems.storeId, storeId)
+        )
+      );
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ VARIANCE REPORT ============
   app.get("/api/reports/variance", async (req, res) => {
     try {
