@@ -281,6 +281,10 @@ export default function RecipeBuilder() {
     queryKey: ["/api/categories"],
   });
 
+  const { data: menuItems } = useQuery<any[]>({
+    queryKey: ["/api/menu-items"],
+  });
+
   // Calculate component cost
   const calculateComponentCost = (comp: ComponentWithDetails): number => {
     const unit = units?.find((u) => u.id === comp.unitId);
@@ -678,9 +682,24 @@ export default function RecipeBuilder() {
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
                 <div>
-                  <h1 className="text-3xl font-bold">
-                    {isNew ? "New Recipe" : "Edit Recipe"}
-                  </h1>
+                  <div className="flex items-center gap-3">
+                    <h1 className="text-3xl font-bold">
+                      {isNew ? "New Recipe" : "Edit Recipe"}
+                    </h1>
+                    {!isNew && id && menuItems && (() => {
+                      const menuItem = menuItems.find((mi: any) => mi.recipeId === id);
+                      if (menuItem) {
+                        return (
+                          <Link href="/menu-items" data-testid="link-menu-item">
+                            <Badge variant="outline" className="hover-elevate cursor-pointer">
+                              Used in: {menuItem.name}
+                            </Badge>
+                          </Link>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
                   <p className="text-muted-foreground mt-1">
                     Drag ingredients from the left to build your recipe
                   </p>

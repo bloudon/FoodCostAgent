@@ -370,17 +370,23 @@ export default function MenuItemsPage() {
                       </TableCell>
                       <TableCell>
                         {item.recipeId ? (
-                          (() => {
-                            const recipe = recipes?.find((r) => r.id === item.recipeId);
-                            if (recipe?.isPlaceholder) {
+                          <Link href={`/recipes/${item.recipeId}`} data-testid={`link-recipe-${item.recipeId}`}>
+                            {(() => {
+                              const recipe = recipes?.find((r) => r.id === item.recipeId);
+                              if (recipe?.isPlaceholder) {
+                                return (
+                                  <Badge variant="secondary" className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 hover-elevate cursor-pointer">
+                                    Placeholder
+                                  </Badge>
+                                );
+                              }
                               return (
-                                <Badge variant="secondary" className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200">
-                                  Placeholder
+                                <Badge variant="default" className="hover-elevate cursor-pointer">
+                                  Complete
                                 </Badge>
                               );
-                            }
-                            return <Badge variant="default">Complete</Badge>;
-                          })()
+                            })()}
+                          </Link>
                         ) : item.isRecipeItem ? (
                           <Badge variant="destructive">Needs Recipe</Badge>
                         ) : (
