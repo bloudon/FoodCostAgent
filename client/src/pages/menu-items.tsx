@@ -1198,7 +1198,13 @@ export default function MenuItemsPage() {
                         <TableCell className="font-mono text-sm">{item.pluSku}</TableCell>
                         <TableCell className="text-right font-mono text-sm">
                           {recipe ? (
-                            `$${recipe.computedCost.toFixed(2)}`
+                            <Link 
+                              href={`/recipes/${item.recipeId}`}
+                              className="hover:underline text-primary"
+                              data-testid={`link-recipe-cost-${item.recipeId}`}
+                            >
+                              ${recipe.computedCost.toFixed(2)}
+                            </Link>
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
