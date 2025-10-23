@@ -64,7 +64,8 @@ export default function MenuItemsPage() {
 
   const parseCSVMutation = useMutation({
     mutationFn: async (csvContent: string) => {
-      return await apiRequest("POST", "/api/menu-items/import-csv", { csvContent });
+      const response = await apiRequest("POST", "/api/menu-items/import-csv", { csvContent });
+      return await response.json() as ParseResult;
     },
     onSuccess: (data: ParseResult) => {
       setParseResult(data);
@@ -84,7 +85,8 @@ export default function MenuItemsPage() {
 
   const bulkCreateMutation = useMutation({
     mutationFn: async ({ items, storeId }: { items: ParsedMenuItem[]; storeId: string }) => {
-      return await apiRequest("POST", "/api/menu-items/bulk-create", { items, storeId });
+      const response = await apiRequest("POST", "/api/menu-items/bulk-create", { items, storeId });
+      return await response.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
