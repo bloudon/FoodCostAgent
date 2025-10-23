@@ -231,8 +231,12 @@ export default function RecipeBuilder() {
   const { toast } = useToast();
   const isNew = id === "new";
 
+  // Get pre-populated name from URL query params
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialName = urlParams.get("name") || "";
+
   // Recipe metadata state
-  const [recipeName, setRecipeName] = useState("");
+  const [recipeName, setRecipeName] = useState(initialName);
   const [yieldQty, setYieldQty] = useState("1");
   const [yieldUnitId, setYieldUnitId] = useState("");
   const [canBeIngredient, setCanBeIngredient] = useState(false);

@@ -647,6 +647,15 @@ export default function MenuItemsPage() {
                             ))}
                           </SelectContent>
                         </Select>
+                        <FormDescription>
+                          <Link 
+                            href={`/recipes/new?name=${encodeURIComponent(form.watch("name") || "")}`}
+                            className="text-primary hover:underline text-sm"
+                            data-testid="link-create-recipe-add"
+                          >
+                            Create new recipe with this name
+                          </Link>
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -864,6 +873,15 @@ export default function MenuItemsPage() {
                             ))}
                           </SelectContent>
                         </Select>
+                        <FormDescription>
+                          <Link 
+                            href={`/recipes/new?name=${encodeURIComponent(editForm.watch("name") || "")}`}
+                            className="text-primary hover:underline text-sm"
+                            data-testid="link-create-recipe-edit"
+                          >
+                            Create new recipe with this name
+                          </Link>
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
