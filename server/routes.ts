@@ -8,7 +8,7 @@ import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth
 import { getAccessibleStores } from "./permissions";
 import { db } from "./db";
 import { eq, and, inArray } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, inventoryCounts } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, inventoryCounts, companyStores } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import {
@@ -3496,6 +3496,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Assign to store (now validated to belong to company)
         await db.insert(storeMenuItems).values({
+          companyId,
           storeId,
           menuItemId: created.id,
           active: 1,
@@ -3560,10 +3561,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Verify the store belongs to the user's company
-      const [store] = await db.select().from(stores).where(
+      const [store] = await db.select().from(companyStores).where(
         and(
-          eq(stores.id, storeId),
-          eq(stores.companyId, companyId)
+          eq(companyStores.id, storeId),
+          eq(companyStores.companyId, companyId)
         )
       );
 

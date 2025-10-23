@@ -249,7 +249,7 @@ export default function MenuItemsPage() {
       const menuItem = await response.json();
       
       // Fetch current store assignments
-      const currentAssignmentsResponse = await apiRequest("GET", `/api/store-menu-items/${id}`, {});
+      const currentAssignmentsResponse = await apiRequest("GET", `/api/store-menu-items/${id}`);
       const currentAssignments = await currentAssignmentsResponse.json();
       const currentStoreIds = currentAssignments.map((a: any) => a.storeId);
       
@@ -267,7 +267,7 @@ export default function MenuItemsPage() {
       // Remove old assignments
       await Promise.all(
         storesToRemove.map((storeId: string) =>
-          apiRequest("DELETE", `/api/store-menu-items/${id}/${storeId}`, {})
+          apiRequest("DELETE", `/api/store-menu-items/${id}/${storeId}`)
         )
       );
       
@@ -369,7 +369,7 @@ export default function MenuItemsPage() {
     
     // Fetch existing store assignments
     try {
-      const response = await apiRequest("GET", `/api/store-menu-items/${item.id}`, {});
+      const response = await apiRequest("GET", `/api/store-menu-items/${item.id}`);
       const assignments = await response.json();
       setSelectedStoresForEdit(assignments.map((a: any) => a.storeId));
     } catch (error) {
