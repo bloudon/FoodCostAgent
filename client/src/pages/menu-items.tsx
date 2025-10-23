@@ -1064,7 +1064,7 @@ export default function MenuItemsPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm">
-                          {recipe && !recipe.isPlaceholder ? (
+                          {recipe ? (
                             `$${recipe.computedCost.toFixed(2)}`
                           ) : (
                             <span className="text-muted-foreground">-</span>
