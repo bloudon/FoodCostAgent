@@ -3389,6 +3389,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/menu-items/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = req.companyId!;
+      
+      // Verify menu item belongs to company
+      const existingItem = await db.select().from(menuItems)
+        .where(and(eq(menuItems.id, id), eq(menuItems.companyId, companyId)))
+        .limit(1);
+      
+      if (existingItem.length === 0) {
+        return res.status(404).json({ error: "Menu item not found" });
+      }
+
+      // Update menu item
+      const [updated] = await db.update(menuItems)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(menuItems.id, id))
+        .returning();
+      
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // Upload and parse POS menu CSV
   app.post("/api/menu-items/import-csv", requireAuth, async (req, res) => {
     try {

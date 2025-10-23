@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Upload, Package, Search, Filter } from "lucide-react";
+import { Upload, Package, Search, Filter, Plus, MoreVertical } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 
 interface MenuItem {
@@ -60,6 +62,13 @@ export default function MenuItemsPage() {
   const [csvContent, setCsvContent] = useState("");
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [selectedStoreForImport, setSelectedStoreForImport] = useState<string>("");
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemDepartment, setNewItemDepartment] = useState("");
+  const [newItemCategory, setNewItemCategory] = useState("");
+  const [newItemSize, setNewItemSize] = useState("");
+  const [newItemPluSku, setNewItemPluSku] = useState("");
+  const [newItemIsRecipe, setNewItemIsRecipe] = useState(true);
   const { toast } = useToast();
 
   const { data: stores } = useAccessibleStores();
@@ -122,6 +131,55 @@ export default function MenuItemsPage() {
     },
   });
 
+  const createItemMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await apiRequest("POST", "/api/menu-items", data);
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      toast({
+        title: "Menu Item Created",
+        description: "Successfully created menu item",
+      });
+      setAddDialogOpen(false);
+      setNewItemName("");
+      setNewItemDepartment("");
+      setNewItemCategory("");
+      setNewItemSize("");
+      setNewItemPluSku("");
+      setNewItemIsRecipe(true);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: number }) => {
+      const response = await apiRequest("PATCH", `/api/menu-items/${id}`, { active });
+      return await response.json();
+    },
+    onSuccess: (data: MenuItem) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      toast({
+        title: "Status Updated",
+        description: `Menu item ${data.active ? "activated" : "deactivated"}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -151,6 +209,34 @@ export default function MenuItemsPage() {
     });
   };
 
+  const handleAddMenuItem = () => {
+    if (!newItemName || !newItemPluSku) {
+      toast({
+        title: "Missing Information",
+        description: "Name and PLU/SKU are required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    createItemMutation.mutate({
+      name: newItemName,
+      department: newItemDepartment || null,
+      category: newItemCategory || null,
+      size: newItemSize || null,
+      pluSku: newItemPluSku,
+      isRecipeItem: newItemIsRecipe ? 1 : 0,
+      active: 1,
+    });
+  };
+
+  const handleToggleActive = (item: MenuItem) => {
+    toggleActiveMutation.mutate({
+      id: item.id,
+      active: item.active ? 0 : 1,
+    });
+  };
+
   const filteredItems = menuItems?.filter((item) => {
     const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase()) ||
       item.pluSku?.toLowerCase().includes(search.toLowerCase());
@@ -170,13 +256,111 @@ export default function MenuItemsPage() {
             Manage your POS menu items and link them to recipes
           </p>
         </div>
-        <Dialog open={csvDialogOpen} onOpenChange={setCsvDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-upload-csv">
-              <Upload className="h-4 w-4 mr-2" />
-              Upload POS CSV
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-2">
+          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="default" data-testid="button-add-menu-item">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Menu Item
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Menu Item</DialogTitle>
+                <DialogDescription>
+                  Create a new menu item manually
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Item Name *</label>
+                  <Input
+                    value={newItemName}
+                    onChange={(e) => setNewItemName(e.target.value)}
+                    placeholder="e.g., Pepperoni Pizza"
+                    data-testid="input-new-item-name"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Department</label>
+                    <Input
+                      value={newItemDepartment}
+                      onChange={(e) => setNewItemDepartment(e.target.value)}
+                      placeholder="e.g., Pizza"
+                      data-testid="input-new-item-department"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Category</label>
+                    <Input
+                      value={newItemCategory}
+                      onChange={(e) => setNewItemCategory(e.target.value)}
+                      placeholder="e.g., Specialty Pizzas"
+                      data-testid="input-new-item-category"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Size</label>
+                    <Input
+                      value={newItemSize}
+                      onChange={(e) => setNewItemSize(e.target.value)}
+                      placeholder="e.g., Large"
+                      data-testid="input-new-item-size"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">PLU/SKU *</label>
+                    <Input
+                      value={newItemPluSku}
+                      onChange={(e) => setNewItemPluSku(e.target.value)}
+                      placeholder="e.g., PPP001"
+                      data-testid="input-new-item-plu"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="is-recipe"
+                    checked={newItemIsRecipe}
+                    onCheckedChange={(checked) => setNewItemIsRecipe(checked as boolean)}
+                    data-testid="checkbox-new-item-is-recipe"
+                  />
+                  <label
+                    htmlFor="is-recipe"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    This is a recipe item
+                  </label>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setAddDialogOpen(false)}
+                  data-testid="button-cancel-add-item"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleAddMenuItem}
+                  disabled={createItemMutation.isPending}
+                  data-testid="button-confirm-add-item"
+                >
+                  {createItemMutation.isPending ? "Creating..." : "Add Item"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={csvDialogOpen} onOpenChange={setCsvDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" data-testid="button-upload-csv">
+                <Upload className="h-4 w-4 mr-2" />
+                Upload POS CSV
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Import Menu Items from POS CSV</DialogTitle>
@@ -349,6 +533,7 @@ export default function MenuItemsPage() {
                     <TableHead>Type</TableHead>
                     <TableHead>Recipe</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -397,6 +582,28 @@ export default function MenuItemsPage() {
                         <Badge variant={item.active ? "default" : "secondary"}>
                           {item.active ? "Active" : "Inactive"}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              data-testid={`button-menu-item-actions-${item.id}`}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => handleToggleActive(item)}
+                              disabled={toggleActiveMutation.isPending}
+                              data-testid={`button-toggle-active-${item.id}`}
+                            >
+                              {item.active ? "Deactivate" : "Activate"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
