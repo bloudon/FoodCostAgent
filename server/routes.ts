@@ -3400,7 +3400,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { parsePosMenuCsv } = await import("./utils/pos-csv-parser");
       const parseResult = parsePosMenuCsv(csvContent);
-
+      
+      console.log('[CSV Parse] Returning result:', JSON.stringify(parseResult, null, 2));
       res.json(parseResult);
     } catch (error: any) {
       console.error("[CSV Import Error]", error);

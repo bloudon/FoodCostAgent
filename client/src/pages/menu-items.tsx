@@ -65,13 +65,17 @@ export default function MenuItemsPage() {
   const parseCSVMutation = useMutation({
     mutationFn: async (csvContent: string) => {
       const response = await apiRequest("POST", "/api/menu-items/import-csv", { csvContent });
-      return await response.json() as ParseResult;
+      const data = await response.json();
+      console.log('CSV Parse Response:', data);
+      return data as ParseResult;
     },
     onSuccess: (data: ParseResult) => {
+      console.log('Parse result data:', data);
       setParseResult(data);
+      const uniqueCount = data?.stats?.uniqueItems || (data as any)?.uniqueItems || 0;
       toast({
         title: "CSV Parsed Successfully",
-        description: `Found ${data.stats.uniqueItems} unique menu items`,
+        description: `Found ${uniqueCount} unique menu items`,
       });
     },
     onError: (error: Error) => {
@@ -191,7 +195,9 @@ export default function MenuItemsPage() {
                     <CardHeader>
                       <CardTitle>Parse Results</CardTitle>
                       <CardDescription>
-                        Found {parseResult.stats.uniqueItems} unique items ({parseResult.stats.recipeItems} recipe items, {parseResult.stats.nonRecipeItems} non-recipe items)
+                        Found {parseResult?.stats?.uniqueItems ?? (parseResult as any)?.uniqueItems ?? 0} unique items
+                        {parseResult?.stats?.recipeItems !== undefined && parseResult?.stats?.nonRecipeItems !== undefined && 
+                          ` (${parseResult.stats.recipeItems} recipe items, ${parseResult.stats.nonRecipeItems} non-recipe items)`}
                       </CardDescription>
                     </CardHeader>
                   </Card>
