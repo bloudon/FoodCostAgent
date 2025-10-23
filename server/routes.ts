@@ -3381,7 +3381,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/menu-items", requireAuth, async (req, res) => {
     try {
-      const data = insertMenuItemSchema.parse(req.body);
+      // Parse without companyId, then add it from session
+      const data = insertMenuItemSchema.omit({ companyId: true }).parse(req.body);
       const item = await storage.createMenuItem({ ...data, companyId: req.companyId! });
       res.status(201).json(item);
     } catch (error: any) {
