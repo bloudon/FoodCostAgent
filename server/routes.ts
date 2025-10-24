@@ -11,6 +11,7 @@ import { eq, and, inArray } from "drizzle-orm";
 import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, inventoryCounts, companyStores } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
+import { cleanupMenuItemSKUs } from "./cleanup-skus";
 import {
   insertUnitSchema,
   insertUnitConversionSchema,
@@ -3510,6 +3511,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("[Bulk Create Error]", error);
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Clean up menu item SKUs (remove pipes, create abbreviations)
+  app.post("/api/menu-items/cleanup-skus", requireAuth, async (req, res) => {
+    try {
+      const result = await cleanupMenuItemSKUs();
+      res.json(result);
+    } catch (error: any) {
+      console.error("[SKU Cleanup Error]", error);
+      res.status(500).json({ error: error.message });
     }
   });
 
