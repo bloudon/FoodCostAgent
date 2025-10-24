@@ -672,10 +672,6 @@ export default function CountSession() {
                               </div>
                               <div className="flex items-center gap-6 text-sm">
                                 <div className="text-right">
-                                  <div className="font-mono font-semibold">{totalQty.toFixed(2)}</div>
-                                  <div className="text-xs text-muted-foreground">Total Qty</div>
-                                </div>
-                                <div className="text-right">
                                   <div className="font-mono font-semibold">${totalValue.toFixed(2)}</div>
                                   <div className="text-xs text-muted-foreground">Total Value</div>
                                 </div>
@@ -701,8 +697,10 @@ export default function CountSession() {
                                     const firstLine = itemLines[0];
                                     const item = firstLine.inventoryItem;
                                     
-                                    // Calculate current total for this item across all locations
-                                    const currentTotal = itemLines.reduce((sum, l) => sum + l.qty, 0);
+                                    // Calculate current total for this item across ALL locations (not just current group)
+                                    const allItemLines = countLines?.filter(l => l.inventoryItemId === itemId) || [];
+                                    const currentTotal = allItemLines.reduce((sum, l) => sum + l.qty, 0);
+                                    const itemTotalValue = allItemLines.reduce((sum, l) => sum + (l.qty * (l.unitCost || 0)), 0);
                                     
                                     // Get previous total from previous session (aggregated across all locations)
                                     const previousTotal = previousLines
@@ -732,11 +730,17 @@ export default function CountSession() {
                                             )}
                                           </div>
                                           <div className="flex items-center gap-6 text-sm">
+                                            <div className="font-mono font-semibold" data-testid={`text-item-total-qty-${itemId}`}>
+                                              {currentTotal.toFixed(2)}
+                                            </div>
                                             <div className="text-muted-foreground">
                                               {formatUnitName(unitName)}
                                             </div>
-                                            <div className="font-mono">
+                                            <div className="font-mono" data-testid={`text-item-unit-price-${itemId}`}>
                                               ${(firstLine.unitCost || 0).toFixed(4)}
+                                            </div>
+                                            <div className="font-mono font-semibold" data-testid={`text-item-total-value-${itemId}`}>
+                                              ${itemTotalValue.toFixed(2)}
                                             </div>
                                             {previousTotal > 0 && previousCountId && (
                                               <Link href={`/count/${previousCountId}?from=${countId}&item=${itemId}`}>

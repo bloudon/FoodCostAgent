@@ -54,7 +54,7 @@ The system employs a multi-tenant architecture with data isolation at company an
 - **Real-time Data**: WebSocket for streaming POS data.
 - **Precision**: Micro-unit system for accurate tracking and costing.
 - **Inventory Adjustments**: Automated adjustments for transfers/waste, historical recipe versioning.
-- **Inventory Count Sessions**: Auto-populates items based on dual-active status and company, with cross-company protection. Inventory counts serve as both a reporting snapshot and a mechanism to adjust stock levels, updating `store_inventory_items.onHandQty` and locking the session.
+- **Inventory Count Sessions**: Auto-populates items based on dual-active status and company, with cross-company protection. Inventory counts serve as both a reporting snapshot and a mechanism to adjust stock levels, updating `store_inventory_items.onHandQty` and locking the session. Category view displays item headers with aggregated totals across all locations: total quantity, unit name, unit price, and total value. Category/location group headers show only total value (total quantity removed for cleaner display).
 - **Purchase Order Management**: Unit/case ordering, vendor-specific filtering, keyboard-optimized entry.
 - **Terminology Standardization**: Consistent use of "inventory item."
 - **Receiving Module**: Supports partial receipts, resumable sessions, visual indicators, and correct PO pricing.
