@@ -538,6 +538,7 @@ export default function RecipeBuilder() {
       }
 
       // Save components
+      console.log("Saving components with recipeId:", recipeId);
       const componentPromises = components.map((comp, index) => {
         const compData = {
           recipeId,
@@ -547,6 +548,8 @@ export default function RecipeBuilder() {
           unitId: comp.unitId,
           sortOrder: index,
         };
+
+        console.log("Component data being sent:", compData);
 
         if (comp.id.startsWith("temp-")) {
           return apiRequest("POST", "/api/recipe-components", compData);
