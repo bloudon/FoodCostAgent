@@ -737,7 +737,7 @@ export default function CountSession() {
                                               {formatUnitName(unitName)}
                                             </div>
                                             <div className="font-mono" data-testid={`text-item-unit-price-${itemId}`}>
-                                              ${(firstLine.unitCost || 0).toFixed(4)}
+                                              ${(firstLine.unitCost || 0).toFixed(2)}
                                             </div>
                                             <div className="font-mono font-semibold" data-testid={`text-item-total-value-${itemId}`}>
                                               ${itemTotalValue.toFixed(2)}
@@ -858,7 +858,7 @@ export default function CountSession() {
                                             {formatUnitName(unitName)}
                                           </div>
                                           <div className="font-mono">
-                                            ${(line.unitCost || 0).toFixed(4)}
+                                            ${(line.unitCost || 0).toFixed(2)}
                                           </div>
                                           {previousQty > 0 && previousCountId && (
                                             <Link href={`/count/${previousCountId}?from=${countId}&item=${line.inventoryItemId}`}>
