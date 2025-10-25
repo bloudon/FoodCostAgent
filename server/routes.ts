@@ -2007,6 +2007,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.status(201).json(component);
     } catch (error: any) {
+      console.error("Recipe component creation error:", error);
+      console.error("Request body:", req.body);
       res.status(400).json({ error: error.message });
     }
   });
