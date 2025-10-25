@@ -343,6 +343,21 @@ export const insertRecipeSchema = createInsertSchema(recipes).omit({ id: true, c
 export type InsertRecipe = z.infer<typeof insertRecipeSchema>;
 export type Recipe = typeof recipes.$inferSelect;
 
+// Store Recipes (junction table - which recipes are available at which stores)
+export const storeRecipes = pgTable("store_recipes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(), // Denormalized for constraint enforcement
+  storeId: varchar("store_id").notNull(),
+  recipeId: varchar("recipe_id").notNull(),
+  active: integer("active").notNull().default(1), // Store-specific active status
+}, (table) => ({
+  uniqueStoreRecipe: unique().on(table.storeId, table.recipeId),
+}));
+
+export const insertStoreRecipeSchema = createInsertSchema(storeRecipes).omit({ id: true });
+export type InsertStoreRecipe = z.infer<typeof insertStoreRecipeSchema>;
+export type StoreRecipe = typeof storeRecipes.$inferSelect;
+
 // Recipe Components
 export const recipeComponents = pgTable("recipe_components", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

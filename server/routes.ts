@@ -8,7 +8,7 @@ import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth
 import { getAccessibleStores } from "./permissions";
 import { db } from "./db";
 import { eq, and, inArray } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, inventoryCounts, companyStores } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, companyStores } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -2078,6 +2078,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedCost = await calculateRecipeCost(recipeId);
       await storage.updateRecipe(recipeId, { computedCost: updatedCost });
       
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // ============ STORE RECIPES ============
+  // Get store assignments for a recipe
+  app.get("/api/store-recipes/:recipeId", requireAuth, async (req, res) => {
+    try {
+      const { recipeId } = req.params;
+      const companyId = req.companyId!;
+
+      // Verify the recipe belongs to the user's company
+      const recipe = await storage.getRecipe(recipeId, companyId);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+
+      const assignments = await db.select().from(storeRecipes).where(
+        eq(storeRecipes.recipeId, recipeId)
+      );
+
+      res.json(assignments);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Assign recipe to a store
+  app.post("/api/store-recipes/:recipeId/:storeId", requireAuth, async (req, res) => {
+    try {
+      const { recipeId, storeId } = req.params;
+      const companyId = req.companyId!;
+
+      // Verify the recipe belongs to the user's company
+      const recipe = await storage.getRecipe(recipeId, companyId);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+
+      // Verify the store belongs to the user's company
+      const [store] = await db.select().from(companyStores).where(
+        and(
+          eq(companyStores.id, storeId),
+          eq(companyStores.companyId, companyId)
+        )
+      );
+
+      if (!store) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+
+      // Check if assignment already exists
+      const [existing] = await db.select().from(storeRecipes).where(
+        and(
+          eq(storeRecipes.recipeId, recipeId),
+          eq(storeRecipes.storeId, storeId)
+        )
+      );
+
+      if (existing) {
+        return res.json(existing);
+      }
+
+      // Create new assignment
+      const [assignment] = await db.insert(storeRecipes).values({
+        companyId,
+        storeId,
+        recipeId,
+        active: 1,
+      }).returning();
+
+      res.status(201).json(assignment);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Remove recipe from a store
+  app.delete("/api/store-recipes/:recipeId/:storeId", requireAuth, async (req, res) => {
+    try {
+      const { recipeId, storeId } = req.params;
+      const companyId = req.companyId!;
+
+      // Verify the recipe belongs to the user's company
+      const recipe = await storage.getRecipe(recipeId, companyId);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+
+      await db.delete(storeRecipes).where(
+        and(
+          eq(storeRecipes.recipeId, recipeId),
+          eq(storeRecipes.storeId, storeId)
+        )
+      );
+
       res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });
