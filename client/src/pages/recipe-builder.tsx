@@ -537,7 +537,16 @@ export default function RecipeBuilder() {
         await apiRequest("PATCH", `/api/recipes/${id}`, recipeData);
       }
 
-      // Save components
+      // Delete all existing components first to avoid duplicates
+      if (!isNew && recipeComponents) {
+        await Promise.all(
+          recipeComponents.map((comp) => 
+            apiRequest("DELETE", `/api/recipe-components/${comp.id}`, undefined)
+          )
+        );
+      }
+
+      // Create all components fresh
       console.log("Saving components with recipeId:", recipeId);
       const componentPromises = components.map((comp, index) => {
         const compData = {
@@ -550,12 +559,7 @@ export default function RecipeBuilder() {
         };
 
         console.log("Component data being sent:", compData);
-
-        if (comp.id.startsWith("temp-")) {
-          return apiRequest("POST", "/api/recipe-components", compData);
-        } else {
-          return apiRequest("PATCH", `/api/recipe-components/${comp.id}`, compData);
-        }
+        return apiRequest("POST", "/api/recipe-components", compData);
       });
 
       await Promise.all(componentPromises);
