@@ -630,7 +630,19 @@ export default function RecipeBuilder() {
 
   // Load recipe data when editing
   useEffect(() => {
+    console.log("Load recipe useEffect triggered:", {
+      isNew,
+      hasRecipe: !!recipe,
+      hasRecipeComponents: !!recipeComponents,
+      componentsLength: components.length,
+      hasInventoryItems: !!inventoryItems,
+      hasRecipes: !!recipes,
+      hasUnits: !!units,
+      recipe
+    });
+    
     if (!isNew && recipe && recipeComponents && components.length === 0 && inventoryItems && recipes && units) {
+      console.log("Setting recipe data:", recipe);
       setRecipeName(recipe.name);
       setYieldQty(recipe.yieldQty.toString());
       setYieldUnitId(recipe.yieldUnitId);
