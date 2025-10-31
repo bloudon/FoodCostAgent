@@ -1179,14 +1179,13 @@ export default function RecipeBuilder() {
             <div className="space-y-2">
               <Label htmlFor="item-category">Category</Label>
               <Select 
-                value={itemEditForm.categoryId} 
+                value={itemEditForm.categoryId || undefined} 
                 onValueChange={(value) => setItemEditForm({ ...itemEditForm, categoryId: value })}
               >
                 <SelectTrigger id="item-category" data-testid="select-edit-item-category">
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder="No category" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No category</SelectItem>
                   {categories?.map((category) => (
                     <SelectItem key={category.id} value={category.id}>
                       {category.name}
