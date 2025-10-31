@@ -762,6 +762,26 @@ export default function RecipeBuilder() {
     }
   }, [isNew, recipe, recipeComponents, inventoryItems, recipes, units]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Update component costs when inventory items or recipes change (e.g., after editing an item)
+  useEffect(() => {
+    if (components.length > 0 && inventoryItems && recipes) {
+      const updatedComponents = components.map((comp) => {
+        const updated = { ...comp };
+        updated.cost = calculateComponentCost(updated);
+        return updated;
+      });
+      
+      // Only update if costs actually changed
+      const costsChanged = updatedComponents.some((updated, idx) => 
+        updated.cost !== components[idx].cost
+      );
+      
+      if (costsChanged) {
+        setComponents(updatedComponents);
+      }
+    }
+  }, [inventoryItems, recipes]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (recipeLoading) {
     return (
       <div className="flex items-center justify-center h-full">
