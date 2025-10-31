@@ -67,23 +67,15 @@ import {
   Package,
   Plus,
 } from "lucide-react";
-import type { Recipe, RecipeComponent, Category } from "@shared/schema";
+import type { Recipe, RecipeComponent, Category, InventoryItem as BaseInventoryItem, Unit as BaseUnit } from "@shared/schema";
 
-type InventoryItem = {
-  id: string;
-  name: string;
-  unitId: string;
-  unitName: string;
-  pricePerUnit: number;
-  categoryId: string | null;
-  categoryName: string | null;
+// Extended types for API responses with joined fields
+type InventoryItem = BaseInventoryItem & {
+  unitName?: string;
+  categoryName?: string | null;
 };
 
-type Unit = {
-  id: string;
-  name: string;
-  toBaseRatio: number;
-};
+type Unit = BaseUnit;
 
 type DraggableItem = {
   id: string;
