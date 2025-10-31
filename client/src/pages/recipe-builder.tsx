@@ -23,6 +23,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -171,10 +172,12 @@ function SortableIngredientRow({
 // Draggable inventory/recipe item from left panel
 function DraggableSourceItem({ 
   item, 
-  onAdd 
+  onAdd,
+  onEdit
 }: { 
   item: DraggableItem;
   onAdd: (item: DraggableItem) => void;
+  onEdit?: (item: DraggableItem) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `source-${item.id}`,
@@ -187,7 +190,7 @@ function DraggableSourceItem({
       data-testid={`draggable-item-${item.id}`}
     >
       <CardContent className="p-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <div 
             {...attributes}
             {...listeners}
@@ -207,18 +210,36 @@ function DraggableSourceItem({
               )}
             </div>
           </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAdd(item);
-            }}
-            data-testid={`button-add-item-${item.id}`}
-            className="flex-shrink-0"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+          <div className="flex gap-1 flex-shrink-0">
+            {item.type === "inventory_item" && onEdit && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(item);
+                }}
+                data-testid={`button-edit-inventory-${item.id}`}
+                className="h-8 w-8"
+                title="Edit inventory item"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+              </Button>
+            )}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAdd(item);
+              }}
+              data-testid={`button-add-item-${item.id}`}
+              className="h-8 w-8"
+              title="Add to recipe"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -251,11 +272,20 @@ export default function RecipeBuilder() {
   const [dialogQty, setDialogQty] = useState("");
   const [dialogUnitId, setDialogUnitId] = useState("");
 
-  // Edit dialog state
+  // Edit component dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingComponent, setEditingComponent] = useState<ComponentWithDetails | null>(null);
   const [editQty, setEditQty] = useState("");
   const [editUnitId, setEditUnitId] = useState("");
+
+  // Edit inventory item dialog state
+  const [editingInventoryItem, setEditingInventoryItem] = useState<any | null>(null);
+  const [itemEditForm, setItemEditForm] = useState({
+    name: "",
+    categoryId: "",
+    pricePerUnit: "",
+    caseSize: "",
+  });
 
   // Queries
   const { data: recipe, isLoading: recipeLoading } = useQuery<Recipe>({
@@ -516,6 +546,75 @@ export default function RecipeBuilder() {
     setComponents(components.filter((c) => c.id !== componentId));
   };
 
+  // Edit inventory item handlers
+  const handleOpenItemEdit = (item: DraggableItem) => {
+    // Fetch full inventory item details
+    const fullItem = inventoryItems?.find(i => i.id === item.id);
+    if (fullItem) {
+      setEditingInventoryItem(fullItem);
+      setItemEditForm({
+        name: fullItem.name || "",
+        categoryId: fullItem.categoryId || "",
+        pricePerUnit: fullItem.pricePerUnit?.toString() || "",
+        caseSize: "1", // We don't have caseSize in the type, but keep for compatibility
+      });
+    }
+  };
+
+  const handleCloseItemEdit = () => {
+    setEditingInventoryItem(null);
+    setItemEditForm({
+      name: "",
+      categoryId: "",
+      pricePerUnit: "",
+      caseSize: "",
+    });
+  };
+
+  const updateInventoryItemMutation = useMutation({
+    mutationFn: async (data: { id: string; updates: any }) => {
+      await apiRequest("PATCH", `/api/inventory-items/${data.id}`, data.updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      toast({ title: "Inventory item updated successfully" });
+      handleCloseItemEdit();
+    },
+    onError: () => {
+      toast({ title: "Failed to update inventory item", variant: "destructive" });
+    },
+  });
+
+  const handleSaveItemEdit = async () => {
+    if (!editingInventoryItem) return;
+
+    const updates: any = {};
+    
+    if (itemEditForm.name && itemEditForm.name !== editingInventoryItem.name) {
+      updates.name = itemEditForm.name;
+    }
+    
+    if (itemEditForm.categoryId && itemEditForm.categoryId !== editingInventoryItem.categoryId) {
+      updates.categoryId = itemEditForm.categoryId;
+    }
+    
+    if (itemEditForm.pricePerUnit) {
+      const price = parseFloat(itemEditForm.pricePerUnit);
+      if (!isNaN(price) && price !== editingInventoryItem.pricePerUnit) {
+        updates.pricePerUnit = price;
+      }
+    }
+
+    if (Object.keys(updates).length > 0) {
+      updateInventoryItemMutation.mutate({
+        id: editingInventoryItem.id,
+        updates,
+      });
+    } else {
+      handleCloseItemEdit();
+    }
+  };
+
   // Save recipe mutation
   const saveRecipeMutation = useMutation({
     mutationFn: async () => {
@@ -547,7 +646,6 @@ export default function RecipeBuilder() {
       }
 
       // Create all components fresh
-      console.log("Saving components with recipeId:", recipeId);
       const componentPromises = components.map((comp, index) => {
         const compData = {
           recipeId,
@@ -558,7 +656,6 @@ export default function RecipeBuilder() {
           sortOrder: index,
         };
 
-        console.log("Component data being sent:", compData);
         return apiRequest("POST", "/api/recipe-components", compData);
       });
 
@@ -634,19 +731,7 @@ export default function RecipeBuilder() {
 
   // Load recipe data when editing
   useEffect(() => {
-    console.log("Load recipe useEffect triggered:", {
-      isNew,
-      hasRecipe: !!recipe,
-      hasRecipeComponents: !!recipeComponents,
-      componentsLength: components.length,
-      hasInventoryItems: !!inventoryItems,
-      hasRecipes: !!recipes,
-      hasUnits: !!units,
-      recipe
-    });
-    
     if (!isNew && recipe && recipeComponents && components.length === 0 && inventoryItems && recipes && units) {
-      console.log("Setting recipe data:", recipe);
       setRecipeName(recipe.name);
       setYieldQty(recipe.yieldQty.toString());
       setYieldUnitId(recipe.yieldUnitId);
@@ -824,6 +909,7 @@ export default function RecipeBuilder() {
                           key={item.id} 
                           item={item} 
                           onAdd={handleClickToAdd}
+                          onEdit={handleOpenItemEdit}
                         />
                       ))}
                     </div>
@@ -1067,6 +1153,73 @@ export default function RecipeBuilder() {
             </Button>
             <Button onClick={handleSaveEdit} data-testid="button-confirm-edit">
               Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit inventory item dialog */}
+      <Dialog open={!!editingInventoryItem} onOpenChange={(open) => !open && handleCloseItemEdit()}>
+        <DialogContent className="max-w-2xl" data-testid="dialog-edit-inventory-item">
+          <DialogHeader>
+            <DialogTitle>Edit Inventory Item</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="item-name">Item Name *</Label>
+              <Input
+                id="item-name"
+                value={itemEditForm.name}
+                onChange={(e) => setItemEditForm({ ...itemEditForm, name: e.target.value })}
+                placeholder="Enter item name"
+                data-testid="input-edit-item-name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="item-category">Category</Label>
+              <Select 
+                value={itemEditForm.categoryId} 
+                onValueChange={(value) => setItemEditForm({ ...itemEditForm, categoryId: value })}
+              >
+                <SelectTrigger id="item-category" data-testid="select-edit-item-category">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">No category</SelectItem>
+                  {categories?.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="item-price">Price per Unit *</Label>
+              <Input
+                id="item-price"
+                type="number"
+                step="0.01"
+                value={itemEditForm.pricePerUnit}
+                onChange={(e) => setItemEditForm({ ...itemEditForm, pricePerUnit: e.target.value })}
+                placeholder="0.00"
+                data-testid="input-edit-item-price"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseItemEdit}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSaveItemEdit}
+              disabled={updateInventoryItemMutation.isPending}
+              data-testid="button-save-inventory-item"
+            >
+              {updateInventoryItemMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
