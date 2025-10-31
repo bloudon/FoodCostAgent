@@ -144,11 +144,9 @@ export default function MenuItemsPage() {
     mutationFn: async (csvContent: string) => {
       const response = await apiRequest("POST", "/api/menu-items/import-csv", { csvContent });
       const data = await response.json();
-      console.log('CSV Parse Response:', data);
       return data as ParseResult;
     },
     onSuccess: (data: ParseResult) => {
-      console.log('Parse result data:', data);
       setParseResult(data);
       const uniqueCount = data?.stats?.uniqueItems || (data as any)?.uniqueItems || 0;
       toast({

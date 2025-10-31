@@ -816,9 +816,14 @@ export default function RecipeBuilder() {
 
   // Load selected stores when editing
   useEffect(() => {
-    if (!isNew && recipeStores && selectedStores.length === 0) {
+    if (!isNew && recipeStores) {
       const storeIds = recipeStores.map((rs: any) => rs.storeId);
-      setSelectedStores(storeIds);
+      // Only update if different to avoid infinite loop
+      const currentIds = selectedStores.slice().sort().join(',');
+      const newIds = storeIds.slice().sort().join(',');
+      if (currentIds !== newIds) {
+        setSelectedStores(storeIds);
+      }
     }
   }, [isNew, recipeStores]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -899,7 +904,8 @@ export default function RecipeBuilder() {
                   !recipeName ||
                   !yieldQty ||
                   !yieldUnitId ||
-                  components.length === 0
+                  components.length === 0 ||
+                  selectedStores.length === 0
                 }
                 data-testid="button-save-recipe"
               >
