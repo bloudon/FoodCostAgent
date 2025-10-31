@@ -253,6 +253,7 @@ export default function RecipeBuilder() {
   const [yieldQty, setYieldQty] = useState("1");
   const [yieldUnitId, setYieldUnitId] = useState("");
   const [canBeIngredient, setCanBeIngredient] = useState(false);
+  const [selectedStores, setSelectedStores] = useState<string[]>([]);
 
   // Component management state
   const [components, setComponents] = useState<ComponentWithDetails[]>([]);
@@ -308,6 +309,15 @@ export default function RecipeBuilder() {
 
   const { data: menuItems } = useQuery<any[]>({
     queryKey: ["/api/menu-items"],
+  });
+
+  const { data: stores } = useQuery<any[]>({
+    queryKey: ["/api/stores/accessible"],
+  });
+
+  const { data: recipeStores } = useQuery<any[]>({
+    queryKey: ["/api/store-recipes", id],
+    enabled: !isNew && !!id,
   });
 
   // Calculate component cost
@@ -654,12 +664,42 @@ export default function RecipeBuilder() {
       });
 
       await Promise.all(componentPromises);
+
+      // Handle store assignments
+      if (!isNew && recipeStores) {
+        const currentStoreIds = recipeStores.map((rs: any) => rs.storeId);
+        const storesToAdd = selectedStores.filter(sid => !currentStoreIds.includes(sid));
+        const storesToRemove = currentStoreIds.filter((sid: string) => !selectedStores.includes(sid));
+        
+        // Create new assignments
+        await Promise.all(
+          storesToAdd.map(storeId =>
+            apiRequest("POST", `/api/store-recipes/${recipeId}/${storeId}`, {})
+          )
+        );
+        
+        // Remove old assignments
+        await Promise.all(
+          storesToRemove.map(storeId =>
+            apiRequest("DELETE", `/api/store-recipes/${recipeId}/${storeId}`, undefined)
+          )
+        );
+      } else if (isNew) {
+        // For new recipes, create all assignments
+        await Promise.all(
+          selectedStores.map(storeId =>
+            apiRequest("POST", `/api/store-recipes/${recipeId}/${storeId}`, {})
+          )
+        );
+      }
+
       return recipeId;
     },
     onSuccess: (recipeId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/recipe-components"] });
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/store-recipes"] });
       toast({ title: "Recipe saved successfully" });
       setLocation(`/recipes/${recipeId}`);
     },
@@ -774,6 +814,14 @@ export default function RecipeBuilder() {
     }
   }, [inventoryItems, recipes]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Load selected stores when editing
+  useEffect(() => {
+    if (!isNew && recipeStores && selectedStores.length === 0) {
+      const storeIds = recipeStores.map((rs: any) => rs.storeId);
+      setSelectedStores(storeIds);
+    }
+  }, [isNew, recipeStores]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (recipeLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -834,7 +882,18 @@ export default function RecipeBuilder() {
                 </div>
               </div>
               <Button
-                onClick={() => saveRecipeMutation.mutate()}
+                onClick={() => {
+                  // Validate at least one store is selected
+                  if (selectedStores.length === 0) {
+                    toast({
+                      title: "Store Required",
+                      description: "Please select at least one store location",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  saveRecipeMutation.mutate();
+                }}
                 disabled={
                   saveRecipeMutation.isPending ||
                   !recipeName ||
@@ -1014,6 +1073,42 @@ export default function RecipeBuilder() {
                           >
                             Can be used as ingredient in other recipes
                           </label>
+                        </div>
+
+                        {/* Store Assignments */}
+                        <div className="space-y-3 pt-4 border-t">
+                          <label className="text-sm font-medium">
+                            Store Locations *
+                          </label>
+                          <div className="space-y-2">
+                            {stores?.map((store) => (
+                              <div key={store.id} className="flex items-center gap-2">
+                                <Checkbox
+                                  id={`store-${store.id}`}
+                                  checked={selectedStores.includes(store.id)}
+                                  onCheckedChange={() => {
+                                    setSelectedStores(prev =>
+                                      prev.includes(store.id)
+                                        ? prev.filter(id => id !== store.id)
+                                        : [...prev, store.id]
+                                    );
+                                  }}
+                                  data-testid={`checkbox-store-${store.id}`}
+                                />
+                                <label
+                                  htmlFor={`store-${store.id}`}
+                                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                >
+                                  {store.name}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                          {selectedStores.length === 0 && (
+                            <p className="text-sm text-destructive">
+                              At least one store location is required
+                            </p>
+                          )}
                         </div>
                       </AccordionContent>
                     </AccordionItem>
