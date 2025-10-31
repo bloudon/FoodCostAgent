@@ -577,6 +577,8 @@ export default function RecipeBuilder() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipe-components", id] });
       toast({ title: "Inventory item updated successfully" });
       handleCloseItemEdit();
     },
