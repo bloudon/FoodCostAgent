@@ -10,6 +10,7 @@ type CompanyStore = {
   zip: string | null;
   phone: string | null;
   tccLocationId: string | null;
+  status: string;
 };
 
 export function useAccessibleStores() {

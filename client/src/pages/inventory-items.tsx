@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Package, Search, Plus, MoreVertical } from "lucide-react";
+import { Package, Search, Plus, MoreVertical, Store } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
@@ -200,11 +200,15 @@ export default function InventoryItems() {
   return (
     <div className="h-full overflow-auto">
       <div className="p-4 space-y-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <Package className="h-6 w-6 text-muted-foreground" />
             <h1 className="text-2xl font-bold">
               Inventory Items ({filteredItems.length})
             </h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <Store className="h-5 w-5 text-muted-foreground" />
             <Select value={selectedStore} onValueChange={setSelectedStore}>
               <SelectTrigger className="w-[200px]" data-testid="select-store-filter">
                 <SelectValue placeholder="Select store" />
@@ -217,13 +221,13 @@ export default function InventoryItems() {
                 ))}
               </SelectContent>
             </Select>
+            <Button asChild data-testid="button-add-item">
+              <Link href="/inventory-items/new">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Item
+              </Link>
+            </Button>
           </div>
-          <Button asChild data-testid="button-add-item">
-            <Link href="/inventory-items/new">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Item
-            </Link>
-          </Button>
         </div>
 
         {/* Filters */}
