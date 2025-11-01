@@ -136,6 +136,7 @@ export default function PurchaseOrderDetail() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [compareItemId, setCompareItemId] = useState<string | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   
   // Track case quantities for each vendor item
   const [caseQuantities, setCaseQuantities] = useState<Record<string, number>>({});
@@ -233,6 +234,7 @@ export default function PurchaseOrderDetail() {
         queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${id}`] });
         queryClient.invalidateQueries({ queryKey: [`/api/vendor-items?vendor_id=${selectedVendor}&store_id=${selectedStore}`] });
       }
+      setHasUnsavedChanges(false);
       toast({
         title: "Success",
         description: `Purchase order ${isNew ? "created" : "updated"} successfully`,
@@ -255,6 +257,7 @@ export default function PurchaseOrderDetail() {
       ...prev,
       [itemId]: value
     }));
+    setHasUnsavedChanges(true);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent, currentItemId: string, items: any[]) => {
@@ -361,6 +364,19 @@ export default function PurchaseOrderDetail() {
     }
   }, [purchaseOrder, isNew]);
 
+  // Warn user before leaving page with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   // Separate effect to populate quantities after vendorItems/inventoryItems are loaded
   useEffect(() => {
     if (purchaseOrder && !isNew && (vendorItems || inventoryItems)) {
@@ -389,6 +405,8 @@ export default function PurchaseOrderDetail() {
       });
       
       setCaseQuantities(quantities);
+      // Reset unsaved changes flag when loading existing PO data
+      setHasUnsavedChanges(false);
     }
   }, [purchaseOrder, isNew, vendorItems, inventoryItems, vendors]);
 
@@ -497,6 +515,7 @@ export default function PurchaseOrderDetail() {
               value={selectedStore} 
               onValueChange={(value) => {
                 setSelectedStore(value);
+                setHasUnsavedChanges(true);
                 // Clear vendor and quantities when store changes
                 if (value !== selectedStore) {
                   setSelectedVendor("");
@@ -524,6 +543,7 @@ export default function PurchaseOrderDetail() {
               value={selectedVendor} 
               onValueChange={(value) => {
                 setSelectedVendor(value);
+                setHasUnsavedChanges(true);
                 // Clear quantities when vendor changes
                 setCaseQuantities({});
               }}
@@ -552,7 +572,10 @@ export default function PurchaseOrderDetail() {
               <Input
                 type="date"
                 value={expectedDate}
-                onChange={(e) => setExpectedDate(e.target.value)}
+                onChange={(e) => {
+                  setExpectedDate(e.target.value);
+                  setHasUnsavedChanges(true);
+                }}
                 data-testid="input-expected-date"
               />
             )}
@@ -576,7 +599,10 @@ export default function PurchaseOrderDetail() {
             <Input
               placeholder="Add notes or comments about this order..."
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => {
+                setNotes(e.target.value);
+                setHasUnsavedChanges(true);
+              }}
               data-testid="input-notes"
             />
           )}
@@ -761,9 +787,17 @@ export default function PurchaseOrderDetail() {
                         <TableRow key={itemId} data-testid={`row-item-${itemId}`}>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <Link 
-                                href={`/inventory-items/${inventoryItemId}`}
-                                className="font-medium hover:text-primary hover:underline flex-1"
+                              <button
+                                onClick={() => {
+                                  if (hasUnsavedChanges) {
+                                    if (confirm('You have unsaved changes. Are you sure you want to leave?')) {
+                                      setLocation(`/inventory-items/${inventoryItemId}`);
+                                    }
+                                  } else {
+                                    setLocation(`/inventory-items/${inventoryItemId}`);
+                                  }
+                                }}
+                                className="font-medium hover:text-primary hover:underline flex-1 text-left"
                                 tabIndex={-1}
                                 data-testid={`link-item-${inventoryItemId}`}
                               >
@@ -771,7 +805,7 @@ export default function PurchaseOrderDetail() {
                                 {!isMiscGrocery && vendorSku !== '-' && (
                                   <span className="text-muted-foreground font-normal ml-1">{vendorSku}</span>
                                 )}
-                              </Link>
+                              </button>
                               {isNew && !isMiscGrocery && (
                                 <Button
                                   size="icon"
@@ -1097,9 +1131,17 @@ export default function PurchaseOrderDetail() {
                           return (
                             <TableRow key={itemId} data-testid={`row-item-${itemId}`}>
                               <TableCell>
-                                <Link 
-                                  href={`/inventory-items/${inventoryItemId}`}
-                                  className="font-medium hover:text-primary hover:underline"
+                                <button
+                                  onClick={() => {
+                                    if (hasUnsavedChanges) {
+                                      if (confirm('You have unsaved changes. Are you sure you want to leave?')) {
+                                        setLocation(`/inventory-items/${inventoryItemId}`);
+                                      }
+                                    } else {
+                                      setLocation(`/inventory-items/${inventoryItemId}`);
+                                    }
+                                  }}
+                                  className="font-medium hover:text-primary hover:underline text-left"
                                   tabIndex={-1}
                                   data-testid={`link-item-${inventoryItemId}`}
                                 >
@@ -1107,7 +1149,7 @@ export default function PurchaseOrderDetail() {
                                   {!isMiscGrocery && vendorSku !== '-' && (
                                     <span className="text-muted-foreground font-normal ml-1">{vendorSku}</span>
                                   )}
-                                </Link>
+                                </button>
                               </TableCell>
                               {!isMiscGrocery && (
                                 <>

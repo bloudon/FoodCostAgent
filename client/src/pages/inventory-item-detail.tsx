@@ -476,7 +476,13 @@ export default function InventoryItemDetail() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate("/inventory-items")}
+            onClick={() => {
+              if (window.history.length > 1) {
+                window.history.back();
+              } else {
+                navigate("/inventory-items");
+              }
+            }}
             data-testid="button-back"
           >
             <ArrowLeft className="h-4 w-4" />
