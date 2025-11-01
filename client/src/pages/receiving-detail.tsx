@@ -110,6 +110,7 @@ export default function ReceivingDetail() {
   
   // Track received quantities for each PO line (in units, not cases)
   const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
+  const [editedPrices, setEditedPrices] = useState<Record<string, number>>({});
   const [savedLines, setSavedLines] = useState<Set<string>>(new Set());
   const [editingLines, setEditingLines] = useState<Set<string>>(new Set());
   const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
@@ -148,8 +149,9 @@ export default function ReceivingDetail() {
     if (draftReceiptData?.receipt && purchaseOrder?.lines) {
       setDraftReceiptId(draftReceiptData.receipt.id);
 
-      // Build complete received quantities object
+      // Build complete received quantities and prices objects
       const allQtys: Record<string, number> = {};
+      const allPrices: Record<string, number> = {};
       const savedSet = new Set<string>();
       
       // First, load saved receipt lines
@@ -158,20 +160,23 @@ export default function ReceivingDetail() {
         const poLine = purchaseOrder.lines.find(pl => pl.vendorItemId === line.vendorItemId);
         if (poLine) {
           allQtys[poLine.id] = line.receivedQty;
+          allPrices[poLine.id] = line.priceEach;
           savedSet.add(poLine.id);
         }
       });
 
-      // Then, initialize unsaved lines with expected quantities
+      // Then, initialize unsaved lines with expected quantities and PO prices
       purchaseOrder.lines.forEach(line => {
         if (!savedSet.has(line.id)) {
           // For case-based orders, use orderedQty (already in units)
           // For unit-based orders (Misc Grocery), use orderedQty directly
           allQtys[line.id] = line.orderedQty;
+          allPrices[line.id] = line.pricePerUnit;
         }
       });
 
       setReceivedQuantities(allQtys);
+      setEditedPrices(allPrices);
       setSavedLines(savedSet);
     }
   }, [draftReceiptData, purchaseOrder]);
@@ -271,6 +276,19 @@ export default function ReceivingDetail() {
     });
   };
 
+  const handlePriceChange = (lineId: string, value: number) => {
+    setEditedPrices(prev => ({
+      ...prev,
+      [lineId]: value
+    }));
+    // Remove from saved set when price is modified
+    setSavedLines(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(lineId);
+      return newSet;
+    });
+  };
+
   const handleSaveLine = (lineId: string) => {
     const line = purchaseOrder?.lines.find(l => l.id === lineId);
     if (!line || !draftReceiptId) return;
@@ -280,7 +298,7 @@ export default function ReceivingDetail() {
       vendorItemId: line.vendorItemId,
       receivedQty: receivedQuantities[lineId] || 0,
       unitId: line.unitId,
-      pricePerUnit: line.pricePerUnit,
+      pricePerUnit: editedPrices[lineId] ?? line.pricePerUnit,
     }, {
       onSuccess: () => {
         setSavedLines(prev => new Set(prev).add(lineId));
@@ -290,7 +308,7 @@ export default function ReceivingDetail() {
           return newSet;
         });
         toast({
-          description: "Quantity confirmed",
+          description: "Line saved",
         });
       }
     });
@@ -459,7 +477,8 @@ export default function ReceivingDetail() {
   }, 0);
   const totalActual = filteredLines.reduce((sum, line) => {
     const receivedQty = receivedQuantities[line.id] || 0;
-    return sum + (receivedQty * line.pricePerUnit);
+    const unitPrice = editedPrices[line.id] ?? line.pricePerUnit;
+    return sum + (receivedQty * unitPrice);
   }, 0);
 
   // Check if all lines are saved
@@ -607,9 +626,10 @@ export default function ReceivingDetail() {
                       const receivedQty = receivedQuantities[line.id] || 0;
                       const isSaved = savedLines.has(line.id);
                       const isEditing = editingLines.has(line.id);
-                      const lineTotal = receivedQty * line.pricePerUnit;
+                      const unitPrice = editedPrices[line.id] ?? line.pricePerUnit;
+                      const lineTotal = receivedQty * unitPrice;
                       const isShort = receivedQty < line.orderedQty;
-                      const casePrice = line.caseQuantity && line.caseQuantity > 0 ? line.pricePerUnit * line.caseSize : null;
+                      const casePrice = line.caseQuantity && line.caseQuantity > 0 ? unitPrice * line.caseSize : null;
                       
                       return (
                         <TableRow 
@@ -670,7 +690,30 @@ export default function ReceivingDetail() {
                             )}
                           </TableCell>
                           <TableCell>{formatUnitName(line.unitName)}</TableCell>
-                          <TableCell className="text-right font-mono">${line.pricePerUnit.toFixed(4)}</TableCell>
+                          <TableCell className="text-right">
+                            {isReadOnly ? (
+                              <span className="font-mono" data-testid={`text-unit-price-${line.id}`}>
+                                ${(editedPrices[line.id] ?? line.pricePerUnit).toFixed(4)}
+                              </span>
+                            ) : isSaved && !isEditing ? (
+                              <button
+                                onClick={() => handleToggleEdit(line.id)}
+                                className="font-mono text-primary hover:underline"
+                                data-testid={`link-edit-price-${line.id}`}
+                              >
+                                ${(editedPrices[line.id] ?? line.pricePerUnit).toFixed(4)}
+                              </button>
+                            ) : (
+                              <Input
+                                type="number"
+                                step="0.0001"
+                                value={editedPrices[line.id] ?? line.pricePerUnit}
+                                onChange={(e) => handlePriceChange(line.id, parseFloat(e.target.value) || 0)}
+                                className="w-28 text-right font-mono"
+                                data-testid={`input-unit-price-${line.id}`}
+                              />
+                            )}
+                          </TableCell>
                           <TableCell className="text-right font-mono font-semibold">
                             ${lineTotal.toFixed(2)}
                           </TableCell>
