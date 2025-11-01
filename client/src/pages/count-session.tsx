@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Package, DollarSign, Layers, X, Lock } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -39,6 +39,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatUnitName } from "@/lib/utils";
 import type { Company, CompanyStore } from "@shared/schema";
@@ -80,6 +81,7 @@ export default function CountSession() {
     reorderLevel: "",
   });
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const { data: count, isLoading: countLoading } = useQuery<any>({
     queryKey: ["/api/inventory-counts", countId],
@@ -265,6 +267,48 @@ export default function CountSession() {
       });
     },
   });
+
+  const unlockCountMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("PATCH", `/api/inventory-counts/${countId}/unlock`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts", countId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      toast({
+        title: "Session Unlocked",
+        description: "You can now edit this inventory count session",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to unlock session",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const lockCountMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("PATCH", `/api/inventory-counts/${countId}/lock`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts", countId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      toast({
+        title: "Session Locked",
+        description: "This inventory count session is now locked",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to lock session",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
   
   // Get unique categories from inventory items
   const categories = Array.from(new Set(
@@ -435,11 +479,43 @@ export default function CountSession() {
       {/* Read-Only Banner */}
       {isReadOnly && (
         <Alert className="mb-8 border-amber-500/50 bg-amber-500/10" data-testid="alert-read-only">
-          <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-          <AlertDescription className="text-amber-800 dark:text-amber-200">
-            <strong>Historical Session (Read-Only)</strong> - This inventory count is from a previous date and cannot be edited. Only administrators can modify historical data.
-          </AlertDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <AlertDescription className="text-amber-800 dark:text-amber-200">
+                <strong>Historical Session (Read-Only)</strong> - This inventory count is from a previous date and cannot be edited. Only administrators can modify historical data.
+              </AlertDescription>
+            </div>
+            {(user?.role === "global_admin" || user?.role === "company_admin") && count?.applied === 1 && (
+              <Button
+                onClick={() => unlockCountMutation.mutate()}
+                disabled={unlockCountMutation.isPending}
+                variant="outline"
+                size="sm"
+                data-testid="button-unlock-session"
+              >
+                <LockOpen className="h-4 w-4 mr-2" />
+                {unlockCountMutation.isPending ? "Unlocking..." : "Unlock Session"}
+              </Button>
+            )}
+          </div>
         </Alert>
+      )}
+
+      {/* Lock Session Button for admins on unlocked sessions */}
+      {!isReadOnly && count?.applied === 0 && (user?.role === "global_admin" || user?.role === "company_admin") && (
+        <div className="mb-8 flex justify-end">
+          <Button
+            onClick={() => lockCountMutation.mutate()}
+            disabled={lockCountMutation.isPending}
+            variant="outline"
+            size="sm"
+            data-testid="button-lock-session"
+          >
+            <Lock className="h-4 w-4 mr-2" />
+            {lockCountMutation.isPending ? "Locking..." : "Lock Session"}
+          </Button>
+        </div>
       )}
 
       {/* Mini Dashboard - Sticky Stats Bar */}

@@ -2658,6 +2658,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Unlock inventory count session (admin only)
+  app.patch("/api/inventory-counts/:id/unlock", requireAuth, async (req, res) => {
+    try {
+      const count = await storage.getInventoryCount(req.params.id);
+      if (!count) {
+        return res.status(404).json({ error: "Count session not found" });
+      }
+
+      // Validate company ownership
+      if (count.companyId !== (req as any).companyId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const user = (req as any).user;
+      const isAdmin = user.role === "global_admin" || user.role === "company_admin";
+
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Only administrators can unlock inventory count sessions" });
+      }
+
+      // Check if already unlocked
+      if ((count as any).applied === 0) {
+        return res.status(400).json({ error: "This inventory count is already unlocked" });
+      }
+
+      // Unlock the count session
+      await db
+        .update(inventoryCounts)
+        .set({ 
+          applied: 0,
+          appliedAt: null,
+          appliedBy: null,
+        })
+        .where(eq(inventoryCounts.id, count.id));
+
+      const updatedCount = await storage.getInventoryCount(count.id);
+      res.json(updatedCount);
+    } catch (error: any) {
+      console.error("Unlock inventory count error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Lock inventory count session (admin only)
+  app.patch("/api/inventory-counts/:id/lock", requireAuth, async (req, res) => {
+    try {
+      const count = await storage.getInventoryCount(req.params.id);
+      if (!count) {
+        return res.status(404).json({ error: "Count session not found" });
+      }
+
+      // Validate company ownership
+      if (count.companyId !== (req as any).companyId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const user = (req as any).user;
+      const isAdmin = user.role === "global_admin" || user.role === "company_admin";
+
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Only administrators can lock inventory count sessions" });
+      }
+
+      // Check if already locked
+      if ((count as any).applied === 1) {
+        return res.status(400).json({ error: "This inventory count is already locked" });
+      }
+
+      const lines = await storage.getInventoryCountLines(count.id);
+      if (lines.length === 0) {
+        return res.status(400).json({ error: "Cannot lock empty inventory count" });
+      }
+
+      // Lock the count session
+      await db
+        .update(inventoryCounts)
+        .set({ 
+          applied: 1,
+          appliedAt: new Date(),
+          appliedBy: user.id,
+        })
+        .where(eq(inventoryCounts.id, count.id));
+
+      const updatedCount = await storage.getInventoryCount(count.id);
+      res.json(updatedCount);
+    } catch (error: any) {
+      console.error("Lock inventory count error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get previous inventory count session (for comparison)
   app.get("/api/inventory-counts/:id/previous-lines", async (req, res) => {
     try {
