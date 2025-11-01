@@ -310,14 +310,14 @@ export default function InventoryItems() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[300px]">Item</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Unit</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Par</TableHead>
                   <TableHead className="text-right">Reorder</TableHead>
-                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Most Recent Unit Price</TableHead>
+                  <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -360,6 +360,14 @@ export default function InventoryItems() {
                         className="cursor-pointer"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
+                        <Badge variant={inventoryStatus.variant} data-testid={`badge-status-${item.id}`}>
+                          {inventoryStatus.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
                         {item.category && (
                           <Badge 
                             variant="secondary" 
@@ -397,12 +405,6 @@ export default function InventoryItems() {
                         <span className="text-sm text-muted-foreground">{formatUnitName(item.unit?.name)}</span>
                       </TableCell>
                       <TableCell 
-                        className="text-right font-mono cursor-pointer"
-                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
-                      >
-                        <span className={inventoryStatus.color}>{quantity.toFixed(2)}</span>
-                      </TableCell>
-                      <TableCell 
                         className="text-right font-mono text-sm text-muted-foreground cursor-pointer"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
@@ -414,19 +416,17 @@ export default function InventoryItems() {
                       >
                         {item.reorderLevel ? item.reorderLevel.toFixed(1) : "-"}
                       </TableCell>
-                      <TableCell
-                        className="cursor-pointer"
-                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
-                      >
-                        <Badge variant={inventoryStatus.variant} data-testid={`badge-status-${item.id}`}>
-                          {inventoryStatus.status}
-                        </Badge>
-                      </TableCell>
                       <TableCell 
                         className="text-right font-mono cursor-pointer"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
                         ${item.pricePerUnit ? item.pricePerUnit.toFixed(2) : '0.00'}
+                      </TableCell>
+                      <TableCell 
+                        className="text-right font-mono cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
+                        <span className={inventoryStatus.color}>{quantity.toFixed(2)}</span>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
