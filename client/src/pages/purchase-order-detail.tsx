@@ -311,7 +311,7 @@ export default function PurchaseOrderDetail() {
         } else {
           const vendorItem = vendorItems?.find(item => item.id === itemId);
           const caseSize = vendorItem?.inventoryItem?.caseSize || 1;
-          const unitPrice = vendorItem?.inventoryItem?.pricePerUnit || vendorItem?.lastPrice || 0;
+          const unitPrice = vendorItem?.lastPrice ?? vendorItem?.inventoryItem?.pricePerUnit ?? 0;
           
           return {
             vendorItemId: itemId,
@@ -436,7 +436,7 @@ export default function PurchaseOrderDetail() {
     } else {
       const vendorItem = vendorItems?.find(item => item.id === itemId);
       const caseSize = vendorItem?.inventoryItem?.caseSize || 1;
-      const unitPrice = vendorItem?.inventoryItem?.pricePerUnit || vendorItem?.lastPrice || 0;
+      const unitPrice = vendorItem?.lastPrice ?? vendorItem?.inventoryItem?.pricePerUnit ?? 0;
       const casePrice = unitPrice * caseSize;
       return sum + (caseQty * casePrice);
     }
@@ -776,7 +776,7 @@ export default function PurchaseOrderDetail() {
                         categoryName = item.categoryName || '-';
                         vendorSku = item.vendorSku || '-';
                         caseSize = item.inventoryItem?.caseSize || 1;
-                        unitPrice = item.inventoryItem?.pricePerUnit || item.lastPrice || 0;
+                        unitPrice = item.lastPrice ?? item.inventoryItem?.pricePerUnit ?? 0;
                         casePrice = unitPrice * caseSize;
                         lineTotal = caseQty * casePrice;
                       }
@@ -1121,7 +1121,7 @@ export default function PurchaseOrderDetail() {
                             categoryName = item.categoryName || '-';
                             vendorSku = item.vendorSku || '-';
                             caseSize = item.inventoryItem?.caseSize || 1;
-                            unitPrice = item.inventoryItem?.pricePerUnit || item.lastPrice || 0;
+                            unitPrice = item.lastPrice ?? item.inventoryItem?.pricePerUnit ?? 0;
                             casePrice = unitPrice * caseSize;
                             lineTotal = caseQty * casePrice;
                           }

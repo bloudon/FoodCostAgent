@@ -1500,7 +1500,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const units = await storage.getUnits();
       
       const vendorPrices = allVendorItems
-        .filter(vi => vi.lastPrice && vi.lastPrice > 0)
+        .filter(vi => vi.lastPrice != null)
         .map(vi => {
           const vendor = vendors.find(v => v.id === vi.vendorId);
           const unit = units.find(u => u.id === vi.purchaseUnitId);
