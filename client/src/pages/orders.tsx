@@ -1,9 +1,10 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Package, Search, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Package, Search, Plus, Trash2, Store } from "lucide-react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
   Table,
   TableBody,
@@ -42,6 +43,9 @@ type UnifiedOrder = {
   vendorName: string;
   fromStore?: string;
   toStore?: string;
+  storeId?: string; // For purchase orders
+  fromStoreId?: string; // For transfer orders
+  toStoreId?: string; // For transfer orders
   lineCount: number;
   totalAmount: number;
 };
@@ -70,7 +74,7 @@ export default function Orders() {
   const [selectedVendor, setSelectedVendor] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
-  const [selectedStore, setSelectedStore] = useState<string>("all");
+  const [selectedStore, setSelectedStore] = useState<string>("");
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -83,9 +87,17 @@ export default function Orders() {
     queryKey: ["/api/vendors"],
   });
 
-  const { data: stores } = useQuery<Store[]>({
-    queryKey: ["/api/stores/accessible"],
-  });
+  const { data: stores = [], isLoading: storesLoading } = useAccessibleStores();
+
+  // Auto-select first active store when stores load
+  useEffect(() => {
+    if (stores && stores.length > 0 && !selectedStore) {
+      const activeStores = stores.filter(s => s.status === 'active');
+      if (activeStores.length > 0) {
+        setSelectedStore(activeStores[0].id);
+      }
+    }
+  }, [stores, selectedStore]);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -125,18 +137,13 @@ export default function Orders() {
     
     const matchesStatus = selectedStatus === "all" || order.status === selectedStatus;
     
-    // For store filter, use name-based matching since unified API returns store names
-    const matchesStore = selectedStore === "all" || 
-      order.fromStore?.trim().toLowerCase().includes(selectedStore) ||
-      order.toStore?.trim().toLowerCase().includes(selectedStore);
+    // For store filter, compare by store ID
+    const matchesStore = !selectedStore || 
+      (order.type === "purchase" && order.storeId === selectedStore) ||
+      (order.type === "transfer" && (order.fromStoreId === selectedStore || order.toStoreId === selectedStore));
       
     return matchesSearch && matchesType && matchesVendor && matchesStatus && matchesStore;
   }) || [];
-
-  // Get store name by ID
-  const getStoreName = (storeId: string) => {
-    return stores?.find(s => s.id === storeId)?.name || "Unknown";
-  };
 
   return (
     <div className="h-full overflow-auto">
@@ -148,12 +155,29 @@ export default function Orders() {
               Create, manage, and receive purchase orders from vendors
             </p>
           </div>
-          <Button asChild data-testid="button-create-order">
-            <Link href="/purchase-orders/new">
-              <Plus className="h-4 w-4 mr-2" />
-              New Order
-            </Link>
-          </Button>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <Store className="h-5 w-5 text-muted-foreground" />
+              <Select value={selectedStore} onValueChange={setSelectedStore}>
+                <SelectTrigger className="w-[200px]" data-testid="select-store">
+                  <SelectValue placeholder="Select store" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores?.filter(s => s.status === 'active').map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button asChild data-testid="button-create-order">
+              <Link href="/purchase-orders/new">
+                <Plus className="h-4 w-4 mr-2" />
+                New Order
+              </Link>
+            </Button>
+          </div>
         </div>
 
         <div className="flex gap-4 flex-wrap">
@@ -167,19 +191,6 @@ export default function Orders() {
               data-testid="input-search-orders"
             />
           </div>
-          <Select value={selectedStore} onValueChange={setSelectedStore}>
-            <SelectTrigger className="w-[200px]" data-testid="select-store-filter">
-              <SelectValue placeholder="Filter by store" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Stores</SelectItem>
-              {stores?.map((store) => (
-                <SelectItem key={store.id} value={store.name.toLowerCase()}>
-                  {store.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
           <Select value={selectedVendor} onValueChange={setSelectedVendor}>
             <SelectTrigger className="w-[200px]" data-testid="select-vendor-filter">
               <SelectValue placeholder="Filter by vendor" />
@@ -227,7 +238,7 @@ export default function Orders() {
             <Package className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-1">No orders found</h3>
             <p className="text-muted-foreground text-sm">
-              {search || selectedVendor !== "all" || selectedStatus !== "all" || selectedStore !== "all"
+              {search || selectedVendor !== "all" || selectedStatus !== "all"
                 ? "Try adjusting your filters"
                 : "Create your first purchase order to get started"}
             </p>

@@ -2906,10 +2906,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           type: "purchase" as const,
           status: po.status,
           createdAt: po.createdAt,
-          expectedDate: po.expectedDeliveryDate,
+          expectedDate: po.expectedDate,
           vendorName: vendor?.name || "Unknown",
           fromStore: vendor?.name, // Vendor as "source" for purchase orders
           toStore: store?.name, // Receiving store
+          storeId: po.storeId, // Store ID for filtering
           lineCount,
           totalAmount,
         };
@@ -2941,6 +2942,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           vendorName: `${fromStore?.name || "Unknown"} → ${toStore?.name || "Unknown"}`,
           fromStore: fromStore?.name,
           toStore: toStore?.name,
+          fromStoreId: to.fromStoreId, // Store IDs for filtering
+          toStoreId: to.toStoreId,
           lineCount,
           totalAmount,
         };
