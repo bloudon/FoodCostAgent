@@ -1446,6 +1446,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         category: category?.name || null,
         pluSku: item.pluSku,
         pricePerUnit: item.pricePerUnit,
+        avgCostPerUnit: item.avgCostPerUnit || item.pricePerUnit,
         unitId: item.unitId,
         caseSize: item.caseSize,
         yieldPercent: item.yieldPercent,
@@ -3437,22 +3438,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const item = await storage.getInventoryItem(vi.inventoryItemId);
           if (item) {
             const costPerCase = line.priceEach;
-            const pricePerUnit = costPerCase / (item.caseSize || 1);
+            const newPricePerUnit = costPerCase / (item.caseSize || 1);
+            
+            // Get company-wide on-hand quantity across all stores for WAC calculation
+            // Since avgCostPerUnit is stored at company level, we need company-wide quantities
+            const allStoresForItem = await db
+              .select()
+              .from(storeInventoryItems)
+              .where(
+                and(
+                  eq(storeInventoryItems.inventoryItemId, vi.inventoryItemId),
+                  eq(storeInventoryItems.companyId, companyId)
+                )
+              );
+            
+            const totalCompanyQty = allStoresForItem.reduce((sum, si) => sum + (si.onHandQty || 0), 0);
+            
+            // Calculate weighted average cost using company-wide quantities
+            // WAC = ((currentCompanyQty * currentAvgCost) + (receivedQty * receivedPrice)) / (currentCompanyQty + receivedQty)
+            const currentAvgCost = item.avgCostPerUnit || item.pricePerUnit;
+            const totalCurrentValue = totalCompanyQty * currentAvgCost;
+            const totalReceivedValue = line.receivedQty * newPricePerUnit;
+            const totalQty = totalCompanyQty + line.receivedQty;
+            const newAvgCostPerUnit = totalQty > 0 
+              ? (totalCurrentValue + totalReceivedValue) / totalQty 
+              : newPricePerUnit;
             
             // Track price history if price changed
-            if (pricePerUnit !== item.pricePerUnit) {
+            if (newPricePerUnit !== item.pricePerUnit) {
               await storage.createInventoryItemPriceHistory({
                 inventoryItemId: vi.inventoryItemId,
-                pricePerUnit,
+                pricePerUnit: newPricePerUnit,
                 effectiveAt: new Date(),
                 vendorItemId: vi.id,
-                note: 'Price updated via receiving',
+                note: `Price updated via receiving (Last: $${newPricePerUnit.toFixed(4)}, WAC: $${newAvgCostPerUnit.toFixed(4)})`,
               });
             }
             
-            // Update price per unit on the company-level catalog
+            // Update both last cost (pricePerUnit) and weighted average cost on the company-level catalog
             await storage.updateInventoryItem(vi.inventoryItemId, {
-              pricePerUnit,
+              pricePerUnit: newPricePerUnit,
+              avgCostPerUnit: newAvgCostPerUnit,
             });
             
             // Update on-hand quantity at the store level

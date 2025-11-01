@@ -39,6 +39,7 @@ type InventoryItemDisplay = {
   category: string | null;
   pluSku: string;
   pricePerUnit: number;
+  avgCostPerUnit: number;
   unitId: string;
   caseSize: number;
   imageUrl: string | null;
@@ -316,7 +317,8 @@ export default function InventoryItems() {
                   <TableHead>Unit</TableHead>
                   <TableHead className="text-right">Par</TableHead>
                   <TableHead className="text-right">Reorder</TableHead>
-                  <TableHead className="text-right">Most Recent Unit Price</TableHead>
+                  <TableHead className="text-right">Last Cost</TableHead>
+                  <TableHead className="text-right">Avg Cost (WAC)</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
@@ -419,8 +421,16 @@ export default function InventoryItems() {
                       <TableCell 
                         className="text-right font-mono cursor-pointer"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                        data-testid={`cell-last-cost-${item.id}`}
                       >
                         ${item.pricePerUnit ? item.pricePerUnit.toFixed(2) : '0.00'}
+                      </TableCell>
+                      <TableCell 
+                        className="text-right font-mono cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                        data-testid={`cell-avg-cost-${item.id}`}
+                      >
+                        ${item.avgCostPerUnit ? item.avgCostPerUnit.toFixed(2) : '0.00'}
                       </TableCell>
                       <TableCell 
                         className="text-right font-mono cursor-pointer"
