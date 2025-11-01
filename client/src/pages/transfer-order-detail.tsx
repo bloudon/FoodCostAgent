@@ -79,6 +79,7 @@ export default function TransferOrderDetail() {
     },
     onSuccess: (newOrder: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       if (newOrder?.id) {
         navigate(`/transfer-orders/${newOrder.id}`);
         toast({ title: "Transfer order created" });
@@ -95,6 +96,7 @@ export default function TransferOrderDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       toast({ title: "Transfer order updated" });
     },
   });

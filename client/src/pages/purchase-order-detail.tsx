@@ -228,6 +228,7 @@ export default function PurchaseOrderDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       if (!isNew) {
         queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${id}`] });
         queryClient.invalidateQueries({ queryKey: [`/api/vendor-items?vendor_id=${selectedVendor}&store_id=${selectedStore}`] });

@@ -76,6 +76,7 @@ export default function TransferOrders() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       toast({
         title: "Success",
         description: "Transfer order deleted successfully",

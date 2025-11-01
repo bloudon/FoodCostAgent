@@ -200,6 +200,7 @@ export default function ReceivingDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
       queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       toast({
         title: "Success",
         description: "Items received successfully",

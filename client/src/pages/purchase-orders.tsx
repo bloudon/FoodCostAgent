@@ -77,6 +77,7 @@ export default function PurchaseOrders() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       toast({
         title: "Success",
         description: "Purchase order deleted successfully",
