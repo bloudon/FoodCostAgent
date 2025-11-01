@@ -227,7 +227,8 @@ export const inventoryItems = pgTable("inventory_items", {
   caseSize: real("case_size").notNull().default(20), // case size in base units
   barcode: text("barcode"),
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
-  pricePerUnit: real("price_per_unit").notNull().default(0), // price per base unit (case cost = pricePerUnit × caseSize)
+  pricePerUnit: real("price_per_unit").notNull().default(0), // most recent price per base unit (last cost method)
+  avgCostPerUnit: real("avg_cost_per_unit").notNull().default(0), // weighted average cost per base unit
   yieldPercent: real("yield_percent").notNull().default(95), // usable yield percentage after trimming/waste (0-100), defaults to 95%
   parLevel: real("par_level"), // default target inventory level (can be overridden at store level)
   reorderLevel: real("reorder_level"), // default reorder level (can be overridden at store level)
