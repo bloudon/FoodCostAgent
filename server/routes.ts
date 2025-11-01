@@ -3495,8 +3495,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (vi) {
           const item = await storage.getInventoryItem(vi.inventoryItemId);
           if (item) {
-            const costPerCase = line.priceEach;
-            const newPricePerUnit = costPerCase / (item.caseSize || 1);
+            // line.priceEach is already the unit price (per lb, oz, etc), not the case price
+            const newPricePerUnit = line.priceEach;
             
             // Get company-wide on-hand quantity across all stores for WAC calculation
             // Since avgCostPerUnit is stored at company level, we need company-wide quantities
@@ -3585,8 +3585,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (vi) {
             const item = await storage.getInventoryItem(vi.inventoryItemId);
             if (item) {
-              const costPerCase = lineData.priceEach;
-              const pricePerUnit = costPerCase / (item.caseSize || 1);
+              // lineData.priceEach is already the unit price (per lb, oz, etc), not the case price
+              const pricePerUnit = lineData.priceEach;
               
               // Track price history if price changed
               if (pricePerUnit !== item.pricePerUnit) {
