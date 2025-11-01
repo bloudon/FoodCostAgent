@@ -297,6 +297,15 @@ export default function PurchaseOrderDetail() {
       return;
     }
 
+    if (!expectedDate) {
+      toast({
+        title: "Error",
+        description: "Please select an expected date",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const lines = Object.entries(caseQuantities)
       .filter(([_, qty]) => qty > 0)
       .map(([itemId, caseQty]) => {
@@ -563,7 +572,9 @@ export default function PurchaseOrderDetail() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Expected Date</label>
+            <label className="text-sm font-medium">
+              Expected Date <span className="text-destructive">*</span>
+            </label>
             {isReceived ? (
               <div className="py-2 text-sm" data-testid="text-expected-date">
                 {expectedDate ? new Date(expectedDate).toLocaleDateString() : '-'}
@@ -576,6 +587,7 @@ export default function PurchaseOrderDetail() {
                   setExpectedDate(e.target.value);
                   setHasUnsavedChanges(true);
                 }}
+                required
                 data-testid="input-expected-date"
               />
             )}
