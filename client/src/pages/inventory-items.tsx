@@ -99,7 +99,7 @@ function getInventoryStatus(quantity: number, parLevel: number | null, reorderLe
 
 export default function InventoryItems() {
   const [search, setSearch] = useState("");
-  const [selectedStore, setSelectedStore] = useState<string>("all");
+  const [selectedStore, setSelectedStore] = useState<string>("");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [activeFilter, setActiveFilter] = useState<"active" | "inactive" | "all">("active");
@@ -113,7 +113,7 @@ export default function InventoryItems() {
 
   // Auto-select first store if none selected
   useEffect(() => {
-    if (stores && stores.length > 0 && selectedStore === "all") {
+    if (stores && stores.length > 0 && !selectedStore) {
       const activeStores = stores.filter(s => s.status === 'active');
       if (activeStores.length > 0) {
         setSelectedStore(activeStores[0].id);
@@ -125,7 +125,7 @@ export default function InventoryItems() {
     queryKey: ["/api/inventory-items", selectedStore],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (selectedStore !== "all") {
+      if (selectedStore) {
         params.append("store_id", selectedStore);
       }
       const url = `/api/inventory-items${params.toString() ? `?${params.toString()}` : ''}`;
@@ -133,6 +133,7 @@ export default function InventoryItems() {
       if (!response.ok) throw new Error("Failed to fetch inventory items");
       return response.json();
     },
+    enabled: !!selectedStore,
   });
 
   const { data: locations } = useQuery<StorageLocation[]>({
@@ -198,15 +199,24 @@ export default function InventoryItems() {
 
   return (
     <div className="h-full overflow-auto">
-      <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-3xl font-bold">
+      <div className="p-4 space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold">
               Inventory Items ({filteredItems.length})
             </h1>
-            <p className="text-muted-foreground mt-1">
-              Current on-hand quantities across all storage locations
-            </p>
+            <Select value={selectedStore} onValueChange={setSelectedStore}>
+              <SelectTrigger className="w-[200px]" data-testid="select-store-filter">
+                <SelectValue placeholder="Select store" />
+              </SelectTrigger>
+              <SelectContent>
+                {stores?.filter(s => s.status === 'active').map((store) => (
+                  <SelectItem key={store.id} value={store.id}>
+                    {store.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <Button asChild data-testid="button-add-item">
             <Link href="/inventory-items/new">
@@ -216,30 +226,8 @@ export default function InventoryItems() {
           </Button>
         </div>
 
-        {/* Store Selector - Primary Filter */}
-        <div className="flex justify-center">
-          <div className="flex flex-col items-center gap-2">
-            <label className="text-sm font-medium text-muted-foreground">
-              Store Location
-            </label>
-            <Select value={selectedStore} onValueChange={setSelectedStore}>
-              <SelectTrigger className="w-[280px]" data-testid="select-store-filter">
-                <SelectValue placeholder="Select store location" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Stores</SelectItem>
-                {stores?.filter(s => s.status === 'active').map((store) => (
-                  <SelectItem key={store.id} value={store.id}>
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {/* Secondary Filters */}
-        <div className="flex gap-4 flex-wrap border-t pt-4">
+        {/* Filters */}
+        <div className="flex gap-4 flex-wrap">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -300,7 +288,7 @@ export default function InventoryItems() {
             <Package className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-1">No inventory items found</h3>
             <p className="text-muted-foreground text-sm">
-              {search || selectedStore !== "all" || selectedLocation !== "all" || selectedCategory !== "all"
+              {search || selectedLocation !== "all" || selectedCategory !== "all"
                 ? "Try adjusting your filters"
                 : "Inventory items will appear here as stock is received"}
             </p>
