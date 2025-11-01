@@ -197,6 +197,13 @@ export default function InventoryItemDetail() {
           (query.queryKey[0] === "/api/recipes" || query.queryKey[0] === "/api/recipe-components"),
         refetchType: "active"
       });
+      // Invalidate vendor items because they include inventory item prices
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          Array.isArray(query.queryKey) && 
+          query.queryKey.some(key => typeof key === 'string' && (key.includes('vendor-items') || key.includes('vendor-prices'))),
+        refetchType: "active"
+      });
       toast({
         title: "Item updated",
         description: "The inventory item has been successfully updated.",
