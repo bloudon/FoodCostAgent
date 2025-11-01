@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Save, Package, Search, PackageCheck } from "lucide-react";
+import { ArrowLeft, Save, Package, Search, PackageCheck, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,13 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatUnitName } from "@/lib/utils";
@@ -101,6 +108,21 @@ type Receipt = {
   receivedAt: string;
 };
 
+type VendorPriceComparison = {
+  inventoryItemId: string;
+  inventoryItemName: string;
+  vendorPrices: {
+    vendorId: string;
+    vendorName: string;
+    vendorSku: string | null;
+    casePrice: number;
+    unitPrice: number;
+    caseSize: number;
+    unitName: string;
+    lastUpdated: string;
+  }[];
+};
+
 export default function PurchaseOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
@@ -113,6 +135,7 @@ export default function PurchaseOrderDetail() {
   const [notes, setNotes] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [compareItemId, setCompareItemId] = useState<string | null>(null);
   
   // Track case quantities for each vendor item
   const [caseQuantities, setCaseQuantities] = useState<Record<string, number>>({});
@@ -188,6 +211,12 @@ export default function PurchaseOrderDetail() {
   const usageMap = new Map(
     (usageData || []).map(item => [item.inventoryItemId, item])
   );
+
+  // Fetch vendor price comparison for selected item
+  const { data: vendorPriceComparison } = useQuery<VendorPriceComparison>({
+    queryKey: [`/api/inventory-items/${compareItemId}/vendor-prices`],
+    enabled: !!compareItemId,
+  });
 
   const savePOMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -730,17 +759,34 @@ export default function PurchaseOrderDetail() {
                       return (
                         <TableRow key={itemId} data-testid={`row-item-${itemId}`}>
                           <TableCell>
-                            <Link 
-                              href={`/inventory-items/${inventoryItemId}`}
-                              className="font-medium hover:text-primary hover:underline"
-                              tabIndex={-1}
-                              data-testid={`link-item-${inventoryItemId}`}
-                            >
-                              {itemName}
-                              {!isMiscGrocery && vendorSku !== '-' && (
-                                <span className="text-muted-foreground font-normal ml-1">{vendorSku}</span>
+                            <div className="flex items-center gap-2">
+                              <Link 
+                                href={`/inventory-items/${inventoryItemId}`}
+                                className="font-medium hover:text-primary hover:underline flex-1"
+                                tabIndex={-1}
+                                data-testid={`link-item-${inventoryItemId}`}
+                              >
+                                {itemName}
+                                {!isMiscGrocery && vendorSku !== '-' && (
+                                  <span className="text-muted-foreground font-normal ml-1">{vendorSku}</span>
+                                )}
+                              </Link>
+                              {isNew && !isMiscGrocery && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCompareItemId(inventoryItemId);
+                                  }}
+                                  data-testid={`button-compare-${inventoryItemId}`}
+                                  title="Compare vendor prices"
+                                >
+                                  <TrendingDown className="h-4 w-4" />
+                                </Button>
                               )}
-                            </Link>
+                            </div>
                           </TableCell>
                           {!isMiscGrocery && (
                             <>
@@ -1249,6 +1295,69 @@ export default function PurchaseOrderDetail() {
         )}
         </div>
       </div>
+
+      {/* Vendor Price Comparison Dialog */}
+      <Dialog open={!!compareItemId} onOpenChange={(open) => !open && setCompareItemId(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Vendor Price Comparison</DialogTitle>
+            <DialogDescription>
+              {vendorPriceComparison?.inventoryItemName}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {vendorPriceComparison && vendorPriceComparison.vendorPrices.length > 0 ? (
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Vendor</TableHead>
+                    <TableHead>SKU</TableHead>
+                    <TableHead className="text-right">Case Size</TableHead>
+                    <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Case Price</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {vendorPriceComparison.vendorPrices.map((vp, index) => {
+                    const isLowestPrice = index === 0;
+                    return (
+                      <TableRow 
+                        key={vp.vendorId}
+                        className={isLowestPrice ? "bg-green-50 dark:bg-green-950/20" : ""}
+                        data-testid={`row-vendor-price-${vp.vendorId}`}
+                      >
+                        <TableCell className="font-medium">
+                          {vp.vendorName}
+                          {isLowestPrice && (
+                            <Badge variant="default" className="ml-2">Best Price</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {vp.vendorSku || '-'}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {vp.caseSize}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          ${vp.unitPrice.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-semibold">
+                          ${vp.casePrice.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="py-8 text-center text-muted-foreground">
+              No vendor pricing available for this item
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

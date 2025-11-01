@@ -1477,6 +1477,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(item);
   });
 
+  app.get("/api/inventory-items/:id/vendor-prices", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const inventoryItemId = req.params.id;
+      
+      const item = await storage.getInventoryItem(inventoryItemId);
+      if (!item) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      
+      if (item.companyId !== companyId) {
+        return res.status(403).json({ error: "Access denied to this inventory item" });
+      }
+      
+      const allVendorItems = await db
+        .select()
+        .from(vendorItems)
+        .where(eq(vendorItems.inventoryItemId, inventoryItemId));
+      
+      const vendors = await storage.getVendors(companyId);
+      const units = await storage.getUnits();
+      
+      const vendorPrices = allVendorItems
+        .filter(vi => vi.lastPrice && vi.lastPrice > 0)
+        .map(vi => {
+          const vendor = vendors.find(v => v.id === vi.vendorId);
+          const unit = units.find(u => u.id === vi.purchaseUnitId);
+          
+          const unitPrice = vi.lastPrice;
+          const caseSize = vi.caseSize || 1;
+          const casePrice = unitPrice * caseSize;
+          
+          return {
+            vendorId: vi.vendorId,
+            vendorName: vendor?.name || 'Unknown',
+            vendorSku: vi.vendorSku,
+            casePrice: casePrice,
+            unitPrice: unitPrice,
+            caseSize: caseSize,
+            unitName: unit?.name || '',
+            lastUpdated: vi.updatedAt,
+          };
+        })
+        .sort((a, b) => a.casePrice - b.casePrice);
+      
+      res.json({
+        inventoryItemId,
+        inventoryItemName: item.name,
+        vendorPrices,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/inventory-items", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
