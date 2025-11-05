@@ -85,10 +85,9 @@ export default function Dashboard() {
 
   // Calculate total $ value of recent inventory count
   const recentCountValue = recentCountLines?.reduce((sum, line) => {
-    // Each line has quantityCounted and the item's pricePerUnit
-    const item = inventoryItems?.find(i => i.id === line.inventoryItemId);
-    if (item && line.quantityCounted && item.pricePerUnit !== undefined) {
-      return sum + (line.quantityCounted * item.pricePerUnit);
+    // Each line has qty and unitCost (snapshot at time of count)
+    if (line.qty && line.unitCost !== undefined) {
+      return sum + (line.qty * line.unitCost);
     }
     return sum;
   }, 0) || 0;
@@ -259,7 +258,7 @@ export default function Dashboard() {
                   <div>
                     <p className="text-sm text-muted-foreground">Date</p>
                     <p className="font-medium font-mono text-sm" data-testid="text-recent-count-date">
-                      {new Date(mostRecentCount.countedAt).toLocaleDateString()}
+                      {new Date(mostRecentCount.countDate).toLocaleDateString()}
                     </p>
                   </div>
                   <div>
