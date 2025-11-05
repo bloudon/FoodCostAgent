@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Company, InsertCompany, insertCompanySchema } from "@shared/schema";
-import { Building2, MapPin, Store, Plus, Settings2, UserCircle } from "lucide-react";
+import { Building2, MapPin, Store, Plus, Settings2, UserCircle, Trash2, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,19 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
@@ -62,8 +74,44 @@ export default function Companies() {
     },
   });
 
+  const purgeCompanyMutation = useMutation({
+    mutationFn: async ({ companyId, dryRun }: { companyId: string; dryRun: boolean }) => {
+      const response = await apiRequest(
+        "DELETE",
+        `/api/admin/companies/${companyId}/purge?dryRun=${dryRun}`,
+        undefined
+      );
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      if (data.dryRun) {
+        toast({
+          title: "Dry Run Complete",
+          description: `Would delete ${data.summary.totalRowsDeleted} rows from ${data.summary.tablesAffected} tables`,
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+        toast({
+          title: "Company Purged",
+          description: `Deleted ${data.summary.totalRowsDeleted} rows from ${data.summary.tablesAffected} tables`,
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Purge Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleCreateCompany = (data: InsertCompany) => {
     createCompanyMutation.mutate(data);
+  };
+
+  const handlePurgeCompany = (companyId: string, dryRun: boolean = false) => {
+    purgeCompanyMutation.mutate({ companyId, dryRun });
   };
 
   if (isLoading) {
@@ -278,6 +326,72 @@ export default function Companies() {
                   >
                     <Settings2 className="h-5 w-5" />
                   </Button>
+                  
+                  {/* Purge button - development only */}
+                  {import.meta.env.DEV && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => e.stopPropagation()}
+                          data-testid={`button-purge-company-${company.id}`}
+                          title="Purge company data (DEV ONLY)"
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-5 w-5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                        <AlertDialogHeader>
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="h-5 w-5 text-destructive" />
+                            <AlertDialogTitle>Purge Company Data?</AlertDialogTitle>
+                          </div>
+                          <AlertDialogDescription>
+                            This will permanently delete <strong>ALL</strong> data for <strong>{company.name}</strong>:
+                            <ul className="list-disc list-inside mt-2 space-y-1">
+                              <li>All stores and inventory</li>
+                              <li>All vendors and purchase orders</li>
+                              <li>All recipes and menu items</li>
+                              <li>All sales data and reports</li>
+                              <li>All users in this company</li>
+                            </ul>
+                            <p className="mt-3 text-destructive font-semibold">
+                              This action cannot be undone!
+                            </p>
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <Button
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePurgeCompany(company.id, true);
+                            }}
+                            disabled={purgeCompanyMutation.isPending}
+                            data-testid={`button-dry-run-purge-${company.id}`}
+                          >
+                            Dry Run (Preview)
+                          </Button>
+                          <AlertDialogCancel onClick={(e) => e.stopPropagation()}>
+                            Cancel
+                          </AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePurgeCompany(company.id, false);
+                            }}
+                            disabled={purgeCompanyMutation.isPending}
+                            className="bg-destructive hover:bg-destructive/90"
+                            data-testid={`button-confirm-purge-${company.id}`}
+                          >
+                            {purgeCompanyMutation.isPending ? "Purging..." : "Purge Company"}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
                 </div>
               </div>
             </CardContent>

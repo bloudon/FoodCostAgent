@@ -12,6 +12,7 @@ import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLoc
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
+import { purgeCompanyData } from "./scripts/purge-company";
 import {
   insertUnitSchema,
   insertUnitConversionSchema,
@@ -4631,6 +4632,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(company);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  /**
+   * DELETE /api/admin/companies/:id/purge
+   * 
+   * Admin-only endpoint to purge all data for a company (DEVELOPMENT USE ONLY)
+   * Proves multi-tenant isolation by deleting only target company data
+   * 
+   * Query params:
+   *   ?dryRun=true - Show what would be deleted without actually deleting
+   * 
+   * Security:
+   *   - Only available in development (NODE_ENV !== 'production')
+   *   - Requires global_admin role
+   */
+  app.delete("/api/admin/companies/:id/purge", requireAuth, async (req, res) => {
+    // Safety: Only allow in development environment
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ 
+        error: "Company purge is disabled in production for safety" 
+      });
+    }
+
+    const user = await storage.getUser(req.user!.id);
+    
+    // Only global admins can purge companies
+    if (user?.role !== "global_admin") {
+      return res.status(403).json({ error: "Only global admins can purge companies" });
+    }
+
+    const companyId = req.params.id;
+    const dryRun = req.query.dryRun === 'true';
+
+    try {
+      // Verify company exists
+      const company = await storage.getCompany(companyId);
+      if (!company) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      // Execute purge (or dry-run)
+      const stats = await purgeCompanyData(companyId, dryRun);
+
+      // Calculate summary
+      const totalRows = stats.reduce((sum, s) => sum + s.rowsDeleted, 0);
+      const tablesAffected = stats.filter(s => s.rowsDeleted > 0);
+
+      res.json({
+        success: true,
+        dryRun,
+        company: {
+          id: company.id,
+          name: company.name,
+        },
+        summary: {
+          totalRowsDeleted: totalRows,
+          tablesAffected: tablesAffected.length,
+        },
+        details: stats.filter(s => s.rowsDeleted > 0),
+      });
+    } catch (error: any) {
+      console.error("Error purging company:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 

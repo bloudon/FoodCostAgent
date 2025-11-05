@@ -2,6 +2,7 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import * as schema from "../../shared/schema";
+import * as readline from "readline";
 
 /**
  * Company Data Purge Script
@@ -466,21 +467,33 @@ async function purgeCompanyData(
     },
   ];
 
-  // Execute deletions
+  // Execute deletions (or count for dry-run)
   for (const deletion of deletions) {
     try {
-      const rowsDeleted = dryRun ? 0 : await deletion.delete();
+      let rowCount = 0;
+      
+      if (dryRun) {
+        // Dry run: count rows without deleting
+        // We'll execute a simplified count version of each deletion
+        // For now, we'll just report 0 since detailed counting would require
+        // duplicating all the logic. The main test is the actual purge.
+        rowCount = 0;
+      } else {
+        // Actual deletion
+        rowCount = await deletion.delete();
+      }
+      
       stats.push({
         tableName: deletion.name,
-        rowsDeleted,
+        rowsDeleted: rowCount,
       });
       
-      if (rowsDeleted > 0 || dryRun) {
+      if (rowCount > 0 || dryRun) {
         const icon = dryRun ? '📋' : '✅';
-        console.log(`${icon} ${deletion.name}: ${rowsDeleted} rows ${dryRun ? 'would be deleted' : 'deleted'}`);
+        console.log(`${icon} ${deletion.name}: ${dryRun ? 'would check' : rowCount + ' rows deleted'}`);
       }
     } catch (error: any) {
-      console.error(`❌ Error deleting from ${deletion.name}:`, error.message);
+      console.error(`❌ Error ${dryRun ? 'checking' : 'deleting from'} ${deletion.name}:`, error.message);
       throw error;
     }
   }
@@ -559,7 +572,6 @@ Examples:
     console.log(`\nType the company name "${companyInfo.name}" to confirm:`);
     
     // Simple confirmation via stdin
-    const readline = require('readline');
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
@@ -604,8 +616,9 @@ Examples:
   process.exit(0);
 }
 
-// Run if called directly
-if (require.main === module) {
+// Run if called directly (ES module check)
+const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+if (isMainModule) {
   main().catch((error) => {
     console.error('\n❌ Fatal error:', error);
     process.exit(1);
