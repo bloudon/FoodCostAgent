@@ -634,8 +634,9 @@ export default function RecipeBuilder() {
       let recipeId = id;
 
       if (isNew) {
-        const result = await apiRequest("POST", "/api/recipes", recipeData) as any;
-        recipeId = result.id;
+        const response = await apiRequest("POST", "/api/recipes", recipeData);
+        const createdRecipe = await response.json();
+        recipeId = createdRecipe.id;
       } else {
         await apiRequest("PATCH", `/api/recipes/${id}`, recipeData);
       }

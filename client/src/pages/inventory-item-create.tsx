@@ -179,7 +179,7 @@ export default function InventoryItemCreate() {
       return;
     }
 
-    if (!unitId) {
+    if (!unitId || unitId.trim() === "") {
       toast({
         title: "Validation Error",
         description: "Unit of measure is required.",

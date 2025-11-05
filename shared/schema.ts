@@ -237,7 +237,8 @@ export const inventoryItems = pgTable("inventory_items", {
 });
 
 export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({ id: true, updatedAt: true }).extend({
-  categoryId: z.string().optional(),
+  categoryId: z.string().nullable().optional(),
+  unitId: z.string().min(1, "Unit is required"),
   yieldPercent: z.number().min(1).max(100).default(95),
 });
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
