@@ -433,16 +433,9 @@ async function purgeCompanyData(
     },
     // Note: company_settings is a global table (no companyId), skip it
 
-    // Users (only company-specific users, not global admins)
-    {
-      name: "users",
-      delete: async () => {
-        const result = await db.delete(schema.users)
-          .where(eq(schema.users.companyId, companyId))
-          .returning();
-        return result.length;
-      }
-    },
+    // Users - SKIP: Never delete users during company purge
+    // Users may belong to multiple companies or be global admins
+    // They should be managed separately through user management tools
 
     // Stores (before company)
     {
