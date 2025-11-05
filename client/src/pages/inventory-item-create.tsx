@@ -87,6 +87,13 @@ export default function InventoryItemCreate() {
     }
   }, [units, unitId]);
 
+  // Select all stores by default when stores are loaded
+  useEffect(() => {
+    if (stores && stores.length > 0 && selectedStores.length === 0) {
+      setSelectedStores(stores.map(s => s.id));
+    }
+  }, [stores, selectedStores.length]);
+
   // Set first selected location as primary
   useEffect(() => {
     if (selectedLocations.length > 0 && !primaryLocationId) {
