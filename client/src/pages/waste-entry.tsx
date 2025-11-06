@@ -323,29 +323,31 @@ export default function WasteEntry() {
 
       {/* Step 4: Enter Waste Details */}
       {selectedItemId && (
-        <div className="max-w-2xl">
-          <div className="flex items-center gap-2 mb-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center gap-2 mb-6">
             <Button
               variant="ghost"
-              size="sm"
+              size="lg"
               onClick={() => setSelectedItemId(null)}
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
+              <ArrowLeft className="h-5 w-5 mr-2" />
               Back to Items
             </Button>
           </div>
           
           <Card>
-            <CardContent className="pt-6 space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold mb-2">{selectedItem?.name}</h3>
-                <p className="text-sm text-muted-foreground">
+            <CardContent className="pt-8 space-y-8">
+              {/* Item Name */}
+              <div className="text-center pb-4 border-b">
+                <h3 className="text-2xl md:text-3xl font-semibold mb-2">{selectedItem?.name}</h3>
+                <p className="text-lg text-muted-foreground">
                   {wasteType === 'inventory' ? 'Inventory Item' : 'Menu Item'}
                 </p>
               </div>
 
+              {/* Quantity with Number Pad */}
               <div>
-                <Label htmlFor="quantity">
+                <Label htmlFor="quantity" className="text-xl mb-3 block">
                   Quantity Wasted *
                   {wasteType === 'inventory' && selectedItem && (
                     <span className="text-muted-foreground ml-2">
@@ -356,27 +358,78 @@ export default function WasteEntry() {
                     <span className="text-muted-foreground ml-2">(count)</span>
                   )}
                 </Label>
-                <Input
-                  id="quantity"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="mt-2"
-                  data-testid="input-quantity"
-                />
+                
+                {/* Large Quantity Display */}
+                <div className="bg-muted rounded-lg p-6 mb-6">
+                  <div className="text-center text-5xl md:text-6xl font-bold tabular-nums min-h-[80px] flex items-center justify-center">
+                    {quantity || "0"}
+                  </div>
+                </div>
+
+                {/* On-Screen Number Pad */}
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                    <Button
+                      key={num}
+                      variant="outline"
+                      size="lg"
+                      className="h-20 text-3xl font-semibold"
+                      onClick={() => setQuantity(prev => prev + num.toString())}
+                      data-testid={`button-num-${num}`}
+                    >
+                      {num}
+                    </Button>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="h-20 text-3xl font-semibold"
+                    onClick={() => setQuantity(prev => prev.includes('.') ? prev : prev + '.')}
+                    data-testid="button-decimal"
+                  >
+                    .
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="h-20 text-3xl font-semibold"
+                    onClick={() => setQuantity(prev => prev + '0')}
+                    data-testid="button-num-0"
+                  >
+                    0
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="h-20 text-2xl"
+                    onClick={() => setQuantity(prev => prev.slice(0, -1))}
+                    data-testid="button-backspace"
+                  >
+                    ⌫
+                  </Button>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="lg"
+                  className="w-full h-14 text-lg"
+                  onClick={() => setQuantity('')}
+                  data-testid="button-clear"
+                >
+                  Clear
+                </Button>
               </div>
 
+              {/* Reason */}
               <div>
-                <Label htmlFor="reason">Reason *</Label>
+                <Label htmlFor="reason" className="text-xl mb-3 block">Reason *</Label>
                 <Select value={reasonCode} onValueChange={setReasonCode}>
-                  <SelectTrigger id="reason" className="mt-2" data-testid="select-reason">
+                  <SelectTrigger id="reason" className="h-16 text-lg" data-testid="select-reason">
                     <SelectValue placeholder="Select reason" />
                   </SelectTrigger>
                   <SelectContent>
                     {wasteReasons.map(reason => (
-                      <SelectItem key={reason.value} value={reason.value}>
+                      <SelectItem key={reason.value} value={reason.value} className="text-lg py-3">
                         {reason.label}
                       </SelectItem>
                     ))}
@@ -384,35 +437,38 @@ export default function WasteEntry() {
                 </Select>
               </div>
 
+              {/* Notes */}
               <div>
-                <Label htmlFor="notes">Notes (Optional)</Label>
+                <Label htmlFor="notes" className="text-xl mb-3 block">Notes (Optional)</Label>
                 <Textarea
                   id="notes"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Additional details..."
-                  className="mt-2"
+                  className="min-h-[120px] text-lg"
                   data-testid="input-notes"
                 />
               </div>
 
-              <div className="flex gap-3">
-                <Button
-                  onClick={handleSubmit}
-                  disabled={createWasteMutation.isPending}
-                  className="flex-1"
-                  size="lg"
-                  data-testid="button-submit-waste"
-                >
-                  {createWasteMutation.isPending ? "Saving..." : "Log Waste"}
-                </Button>
+              {/* Action Buttons */}
+              <div className="grid grid-cols-2 gap-4 pt-4">
                 <Button
                   variant="outline"
                   onClick={resetToStart}
                   size="lg"
+                  className="h-16 text-lg"
                   data-testid="button-cancel"
                 >
                   Cancel
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={createWasteMutation.isPending}
+                  size="lg"
+                  className="h-16 text-lg"
+                  data-testid="button-submit-waste"
+                >
+                  {createWasteMutation.isPending ? "Saving..." : "Log Waste"}
                 </Button>
               </div>
             </CardContent>
