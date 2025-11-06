@@ -4062,6 +4062,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/waste", requireAuth, async (req, res) => {
     const storeId = req.query.storeId as string | undefined;
     const wasteType = req.query.wasteType as string | undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
     
     // Get accessible stores for the user
     const accessibleStoreIds = await getAccessibleStores(req.user!, req.companyId);
@@ -4082,6 +4084,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     if (wasteType) {
       filtered = filtered.filter(log => log.wasteType === wasteType);
+    }
+    
+    // Filter by date range
+    if (startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      filtered = filtered.filter(log => new Date(log.wastedAt) >= start);
+    }
+    
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(log => new Date(log.wastedAt) <= end);
     }
     
     res.json(filtered);

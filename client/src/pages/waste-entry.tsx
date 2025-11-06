@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, Package, UtensilsCrossed, ChevronRight } from "lucide-react";
+import { ArrowLeft, Package, UtensilsCrossed, ChevronRight, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -66,6 +66,21 @@ export default function WasteEntry() {
   const [quantity, setQuantity] = useState("");
   const [reasonCode, setReasonCode] = useState("");
   const [notes, setNotes] = useState("");
+  
+  // Date filter state - default to last 7 days
+  const defaultEndDate = useMemo(() => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  }, []);
+  
+  const defaultStartDate = useMemo(() => {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    return sevenDaysAgo.toISOString().split('T')[0];
+  }, []);
+  
+  const [startDate, setStartDate] = useState(defaultStartDate);
+  const [endDate, setEndDate] = useState(defaultEndDate);
 
   const { data: stores = [] } = useAccessibleStores();
   
@@ -88,11 +103,11 @@ export default function WasteEntry() {
   });
 
   const { data: wasteLogs = [] } = useQuery<WasteLog[]>({
-    queryKey: ["/api/waste", selectedStoreId],
+    queryKey: ["/api/waste", selectedStoreId, startDate, endDate],
     queryFn: selectedStoreId 
-      ? () => fetch(`/api/waste?storeId=${selectedStoreId}`).then(res => res.json())
+      ? () => fetch(`/api/waste?storeId=${selectedStoreId}&startDate=${startDate}&endDate=${endDate}`).then(res => res.json())
       : undefined,
-    enabled: !!selectedStoreId,
+    enabled: !!selectedStoreId && !!startDate && !!endDate,
   });
 
   // Set default store
@@ -227,21 +242,51 @@ export default function WasteEntry() {
           </div>
         </div>
         
-        {/* Store Selector - Top Right */}
-        <div className="min-w-[200px]">
-          <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-            <SelectTrigger data-testid="select-store">
-              <SelectValue placeholder="Select Store" />
-            </SelectTrigger>
-            <SelectContent>
-              {stores.map(store => (
-                <SelectItem key={store.id} value={store.id}>
-                  {store.name}
-                  {store.city && <span className="text-muted-foreground ml-2">({store.city})</span>}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Filters - Top Right */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Date Range Filter */}
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col">
+              <Label htmlFor="start-date" className="text-xs mb-1">Start Date</Label>
+              <Input
+                id="start-date"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-[140px]"
+                data-testid="input-start-date"
+              />
+            </div>
+            <div className="flex flex-col">
+              <Label htmlFor="end-date" className="text-xs mb-1">End Date</Label>
+              <Input
+                id="end-date"
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-[140px]"
+                data-testid="input-end-date"
+              />
+            </div>
+          </div>
+          
+          {/* Store Selector */}
+          <div className="min-w-[200px]">
+            <Label htmlFor="store-select" className="text-xs mb-1 block">Store</Label>
+            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+              <SelectTrigger id="store-select" data-testid="select-store">
+                <SelectValue placeholder="Select Store" />
+              </SelectTrigger>
+              <SelectContent>
+                {stores.map(store => (
+                  <SelectItem key={store.id} value={store.id}>
+                    {store.name}
+                    {store.city && <span className="text-muted-foreground ml-2">({store.city})</span>}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
