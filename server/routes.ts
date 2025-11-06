@@ -35,6 +35,7 @@ import {
   insertRecipeVersionSchema,
   insertTransferLogSchema,
   insertWasteLogSchema,
+  createWasteLogSchema,
   insertCompanySettingsSchema,
   insertSystemPreferencesSchema,
   insertCompanySchema,
@@ -4088,7 +4089,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/waste", requireAuth, async (req, res) => {
     try {
-      const data = insertWasteLogSchema.parse(req.body);
+      const data = createWasteLogSchema.parse(req.body);
       
       // Verify user has access to the selected store
       const accessibleStoreIds = await getAccessibleStores(req.user!, req.companyId);

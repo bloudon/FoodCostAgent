@@ -644,6 +644,14 @@ export const insertWasteLogSchema = createInsertSchema(wasteLogs).omit({ id: tru
 export type InsertWasteLog = z.infer<typeof insertWasteLogSchema>;
 export type WasteLog = typeof wasteLogs.$inferSelect;
 
+// API schema for waste creation (frontend sends this, backend adds companyId, totalValue, loggedBy)
+export const createWasteLogSchema = insertWasteLogSchema.omit({ 
+  companyId: true, 
+  totalValue: true, 
+  loggedBy: true 
+});
+export type CreateWasteLog = z.infer<typeof createWasteLogSchema>;
+
 // Company Settings
 export const companySettings = pgTable("company_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

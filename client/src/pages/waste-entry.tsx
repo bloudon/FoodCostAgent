@@ -35,6 +35,13 @@ type MenuItem = {
   recipeId: string | null;
 };
 
+type Unit = {
+  id: string;
+  name: string;
+  abbreviation: string;
+  system: string;
+};
+
 export default function WasteEntry() {
   const { toast } = useToast();
   const [wasteType, setWasteType] = useState<WasteType>(null);
@@ -49,6 +56,10 @@ export default function WasteEntry() {
   
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ["/api/categories"],
+  });
+
+  const { data: units = [] } = useQuery<Unit[]>({
+    queryKey: ["/api/units"],
   });
 
   const { data: inventoryItems = [] } = useQuery<InventoryItem[]>({
@@ -349,11 +360,15 @@ export default function WasteEntry() {
               <div>
                 <Label htmlFor="quantity" className="text-xl mb-3 block">
                   Quantity Wasted *
-                  {wasteType === 'inventory' && selectedItem && (
-                    <span className="text-muted-foreground ml-2">
-                      ({formatUnitName((selectedItem as InventoryItem).unitId)})
-                    </span>
-                  )}
+                  {wasteType === 'inventory' && selectedItem && (() => {
+                    const unit = units.find(u => u.id === (selectedItem as InventoryItem).unitId);
+                    const unitDisplay = unit ? formatUnitName(unit.name) : 'units';
+                    return (
+                      <span className="text-muted-foreground ml-2">
+                        ({unitDisplay})
+                      </span>
+                    );
+                  })()}
                   {wasteType === 'menu_item' && (
                     <span className="text-muted-foreground ml-2">(count)</span>
                   )}
