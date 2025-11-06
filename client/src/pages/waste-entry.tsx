@@ -31,8 +31,22 @@ type InventoryItem = {
 type MenuItem = {
   id: string;
   name: string;
-  category: string | null;
+  department: string | null;
   recipeId: string | null;
+};
+
+type WasteLog = {
+  id: string;
+  wasteType: string;
+  inventoryItemName: string | null;
+  menuItemName: string | null;
+  qty: number;
+  unitName: string | null;
+  reasonCode: string;
+  notes: string | null;
+  wastedAt: string;
+  totalValue: number;
+  storeName: string;
 };
 
 type Unit = {
@@ -72,6 +86,10 @@ export default function WasteEntry() {
     enabled: wasteType === 'menu_item',
   });
 
+  const { data: wasteLogs = [] } = useQuery<WasteLog[]>({
+    queryKey: ["/api/waste"],
+  });
+
   // Set default store
   if (stores.length > 0 && !selectedStoreId) {
     setSelectedStoreId(stores[0].id);
@@ -79,13 +97,27 @@ export default function WasteEntry() {
 
   const selectedStore = stores.find(s => s.id === selectedStoreId);
 
-  // Filter items by category
+  // Get unique departments from menu items (non-empty only)
+  const menuDepartments = Array.from(
+    new Set(
+      menuItems
+        .filter(item => item.department && item.department.trim() !== '')
+        .map(item => item.department!)
+    )
+  ).sort();
+
+  // Get only categories that have items
+  const categoriesWithItems = categories.filter(category => 
+    inventoryItems.some(item => item.categoryId === category.id)
+  );
+
+  // Filter items by category/department
   const filteredInventoryItems = inventoryItems.filter(item => 
     selectedCategoryId ? item.categoryId === selectedCategoryId : false
   );
 
   const filteredMenuItems = menuItems.filter(item => 
-    selectedCategoryId ? item.category === selectedCategoryId : false
+    selectedCategoryId ? item.department === selectedCategoryId : false
   );
 
   const selectedItem = wasteType === 'inventory' 
@@ -248,12 +280,14 @@ export default function WasteEntry() {
         </div>
       )}
 
-      {/* Step 2: Select Category */}
+      {/* Step 2: Select Category (Inventory) or Department (Menu Items) */}
       {wasteType && !selectedCategoryId && (
         <div>
-          <h2 className="text-xl font-semibold mb-4">Select Category</h2>
+          <h2 className="text-xl font-semibold mb-4">
+            {wasteType === 'inventory' ? 'Select Category' : 'Select Department'}
+          </h2>
           <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            {categories
+            {wasteType === 'inventory' && categoriesWithItems
               .sort((a, b) => a.sortOrder - b.sortOrder)
               .map(category => (
                 <Button
@@ -268,6 +302,29 @@ export default function WasteEntry() {
                   <ChevronRight className="ml-2 h-5 w-5" />
                 </Button>
               ))}
+            {wasteType === 'menu_item' && menuDepartments.map(department => (
+                <Button
+                  key={department}
+                  variant="outline"
+                  size="lg"
+                  className="h-24 text-lg"
+                  onClick={() => setSelectedCategoryId(department)}
+                  data-testid={`button-department-${department}`}
+                >
+                  {department}
+                  <ChevronRight className="ml-2 h-5 w-5" />
+                </Button>
+              ))}
+            {wasteType === 'inventory' && categoriesWithItems.length === 0 && (
+              <p className="text-muted-foreground col-span-full text-center py-8">
+                No inventory categories with items found
+              </p>
+            )}
+            {wasteType === 'menu_item' && menuDepartments.length === 0 && (
+              <p className="text-muted-foreground col-span-full text-center py-8">
+                No menu item departments found
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -282,7 +339,7 @@ export default function WasteEntry() {
               onClick={() => setSelectedCategoryId(null)}
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Categories
+              {wasteType === 'inventory' ? 'Back to Categories' : 'Back to Departments'}
             </Button>
           </div>
           <h2 className="text-xl font-semibold mb-4">Select Item</h2>
@@ -486,6 +543,75 @@ export default function WasteEntry() {
                   {createWasteMutation.isPending ? "Saving..." : "Log Waste"}
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Waste Log History */}
+      {!selectedItemId && (
+        <div className="mt-8 max-w-7xl mx-auto">
+          <Card>
+            <CardContent className="pt-6">
+              <h2 className="text-2xl font-semibold mb-4">Recent Waste Entries</h2>
+              {wasteLogs.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No waste entries yet</p>
+              ) : (
+                <div className="space-y-3">
+                  {wasteLogs
+                    .sort((a, b) => new Date(b.wastedAt).getTime() - new Date(a.wastedAt).getTime())
+                    .map(log => (
+                      <div 
+                        key={log.id}
+                        className="border rounded-lg p-4 hover-elevate"
+                        data-testid={`waste-log-${log.id}`}
+                      >
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              {log.wasteType === 'inventory' ? (
+                                <Package className="h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <UtensilsCrossed className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              <h3 className="font-semibold text-lg">
+                                {log.inventoryItemName || log.menuItemName}
+                              </h3>
+                            </div>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                              <span>
+                                Qty: {log.qty} {log.unitName || 'units'}
+                              </span>
+                              <span>
+                                Value: ${log.totalValue.toFixed(2)}
+                              </span>
+                              <span>
+                                Reason: {log.reasonCode.replace(/_/g, ' ')}
+                              </span>
+                              <span>
+                                Store: {log.storeName}
+                              </span>
+                            </div>
+                            {log.notes && (
+                              <p className="text-sm text-muted-foreground mt-2 italic">
+                                Note: {log.notes}
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-sm text-muted-foreground md:text-right whitespace-nowrap">
+                            {new Date(log.wastedAt).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

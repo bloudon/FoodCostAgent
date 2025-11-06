@@ -1535,8 +1535,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Waste Logs
-  async getWasteLogs(companyId: string, inventoryItemId?: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]> {
-    let query = db.select().from(wasteLogs);
+  async getWasteLogs(companyId: string, inventoryItemId?: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<any[]> {
     const conditions = [eq(wasteLogs.companyId, companyId)];
     
     if (inventoryItemId) {
@@ -1552,7 +1551,32 @@ export class DatabaseStorage implements IStorage {
       conditions.push(lte(wasteLogs.wastedAt, endDate));
     }
     
-    return query.where(and(...conditions));
+    const logs = await db
+      .select({
+        id: wasteLogs.id,
+        wasteType: wasteLogs.wasteType,
+        inventoryItemId: wasteLogs.inventoryItemId,
+        menuItemId: wasteLogs.menuItemId,
+        inventoryItemName: inventoryItems.name,
+        menuItemName: menuItems.name,
+        qty: wasteLogs.qty,
+        unitId: wasteLogs.unitId,
+        unitName: units.name,
+        reasonCode: wasteLogs.reasonCode,
+        notes: wasteLogs.notes,
+        wastedAt: wasteLogs.wastedAt,
+        totalValue: wasteLogs.totalValue,
+        storeId: wasteLogs.storeId,
+        storeName: companyStores.name,
+      })
+      .from(wasteLogs)
+      .leftJoin(inventoryItems, eq(wasteLogs.inventoryItemId, inventoryItems.id))
+      .leftJoin(menuItems, eq(wasteLogs.menuItemId, menuItems.id))
+      .leftJoin(units, eq(wasteLogs.unitId, units.id))
+      .leftJoin(companyStores, eq(wasteLogs.storeId, companyStores.id))
+      .where(and(...conditions));
+    
+    return logs;
   }
 
   async createWasteLog(insertWaste: InsertWasteLog): Promise<WasteLog> {
