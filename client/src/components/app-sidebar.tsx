@@ -16,6 +16,7 @@ import {
   Store,
   Key,
   UtensilsCrossed,
+  Trash2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -74,6 +75,11 @@ const menuItems = [
     title: "Variance Report",
     url: "/variance",
     icon: BarChart3,
+  },
+  {
+    title: "Waste Entry",
+    url: "/waste",
+    icon: Trash2,
   },
 ];
 

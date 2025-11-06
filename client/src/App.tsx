@@ -40,6 +40,7 @@ import Settings from "@/pages/settings";
 import Companies from "@/pages/companies";
 import CompanyDetail from "@/pages/company-detail";
 import Stores from "@/pages/stores";
+import WasteEntry from "@/pages/waste-entry";
 import Login from "@/pages/login";
 
 function ProtectedLayout() {
@@ -131,6 +132,7 @@ function ProtectedLayout() {
               <Route path="/transfer-orders/:id" component={TransferOrderDetail} />
               <Route path="/transfer-orders" component={TransferOrders} />
               <Route path="/variance" component={VarianceReport} />
+              <Route path="/waste" component={WasteEntry} />
               <Route path="/storage-locations" component={StorageLocations} />
               <Route path="/categories" component={Categories} />
               <Route path="/unit-conversions" component={UnitConversions} />
