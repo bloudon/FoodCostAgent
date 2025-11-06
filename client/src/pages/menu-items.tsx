@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -132,6 +132,72 @@ export default function MenuItemsPage() {
 
   const { data: stores } = useAccessibleStores();
 
+  // Restore form data from sessionStorage when dialog opens
+  useEffect(() => {
+    if (addDialogOpen) {
+      const savedData = sessionStorage.getItem('menu-item-draft');
+      if (savedData) {
+        try {
+          const parsed = JSON.parse(savedData);
+          form.reset(parsed.formData);
+          setSelectedStoresForAdd(parsed.selectedStores || []);
+          
+          toast({
+            title: "Draft Restored",
+            description: "Your unsaved menu item was restored",
+          });
+        } catch (error) {
+          console.error('Failed to restore draft:', error);
+        }
+      }
+    }
+  }, [addDialogOpen]);
+
+  // Save form data before navigating to recipe builder
+  const saveFormDraft = () => {
+    const formData = form.getValues();
+    const draft = {
+      formData,
+      selectedStores: selectedStoresForAdd,
+    };
+    sessionStorage.setItem('menu-item-draft', JSON.stringify(draft));
+  };
+
+  // Save edit form data before navigating to recipe builder
+  const saveEditFormDraft = () => {
+    const formData = editForm.getValues();
+    const draft = {
+      formData,
+      selectedStores: selectedStoresForEdit,
+      editingItemId: editingItem?.id,
+    };
+    sessionStorage.setItem('menu-item-edit-draft', JSON.stringify(draft));
+  };
+
+  // Restore edit form data when editing
+  useEffect(() => {
+    if (editDialogOpen && editingItem) {
+      const savedData = sessionStorage.getItem('menu-item-edit-draft');
+      if (savedData) {
+        try {
+          const parsed = JSON.parse(savedData);
+          // Only restore if it's for the same item
+          if (parsed.editingItemId === editingItem.id) {
+            editForm.reset(parsed.formData);
+            setSelectedStoresForEdit(parsed.selectedStores || []);
+            
+            toast({
+              title: "Draft Restored",
+              description: "Your unsaved changes were restored",
+            });
+          }
+        } catch (error) {
+          console.error('Failed to restore edit draft:', error);
+        }
+      }
+    }
+  }, [editDialogOpen, editingItem]);
+
   const { data: menuItems, isLoading } = useQuery<MenuItem[]>({
     queryKey: ["/api/menu-items"],
   });
@@ -208,6 +274,8 @@ export default function MenuItemsPage() {
         title: "Menu Item Created",
         description: "Successfully created menu item",
       });
+      // Clear the draft from sessionStorage
+      sessionStorage.removeItem('menu-item-draft');
       setAddDialogOpen(false);
       setSelectedStoresForAdd([]);
       form.reset();
@@ -280,6 +348,8 @@ export default function MenuItemsPage() {
         title: "Menu Item Updated",
         description: "Successfully updated menu item",
       });
+      // Clear the edit draft from sessionStorage
+      sessionStorage.removeItem('menu-item-edit-draft');
       setEditDialogOpen(false);
       setEditingItem(null);
       setSelectedStoresForEdit([]);
@@ -649,6 +719,7 @@ export default function MenuItemsPage() {
                           <Link 
                             href={`/recipes/new?name=${encodeURIComponent(form.watch("name") || "")}`}
                             className="text-primary hover:underline text-sm"
+                            onClick={saveFormDraft}
                             data-testid="link-create-recipe-add"
                           >
                             Create new recipe with this name
@@ -875,6 +946,7 @@ export default function MenuItemsPage() {
                           <Link 
                             href={`/recipes/new?name=${encodeURIComponent(editForm.watch("name") || "")}`}
                             className="text-primary hover:underline text-sm"
+                            onClick={saveEditFormDraft}
                             data-testid="link-create-recipe-edit"
                           >
                             Create new recipe with this name
