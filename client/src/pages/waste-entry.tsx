@@ -253,7 +253,7 @@ export default function WasteEntry() {
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-[140px]"
+                className="w-[160px] min-h-10 text-base"
                 data-testid="input-start-date"
               />
             </div>
@@ -264,7 +264,7 @@ export default function WasteEntry() {
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-[140px]"
+                className="w-[160px] min-h-10 text-base"
                 data-testid="input-end-date"
               />
             </div>
@@ -292,7 +292,7 @@ export default function WasteEntry() {
 
       {/* Step 1: Select Waste Type */}
       {!wasteType && (
-        <div className="grid gap-4 md:grid-cols-2 max-w-4xl">
+        <div className="grid gap-4 md:grid-cols-2 max-w-4xl mx-auto">
           <Card 
             className="hover-elevate cursor-pointer"
             onClick={() => setWasteType('inventory')}
@@ -300,8 +300,8 @@ export default function WasteEntry() {
           >
             <CardContent className="p-8">
               <div className="flex flex-col items-center gap-4 text-center">
-                <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Package className="h-10 w-10 text-primary" />
+                <div className="h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Package className="h-12 w-12 text-primary" />
                 </div>
                 <div>
                   <h3 className="text-xl font-semibold mb-2">Inventory Waste</h3>
@@ -320,8 +320,8 @@ export default function WasteEntry() {
           >
             <CardContent className="p-8">
               <div className="flex flex-col items-center gap-4 text-center">
-                <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center">
-                  <UtensilsCrossed className="h-10 w-10 text-primary" />
+                <div className="h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center">
+                  <UtensilsCrossed className="h-12 w-12 text-primary" />
                 </div>
                 <div>
                   <h3 className="text-xl font-semibold mb-2">Menu Item Waste</h3>
