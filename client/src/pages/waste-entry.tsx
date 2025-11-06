@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ArrowLeft, Package, UtensilsCrossed, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -97,12 +98,14 @@ export default function WasteEntry() {
 
   const selectedStore = stores.find(s => s.id === selectedStoreId);
 
-  // Get unique departments from menu items (non-empty only)
+  // Get unique departments from menu items (include "Unassigned" for items without department)
   const menuDepartments = Array.from(
     new Set(
-      menuItems
-        .filter(item => item.department && item.department.trim() !== '')
-        .map(item => item.department!)
+      menuItems.map(item => 
+        (item.department && item.department.trim() !== '') 
+          ? item.department 
+          : '(No Department)'
+      )
     )
   ).sort();
 
@@ -116,9 +119,16 @@ export default function WasteEntry() {
     selectedCategoryId ? item.categoryId === selectedCategoryId : false
   );
 
-  const filteredMenuItems = menuItems.filter(item => 
-    selectedCategoryId ? item.department === selectedCategoryId : false
-  );
+  const filteredMenuItems = menuItems.filter(item => {
+    if (!selectedCategoryId) return false;
+    
+    // Handle "(No Department)" selection
+    if (selectedCategoryId === '(No Department)') {
+      return !item.department || item.department.trim() === '';
+    }
+    
+    return item.department === selectedCategoryId;
+  });
 
   const selectedItem = wasteType === 'inventory' 
     ? inventoryItems.find(i => i.id === selectedItemId)
@@ -196,44 +206,40 @@ export default function WasteEntry() {
 
   return (
     <div className="min-h-screen p-4 md:p-8">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <Button 
-          variant="ghost" 
-          size="icon"
-          onClick={resetToStart}
-          data-testid="button-back"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-2xl md:text-3xl font-semibold">Waste Entry</h1>
-          {selectedStore && (
-            <p className="text-muted-foreground">{selectedStore.name}</p>
-          )}
+      {/* Header with Store Selector */}
+      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="ghost" 
+            size="icon"
+            onClick={resetToStart}
+            data-testid="button-back"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl md:text-3xl font-semibold">Waste Entry</h1>
+            <p className="text-muted-foreground">Log and track waste items</p>
+          </div>
+        </div>
+        
+        {/* Store Selector - Top Right */}
+        <div className="min-w-[200px]">
+          <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+            <SelectTrigger data-testid="select-store">
+              <SelectValue placeholder="Select Store" />
+            </SelectTrigger>
+            <SelectContent>
+              {stores.map(store => (
+                <SelectItem key={store.id} value={store.id}>
+                  {store.name}
+                  {store.city && <span className="text-muted-foreground ml-2">({store.city})</span>}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
-
-      {/* Store Selection */}
-      {stores.length > 1 && (
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <Label>Select Store</Label>
-            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-              <SelectTrigger data-testid="select-store" className="mt-2">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {stores.map(store => (
-                  <SelectItem key={store.id} value={store.id}>
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Step 1: Select Waste Type */}
       {!wasteType && (
@@ -552,66 +558,159 @@ export default function WasteEntry() {
       {!selectedItemId && (
         <div className="mt-8 max-w-7xl mx-auto">
           <Card>
-            <CardContent className="pt-6">
-              <h2 className="text-2xl font-semibold mb-4">Recent Waste Entries</h2>
+            <CardHeader>
+              <CardTitle>Waste Log</CardTitle>
+            </CardHeader>
+            <CardContent>
               {wasteLogs.length === 0 ? (
                 <p className="text-muted-foreground text-center py-8">No waste entries yet</p>
-              ) : (
-                <div className="space-y-3">
-                  {wasteLogs
-                    .sort((a, b) => new Date(b.wastedAt).getTime() - new Date(a.wastedAt).getTime())
-                    .map(log => (
-                      <div 
-                        key={log.id}
-                        className="border rounded-lg p-4 hover-elevate"
-                        data-testid={`waste-log-${log.id}`}
-                      >
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              {log.wasteType === 'inventory' ? (
-                                <Package className="h-4 w-4 text-muted-foreground" />
-                              ) : (
-                                <UtensilsCrossed className="h-4 w-4 text-muted-foreground" />
-                              )}
-                              <h3 className="font-semibold text-lg">
-                                {log.inventoryItemName || log.menuItemName}
-                              </h3>
-                            </div>
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                              <span>
-                                Qty: {log.qty} {log.unitName || 'units'}
-                              </span>
-                              <span>
-                                Value: ${log.totalValue.toFixed(2)}
-                              </span>
-                              <span>
-                                Reason: {log.reasonCode.replace(/_/g, ' ')}
-                              </span>
-                              <span>
-                                Store: {log.storeName}
-                              </span>
-                            </div>
-                            {log.notes && (
-                              <p className="text-sm text-muted-foreground mt-2 italic">
-                                Note: {log.notes}
-                              </p>
-                            )}
-                          </div>
-                          <div className="text-sm text-muted-foreground md:text-right whitespace-nowrap">
-                            {new Date(log.wastedAt).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                              hour: 'numeric',
-                              minute: '2-digit',
-                            })}
-                          </div>
+              ) : (() => {
+                const sortedLogs = wasteLogs.sort((a, b) => 
+                  new Date(b.wastedAt).getTime() - new Date(a.wastedAt).getTime()
+                );
+                
+                const inventoryLogs = sortedLogs.filter(log => log.wasteType === 'inventory');
+                const menuItemLogs = sortedLogs.filter(log => log.wasteType === 'menu_item');
+                
+                const inventorySubtotal = inventoryLogs.reduce((sum, log) => sum + log.totalValue, 0);
+                const menuItemSubtotal = menuItemLogs.reduce((sum, log) => sum + log.totalValue, 0);
+                const grandTotal = inventorySubtotal + menuItemSubtotal;
+
+                return (
+                  <div className="space-y-6">
+                    {/* Inventory Items Section */}
+                    {inventoryLogs.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <Package className="h-5 w-5 text-muted-foreground" />
+                          <h3 className="text-lg font-semibold">Inventory Items</h3>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Item</TableHead>
+                              <TableHead className="text-right">Qty</TableHead>
+                              <TableHead>Reason</TableHead>
+                              <TableHead className="text-right">Value</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {inventoryLogs.map(log => (
+                              <TableRow key={log.id} data-testid={`waste-log-${log.id}`}>
+                                <TableCell className="whitespace-nowrap">
+                                  {new Date(log.wastedAt).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric',
+                                  })}
+                                </TableCell>
+                                <TableCell>
+                                  <div>
+                                    <div className="font-medium">{log.inventoryItemName}</div>
+                                    {log.notes && (
+                                      <div className="text-sm text-muted-foreground italic">
+                                        {log.notes}
+                                      </div>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right tabular-nums">
+                                  {log.qty} {log.unitName}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {log.reasonCode.replace(/_/g, ' ')}
+                                </TableCell>
+                                <TableCell className="text-right tabular-nums font-medium">
+                                  ${log.totalValue.toFixed(2)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            <TableRow className="font-semibold bg-muted/50">
+                              <TableCell colSpan={4} className="text-right">
+                                Inventory Subtotal
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                ${inventorySubtotal.toFixed(2)}
+                              </TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+
+                    {/* Menu Items Section */}
+                    {menuItemLogs.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <UtensilsCrossed className="h-5 w-5 text-muted-foreground" />
+                          <h3 className="text-lg font-semibold">Menu Items</h3>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Item</TableHead>
+                              <TableHead className="text-right">Qty</TableHead>
+                              <TableHead>Reason</TableHead>
+                              <TableHead className="text-right">Value</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {menuItemLogs.map(log => (
+                              <TableRow key={log.id} data-testid={`waste-log-${log.id}`}>
+                                <TableCell className="whitespace-nowrap">
+                                  {new Date(log.wastedAt).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric',
+                                  })}
+                                </TableCell>
+                                <TableCell>
+                                  <div>
+                                    <div className="font-medium">{log.menuItemName}</div>
+                                    {log.notes && (
+                                      <div className="text-sm text-muted-foreground italic">
+                                        {log.notes}
+                                      </div>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right tabular-nums">
+                                  {log.qty}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {log.reasonCode.replace(/_/g, ' ')}
+                                </TableCell>
+                                <TableCell className="text-right tabular-nums font-medium">
+                                  ${log.totalValue.toFixed(2)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            <TableRow className="font-semibold bg-muted/50">
+                              <TableCell colSpan={4} className="text-right">
+                                Menu Items Subtotal
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                ${menuItemSubtotal.toFixed(2)}
+                              </TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+
+                    {/* Grand Total */}
+                    <div className="flex justify-end pt-4 border-t">
+                      <div className="text-right">
+                        <div className="text-lg font-bold">
+                          Total Waste Value: <span className="tabular-nums">${grandTotal.toFixed(2)}</span>
                         </div>
                       </div>
-                    ))}
-                </div>
-              )}
+                    </div>
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         </div>
