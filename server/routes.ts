@@ -4103,7 +4103,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Inventory item ID is required for inventory waste" });
         }
         
-        const inventoryItems = await storage.getInventoryItems(req.companyId!);
+        // Get inventory items for the company (pass companyId as 3rd parameter)
+        const inventoryItems = await storage.getInventoryItems(undefined, undefined, req.companyId!);
         const item = inventoryItems.find(i => i.id === data.inventoryItemId);
         
         if (!item) {
@@ -4176,7 +4177,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Filter to only show waste from stores the user has access to
     const filteredWasteLogs = wasteLogs.filter(log => accessibleStoreIds.includes(log.storeId));
     
-    const inventoryItems = await storage.getInventoryItems(req.companyId!);
+    // Get inventory items for the company (pass companyId as 3rd parameter)
+    const inventoryItems = await storage.getInventoryItems(undefined, undefined, req.companyId!);
     const trends: Record<string, any> = {};
     for (const wasteLog of filteredWasteLogs) {
       if (!trends[wasteLog.inventoryItemId]) {
