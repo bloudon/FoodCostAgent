@@ -4061,13 +4061,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/waste", requireAuth, async (req, res) => {
     const storeId = req.query.storeId as string | undefined;
     const wasteType = req.query.wasteType as string | undefined;
+    
+    // Get accessible stores for the user
+    const accessibleStoreIds = await getAccessibleStores(req.user!, req.companyId);
+    
     const wasteLogs = await storage.getWasteLogs(req.companyId!);
     
-    // Filter by storeId if provided
-    let filtered = wasteLogs;
+    // Filter to only show waste from stores the user has access to
+    let filtered = wasteLogs.filter(log => accessibleStoreIds.includes(log.storeId));
+    
+    // Further filter by specific storeId if provided
     if (storeId) {
+      // Verify user has access to the requested store
+      if (!accessibleStoreIds.includes(storeId)) {
+        return res.status(403).json({ error: "Access denied to this store" });
+      }
       filtered = filtered.filter(log => log.storeId === storeId);
     }
+    
     if (wasteType) {
       filtered = filtered.filter(log => log.wasteType === wasteType);
     }
@@ -4078,6 +4089,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/waste", requireAuth, async (req, res) => {
     try {
       const data = insertWasteLogSchema.parse(req.body);
+      
+      // Verify user has access to the selected store
+      const accessibleStoreIds = await getAccessibleStores(req.user!, req.companyId);
+      if (!accessibleStoreIds.includes(data.storeId)) {
+        return res.status(403).json({ error: "Access denied to this store" });
+      }
       
       if (data.wasteType === 'inventory') {
         // Inventory waste: direct inventory reduction
@@ -4149,10 +4166,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/reports/waste-trends", requireAuth, async (req, res) => {
     const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
     const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
+    
+    // Get accessible stores for the user
+    const accessibleStoreIds = await getAccessibleStores(req.user!, req.companyId);
+    
     const wasteLogs = await storage.getWasteLogs(req.companyId!, undefined, undefined, startDate, endDate);
+    
+    // Filter to only show waste from stores the user has access to
+    const filteredWasteLogs = wasteLogs.filter(log => accessibleStoreIds.includes(log.storeId));
+    
     const inventoryItems = await storage.getInventoryItems(req.companyId!);
     const trends: Record<string, any> = {};
-    for (const wasteLog of wasteLogs) {
+    for (const wasteLog of filteredWasteLogs) {
       if (!trends[wasteLog.inventoryItemId]) {
         const item = inventoryItems.find(i => i.id === wasteLog.inventoryItemId);
         trends[wasteLog.inventoryItemId] = { productId: wasteLog.inventoryItemId, productName: item?.name || "Unknown", totalWasteQty: 0, totalWasteCost: 0, byReason: {} as Record<string, number>, count: 0 };
