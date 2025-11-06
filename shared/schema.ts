@@ -628,10 +628,13 @@ export const wasteLogs = pgTable("waste_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   storeId: varchar("store_id").notNull(), // Store where waste occurred
-  inventoryItemId: varchar("inventory_item_id").notNull(),
-  qty: real("qty").notNull(), // quantity in base units
-  unitId: varchar("unit_id").notNull(),
-  reasonCode: text("reason_code").notNull(), // SPOILED, DAMAGED, OVERPRODUCTION, etc
+  wasteType: text("waste_type").notNull(), // 'inventory' or 'menu_item'
+  inventoryItemId: varchar("inventory_item_id"), // For inventory waste (nullable)
+  menuItemId: varchar("menu_item_id"), // For menu item waste (nullable)
+  qty: real("qty").notNull(), // quantity wasted (menu items = count, inventory = base units)
+  unitId: varchar("unit_id"), // Unit for inventory waste (nullable for menu items)
+  totalValue: real("total_value").notNull().default(0), // Calculated dollar value of waste
+  reasonCode: text("reason_code").notNull(), // SPOILED, DAMAGED, OVERPRODUCTION, DROPPED, etc
   notes: text("notes"),
   wastedAt: timestamp("wasted_at").notNull().defaultNow(),
   loggedBy: varchar("logged_by"),
