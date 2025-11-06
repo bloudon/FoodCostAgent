@@ -4058,41 +4058,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ WASTE LOGS ============
-  app.get("/api/waste", async (req, res) => {
-    const productId = req.query.product_id as string | undefined;
-    const startDate = req.query.start_date ? new Date(req.query.start_date as string) : undefined;
-    const endDate = req.query.end_date ? new Date(req.query.end_date as string) : undefined;
-    const wasteLogs = await storage.getWasteLogs(productId, startDate, endDate);
-    res.json(wasteLogs);
+  app.get("/api/waste", requireAuth, async (req, res) => {
+    const storeId = req.query.storeId as string | undefined;
+    const wasteType = req.query.wasteType as string | undefined;
+    const wasteLogs = await storage.getWasteLogs(req.companyId!);
+    
+    // Filter by storeId if provided
+    let filtered = wasteLogs;
+    if (storeId) {
+      filtered = filtered.filter(log => log.storeId === storeId);
+    }
+    if (wasteType) {
+      filtered = filtered.filter(log => log.wasteType === wasteType);
+    }
+    
+    res.json(filtered);
   });
 
-  app.post("/api/waste", async (req, res) => {
+  app.post("/api/waste", requireAuth, async (req, res) => {
     try {
       const data = insertWasteLogSchema.parse(req.body);
       
-      // Get inventory item at the location
-      const inventoryItems = await storage.getInventoryItems(data.storageLocationId);
-      const item = inventoryItems.find(i => i.id === data.inventoryItemId);
-      const currentQty = item?.onHandQty || 0;
-      
-      // Validate sufficient quantity
-      if (currentQty < data.qty) {
-        return res.status(400).json({ 
-          error: `Insufficient inventory. Available: ${currentQty}, Waste amount: ${data.qty}` 
+      if (data.wasteType === 'inventory') {
+        // Inventory waste: direct inventory reduction
+        if (!data.inventoryItemId) {
+          return res.status(400).json({ error: "Inventory item ID is required for inventory waste" });
+        }
+        
+        const inventoryItems = await storage.getInventoryItems(req.companyId!);
+        const item = inventoryItems.find(i => i.id === data.inventoryItemId);
+        
+        if (!item) {
+          return res.status(404).json({ error: "Inventory item not found" });
+        }
+        
+        // Calculate value
+        const totalValue = data.qty * (item.pricePerUnit || 0);
+        
+        // Create waste log with calculated value
+        const wasteLog = await storage.createWasteLog({
+          ...data,
+          companyId: req.companyId!,
+          totalValue,
+          loggedBy: req.user!.id,
         });
-      }
-      
-      // Create waste log
-      const wasteLog = await storage.createWasteLog(data);
-      
-      // Update inventory level
-      if (item) {
-        await storage.updateInventoryItem(item.id, {
-          onHandQty: currentQty - data.qty
+        
+        res.status(201).json(wasteLog);
+        
+      } else if (data.wasteType === 'menu_item') {
+        // Menu item waste: calculate from recipe
+        if (!data.menuItemId) {
+          return res.status(400).json({ error: "Menu item ID is required for menu item waste" });
+        }
+        
+        const menuItems = await storage.getMenuItems(req.companyId!);
+        const menuItem = menuItems.find(m => m.id === data.menuItemId);
+        
+        if (!menuItem || !menuItem.recipeId) {
+          return res.status(404).json({ error: "Menu item or recipe not found" });
+        }
+        
+        const recipes = await storage.getRecipes(req.companyId!);
+        const recipe = recipes.find(r => r.id === menuItem.recipeId);
+        
+        if (!recipe) {
+          return res.status(404).json({ error: "Recipe not found" });
+        }
+        
+        // Calculate total value (recipe cost × quantity wasted)
+        const totalValue = (recipe.computedCost || 0) * data.qty;
+        
+        // Create waste log
+        const wasteLog = await storage.createWasteLog({
+          ...data,
+          companyId: req.companyId!,
+          totalValue,
+          loggedBy: req.user!.id,
         });
+        
+        res.status(201).json(wasteLog);
+        
+      } else {
+        return res.status(400).json({ error: "Invalid waste type. Must be 'inventory' or 'menu_item'" });
       }
-      
-      res.status(201).json(wasteLog);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
