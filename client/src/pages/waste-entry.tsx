@@ -88,7 +88,11 @@ export default function WasteEntry() {
   });
 
   const { data: wasteLogs = [] } = useQuery<WasteLog[]>({
-    queryKey: ["/api/waste"],
+    queryKey: ["/api/waste", selectedStoreId],
+    queryFn: selectedStoreId 
+      ? () => fetch(`/api/waste?storeId=${selectedStoreId}`).then(res => res.json())
+      : undefined,
+    enabled: !!selectedStoreId,
   });
 
   // Set default store
