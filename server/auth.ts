@@ -54,9 +54,16 @@ export async function createSession(userId: string, userAgent?: string, ip?: str
 }
 
 /**
- * Middleware to require authentication (with Phase 2 caching)
+ * Middleware to require authentication (supports both SSO and username/password)
+ * Hybrid authentication: checks if SSO already authenticated, otherwise checks cookie session
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  // Check if already authenticated via SSO
+  if ((req as any).ssoAuth && (req as any).user) {
+    return next();
+  }
+  
+  // Not SSO authenticated, try username/password session cookie
   const token = req.cookies?.session;
   
   if (!token) {
@@ -99,9 +106,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return res.status(401).json({ error: "User not found" });
   }
 
-  // Attach user and session to request
+  // Attach user and auth session to request
+  // Note: Using 'authSession' instead of 'session' to avoid conflict with express-session
   (req as any).user = user;
-  (req as any).session = session;
+  (req as any).authSession = session;
   (req as any).sessionId = session.id;
   
   // Resolve company context: use user.companyId for regular users, session.selectedCompanyId for global_admin

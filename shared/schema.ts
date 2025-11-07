@@ -76,11 +76,14 @@ export const insertStoreStorageLocationSchema = createInsertSchema(storeStorageL
 export type InsertStoreStorageLocation = z.infer<typeof insertStoreStorageLocationSchema>;
 export type StoreStorageLocation = typeof storeStorageLocations.$inferSelect;
 
-// Users table
+// Users table (supports both username/password and SSO authentication)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"), // nullable for SSO users
+  ssoProvider: text("sso_provider"), // "google", "github", "apple", "x", "password", null
+  ssoId: text("sso_id"), // Unique ID from SSO provider (e.g., Replit's sub claim)
+  profileImageUrl: text("profile_image_url"), // Profile image from SSO provider
   role: text("role").notNull().default("store_user"), // global_admin, company_admin, store_manager, store_user
   companyId: varchar("company_id"), // nullable for global_admin, required for all others
   firstName: text("first_name"),
@@ -88,7 +91,10 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   active: integer("active").notNull().default(1), // 1=active, 0=inactive
-});
+}, (table) => ({
+  // Index for fast SSO lookups
+  ssoProviderIdIdx: index("users_sso_provider_id_idx").on(table.ssoProvider, table.ssoId),
+}));
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -108,7 +114,18 @@ export const insertUserStoreSchema = createInsertSchema(userStores).omit({ id: t
 export type InsertUserStore = z.infer<typeof insertUserStoreSchema>;
 export type UserStore = typeof userStores.$inferSelect;
 
-// Auth Sessions
+// SSO Sessions table (for Passport.js session storage)
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: text("sess").notNull(), // Store as text instead of jsonb for compatibility
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// Auth Sessions (for username/password authentication)
 export const authSessions = pgTable("auth_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),

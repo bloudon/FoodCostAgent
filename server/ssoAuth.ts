@@ -1,0 +1,231 @@
+import * as client from "openid-client";
+import { Strategy, type VerifyFunction } from "openid-client/passport";
+import passport from "passport";
+import session from "express-session";
+import type { Express, RequestHandler } from "express";
+import memoize from "memoizee";
+import connectPg from "connect-pg-simple";
+import { storage } from "./storage";
+
+const getOidcConfig = memoize(
+  async () => {
+    return await client.discovery(
+      new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
+      process.env.REPL_ID!
+    );
+  },
+  { maxAge: 3600 * 1000 }
+);
+
+export function getSession() {
+  const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
+  const pgStore = connectPg(session);
+  const sessionStore = new pgStore({
+    conString: process.env.DATABASE_URL,
+    createTableIfMissing: false,
+    ttl: sessionTtl,
+    tableName: "sessions",
+  });
+  return session({
+    secret: process.env.SESSION_SECRET!,
+    store: sessionStore,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: true,
+      maxAge: sessionTtl,
+    },
+  });
+}
+
+function updateUserSession(
+  user: any,
+  tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers
+) {
+  user.claims = tokens.claims();
+  user.access_token = tokens.access_token;
+  user.refresh_token = tokens.refresh_token;
+  user.expires_at = user.claims?.exp;
+}
+
+async function upsertSsoUser(
+  claims: any,
+) {
+  // Check if user exists by SSO ID
+  const ssoId = claims["sub"];
+  const email = claims["email"];
+  const ssoProvider = "replit"; // Could be extracted from issuer if supporting multiple providers
+  
+  let user = await storage.getUserBySsoId(ssoProvider, ssoId);
+  
+  if (!user && email) {
+    // Check if user exists by email (for account linking)
+    user = await storage.getUserByEmail(email);
+  }
+  
+  if (user) {
+    // Update existing user with SSO info
+    await storage.updateUser(user.id, {
+      ssoProvider,
+      ssoId,
+      profileImageUrl: claims["profile_image_url"],
+      firstName: claims["first_name"] || user.firstName,
+      lastName: claims["last_name"] || user.lastName,
+      updatedAt: new Date(),
+    });
+  } else {
+    // Create new user with SSO
+    // New SSO users start with store_user role and no company assignment
+    // Admin will need to assign them to a company
+    user = await storage.createUser({
+      email: email || `sso_${ssoId}@placeholder.com`, // Fallback for providers without email
+      ssoProvider,
+      ssoId,
+      profileImageUrl: claims["profile_image_url"],
+      firstName: claims["first_name"],
+      lastName: claims["last_name"],
+      role: "store_user",
+      active: 1,
+    });
+  }
+  
+  return user;
+}
+
+export async function setupSsoAuth(app: Express) {
+  app.set("trust proxy", 1);
+  
+  // Apply session middleware globally so Passport can deserialize sessions on all routes
+  app.use(getSession());
+  
+  // Initialize passport and enable session support globally
+  app.use(passport.initialize());
+  app.use(passport.session());
+  
+  const config = await getOidcConfig();
+
+  const verify: VerifyFunction = async (
+    tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
+    verified: passport.AuthenticateCallback
+  ) => {
+    const sessionData = {};
+    updateUserSession(sessionData, tokens);
+    const user = await upsertSsoUser(tokens.claims());
+    
+    // Store user ID in session for easy retrieval
+    (sessionData as any).userId = user.id;
+    
+    verified(null, sessionData);
+  };
+
+  // Keep track of registered strategies
+  const registeredStrategies = new Set<string>();
+
+  // Helper function to ensure strategy exists for a domain
+  const ensureStrategy = (domain: string) => {
+    const strategyName = `replitauth:${domain}`;
+    if (!registeredStrategies.has(strategyName)) {
+      const strategy = new Strategy(
+        {
+          name: strategyName,
+          config,
+          scope: "openid email profile offline_access",
+          callbackURL: `https://${domain}/api/sso/callback`,
+        },
+        verify,
+      );
+      passport.use(strategy);
+      registeredStrategies.add(strategyName);
+    }
+  };
+
+  passport.serializeUser((user: Express.User, cb) => cb(null, user));
+  passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+
+  // SSO Login route
+  app.get("/api/sso/login", (req, res, next) => {
+    ensureStrategy(req.hostname);
+    passport.authenticate(`replitauth:${req.hostname}`, {
+      prompt: "login consent",
+      scope: ["openid", "email", "profile", "offline_access"],
+    })(req, res, next);
+  });
+
+  // SSO Callback route
+  app.get("/api/sso/callback", (req, res, next) => {
+    ensureStrategy(req.hostname);
+    passport.authenticate(`replitauth:${req.hostname}`, {
+      successReturnToOrRedirect: "/",
+      failureRedirect: "/login",
+    })(req, res, next);
+  });
+
+  // SSO Logout route
+  app.get("/api/sso/logout", (req, res) => {
+    req.logout(() => {
+      req.session.destroy((err) => {
+        if (err) console.error("Session destroy error:", err);
+        res.redirect(
+          client.buildEndSessionUrl(config, {
+            client_id: process.env.REPL_ID!,
+            post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
+          }).href
+        );
+      });
+    });
+  });
+}
+
+/**
+ * Middleware to check if user is authenticated via SSO
+ */
+export const isSsoAuthenticated: RequestHandler = async (req, res, next) => {
+  const user = req.user as any;
+
+  if (!req.isAuthenticated() || !user.expires_at) {
+    return next(); // Not SSO authenticated, let other auth methods handle it
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (now <= user.expires_at) {
+    // Token is still valid, attach user to request
+    const userId = user.userId;
+    if (userId) {
+      const dbUser = await storage.getUser(userId);
+      if (dbUser) {
+        (req as any).user = dbUser;
+        (req as any).companyId = dbUser.companyId || null;
+        (req as any).ssoAuth = true; // Mark as SSO authenticated
+      }
+    }
+    return next();
+  }
+
+  // Token expired, try to refresh
+  const refreshToken = user.refresh_token;
+  if (!refreshToken) {
+    return next(); // No refresh token, let other auth methods handle it
+  }
+
+  try {
+    const config = await getOidcConfig();
+    const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
+    updateUserSession(user, tokenResponse);
+    
+    // Attach user to request
+    const userId = user.userId;
+    if (userId) {
+      const dbUser = await storage.getUser(userId);
+      if (dbUser) {
+        (req as any).user = dbUser;
+        (req as any).companyId = dbUser.companyId || null;
+        (req as any).ssoAuth = true;
+      }
+    }
+    return next();
+  } catch (error) {
+    // Refresh failed, let other auth methods handle it
+    return next();
+  }
+};

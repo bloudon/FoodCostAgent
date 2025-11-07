@@ -6,6 +6,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import { seedDatabase } from "./seed";
 import { storage } from "./storage";
 import { cache } from "./cache";
+import { setupSsoAuth } from "./ssoAuth";
 
 const app = express();
 app.disable('etag');
@@ -67,6 +68,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Setup SSO authentication (must be before registerRoutes)
+  await setupSsoAuth(app);
+  
   const server = await registerRoutes(app);
   
   // Setup WebSocket for real-time POS streaming
