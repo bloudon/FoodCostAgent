@@ -180,7 +180,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       role: user.role, 
       companyId: user.companyId,
       firstName: user.firstName,
-      lastName: user.lastName
+      lastName: user.lastName,
+      ssoProvider: user.ssoProvider,
+      ssoId: user.ssoId,
+      profileImageUrl: user.profileImageUrl
     });
   });
 

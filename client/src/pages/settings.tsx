@@ -6,8 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store } from "lucide-react";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { SiGoogle, SiGithub, SiApple, SiX } from "react-icons/si";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
   Select,
@@ -46,6 +48,11 @@ export default function Settings() {
 
   const { data: systemPrefs, isLoading: prefsLoading } = useQuery<SystemPreferences>({
     queryKey: ["/api/system-preferences"],
+  });
+
+  // Fetch current user with SSO info
+  const { data: currentUser } = useQuery<any>({
+    queryKey: ["/api/auth/me"],
   });
 
   // Vendor credentials query disabled - integrations tab removed
@@ -489,48 +496,107 @@ export default function Settings() {
                 Your personal information and account settings
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="user-name">Full Name</Label>
-                  <Input
-                    id="user-name"
-                    placeholder="John Doe"
-                    data-testid="input-user-name"
-                  />
+            <CardContent className="space-y-6">
+              <div className="flex items-center gap-4">
+                <Avatar className="h-20 w-20">
+                  <AvatarImage src={currentUser?.profileImageUrl} alt={`${currentUser?.firstName} ${currentUser?.lastName}`} />
+                  <AvatarFallback>
+                    {currentUser?.firstName?.[0]}{currentUser?.lastName?.[0]}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="text-lg font-semibold" data-testid="text-user-fullname">
+                    {currentUser?.firstName} {currentUser?.lastName}
+                  </p>
+                  <p className="text-sm text-muted-foreground" data-testid="text-user-email">
+                    {currentUser?.email}
+                  </p>
+                  <Badge variant="secondary" className="mt-1" data-testid="badge-user-role">
+                    {currentUser?.role?.replace('_', ' ')}
+                  </Badge>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="user-email">Email</Label>
-                  <Input
-                    id="user-email"
-                    type="email"
-                    placeholder="john@restaurant.com"
-                    data-testid="input-user-email"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="user-role">Role</Label>
-                <Select defaultValue="admin">
-                  <SelectTrigger id="user-role" data-testid="select-user-role">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Administrator</SelectItem>
-                    <SelectItem value="manager">Manager</SelectItem>
-                    <SelectItem value="counter">Counter Staff</SelectItem>
-                    <SelectItem value="viewer">Viewer</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
 
               <Separator />
-              
-              <div className="flex justify-end">
-                <Button data-testid="button-save-user">
-                  Save User Profile
-                </Button>
+
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-base font-semibold flex items-center gap-2">
+                    <LinkIcon className="h-4 w-4" />
+                    Linked Accounts
+                  </Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Connect your account with SSO providers for easier sign-in
+                  </p>
+                </div>
+
+                {currentUser?.ssoProvider ? (
+                  <div className="border rounded-md p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {currentUser.ssoProvider === 'google' && <SiGoogle className="h-5 w-5" />}
+                        {currentUser.ssoProvider === 'github' && <SiGithub className="h-5 w-5" />}
+                        {currentUser.ssoProvider === 'apple' && <SiApple className="h-5 w-5" />}
+                        {currentUser.ssoProvider === 'x' && <SiX className="h-5 w-5" />}
+                        <div>
+                          <p className="font-medium capitalize" data-testid={`text-sso-${currentUser.ssoProvider}`}>
+                            {currentUser.ssoProvider}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            Linked account
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="default" data-testid="badge-sso-linked">
+                        Linked
+                      </Badge>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      No SSO accounts linked. Link an account below:
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => window.location.href = "/api/sso/login?provider=google"}
+                        data-testid="button-link-google"
+                      >
+                        <SiGoogle className="mr-2 h-4 w-4" />
+                        Link Google
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => window.location.href = "/api/sso/login?provider=github"}
+                        data-testid="button-link-github"
+                      >
+                        <SiGithub className="mr-2 h-4 w-4" />
+                        Link GitHub
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => window.location.href = "/api/sso/login?provider=apple"}
+                        data-testid="button-link-apple"
+                      >
+                        <SiApple className="mr-2 h-4 w-4" />
+                        Link Apple
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => window.location.href = "/api/sso/login?provider=x"}
+                        data-testid="button-link-x"
+                      >
+                        <SiX className="mr-2 h-4 w-4" />
+                        Link X
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

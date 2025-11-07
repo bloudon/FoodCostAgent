@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Pizza } from "lucide-react";
+import { SiGoogle, SiGithub, SiApple, SiX } from "react-icons/si";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -110,6 +112,57 @@ export default function Login() {
               Default: admin@pizza.com / admin123
             </p>
           </form>
+
+          <div className="relative my-6">
+            <Separator />
+            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+              OR
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground text-center mb-3">
+              Sign in with your account
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => window.location.href = "/api/sso/login?provider=google"}
+                data-testid="button-sso-google"
+              >
+                <SiGoogle className="mr-2 h-4 w-4" />
+                Google
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => window.location.href = "/api/sso/login?provider=github"}
+                data-testid="button-sso-github"
+              >
+                <SiGithub className="mr-2 h-4 w-4" />
+                GitHub
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => window.location.href = "/api/sso/login?provider=apple"}
+                data-testid="button-sso-apple"
+              >
+                <SiApple className="mr-2 h-4 w-4" />
+                Apple
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => window.location.href = "/api/sso/login?provider=x"}
+                data-testid="button-sso-x"
+              >
+                <SiX className="mr-2 h-4 w-4" />
+                X
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
