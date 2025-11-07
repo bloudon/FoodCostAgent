@@ -114,6 +114,27 @@ export const insertUserStoreSchema = createInsertSchema(userStores).omit({ id: t
 export type InsertUserStore = z.infer<typeof insertUserStoreSchema>;
 export type UserStore = typeof userStores.$inferSelect;
 
+// User Invitations (for inviting users to join a company via email)
+export const invitations = pgTable("invitations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull(),
+  companyId: varchar("company_id").notNull(),
+  role: text("role").notNull().default("store_user"), // Role being offered (store_user, store_manager, company_admin)
+  token: text("token").notNull().unique(), // Secure random token for invitation link
+  invitedBy: varchar("invited_by"), // User ID who sent the invitation
+  expiresAt: timestamp("expires_at").notNull(), // Invitation expiration (default: 7 days)
+  acceptedAt: timestamp("accepted_at"), // When invitation was accepted (null = pending)
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  // Index for fast lookups by email and token
+  emailCompanyIdx: index("invitations_email_company_idx").on(table.email, table.companyId),
+  tokenIdx: index("invitations_token_idx").on(table.token),
+}));
+
+export const insertInvitationSchema = createInsertSchema(invitations).omit({ id: true, createdAt: true });
+export type InsertInvitation = z.infer<typeof insertInvitationSchema>;
+export type Invitation = typeof invitations.$inferSelect;
+
 // SSO Sessions table (for Passport.js session storage)
 export const sessions = pgTable(
   "sessions",
