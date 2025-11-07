@@ -3,6 +3,7 @@ import cookieParser from "cookie-parser";
 import { registerRoutes, setupWebSocket } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { seedDatabase } from "./seed";
+import { storage } from "./storage";
 
 const app = express();
 app.disable('etag');
@@ -59,6 +60,23 @@ app.use((req, res, next) => {
   setupWebSocket(server);
 
   await seedDatabase();
+
+  // Start background session cleanup job
+  // Runs every hour to remove expired auth sessions and prevent table bloat
+  const SESSION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  const cleanupSessionsJob = async () => {
+    try {
+      await storage.cleanExpiredSessions();
+      log('✅ Session cleanup completed');
+    } catch (error) {
+      console.error('❌ Session cleanup error:', error);
+    }
+  };
+  
+  // Run cleanup immediately on startup, then every hour
+  cleanupSessionsJob();
+  setInterval(cleanupSessionsJob, SESSION_CLEANUP_INTERVAL_MS);
+  log(`🔄 Session cleanup job scheduled (every ${SESSION_CLEANUP_INTERVAL_MS / 1000 / 60} minutes)`);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

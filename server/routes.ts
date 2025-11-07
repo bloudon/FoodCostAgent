@@ -3515,6 +3515,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Receipt not found" });
       }
       
+      // Validate company ownership
+      if (receipt.companyId !== companyId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
       if (receipt.status !== "draft") {
         return res.status(400).json({ error: "Receipt is not in draft status" });
       }
@@ -3522,72 +3527,144 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const lines = await storage.getReceiptLinesByReceiptId(receipt.id);
       const vendorItems = await storage.getVendorItems(undefined, companyId);
 
-      // Update inventory and pricing
-      for (const line of lines) {
-        const vi = vendorItems.find((vi) => vi.id === line.vendorItemId);
-        if (vi) {
-          const item = await storage.getInventoryItem(vi.inventoryItemId);
-          if (item) {
-            // line.priceEach is already the unit price (per lb, oz, etc), not the case price
-            const newPricePerUnit = line.priceEach;
-            
-            // Get company-wide on-hand quantity across all stores for WAC calculation
-            // Since avgCostPerUnit is stored at company level, we need company-wide quantities
-            const allStoresForItem = await db
+      // Wrap all receipt completion operations in transaction for atomicity
+      // Prevents partial updates to pricing, inventory, and status under concurrent access
+      await withTransaction(async (tx) => {
+        // Update inventory and pricing for each line
+        for (const line of lines) {
+          const vi = vendorItems.find((vi) => vi.id === line.vendorItemId);
+          if (vi) {
+            // Get inventory item with explicit companyId filter
+            const [item] = await tx
               .select()
-              .from(storeInventoryItems)
+              .from(inventoryItems)
               .where(
                 and(
-                  eq(storeInventoryItems.inventoryItemId, vi.inventoryItemId),
-                  eq(storeInventoryItems.companyId, companyId)
+                  eq(inventoryItems.id, vi.inventoryItemId),
+                  eq(inventoryItems.companyId, companyId) // Explicit tenant guard
                 )
-              );
-            
-            const totalCompanyQty = allStoresForItem.reduce((sum, si) => sum + (si.onHandQty || 0), 0);
-            
-            // Calculate weighted average cost using company-wide quantities
-            // WAC = ((currentCompanyQty * currentAvgCost) + (receivedQty * receivedPrice)) / (currentCompanyQty + receivedQty)
-            const currentAvgCost = item.avgCostPerUnit || item.pricePerUnit;
-            const totalCurrentValue = totalCompanyQty * currentAvgCost;
-            const totalReceivedValue = line.receivedQty * newPricePerUnit;
-            const totalQty = totalCompanyQty + line.receivedQty;
-            const newAvgCostPerUnit = totalQty > 0 
-              ? (totalCurrentValue + totalReceivedValue) / totalQty 
-              : newPricePerUnit;
-            
-            // Track price history if price changed
-            if (newPricePerUnit !== item.pricePerUnit) {
-              await storage.createInventoryItemPriceHistory({
-                inventoryItemId: vi.inventoryItemId,
-                pricePerUnit: newPricePerUnit,
-                effectiveAt: new Date(),
-                vendorItemId: vi.id,
-                note: `Price updated via receiving (Last: $${newPricePerUnit.toFixed(4)}, WAC: $${newAvgCostPerUnit.toFixed(4)})`,
-              });
+              )
+              .limit(1);
+              
+            if (item) {
+              // line.priceEach is already the unit price (per lb, oz, etc), not the case price
+              const newPricePerUnit = line.priceEach;
+              
+              // Get company-wide on-hand quantity across all stores for WAC calculation
+              const allStoresForItem = await tx
+                .select()
+                .from(storeInventoryItems)
+                .where(
+                  and(
+                    eq(storeInventoryItems.inventoryItemId, vi.inventoryItemId),
+                    eq(storeInventoryItems.companyId, companyId) // Explicit tenant guard
+                  )
+                );
+              
+              const totalCompanyQty = allStoresForItem.reduce((sum, si) => sum + (si.onHandQty || 0), 0);
+              
+              // Calculate weighted average cost using company-wide quantities
+              const currentAvgCost = item.avgCostPerUnit || item.pricePerUnit;
+              const totalCurrentValue = totalCompanyQty * currentAvgCost;
+              const totalReceivedValue = line.receivedQty * newPricePerUnit;
+              const totalQty = totalCompanyQty + line.receivedQty;
+              const newAvgCostPerUnit = totalQty > 0 
+                ? (totalCurrentValue + totalReceivedValue) / totalQty 
+                : newPricePerUnit;
+              
+              // Track price history if price changed
+              if (newPricePerUnit !== item.pricePerUnit) {
+                await tx.insert(inventoryItemPriceHistory).values({
+                  inventoryItemId: vi.inventoryItemId,
+                  pricePerUnit: newPricePerUnit,
+                  effectiveAt: new Date(),
+                  vendorItemId: vi.id,
+                  note: `Price updated via receiving (Last: $${newPricePerUnit.toFixed(4)}, WAC: $${newAvgCostPerUnit.toFixed(4)})`,
+                });
+              }
+              
+              // Update both last cost and weighted average cost with explicit companyId filter
+              await tx
+                .update(inventoryItems)
+                .set({ 
+                  pricePerUnit: newPricePerUnit,
+                  avgCostPerUnit: newAvgCostPerUnit,
+                  updatedAt: new Date()
+                })
+                .where(
+                  and(
+                    eq(inventoryItems.id, vi.inventoryItemId),
+                    eq(inventoryItems.companyId, companyId) // Explicit tenant guard
+                  )
+                );
+              
+              // Update on-hand quantity at the store level with explicit companyId filter
+              const [existingStoreItem] = await tx
+                .select()
+                .from(storeInventoryItems)
+                .where(
+                  and(
+                    eq(storeInventoryItems.companyId, companyId), // Explicit tenant guard
+                    eq(storeInventoryItems.storeId, receipt.storeId),
+                    eq(storeInventoryItems.inventoryItemId, vi.inventoryItemId)
+                  )
+                )
+                .limit(1);
+              
+              if (existingStoreItem) {
+                await tx
+                  .update(storeInventoryItems)
+                  .set({ 
+                    onHandQty: existingStoreItem.onHandQty + line.receivedQty,
+                    updatedAt: new Date()
+                  })
+                  .where(
+                    and(
+                      eq(storeInventoryItems.companyId, companyId), // Explicit tenant guard
+                      eq(storeInventoryItems.storeId, receipt.storeId),
+                      eq(storeInventoryItems.inventoryItemId, vi.inventoryItemId)
+                    )
+                  );
+              } else {
+                await tx.insert(storeInventoryItems).values({
+                  companyId: companyId,
+                  storeId: receipt.storeId,
+                  inventoryItemId: vi.inventoryItemId,
+                  onHandQty: line.receivedQty,
+                  active: 1
+                });
+              }
             }
-            
-            // Update both last cost (pricePerUnit) and weighted average cost on the company-level catalog
-            await storage.updateInventoryItem(vi.inventoryItemId, {
-              pricePerUnit: newPricePerUnit,
-              avgCostPerUnit: newAvgCostPerUnit,
-            });
-            
-            // Update on-hand quantity at the store level
-            await storage.updateStoreInventoryItemQuantity(
-              receipt.storeId,
-              vi.inventoryItemId,
-              line.receivedQty
-            );
           }
         }
-      }
 
-      // Mark receipt as completed
-      await storage.updateReceipt(receipt.id, { status: "completed" });
-      
-      // Mark PO as received
-      await storage.updatePurchaseOrder(receipt.purchaseOrderId, {
-        status: "received",
+        // Mark receipt as completed with explicit companyId filter
+        await tx
+          .update(receipts)
+          .set({ 
+            status: "completed",
+            updatedAt: new Date()
+          })
+          .where(
+            and(
+              eq(receipts.id, receipt.id),
+              eq(receipts.companyId, companyId) // Explicit tenant guard
+            )
+          );
+        
+        // Mark PO as received with explicit companyId filter
+        await tx
+          .update(purchaseOrders)
+          .set({ 
+            status: "received",
+            updatedAt: new Date()
+          })
+          .where(
+            and(
+              eq(purchaseOrders.id, receipt.purchaseOrderId),
+              eq(purchaseOrders.companyId, companyId) // Explicit tenant guard
+            )
+          );
       });
 
       res.json({ success: true });
@@ -4445,18 +4522,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Process each line - reduce inventory at source
-      for (const line of lines) {
-        const shippedQty = line.shippedQty || line.requestedQty;
-        await storage.updateStoreInventoryItemQuantity(
-          order.fromStoreId,
-          line.inventoryItemId,
-          -shippedQty
-        );
-      }
+      // Wrap transfer execution in transaction for atomicity
+      // Prevents partial inventory updates under concurrent access
+      await withTransaction(async (tx) => {
+        // Process each line - reduce inventory at source with explicit companyId filter
+        for (const line of lines) {
+          const shippedQty = line.shippedQty || line.requestedQty;
+          
+          // Get current store inventory with explicit companyId filter
+          const [existingStoreItem] = await tx
+            .select()
+            .from(storeInventoryItems)
+            .where(
+              and(
+                eq(storeInventoryItems.companyId, order.companyId), // Explicit tenant guard
+                eq(storeInventoryItems.storeId, order.fromStoreId),
+                eq(storeInventoryItems.inventoryItemId, line.inventoryItemId)
+              )
+            )
+            .limit(1);
+          
+          if (existingStoreItem) {
+            await tx
+              .update(storeInventoryItems)
+              .set({ 
+                onHandQty: existingStoreItem.onHandQty - shippedQty,
+                updatedAt: new Date()
+              })
+              .where(
+                and(
+                  eq(storeInventoryItems.companyId, order.companyId), // Explicit tenant guard
+                  eq(storeInventoryItems.storeId, order.fromStoreId),
+                  eq(storeInventoryItems.inventoryItemId, line.inventoryItemId)
+                )
+              );
+          }
+        }
+        
+        // Update transfer order status to in_transit with explicit companyId filter
+        await tx
+          .update(transferOrders)
+          .set({ 
+            status: "in_transit",
+            updatedAt: new Date()
+          })
+          .where(
+            and(
+              eq(transferOrders.id, order.id),
+              eq(transferOrders.companyId, order.companyId) // Explicit tenant guard
+            )
+          );
+      });
       
-      // Update transfer order status to in_transit
-      const updatedOrder = await storage.updateTransferOrder(order.id, { status: "in_transit" });
+      const updatedOrder = await storage.getTransferOrder(order.id);
       res.json(updatedOrder);
     } catch (error: any) {
       console.error("Transfer execution error:", error);
@@ -4483,32 +4601,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const lines = await storage.getTransferOrderLines(order.id);
       
-      // Process each line - increase inventory at destination (or create if doesn't exist)
-      for (const line of lines) {
-        const receivedQty = line.receivedQty || line.shippedQty || line.requestedQty;
-        const destinationInventory = await storage.getStoreInventoryItem(order.toStoreId, line.inventoryItemId);
-        
-        if (destinationInventory) {
-          // Update existing inventory
-          await storage.updateStoreInventoryItemQuantity(
-            order.toStoreId,
-            line.inventoryItemId,
-            receivedQty
-          );
-        } else {
-          // Create new store inventory item
-          await storage.createStoreInventoryItem({
-            companyId: order.companyId,
-            storeId: order.toStoreId,
-            inventoryItemId: line.inventoryItemId,
-            onHandQty: receivedQty,
-            active: 1
-          });
+      // Wrap transfer receiving in transaction for atomicity
+      // Prevents partial inventory updates under concurrent access
+      await withTransaction(async (tx) => {
+        // Process each line - increase inventory at destination with explicit companyId filter
+        for (const line of lines) {
+          const receivedQty = line.receivedQty || line.shippedQty || line.requestedQty;
+          
+          // Get destination store inventory with explicit companyId filter
+          const [destinationInventory] = await tx
+            .select()
+            .from(storeInventoryItems)
+            .where(
+              and(
+                eq(storeInventoryItems.companyId, order.companyId), // Explicit tenant guard
+                eq(storeInventoryItems.storeId, order.toStoreId),
+                eq(storeInventoryItems.inventoryItemId, line.inventoryItemId)
+              )
+            )
+            .limit(1);
+          
+          if (destinationInventory) {
+            // Update existing inventory with explicit companyId filter
+            await tx
+              .update(storeInventoryItems)
+              .set({ 
+                onHandQty: destinationInventory.onHandQty + receivedQty,
+                updatedAt: new Date()
+              })
+              .where(
+                and(
+                  eq(storeInventoryItems.companyId, order.companyId), // Explicit tenant guard
+                  eq(storeInventoryItems.storeId, order.toStoreId),
+                  eq(storeInventoryItems.inventoryItemId, line.inventoryItemId)
+                )
+              );
+          } else {
+            // Create new store inventory item
+            await tx.insert(storeInventoryItems).values({
+              companyId: order.companyId,
+              storeId: order.toStoreId,
+              inventoryItemId: line.inventoryItemId,
+              onHandQty: receivedQty,
+              active: 1
+            });
+          }
         }
-      }
+        
+        // Update transfer order status to completed with explicit companyId filter
+        await tx
+          .update(transferOrders)
+          .set({ 
+            status: "completed",
+            updatedAt: new Date()
+          })
+          .where(
+            and(
+              eq(transferOrders.id, order.id),
+              eq(transferOrders.companyId, order.companyId) // Explicit tenant guard
+            )
+          );
+      });
       
-      // Update transfer order status to completed
-      const updatedOrder = await storage.updateTransferOrder(order.id, { status: "completed" });
+      const updatedOrder = await storage.getTransferOrder(order.id);
       res.json(updatedOrder);
     } catch (error: any) {
       console.error("Transfer receive error:", error);

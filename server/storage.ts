@@ -107,7 +107,7 @@ export interface IStorage {
   getInventoryItems(locationId?: string, storeId?: string, companyId?: string): Promise<InventoryItem[]>;
   getInventoryItem(id: string): Promise<InventoryItem | undefined>;
   createInventoryItem(item: InsertInventoryItem): Promise<InventoryItem>;
-  updateInventoryItem(id: string, item: Partial<InventoryItem>): Promise<InventoryItem | undefined>;
+  updateInventoryItem(id: string, item: Partial<InventoryItem>, companyId?: string): Promise<InventoryItem | undefined>;
   getInventoryItemsByName(name: string): Promise<InventoryItem[]>;
   getInventoryItemsAggregated(): Promise<Array<{
     name: string;
@@ -138,8 +138,8 @@ export interface IStorage {
   getVendors(companyId?: string): Promise<Vendor[]>;
   getVendor(id: string, companyId?: string): Promise<Vendor | undefined>;
   createVendor(vendor: InsertVendor): Promise<Vendor>;
-  updateVendor(id: string, vendor: Partial<Vendor>): Promise<Vendor | undefined>;
-  deleteVendor(id: string): Promise<void>;
+  updateVendor(id: string, vendor: Partial<Vendor>, companyId?: string): Promise<Vendor | undefined>;
+  deleteVendor(id: string, companyId?: string): Promise<void>;
 
   // Vendor Items
   getVendorItems(vendorId?: string, companyId?: string, storeId?: string): Promise<VendorItem[]>;
@@ -152,7 +152,7 @@ export interface IStorage {
   getRecipes(companyId?: string): Promise<Recipe[]>;
   getRecipe(id: string, companyId?: string): Promise<Recipe | undefined>;
   createRecipe(recipe: InsertRecipe): Promise<Recipe>;
-  updateRecipe(id: string, recipe: Partial<Recipe>): Promise<Recipe | undefined>;
+  updateRecipe(id: string, recipe: Partial<Recipe>, companyId?: string): Promise<Recipe | undefined>;
 
   // Recipe Components
   getRecipeComponents(recipeId: string): Promise<RecipeComponent[]>;
@@ -707,11 +707,15 @@ export class DatabaseStorage implements IStorage {
     return item;
   }
 
-  async updateInventoryItem(id: string, updates: Partial<InventoryItem>): Promise<InventoryItem | undefined> {
+  async updateInventoryItem(id: string, updates: Partial<InventoryItem>, companyId?: string): Promise<InventoryItem | undefined> {
+    const conditions = [eq(inventoryItems.id, id)];
+    if (companyId) {
+      conditions.push(eq(inventoryItems.companyId, companyId));
+    }
     const [item] = await db
       .update(inventoryItems)
       .set(updates)
-      .where(eq(inventoryItems.id, id))
+      .where(and(...conditions))
       .returning();
     return item || undefined;
   }
@@ -918,17 +922,25 @@ export class DatabaseStorage implements IStorage {
     return vendor;
   }
 
-  async updateVendor(id: string, updates: Partial<Vendor>): Promise<Vendor | undefined> {
+  async updateVendor(id: string, updates: Partial<Vendor>, companyId?: string): Promise<Vendor | undefined> {
+    const conditions = [eq(vendors.id, id)];
+    if (companyId) {
+      conditions.push(eq(vendors.companyId, companyId));
+    }
     const [vendor] = await db
       .update(vendors)
       .set(updates)
-      .where(eq(vendors.id, id))
+      .where(and(...conditions))
       .returning();
     return vendor || undefined;
   }
 
-  async deleteVendor(id: string): Promise<void> {
-    await db.delete(vendors).where(eq(vendors.id, id));
+  async deleteVendor(id: string, companyId?: string): Promise<void> {
+    const conditions = [eq(vendors.id, id)];
+    if (companyId) {
+      conditions.push(eq(vendors.companyId, companyId));
+    }
+    await db.delete(vendors).where(and(...conditions));
   }
 
   // Vendor Items
@@ -1042,11 +1054,15 @@ export class DatabaseStorage implements IStorage {
     return recipe;
   }
 
-  async updateRecipe(id: string, updates: Partial<Recipe>): Promise<Recipe | undefined> {
+  async updateRecipe(id: string, updates: Partial<Recipe>, companyId?: string): Promise<Recipe | undefined> {
+    const conditions = [eq(recipes.id, id)];
+    if (companyId) {
+      conditions.push(eq(recipes.companyId, companyId));
+    }
     const [recipe] = await db
       .update(recipes)
       .set(updates)
-      .where(eq(recipes.id, id))
+      .where(and(...conditions))
       .returning();
     return recipe || undefined;
   }
