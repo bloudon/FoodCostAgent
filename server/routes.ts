@@ -474,8 +474,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         passwordHash,
       });
       
-      // Assign user to stores if specified
-      if (storeIds && Array.isArray(storeIds)) {
+      // Company admins are automatically assigned to all stores
+      if (newUser.role === "company_admin" && newUser.companyId) {
+        const companyStores = await storage.getCompanyStores(newUser.companyId);
+        for (const store of companyStores) {
+          await storage.assignUserToStore(newUser.id, store.id);
+        }
+      } else if (storeIds && Array.isArray(storeIds)) {
+        // Assign user to stores if specified (for non-company-admin users)
         // Validate store assignments
         for (const storeId of storeIds) {
           const store = await storage.getCompanyStore(storeId);

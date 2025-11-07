@@ -76,19 +76,56 @@ async function upsertSsoUser(
       updatedAt: new Date(),
     });
   } else {
-    // Create new user with SSO
-    // New SSO users start with store_user role and no company assignment
-    // Admin will need to assign them to a company
-    user = await storage.createUser({
-      email: email || `sso_${ssoId}@placeholder.com`, // Fallback for providers without email
-      ssoProvider,
-      ssoId,
-      profileImageUrl: claims["profile_image_url"],
-      firstName: claims["first_name"],
-      lastName: claims["last_name"],
-      role: "store_user",
-      active: 1,
-    });
+    // Check for pending invitation
+    let invitation;
+    if (email) {
+      // Search for invitation across all companies
+      const allCompanies = await storage.getCompanies();
+      for (const company of allCompanies) {
+        invitation = await storage.getInvitationByEmail(email, company.id);
+        if (invitation) break;
+      }
+    }
+    
+    if (invitation) {
+      // Create user with company and role from invitation
+      user = await storage.createUser({
+        email,
+        companyId: invitation.companyId,
+        ssoProvider,
+        ssoId,
+        profileImageUrl: claims["profile_image_url"],
+        firstName: claims["first_name"],
+        lastName: claims["last_name"],
+        role: invitation.role,
+        active: 1,
+      });
+      
+      // Mark invitation as accepted
+      await storage.acceptInvitation(invitation.token);
+      
+      // If company admin, auto-assign to all stores
+      if (invitation.role === "company_admin") {
+        const companyStores = await storage.getCompanyStores(invitation.companyId);
+        for (const store of companyStores) {
+          await storage.assignUserToStore(user.id, store.id);
+        }
+      }
+    } else {
+      // Create new user with SSO
+      // New SSO users start with store_user role and no company assignment
+      // Admin will need to assign them to a company
+      user = await storage.createUser({
+        email: email || `sso_${ssoId}@placeholder.com`, // Fallback for providers without email
+        ssoProvider,
+        ssoId,
+        profileImageUrl: claims["profile_image_url"],
+        firstName: claims["first_name"],
+        lastName: claims["last_name"],
+        role: "store_user",
+        active: 1,
+      });
+    }
   }
   
   return user;
