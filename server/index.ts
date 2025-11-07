@@ -1,12 +1,25 @@
 import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
+import compression from "compression";
 import { registerRoutes, setupWebSocket } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { seedDatabase } from "./seed";
 import { storage } from "./storage";
+import { cache } from "./cache";
 
 const app = express();
 app.disable('etag');
+
+// Enable gzip compression for responses >1KB (Phase 2 optimization)
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    return compression.filter(req, res);
+  }
+}));
 
 // Raw body parser for webhooks (must come before JSON parser to handle non-JSON EDI payloads)
 app.use('/webhooks/edi', express.raw({

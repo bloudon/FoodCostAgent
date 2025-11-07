@@ -1,7 +1,9 @@
 import { randomBytes, createHash } from "crypto";
 import bcrypt from "bcrypt";
 import { storage } from "./storage";
+import { cache, CacheKeys, CacheTTL } from "./cache";
 import type { Request, Response, NextFunction } from "express";
+import type { AuthSession, User } from "@shared/schema";
 
 const TOKEN_LENGTH = 32;
 const SESSION_DURATION_DAYS = 30;
@@ -37,7 +39,7 @@ export async function createSession(userId: string, userAgent?: string, ip?: str
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + SESSION_DURATION_DAYS);
 
-  await storage.createAuthSession({
+  const session = await storage.createAuthSession({
     userId,
     tokenHash,
     expiresAt,
@@ -45,11 +47,14 @@ export async function createSession(userId: string, userAgent?: string, ip?: str
     ipAddress: ip,
   });
 
+  // Cache the session for fast lookups (Phase 2 optimization)
+  await cache.set(CacheKeys.session(tokenHash), session, CacheTTL.SESSION);
+
   return token;
 }
 
 /**
- * Middleware to require authentication
+ * Middleware to require authentication (with Phase 2 caching)
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = req.cookies?.session;
@@ -59,13 +64,37 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   const tokenHash = createHash("sha256").update(token).digest("hex");
-  const session = await storage.getAuthSessionByToken(tokenHash);
+  
+  // Try cache first (Phase 2 optimization - eliminates DB lookup on every request)
+  let session: AuthSession | null | undefined = await cache.get<AuthSession>(CacheKeys.session(tokenHash));
+  
+  if (!session) {
+    // Cache miss - fetch from database
+    session = await storage.getAuthSessionByToken(tokenHash);
+    
+    if (session) {
+      // Cache for future requests
+      await cache.set(CacheKeys.session(tokenHash), session, CacheTTL.SESSION);
+    }
+  }
 
   if (!session) {
     return res.status(401).json({ error: "Invalid or expired session" });
   }
 
-  const user = await storage.getUser(session.userId);
+  // Try cache for user lookup (Phase 2 optimization)
+  let user: User | null | undefined = await cache.get<User>(CacheKeys.user(parseInt(session.userId)));
+  
+  if (!user) {
+    // Cache miss - fetch from database
+    user = await storage.getUser(session.userId);
+    
+    if (user) {
+      // Cache for future requests
+      await cache.set(CacheKeys.user(parseInt(user.id)), user, CacheTTL.USER);
+    }
+  }
+  
   if (!user) {
     return res.status(401).json({ error: "User not found" });
   }
@@ -83,7 +112,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 }
 
 /**
- * Optional auth middleware - doesn't fail if not authenticated
+ * Optional auth middleware - doesn't fail if not authenticated (with Phase 2 caching)
  */
 export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
   const token = req.cookies?.session;
@@ -93,10 +122,28 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
   }
 
   const tokenHash = createHash("sha256").update(token).digest("hex");
-  const session = await storage.getAuthSessionByToken(tokenHash);
+  
+  // Try cache first (Phase 2 optimization)
+  let session: AuthSession | null | undefined = await cache.get<AuthSession>(CacheKeys.session(tokenHash));
+  
+  if (!session) {
+    session = await storage.getAuthSessionByToken(tokenHash);
+    if (session) {
+      await cache.set(CacheKeys.session(tokenHash), session, CacheTTL.SESSION);
+    }
+  }
 
   if (session) {
-    const user = await storage.getUser(session.userId);
+    // Try cache for user lookup
+    let user: User | null | undefined = await cache.get<User>(CacheKeys.user(parseInt(session.userId)));
+    
+    if (!user) {
+      user = await storage.getUser(session.userId);
+      if (user) {
+        await cache.set(CacheKeys.user(parseInt(user.id)), user, CacheTTL.USER);
+      }
+    }
+    
     if (user) {
       (req as any).user = user;
       (req as any).sessionId = session.id;
