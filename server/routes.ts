@@ -9,7 +9,7 @@ import { getAccessibleStores } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
