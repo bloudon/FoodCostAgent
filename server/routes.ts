@@ -7,6 +7,7 @@ import { z } from "zod";
 import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth";
 import { getAccessibleStores } from "./permissions";
 import { db } from "./db";
+import { withTransaction } from "./transaction";
 import { eq, and, inArray } from "drizzle-orm";
 import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, companyStores, vendorItems } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
@@ -2676,37 +2677,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
         itemTotals.set(line.inventoryItemId, currentTotal + line.qty);
       }
 
-      // Update on-hand quantities for each item
-      for (const [inventoryItemId, totalQty] of itemTotals.entries()) {
-        // Check if store inventory record exists
-        const storeItem = await storage.getStoreInventoryItem(count.storeId, inventoryItemId);
-        
-        if (storeItem) {
-          // Calculate the difference to update
-          const qtyDifference = totalQty - storeItem.onHandQty;
-          await storage.updateStoreInventoryItemQuantity(count.storeId, inventoryItemId, qtyDifference);
-        } else {
-          // Create new store inventory item with counted quantity
-          await storage.createStoreInventoryItem({
-            companyId: count.companyId,
-            storeId: count.storeId,
-            inventoryItemId: inventoryItemId,
-            onHandQty: totalQty,
-            active: 1
-          });
+      // Wrap inventory updates in transaction for atomicity
+      // Prevents partial updates if operation fails mid-way under concurrent access
+      await withTransaction(async (tx) => {
+        // Update on-hand quantities for each item
+        for (const [inventoryItemId, totalQty] of itemTotals.entries()) {
+          // Check if store inventory record exists (with explicit companyId filter for tenant isolation)
+          const [existingStoreItem] = await tx
+            .select()
+            .from(storeInventoryItems)
+            .where(
+              and(
+                eq(storeInventoryItems.companyId, count.companyId), // Explicit tenant guard
+                eq(storeInventoryItems.storeId, count.storeId),
+                eq(storeInventoryItems.inventoryItemId, inventoryItemId)
+              )
+            )
+            .limit(1);
+          
+          if (existingStoreItem) {
+            // Update existing record with explicit companyId filter for security
+            await tx
+              .update(storeInventoryItems)
+              .set({ 
+                onHandQty: totalQty,
+                updatedAt: new Date()
+              })
+              .where(
+                and(
+                  eq(storeInventoryItems.companyId, count.companyId), // Explicit tenant guard
+                  eq(storeInventoryItems.storeId, count.storeId),
+                  eq(storeInventoryItems.inventoryItemId, inventoryItemId)
+                )
+              );
+          } else {
+            // Create new store inventory item with counted quantity
+            await tx.insert(storeInventoryItems).values({
+              companyId: count.companyId,
+              storeId: count.storeId,
+              inventoryItemId: inventoryItemId,
+              onHandQty: totalQty,
+              active: 1
+            });
+          }
         }
-      }
 
-      // Mark count as applied and lock it (make read-only)
-      await db
-        .update(inventoryCounts)
-        .set({ 
-          applied: 1,
-          appliedAt: new Date(),
-          appliedBy: user.id,
-          canEdit: 0
-        })
-        .where(eq(inventoryCounts.id, count.id));
+        // Mark count as applied and lock it (make read-only) with explicit companyId filter
+        await tx
+          .update(inventoryCounts)
+          .set({ 
+            applied: 1,
+            appliedAt: new Date(),
+            appliedBy: user.id,
+            canEdit: 0 // Lock the count from further edits
+          })
+          .where(
+            and(
+              eq(inventoryCounts.id, count.id),
+              eq(inventoryCounts.companyId, count.companyId) // Explicit tenant guard
+            )
+          );
+      });
 
       const updatedCount = await storage.getInventoryCount(count.id);
       res.json(updatedCount);

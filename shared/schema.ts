@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, timestamp, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, timestamp, unique, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -119,7 +119,12 @@ export const authSessions = pgTable("auth_sessions", {
   userAgent: text("user_agent"),
   ipAddress: text("ip_address"),
   selectedCompanyId: varchar("selected_company_id"), // For global_admin users to track selected company
-});
+}, (table) => ({
+  // Optimize auth lookups and session cleanup queries
+  userIdIdx: index("auth_sessions_user_id_idx").on(table.userId),
+  expiresAtIdx: index("auth_sessions_expires_at_idx").on(table.expiresAt),
+  tokenHashIdx: index("auth_sessions_token_hash_idx").on(table.tokenHash),
+}));
 
 export const insertAuthSessionSchema = createInsertSchema(authSessions).omit({ id: true, createdAt: true });
 export type InsertAuthSession = z.infer<typeof insertAuthSessionSchema>;
@@ -234,7 +239,11 @@ export const inventoryItems = pgTable("inventory_items", {
   reorderLevel: real("reorder_level"), // default reorder level (can be overridden at store level)
   imageUrl: text("image_url"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  // Optimize company-scoped inventory queries
+  companyActiveIdx: index("inventory_items_company_active_idx").on(table.companyId, table.active),
+  companyNameIdx: index("inventory_items_company_name_idx").on(table.companyId, table.name),
+}));
 
 export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({ id: true, updatedAt: true }).extend({
   categoryId: z.string().nullable().optional(),
@@ -288,6 +297,9 @@ export const storeInventoryItems = pgTable("store_inventory_items", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
   uniqueStoreItem: unique().on(table.storeId, table.inventoryItemId),
+  // Optimize store-scoped inventory lookups
+  storeActiveIdx: index("store_inventory_items_store_active_idx").on(table.storeId, table.active),
+  companyStoreIdx: index("store_inventory_items_company_store_idx").on(table.companyId, table.storeId),
 }));
 
 export const insertStoreInventoryItemSchema = createInsertSchema(storeInventoryItems).omit({ id: true, updatedAt: true });
@@ -415,6 +427,8 @@ export const inventoryCountLines = pgTable("inventory_count_lines", {
 }, (table) => ({
   // Ensure one line per item per location per count
   uniqueCountItemLocation: unique().on(table.inventoryCountId, table.inventoryItemId, table.storageLocationId),
+  // Optimize count line queries
+  countIdIdx: index("inventory_count_lines_count_id_idx").on(table.inventoryCountId),
 }));
 
 export const insertInventoryCountLineSchema = createInsertSchema(inventoryCountLines).omit({ 
@@ -434,7 +448,11 @@ export const purchaseOrders = pgTable("purchase_orders", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   expectedDate: timestamp("expected_date"),
   notes: text("notes"),
-});
+}, (table) => ({
+  // Optimize PO queries by company, store, and status
+  companyStoreStatusIdx: index("purchase_orders_company_store_status_idx").on(table.companyId, table.storeId, table.status),
+  createdAtIdx: index("purchase_orders_created_at_idx").on(table.createdAt),
+}));
 
 export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({ id: true, createdAt: true }).extend({
   expectedDate: z.string().min(1, "Expected date is required").transform(val => new Date(val)),
@@ -465,7 +483,11 @@ export const receipts = pgTable("receipts", {
   purchaseOrderId: varchar("purchase_order_id").notNull(),
   status: text("status").notNull().default("draft"), // draft, completed
   receivedAt: timestamp("received_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  // Optimize receipt queries by company, store, and date
+  companyStoreReceivedIdx: index("receipts_company_store_received_idx").on(table.companyId, table.storeId, table.receivedAt),
+  poIdIdx: index("receipts_po_id_idx").on(table.purchaseOrderId),
+}));
 
 export const insertReceiptSchema = createInsertSchema(receipts).omit({ id: true, receivedAt: true });
 export type InsertReceipt = z.infer<typeof insertReceiptSchema>;
@@ -496,7 +518,10 @@ export const posSales = pgTable("pos_sales", {
   companyId: varchar("company_id").notNull(),
   storeId: varchar("store_id").notNull(),
   occurredAt: timestamp("occurred_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  // Optimize POS sales queries by company, store, and date
+  companyStoreOccurredIdx: index("pos_sales_company_store_occurred_idx").on(table.companyId, table.storeId, table.occurredAt),
+}));
 
 export const insertPOSSaleSchema = createInsertSchema(posSales).omit({ id: true, occurredAt: true });
 export type InsertPOSSale = z.infer<typeof insertPOSSaleSchema>;
@@ -583,7 +608,11 @@ export const transferLogs = pgTable("transfer_logs", {
   transferredAt: timestamp("transferred_at").notNull().defaultNow(),
   transferredBy: varchar("transferred_by"),
   reason: text("reason"),
-});
+}, (table) => ({
+  // Optimize transfer log queries by company, stores, and date
+  companyFromStoreTransferredIdx: index("transfer_logs_company_from_store_transferred_idx").on(table.companyId, table.fromStoreId, table.transferredAt),
+  companyToStoreTransferredIdx: index("transfer_logs_company_to_store_transferred_idx").on(table.companyId, table.toStoreId, table.transferredAt),
+}));
 
 export const insertTransferLogSchema = createInsertSchema(transferLogs).omit({ id: true, transferredAt: true });
 export type InsertTransferLog = z.infer<typeof insertTransferLogSchema>;
@@ -638,7 +667,11 @@ export const wasteLogs = pgTable("waste_logs", {
   notes: text("notes"),
   wastedAt: timestamp("wasted_at").notNull().defaultNow(),
   loggedBy: varchar("logged_by"),
-});
+}, (table) => ({
+  // Optimize waste log queries by company, store, and date (critical for date-filtered reports)
+  companyStoreWastedIdx: index("waste_logs_company_store_wasted_idx").on(table.companyId, table.storeId, table.wastedAt),
+  wasteTypeIdx: index("waste_logs_waste_type_idx").on(table.wasteType),
+}));
 
 export const insertWasteLogSchema = createInsertSchema(wasteLogs).omit({ id: true, wastedAt: true });
 export type InsertWasteLog = z.infer<typeof insertWasteLogSchema>;

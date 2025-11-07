@@ -11,5 +11,13 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// Configure connection pool for multi-tenant production use
+// Limits prevent overwhelming Neon's serverless connection limit (~80)
+export const pool = new Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  max: 10, // Max connections per server instance (Autoscale will add more instances as needed)
+  idleTimeoutMillis: 30000, // Close idle connections after 30s
+  connectionTimeoutMillis: 5000, // Fail fast if pool is exhausted
+});
+
 export const db = drizzle({ client: pool, schema });
