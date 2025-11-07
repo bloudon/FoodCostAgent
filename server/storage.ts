@@ -1,5 +1,6 @@
 import { eq, and, or, gte, lte, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
+import { cache, CacheKeys } from "./cache";
 import {
   users, type User, type InsertUser,
   authSessions, type AuthSession, type InsertAuthSession,
@@ -408,14 +409,33 @@ export class DatabaseStorage implements IStorage {
       .set(updates)
       .where(eq(authSessions.id, id))
       .returning();
+    
+    // Invalidate cache when session is updated (Phase 2 optimization)
+    if (session) {
+      await cache.del(CacheKeys.session(session.tokenHash));
+    }
+    
     return session || undefined;
   }
 
   async revokeAuthSession(id: string): Promise<void> {
+    // Get session before revoking to invalidate cache
+    const session = await db.query.authSessions.findFirst({
+      where: eq(authSessions.id, id),
+    });
+    
     await db
       .update(authSessions)
       .set({ revokedAt: new Date() })
       .where(eq(authSessions.id, id));
+    
+    // Invalidate cache when session is revoked (Phase 2 optimization)
+    if (session) {
+      await cache.del(CacheKeys.session(session.tokenHash));
+      if (session.userId) {
+        await cache.del(CacheKeys.user(parseInt(session.userId)));
+      }
+    }
   }
 
   async cleanExpiredSessions(): Promise<void> {
