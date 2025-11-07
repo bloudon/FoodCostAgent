@@ -41,6 +41,7 @@ import {
   insertSystemPreferencesSchema,
   insertCompanySchema,
   insertCompanyStoreSchema,
+  insertInvitationSchema,
 } from "@shared/schema";
 
 // Swagger/OpenAPI Configuration
@@ -604,6 +605,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const userStores = await storage.getUserStores(req.params.userId);
       res.json(userStores);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============ INVITATIONS ============
+  // Create invitation (admin only)
+  app.post("/api/invitations", requireAuth, async (req, res) => {
+    try {
+      const currentUser = (req as any).user;
+      const { email, role } = req.body;
+
+      // Only global admins and company admins can send invitations
+      if (currentUser.role !== "global_admin" && currentUser.role !== "company_admin") {
+        return res.status(403).json({ error: "Insufficient permissions" });
+      }
+
+      // Validate required fields
+      if (!email || !role) {
+        return res.status(400).json({ error: "Email and role are required" });
+      }
+
+      // Company admins can only invite to their company
+      const companyId = currentUser.role === "company_admin" 
+        ? currentUser.companyId 
+        : req.body.companyId;
+
+      if (!companyId) {
+        return res.status(400).json({ error: "Company ID is required" });
+      }
+
+      // Company admins cannot invite global admins
+      if (currentUser.role === "company_admin" && role === "global_admin") {
+        return res.status(403).json({ error: "Cannot invite global admins" });
+      }
+
+      // Check if user already exists with this email
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ error: "User with this email already exists" });
+      }
+
+      // Check if there's already a pending invitation for this email
+      const existingInvitation = await storage.getInvitationByEmail(email, companyId);
+      if (existingInvitation) {
+        return res.status(400).json({ error: "Pending invitation already exists for this email" });
+      }
+
+      // Generate secure token
+      const token = crypto.randomBytes(32).toString("hex");
+
+      // Set expiration (7 days from now)
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+
+      // Create invitation
+      const invitation = await storage.createInvitation({
+        email,
+        companyId,
+        role,
+        token,
+        invitedBy: currentUser.id,
+        expiresAt,
+      });
+
+      res.status(201).json(invitation);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // List pending invitations for company (admin only)
+  app.get("/api/invitations", requireAuth, async (req, res) => {
+    try {
+      const currentUser = (req as any).user;
+
+      // Only global admins and company admins can list invitations
+      if (currentUser.role !== "global_admin" && currentUser.role !== "company_admin") {
+        return res.status(403).json({ error: "Insufficient permissions" });
+      }
+
+      // Company admins can only list invitations for their company
+      const companyId = currentUser.role === "company_admin"
+        ? currentUser.companyId
+        : (req.query.companyId as string);
+
+      if (!companyId) {
+        return res.status(400).json({ error: "Company ID is required" });
+      }
+
+      const invitations = await storage.getPendingInvitations(companyId);
+      res.json(invitations);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Revoke invitation (admin only)
+  app.delete("/api/invitations/:id", requireAuth, async (req, res) => {
+    try {
+      const currentUser = (req as any).user;
+
+      // Only global admins and company admins can revoke invitations
+      if (currentUser.role !== "global_admin" && currentUser.role !== "company_admin") {
+        return res.status(403).json({ error: "Insufficient permissions" });
+      }
+
+      // Company admins can only revoke invitations for their company
+      const companyId = currentUser.role === "company_admin"
+        ? currentUser.companyId
+        : undefined;
+
+      if (!companyId && currentUser.role === "company_admin") {
+        return res.status(403).json({ error: "Company admins must have a company ID" });
+      }
+
+      await storage.revokeInvitation(req.params.id, companyId!);
+      res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

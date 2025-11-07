@@ -42,6 +42,7 @@ import {
   orderGuides, type OrderGuide, type InsertOrderGuide,
   orderGuideLines, type OrderGuideLine, type InsertOrderGuideLine,
   userStores, type UserStore, type InsertUserStore,
+  invitations, type Invitation, type InsertInvitation,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -57,6 +58,15 @@ export interface IStorage {
   getUserStores(userId: string): Promise<UserStore[]>;
   assignUserToStore(userId: string, storeId: string): Promise<UserStore>;
   removeUserFromStore(userId: string, storeId: string): Promise<void>;
+
+  // Invitations
+  createInvitation(invitation: InsertInvitation): Promise<Invitation>;
+  getInvitationByToken(token: string): Promise<Invitation | undefined>;
+  getInvitationByEmail(email: string, companyId: string): Promise<Invitation | undefined>;
+  getPendingInvitations(companyId: string): Promise<Invitation[]>;
+  acceptInvitation(token: string): Promise<Invitation | undefined>;
+  revokeInvitation(id: string, companyId: string): Promise<void>;
+  cleanExpiredInvitations(): Promise<void>;
 
   // Auth Sessions
   createAuthSession(session: InsertAuthSession): Promise<AuthSession>;
@@ -394,6 +404,77 @@ export class DatabaseStorage implements IStorage {
         eq(userStores.userId, userId),
         eq(userStores.storeId, storeId)
       ));
+  }
+
+  // Invitations
+  async createInvitation(insertInvitation: InsertInvitation): Promise<Invitation> {
+    const [invitation] = await db.insert(invitations).values(insertInvitation).returning();
+    return invitation;
+  }
+
+  async getInvitationByToken(token: string): Promise<Invitation | undefined> {
+    const [invitation] = await db
+      .select()
+      .from(invitations)
+      .where(and(
+        eq(invitations.token, token),
+        isNull(invitations.acceptedAt),
+        gte(invitations.expiresAt, new Date())
+      ));
+    return invitation || undefined;
+  }
+
+  async getInvitationByEmail(email: string, companyId: string): Promise<Invitation | undefined> {
+    const [invitation] = await db
+      .select()
+      .from(invitations)
+      .where(and(
+        eq(invitations.email, email),
+        eq(invitations.companyId, companyId),
+        isNull(invitations.acceptedAt),
+        gte(invitations.expiresAt, new Date())
+      ))
+      .orderBy(invitations.createdAt)
+      .limit(1);
+    return invitation || undefined;
+  }
+
+  async getPendingInvitations(companyId: string): Promise<Invitation[]> {
+    return await db
+      .select()
+      .from(invitations)
+      .where(and(
+        eq(invitations.companyId, companyId),
+        isNull(invitations.acceptedAt),
+        gte(invitations.expiresAt, new Date())
+      ))
+      .orderBy(invitations.createdAt);
+  }
+
+  async acceptInvitation(token: string): Promise<Invitation | undefined> {
+    const [invitation] = await db
+      .update(invitations)
+      .set({ acceptedAt: new Date() })
+      .where(and(
+        eq(invitations.token, token),
+        isNull(invitations.acceptedAt),
+        gte(invitations.expiresAt, new Date())
+      ))
+      .returning();
+    return invitation || undefined;
+  }
+
+  async revokeInvitation(id: string, companyId: string): Promise<void> {
+    await db.delete(invitations)
+      .where(and(
+        eq(invitations.id, id),
+        eq(invitations.companyId, companyId)
+      ));
+  }
+
+  async cleanExpiredInvitations(): Promise<void> {
+    await db.delete(invitations)
+      .where(lte(invitations.expiresAt, new Date()));
   }
 
   // Auth Sessions
