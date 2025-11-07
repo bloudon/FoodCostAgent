@@ -52,6 +52,7 @@ function updateUserSession(
 
 async function upsertSsoUser(
   claims: any,
+  invitationToken?: string,
 ) {
   // Check if user exists by SSO ID
   const ssoId = claims["sub"];
@@ -76,14 +77,17 @@ async function upsertSsoUser(
       updatedAt: new Date(),
     });
   } else {
-    // Check for pending invitation
+    // Check for pending invitation token
     let invitation;
-    if (email) {
-      // Search for invitation across all companies
-      const allCompanies = await storage.getCompanies();
-      for (const company of allCompanies) {
-        invitation = await storage.getInvitationByEmail(email, company.id);
-        if (invitation) break;
+    
+    if (invitationToken) {
+      // Use token to get the specific invitation
+      invitation = await storage.getInvitationByToken(invitationToken);
+      
+      // Validate that the invitation email matches the SSO email
+      if (invitation && invitation.email !== email) {
+        console.error("Invitation email mismatch:", invitation.email, "vs", email);
+        invitation = undefined; // Reject invitation if email doesn't match
       }
     }
     
@@ -149,10 +153,8 @@ export async function setupSsoAuth(app: Express) {
   ) => {
     const sessionData = {};
     updateUserSession(sessionData, tokens);
-    const user = await upsertSsoUser(tokens.claims());
-    
-    // Store user ID in session for easy retrieval
-    (sessionData as any).userId = user.id;
+    // Store claims in session data for callback handler to access
+    (sessionData as any).claims = tokens.claims();
     
     verified(null, sessionData);
   };
@@ -206,6 +208,21 @@ export async function setupSsoAuth(app: Express) {
       
       console.log("SSO sessionData:", sessionData);
       
+      // Process invitation if token exists in session
+      const invitationToken = (req.session as any).pendingInvitationToken;
+      const claims = sessionData.claims;
+      
+      // Create or update user with invitation if applicable
+      const user = await upsertSsoUser(claims, invitationToken);
+      
+      // Clear invitation token from session
+      if (invitationToken) {
+        delete (req.session as any).pendingInvitationToken;
+      }
+      
+      // Store user ID in session data
+      sessionData.userId = user.id;
+      
       // Log the user in
       req.login(sessionData, async (loginErr) => {
         if (loginErr) {
@@ -214,20 +231,6 @@ export async function setupSsoAuth(app: Express) {
         }
         
         console.log("User logged in via Passport, session ID:", req.session?.id);
-        
-        // Fetch full user to check company assignment
-        const userId = sessionData.userId;
-        if (!userId) {
-          console.error("No userId in sessionData");
-          return res.redirect("/login");
-        }
-        
-        const user = await storage.getUser(userId);
-        if (!user) {
-          console.error("User not found:", userId);
-          return res.redirect("/login");
-        }
-        
         console.log("User authenticated:", user.email, "companyId:", user.companyId);
         
         // Save session before redirecting

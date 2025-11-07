@@ -617,6 +617,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ INVITATIONS ============
+  // Get invitation details by token (public endpoint for invitation acceptance)
+  app.get("/api/invitations/by-token/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      
+      const invitation = await storage.getInvitationByToken(token);
+      
+      if (!invitation) {
+        return res.status(404).json({ error: "Invitation not found or expired" });
+      }
+      
+      // Fetch company name to display on acceptance page
+      const company = await storage.getCompany(invitation.companyId);
+      
+      // Return safe invitation details (exclude sensitive fields)
+      res.json({
+        email: invitation.email,
+        role: invitation.role,
+        companyName: company?.name || "Unknown Company",
+        expiresAt: invitation.expiresAt,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Prepare invitation acceptance (stores token in session for SSO callback)
+  app.post("/api/invitations/prepare-acceptance/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      
+      // Validate the invitation token
+      const invitation = await storage.getInvitationByToken(token);
+      
+      if (!invitation) {
+        return res.status(404).json({ error: "Invitation not found or expired" });
+      }
+      
+      // Store the invitation token in the session for SSO callback to use
+      (req.session as any).pendingInvitationToken = token;
+      
+      // Save the session before redirecting
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+          return res.status(500).json({ error: "Failed to prepare invitation" });
+        }
+        res.json({ success: true });
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Create invitation (admin only)
   app.post("/api/invitations", requireAuth, async (req, res) => {
     try {

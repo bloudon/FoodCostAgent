@@ -43,6 +43,7 @@ import Stores from "@/pages/stores";
 import WasteEntry from "@/pages/waste-entry";
 import Login from "@/pages/login";
 import PendingApproval from "@/pages/pending-approval";
+import AcceptInvitation from "@/pages/accept-invitation";
 
 function ProtectedLayout() {
   const { user, isLoading, logout } = useAuth();
@@ -157,6 +158,7 @@ function App() {
             <Switch>
               <Route path="/login" component={Login} />
               <Route path="/pending-approval" component={PendingApproval} />
+              <Route path="/accept-invitation/:token" component={AcceptInvitation} />
               <Route>
                 <ProtectedLayout />
               </Route>
