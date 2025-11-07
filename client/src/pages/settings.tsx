@@ -6,10 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon } from "lucide-react";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { SiGoogle, SiGithub, SiApple, SiX } from "react-icons/si";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
   Select,
@@ -522,11 +521,11 @@ export default function Settings() {
               <div className="space-y-4">
                 <div>
                   <Label className="text-base font-semibold flex items-center gap-2">
-                    <LinkIcon className="h-4 w-4" />
-                    Linked Accounts
+                    <Shield className="h-4 w-4" />
+                    Enterprise SSO
                   </Label>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Connect your account with SSO providers for easier sign-in
+                    Single Sign-On for enterprise authentication
                   </p>
                 </div>
 
@@ -534,67 +533,35 @@ export default function Settings() {
                   <div className="border rounded-md p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        {currentUser.ssoProvider === 'google' && <SiGoogle className="h-5 w-5" />}
-                        {currentUser.ssoProvider === 'github' && <SiGithub className="h-5 w-5" />}
-                        {currentUser.ssoProvider === 'apple' && <SiApple className="h-5 w-5" />}
-                        {currentUser.ssoProvider === 'x' && <SiX className="h-5 w-5" />}
+                        <Shield className="h-5 w-5 text-primary" />
                         <div>
-                          <p className="font-medium capitalize" data-testid={`text-sso-${currentUser.ssoProvider}`}>
-                            {currentUser.ssoProvider}
+                          <p className="font-medium" data-testid="text-sso-enabled">
+                            SSO Enabled
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            Linked account
+                            You can sign in using enterprise SSO
                           </p>
                         </div>
                       </div>
                       <Badge variant="default" data-testid="badge-sso-linked">
-                        Linked
+                        Active
                       </Badge>
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      No SSO accounts linked. Link an account below:
+                      SSO is not enabled for your account. Contact your administrator or link below:
                     </p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => window.location.href = "/api/sso/login?provider=google"}
-                        data-testid="button-link-google"
-                      >
-                        <SiGoogle className="mr-2 h-4 w-4" />
-                        Link Google
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => window.location.href = "/api/sso/login?provider=github"}
-                        data-testid="button-link-github"
-                      >
-                        <SiGithub className="mr-2 h-4 w-4" />
-                        Link GitHub
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => window.location.href = "/api/sso/login?provider=apple"}
-                        data-testid="button-link-apple"
-                      >
-                        <SiApple className="mr-2 h-4 w-4" />
-                        Link Apple
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => window.location.href = "/api/sso/login?provider=x"}
-                        data-testid="button-link-x"
-                      >
-                        <SiX className="mr-2 h-4 w-4" />
-                        Link X
-                      </Button>
-                    </div>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => window.location.href = "/api/sso/login"}
+                      data-testid="button-link-sso"
+                    >
+                      <Shield className="mr-2 h-4 w-4" />
+                      Link SSO Account
+                    </Button>
                   </div>
                 )}
               </div>
