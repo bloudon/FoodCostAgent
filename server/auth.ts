@@ -79,8 +79,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         (req as any).ssoAuth = true;
         
         // Resolve company context
-        const companyId = user.companyId || null;
+        // For global admins, use selectedCompanyId from Passport session if available
+        // For company-bound users, use their companyId
+        let companyId = user.companyId || null;
+        if (user.role === "global_admin" && (req as any).session?.selectedCompanyId) {
+          companyId = (req as any).session.selectedCompanyId;
+        }
         (req as any).companyId = companyId;
+        (req as any).selectedCompanyId = (req as any).session?.selectedCompanyId || null;
         
         return next();
       }

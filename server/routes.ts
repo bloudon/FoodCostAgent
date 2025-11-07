@@ -172,6 +172,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/auth/me", requireAuth, async (req, res) => {
     const user = (req as any).user;
+    const isSSOAuth = (req as any).ssoAuth;
+    const authSession = (req as any).authSession;
+    
+    // Get selectedCompanyId from session
+    // For SSO users: read from Passport session (req.session)
+    // For username/password users: read from database session (req.authSession)
+    let selectedCompanyId = null;
+    if (isSSOAuth) {
+      selectedCompanyId = (req as any).session?.selectedCompanyId || null;
+    } else if (authSession) {
+      selectedCompanyId = authSession.selectedCompanyId || null;
+    }
+    
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
@@ -184,13 +197,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       lastName: user.lastName,
       ssoProvider: user.ssoProvider,
       ssoId: user.ssoId,
-      profileImageUrl: user.profileImageUrl
+      profileImageUrl: user.profileImageUrl,
+      selectedCompanyId
     });
   });
 
   app.post("/api/auth/select-company", requireAuth, async (req, res) => {
     try {
       const { companyId } = req.body;
+      const isSSOAuth = (req as any).ssoAuth;
       const sessionId = (req as any).sessionId;
       
       if (!companyId) {
@@ -204,7 +219,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Update the session with the selected company
-      await storage.updateAuthSession(sessionId, { selectedCompanyId: companyId });
+      // For SSO users: store in Passport session
+      // For username/password users: store in database session
+      if (isSSOAuth) {
+        (req as any).session.selectedCompanyId = companyId;
+      } else if (sessionId) {
+        await storage.updateAuthSession(sessionId, { selectedCompanyId: companyId });
+      }
       
       res.json({ success: true, companyId });
     } catch (error: any) {

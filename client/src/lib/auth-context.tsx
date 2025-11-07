@@ -1,23 +1,24 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { User } from "@shared/schema";
 
-type User = {
-  id: string;
-  email: string;
-  role: string;
+// Extended user type with selectedCompanyId from session
+type AuthUser = User & {
+  selectedCompanyId?: string | null;
 };
 
 type AuthContextType = {
-  user: User | null;
+  user: AuthUser | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  getEffectiveCompanyId: () => string | null;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -60,8 +61,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Helper function to get the effective company ID
+  // For global admins, use selectedCompanyId from session
+  // For company-bound users, use their companyId
+  function getEffectiveCompanyId(): string | null {
+    if (!user) return null;
+    return user.role === "global_admin" 
+      ? (user.selectedCompanyId || null) 
+      : (user.companyId || null);
+  }
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, getEffectiveCompanyId }}>
       {children}
     </AuthContext.Provider>
   );
