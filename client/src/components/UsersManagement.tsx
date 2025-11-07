@@ -34,15 +34,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { User, CompanyStore } from "@shared/schema";
-import { UserPlus, Pencil, Trash2 } from "lucide-react";
+import { UserPlus, Pencil, Trash2, Mail, X, Copy } from "lucide-react";
+import type { Invitation } from "@shared/schema";
 
 export function UsersManagement({ companyId }: { companyId: string }) {
   const { toast } = useToast();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedStoreIds, setSelectedStoreIds] = useState<Set<string>>(new Set());
   const [createUserRole, setCreateUserRole] = useState<string>("store_user");
+  const [inviteRole, setInviteRole] = useState<string>("store_user");
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ["/api/users", companyId],
@@ -117,6 +120,59 @@ export function UsersManagement({ companyId }: { companyId: string }) {
       toast({
         title: "Error",
         description: error.message || "Failed to update user",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Invitation queries and mutations
+  const { data: invitations = [] } = useQuery<Invitation[]>({
+    queryKey: ["/api/invitations", companyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/invitations?companyId=${companyId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+      return await res.json();
+    },
+  });
+
+  const createInvitationMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiRequest("POST", "/api/invitations", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/invitations", companyId] });
+      setInviteDialogOpen(false);
+      toast({
+        title: "Success",
+        description: "Invitation sent successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send invitation",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const revokeInvitationMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await apiRequest("DELETE", `/api/invitations/${id}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/invitations", companyId] });
+      toast({
+        title: "Success",
+        description: "Invitation revoked successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to revoke invitation",
         variant: "destructive",
       });
     },
@@ -198,6 +254,28 @@ export function UsersManagement({ companyId }: { companyId: string }) {
     });
   };
 
+  const handleSendInvitation = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    
+    const invitationData = {
+      email: formData.get("email"),
+      role: formData.get("role"),
+      companyId,
+    };
+    
+    createInvitationMutation.mutate(invitationData);
+  };
+
+  const handleCopyInvitationLink = (token: string) => {
+    const inviteUrl = `${window.location.origin}/accept-invitation/${token}`;
+    navigator.clipboard.writeText(inviteUrl);
+    toast({
+      title: "Success",
+      description: "Invitation link copied to clipboard",
+    });
+  };
+
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
       case "global_admin":
@@ -231,6 +309,7 @@ export function UsersManagement({ companyId }: { companyId: string }) {
   }
 
   return (
+    <>
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
@@ -472,5 +551,123 @@ export function UsersManagement({ companyId }: { companyId: string }) {
         </Dialog>
       </CardContent>
     </Card>
+
+    {/* Pending Invitations Card */}
+    <Card className="mt-6">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Pending Invitations</CardTitle>
+            <CardDescription>
+              Invite new users to join your company via email
+            </CardDescription>
+          </div>
+          <Dialog open={inviteDialogOpen} onOpenChange={(open) => {
+            setInviteDialogOpen(open);
+            if (!open) {
+              setInviteRole("store_user");
+            }
+          }}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-send-invitation">
+                <Mail className="h-4 w-4 mr-2" />
+                Send Invitation
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Send Invitation</DialogTitle>
+                <DialogDescription>
+                  Invite a new user to join your company
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSendInvitation}>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="invite-email">Email</Label>
+                    <Input id="invite-email" name="email" type="email" required data-testid="input-invite-email" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="invite-role">Role</Label>
+                    <Select name="role" defaultValue="store_user" onValueChange={setInviteRole} required>
+                      <SelectTrigger data-testid="select-invite-role">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="company_admin">Company Admin</SelectItem>
+                        <SelectItem value="store_manager">Store Manager</SelectItem>
+                        <SelectItem value="store_user">Store User</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button type="submit" disabled={createInvitationMutation.isPending} data-testid="button-submit-invitation">
+                    {createInvitationMutation.isPending ? "Sending..." : "Send Invitation"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Email</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Expires</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {invitations.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4} className="text-center text-muted-foreground">
+                  No pending invitations
+                </TableCell>
+              </TableRow>
+            ) : (
+              invitations.map((invitation) => (
+                <TableRow key={invitation.id} data-testid={`row-invitation-${invitation.id}`}>
+                  <TableCell>{invitation.email}</TableCell>
+                  <TableCell>
+                    <Badge variant={getRoleBadgeVariant(invitation.role)}>
+                      {getRoleLabel(invitation.role)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {new Date(invitation.expiresAt).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleCopyInvitationLink(invitation.token)}
+                        data-testid={`button-copy-invitation-${invitation.id}`}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => revokeInvitationMutation.mutate(invitation.id)}
+                        disabled={revokeInvitationMutation.isPending}
+                        data-testid={`button-revoke-invitation-${invitation.id}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+    </>
   );
 }
