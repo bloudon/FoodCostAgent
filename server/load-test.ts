@@ -22,20 +22,19 @@ const results: LoadTestResult[] = [];
 async function setupTestData() {
   console.log('📊 Setting up test data...');
   
-  // Get a test user
-  const testUser = await storage.getUserByEmail('admin@brianspizza.com');
+  // Get a test user (global admin)
+  const testUser = await storage.getUserByEmail('admin@pizza.com');
   
   if (!testUser) {
     throw new Error('Test user not found. Please ensure database is seeded.');
   }
   
-  // Get test company
-  const testCompany = testUser.companyId 
-    ? await storage.getCompany(testUser.companyId)
-    : undefined;
+  // Get any available company for testing
+  const companies = await storage.getCompanies();
+  const testCompany = companies[0];
   
   if (!testCompany) {
-    throw new Error('Test company not found.');
+    throw new Error('No companies found. Please ensure database is seeded.');
   }
   
   // Create a test session
