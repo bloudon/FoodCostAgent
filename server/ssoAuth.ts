@@ -156,9 +156,17 @@ export async function setupSsoAuth(app: Express) {
   app.get("/api/sso/callback", (req, res, next) => {
     ensureStrategy(req.hostname);
     passport.authenticate(`replitauth:${req.hostname}`, async (err: any, sessionData: any) => {
-      if (err || !sessionData) {
+      if (err) {
+        console.error("SSO auth error:", err);
         return res.redirect("/login");
       }
+      
+      if (!sessionData) {
+        console.error("No session data from SSO");
+        return res.redirect("/login");
+      }
+      
+      console.log("SSO sessionData:", sessionData);
       
       // Log the user in
       req.login(sessionData, async (loginErr) => {
@@ -167,29 +175,45 @@ export async function setupSsoAuth(app: Express) {
           return res.redirect("/login");
         }
         
+        console.log("User logged in via Passport, session ID:", req.session?.id);
+        
         // Fetch full user to check company assignment
         const userId = sessionData.userId;
         if (!userId) {
+          console.error("No userId in sessionData");
           return res.redirect("/login");
         }
         
         const user = await storage.getUser(userId);
         if (!user) {
+          console.error("User not found:", userId);
           return res.redirect("/login");
         }
         
-        // Check if user has company assignment
-        if (user.companyId) {
-          // User has company - redirect to dashboard
-          if (user.role === "global_admin") {
-            return res.redirect("/companies");
-          } else {
-            return res.redirect("/");
+        console.log("User authenticated:", user.email, "companyId:", user.companyId);
+        
+        // Save session before redirecting
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error("Session save error:", saveErr);
+            return res.redirect("/login");
           }
-        } else {
-          // No company assignment - redirect to pending approval page
-          return res.redirect("/pending-approval");
-        }
+          
+          console.log("Session saved successfully");
+          
+          // Check if user has company assignment
+          if (user.companyId) {
+            // User has company - redirect to dashboard
+            if (user.role === "global_admin") {
+              return res.redirect("/companies");
+            } else {
+              return res.redirect("/");
+            }
+          } else {
+            // No company assignment - redirect to pending approval page
+            return res.redirect("/pending-approval");
+          }
+        });
       });
     })(req, res, next);
   });
