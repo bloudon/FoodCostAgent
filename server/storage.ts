@@ -433,7 +433,7 @@ export class DatabaseStorage implements IStorage {
     if (session) {
       await cache.del(CacheKeys.session(session.tokenHash));
       if (session.userId) {
-        await cache.del(CacheKeys.user(parseInt(session.userId)));
+        await cache.del(CacheKeys.user(session.userId));
       }
     }
   }

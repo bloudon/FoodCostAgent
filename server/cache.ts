@@ -125,14 +125,14 @@ export const cache = new CacheService();
 
 export const CacheKeys = {
   session: (sessionId: string) => `session:${sessionId}`,
-  user: (userId: number) => `user:${userId}`,
-  company: (companyId: number) => `company:${companyId}`,
-  inventoryItems: (companyId: number) => `inventory:items:${companyId}`,
-  storeInventoryItems: (companyId: number, storeId?: number) => 
+  user: (userId: string) => `user:${userId}`,
+  company: (companyId: string) => `company:${companyId}`,
+  inventoryItems: (companyId: string) => `inventory:items:${companyId}`,
+  storeInventoryItems: (companyId: string, storeId?: string) => 
     storeId ? `inventory:store:${companyId}:${storeId}` : `inventory:store:${companyId}:*`,
-  recipes: (companyId: number) => `recipes:${companyId}`,
-  recipe: (recipeId: number) => `recipe:${recipeId}`,
-  menuItems: (companyId: number) => `menu:items:${companyId}`,
+  recipes: (companyId: string) => `recipes:${companyId}`,
+  recipe: (recipeId: string) => `recipe:${recipeId}`,
+  menuItems: (companyId: string) => `menu:items:${companyId}`,
 } as const;
 
 export const CacheTTL = {

@@ -83,7 +83,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   // Try cache for user lookup (Phase 2 optimization)
-  let user: User | null | undefined = await cache.get<User>(CacheKeys.user(parseInt(session.userId)));
+  let user: User | null | undefined = await cache.get<User>(CacheKeys.user(session.userId));
   
   if (!user) {
     // Cache miss - fetch from database
@@ -91,7 +91,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     
     if (user) {
       // Cache for future requests
-      await cache.set(CacheKeys.user(parseInt(user.id)), user, CacheTTL.USER);
+      await cache.set(CacheKeys.user(user.id), user, CacheTTL.USER);
     }
   }
   
@@ -135,12 +135,12 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
 
   if (session) {
     // Try cache for user lookup
-    let user: User | null | undefined = await cache.get<User>(CacheKeys.user(parseInt(session.userId)));
+    let user: User | null | undefined = await cache.get<User>(CacheKeys.user(session.userId));
     
     if (!user) {
       user = await storage.getUser(session.userId);
       if (user) {
-        await cache.set(CacheKeys.user(parseInt(user.id)), user, CacheTTL.USER);
+        await cache.set(CacheKeys.user(user.id), user, CacheTTL.USER);
       }
     }
     
