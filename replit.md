@@ -68,6 +68,27 @@ The system utilizes a multi-tenant architecture with data isolation enforced at 
 - **HMAC Authentication for Inbound Data Feeds**: Implemented hierarchical HMAC-SHA256 bearer token authentication for securing inbound API integrations (POS, vendor EDI), including company-level credentials, cryptographically secure keys, timestamp/nonce validation, content MD5 integrity checking, and optional IP whitelisting.
 - **Company Data Purge System (Development Only)**: Cascading delete functionality for purging all company-associated data, restricted to development environment and global_admin. Purges across 40+ tables in dependency order, excluding user records.
 
+### Scalability & Performance (Phase 1 - Completed November 2025)
+Production-ready optimizations for multi-tenant deployment supporting 10-50 companies with 50-200 concurrent users:
+
+- **Database Connection Pooling**: Configured Neon Pool with max=10 connections, idleTimeout=30s, connectionTimeout=5s. Optimized for Replit Autoscale deployments while staying well below Neon's ~80 connection cap per instance.
+
+- **Composite Indexes**: Added 13 strategic indexes across critical tables for multi-tenant query patterns:
+  - `auth_sessions`: (companyId, userId, expiresAt) for session lookup and cleanup
+  - `inventory_items`: (companyId, categoryId), (companyId, name) for filtering
+  - `store_inventory_items`: (companyId, storeId, inventoryItemId) for store-level inventory
+  - `inventory_count_lines`: (inventoryCountId) for count session queries
+  - `purchase_orders`: (companyId, storeId, expectedDate), (companyId, vendorId, expectedDate) for PO filtering
+  - `receipts`: (companyId, storeId, receivedDate), (companyId, vendorId, receivedDate) for receiving reports
+  - `pos_sales`: (companyId, storeId, saleDate) for sales analytics
+  - `transfer_logs`: (companyId, fromStoreId, transferDate), (companyId, toStoreId, transferDate) for transfer tracking
+  - `waste_logs`: (companyId, storeId, wasteDate) for waste reports
+
+- **Database Transactions**: Implemented `withTransaction()` utility (server/transaction.ts) for atomic multi-step operations with proper Drizzle typing for Neon serverless. Applied to:
+  - **Inventory Count Application**: Wraps store inventory updates and count status changes with explicit companyId filters for tenant isolation and canEdit locking to prevent race conditions
+
+- **Tenant Isolation Pattern**: All transactional operations include explicit companyId predicates in WHERE clauses to maintain multi-tenant security, preventing cross-tenant data access even under concurrent load.
+
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
 - **Database Services**: Neon serverless PostgreSQL, `@neondatabase/serverless`.
