@@ -73,10 +73,11 @@ export function UsersManagement({ companyId }: { companyId: string }) {
 
   // Update controlled checkbox state when store assignments load
   useEffect(() => {
-    if (userStoreAssignments.length >= 0) {
-      setSelectedStoreIds(new Set(userStoreAssignments.map(assignment => assignment.storeId)));
+    if (selectedUser && editDialogOpen) {
+      const newStoreIds = new Set(userStoreAssignments.map(assignment => assignment.storeId));
+      setSelectedStoreIds(newStoreIds);
     }
-  }, [userStoreAssignments]);
+  }, [selectedUser?.id, editDialogOpen]);
 
   const createUserMutation = useMutation({
     mutationFn: async (data: any) => {

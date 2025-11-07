@@ -49,8 +49,8 @@ The system utilizes a multi-tenant architecture with data isolation at company a
 - **Core Domain Models**: Users, Storage Locations, Units, Inventory Items, Vendors, Recipes (nested), Inventory Counts, Purchase Orders, POS Sales, Transfer/Waste Logs.
 - **Business Logic**: Unit conversion, recursive recipe costing, location-based inventory, theoretical vs. actual usage variance, purchase order workflows, COGS analysis.
 - **Authentication & Sessions**: Hybrid authentication supporting both username/password AND enterprise SSO (Replit OpenID Connect). Session-based with `selected_company_id`.
-- **Role-Based Access Control**: Hierarchical permissions (`global_admin`, `company_admin`, `store_manager`, `store_user`).
-- **Enterprise SSO Integration**: Replit OpenID Connect for enterprise authentication, email-based account linking, Passport.js session management with PostgreSQL storage (sessions table). Backend routes: /api/sso/login, /api/sso/callback, /api/sso/logout. Frontend displays SSO status in Settings > Profile tab.
+- **Role-Based Access Control**: Hierarchical permissions (`global_admin`, `company_admin`, `store_manager`, `store_user`). Company admins require access to all store locations by default.
+- **Enterprise SSO Integration (Production-Ready)**: Replit OpenID Connect for enterprise authentication, email-based account linking, Passport.js session management with PostgreSQL storage (sessions table). Session cookies configured with `secure: false` in development, `sameSite: "lax"` for OAuth redirects. Backend routes: /api/sso/login, /api/sso/callback, /api/sso/logout. Frontend displays SSO status in Settings > Profile tab. Pending-approval page for users without company assignments. **Fully tested and operational.**
 
 ### Architectural Decisions
 - **Application Structure**: Single-page application with co-served API and frontend.

@@ -58,17 +58,9 @@ export async function createSession(userId: string, userAgent?: string, ip?: str
  * Hybrid authentication: checks Passport SSO session first, then falls back to cookie-based session
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  console.log("requireAuth: checking authentication...");
-  console.log("  - isAuthenticated exists?", typeof (req as any).isAuthenticated);
-  console.log("  - isAuthenticated()?", (req as any).isAuthenticated ? (req as any).isAuthenticated() : false);
-  console.log("  - req.user:", (req as any).user);
-  console.log("  - session ID:", (req as any).session?.id);
-  console.log("  - cookies:", req.cookies);
-  
   // Check if authenticated via Passport (SSO)
   if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
     const passportUser = (req as any).user;
-    console.log("  ✓ Passport authenticated, user:", passportUser);
     
     if (passportUser && passportUser.userId) {
       // Fetch full user object from database with caching
@@ -82,7 +74,6 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       }
       
       if (user) {
-        console.log("  ✓ User found in DB:", user.email);
         // Attach user to request
         (req as any).user = user;
         (req as any).ssoAuth = true;
@@ -92,14 +83,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         (req as any).companyId = companyId;
         
         return next();
-      } else {
-        console.log("  ✗ User not found in DB for userId:", passportUser.userId);
       }
-    } else {
-      console.log("  ✗ No userId in passport user");
     }
-  } else {
-    console.log("  - Not Passport authenticated, trying legacy cookie auth...");
   }
   
   // Not SSO authenticated, try username/password session cookie
