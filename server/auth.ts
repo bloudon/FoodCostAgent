@@ -55,12 +55,36 @@ export async function createSession(userId: string, userAgent?: string, ip?: str
 
 /**
  * Middleware to require authentication (supports both SSO and username/password)
- * Hybrid authentication: checks if SSO already authenticated, otherwise checks cookie session
+ * Hybrid authentication: checks Passport SSO session first, then falls back to cookie-based session
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  // Check if already authenticated via SSO
-  if ((req as any).ssoAuth && (req as any).user) {
-    return next();
+  // Check if authenticated via Passport (SSO)
+  if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
+    const passportUser = (req as any).user;
+    
+    if (passportUser && passportUser.id) {
+      // Fetch full user object from database with caching
+      let user: User | null | undefined = await cache.get<User>(CacheKeys.user(passportUser.id));
+      
+      if (!user) {
+        user = await storage.getUser(passportUser.id);
+        if (user) {
+          await cache.set(CacheKeys.user(user.id), user, CacheTTL.USER);
+        }
+      }
+      
+      if (user) {
+        // Attach user to request
+        (req as any).user = user;
+        (req as any).ssoAuth = true;
+        
+        // Resolve company context
+        const companyId = user.companyId || null;
+        (req as any).companyId = companyId;
+        
+        return next();
+      }
+    }
   }
   
   // Not SSO authenticated, try username/password session cookie

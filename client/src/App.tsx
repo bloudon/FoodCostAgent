@@ -42,6 +42,7 @@ import CompanyDetail from "@/pages/company-detail";
 import Stores from "@/pages/stores";
 import WasteEntry from "@/pages/waste-entry";
 import Login from "@/pages/login";
+import PendingApproval from "@/pages/pending-approval";
 
 function ProtectedLayout() {
   const { user, isLoading, logout } = useAuth();
@@ -155,6 +156,7 @@ function App() {
           <AuthProvider>
             <Switch>
               <Route path="/login" component={Login} />
+              <Route path="/pending-approval" component={PendingApproval} />
               <Route>
                 <ProtectedLayout />
               </Route>

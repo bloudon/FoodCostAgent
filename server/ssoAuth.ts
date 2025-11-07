@@ -155,9 +155,42 @@ export async function setupSsoAuth(app: Express) {
   // SSO Callback route
   app.get("/api/sso/callback", (req, res, next) => {
     ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      successReturnToOrRedirect: "/",
-      failureRedirect: "/login",
+    passport.authenticate(`replitauth:${req.hostname}`, async (err: any, sessionData: any) => {
+      if (err || !sessionData) {
+        return res.redirect("/login");
+      }
+      
+      // Log the user in
+      req.login(sessionData, async (loginErr) => {
+        if (loginErr) {
+          console.error("Login error:", loginErr);
+          return res.redirect("/login");
+        }
+        
+        // Fetch full user to check company assignment
+        const userId = sessionData.userId;
+        if (!userId) {
+          return res.redirect("/login");
+        }
+        
+        const user = await storage.getUser(userId);
+        if (!user) {
+          return res.redirect("/login");
+        }
+        
+        // Check if user has company assignment
+        if (user.companyId) {
+          // User has company - redirect to dashboard
+          if (user.role === "global_admin") {
+            return res.redirect("/companies");
+          } else {
+            return res.redirect("/");
+          }
+        } else {
+          // No company assignment - redirect to pending approval page
+          return res.redirect("/pending-approval");
+        }
+      });
     })(req, res, next);
   });
 
