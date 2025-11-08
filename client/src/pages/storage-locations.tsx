@@ -222,6 +222,8 @@ export default function StorageLocations() {
       queryClient.invalidateQueries({ queryKey: ["/api/storage-locations"] });
     },
     onError: (error: any) => {
+      // Refetch to restore correct order on error
+      queryClient.invalidateQueries({ queryKey: ["/api/storage-locations"] });
       toast({
         title: "Error",
         description: error.message || "Failed to reorder locations",
