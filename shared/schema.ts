@@ -353,10 +353,14 @@ export const vendors = pgTable("vendors", {
   orderGuideType: text("order_guide_type").notNull().default("manual"), // "electronic" or "manual"
   phone: text("phone"),
   website: text("website"),
+  deliveryDays: text("delivery_days").array(), // Days of week when vendor delivers (e.g., ["Monday", "Wednesday", "Friday"])
+  leadDaysAhead: integer("lead_days_ahead"), // Number of days ahead to place orders before delivery
 });
 
 export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true }).extend({
   orderGuideType: z.string().min(1).default("manual"),
+  deliveryDays: z.array(z.enum(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])).optional(),
+  leadDaysAhead: z.number().int().min(0).max(30).optional(),
 });
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type Vendor = typeof vendors.$inferSelect;
@@ -371,7 +375,6 @@ export const vendorItems = pgTable("vendor_items", {
   caseSize: real("case_size").notNull().default(1), // number of purchase units per case
   innerPackSize: real("inner_pack_size"),
   lastPrice: real("last_price").notNull().default(0),
-  leadTimeDays: integer("lead_time_days"),
   active: integer("active").notNull().default(1),
 });
 
