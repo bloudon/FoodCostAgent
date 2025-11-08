@@ -19,6 +19,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { insertMenuItemSchema } from "@shared/schema";
 import { z } from "zod";
+import { formatRecipeName } from "@/lib/utils";
 
 interface MenuItem {
   id: string;
@@ -710,7 +711,7 @@ export default function MenuItemsPage() {
                             <SelectItem value="none">None</SelectItem>
                             {recipes?.map((recipe) => (
                               <SelectItem key={recipe.id} value={recipe.id}>
-                                {recipe.name} {recipe.isPlaceholder === 1 && "(Placeholder)"}
+                                {formatRecipeName(recipe.name)} {recipe.isPlaceholder === 1 && "(Placeholder)"}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -937,7 +938,7 @@ export default function MenuItemsPage() {
                             <SelectItem value="none">None</SelectItem>
                             {recipes?.map((recipe) => (
                               <SelectItem key={recipe.id} value={recipe.id}>
-                                {recipe.name} {recipe.isPlaceholder === 1 && "(Placeholder)"}
+                                {formatRecipeName(recipe.name)} {recipe.isPlaceholder === 1 && "(Placeholder)"}
                               </SelectItem>
                             ))}
                           </SelectContent>

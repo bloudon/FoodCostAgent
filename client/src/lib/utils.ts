@@ -25,3 +25,10 @@ export function formatUnitName(unitName: string | undefined): string {
   
   return unitName;
 }
+
+export function formatRecipeName(recipeName: string | undefined): string {
+  if (!recipeName) return '';
+  
+  // Capitalize the first letter
+  return recipeName.charAt(0).toUpperCase() + recipeName.slice(1);
+}

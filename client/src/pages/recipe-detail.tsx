@@ -43,7 +43,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
+import { filterUnitsBySystem, formatUnitName, formatRecipeName } from "@/lib/utils";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import type { SystemPreferences } from "@shared/schema";
 
@@ -186,7 +186,7 @@ export default function RecipeDetail() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-recipe-name">
-              {recipe.name}
+              {formatRecipeName(recipe.name)}
             </h1>
             <p className="text-muted-foreground mt-2">
               Recipe details and cost history

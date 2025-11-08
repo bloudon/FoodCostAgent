@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search, ChefHat } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatRecipeName } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -97,7 +98,7 @@ export default function Recipes() {
                       <Link href={`/recipes/${recipe.id}`} className="block w-full">
                         <div className="flex items-center gap-2">
                           <span className="font-medium" data-testid={`text-recipe-name-${recipe.id}`}>
-                            {recipe.name}
+                            {formatRecipeName(recipe.name)}
                           </span>
                           {recipe.canBeIngredient === 1 && (
                             <Badge variant="secondary" className="text-xs gap-1" data-testid={`badge-recipe-base-${recipe.id}`}>

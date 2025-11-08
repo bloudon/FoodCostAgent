@@ -56,7 +56,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { formatUnitName } from "@/lib/utils";
+import { formatUnitName, formatRecipeName } from "@/lib/utils";
 import {
   ArrowLeft,
   Save,
@@ -750,7 +750,7 @@ export default function RecipeBuilder() {
 
   const baseRecipesSource: DraggableItem[] = filteredBaseRecipes?.map((recipe) => ({
     id: recipe.id,
-    name: recipe.name,
+    name: formatRecipeName(recipe.name),
     type: "recipe" as const,
   })) || [];
 
