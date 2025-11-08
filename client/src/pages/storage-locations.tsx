@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Pencil, Trash2, MapPin } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, MapPin, GripVertical } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -37,8 +37,91 @@ import { insertStorageLocationSchema } from "@shared/schema";
 import type { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 type StorageLocationForm = z.infer<typeof insertStorageLocationSchema>;
+
+interface SortableLocationProps {
+  location: any;
+  onEdit: (location: any) => void;
+  onDelete: (location: any) => void;
+}
+
+function SortableLocation({ location, onEdit, onDelete }: SortableLocationProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: location.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <Card className="mb-3" data-testid={`card-location-${location.id}`}>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <button
+              className="cursor-grab active:cursor-grabbing touch-none p-1 hover-elevate rounded"
+              {...attributes}
+              {...listeners}
+              data-testid={`drag-handle-${location.id}`}
+            >
+              <GripVertical className="h-5 w-5 text-muted-foreground" />
+            </button>
+            <div className="flex items-center gap-2 flex-1">
+              <MapPin className="h-5 w-5 text-primary" />
+              <CardTitle className="text-lg" data-testid={`text-location-name-${location.id}`}>
+                {location.name}
+              </CardTitle>
+            </div>
+            <div className="flex gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => onEdit(location)}
+                data-testid={`button-edit-location-${location.id}`}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => onDelete(location)}
+                data-testid={`button-delete-location-${location.id}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+    </div>
+  );
+}
 
 export default function StorageLocations() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -51,17 +134,24 @@ export default function StorageLocations() {
     queryKey: ["/api/storage-locations"],
   });
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   const form = useForm<StorageLocationForm>({
-    resolver: zodResolver(insertStorageLocationSchema),
+    resolver: zodResolver(insertStorageLocationSchema.omit({ sortOrder: true })),
     defaultValues: {
       name: "",
-      sortOrder: 0,
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: StorageLocationForm) => {
-      return apiRequest("POST", "/api/storage-locations", data);
+      const sortOrder = locations?.length || 0;
+      return apiRequest("POST", "/api/storage-locations", { ...data, sortOrder });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/storage-locations"] });
@@ -124,11 +214,26 @@ export default function StorageLocations() {
     },
   });
 
+  const reorderMutation = useMutation({
+    mutationFn: async (locationOrders: { id: string; sortOrder: number }[]) => {
+      return apiRequest("POST", "/api/storage-locations/reorder", { locationOrders });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/storage-locations"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reorder locations",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleEdit = (location: any) => {
     setEditingLocation(location);
     form.reset({
       name: location.name,
-      sortOrder: location.sortOrder,
     });
   };
 
@@ -136,7 +241,6 @@ export default function StorageLocations() {
     setIsAddDialogOpen(true);
     form.reset({
       name: "",
-      sortOrder: locations?.length || 0,
     });
   };
 
@@ -148,7 +252,30 @@ export default function StorageLocations() {
     }
   };
 
-  const filteredLocations = locations?.filter(l => 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id || !locations) {
+      return;
+    }
+
+    const oldIndex = locations.findIndex((l) => l.id === active.id);
+    const newIndex = locations.findIndex((l) => l.id === over.id);
+
+    const newOrder = arrayMove(locations, oldIndex, newIndex);
+    const locationOrders = newOrder.map((location, index) => ({
+      id: location.id,
+      sortOrder: index,
+    }));
+
+    // Optimistically update the UI
+    queryClient.setQueryData(["/api/storage-locations"], newOrder);
+
+    // Send the reorder request to the backend
+    reorderMutation.mutate(locationOrders);
+  };
+
+  const filteredLocations = locations?.filter((l) =>
     l.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -160,7 +287,7 @@ export default function StorageLocations() {
             Storage Locations
           </h1>
           <p className="text-muted-foreground mt-2">
-            Manage warehouse, cooler, and dry storage locations
+            Drag and drop to reorder storage locations
           </p>
         </div>
         <Button onClick={handleAdd} data-testid="button-create-location">
@@ -182,58 +309,39 @@ export default function StorageLocations() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="max-w-3xl">
         {isLoading ? (
-          Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-6 w-3/4" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-4 w-1/2" />
-              </CardContent>
-            </Card>
-          ))
+          <div className="space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i}>
+                <CardHeader>
+                  <Skeleton className="h-6 w-3/4" />
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
         ) : filteredLocations && filteredLocations.length > 0 ? (
-          filteredLocations.map((location) => (
-            <Card key={location.id} data-testid={`card-location-${location.id}`}>
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-1">
-                    <MapPin className="h-5 w-5 text-primary" />
-                    <CardTitle className="text-lg" data-testid={`text-location-name-${location.id}`}>
-                      {location.name}
-                    </CardTitle>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => handleEdit(location)}
-                      data-testid={`button-edit-location-${location.id}`}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => setDeletingLocation(location)}
-                      data-testid={`button-delete-location-${location.id}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-sm text-muted-foreground">
-                  Sort Order: <span className="font-mono" data-testid={`text-location-sort-${location.id}`}>{location.sortOrder}</span>
-                </div>
-              </CardContent>
-            </Card>
-          ))
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={filteredLocations.map((l) => l.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {filteredLocations.map((location) => (
+                <SortableLocation
+                  key={location.id}
+                  location={location}
+                  onEdit={handleEdit}
+                  onDelete={setDeletingLocation}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         ) : (
-          <Card className="col-span-full">
+          <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <MapPin className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground text-center">
@@ -263,7 +371,7 @@ export default function StorageLocations() {
               {editingLocation ? "Edit Storage Location" : "Create Storage Location"}
             </DialogTitle>
             <DialogDescription>
-              {editingLocation ? "Update the storage location details below." : "Add a new storage location to your inventory system."}
+              {editingLocation ? "Update the storage location name below." : "Add a new storage location to your inventory system."}
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
@@ -276,24 +384,6 @@ export default function StorageLocations() {
                     <FormLabel>Location Name</FormLabel>
                     <FormControl>
                       <Input placeholder="Walk-In Cooler" {...field} data-testid="input-location-name" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="sortOrder"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Sort Order</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="number" 
-                        {...field} 
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                        data-testid="input-location-sort"
-                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

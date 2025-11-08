@@ -1055,6 +1055,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/storage-locations/reorder", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const { locationOrders } = req.body;
+      if (!Array.isArray(locationOrders)) {
+        return res.status(400).json({ error: "locationOrders must be an array" });
+      }
+      await storage.reorderStorageLocations(req.companyId!, locationOrders);
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ CATEGORIES ============
   app.get("/api/categories", async (req, res) => {
     const categories = await storage.getCategories();
