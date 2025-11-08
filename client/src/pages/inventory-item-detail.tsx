@@ -91,7 +91,6 @@ type VendorItem = {
   caseSize: number;
   innerPackSize: number | null;
   lastPrice: number;
-  leadTimeDays: number | null;
   active: number;
   vendor: {
     id: string;
@@ -124,7 +123,6 @@ export default function InventoryItemDetail() {
     caseSize: "1",
     innerPackSize: "",
     lastPrice: "0",
-    leadTimeDays: "",
     active: 1,
   });
 
@@ -407,7 +405,6 @@ export default function InventoryItemDetail() {
       caseSize: "1",
       innerPackSize: "",
       lastPrice: "0",
-      leadTimeDays: "",
       active: 1,
     });
   };
@@ -427,7 +424,6 @@ export default function InventoryItemDetail() {
       caseSize: vendorItem.caseSize.toString(),
       innerPackSize: vendorItem.innerPackSize?.toString() || "",
       lastPrice: vendorItem.lastPrice.toString(),
-      leadTimeDays: vendorItem.leadTimeDays?.toString() || "",
       active: vendorItem.active,
     });
     setVendorItemDialogOpen(true);
@@ -442,7 +438,6 @@ export default function InventoryItemDetail() {
       caseSize: parseFloat(vendorItemForm.caseSize) || 1,
       innerPackSize: vendorItemForm.innerPackSize.trim() !== "" ? parseFloat(vendorItemForm.innerPackSize) : null,
       lastPrice: parseFloat(vendorItemForm.lastPrice) || 0,
-      leadTimeDays: vendorItemForm.leadTimeDays.trim() !== "" ? parseInt(vendorItemForm.leadTimeDays) : null,
       active: vendorItemForm.active,
     };
 
@@ -876,12 +871,6 @@ export default function InventoryItemDetail() {
                           <span className="text-muted-foreground">Case Size: </span>
                           <span className="font-medium">{vi.caseSize}</span>
                         </div>
-                        {vi.leadTimeDays && (
-                          <div>
-                            <span className="text-muted-foreground">Lead Time: </span>
-                            <span className="font-medium">{vi.leadTimeDays} days</span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   ))}
@@ -1001,33 +990,20 @@ export default function InventoryItemDetail() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="leadTimeDays">Lead Time (days)</Label>
-                <Input
-                  id="leadTimeDays"
-                  type="number"
-                  value={vendorItemForm.leadTimeDays}
-                  onChange={(e) => setVendorItemForm({ ...vendorItemForm, leadTimeDays: e.target.value })}
-                  placeholder="Optional"
-                  data-testid="input-lead-time-days"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="active">Status</Label>
-                <Select
-                  value={vendorItemForm.active.toString()}
-                  onValueChange={(value) => setVendorItemForm({ ...vendorItemForm, active: parseInt(value) })}
-                >
-                  <SelectTrigger id="active" data-testid="select-active">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">Active</SelectItem>
-                    <SelectItem value="0">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="active">Status</Label>
+              <Select
+                value={vendorItemForm.active.toString()}
+                onValueChange={(value) => setVendorItemForm({ ...vendorItemForm, active: parseInt(value) })}
+              >
+                <SelectTrigger id="active" data-testid="select-active">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Active</SelectItem>
+                  <SelectItem value="0">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

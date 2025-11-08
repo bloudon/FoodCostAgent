@@ -153,15 +153,6 @@ export default function VendorDetail() {
                               </span>
                             </div>
                           )}
-                          {item.leadTimeDays && (
-                            <div className="flex items-center gap-2">
-                              <Clock className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-muted-foreground">Lead Time:</span>
-                              <span className="font-medium" data-testid={`text-item-lead-${item.id}`}>
-                                {item.leadTimeDays} {item.leadTimeDays === 1 ? "day" : "days"}
-                              </span>
-                            </div>
-                          )}
                         </div>
                       </CardContent>
                     </Card>
