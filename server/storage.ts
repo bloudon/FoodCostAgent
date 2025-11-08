@@ -1092,7 +1092,6 @@ export class DatabaseStorage implements IStorage {
           caseSize: vendorItems.caseSize,
           innerPackSize: vendorItems.innerPackSize,
           lastPrice: vendorItems.lastPrice,
-          leadTimeDays: vendorItems.leadTimeDays,
           active: vendorItems.active,
         })
         .from(vendorItems)
@@ -1118,7 +1117,6 @@ export class DatabaseStorage implements IStorage {
           caseSize: vendorItems.caseSize,
           innerPackSize: vendorItems.innerPackSize,
           lastPrice: vendorItems.lastPrice,
-          leadTimeDays: vendorItems.leadTimeDays,
           active: vendorItems.active,
         })
         .from(vendorItems)
