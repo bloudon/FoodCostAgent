@@ -11,7 +11,7 @@ Preferred communication style: Simple, everyday language.
 - Par Level & Reorder Level: Stored on `inventory_items` table as default values, overrideable at the store level.
 - Active/Inactive Status: Dual-level active status (global and store-specific).
 - Store Locations: Inventory items require assignment to at least one store location during creation.
-- Storage Locations: Inventory items can be associated with multiple storage locations; at least one is required.
+- Storage Locations: Inventory items can be associated with multiple storage locations; at least one is required. Storage Locations page features drag-and-drop reordering using @dnd-kit library. Locations display in a vertical stacked list with GripVertical drag handles. Order changes persist immediately to database via transaction-based bulk updates. The sortOrder field is managed automatically by drag position, removed from create/edit forms. Error handling ensures UI resyncs on failed reorder attempts.
 - Recipe `canBeIngredient`: Recipes include a `canBeIngredient` checkbox field (0/1 in DB) to mark if they can be used as ingredients in other recipes.
 - Category Filtering in Recipe Builder: Categories include a `showAsIngredient` field (0/1 in DB) controlling whether items in that category appear in the recipe builder's ingredient selection.
 - Waste Percentage Removal: The waste percentage field has been removed from recipes.
