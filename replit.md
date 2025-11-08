@@ -30,6 +30,7 @@ Preferred communication style: Simple, everyday language.
 - Dual Pricing Model: Inventory items track both Last Cost (pricePerUnit - most recent purchase price) and Weighted Average Cost (avgCostPerUnit - WAC calculated across all receipts). Inventory Items page displays both price columns for better pricing visibility and decision-making. WAC is calculated during receiving using company-wide quantities: `((totalCompanyQty * currentAvgCost) + (receivedQty * receivedPrice)) / (totalCompanyQty + receivedQty)`.
 - Vendor Price Comparison: Purchase order creation includes a "Compare Prices" button (TrendingDown icon) on each item row that opens a dialog showing all vendor prices for that item. The dialog displays vendor name, SKU, case size, unit price, and case price, sorted by case price (lowest first). The lowest-priced vendor is highlighted with a "Best Price" badge. Uses vendor-specific case sizes and includes zero-priced items (promotional offers). Only excludes vendors with null/undefined prices.
 - Vendor-Specific Purchase Order Pricing: Purchase orders use vendor-specific pricing (vendor_items.lastPrice) instead of general inventory pricing (inventory_items.pricePerUnit). All pricing logic uses nullish coalescing (`??`) to preserve legitimate zero-priced vendor items (promotional offers, free samples) while falling back to inventory pricing only when vendor prices are null/undefined. This ensures accurate vendor-specific costing for purchase orders, receipts, and price comparisons.
+- Vendor Delivery Scheduling: Delivery scheduling is managed at the vendor level. Each vendor has `deliveryDays` (array of weekdays when vendor delivers) and `leadDaysAhead` (number of days before delivery that orders must be placed). Vendors page includes checkboxes for each weekday and a numeric input for lead days ahead in the add/edit vendor dialog. Lead time field has been completely removed from vendor items (vendor_items table no longer has leadTimeDays column). This centralizes delivery scheduling at the vendor level for more efficient order planning.
 
 ## System Architecture
 
@@ -51,8 +52,8 @@ The system utilizes a multi-tenant architecture with data isolation at company a
 - **Business Logic**: Unit conversion, recursive recipe costing, location-based inventory, theoretical vs. actual usage variance, purchase order workflows, COGS analysis.
 - **Authentication & Sessions**: Hybrid authentication supporting both username/password AND enterprise SSO (Replit OpenID Connect). Cookie-based sessions take priority over SSO to allow explicit admin logins. Session-based with `selected_company_id`.
 - **Role-Based Access Control**: Hierarchical permissions (`global_admin`, `company_admin`, `store_manager`, `store_user`). Company admins require access to all store locations by default.
-- **Enterprise SSO Integration (Production-Ready)**: Replit OpenID Connect for enterprise authentication, email-based account linking, Passport.js session management with PostgreSQL storage (sessions table). Session cookies configured with `secure: false` in development, `sameSite: "lax"` for OAuth redirects. Backend routes: /api/sso/login, /api/sso/callback, /api/sso/logout. Frontend displays SSO status in Settings > Profile tab. Pending-approval page for users without company assignments. **Fully tested and operational.**
-- **User Invitation System (Phase 2 - Production-Ready)**: Comprehensive invitation system with dual authentication support (SSO + username/password). Features token-validated invitation flow, secure session-scoped token transfer, email verification in SSO callback to prevent cross-account attacks, company admin auto-assignment to all stores, and invitation management UI in /users page. Both authentication methods consistently handle selectedCompanyId for global admin company selection. Architected with security-first design, including HMAC token validation, expiration checks, and proper session handling across both auth modes. **All security vulnerabilities resolved, code production-ready.**
+- **Enterprise SSO Integration (Production-Ready)**: Replit OpenID Connect for enterprise authentication, email-based account linking, Passport.js session management with PostgreSQL storage (sessions table).
+- **User Invitation System (Phase 2 - Production-Ready)**: Comprehensive invitation system with dual authentication support (SSO + username/password).
 
 ### Architectural Decisions
 - **Application Structure**: Single-page application with co-served API and frontend.
@@ -68,13 +69,8 @@ The system utilizes a multi-tenant architecture with data isolation at company a
 - **Unified Orders Page**: Consolidates Purchase Orders, Receiving, and Transfer Orders.
 - **Store-to-Store Transfer Orders**: Tracks inventory movement with a defined workflow.
 - **Waste Tracking Module**: Comprehensive waste logging with store-level isolation, touch-friendly UI, automatic value calculation.
-- **HMAC Authentication for Inbound Data Feeds**: Implemented hierarchical HMAC-SHA256 for securing API integrations (POS, vendor EDI), including company-level credentials, timestamp/nonce validation, content MD5, and optional IP whitelisting.
-- **Company Data Purge System (Development Only)**: Cascading delete for purging all company-associated data, restricted to development and global_admin.
-- **Scalability Optimizations (Phase 1 & 2)**: Production-ready infrastructure for 50-200 concurrent users.
-  - **Phase 1 (Completed)**: Connection pooling (max 20 connections), 13 composite indexes on high-traffic tables, atomic transactions, session cleanup.
-  - **Phase 2 (Completed)**: Redis caching layer with graceful fallback, session/user caching with automatic invalidation, response compression (gzip).
-  - **Performance**: Load tested at 50/100/150 concurrent users with 0% error rate. Linear latency degradation (277ms → 548ms → 825ms). Expected 40-60% latency reduction when Redis configured.
-  - **Redis Setup**: Optional but recommended for production. See REDIS_SETUP.md for Upstash/Redis Labs configuration. System works correctly without Redis using database fallback.
+- **HMAC Authentication for Inbound Data Feeds**: Implemented hierarchical HMAC-SHA256 for securing API integrations.
+- **Scalability Optimizations**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching layer with graceful fallback, response compression (gzip).
 
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.

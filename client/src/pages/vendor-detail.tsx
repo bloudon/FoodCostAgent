@@ -17,7 +17,6 @@ interface VendorItemWithDetails {
   caseSize: number | null;
   innerPackSize: number | null;
   lastPrice: number;
-  leadTimeDays: number | null;
   active: number;
   inventoryItem?: {
     id: string;
