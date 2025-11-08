@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Search, Pencil, Trash2, ExternalLink, Zap } from "lucide-react";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -76,6 +77,8 @@ export default function Vendors() {
       orderGuideType: "manual",
       phone: "",
       website: "",
+      deliveryDays: [],
+      leadDaysAhead: undefined,
     },
   });
 
@@ -157,7 +160,15 @@ export default function Vendors() {
 
   const handleCreateClick = () => {
     setEditingVendor(null);
-    form.reset({ name: "", accountNumber: "", orderGuideType: "manual", phone: "", website: "" });
+    form.reset({ 
+      name: "", 
+      accountNumber: "", 
+      orderGuideType: "manual", 
+      phone: "", 
+      website: "",
+      deliveryDays: [],
+      leadDaysAhead: undefined,
+    });
     setIsDialogOpen(true);
   };
 
@@ -169,6 +180,8 @@ export default function Vendors() {
       orderGuideType: vendor.orderGuideType || "manual",
       phone: vendor.phone || "",
       website: vendor.website || "",
+      deliveryDays: vendor.deliveryDays || [],
+      leadDaysAhead: vendor.leadDaysAhead || undefined,
     });
     setIsDialogOpen(true);
   };
@@ -389,6 +402,82 @@ export default function Vendors() {
                         data-testid="input-vendor-website"
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="deliveryDays"
+                render={() => (
+                  <FormItem>
+                    <FormLabel>Delivery Days (Optional)</FormLabel>
+                    <FormDescription>
+                      Select the days of the week when this vendor delivers
+                    </FormDescription>
+                    <div className="grid grid-cols-2 gap-3 mt-2">
+                      {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => (
+                        <FormField
+                          key={day}
+                          control={form.control}
+                          name="deliveryDays"
+                          render={({ field }) => {
+                            return (
+                              <FormItem
+                                key={day}
+                                className="flex flex-row items-center space-x-2 space-y-0"
+                              >
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value?.includes(day as any)}
+                                    onCheckedChange={(checked) => {
+                                      const currentValue = field.value || [];
+                                      return checked
+                                        ? field.onChange([...currentValue, day])
+                                        : field.onChange(
+                                            currentValue.filter((value) => value !== day)
+                                          );
+                                    }}
+                                    data-testid={`checkbox-delivery-${day.toLowerCase()}`}
+                                  />
+                                </FormControl>
+                                <FormLabel className="text-sm font-normal cursor-pointer">
+                                  {day}
+                                </FormLabel>
+                              </FormItem>
+                            );
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="leadDaysAhead"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Lead Days Ahead (Optional)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="number"
+                        min="0"
+                        max="30"
+                        placeholder="e.g., 2" 
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(value === "" ? undefined : parseInt(value, 10));
+                        }}
+                        data-testid="input-lead-days-ahead"
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Number of days in advance to place orders before delivery
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
