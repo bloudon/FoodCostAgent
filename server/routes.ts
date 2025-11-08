@@ -159,12 +159,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/auth/logout", requireAuth, async (req, res) => {
     try {
+      // Clear cookie-based session
       const sessionId = (req as any).sessionId;
       if (sessionId) {
         await storage.revokeAuthSession(sessionId);
       }
       res.clearCookie("session");
-      res.status(204).send();
+      
+      // Clear Passport SSO session if exists
+      if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
+        // Use req.logout() which properly handles Passport session cleanup
+        (req as any).logout((err: any) => {
+          if (err) {
+            console.error("Passport logout error:", err);
+            return res.status(500).json({ error: "Logout failed" });
+          }
+          
+          // After logout, clear session data if session exists
+          if ((req as any).session) {
+            // Clear session data without destroying the session object
+            // This prevents the "req.session is undefined" error
+            (req as any).session.selectedCompanyId = null;
+            (req as any).session.pendingInvitationToken = null;
+          }
+          
+          res.status(204).send();
+        });
+      } else {
+        // No Passport session, just send response
+        res.status(204).send();
+      }
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

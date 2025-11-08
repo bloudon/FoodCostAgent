@@ -55,10 +55,61 @@ export async function createSession(userId: string, userAgent?: string, ip?: str
 
 /**
  * Middleware to require authentication (supports both SSO and username/password)
- * Hybrid authentication: checks Passport SSO session first, then falls back to cookie-based session
+ * Hybrid authentication: checks cookie-based session first (takes precedence), then falls back to Passport SSO
+ * This ensures that when a user explicitly logs in with username/password, it overrides any existing SSO session
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  // Check if authenticated via Passport (SSO)
+  // PRIORITY 1: Check for cookie-based username/password session first
+  // This takes precedence over SSO to allow global_admin login to override SSO sessions
+  const token = req.cookies?.session;
+  
+  if (token) {
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    
+    // Try cache first (Phase 2 optimization - eliminates DB lookup on every request)
+    let session: AuthSession | null | undefined = await cache.get<AuthSession>(CacheKeys.session(tokenHash));
+    
+    if (!session) {
+      // Cache miss - fetch from database
+      session = await storage.getAuthSessionByToken(tokenHash);
+      
+      if (session) {
+        // Cache for future requests
+        await cache.set(CacheKeys.session(tokenHash), session, CacheTTL.SESSION);
+      }
+    }
+
+    if (session) {
+      // Try cache for user lookup (Phase 2 optimization)
+      let user: User | null | undefined = await cache.get<User>(CacheKeys.user(session.userId));
+      
+      if (!user) {
+        // Cache miss - fetch from database
+        user = await storage.getUser(session.userId);
+        
+        if (user) {
+          // Cache for future requests
+          await cache.set(CacheKeys.user(user.id), user, CacheTTL.USER);
+        }
+      }
+      
+      if (user) {
+        // Attach user and auth session to request
+        // Note: Using 'authSession' instead of 'session' to avoid conflict with express-session
+        (req as any).user = user;
+        (req as any).authSession = session;
+        (req as any).sessionId = session.id;
+        
+        // Resolve company context: use user.companyId for regular users, session.selectedCompanyId for global_admin
+        const companyId = user.companyId || session.selectedCompanyId || null;
+        (req as any).companyId = companyId;
+        
+        return next();
+      }
+    }
+  }
+  
+  // PRIORITY 2: No cookie session found, try SSO via Passport
   if ((req as any).isAuthenticated && (req as any).isAuthenticated()) {
     const passportUser = (req as any).user;
     
@@ -93,60 +144,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
   }
   
-  // Not SSO authenticated, try username/password session cookie
-  const token = req.cookies?.session;
-  
-  if (!token) {
-    return res.status(401).json({ error: "Not authenticated" });
-  }
-
-  const tokenHash = createHash("sha256").update(token).digest("hex");
-  
-  // Try cache first (Phase 2 optimization - eliminates DB lookup on every request)
-  let session: AuthSession | null | undefined = await cache.get<AuthSession>(CacheKeys.session(tokenHash));
-  
-  if (!session) {
-    // Cache miss - fetch from database
-    session = await storage.getAuthSessionByToken(tokenHash);
-    
-    if (session) {
-      // Cache for future requests
-      await cache.set(CacheKeys.session(tokenHash), session, CacheTTL.SESSION);
-    }
-  }
-
-  if (!session) {
-    return res.status(401).json({ error: "Invalid or expired session" });
-  }
-
-  // Try cache for user lookup (Phase 2 optimization)
-  let user: User | null | undefined = await cache.get<User>(CacheKeys.user(session.userId));
-  
-  if (!user) {
-    // Cache miss - fetch from database
-    user = await storage.getUser(session.userId);
-    
-    if (user) {
-      // Cache for future requests
-      await cache.set(CacheKeys.user(user.id), user, CacheTTL.USER);
-    }
-  }
-  
-  if (!user) {
-    return res.status(401).json({ error: "User not found" });
-  }
-
-  // Attach user and auth session to request
-  // Note: Using 'authSession' instead of 'session' to avoid conflict with express-session
-  (req as any).user = user;
-  (req as any).authSession = session;
-  (req as any).sessionId = session.id;
-  
-  // Resolve company context: use user.companyId for regular users, session.selectedCompanyId for global_admin
-  const companyId = user.companyId || session.selectedCompanyId || null;
-  (req as any).companyId = companyId;
-  
-  next();
+  // No valid authentication found
+  return res.status(401).json({ error: "Not authenticated" });
 }
 
 /**
