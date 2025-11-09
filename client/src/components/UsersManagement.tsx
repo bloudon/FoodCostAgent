@@ -257,11 +257,26 @@ export function UsersManagement({ companyId }: { companyId: string }) {
   const handleSendInvitation = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const role = formData.get("role") as string;
+    const storeIds = stores
+      .filter((store) => formData.get(`invite-store-${store.id}`) === "on")
+      .map((store) => store.id);
+    
+    // Validate store selection for store_user and store_manager
+    if ((role === "store_user" || role === "store_manager") && storeIds.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Store Users and Store Managers must be assigned to at least 1 store",
+        variant: "destructive",
+      });
+      return;
+    }
     
     const invitationData = {
       email: formData.get("email"),
-      role: formData.get("role"),
+      role: role,
       companyId,
+      storeIds,
     };
     
     createInvitationMutation.mutate(invitationData);
@@ -600,6 +615,25 @@ export function UsersManagement({ companyId }: { companyId: string }) {
                       </SelectContent>
                     </Select>
                   </div>
+                  {(inviteRole === "store_user" || inviteRole === "store_manager") && stores.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>Store Assignments</Label>
+                      <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto">
+                        {stores.map((store) => (
+                          <div key={store.id} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`invite-store-${store.id}`}
+                              name={`invite-store-${store.id}`}
+                              data-testid={`checkbox-invite-store-${store.id}`}
+                            />
+                            <Label htmlFor={`invite-store-${store.id}`} className="text-sm font-normal cursor-pointer">
+                              {store.name}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <DialogFooter>
                   <Button type="submit" disabled={createInvitationMutation.isPending} data-testid="button-submit-invitation">

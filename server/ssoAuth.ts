@@ -114,6 +114,11 @@ async function upsertSsoUser(
         for (const store of companyStores) {
           await storage.assignUserToStore(user.id, store.id);
         }
+      } else if (invitation.storeIds && invitation.storeIds.length > 0) {
+        // Assign user to stores specified in invitation
+        for (const storeId of invitation.storeIds) {
+          await storage.assignUserToStore(user.id, storeId);
+        }
       }
     } else {
       // Create new user with SSO

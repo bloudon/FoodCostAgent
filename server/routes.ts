@@ -720,7 +720,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/invitations", requireAuth, async (req, res) => {
     try {
       const currentUser = (req as any).user;
-      const { email, role } = req.body;
+      const { email, role, storeIds } = req.body;
 
       // Only global admins and company admins can send invitations
       if (currentUser.role !== "global_admin" && currentUser.role !== "company_admin") {
@@ -744,6 +744,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Company admins cannot invite global admins
       if (currentUser.role === "company_admin" && role === "global_admin") {
         return res.status(403).json({ error: "Cannot invite global admins" });
+      }
+
+      // Validate store assignments for store_user and store_manager roles
+      const storeIdsArray = Array.isArray(storeIds) ? storeIds : [];
+      if ((role === "store_user" || role === "store_manager") && storeIdsArray.length === 0) {
+        return res.status(400).json({ error: "Store users and store managers must be assigned to at least one store" });
       }
 
       // Check if user already exists with this email
@@ -770,6 +776,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email,
         companyId,
         role,
+        storeIds: storeIdsArray,
         token,
         invitedBy: currentUser.id,
         expiresAt,
