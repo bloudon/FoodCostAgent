@@ -154,6 +154,32 @@ export default function Vendors() {
     return vendorItems?.filter(vi => vi.vendorId === vendorId).length || 0;
   };
 
+  const abbreviateDay = (day: string): string => {
+    const abbrev: Record<string, string> = {
+      Monday: "Mon",
+      Tuesday: "Tue", 
+      Wednesday: "Wed",
+      Thursday: "Thu",
+      Friday: "Fri",
+      Saturday: "Sat",
+      Sunday: "Sun",
+    };
+    return abbrev[day] || day;
+  };
+
+  const calculateOrderDays = (deliveryDays: string[], leadDaysAhead: number): string[] => {
+    const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    // Map each delivery day to its corresponding order day, maintaining original order
+    return deliveryDays.map(deliveryDay => {
+      const deliveryIndex = daysOfWeek.indexOf(deliveryDay);
+      if (deliveryIndex === -1) return deliveryDay;
+      
+      // Calculate the order day by going back leadDaysAhead days
+      const orderIndex = (deliveryIndex - leadDaysAhead + 7) % 7;
+      return daysOfWeek[orderIndex];
+    });
+  };
+
   const filteredVendors = vendors?.filter(v => 
     v.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -297,6 +323,24 @@ export default function Vendors() {
                         </Badge>
                       )}
                     </div>
+                    {vendor.deliveryDays && vendor.deliveryDays.length > 0 && (
+                      <>
+                        <div className="flex justify-between items-start">
+                          <span className="text-muted-foreground">Delivery Days:</span>
+                          <span className="text-right font-medium" data-testid={`text-delivery-days-${vendor.id}`}>
+                            {vendor.deliveryDays.map(abbreviateDay).join(", ")}
+                          </span>
+                        </div>
+                        {vendor.leadDaysAhead && vendor.leadDaysAhead > 0 && (
+                          <div className="flex justify-between items-start">
+                            <span className="text-muted-foreground">Order By:</span>
+                            <span className="text-right font-medium" data-testid={`text-order-days-${vendor.id}`}>
+                              {calculateOrderDays(vendor.deliveryDays, vendor.leadDaysAhead).map(abbreviateDay).join(", ")}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>
