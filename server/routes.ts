@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import crypto from "crypto";
 import { storage } from "./storage";
+import { cache, CacheKeys, CacheTTL } from "./cache";
 import { z } from "zod";
 import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth";
 import { getAccessibleStores } from "./permissions";
@@ -978,7 +979,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ UNITS ============
   app.get("/api/units", async (req, res) => {
+    const cacheKey = CacheKeys.units();
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+    
     const units = await storage.getUnits();
+    await cache.set(cacheKey, units, CacheTTL.COMPANY);
     res.json(units);
   });
 
@@ -986,6 +994,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertUnitSchema.parse(req.body);
       const unit = await storage.createUnit(data);
+      await cache.del(CacheKeys.units());
       res.status(201).json(unit);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -1103,45 +1112,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ CATEGORIES ============
-  app.get("/api/categories", async (req, res) => {
-    const categories = await storage.getCategories();
+  app.get("/api/categories", requireAuth, async (req, res) => {
+    const companyId = (req as any).companyId;
+    const cacheKey = CacheKeys.categories(companyId);
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+    
+    const categories = await storage.getCategories(companyId);
+    await cache.set(cacheKey, categories, CacheTTL.COMPANY);
     res.json(categories);
   });
 
-  app.get("/api/categories/:id", async (req, res) => {
-    const category = await storage.getCategory(req.params.id);
+  app.get("/api/categories/:id", requireAuth, async (req, res) => {
+    const companyId = (req as any).companyId;
+    const category = await storage.getCategory(req.params.id, companyId);
     if (!category) {
       return res.status(404).json({ error: "Category not found" });
     }
     res.json(category);
   });
 
-  app.post("/api/categories", async (req, res) => {
+  app.post("/api/categories", requireAuth, async (req, res) => {
     try {
-      const data = insertCategorySchema.parse(req.body);
+      const companyId = (req as any).companyId;
+      const { companyId: _, ...bodyData } = req.body;
+      const data = insertCategorySchema.parse({
+        ...bodyData,
+        companyId,
+      });
       const category = await storage.createCategory(data);
+      await cache.del(CacheKeys.categories(companyId));
       res.status(201).json(category);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
   });
 
-  app.patch("/api/categories/:id", async (req, res) => {
+  app.patch("/api/categories/:id", requireAuth, async (req, res) => {
     try {
-      const data = insertCategorySchema.partial().parse(req.body);
-      const category = await storage.updateCategory(req.params.id, data);
+      const companyId = (req as any).companyId;
+      // Strip companyId from request body to prevent cross-tenant reassignment
+      const { companyId: _, ...bodyData } = req.body;
+      const data = insertCategorySchema.partial().parse(bodyData);
+      const category = await storage.updateCategory(req.params.id, companyId, data);
       if (!category) {
         return res.status(404).json({ error: "Category not found" });
       }
+      await cache.del(CacheKeys.categories(companyId));
       res.json(category);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
   });
 
-  app.delete("/api/categories/:id", async (req, res) => {
+  app.delete("/api/categories/:id", requireAuth, async (req, res) => {
     try {
-      await storage.deleteCategory(req.params.id);
+      const companyId = (req as any).companyId;
+      await storage.deleteCategory(req.params.id, companyId);
+      await cache.del(CacheKeys.categories(companyId));
       res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -1151,7 +1181,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ VENDORS ============
   app.get("/api/vendors", requireAuth, async (req, res) => {
     const companyId = (req as any).companyId;
+    const cacheKey = CacheKeys.vendors(companyId);
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+    
     const vendors = await storage.getVendors(companyId);
+    await cache.set(cacheKey, vendors, CacheTTL.USER); // 1800s - vendors change more frequently
     res.json(vendors);
   });
 
@@ -1180,6 +1217,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         companyId,
       });
       const vendor = await storage.createVendor(data);
+      await cache.del(CacheKeys.vendors(companyId));
       res.status(201).json(vendor);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -1199,6 +1237,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { companyId: _, ...bodyData } = req.body;
       const data = insertVendorSchema.partial().parse(bodyData);
       const vendor = await storage.updateVendor(req.params.id, data);
+      await cache.del(CacheKeys.vendors(companyId));
       res.json(vendor);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -1215,6 +1254,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       await storage.deleteVendor(req.params.id);
+      await cache.del(CacheKeys.vendors(companyId));
       res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });

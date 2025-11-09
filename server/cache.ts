@@ -127,9 +127,13 @@ export const CacheKeys = {
   session: (sessionId: string) => `session:${sessionId}`,
   user: (userId: string) => `user:${userId}`,
   company: (companyId: string) => `company:${companyId}`,
-  inventoryItems: (companyId: string) => `inventory:items:${companyId}`,
+  units: () => `units:all`, // Global - no companyId
+  categories: (companyId: string) => `categories:${companyId}`,
+  vendors: (companyId: string) => `vendors:${companyId}`,
+  inventoryItems: (companyId: string, storeId?: string) => 
+    storeId ? `inventory:items:${companyId}:${storeId}` : `inventory:items:${companyId}:all`,
   storeInventoryItems: (companyId: string, storeId?: string) => 
-    storeId ? `inventory:store:${companyId}:${storeId}` : `inventory:store:${companyId}:*`,
+    storeId ? `inventory:store:${companyId}:${storeId}` : `inventory:store:${companyId}:all`,
   recipes: (companyId: string) => `recipes:${companyId}`,
   recipe: (recipeId: string) => `recipe:${recipeId}`,
   menuItems: (companyId: string) => `menu:items:${companyId}`,

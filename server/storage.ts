@@ -98,11 +98,11 @@ export interface IStorage {
   reorderStorageLocations(companyId: string, locationOrders: { id: string; sortOrder: number }[]): Promise<void>;
 
   // Categories
-  getCategories(): Promise<Category[]>;
-  getCategory(id: string): Promise<Category | undefined>;
+  getCategories(companyId: string): Promise<Category[]>;
+  getCategory(id: string, companyId: string): Promise<Category | undefined>;
   createCategory(category: InsertCategory): Promise<Category>;
-  updateCategory(id: string, category: Partial<Category>): Promise<Category | undefined>;
-  deleteCategory(id: string): Promise<void>;
+  updateCategory(id: string, companyId: string, category: Partial<Category>): Promise<Category | undefined>;
+  deleteCategory(id: string, companyId: string): Promise<void>;
 
   // Units
   getUnits(): Promise<Unit[]>;
@@ -708,12 +708,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Categories
-  async getCategories(): Promise<Category[]> {
-    return db.select().from(categories).orderBy(categories.sortOrder);
+  async getCategories(companyId: string): Promise<Category[]> {
+    return db.select().from(categories)
+      .where(eq(categories.companyId, companyId))
+      .orderBy(categories.sortOrder);
   }
 
-  async getCategory(id: string): Promise<Category | undefined> {
-    const [category] = await db.select().from(categories).where(eq(categories.id, id));
+  async getCategory(id: string, companyId: string): Promise<Category | undefined> {
+    const [category] = await db.select().from(categories)
+      .where(and(
+        eq(categories.id, id),
+        eq(categories.companyId, companyId)
+      ));
     return category || undefined;
   }
 
@@ -722,17 +728,26 @@ export class DatabaseStorage implements IStorage {
     return category;
   }
 
-  async updateCategory(id: string, updates: Partial<Category>): Promise<Category | undefined> {
+  async updateCategory(id: string, companyId: string, updates: Partial<Category>): Promise<Category | undefined> {
+    // Strip companyId from updates to prevent cross-tenant reassignment
+    const { companyId: _, ...safeUpdates } = updates;
     const [category] = await db
       .update(categories)
-      .set(updates)
-      .where(eq(categories.id, id))
+      .set(safeUpdates)
+      .where(and(
+        eq(categories.id, id),
+        eq(categories.companyId, companyId)
+      ))
       .returning();
     return category || undefined;
   }
 
-  async deleteCategory(id: string): Promise<void> {
-    await db.delete(categories).where(eq(categories.id, id));
+  async deleteCategory(id: string, companyId: string): Promise<void> {
+    await db.delete(categories)
+      .where(and(
+        eq(categories.id, id),
+        eq(categories.companyId, companyId)
+      ));
   }
 
   // Units
