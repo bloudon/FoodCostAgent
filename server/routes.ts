@@ -3,7 +3,8 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import crypto from "crypto";
 import { storage } from "./storage";
-import { cache, CacheKeys, CacheTTL } from "./cache";
+import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
+import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
 import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth";
 import { getAccessibleStores } from "./permissions";
@@ -1691,7 +1692,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const storeId = req.query.store_id as string | undefined;
     const companyId = (req as any).companyId as string;
     
-    // Validate store belongs to company if storeId provided
+    // Security check BEFORE cache lookup
     if (storeId) {
       const store = await storage.getCompanyStore(storeId);
       if (!store || store.companyId !== companyId) {
@@ -1699,17 +1700,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
     
+    // Try cache lookup with filter params
+    const cacheKey = CacheKeys.inventoryList(companyId, storeId, locationId);
+    const cached = await cache.get<EnrichedInventoryItem[]>(cacheKey);
+    if (cached) {
+      cacheLog(`HIT inventory list (${companyId}, store=${storeId || '*'}, location=${locationId || '*'})`);
+      return res.json(cached);
+    }
+    cacheLog(`MISS inventory list (${companyId}, store=${storeId || '*'}, location=${locationId || '*'})`);
+    
+    // Cache miss - fetch from database
     const items = await storage.getInventoryItems(locationId, storeId, companyId);
     
-    const locations = await storage.getStorageLocations(companyId);
-    const units = await storage.getUnits();
-    const categories = await storage.getCategories();
+    // Enrich using Phase 1 caches
+    const locations = await cache.getOrSet(
+      CacheKeys.locations(companyId),
+      () => storage.getStorageLocations(companyId),
+      CacheTTL.LOCATIONS
+    );
+    const units = await cache.getOrSet(
+      CacheKeys.units(),
+      () => storage.getUnits(),
+      CacheTTL.UNITS
+    );
+    const categories = await cache.getOrSet(
+      CacheKeys.categories(companyId),
+      () => storage.getCategories(companyId),
+      CacheTTL.CATEGORIES
+    );
     
     // Fetch all item locations in one batched query
     const itemIds = items.map(item => item.id);
     const itemLocationsMap = await storage.getInventoryItemLocationsBatch(itemIds);
     
-    const enriched = items.map((item) => {
+    const enriched: EnrichedInventoryItem[] = items.map((item) => {
       const unit = units.find((u) => u.id === item.unitId);
       const category = item.categoryId ? categories.find((c) => c.id === item.categoryId) : null;
       
@@ -1754,6 +1778,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
     });
     
+    // Store in cache
+    await cache.set(cacheKey, enriched, CacheTTL.INVENTORY_ITEMS);
+    
     res.json(enriched);
   });
 
@@ -1762,11 +1789,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(aggregated);
   });
 
-  app.get("/api/inventory-items/:id", async (req, res) => {
-    const item = await storage.getInventoryItem(req.params.id);
+  app.get("/api/inventory-items/:id", requireAuth, async (req, res) => {
+    const itemId = req.params.id;
+    const companyId = (req as any).companyId as string;
+    
+    // Try cache lookup
+    const cacheKey = CacheKeys.inventoryItem(companyId, itemId);
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      cacheLog(`HIT inventory item (${companyId}, ${itemId})`);
+      return res.json(cached);
+    }
+    cacheLog(`MISS inventory item (${companyId}, ${itemId})`);
+    
+    // Cache miss - fetch from database
+    const item = await storage.getInventoryItem(itemId);
     if (!item) {
       return res.status(404).json({ error: "Inventory item not found" });
     }
+    
+    // Security check - verify company ownership
+    if (item.companyId !== companyId) {
+      return res.status(403).json({ error: "Access denied to this inventory item" });
+    }
+    
+    // Store in cache
+    await cache.set(cacheKey, item, CacheTTL.INVENTORY_ITEMS);
+    
     res.json(item);
   });
 
@@ -1873,6 +1922,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           reorderLevel: data.reorderLevel || null,
         });
       }
+      
+      // Invalidate cache after creation
+      await cacheInvalidator.invalidateInventory(companyId, item.id);
+      cacheLog(`INVALIDATE inventory after create (${companyId}, ${item.id})`);
       
       res.status(201).json(item);
     } catch (error: any) {
@@ -1988,7 +2041,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const newCost = await calculateRecipeCost(recipeId);
           await storage.updateRecipe(recipeId, { computedCost: newCost });
         }
+        // Invalidate recipe caches since recipe costs changed
+        await cacheInvalidator.invalidateRecipes(currentItem.companyId);
       }
+      
+      // Invalidate inventory cache after update
+      await cacheInvalidator.invalidateInventory(currentItem.companyId, req.params.id);
+      cacheLog(`INVALIDATE inventory after update (${currentItem.companyId}, ${req.params.id})`);
       
       res.json(item);
     } catch (error: any) {

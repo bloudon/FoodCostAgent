@@ -119,6 +119,18 @@ export class CacheService {
       }
     }
   }
+  
+  // Get from cache, or set if missing (cache-aside pattern)
+  async getOrSet<T>(key: string, fetcher: () => Promise<T>, ttl?: number): Promise<T> {
+    const cached = await this.get<T>(key);
+    if (cached !== null) {
+      return cached;
+    }
+    
+    const value = await fetcher();
+    await this.set(key, value, ttl);
+    return value;
+  }
 }
 
 export const cache = new CacheService();
@@ -131,6 +143,7 @@ export const CacheKeys = {
   units: () => `units:all`, // Global - no companyId
   categories: (companyId: string) => `categories:${companyId}`,
   vendors: (companyId: string) => `vendors:${companyId}`,
+  locations: (companyId: string) => `locations:${companyId}`, // Storage locations
   
   // Phase 2: Inventory Items (list + item caches)
   inventoryList: (companyId: string, storeId?: string, locationId?: string) => 
@@ -164,6 +177,7 @@ export const CacheTTL = {
   UNITS: 3600,
   CATEGORIES: 3600,
   VENDORS: 3600,
+  LOCATIONS: 3600,
   
   // Phase 2: Frequently-mutated resources (shorter TTLs)
   INVENTORY_ITEMS: 300,   // 5 minutes - frequently changed via receiving/counts/transfers
@@ -223,3 +237,10 @@ export class CacheInvalidator {
 }
 
 export const cacheInvalidator = new CacheInvalidator(cache);
+
+// Cache debug logging helper (gated by env flag)
+export function cacheLog(message: string, ...args: any[]): void {
+  if (process.env.CACHE_DEBUG === 'true') {
+    console.log(`[CACHE] ${message}`, ...args);
+  }
+}
