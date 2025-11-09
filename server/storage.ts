@@ -1763,8 +1763,34 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createCompany(insertCompany: InsertCompany): Promise<Company> {
-    const [company] = await db.insert(companies).values(insertCompany).returning();
-    return company;
+    return await db.transaction(async (tx) => {
+      // Create the company
+      const [company] = await tx.insert(companies).values(insertCompany).returning();
+      
+      // Create default categories for the new company
+      await tx.insert(categories).values([
+        {
+          companyId: company.id,
+          name: "Frozen",
+          sortOrder: 1,
+          showAsIngredient: 1,
+        },
+        {
+          companyId: company.id,
+          name: "Walk-In",
+          sortOrder: 2,
+          showAsIngredient: 1,
+        },
+        {
+          companyId: company.id,
+          name: "Dry/Pantry",
+          sortOrder: 3,
+          showAsIngredient: 1,
+        },
+      ]);
+      
+      return company;
+    });
   }
 
   async updateCompany(id: string, updates: Partial<Company>): Promise<Company | undefined> {

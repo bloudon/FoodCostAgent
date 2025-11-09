@@ -2,7 +2,36 @@ import { storage } from "./storage";
 import { hashPassword } from "./auth";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, recipes, recipeComponents } from "@shared/schema";
+import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, recipes, recipeComponents, categories } from "@shared/schema";
+
+// Helper function to create default categories for a company
+async function createDefaultCategories(companyId: string) {
+  const existingCategories = await db.select().from(categories).where(eq(categories.companyId, companyId));
+  if (existingCategories.length === 0) {
+    await db.insert(categories).values([
+      {
+        companyId,
+        name: "Frozen",
+        sortOrder: 1,
+        showAsIngredient: 1,
+      },
+      {
+        companyId,
+        name: "Walk-In",
+        sortOrder: 2,
+        showAsIngredient: 1,
+      },
+      {
+        companyId,
+        name: "Dry/Pantry",
+        sortOrder: 3,
+        showAsIngredient: 1,
+      },
+    ]);
+    return true;
+  }
+  return false;
+}
 
 // Seed Brian's Pizza company, stores, ingredients, and recipes
 async function seedBriansPizza() {
@@ -34,6 +63,12 @@ async function seedBriansPizza() {
     }).returning();
     briansPizza = result[0];
     console.log("✅ Created Brian's Pizza company");
+  }
+
+  // Create default categories for Brian's Pizza
+  const categoriesCreated = await createDefaultCategories(briansPizza.id);
+  if (categoriesCreated) {
+    console.log("✅ Created default categories for Brian's Pizza");
   }
 
   // Create stores for Brian's Pizza
@@ -430,6 +465,12 @@ export async function seedDatabase() {
     }).returning();
     briansPizza = result[0];
     console.log("✅ Created Brian's Pizza company");
+  }
+
+  // Create default categories for Brian's Pizza
+  const categoriesCreated = await createDefaultCategories(briansPizza.id);
+  if (categoriesCreated) {
+    console.log("✅ Created default categories for Brian's Pizza");
   }
 
   // Create stores for Brian's Pizza
