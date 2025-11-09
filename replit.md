@@ -52,8 +52,8 @@ The system utilizes a multi-tenant architecture with data isolation at company a
 - **Business Logic**: Unit conversion, recursive recipe costing, location-based inventory, theoretical vs. actual usage variance, purchase order workflows, COGS analysis.
 - **Authentication & Sessions**: Hybrid authentication supporting both username/password AND enterprise SSO (Replit OpenID Connect). Cookie-based sessions take priority over SSO to allow explicit admin logins. Session-based with `selected_company_id`.
 - **Role-Based Access Control**: Hierarchical permissions (`global_admin`, `company_admin`, `store_manager`, `store_user`). Company admins require access to all store locations by default.
-- **Enterprise SSO Integration (Production-Ready)**: Replit OpenID Connect for enterprise authentication, email-based account linking, Passport.js session management with PostgreSQL storage (sessions table).
-- **User Invitation System (Phase 2 - Production-Ready)**: Comprehensive invitation system with dual authentication support (SSO + username/password).
+- **Enterprise SSO Integration (Production-Ready)**: Replit OpenID Connect for enterprise authentication, email-based account linking, Passport.js session management with PostgreSQL storage (sessions table). **Invitation-only SSO access**: SSO authentication requires a valid invitation - uninvited users are redirected to `/sso-access-denied` error page with instructions to request access from administrators.
+- **User Invitation System (Production-Ready)**: Comprehensive invitation system with dual authentication support (SSO + username/password). Pending Invitations workflow shows invited users who haven't accepted yet. Once accepted via SSO, users move from Pending Invitations to active Users list with SSO authentication badge indicator.
 
 ### Architectural Decisions
 - **Application Structure**: Single-page application with co-served API and frontend.
