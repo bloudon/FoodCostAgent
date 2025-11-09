@@ -65,7 +65,7 @@ export interface IStorage {
   getInvitationByEmail(email: string, companyId: string): Promise<Invitation | undefined>;
   getPendingInvitations(companyId: string): Promise<Invitation[]>;
   acceptInvitation(token: string): Promise<Invitation | undefined>;
-  revokeInvitation(id: string, companyId: string): Promise<void>;
+  revokeInvitation(id: string, companyId: string | null): Promise<void>;
   cleanExpiredInvitations(): Promise<void>;
 
   // Auth Sessions
@@ -465,12 +465,23 @@ export class DatabaseStorage implements IStorage {
     return invitation || undefined;
   }
 
-  async revokeInvitation(id: string, companyId: string): Promise<void> {
-    await db.delete(invitations)
-      .where(and(
-        eq(invitations.id, id),
-        eq(invitations.companyId, companyId)
-      ));
+  async revokeInvitation(id: string, companyId: string | null): Promise<void> {
+    console.log(`[revokeInvitation] Attempting to delete invitation ${id} for company ${companyId}`);
+    
+    // Build WHERE conditions
+    const conditions = companyId
+      ? and(eq(invitations.id, id), eq(invitations.companyId, companyId))
+      : eq(invitations.id, id);
+    
+    const deleted = await db.delete(invitations)
+      .where(conditions)
+      .returning();
+    
+    console.log(`[revokeInvitation] Deleted ${deleted.length} invitations`);
+    
+    if (deleted.length === 0) {
+      throw new Error("Invitation not found or already revoked");
+    }
   }
 
   async cleanExpiredInvitations(): Promise<void> {

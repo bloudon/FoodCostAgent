@@ -824,16 +824,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Insufficient permissions" });
       }
 
-      // Company admins can only revoke invitations for their company
-      const companyId = currentUser.role === "company_admin"
-        ? currentUser.companyId
-        : undefined;
-
-      if (!companyId && currentUser.role === "company_admin") {
+      // For company admins, verify they have a company ID
+      if (currentUser.role === "company_admin" && !currentUser.companyId) {
         return res.status(403).json({ error: "Company admins must have a company ID" });
       }
 
-      await storage.revokeInvitation(req.params.id, companyId!);
+      // Company admins can only revoke invitations for their company
+      // Global admins can revoke any invitation (no company filter)
+      const companyId = currentUser.role === "company_admin"
+        ? currentUser.companyId
+        : null; // null means no company filter (global admin)
+
+      await storage.revokeInvitation(req.params.id, companyId);
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ error: error.message });
