@@ -126,31 +126,57 @@ async function upsertSsoUser(
     user = await storage.getUserByEmail(email);
   }
   
+  // Check for pending invitation token
+  let invitation;
+  
+  if (invitationToken) {
+    // Use token to get the specific invitation
+    invitation = await storage.getInvitationByToken(invitationToken);
+    
+    // Validate that the invitation email matches the SSO email
+    if (invitation && invitation.email !== email) {
+      console.error("[SSO] Invitation email mismatch:", invitation.email, "vs", email);
+      invitation = undefined; // Reject invitation if email doesn't match
+    }
+  }
+  
   if (user) {
     // Update existing user with SSO info
-    await storage.updateUser(user.id, {
+    const updates: any = {
       ssoProvider,
       ssoId,
       profileImageUrl: claims["profile_image_url"],
       firstName: claims["first_name"] || user.firstName,
       lastName: claims["last_name"] || user.lastName,
       updatedAt: new Date(),
-    });
-  } else {
-    // Check for pending invitation token
-    let invitation;
+    };
     
-    if (invitationToken) {
-      // Use token to get the specific invitation
-      invitation = await storage.getInvitationByToken(invitationToken);
+    // If accepting an invitation, also update company and role
+    if (invitation) {
+      console.log("[SSO] Updating existing user with invitation data");
+      updates.companyId = invitation.companyId;
+      updates.role = invitation.role;
       
-      // Validate that the invitation email matches the SSO email
-      if (invitation && invitation.email !== email) {
-        console.error("Invitation email mismatch:", invitation.email, "vs", email);
-        invitation = undefined; // Reject invitation if email doesn't match
+      // Mark invitation as accepted
+      await storage.acceptInvitation(invitation.token);
+      
+      // If company admin, auto-assign to all stores
+      if (invitation.role === "company_admin") {
+        const companyStores = await storage.getCompanyStores(invitation.companyId);
+        for (const store of companyStores) {
+          await storage.assignUserToStore(user.id, store.id);
+        }
+      } else if (invitation.storeIds && invitation.storeIds.length > 0) {
+        // Assign user to stores specified in invitation
+        for (const storeId of invitation.storeIds) {
+          await storage.assignUserToStore(user.id, storeId);
+        }
       }
     }
     
+    await storage.updateUser(user.id, updates);
+  } else {
+    // No existing user - create new one
     if (invitation) {
       // Create user with company and role from invitation
       user = await storage.createUser({
