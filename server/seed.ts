@@ -142,9 +142,10 @@ async function seedBriansPizza() {
   const units = {
     pound: allUnits.find((u: any) => u.name === "pound"),
     ounce: allUnits.find((u: any) => u.name === "ounce (weight)"),
+    fluidOunce: allUnits.find((u: any) => u.name === "fluid ounce"),
   };
   
-  if (!units.pound || !units.ounce) {
+  if (!units.pound || !units.ounce || !units.fluidOunce) {
     console.log("⚠️  Units not created yet, skipping Brian's Pizza seed");
     return;
   }
@@ -810,28 +811,23 @@ export async function seedDatabase() {
     console.log("✅ Pizza Dough recipe already exists");
   }
 
-  // ============ STORAGE LOCATIONS ============
-  // Use default company for seeding
+  // ============ OLD SEED CODE ============
+  // NOTE: This section is commented out as it doesn't match current schema
+  // and the database is already seeded. Keeping for reference only.
+  /*
   const defaultCompanyId = "default-company";
-  
-  // Create Store 1 and Store 2 as separate locations for multi-location inventory
   const locations = {
     store1: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Store 1", sortOrder: 1 }),
     store2: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Store 2", sortOrder: 2 }),
-    // Keep legacy locations for backward compatibility
     walkIn: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Walk-In Cooler", sortOrder: 3 }),
     dryStorage: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Pantry", sortOrder: 4 }),
     prepTable: await storage.createStorageLocation({ companyId: defaultCompanyId, name: "Prep Table", sortOrder: 5 }),
   };
 
-  // ============ VENDORS ============
   const vendors = {
-    miscGrocery: await storage.createVendor({ 
-      name: "Misc Grocery", 
-      orderGuideType: "manual" 
-    }),
-    sysco: await storage.createVendor({ name: "Sysco", accountNumber: "SYS-12345" }),
-    usFoods: await storage.createVendor({ name: "US Foods", accountNumber: "USF-67890" }),
+    miscGrocery: await storage.createVendor({ name: "Misc Grocery", companyId: defaultCompanyId, orderGuideType: "manual" }),
+    sysco: await storage.createVendor({ name: "Sysco", companyId: defaultCompanyId, accountNumber: "SYS-12345", orderGuideType: "manual" }),
+    usFoods: await storage.createVendor({ name: "US Foods", companyId: defaultCompanyId, accountNumber: "USF-67890", orderGuideType: "manual" }),
   };
 
   // ============ INVENTORY ITEMS ============
@@ -1057,6 +1053,7 @@ export async function seedDatabase() {
     qty: 0.5,
     unitId: units.fluidOunce.id,
   });
+  */
 
 
   console.log('   - 8 inventory items');
