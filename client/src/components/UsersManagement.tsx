@@ -443,7 +443,16 @@ export function UsersManagement({ companyId }: { companyId: string }) {
                       ? `${user.firstName || ""} ${user.lastName || ""}`.trim()
                       : "—"}
                   </TableCell>
-                  <TableCell>{user.email}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span>{user.email}</span>
+                      {user.ssoProvider && (
+                        <Badge variant="secondary" className="text-xs" data-testid={`badge-sso-${user.id}`}>
+                          SSO
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <Badge variant={getRoleBadgeVariant(user.role)}>
                       {getRoleLabel(user.role)}

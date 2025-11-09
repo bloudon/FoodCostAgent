@@ -121,19 +121,9 @@ async function upsertSsoUser(
         }
       }
     } else {
-      // Create new user with SSO
-      // New SSO users start with store_user role and no company assignment
-      // Admin will need to assign them to a company
-      user = await storage.createUser({
-        email: email || `sso_${ssoId}@placeholder.com`, // Fallback for providers without email
-        ssoProvider,
-        ssoId,
-        profileImageUrl: claims["profile_image_url"],
-        firstName: claims["first_name"],
-        lastName: claims["last_name"],
-        role: "store_user",
-        active: 1,
-      });
+      // No valid invitation - SSO access requires an invitation
+      // Return null to signal access denied
+      return null;
     }
   }
   
@@ -219,6 +209,16 @@ export async function setupSsoAuth(app: Express) {
       
       // Create or update user with invitation if applicable
       const user = await upsertSsoUser(claims, invitationToken);
+      
+      // Check if user creation was denied (no valid invitation)
+      if (!user) {
+        // Clear invitation token from session
+        if (invitationToken) {
+          delete (req.session as any).pendingInvitationToken;
+        }
+        console.log("SSO access denied - no valid invitation for:", claims["email"]);
+        return res.redirect("/sso-access-denied");
+      }
       
       // Clear invitation token from session
       if (invitationToken) {

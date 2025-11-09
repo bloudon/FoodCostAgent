@@ -44,6 +44,7 @@ import Users from "@/pages/users";
 import WasteEntry from "@/pages/waste-entry";
 import Login from "@/pages/login";
 import PendingApproval from "@/pages/pending-approval";
+import SsoAccessDenied from "@/pages/sso-access-denied";
 import AcceptInvitation from "@/pages/accept-invitation";
 
 function ProtectedLayout() {
@@ -160,6 +161,7 @@ function App() {
             <Switch>
               <Route path="/login" component={Login} />
               <Route path="/pending-approval" component={PendingApproval} />
+              <Route path="/sso-access-denied" component={SsoAccessDenied} />
               <Route path="/accept-invitation/:token" component={AcceptInvitation} />
               <Route>
                 <ProtectedLayout />
