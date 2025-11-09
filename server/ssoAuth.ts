@@ -242,28 +242,14 @@ export async function setupSsoAuth(app: Express) {
   app.get("/api/sso/login", (req, res, next) => {
     ensureStrategy(req.hostname);
     
-    // Check if there's a pending invitation token in the session
-    const invitationToken = (req.session as any).pendingInvitationToken;
+    // Note: Invitation token is now stored in a signed cookie by prepare-acceptance endpoint
+    // It will be retrieved in the callback
+    console.log(`[SSO] Starting SSO login`);
     
-    const authOptions: any = {
+    passport.authenticate(`replitauth:${req.hostname}`, {
       prompt: "login consent",
       scope: ["openid", "email", "profile", "offline_access"],
-    };
-    
-    // If there's an invitation token, generate a nonce and pass it via state
-    if (invitationToken) {
-      const nonce = nonceHelpers.generate();
-      nonceHelpers.set(nonce, invitationToken);
-      authOptions.state = nonce;
-      
-      // Clear the invitation token from session (prevent reuse)
-      delete (req.session as any).pendingInvitationToken;
-      console.log(`[SSO] Starting SSO login with invitation nonce`);
-    } else {
-      console.log(`[SSO] Starting SSO login without invitation`);
-    }
-    
-    passport.authenticate(`replitauth:${req.hostname}`, authOptions)(req, res, next);
+    })(req, res, next);
   });
 
   // SSO Callback route
@@ -282,24 +268,17 @@ export async function setupSsoAuth(app: Express) {
       
       console.log("SSO sessionData:", sessionData);
       
-      // Retrieve invitation token from state parameter (passed via OIDC)
+      // Retrieve invitation token from signed cookie
       let invitationToken: string | null = null;
-      const stateNonce = req.query.state as string | undefined;
+      const cookieToken = req.signedCookies?.pendingInvitation;
       
-      if (stateNonce) {
-        invitationToken = nonceHelpers.getAndDelete(stateNonce);
-        if (invitationToken) {
-          console.log(`[SSO] Successfully retrieved invitation from state nonce`);
-        } else {
-          console.log(`[SSO] State nonce provided but invitation not found or expired`);
-        }
+      if (cookieToken) {
+        invitationToken = cookieToken;
+        // Clear the cookie immediately after reading (single-use)
+        res.clearCookie('pendingInvitation');
+        console.log(`[SSO] Successfully retrieved invitation from signed cookie`);
       } else {
-        console.log(`[SSO] No state nonce provided - checking session as fallback`);
-        // Fallback to session (for backwards compatibility)
-        invitationToken = (req.session as any).pendingInvitationToken;
-        if (invitationToken) {
-          delete (req.session as any).pendingInvitationToken;
-        }
+        console.log(`[SSO] No invitation cookie found`);
       }
       
       const claims = sessionData.claims;

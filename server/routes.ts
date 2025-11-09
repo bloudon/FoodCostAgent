@@ -688,7 +688,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Prepare invitation acceptance (stores token in session for SSO callback)
+  // Prepare invitation acceptance (stores token in cookie for SSO callback)
   app.post("/api/invitations/prepare-acceptance/:token", async (req, res) => {
     try {
       const { token } = req.params;
@@ -700,17 +700,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Invitation not found or expired" });
       }
       
-      // Store the invitation token in the session for SSO callback to use
-      (req.session as any).pendingInvitationToken = token;
-      
-      // Save the session before redirecting
-      req.session.save((err) => {
-        if (err) {
-          console.error("Session save error:", err);
-          return res.status(500).json({ error: "Failed to prepare invitation" });
-        }
-        res.json({ success: true });
+      // Store the invitation token in a signed cookie (survives OAuth redirect)
+      // Cookie expires in 15 minutes
+      res.cookie('pendingInvitation', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        signed: true,
+        maxAge: 15 * 60 * 1000, // 15 minutes
+        sameSite: 'lax', // Allow cookie to be sent on OAuth redirects
       });
+      
+      console.log('[Invitation] Stored invitation token in signed cookie');
+      res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
