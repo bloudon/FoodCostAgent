@@ -35,7 +35,8 @@ app.use('/webhooks/edi', express.raw({
 app.use(express.json());
 
 app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
+// Use SESSION_SECRET for signing cookies (required for signed cookies like invitation tokens)
+app.use(cookieParser(process.env.SESSION_SECRET));
 
 app.use((req, res, next) => {
   const start = Date.now();
