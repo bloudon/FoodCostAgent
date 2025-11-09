@@ -606,7 +606,14 @@ export default function CountSession() {
             </AccordionTrigger>
             <AccordionContent className="px-6 pb-6">
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {Object.entries(locationTotals).filter(([_, data]: [string, any]) => data.items > 0).map(([locationId, data]: [string, any]) => (
+                {Object.entries(locationTotals)
+                  .filter(([_, data]: [string, any]) => data.items > 0)
+                  .sort((a, b) => {
+                    const locA = storageLocations?.find(l => l.id === a[0]);
+                    const locB = storageLocations?.find(l => l.id === b[0]);
+                    return (locA?.sortOrder ?? 999) - (locB?.sortOrder ?? 999);
+                  })
+                  .map(([locationId, data]: [string, any]) => (
                   <div 
                     key={locationId} 
                     className={`border rounded-lg p-4 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
@@ -707,10 +714,19 @@ export default function CountSession() {
                   
                   if (!grouped[groupKey]) {
                     grouped[groupKey] = [];
-                    groupOrder.push(groupKey); // Preserve first appearance order
+                    groupOrder.push(groupKey);
                   }
                   grouped[groupKey].push(line);
                 });
+
+                // Sort groupOrder by storage location sortOrder when grouping by location
+                if (groupBy === "location") {
+                  groupOrder.sort((a, b) => {
+                    const locA = storageLocations?.find(l => l.id === a);
+                    const locB = storageLocations?.find(l => l.id === b);
+                    return (locA?.sortOrder ?? 999) - (locB?.sortOrder ?? 999);
+                  });
+                }
 
                 return (
                   <Accordion 
