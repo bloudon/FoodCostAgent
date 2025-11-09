@@ -120,7 +120,7 @@ export const invitations = pgTable("invitations", {
   email: text("email").notNull(),
   companyId: varchar("company_id").notNull(),
   role: text("role").notNull().default("store_user"), // Role being offered (store_user, store_manager, company_admin)
-  storeIds: text("store_ids").array().notNull().default(sql`ARRAY[]::text[]`), // Store assignments for store_user/store_manager roles
+  storeIds: text("store_ids").array().notNull().default(sql`'{}'::text[]`), // Store assignments for store_user/store_manager roles
   token: text("token").notNull().unique(), // Secure random token for invitation link
   invitedBy: varchar("invited_by"), // User ID who sent the invitation
   expiresAt: timestamp("expires_at").notNull(), // Invitation expiration (default: 7 days)
