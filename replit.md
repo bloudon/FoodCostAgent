@@ -1,11 +1,10 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system for multi-company food service businesses, especially pizza restaurants. It aims to optimize operations, reduce waste, and improve profitability. Key features include advanced unit conversions (40 kitchen units), nested recipes, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The goal is to provide a robust solution for managing complex restaurant operations efficiently.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary purpose is to optimize operations, minimize waste, and enhance profitability. Key capabilities include advanced unit conversions (40 kitchen units), support for nested recipes, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The system aims to provide a robust and efficient solution for managing complex restaurant operations.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
-- Global Header Display: Company name and store selector are displayed in the persistent application header across all pages, removing the need for redundant display on individual pages like the dashboard.
 - Default Unit of Measure for Inventory Items: Pound should be the default unit when creating new inventory items.
 - Unit Abbreviation: "Pound" displays as "lb." throughout the UI.
 - Yield Field: Yield is stored as a percentage value (0-100).
@@ -38,14 +37,14 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
-The system utilizes a multi-tenant architecture with data isolation at company and store levels, integrating with Thrive Control Center (TCC).
+The system employs a multi-tenant architecture with data isolation at both company and store levels, integrated with Thrive Control Center (TCC).
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
 - **UI**: `shadcn/ui` components (Radix UI, Tailwind CSS) for custom theming, dark/light modes, and responsive navigation.
 - **State Management**: TanStack Query, React Context for global store selection.
 - **Routing**: Wouter.
-- **Global Store Context**: StoreProvider manages selected store state application-wide, accessible via useStoreContext hook. Store selection in header syncs across all pages.
+- **Global Store Context**: `StoreProvider` manages selected store state application-wide.
 
 ### Backend
 - **Runtime**: Node.js with TypeScript.
@@ -54,10 +53,9 @@ The system utilizes a multi-tenant architecture with data isolation at company a
 - **Database Layer**: Drizzle ORM, PostgreSQL (Neon serverless), schema-first with migrations.
 - **Core Domain Models**: Users, Storage Locations, Units, Inventory Items, Vendors, Recipes (nested), Inventory Counts, Purchase Orders, POS Sales, Transfer/Waste Logs.
 - **Business Logic**: Unit conversion, recursive recipe costing, location-based inventory, theoretical vs. actual usage variance, purchase order workflows, COGS analysis.
-- **Authentication & Sessions**: Hybrid authentication supporting both username/password AND enterprise SSO (Replit OpenID Connect). Cookie-based sessions take priority over SSO to allow explicit admin logins. Session-based with `selected_company_id`.
-- **Role-Based Access Control**: Hierarchical permissions (`global_admin`, `company_admin`, `store_manager`, `store_user`). Company admins require access to all store locations by default.
-- **Enterprise SSO Integration**: Replit OpenID Connect for enterprise authentication, email-based account linking, Passport.js session management with PostgreSQL storage. Invitation-only SSO access.
-- **User Invitation System**: Comprehensive invitation system with dual authentication support (SSO + username/password), and proper company, role, and store assignment.
+- **Authentication & Sessions**: Hybrid authentication (username/password and enterprise SSO via Replit OpenID Connect).
+- **Role-Based Access Control**: Hierarchical permissions (`global_admin`, `company_admin`, `store_manager`, `store_user`).
+- **User Invitation System**: Supports dual authentication and company/role/store assignment.
 
 ### Architectural Decisions
 - **Application Structure**: Single-page application with co-served API and frontend.
@@ -72,9 +70,9 @@ The system utilizes a multi-tenant architecture with data isolation at company a
 - **Object Storage**: Google Cloud Storage (via Replit's object storage) for inventory item images, using presigned URLs and on-the-fly thumbnails.
 - **Unified Orders Page**: Consolidates Purchase Orders, Receiving, and Transfer Orders.
 - **Store-to-Store Transfer Orders**: Tracks inventory movement with a defined workflow.
-- **Waste Tracking Module**: Comprehensive waste logging with store-level isolation, touch-friendly UI, automatic value calculation.
-- **HMAC Authentication for Inbound Data Feeds**: Implemented hierarchical HMAC-SHA256 for securing API integrations.
-- **Scalability Optimizations**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching layer with graceful fallback, response compression (gzip).
+- **Waste Tracking Module**: Comprehensive waste logging with store-level isolation and automatic value calculation.
+- **HMAC Authentication**: Hierarchical HMAC-SHA256 for securing API integrations.
+- **Scalability Optimizations**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching layer with graceful fallback, response compression (gzip). Caching strategy includes lookup tables (units, categories, vendors, storage locations) and frequently-mutated resources (inventory items, recipes, menu items) with specific TTLs and invalidation mechanisms.
 
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
