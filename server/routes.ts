@@ -753,13 +753,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Store users and store managers must be assigned to at least one store" });
       }
 
-      // Check if user already exists with this email
+      // Check if user already exists in THIS company
       const existingUser = await storage.getUserByEmail(email);
-      if (existingUser) {
-        return res.status(400).json({ error: "User with this email already exists" });
+      if (existingUser && existingUser.companyId === companyId) {
+        return res.status(400).json({ error: "User is already a member of this company" });
       }
 
-      // Check if there's already a pending invitation for this email
+      // Check if there's already a pending invitation for this email and company
       const existingInvitation = await storage.getInvitationByEmail(email, companyId);
       if (existingInvitation) {
         return res.status(400).json({ error: "Pending invitation already exists for this email" });

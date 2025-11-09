@@ -133,8 +133,8 @@ async function upsertSsoUser(
     // Use token to get the specific invitation
     invitation = await storage.getInvitationByToken(invitationToken);
     
-    // Validate that the invitation email matches the SSO email
-    if (invitation && invitation.email !== email) {
+    // Validate that the invitation email matches the SSO email (case-insensitive)
+    if (invitation && invitation.email.toLowerCase() !== email.toLowerCase()) {
       console.error("[SSO] Invitation email mismatch:", invitation.email, "vs", email);
       invitation = undefined; // Reject invitation if email doesn't match
     }
