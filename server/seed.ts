@@ -773,53 +773,6 @@ export async function seedDatabase() {
     onHandQty: 0,
   });
 
-  // TODO: Convert remaining products to inventory items
-  // Temporarily commented out pending conversion
-  /* 
-  const tomatoPaste = await storage.createProduct({
-    name: "Tomato Paste",
-    category: "Dry/Pantry",
-    pluSku: "CAN002",
-    unitId: units.pound.id,
-    active: 1,
-    lastCost: 0.006, // $0.006 per ounce
-    yieldAmount: 0.375, // 6 oz can
-    yieldUnitId: units.pound.id,
-  });
-
-  const garlic = await storage.createProduct({
-    name: "Fresh Garlic",
-    category: "Produce",
-    pluSku: "PRO001",
-    unitId: units.pound.id,
-    active: 1,
-    lastCost: 0.01, // $0.01 per ounce
-    yieldAmount: 1, // 1 lb bag
-    yieldUnitId: units.pound.id,
-  });
-
-  const basil = await storage.createProduct({
-    name: "Fresh Basil",
-    category: "Produce",
-    pluSku: "PRO002",
-    unitId: units.pound.id,
-    active: 1,
-    lastCost: 0.03, // $0.03 per ounce
-    yieldAmount: 0.25, // 4 oz package
-    yieldUnitId: units.pound.id,
-  });
-
-  const oregano = await storage.createProduct({
-    name: "Dried Oregano",
-    category: "Dry/Pantry",
-    pluSku: "SPI001",
-    unitId: units.pound.id,
-    active: 1,
-    lastCost: 0.05, // $0.05 per ounce
-    yieldAmount: 0.125, // 2 oz bottle
-    yieldUnitId: units.pound.id,
-  });
-
   // Cheese & Toppings
   const mozzarella = await storage.createInventoryItem({
     name: "Whole Milk Mozzarella",
@@ -833,17 +786,6 @@ export async function seedDatabase() {
     onHandQty: 0,
   });
 
-  const parmesan = await storage.createProduct({
-    name: "Grated Parmesan",
-    category: "Dairy",
-    pluSku: "DAI002",
-    unitId: units.pound.id,
-    active: 1,
-    lastCost: 0.022, // $0.022 per ounce
-    yieldAmount: 2, // 2 lb container
-    yieldUnitId: units.pound.id,
-  });
-
   const pepperoni = await storage.createInventoryItem({
     name: "Pepperoni Slices",
     category: "Protein",
@@ -855,136 +797,6 @@ export async function seedDatabase() {
     caseSize: 5,
     onHandQty: 0,
   });
-
-  const italianSausage = await storage.createProduct({
-    name: "Italian Sausage (bulk)",
-    category: "Protein",
-    pluSku: "MEA002",
-    unitId: units.pound.id,
-    active: 1,
-    lastCost: 0.013, // $0.013 per ounce
-    yieldAmount: 5, // 5 lb package
-    yieldUnitId: units.pound.id,
-  });
-
-  const chickenBreast = await storage.createProduct({
-    name: "Chicken Breast",
-    category: "Protein",
-    pluSku: "MEA003",
-    unitId: units.pound.id,
-    active: 1,
-    lastCost: 0.012, // $0.012 per ounce
-    yieldAmount: 10, // 10 lb bag
-    yieldUnitId: units.pound.id,
-  });
-
-  const bellPeppers = await storage.createProduct({
-    name: "Bell Peppers (mixed)",
-    category: "Produce",
-    pluSku: "PRO003",
-    unitId: units.pound.id,
-    active: 1,
-    lastCost: 0.007, // $0.007 per ounce
-    yieldAmount: 1, // sold by pound
-    yieldUnitId: units.pound.id,
-  });
-
-  const mushrooms = await storage.createProduct({
-    name: "Button Mushrooms",
-    category: "Produce",
-    pluSku: "PRO004",
-    unitId: units.pound.id,
-    active: 1,
-    lastCost: 0.009, // $0.009 per ounce
-    yieldAmount: 1, // 1 lb package
-    yieldUnitId: units.pound.id,
-  });
-
-  const onions = await storage.createProduct({
-    name: "Yellow Onions",
-    category: "Produce",
-    pluSku: "PRO005",
-    unitId: units.pound.id,
-    active: 1,
-    lastCost: 0.003, // $0.003 per ounce
-    yieldAmount: 1, // sold by pound
-    yieldUnitId: units.pound.id,
-  });
-
-  const blackOlives = await storage.createProduct({
-    name: "Sliced Black Olives",
-    category: "Dry/Pantry",
-    pluSku: "CAN003",
-    unitId: units.pound.id,
-    active: 1,
-    lastCost: 0.008, // $0.008 per ounce
-    yieldAmount: 0.375, // 6 oz can
-    yieldUnitId: units.pound.id,
-  });
-
-  // Sauces & Specialty
-  const bbqSauce = await storage.createProduct({
-    name: "BBQ Sauce (Sweet Baby Ray's)",
-    category: "Sauces",
-    pluSku: "SAU001",
-    unitId: units.fluidOunce.id,
-    active: 1,
-    lastCost: 0.008,
-  });
-
-  const ranchDressing = await storage.createProduct({
-    name: "Ranch Dressing",
-    category: "Sauces",
-    pluSku: "SAU002",
-    unitId: units.fluidOunce.id,
-    active: 1,
-    lastCost: 0.006,
-  });
-
-  // Wings & Appetizers
-  const chickenWings = await storage.createProduct({
-    name: "Chicken Wings (frozen)",
-    category: "Protein",
-    pluSku: "MEA004",
-    unitId: units.pound.id,
-    active: 1,
-    lastCost: 0.01, // $0.01 per ounce
-    yieldAmount: 10, // 10 lb bag
-    yieldUnitId: units.pound.id,
-  });
-
-  const breadstickDough = await storage.createProduct({
-    name: "Breadstick Dough",
-    category: "Dry/Pantry",
-    pluSku: "FRO001",
-    unitId: units.pound.id,
-    active: 1,
-    lastCost: 0.005, // $0.005 per ounce
-    yieldAmount: 1, // 1 lb package
-    yieldUnitId: units.pound.id,
-  });
-
-  const mozzarellaSticks = await storage.createProduct({
-    name: "Mozzarella Sticks (frozen)",
-    category: "Dry/Pantry",
-    pluSku: "FRO002",
-    unitId: units.each.id,
-    active: 1,
-    lastCost: 0.35,
-    yieldAmount: 24, // 24 pieces per bag
-    yieldUnitId: units.each.id,
-  });
-
-  const marinara = await storage.createProduct({
-    name: "Marinara Dipping Sauce",
-    category: "Sauces",
-    pluSku: "SAU003",
-    unitId: units.fluidOunce.id,
-    active: 1,
-    lastCost: 0.004,
-  });
-
-  */
 
   // ============ VENDOR ITEMS ============
   // Sysco items
