@@ -460,93 +460,98 @@ export async function seedDatabase() {
   // ============ UNITS ============
   // Base unit for weight: pound (imperial) / kilogram (metric)
   // Base unit for volume: fluid ounce (imperial) / milliliter (metric)
-  const units = {
-    // Weight - Imperial (base: pound)
-    pound: await storage.createUnit({ name: "pound", kind: "weight", toBaseRatio: 1, system: "imperial" }),
-    ounce: await storage.createUnit({ name: "ounce", kind: "weight", toBaseRatio: 0.0625, system: "imperial" }), // 1 oz = 0.0625 lb
-    
-    // Weight - Metric (base: pound for conversion)
-    gram: await storage.createUnit({ name: "gram", kind: "weight", toBaseRatio: 0.00220462, system: "metric" }), // 1 g = 0.00220462 lb
-    kilogram: await storage.createUnit({ name: "kilogram", kind: "weight", toBaseRatio: 2.20462, system: "metric" }), // 1 kg = 2.20462 lb
-    
-    // Volume - Imperial (base: fluid ounce)
-    fluidOunce: await storage.createUnit({ name: "fluid ounce", kind: "volume", toBaseRatio: 1, system: "imperial" }),
-    cup: await storage.createUnit({ name: "cup", kind: "volume", toBaseRatio: 8, system: "imperial" }),
-    tablespoon: await storage.createUnit({ name: "tablespoon", kind: "volume", toBaseRatio: 0.5, system: "imperial" }),
-    teaspoon: await storage.createUnit({ name: "teaspoon", kind: "volume", toBaseRatio: 0.167, system: "imperial" }),
-    
-    // Volume - Metric (base: fluid ounce for conversion)
-    milliliter: await storage.createUnit({ name: "milliliter", kind: "volume", toBaseRatio: 0.033814, system: "metric" }), // 1 ml = 0.033814 fl oz
-    liter: await storage.createUnit({ name: "liter", kind: "volume", toBaseRatio: 33.814, system: "metric" }), // 1 L = 33.814 fl oz
-    
-    // Count (works for both systems)
-    each: await storage.createUnit({ name: "each", kind: "count", toBaseRatio: 1, system: "both" }),
-    bag: await storage.createUnit({ name: "bag", kind: "count", toBaseRatio: 1, system: "both" }),
-    bottle: await storage.createUnit({ name: "bottle", kind: "count", toBaseRatio: 1, system: "both" }),
-  };
-
   // ============ UNIT CONVERSIONS ============
   console.log("🔄 Creating unit conversions...");
   
-  // 1 pound = 16 ounces
-  await storage.createUnitConversion({
-    fromUnitId: units.pound.id,
-    toUnitId: units.ounce.id,
-    conversionFactor: 16,
-  });
+  // Query comprehensive units created earlier for use in conversions
+  const allUnits = await storage.getUnits();
+  const findUnit = (name: string) => allUnits.find(u => u.name === name);
+  
+  const pound = findUnit("pound");
+  const ounce = findUnit("ounce (weight)"); // Note: comprehensive seed uses "ounce (weight)"
+  const tablespoon = findUnit("tablespoon");
+  const halfTablespoon = findUnit("half-tablespoon");
+  const teaspoon = findUnit("teaspoon");
+  const halfTeaspoon = findUnit("half-teaspoon");
+  const cup = findUnit("cup");
+  const halfCup = findUnit("half-cup");
+  const quarterCup = findUnit("quarter-cup");
+  const pint = findUnit("pint");
+  const quart = findUnit("quart");
+  const gallon = findUnit("gallon");
+  
+  // Only create conversions if units exist
+  if (pound && ounce) {
+    // 1 pound = 16 ounces
+    await storage.createUnitConversion({
+      fromUnitId: pound.id,
+      toUnitId: ounce.id,
+      conversionFactor: 16,
+    });
+  }
 
-  // 1 fluid ounce = 2 tablespoons
-  await storage.createUnitConversion({
-    fromUnitId: units.fluidOunce.id,
-    toUnitId: units.tablespoon.id,
-    conversionFactor: 2,
-  });
+  if (tablespoon && teaspoon) {
+    // 1 tablespoon = 3 teaspoons
+    await storage.createUnitConversion({
+      fromUnitId: tablespoon.id,
+      toUnitId: teaspoon.id,
+      conversionFactor: 3,
+    });
+  }
 
-  // 1 cup = 8 fluid ounces
-  await storage.createUnitConversion({
-    fromUnitId: units.cup.id,
-    toUnitId: units.fluidOunce.id,
-    conversionFactor: 8,
-  });
+  if (cup && tablespoon) {
+    // 1 cup = 16 tablespoons
+    await storage.createUnitConversion({
+      fromUnitId: cup.id,
+      toUnitId: tablespoon.id,
+      conversionFactor: 16,
+    });
+  }
 
-  // 1 pint = 2 cups (or 16 fluid ounces)
-  const pint = await storage.createUnit({ name: "pint", kind: "volume", toBaseRatio: 16, system: "imperial" });
-  await storage.createUnitConversion({
-    fromUnitId: pint.id,
-    toUnitId: units.cup.id,
-    conversionFactor: 2,
-  });
-  await storage.createUnitConversion({
-    fromUnitId: pint.id,
-    toUnitId: units.fluidOunce.id,
-    conversionFactor: 16,
-  });
+  if (pint && cup) {
+    // 1 pint = 2 cups
+    await storage.createUnitConversion({
+      fromUnitId: pint.id,
+      toUnitId: cup.id,
+      conversionFactor: 2,
+    });
+  }
 
-  // 1 quart = 2 pints (or 32 fluid ounces)
-  const quart = await storage.createUnit({ name: "quart", kind: "volume", toBaseRatio: 32, system: "imperial" });
-  await storage.createUnitConversion({
-    fromUnitId: quart.id,
-    toUnitId: pint.id,
-    conversionFactor: 2,
-  });
-  await storage.createUnitConversion({
-    fromUnitId: quart.id,
-    toUnitId: units.fluidOunce.id,
-    conversionFactor: 32,
-  });
+  if (quart && pint) {
+    // 1 quart = 2 pints
+    await storage.createUnitConversion({
+      fromUnitId: quart.id,
+      toUnitId: pint.id,
+      conversionFactor: 2,
+    });
+  }
 
-  // 1 gallon = 4 quarts (or 128 fluid ounces)
-  const gallon = await storage.createUnit({ name: "gallon", kind: "volume", toBaseRatio: 128, system: "imperial" });
-  await storage.createUnitConversion({
-    fromUnitId: gallon.id,
-    toUnitId: quart.id,
-    conversionFactor: 4,
-  });
-  await storage.createUnitConversion({
-    fromUnitId: gallon.id,
-    toUnitId: units.fluidOunce.id,
-    conversionFactor: 128,
-  });
+  if (quart && cup) {
+    // 1 quart = 4 cups
+    await storage.createUnitConversion({
+      fromUnitId: quart.id,
+      toUnitId: cup.id,
+      conversionFactor: 4,
+    });
+  }
+
+  if (gallon && quart) {
+    // 1 gallon = 4 quarts
+    await storage.createUnitConversion({
+      fromUnitId: gallon.id,
+      toUnitId: quart.id,
+      conversionFactor: 4,
+    });
+  }
+
+  if (gallon && cup) {
+    // 1 gallon = 16 cups
+    await storage.createUnitConversion({
+      fromUnitId: gallon.id,
+      toUnitId: cup.id,
+      conversionFactor: 16,
+    });
+  }
 
   console.log("✅ Unit conversions created!");
 
