@@ -2,7 +2,107 @@ import { storage } from "./storage";
 import { hashPassword } from "./auth";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, recipes, recipeComponents, categories } from "@shared/schema";
+import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, recipes, recipeComponents, categories, units } from "@shared/schema";
+
+// Comprehensive kitchen units seed data
+async function seedKitchenUnits() {
+  console.log("📏 Seeding comprehensive kitchen units...");
+  
+  const existingUnits = await db.select().from(units);
+  
+  // Define all 40 comprehensive kitchen units
+  const expectedUnitNames = new Set([
+    // Weight (11)
+    "gram", "kilogram", "metric ton", "ounce (weight)", "half-ounce", "quarter-ounce",
+    "pound", "half-pound", "quarter-pound", "eighth-pound", "ton",
+    // Volume (19)
+    "milliliter", "centiliter", "deciliter", "liter", "hectoliter",
+    "drop", "dash", "pinch", "teaspoon", "half-teaspoon",
+    "tablespoon", "half-tablespoon", "fluid ounce", "cup", "half-cup",
+    "quarter-cup", "pint", "quart", "gallon",
+    // Count (10)
+    "each", "half-dozen", "dozen", "roll", "case",
+    "box", "bag", "bottle", "jar", "can",
+  ]);
+  
+  const existingUnitNames = new Set(existingUnits.map(u => u.name));
+  
+  // Check which units are missing
+  const missingUnits = [...expectedUnitNames].filter(name => !existingUnitNames.has(name));
+  
+  if (missingUnits.length === 0) {
+    console.log("✅ All 40 comprehensive kitchen units already seeded");
+    return;
+  }
+  
+  console.log(`📝 Found ${existingUnits.length} units, adding ${missingUnits.length} missing units...`);
+  
+  // All units with precise conversion ratios
+  // Weight base: gram (1g = 1), Volume base: milliliter (1ml = 1), Count base: each (1 each = 1)
+  const kitchenUnits = [
+    // === WEIGHT UNITS ===
+    // Metric Weight
+    { name: "gram", kind: "weight", toBaseRatio: 1, system: "metric" },
+    { name: "kilogram", kind: "weight", toBaseRatio: 1000, system: "metric" },
+    { name: "metric ton", kind: "weight", toBaseRatio: 1000000, system: "metric" }, // 1000 kg
+    
+    // Imperial Weight
+    { name: "ounce (weight)", kind: "weight", toBaseRatio: 28.3495, system: "imperial" },
+    { name: "half-ounce", kind: "weight", toBaseRatio: 14.1748, system: "imperial" },
+    { name: "quarter-ounce", kind: "weight", toBaseRatio: 7.0874, system: "imperial" },
+    { name: "pound", kind: "weight", toBaseRatio: 453.592, system: "imperial" },
+    { name: "half-pound", kind: "weight", toBaseRatio: 226.796, system: "imperial" },
+    { name: "quarter-pound", kind: "weight", toBaseRatio: 113.398, system: "imperial" },
+    { name: "eighth-pound", kind: "weight", toBaseRatio: 56.699, system: "imperial" },
+    { name: "ton", kind: "weight", toBaseRatio: 907185, system: "imperial" }, // 2000 lbs
+    
+    // === VOLUME UNITS ===
+    // Metric Volume
+    { name: "milliliter", kind: "volume", toBaseRatio: 1, system: "metric" },
+    { name: "centiliter", kind: "volume", toBaseRatio: 10, system: "metric" },
+    { name: "deciliter", kind: "volume", toBaseRatio: 100, system: "metric" },
+    { name: "liter", kind: "volume", toBaseRatio: 1000, system: "metric" },
+    { name: "hectoliter", kind: "volume", toBaseRatio: 100000, system: "metric" },
+    
+    // Imperial Volume - Smallest to Largest
+    { name: "drop", kind: "volume", toBaseRatio: 0.05, system: "imperial" }, // ~1/20 of ml
+    { name: "dash", kind: "volume", toBaseRatio: 0.616, system: "imperial" }, // ~1/8 tsp
+    { name: "pinch", kind: "volume", toBaseRatio: 0.308, system: "imperial" }, // ~1/16 tsp
+    { name: "teaspoon", kind: "volume", toBaseRatio: 4.92892, system: "imperial" },
+    { name: "half-teaspoon", kind: "volume", toBaseRatio: 2.46446, system: "imperial" },
+    { name: "tablespoon", kind: "volume", toBaseRatio: 14.7868, system: "imperial" },
+    { name: "half-tablespoon", kind: "volume", toBaseRatio: 7.3934, system: "imperial" },
+    { name: "fluid ounce", kind: "volume", toBaseRatio: 29.5735, system: "imperial" },
+    { name: "cup", kind: "volume", toBaseRatio: 236.588, system: "imperial" },
+    { name: "half-cup", kind: "volume", toBaseRatio: 118.294, system: "imperial" },
+    { name: "quarter-cup", kind: "volume", toBaseRatio: 59.147, system: "imperial" },
+    { name: "pint", kind: "volume", toBaseRatio: 473.176, system: "imperial" },
+    { name: "quart", kind: "volume", toBaseRatio: 946.353, system: "imperial" },
+    { name: "gallon", kind: "volume", toBaseRatio: 3785.41, system: "imperial" },
+    
+    // === COUNT UNITS ===
+    { name: "each", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "half-dozen", kind: "count", toBaseRatio: 6, system: "both" },
+    { name: "dozen", kind: "count", toBaseRatio: 12, system: "both" },
+    { name: "roll", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "case", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "box", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "bag", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "bottle", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "jar", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "can", kind: "count", toBaseRatio: 1, system: "both" },
+  ];
+  
+  // Filter to only insert missing units (upsert strategy)
+  const unitsToInsert = kitchenUnits.filter(unit => missingUnits.includes(unit.name));
+  
+  if (unitsToInsert.length > 0) {
+    await db.insert(units).values(unitsToInsert);
+    console.log(`✅ Added ${unitsToInsert.length} missing kitchen units`);
+  }
+  
+  console.log(`✅ Complete: ${kitchenUnits.length} total kitchen units (imperial + metric)`);
+}
 
 // Helper function to create default categories for a company
 async function createDefaultCategories(companyId: string) {
@@ -328,6 +428,9 @@ async function seedStore2Counts(adminUserId: string, store2Id: string) {
 
 export async function seedDatabase() {
   console.log("🌱 Seeding database with pizza restaurant data...");
+
+  // Seed comprehensive kitchen units first (imperial + metric)
+  await seedKitchenUnits();
 
   // Ensure global admin user exists
   let adminUser = await storage.getUserByEmail("admin@pizza.com");

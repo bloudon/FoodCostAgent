@@ -19,6 +19,7 @@ export const companies = pgTable("companies", {
   timezone: text("timezone").notNull().default("America/New_York"),
   logoImagePath: text("logo_image_path"), // Company logo image path
   tccAccountId: text("tcc_account_id").notNull().default(sql`gen_random_uuid()`), // The Chef's Companion (Thrive POS) account ID
+  preferredUnitSystem: text("preferred_unit_system").notNull().default("imperial"), // imperial, metric, or both
   status: text("status").notNull().default("active"), // active, inactive, suspended
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
