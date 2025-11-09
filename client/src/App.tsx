@@ -11,7 +11,10 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { GlobalAdminHeader } from "@/components/global-admin-header";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { LogOut } from "lucide-react";
+import { LogOut, Store } from "lucide-react";
+import { StoreProvider, useStoreContext } from "@/hooks/use-store-context";
+import { useCompany } from "@/hooks/use-company";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import InventorySessions from "@/pages/inventory-sessions";
@@ -48,19 +51,16 @@ import SsoAccessDenied from "@/pages/sso-access-denied";
 import AcceptInvitation from "@/pages/accept-invitation";
 
 function ProtectedLayout() {
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
 
-  // Use useEffect for navigation to avoid setState during render
   useEffect(() => {
     if (!isLoading && !user && location !== "/login") {
       setLocation("/login");
     }
     
-    // Auto-redirect global admins to companies page if no company is selected
     if (!isLoading && user && user.role === "global_admin") {
       const selectedCompanyId = localStorage.getItem("selectedCompanyId");
-      // Allow access to company detail pages (/companies/:id) even without selected company
       const isOnCompaniesPage = location === "/companies" || location.startsWith("/companies/");
       if (!selectedCompanyId && !isOnCompaniesPage) {
         setLocation("/companies");
@@ -82,12 +82,24 @@ function ProtectedLayout() {
     return null;
   }
 
+  return (
+    <StoreProvider>
+      <ProtectedLayoutContent />
+    </StoreProvider>
+  );
+}
+
+function ProtectedLayoutContent() {
+  const { user, logout } = useAuth();
+  const { company } = useCompany();
+  const { selectedStoreId, setSelectedStoreId, stores } = useStoreContext();
+
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
   };
 
-  const isGlobalAdmin = user.role === "global_admin";
+  const isGlobalAdmin = user?.role === "global_admin";
 
   return (
     <SidebarProvider style={style as React.CSSProperties}>
@@ -96,10 +108,32 @@ function ProtectedLayout() {
         <div className="flex flex-col flex-1">
           {isGlobalAdmin && <GlobalAdminHeader />}
           <header className="flex items-center justify-between p-4 border-b sticky top-0 bg-background z-10">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
+            <div className="flex items-center gap-4">
+              <SidebarTrigger data-testid="button-sidebar-toggle" />
+              {company && (
+                <h2 className="text-lg font-semibold" data-testid="text-company-name">
+                  {company.name}
+                </h2>
+              )}
+              {stores.length > 0 && (
+                <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+                  <SelectTrigger className="w-[180px]" data-testid="select-store">
+                    <Store className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Select store" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stores.map((store) => (
+                      <SelectItem key={store.id} value={store.id} data-testid={`select-store-${store.id}`}>
+                        {store.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground mr-2" data-testid="text-user-email">
-                {user.email}
+                {user?.email}
               </span>
               <Button
                 variant="ghost"

@@ -5,6 +5,7 @@ This project is a comprehensive inventory management and recipe costing system d
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
+- Global Header Display: Company name and store selector are displayed in the persistent application header across all pages, removing the need for redundant display on individual pages like the dashboard.
 - Default Unit of Measure for Inventory Items: Pound should be the default unit when creating new inventory items.
 - Unit Abbreviation: "Pound" displays as "lb." throughout the UI.
 - Yield Field: Yield is stored as a percentage value (0-100).
@@ -40,8 +41,9 @@ The system utilizes a multi-tenant architecture with data isolation at company a
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
 - **UI**: `shadcn/ui` components (Radix UI, Tailwind CSS) for custom theming, dark/light modes, and responsive navigation.
-- **State Management**: TanStack Query.
+- **State Management**: TanStack Query, React Context for global store selection.
 - **Routing**: Wouter.
+- **Global Store Context**: StoreProvider manages selected store state application-wide, accessible via useStoreContext hook. Store selection in header syncs across all pages.
 
 ### Backend
 - **Runtime**: Node.js with TypeScript.

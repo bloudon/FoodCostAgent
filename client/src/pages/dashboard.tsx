@@ -1,45 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, DollarSign, ClipboardList, ArrowRight, Store, PackageCheck, Truck, TrendingUp } from "lucide-react";
+import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Company, User, CompanyStore } from "@shared/schema";
-import { useAccessibleStores } from "@/hooks/use-accessible-stores";
+import { useStoreContext } from "@/hooks/use-store-context";
 
 export default function Dashboard() {
-  // Get current user to determine which company to display
-  const { data: currentUser, isLoading: userLoading } = useQuery<User>({
-    queryKey: ["/api/auth/me"],
-  });
-
-  // For global admins, use selectedCompanyId from localStorage
-  // For regular users, use their own companyId
-  const selectedCompanyId = currentUser?.role === "global_admin" 
-    ? localStorage.getItem("selectedCompanyId")
-    : currentUser?.companyId;
-  
-  const { data: company, isLoading: companyLoading } = useQuery<Company>({
-    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}`] : [],
-    enabled: !!selectedCompanyId,
-  });
-
-  // Get accessible stores for the current user
-  const { data: stores = [], isLoading: storesLoading } = useAccessibleStores();
-
-  // Store selection state
-  const [selectedStoreId, setSelectedStoreId] = useState<string>("");
-
-  // Initialize selectedStoreId when stores are loaded
-  useEffect(() => {
-    if (stores.length > 0 && !selectedStoreId) {
-      setSelectedStoreId(stores[0].id);
-    }
-  }, [stores, selectedStoreId]);
-
-  const selectedStore = stores.find(s => s.id === selectedStoreId);
+  const { selectedStoreId, selectedStore, stores, isLoading: storesLoading } = useStoreContext();
 
   // Fetch data filtered by selected store using proper query parameters
   // Note: queryKey is joined with "/" so we use query string in the first element
@@ -132,80 +100,46 @@ export default function Dashboard() {
     },
   ];
 
-  if (userLoading || storesLoading || companyLoading) {
+  // Loading state while store context initializes
+  if (storesLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="text-lg">Loading dashboard...</div>
+      <div className="p-8">
+        <Skeleton className="h-12 w-64 mb-8" />
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-32" />
+          ))}
         </div>
       </div>
     );
   }
 
-  // Simplified dashboard for store users
-  if (currentUser?.role === 'store_user') {
+  // Empty state for users with no accessible stores
+  if (stores.length === 0) {
     return (
       <div className="p-8">
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
-            <div className="text-center space-y-2">
-              <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-dashboard-title">
-                {company?.name || "Welcome"}
-              </h1>
-              {selectedStore && (
-                <p className="text-xl text-muted-foreground">
-                  {selectedStore.name}
-                </p>
-              )}
-            </div>
+            <CardTitle>No Accessible Stores</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-center space-y-4">
-              <p className="text-lg">
-                Welcome, {currentUser.firstName || currentUser.email}!
-              </p>
-              <p className="text-muted-foreground">
-                Use the navigation menu to access Inventory Sessions and Orders.
-              </p>
-            </div>
+            <p className="text-muted-foreground">
+              You don't have access to any stores yet. Please contact your administrator to request store access.
+            </p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
+  // Ensure we have a valid selectedStoreId before rendering dashboard
+  if (!selectedStoreId) {
+    return null;
+  }
+
   // Full dashboard for admins and managers
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-dashboard-title">
-              {company?.name || "Dashboard"}
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              {selectedStore ? `${selectedStore.name} - ` : ""}Overview of your restaurant inventory and operations
-            </p>
-          </div>
-          
-          {/* Store Selector */}
-          <div className="flex items-center gap-3">
-            <Store className="h-5 w-5 text-muted-foreground" />
-            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-              <SelectTrigger className="w-[200px]" data-testid="select-store">
-                <SelectValue placeholder="Select store" />
-              </SelectTrigger>
-              <SelectContent>
-                {stores.map((store) => (
-                  <SelectItem key={store.id} value={store.id} data-testid={`option-store-${store.id}`}>
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </div>
 
       {/* Stats Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
