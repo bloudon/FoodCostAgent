@@ -6,6 +6,66 @@ import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
+import crypto from "crypto";
+
+// Temporary store for invitation tokens during SSO flow
+// Maps nonce -> invitation token
+const invitationNonces = new Map<string, { token: string; expiresAt: number }>();
+
+// Helper functions for nonce management
+const nonceHelpers = {
+  // Generate a cryptographically random nonce
+  generate(): string {
+    return crypto.randomBytes(32).toString('hex');
+  },
+  
+  // Store a nonce with its invitation token (10 minute TTL)
+  set(nonce: string, invitationToken: string): void {
+    const expiresAt = Date.now() + (10 * 60 * 1000); // 10 minutes
+    invitationNonces.set(nonce, { token: invitationToken, expiresAt });
+    console.log(`[SSO] Stored nonce for invitation (expires in 10 min)`);
+  },
+  
+  // Retrieve and delete a nonce's invitation token
+  getAndDelete(nonce: string): string | null {
+    const data = invitationNonces.get(nonce);
+    if (!data) {
+      console.log(`[SSO] Nonce not found`);
+      return null;
+    }
+    
+    // Check if expired
+    if (data.expiresAt < Date.now()) {
+      invitationNonces.delete(nonce);
+      console.log(`[SSO] Nonce expired`);
+      return null;
+    }
+    
+    // Delete and return token
+    invitationNonces.delete(nonce);
+    console.log(`[SSO] Retrieved invitation token from nonce`);
+    return data.token;
+  },
+  
+  // Clean up expired nonces
+  cleanup(): void {
+    const now = Date.now();
+    let cleaned = 0;
+    const entries = Array.from(invitationNonces.entries());
+    for (const [nonce, data] of entries) {
+      if (data.expiresAt < now) {
+        invitationNonces.delete(nonce);
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      console.log(`[SSO] Cleaned up ${cleaned} expired nonce(s)`);
+    }
+  }
+};
+
+// Clean up expired nonces every 5 minutes
+setInterval(() => nonceHelpers.cleanup(), 5 * 60 * 1000);
 
 const getOidcConfig = memoize(
   async () => {
@@ -181,10 +241,29 @@ export async function setupSsoAuth(app: Express) {
   // SSO Login route
   app.get("/api/sso/login", (req, res, next) => {
     ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
+    
+    // Check if there's a pending invitation token in the session
+    const invitationToken = (req.session as any).pendingInvitationToken;
+    
+    const authOptions: any = {
       prompt: "login consent",
       scope: ["openid", "email", "profile", "offline_access"],
-    })(req, res, next);
+    };
+    
+    // If there's an invitation token, generate a nonce and pass it via state
+    if (invitationToken) {
+      const nonce = nonceHelpers.generate();
+      nonceHelpers.set(nonce, invitationToken);
+      authOptions.state = nonce;
+      
+      // Clear the invitation token from session (prevent reuse)
+      delete (req.session as any).pendingInvitationToken;
+      console.log(`[SSO] Starting SSO login with invitation nonce`);
+    } else {
+      console.log(`[SSO] Starting SSO login without invitation`);
+    }
+    
+    passport.authenticate(`replitauth:${req.hostname}`, authOptions)(req, res, next);
   });
 
   // SSO Callback route
@@ -203,26 +282,35 @@ export async function setupSsoAuth(app: Express) {
       
       console.log("SSO sessionData:", sessionData);
       
-      // Process invitation if token exists in session
-      const invitationToken = (req.session as any).pendingInvitationToken;
-      const claims = sessionData.claims;
+      // Retrieve invitation token from state parameter (passed via OIDC)
+      let invitationToken: string | null = null;
+      const stateNonce = req.query.state as string | undefined;
       
-      // Create or update user with invitation if applicable
-      const user = await upsertSsoUser(claims, invitationToken);
-      
-      // Check if user creation was denied (no valid invitation)
-      if (!user) {
-        // Clear invitation token from session
+      if (stateNonce) {
+        invitationToken = nonceHelpers.getAndDelete(stateNonce);
+        if (invitationToken) {
+          console.log(`[SSO] Successfully retrieved invitation from state nonce`);
+        } else {
+          console.log(`[SSO] State nonce provided but invitation not found or expired`);
+        }
+      } else {
+        console.log(`[SSO] No state nonce provided - checking session as fallback`);
+        // Fallback to session (for backwards compatibility)
+        invitationToken = (req.session as any).pendingInvitationToken;
         if (invitationToken) {
           delete (req.session as any).pendingInvitationToken;
         }
-        console.log("SSO access denied - no valid invitation for:", claims["email"]);
-        return res.redirect("/sso-access-denied");
       }
       
-      // Clear invitation token from session
-      if (invitationToken) {
-        delete (req.session as any).pendingInvitationToken;
+      const claims = sessionData.claims;
+      
+      // Create or update user with invitation if applicable
+      const user = await upsertSsoUser(claims, invitationToken || undefined);
+      
+      // Check if user creation was denied (no valid invitation)
+      if (!user) {
+        console.log("SSO access denied - no valid invitation for:", claims["email"]);
+        return res.redirect("/sso-access-denied");
       }
       
       // Store user ID in session data
