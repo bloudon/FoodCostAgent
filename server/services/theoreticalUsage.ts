@@ -25,14 +25,27 @@ export class TheoreticalUsageService {
   async calculateTheoreticalUsage(input: TheoreticalUsageInput): Promise<TheoreticalUsageRun> {
     const { companyId, storeId, salesDate, sourceBatchId, salesData } = input;
 
+    // Calculate totals with proper number handling
+    const totalMenuItemsSold = salesData.reduce((sum, s) => {
+      const qty = Number(s.qtySold) || 0;
+      return sum + qty;
+    }, 0);
+    
+    const totalRevenue = salesData.reduce((sum, s) => {
+      const revenue = Number(s.netSales) || 0;
+      return sum + revenue;
+    }, 0);
+
+    console.log('[TFC Usage] Creating run:', { totalMenuItemsSold, totalRevenue, recordCount: salesData.length });
+
     const usageRun = await storage.createTheoreticalUsageRun({
       companyId,
       storeId,
       salesDate,
       sourceBatchId,
       status: "processing",
-      totalMenuItemsSold: salesData.reduce((sum, s) => sum + s.qtySold, 0),
-      totalRevenue: salesData.reduce((sum, s) => sum + s.netSales, 0),
+      totalMenuItemsSold,
+      totalRevenue,
       totalTheoreticalCost: 0,
       totalTheoreticalCostWAC: 0,
     });
