@@ -5695,7 +5695,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
-          const salesRecord = await storage.createDailyMenuItemSales({
+          const [salesRecord] = await storage.createDailyMenuItemSales([{
             companyId,
             storeId: store.id,
             menuItemId: menuItem.id,
@@ -5704,7 +5704,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             netSales: row.net_sales,
             daypartId: null, // TODO: Map daypart name to ID
             sourceBatchId: batch.id,
-          });
+          }]);
 
           salesRecords.push(salesRecord);
         }
