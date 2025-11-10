@@ -5711,6 +5711,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Calculate theoretical usage
         if (salesRecords.length > 0) {
+          console.log('[TFC Upload] Starting theoretical usage calculation with', salesRecords.length, 'sales records');
+          console.log('[TFC Upload] Sample record:', JSON.stringify(salesRecords[0], null, 2));
+          
           await theoreticalUsageService.calculateTheoreticalUsage({
             companyId,
             storeId: store.id,
