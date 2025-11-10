@@ -620,6 +620,127 @@ export const insertStoreMenuItemSchema = createInsertSchema(storeMenuItems).omit
 export type InsertStoreMenuItem = z.infer<typeof insertStoreMenuItemSchema>;
 export type StoreMenuItem = typeof storeMenuItems.$inferSelect;
 
+// ============ THEORETICAL FOOD COST (TFC) MODULE ============
+
+// Dayparts (configurable meal periods for sales analysis)
+export const dayparts = pgTable("dayparts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(), // "Breakfast", "Lunch", "Dinner", "Late Night"
+  startTime: text("start_time"), // "06:00" (24-hour format, nullable for all-day)
+  endTime: text("end_time"), // "11:00" (24-hour format, nullable for all-day)
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: integer("active").notNull().default(1),
+}, (table) => ({
+  uniqueCompanyName: unique().on(table.companyId, table.name),
+}));
+
+export const insertDaypartSchema = createInsertSchema(dayparts).omit({ id: true });
+export type InsertDaypart = z.infer<typeof insertDaypartSchema>;
+export type Daypart = typeof dayparts.$inferSelect;
+
+// Sales Upload Batches (tracks CSV ingestion metadata)
+export const salesUploadBatches = pgTable("sales_upload_batches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id").notNull(),
+  uploadedBy: varchar("uploaded_by").notNull(), // user ID
+  fileName: text("file_name").notNull(),
+  salesDate: timestamp("sales_date").notNull(), // Date of sales in batch
+  daypartId: varchar("daypart_id"), // Nullable for all-day aggregates
+  status: text("status").notNull().default("processing"), // processing, completed, failed
+  rowsProcessed: integer("rows_processed").notNull().default(0),
+  rowsFailed: integer("rows_failed").notNull().default(0),
+  errorLog: text("error_log"), // JSON array of error messages
+  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => ({
+  companyStoreDateIdx: index("sales_batches_company_store_date_idx").on(table.companyId, table.storeId, table.salesDate),
+}));
+
+export const insertSalesUploadBatchSchema = createInsertSchema(salesUploadBatches).omit({ id: true, uploadedAt: true });
+export type InsertSalesUploadBatch = z.infer<typeof insertSalesUploadBatchSchema>;
+export type SalesUploadBatch = typeof salesUploadBatches.$inferSelect;
+
+// Daily Menu Item Sales (aggregated sales by menu item, day, daypart)
+export const dailyMenuItemSales = pgTable("daily_menu_item_sales", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id").notNull(),
+  menuItemId: varchar("menu_item_id").notNull(),
+  salesDate: timestamp("sales_date").notNull(), // Date of sales
+  daypartId: varchar("daypart_id"), // Nullable for all-day aggregates
+  qtySold: real("qty_sold").notNull(),
+  netSales: real("net_sales").notNull().default(0), // Total revenue (price * qty)
+  sourceBatchId: varchar("source_batch_id").notNull(), // FK to sales_upload_batches
+}, (table) => ({
+  // Idempotency: one aggregate row per company/store/menuItem/date/daypart/batch
+  uniqueSaleAggregate: unique().on(table.companyId, table.storeId, table.menuItemId, table.salesDate, table.daypartId, table.sourceBatchId),
+  companyStoreDateIdx: index("daily_sales_company_store_date_idx").on(table.companyId, table.storeId, table.salesDate),
+}));
+
+export const insertDailyMenuItemSalesSchema = createInsertSchema(dailyMenuItemSales).omit({ id: true });
+export type InsertDailyMenuItemSales = z.infer<typeof insertDailyMenuItemSalesSchema>;
+export type DailyMenuItemSales = typeof dailyMenuItemSales.$inferSelect;
+
+// Recipe Cost Snapshots (captures recipe cost at point in time for variance analysis)
+export const recipeCostSnapshots = pgTable("recipe_cost_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipeId: varchar("recipe_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  effectiveDate: timestamp("effective_date").notNull(), // Date this cost is effective
+  computedCost: real("computed_cost").notNull(), // Snapshot of recipe.computedCost
+  yieldQty: real("yield_qty").notNull(), // Snapshot of recipe.yieldQty
+  yieldUnitId: varchar("yield_unit_id").notNull(), // Snapshot of recipe.yieldUnitId
+  costPerServing: real("cost_per_serving").notNull(), // computedCost / yieldQty (normalized to serving)
+  menuItemId: varchar("menu_item_id"), // Optional link to specific menu item
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  recipeEffectiveDateIdx: index("recipe_snapshots_recipe_date_idx").on(table.recipeId, table.effectiveDate),
+  uniqueRecipeDate: unique().on(table.recipeId, table.effectiveDate), // One snapshot per recipe per day
+}));
+
+export const insertRecipeCostSnapshotSchema = createInsertSchema(recipeCostSnapshots).omit({ id: true, createdAt: true });
+export type InsertRecipeCostSnapshot = z.infer<typeof insertRecipeCostSnapshotSchema>;
+export type RecipeCostSnapshot = typeof recipeCostSnapshots.$inferSelect;
+
+// Theoretical Usage Runs (execution logs for theoretical usage calculations)
+export const theoreticalUsageRuns = pgTable("theoretical_usage_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id").notNull(),
+  salesDate: timestamp("sales_date").notNull(), // Date being calculated
+  sourceBatchId: varchar("source_batch_id").notNull(), // FK to sales_upload_batches
+  status: text("status").notNull().default("running"), // running, completed, failed
+  itemsProcessed: integer("items_processed").notNull().default(0),
+  errorLog: text("error_log"), // JSON array of calculation errors
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => ({
+  companyStoreDateIdx: index("usage_runs_company_store_date_idx").on(table.companyId, table.storeId, table.salesDate),
+}));
+
+export const insertTheoreticalUsageRunSchema = createInsertSchema(theoreticalUsageRuns).omit({ id: true, startedAt: true });
+export type InsertTheoreticalUsageRun = z.infer<typeof insertTheoreticalUsageRunSchema>;
+export type TheoreticalUsageRun = typeof theoreticalUsageRuns.$inferSelect;
+
+// Theoretical Usage Lines (inventory items required based on recipe explosion)
+export const theoreticalUsageLines = pgTable("theoretical_usage_lines", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  runId: varchar("run_id").notNull(), // FK to theoretical_usage_runs
+  inventoryItemId: varchar("inventory_item_id").notNull(),
+  requiredQtyBaseUnit: real("required_qty_base_unit").notNull(), // Quantity in inventory item's base unit
+  baseUnitId: varchar("base_unit_id").notNull(), // Inventory item's base unit
+  costAtSale: real("cost_at_sale").notNull(), // Cost using snapshot price (pricePerUnit or avgCostPerUnit)
+  sourceMenuItems: text("source_menu_items").notNull(), // JSON array of {menuItemId, menuItemName, qtySold}
+}, (table) => ({
+  runInventoryIdx: index("usage_lines_run_inventory_idx").on(table.runId, table.inventoryItemId),
+}));
+
+export const insertTheoreticalUsageLineSchema = createInsertSchema(theoreticalUsageLines).omit({ id: true });
+export type InsertTheoreticalUsageLine = z.infer<typeof insertTheoreticalUsageLineSchema>;
+export type TheoreticalUsageLine = typeof theoreticalUsageLines.$inferSelect;
+
 // Recipe Versions (for cost change tracking)
 export const recipeVersions = pgTable("recipe_versions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
