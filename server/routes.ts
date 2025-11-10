@@ -2,7 +2,10 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import crypto from "crypto";
+import multer from "multer";
 import { storage } from "./storage";
+import { parseCSV } from "./services/tfcCsv";
+import { TheoreticalUsageService } from "./services/theoreticalUsage";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
@@ -5593,6 +5596,146 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // ============ TFC (THEORETICAL FOOD COST) ROUTES ============
+  // Configure multer for CSV file uploads
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB max
+    },
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+        cb(null, true);
+      } else {
+        cb(new Error('Only CSV files are allowed'));
+      }
+    },
+  });
+
+  app.post("/api/tfc/sales/upload", requireAuth, upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const user = req.user!;
+      const companyId = user.companyId;
+
+      // Parse CSV file
+      const fileContent = req.file.buffer.toString('utf-8');
+      const parsed = parseCSV(fileContent);
+
+      if (parsed.errors.length > 0) {
+        return res.status(400).json({
+          message: "CSV validation failed",
+          errors: parsed.errors,
+          stats: parsed.stats,
+        });
+      }
+
+      // Group sales by date and store
+      const salesByDateStore = new Map<string, typeof parsed.rows>();
+      for (const row of parsed.rows) {
+        const key = `${row.date}|${row.store_code}`;
+        if (!salesByDateStore.has(key)) {
+          salesByDateStore.set(key, []);
+        }
+        salesByDateStore.get(key)!.push(row);
+      }
+
+      // Create sales upload batch for each date/store combination
+      const theoreticalUsageService = new TheoreticalUsageService();
+      const processedBatches = [];
+
+      for (const [key, rows] of salesByDateStore) {
+        const [dateStr, storeCode] = key.split('|');
+        const salesDate = new Date(dateStr);
+
+        // Find store by code
+        const stores = await storage.getCompanyStores(companyId);
+        const store = stores.find(s => s.code === storeCode);
+
+        if (!store) {
+          return res.status(400).json({
+            message: `Store not found for code: ${storeCode}`,
+          });
+        }
+
+        // Create sales upload batch
+        const batch = await storage.createSalesUploadBatch({
+          companyId,
+          storeId: store.id,
+          salesDate,
+          fileName: req.file.originalname,
+          recordCount: rows.length,
+          status: "processing",
+        });
+
+        // Create daily sales records
+        const salesRecords = [];
+        for (const row of rows) {
+          // Find menu item by PLU/SKU
+          const menuItemsData = await storage.getMenuItems(companyId);
+          const menuItem = menuItemsData.find(mi => mi.pluSku === row.plu_sku);
+
+          if (!menuItem) {
+            console.warn(`Menu item not found for SKU: ${row.plu_sku}`);
+            continue;
+          }
+
+          const salesRecord = await storage.createDailyMenuItemSales({
+            batchId: batch.id,
+            companyId,
+            storeId: store.id,
+            menuItemId: menuItem.id,
+            salesDate,
+            qtySold: row.qty_sold,
+            netSales: row.net_sales,
+            daypartId: null, // TODO: Map daypart name to ID
+          });
+
+          salesRecords.push(salesRecord);
+        }
+
+        // Calculate theoretical usage
+        if (salesRecords.length > 0) {
+          await theoreticalUsageService.calculateTheoreticalUsage({
+            companyId,
+            storeId: store.id,
+            salesDate,
+            sourceBatchId: batch.id,
+            salesData: salesRecords,
+          });
+
+          // Update batch status to completed
+          await storage.updateSalesUploadBatchStatus(batch.id, companyId, "completed");
+        } else {
+          await storage.updateSalesUploadBatchStatus(batch.id, companyId, "failed");
+        }
+
+        processedBatches.push({
+          batchId: batch.id,
+          date: dateStr,
+          store: store.name,
+          recordCount: salesRecords.length,
+        });
+      }
+
+      res.json({
+        message: "CSV uploaded and processed successfully",
+        recordCount: parsed.stats.validRows,
+        batches: processedBatches,
+      });
+
+    } catch (error: any) {
+      console.error("CSV upload error:", error);
+      res.status(500).json({
+        message: "Failed to process CSV file",
+        error: error.message,
+      });
     }
   });
 
