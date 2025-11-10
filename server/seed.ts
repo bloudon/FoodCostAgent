@@ -42,55 +42,55 @@ async function seedKitchenUnits() {
   const kitchenUnits = [
     // === WEIGHT UNITS ===
     // Metric Weight
-    { name: "gram", kind: "weight", toBaseRatio: 1, system: "metric" },
-    { name: "kilogram", kind: "weight", toBaseRatio: 1000, system: "metric" },
-    { name: "metric ton", kind: "weight", toBaseRatio: 1000000, system: "metric" }, // 1000 kg
+    { name: "gram", abbreviation: "g", kind: "weight", toBaseRatio: 1, system: "metric" },
+    { name: "kilogram", abbreviation: "kg", kind: "weight", toBaseRatio: 1000, system: "metric" },
+    { name: "metric ton", abbreviation: "MT", kind: "weight", toBaseRatio: 1000000, system: "metric" }, // 1000 kg
     
     // Imperial Weight
-    { name: "ounce (weight)", kind: "weight", toBaseRatio: 28.3495, system: "imperial" },
-    { name: "half-ounce", kind: "weight", toBaseRatio: 14.1748, system: "imperial" },
-    { name: "quarter-ounce", kind: "weight", toBaseRatio: 7.0874, system: "imperial" },
-    { name: "pound", kind: "weight", toBaseRatio: 453.592, system: "imperial" },
-    { name: "half-pound", kind: "weight", toBaseRatio: 226.796, system: "imperial" },
-    { name: "quarter-pound", kind: "weight", toBaseRatio: 113.398, system: "imperial" },
-    { name: "eighth-pound", kind: "weight", toBaseRatio: 56.699, system: "imperial" },
-    { name: "ton", kind: "weight", toBaseRatio: 907185, system: "imperial" }, // 2000 lbs
+    { name: "ounce (weight)", abbreviation: "oz", kind: "weight", toBaseRatio: 28.3495, system: "imperial" },
+    { name: "half-ounce", abbreviation: "½ oz", kind: "weight", toBaseRatio: 14.1748, system: "imperial" },
+    { name: "quarter-ounce", abbreviation: "¼ oz", kind: "weight", toBaseRatio: 7.0874, system: "imperial" },
+    { name: "pound", abbreviation: "lb", kind: "weight", toBaseRatio: 453.592, system: "imperial" },
+    { name: "half-pound", abbreviation: "½ lb", kind: "weight", toBaseRatio: 226.796, system: "imperial" },
+    { name: "quarter-pound", abbreviation: "¼ lb", kind: "weight", toBaseRatio: 113.398, system: "imperial" },
+    { name: "eighth-pound", abbreviation: "⅛ lb", kind: "weight", toBaseRatio: 56.699, system: "imperial" },
+    { name: "ton", abbreviation: "ton", kind: "weight", toBaseRatio: 907185, system: "imperial" }, // 2000 lbs
     
     // === VOLUME UNITS ===
     // Metric Volume
-    { name: "milliliter", kind: "volume", toBaseRatio: 1, system: "metric" },
-    { name: "centiliter", kind: "volume", toBaseRatio: 10, system: "metric" },
-    { name: "deciliter", kind: "volume", toBaseRatio: 100, system: "metric" },
-    { name: "liter", kind: "volume", toBaseRatio: 1000, system: "metric" },
-    { name: "hectoliter", kind: "volume", toBaseRatio: 100000, system: "metric" },
+    { name: "milliliter", abbreviation: "ml", kind: "volume", toBaseRatio: 1, system: "metric" },
+    { name: "centiliter", abbreviation: "cl", kind: "volume", toBaseRatio: 10, system: "metric" },
+    { name: "deciliter", abbreviation: "dl", kind: "volume", toBaseRatio: 100, system: "metric" },
+    { name: "liter", abbreviation: "L", kind: "volume", toBaseRatio: 1000, system: "metric" },
+    { name: "hectoliter", abbreviation: "hL", kind: "volume", toBaseRatio: 100000, system: "metric" },
     
     // Imperial Volume - Smallest to Largest
-    { name: "drop", kind: "volume", toBaseRatio: 0.05, system: "imperial" }, // ~1/20 of ml
-    { name: "dash", kind: "volume", toBaseRatio: 0.616, system: "imperial" }, // ~1/8 tsp
-    { name: "pinch", kind: "volume", toBaseRatio: 0.308, system: "imperial" }, // ~1/16 tsp
-    { name: "teaspoon", kind: "volume", toBaseRatio: 4.92892, system: "imperial" },
-    { name: "half-teaspoon", kind: "volume", toBaseRatio: 2.46446, system: "imperial" },
-    { name: "tablespoon", kind: "volume", toBaseRatio: 14.7868, system: "imperial" },
-    { name: "half-tablespoon", kind: "volume", toBaseRatio: 7.3934, system: "imperial" },
-    { name: "fluid ounce", kind: "volume", toBaseRatio: 29.5735, system: "imperial" },
-    { name: "cup", kind: "volume", toBaseRatio: 236.588, system: "imperial" },
-    { name: "half-cup", kind: "volume", toBaseRatio: 118.294, system: "imperial" },
-    { name: "quarter-cup", kind: "volume", toBaseRatio: 59.147, system: "imperial" },
-    { name: "pint", kind: "volume", toBaseRatio: 473.176, system: "imperial" },
-    { name: "quart", kind: "volume", toBaseRatio: 946.353, system: "imperial" },
-    { name: "gallon", kind: "volume", toBaseRatio: 3785.41, system: "imperial" },
+    { name: "drop", abbreviation: "dr", kind: "volume", toBaseRatio: 0.05, system: "imperial" }, // ~1/20 of ml
+    { name: "dash", abbreviation: "ds", kind: "volume", toBaseRatio: 0.616, system: "imperial" }, // ~1/8 tsp
+    { name: "pinch", abbreviation: "pn", kind: "volume", toBaseRatio: 0.308, system: "imperial" }, // ~1/16 tsp
+    { name: "teaspoon", abbreviation: "tsp", kind: "volume", toBaseRatio: 4.92892, system: "imperial" },
+    { name: "half-teaspoon", abbreviation: "½ tsp", kind: "volume", toBaseRatio: 2.46446, system: "imperial" },
+    { name: "tablespoon", abbreviation: "tbsp", kind: "volume", toBaseRatio: 14.7868, system: "imperial" },
+    { name: "half-tablespoon", abbreviation: "½ tbsp", kind: "volume", toBaseRatio: 7.3934, system: "imperial" },
+    { name: "fluid ounce", abbreviation: "fl oz", kind: "volume", toBaseRatio: 29.5735, system: "imperial" },
+    { name: "cup", abbreviation: "cup", kind: "volume", toBaseRatio: 236.588, system: "imperial" },
+    { name: "half-cup", abbreviation: "½ cup", kind: "volume", toBaseRatio: 118.294, system: "imperial" },
+    { name: "quarter-cup", abbreviation: "¼ cup", kind: "volume", toBaseRatio: 59.147, system: "imperial" },
+    { name: "pint", abbreviation: "pt", kind: "volume", toBaseRatio: 473.176, system: "imperial" },
+    { name: "quart", abbreviation: "qt", kind: "volume", toBaseRatio: 946.353, system: "imperial" },
+    { name: "gallon", abbreviation: "gal", kind: "volume", toBaseRatio: 3785.41, system: "imperial" },
     
     // === COUNT UNITS ===
-    { name: "each", kind: "count", toBaseRatio: 1, system: "both" },
-    { name: "half-dozen", kind: "count", toBaseRatio: 6, system: "both" },
-    { name: "dozen", kind: "count", toBaseRatio: 12, system: "both" },
-    { name: "roll", kind: "count", toBaseRatio: 1, system: "both" },
-    { name: "case", kind: "count", toBaseRatio: 1, system: "both" },
-    { name: "box", kind: "count", toBaseRatio: 1, system: "both" },
-    { name: "bag", kind: "count", toBaseRatio: 1, system: "both" },
-    { name: "bottle", kind: "count", toBaseRatio: 1, system: "both" },
-    { name: "jar", kind: "count", toBaseRatio: 1, system: "both" },
-    { name: "can", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "each", abbreviation: "ea", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "half-dozen", abbreviation: "½ dz", kind: "count", toBaseRatio: 6, system: "both" },
+    { name: "dozen", abbreviation: "dz", kind: "count", toBaseRatio: 12, system: "both" },
+    { name: "roll", abbreviation: "roll", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "case", abbreviation: "case", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "box", abbreviation: "box", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "bag", abbreviation: "bag", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "bottle", abbreviation: "btl", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "jar", abbreviation: "jar", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "can", abbreviation: "can", kind: "count", toBaseRatio: 1, system: "both" },
   ];
   
   // Filter to only insert missing units (upsert strategy)

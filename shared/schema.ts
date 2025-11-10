@@ -240,6 +240,7 @@ export type Category = typeof categories.$inferSelect;
 export const units = pgTable("units", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  abbreviation: text("abbreviation").notNull(), // 'lb', 'oz', 'g', 'ml', 'tsp', 'tbsp', 'ea', etc.
   kind: text("kind").notNull(), // 'weight' | 'volume' | 'count'
   toBaseRatio: real("to_base_ratio").notNull(), // converts to base micro-unit
   system: text("system").notNull(), // 'imperial' | 'metric' | 'both'
