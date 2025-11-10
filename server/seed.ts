@@ -2,7 +2,7 @@ import { storage } from "./storage";
 import { hashPassword } from "./auth";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, recipes, recipeComponents, categories, units } from "@shared/schema";
+import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, recipes, recipeComponents, categories, units, dayparts } from "@shared/schema";
 
 // Comprehensive kitchen units seed data
 async function seedKitchenUnits() {
@@ -133,6 +133,49 @@ async function createDefaultCategories(companyId: string) {
   return false;
 }
 
+// Helper function to create default dayparts for a company
+async function createDefaultDayparts(companyId: string) {
+  const existingDayparts = await db.select().from(dayparts).where(eq(dayparts.companyId, companyId));
+  if (existingDayparts.length === 0) {
+    await db.insert(dayparts).values([
+      {
+        companyId,
+        name: "Breakfast",
+        startTime: "06:00",
+        endTime: "11:00",
+        sortOrder: 1,
+        active: 1,
+      },
+      {
+        companyId,
+        name: "Lunch",
+        startTime: "11:00",
+        endTime: "16:00",
+        sortOrder: 2,
+        active: 1,
+      },
+      {
+        companyId,
+        name: "Dinner",
+        startTime: "16:00",
+        endTime: "22:00",
+        sortOrder: 3,
+        active: 1,
+      },
+      {
+        companyId,
+        name: "Late Night",
+        startTime: "22:00",
+        endTime: "02:00",
+        sortOrder: 4,
+        active: 1,
+      },
+    ]);
+    return true;
+  }
+  return false;
+}
+
 // Seed Brian's Pizza company, stores, ingredients, and recipes
 async function seedBriansPizza() {
   console.log("🏢 Creating Brian's Pizza company and stores...");
@@ -170,6 +213,12 @@ async function seedBriansPizza() {
   const categoriesCreated = await createDefaultCategories(briansPizza.id);
   if (categoriesCreated) {
     console.log("✅ Created default categories for Brian's Pizza");
+  }
+
+  // Create default dayparts for Brian's Pizza
+  const daypartsCreated = await createDefaultDayparts(briansPizza.id);
+  if (daypartsCreated) {
+    console.log("✅ Created default dayparts for Brian's Pizza");
   }
 
   // Create stores for Brian's Pizza
@@ -580,6 +629,12 @@ export async function seedDatabase() {
   const categoriesCreated = await createDefaultCategories(briansPizza.id);
   if (categoriesCreated) {
     console.log("✅ Created default categories for Brian's Pizza");
+  }
+
+  // Create default dayparts for Brian's Pizza
+  const daypartsCreated = await createDefaultDayparts(briansPizza.id);
+  if (daypartsCreated) {
+    console.log("✅ Created default dayparts for Brian's Pizza");
   }
 
   // Create stores for Brian's Pizza
