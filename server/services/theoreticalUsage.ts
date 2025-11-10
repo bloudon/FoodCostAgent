@@ -200,6 +200,7 @@ export class TheoreticalUsageService {
       return qty;
     }
 
+    // Try direct conversion first
     const conversions = await storage.getUnitConversions();
     const directConversion = conversions.find(
       c => c.fromUnitId === fromUnitId && c.toUnitId === toUnitId
@@ -209,6 +210,7 @@ export class TheoreticalUsageService {
       return qty * directConversion.conversionFactor;
     }
 
+    // Try reverse conversion
     const reverseConversion = conversions.find(
       c => c.fromUnitId === toUnitId && c.toUnitId === fromUnitId
     );
@@ -217,6 +219,18 @@ export class TheoreticalUsageService {
       return qty / reverseConversion.conversionFactor;
     }
 
+    // Use base unit ratios (grams for weight, milliliters for volume)
+    const fromUnit = await storage.getUnit(fromUnitId);
+    const toUnit = await storage.getUnit(toUnitId);
+    
+    if (fromUnit && toUnit && fromUnit.kind === toUnit.kind) {
+      // Convert: fromQty * fromRatio = baseQty, then baseQty / toRatio = toQty
+      const result = (qty * fromUnit.toBaseRatio) / toUnit.toBaseRatio;
+      console.log(`[TFC Conversion] ${qty} ${fromUnit.name} → ${result.toFixed(4)} ${toUnit.name} (via base unit)`);
+      return result;
+    }
+
+    console.warn(`[TFC Conversion] No conversion found from ${fromUnitId} to ${toUnitId}`);
     return qty;
   }
 }
