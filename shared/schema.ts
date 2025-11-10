@@ -713,6 +713,10 @@ export const theoreticalUsageRuns = pgTable("theoretical_usage_runs", {
   sourceBatchId: varchar("source_batch_id").notNull(), // FK to sales_upload_batches
   status: text("status").notNull().default("running"), // running, completed, failed
   itemsProcessed: integer("items_processed").notNull().default(0),
+  totalMenuItemsSold: integer("total_menu_items_sold").notNull().default(0), // Total quantity of menu items sold
+  totalRevenue: real("total_revenue").notNull().default(0), // Total sales revenue
+  totalTheoreticalCost: real("total_theoretical_cost").notNull().default(0), // Total cost using last cost
+  totalTheoreticalCostWAC: real("total_theoretical_cost_wac").notNull().default(0), // Total cost using WAC
   errorLog: text("error_log"), // JSON array of calculation errors
   startedAt: timestamp("started_at").notNull().defaultNow(),
   completedAt: timestamp("completed_at"),

@@ -374,6 +374,7 @@ export interface IStorage {
   createTheoreticalUsageRun(run: InsertTheoreticalUsageRun): Promise<TheoreticalUsageRun>;
   getTheoreticalUsageRun(id: string, companyId: string): Promise<TheoreticalUsageRun | undefined>;
   getTheoreticalUsageRuns(companyId: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<TheoreticalUsageRun[]>;
+  updateTheoreticalUsageRun(id: string, companyId: string, updates: Partial<TheoreticalUsageRun>): Promise<TheoreticalUsageRun | undefined>;
 
   // TFC - Theoretical Usage Lines
   createTheoreticalUsageLines(lines: InsertTheoreticalUsageLine[]): Promise<TheoreticalUsageLine[]>;
@@ -2234,6 +2235,19 @@ export class DatabaseStorage implements IStorage {
       .from(theoreticalUsageRuns)
       .where(and(...conditions))
       .orderBy(theoreticalUsageRuns.salesDate);
+  }
+
+  async updateTheoreticalUsageRun(
+    id: string,
+    companyId: string,
+    updates: Partial<TheoreticalUsageRun>
+  ): Promise<TheoreticalUsageRun | undefined> {
+    const [run] = await db
+      .update(theoreticalUsageRuns)
+      .set(updates)
+      .where(and(eq(theoreticalUsageRuns.id, id), eq(theoreticalUsageRuns.companyId, companyId)))
+      .returning();
+    return run || undefined;
   }
 
   // TFC - Theoretical Usage Lines
