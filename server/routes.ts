@@ -5631,6 +5631,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const parsed = parseCSV(fileContent);
 
       if (parsed.errors.length > 0) {
+        console.error('[TFC Upload] CSV validation failed:', parsed.errors);
+        console.error('[TFC Upload] Stats:', parsed.stats);
         return res.status(400).json({
           message: "CSV validation failed",
           errors: parsed.errors,

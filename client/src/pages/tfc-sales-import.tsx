@@ -79,6 +79,14 @@ export default function TfcSalesImport() {
 
       if (!response.ok) {
         const error = await response.json();
+        
+        // If we have detailed validation errors, show them
+        if (error.errors && Array.isArray(error.errors)) {
+          const errorList = error.errors.slice(0, 5).join('\n');
+          const moreErrors = error.errors.length > 5 ? `\n...and ${error.errors.length - 5} more errors` : '';
+          throw new Error(`CSV Validation Errors:\n${errorList}${moreErrors}`);
+        }
+        
         throw new Error(error.message || 'Upload failed');
       }
 
