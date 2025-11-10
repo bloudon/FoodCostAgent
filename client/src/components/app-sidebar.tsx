@@ -17,6 +17,8 @@ import {
   Key,
   UtensilsCrossed,
   Trash2,
+  Upload,
+  DollarSign,
 } from "lucide-react";
 import {
   Sidebar,
@@ -72,14 +74,22 @@ const menuItems = [
     icon: ArrowLeftRight,
   },
   {
-    title: "Variance Report",
-    url: "/variance",
-    icon: BarChart3,
-  },
-  {
     title: "Waste Entry",
     url: "/waste",
     icon: Trash2,
+  },
+];
+
+const foodCostItems = [
+  {
+    title: "Sales Import",
+    url: "/tfc/sales-import",
+    icon: Upload,
+  },
+  {
+    title: "Food Cost Variance",
+    url: "/tfc/variance",
+    icon: DollarSign,
   },
 ];
 
@@ -154,6 +164,30 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {!isStoreUser && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Food Cost Management</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {foodCostItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={location === item.url}
+                      data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      <Link href={item.url}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
         
         {!isStoreUser && (
           <SidebarGroup>
