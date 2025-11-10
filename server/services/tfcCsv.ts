@@ -29,6 +29,7 @@ export function parseCSV(fileContent: string): ParsedCSV {
       columns: true,
       skip_empty_lines: true,
       trim: true,
+      bom: true, // Handle UTF-8 BOM character that Excel adds
     }) as Record<string, string>[];
 
     totalRows = records.length;
