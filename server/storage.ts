@@ -43,6 +43,12 @@ import {
   orderGuideLines, type OrderGuideLine, type InsertOrderGuideLine,
   userStores, type UserStore, type InsertUserStore,
   invitations, type Invitation, type InsertInvitation,
+  salesUploadBatches, type SalesUploadBatch, type InsertSalesUploadBatch,
+  dailyMenuItemSales, type DailyMenuItemSales, type InsertDailyMenuItemSales,
+  recipeCostSnapshots, type RecipeCostSnapshot, type InsertRecipeCostSnapshot,
+  theoreticalUsageRuns, type TheoreticalUsageRun, type InsertTheoreticalUsageRun,
+  theoreticalUsageLines, type TheoreticalUsageLine, type InsertTheoreticalUsageLine,
+  dayparts, type Daypart, type InsertDaypart,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -343,6 +349,35 @@ export interface IStorage {
     totalValue: number;
     countedAt: Date;
   }>>;
+
+  // TFC - Dayparts
+  getDayparts(companyId: string): Promise<Daypart[]>;
+  getDaypart(id: string, companyId: string): Promise<Daypart | undefined>;
+  createDaypart(daypart: InsertDaypart): Promise<Daypart>;
+  updateDaypart(id: string, companyId: string, updates: Partial<Daypart>): Promise<Daypart | undefined>;
+
+  // TFC - Sales Upload Batches
+  createSalesUploadBatch(batch: InsertSalesUploadBatch): Promise<SalesUploadBatch>;
+  getSalesUploadBatch(id: string, companyId: string): Promise<SalesUploadBatch | undefined>;
+  getSalesUploadBatches(companyId: string, storeId?: string): Promise<SalesUploadBatch[]>;
+  updateSalesUploadBatchStatus(id: string, companyId: string, status: string, completedAt?: Date, rowsProcessed?: number, rowsFailed?: number, errorLog?: string): Promise<void>;
+
+  // TFC - Daily Menu Item Sales
+  createDailyMenuItemSales(sales: InsertDailyMenuItemSales[]): Promise<DailyMenuItemSales[]>;
+  getDailyMenuItemSales(companyId: string, storeId: string, startDate: Date, endDate: Date): Promise<DailyMenuItemSales[]>;
+
+  // TFC - Recipe Cost Snapshots
+  createRecipeCostSnapshot(snapshot: InsertRecipeCostSnapshot): Promise<RecipeCostSnapshot>;
+  getRecipeCostSnapshot(recipeId: string, effectiveDate: Date): Promise<RecipeCostSnapshot | undefined>;
+
+  // TFC - Theoretical Usage Runs
+  createTheoreticalUsageRun(run: InsertTheoreticalUsageRun): Promise<TheoreticalUsageRun>;
+  getTheoreticalUsageRun(id: string, companyId: string): Promise<TheoreticalUsageRun | undefined>;
+  getTheoreticalUsageRuns(companyId: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<TheoreticalUsageRun[]>;
+
+  // TFC - Theoretical Usage Lines
+  createTheoreticalUsageLines(lines: InsertTheoreticalUsageLine[]): Promise<TheoreticalUsageLine[]>;
+  getTheoreticalUsageLines(runId: string): Promise<TheoreticalUsageLine[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2037,6 +2072,182 @@ export class DatabaseStorage implements IStorage {
     countedAt: Date;
   }>> {
     return [];
+  }
+
+  // TFC - Dayparts
+  async getDayparts(companyId: string): Promise<Daypart[]> {
+    return db
+      .select()
+      .from(dayparts)
+      .where(eq(dayparts.companyId, companyId))
+      .orderBy(dayparts.sortOrder);
+  }
+
+  async getDaypart(id: string, companyId: string): Promise<Daypart | undefined> {
+    const [daypart] = await db
+      .select()
+      .from(dayparts)
+      .where(and(eq(dayparts.id, id), eq(dayparts.companyId, companyId)));
+    return daypart || undefined;
+  }
+
+  async createDaypart(insertDaypart: InsertDaypart): Promise<Daypart> {
+    const [daypart] = await db.insert(dayparts).values(insertDaypart).returning();
+    return daypart;
+  }
+
+  async updateDaypart(id: string, companyId: string, updates: Partial<Daypart>): Promise<Daypart | undefined> {
+    const [daypart] = await db
+      .update(dayparts)
+      .set(updates)
+      .where(and(eq(dayparts.id, id), eq(dayparts.companyId, companyId)))
+      .returning();
+    return daypart || undefined;
+  }
+
+  // TFC - Sales Upload Batches
+  async createSalesUploadBatch(batch: InsertSalesUploadBatch): Promise<SalesUploadBatch> {
+    const [newBatch] = await db.insert(salesUploadBatches).values(batch).returning();
+    return newBatch;
+  }
+
+  async getSalesUploadBatch(id: string, companyId: string): Promise<SalesUploadBatch | undefined> {
+    const [batch] = await db
+      .select()
+      .from(salesUploadBatches)
+      .where(and(eq(salesUploadBatches.id, id), eq(salesUploadBatches.companyId, companyId)));
+    return batch || undefined;
+  }
+
+  async getSalesUploadBatches(companyId: string, storeId?: string): Promise<SalesUploadBatch[]> {
+    const conditions = [eq(salesUploadBatches.companyId, companyId)];
+    if (storeId) {
+      conditions.push(eq(salesUploadBatches.storeId, storeId));
+    }
+    return db
+      .select()
+      .from(salesUploadBatches)
+      .where(and(...conditions))
+      .orderBy(salesUploadBatches.uploadedAt);
+  }
+
+  async updateSalesUploadBatchStatus(
+    id: string,
+    companyId: string,
+    status: string,
+    completedAt?: Date,
+    rowsProcessed?: number,
+    rowsFailed?: number,
+    errorLog?: string
+  ): Promise<void> {
+    const updates: Partial<SalesUploadBatch> = { status };
+    if (completedAt !== undefined) updates.completedAt = completedAt;
+    if (rowsProcessed !== undefined) updates.rowsProcessed = rowsProcessed;
+    if (rowsFailed !== undefined) updates.rowsFailed = rowsFailed;
+    if (errorLog !== undefined) updates.errorLog = errorLog;
+
+    await db
+      .update(salesUploadBatches)
+      .set(updates)
+      .where(and(eq(salesUploadBatches.id, id), eq(salesUploadBatches.companyId, companyId)));
+  }
+
+  // TFC - Daily Menu Item Sales
+  async createDailyMenuItemSales(sales: InsertDailyMenuItemSales[]): Promise<DailyMenuItemSales[]> {
+    if (sales.length === 0) return [];
+    return db.insert(dailyMenuItemSales).values(sales).returning();
+  }
+
+  async getDailyMenuItemSales(
+    companyId: string,
+    storeId: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<DailyMenuItemSales[]> {
+    return db
+      .select()
+      .from(dailyMenuItemSales)
+      .where(
+        and(
+          eq(dailyMenuItemSales.companyId, companyId),
+          eq(dailyMenuItemSales.storeId, storeId),
+          gte(dailyMenuItemSales.salesDate, startDate),
+          lte(dailyMenuItemSales.salesDate, endDate)
+        )
+      )
+      .orderBy(dailyMenuItemSales.salesDate);
+  }
+
+  // TFC - Recipe Cost Snapshots
+  async createRecipeCostSnapshot(snapshot: InsertRecipeCostSnapshot): Promise<RecipeCostSnapshot> {
+    const [newSnapshot] = await db.insert(recipeCostSnapshots).values(snapshot).returning();
+    return newSnapshot;
+  }
+
+  async getRecipeCostSnapshot(recipeId: string, effectiveDate: Date): Promise<RecipeCostSnapshot | undefined> {
+    const [snapshot] = await db
+      .select()
+      .from(recipeCostSnapshots)
+      .where(
+        and(
+          eq(recipeCostSnapshots.recipeId, recipeId),
+          lte(recipeCostSnapshots.effectiveDate, effectiveDate)
+        )
+      )
+      .orderBy(recipeCostSnapshots.effectiveDate)
+      .limit(1);
+    return snapshot || undefined;
+  }
+
+  // TFC - Theoretical Usage Runs
+  async createTheoreticalUsageRun(run: InsertTheoreticalUsageRun): Promise<TheoreticalUsageRun> {
+    const [newRun] = await db.insert(theoreticalUsageRuns).values(run).returning();
+    return newRun;
+  }
+
+  async getTheoreticalUsageRun(id: string, companyId: string): Promise<TheoreticalUsageRun | undefined> {
+    const [run] = await db
+      .select()
+      .from(theoreticalUsageRuns)
+      .where(and(eq(theoreticalUsageRuns.id, id), eq(theoreticalUsageRuns.companyId, companyId)));
+    return run || undefined;
+  }
+
+  async getTheoreticalUsageRuns(
+    companyId: string,
+    storeId?: string,
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<TheoreticalUsageRun[]> {
+    const conditions = [eq(theoreticalUsageRuns.companyId, companyId)];
+    if (storeId) {
+      conditions.push(eq(theoreticalUsageRuns.storeId, storeId));
+    }
+    if (startDate) {
+      conditions.push(gte(theoreticalUsageRuns.salesDate, startDate));
+    }
+    if (endDate) {
+      conditions.push(lte(theoreticalUsageRuns.salesDate, endDate));
+    }
+    return db
+      .select()
+      .from(theoreticalUsageRuns)
+      .where(and(...conditions))
+      .orderBy(theoreticalUsageRuns.salesDate);
+  }
+
+  // TFC - Theoretical Usage Lines
+  async createTheoreticalUsageLines(lines: InsertTheoreticalUsageLine[]): Promise<TheoreticalUsageLine[]> {
+    if (lines.length === 0) return [];
+    return db.insert(theoreticalUsageLines).values(lines).returning();
+  }
+
+  async getTheoreticalUsageLines(runId: string): Promise<TheoreticalUsageLine[]> {
+    return db
+      .select()
+      .from(theoreticalUsageLines)
+      .where(eq(theoreticalUsageLines.runId, runId))
+      .orderBy(theoreticalUsageLines.inventoryItemId);
   }
 }
 
