@@ -158,13 +158,13 @@ export class TheoreticalUsageService {
           item.unitId
         );
 
-        const yieldMultiplier = item.yieldPercent > 0 ? (100 / item.yieldPercent) : 1;
-        const adjustedQty = baseQty * yieldMultiplier;
-        const cost = adjustedQty * item.pricePerUnit;
+        // Note: Recipe quantities already account for yield (they specify "as purchased" amounts)
+        // Do NOT apply yield percentage here, as that would double-count waste
+        const cost = baseQty * item.pricePerUnit;
 
         ingredients.push({
           inventoryItemId: item.id,
-          requiredQtyBaseUnit: adjustedQty,
+          requiredQtyBaseUnit: baseQty,
           baseUnitId: item.unitId,
           costAtSale: cost,
           sourceMenuItems: [{
