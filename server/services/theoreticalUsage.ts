@@ -26,8 +26,13 @@ export class TheoreticalUsageService {
     const { companyId, storeId, salesDate, sourceBatchId, salesData } = input;
 
     // Calculate totals with proper number handling
+    console.log('[TFC Usage] First sales record keys:', salesData.length > 0 ? Object.keys(salesData[0]) : 'no data');
+    console.log('[TFC Usage] First sales record qtySold:', salesData.length > 0 ? salesData[0].qtySold : 'no data');
+    console.log('[TFC Usage] First sales record netSales:', salesData.length > 0 ? salesData[0].netSales : 'no data');
+    
     const totalMenuItemsSold = salesData.reduce((sum, s) => {
       const qty = Number(s.qtySold) || 0;
+      console.log('[TFC Usage] Processing qty:', s.qtySold, '-> Number:', qty);
       return sum + qty;
     }, 0);
     
