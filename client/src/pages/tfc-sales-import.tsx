@@ -1,17 +1,75 @@
 import { useState, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, Eye, PackageSearch } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { format } from "date-fns";
+
+interface TheoreticalUsageRun {
+  id: string;
+  companyId: string;
+  storeId: string;
+  salesDate: Date | string;
+  sourceBatchId: string;
+  status: string;
+  totalMenuItemsSold: number;
+  totalRevenue: number;
+  totalTheoreticalCost: number;
+  totalTheoreticalCostWAC: number;
+  completedAt: Date | string | null;
+}
+
+interface UsageLineDetail {
+  id: string;
+  runId: string;
+  inventoryItemId: string;
+  requiredQtyBaseUnit: number;
+  baseUnitId: string;
+  costAtSale: number;
+  sourceMenuItems: Array<{
+    menuItemId: string;
+    menuItemName: string;
+    qtySold: number;
+  }>;
+  inventoryItem: {
+    id: string;
+    name: string;
+    unitId: string;
+    unitName: string;
+    unitAbbreviation: string;
+    pricePerUnit: number;
+    avgCostPerUnit: number;
+  } | null;
+}
 
 export default function TfcSalesImport() {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  // Fetch theoretical usage runs
+  const { data: runs = [], isLoading: runsLoading, refetch: refetchRuns } = useQuery<TheoreticalUsageRun[]>({
+    queryKey: ['/api/tfc/usage-runs'],
+  });
+
+  // Fetch detailed usage for selected run
+  const { data: runDetails, isLoading: detailsLoading } = useQuery<{
+    run: TheoreticalUsageRun;
+    lines: UsageLineDetail[];
+  }>({
+    queryKey: ['/api/tfc/usage-runs', selectedRunId, 'details'],
+    enabled: !!selectedRunId,
+  });
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -97,12 +155,15 @@ export default function TfcSalesImport() {
         description: `Processed ${result.recordCount || 0} sales records`,
       });
 
-      // Reset form
+      // Reset form and refetch runs
       setSelectedFile(null);
       setUploadError(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+      
+      // Refresh the batch history
+      refetchRuns();
 
     } catch (error: any) {
       setUploadError(error.message || 'Failed to upload file');
@@ -257,18 +318,179 @@ export default function TfcSalesImport() {
         <div>
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Recent Uploads</CardTitle>
+              <CardTitle className="text-lg">Theoretical Usage Calculations</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-center text-muted-foreground py-8">
-                <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No uploads yet</p>
-                <p className="text-sm mt-1">Upload a CSV file to get started</p>
-              </div>
+              {runsLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-16 w-full" />
+                  ))}
+                </div>
+              ) : runs.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8">
+                  <PackageSearch className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No calculations yet</p>
+                  <p className="text-sm mt-1">Upload a CSV file to get started</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {runs.map((run) => (
+                    <div
+                      key={run.id}
+                      className="border rounded-lg p-4 hover-elevate"
+                      data-testid={`card-usage-run-${run.id}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium" data-testid="text-sales-date">
+                            {format(new Date(run.salesDate), 'MMM d, yyyy')}
+                          </h4>
+                          <Badge 
+                            variant={run.status === 'completed' ? 'default' : run.status === 'failed' ? 'destructive' : 'secondary'}
+                            data-testid={`badge-status-${run.id}`}
+                          >
+                            {run.status}
+                          </Badge>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedRunId(run.id)}
+                          data-testid={`button-view-details-${run.id}`}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Details
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Items Sold</p>
+                          <p className="font-medium" data-testid="text-items-sold">
+                            {run.totalMenuItemsSold.toLocaleString()}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Revenue</p>
+                          <p className="font-medium" data-testid="text-revenue">
+                            ${run.totalRevenue.toFixed(2)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Theoretical Cost</p>
+                          <p className="font-medium" data-testid="text-theoretical-cost">
+                            ${run.totalTheoreticalCost.toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                      {run.status === 'completed' && (
+                        <div className="mt-2 pt-2 border-t">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Food Cost %</span>
+                            <span className="font-semibold" data-testid="text-food-cost-pct">
+                              {run.totalRevenue > 0 
+                                ? ((run.totalTheoreticalCost / run.totalRevenue) * 100).toFixed(1)
+                                : '0.0'}%
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Detail Dialog */}
+      <Dialog open={!!selectedRunId} onOpenChange={() => setSelectedRunId(null)}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Theoretical Usage Details</DialogTitle>
+            <DialogDescription>
+              Ingredient-level breakdown of theoretical usage
+            </DialogDescription>
+          </DialogHeader>
+
+          {detailsLoading ? (
+            <div className="space-y-3 py-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : runDetails ? (
+            <div className="flex-1 overflow-y-auto">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-muted rounded-lg">
+                <div>
+                  <p className="text-xs text-muted-foreground">Date</p>
+                  <p className="font-medium">{format(new Date(runDetails.run.salesDate), 'MMM d, yyyy')}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Items Sold</p>
+                  <p className="font-medium">{runDetails.run.totalMenuItemsSold.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Revenue</p>
+                  <p className="font-medium">${runDetails.run.totalRevenue.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Theoretical Cost</p>
+                  <p className="font-medium">${runDetails.run.totalTheoreticalCost.toFixed(2)}</p>
+                </div>
+              </div>
+
+              {/* Ingredients Table */}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ingredient</TableHead>
+                    <TableHead className="text-right">Qty Used</TableHead>
+                    <TableHead className="text-right">Unit</TableHead>
+                    <TableHead className="text-right">Cost</TableHead>
+                    <TableHead className="text-right">Price/Unit</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {runDetails.lines.map((line: UsageLineDetail) => (
+                    <TableRow key={line.id} data-testid={`row-ingredient-${line.inventoryItemId}`}>
+                      <TableCell className="font-medium">
+                        {line.inventoryItem?.name || 'Unknown Item'}
+                        {line.sourceMenuItems.length > 0 && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            From: {line.sourceMenuItems.map(s => `${s.menuItemName} (${s.qtySold})`).join(', ')}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right" data-testid="text-qty-used">
+                        {line.requiredQtyBaseUnit.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {line.inventoryItem?.unitAbbreviation || line.inventoryItem?.unitName || ''}
+                      </TableCell>
+                      <TableCell className="text-right font-medium" data-testid="text-cost">
+                        ${line.costAtSale.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground text-sm">
+                        ${(line.inventoryItem?.pricePerUnit || 0).toFixed(4)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {runDetails.lines.length === 0 && (
+                <div className="text-center text-muted-foreground py-8">
+                  <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No ingredient usage data found</p>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

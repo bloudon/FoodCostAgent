@@ -5748,6 +5748,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get theoretical usage runs (batch history)
+  app.get("/api/tfc/usage-runs", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) {
+        return res.status(400).json({ message: "Company context required" });
+      }
+
+      const runs = await storage.getTheoreticalUsageRuns(companyId);
+      res.json(runs);
+    } catch (error: any) {
+      console.error('Get usage runs error:', error);
+      res.status(500).json({ message: "Failed to fetch usage runs" });
+    }
+  });
+
+  // Get detailed theoretical usage for a specific run
+  app.get("/api/tfc/usage-runs/:runId/details", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { runId } = req.params;
+
+      if (!companyId) {
+        return res.status(400).json({ message: "Company context required" });
+      }
+
+      // Get the usage run
+      const run = await storage.getTheoreticalUsageRun(runId, companyId);
+      if (!run) {
+        return res.status(404).json({ message: "Usage run not found" });
+      }
+
+      // Get usage lines
+      const lines = await storage.getTheoreticalUsageLines(runId);
+
+      // Batch fetch all inventory items and units to avoid N+1 queries
+      const uniqueItemIds = [...new Set(lines.map(l => l.inventoryItemId))];
+      const items = await Promise.all(
+        uniqueItemIds.map(id => storage.getInventoryItem(id))
+      );
+      const itemsMap = new Map(items.filter(i => i !== undefined).map(i => [i!.id, i!]));
+
+      const uniqueUnitIds = [...new Set(items.filter(i => i !== undefined).map(i => i!.unitId))];
+      const units = await Promise.all(
+        uniqueUnitIds.map(id => storage.getUnit(id))
+      );
+      const unitsMap = new Map(units.filter(u => u !== undefined).map(u => [u!.id, u!]));
+
+      // Build detailed lines with parsed sourceMenuItems and batched data
+      const detailedLines = lines.map((line) => {
+        const item = itemsMap.get(line.inventoryItemId);
+        const unit = item ? unitsMap.get(item.unitId) : null;
+        
+        // Parse sourceMenuItems JSON string
+        let sourceMenuItems: Array<{
+          menuItemId: string;
+          menuItemName: string;
+          qtySold: number;
+        }> = [];
+        
+        try {
+          sourceMenuItems = JSON.parse(line.sourceMenuItems);
+        } catch (error) {
+          console.error('Failed to parse sourceMenuItems:', error);
+        }
+
+        return {
+          ...line,
+          sourceMenuItems, // Now an array, not a string
+          inventoryItem: item ? {
+            id: item.id,
+            name: item.name,
+            unitId: item.unitId,
+            unitName: unit?.name || '',
+            unitAbbreviation: unit?.abbreviation || '',
+            pricePerUnit: item.pricePerUnit,
+            avgCostPerUnit: item.avgCostPerUnit,
+          } : null,
+        };
+      });
+
+      res.json({
+        run,
+        lines: detailedLines,
+      });
+    } catch (error: any) {
+      console.error('Get usage details error:', error);
+      res.status(500).json({ message: "Failed to fetch usage details" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
