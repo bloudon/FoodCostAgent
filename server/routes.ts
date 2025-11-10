@@ -5621,8 +5621,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "No file uploaded" });
       }
 
-      const user = req.user!;
-      const companyId = user.companyId;
+      const companyId = (req as any).companyId;
+      if (!companyId) {
+        return res.status(400).json({ message: "Company context required" });
+      }
 
       // Parse CSV file
       const fileContent = req.file.buffer.toString('utf-8');
@@ -5656,21 +5658,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Find store by code
         const stores = await storage.getCompanyStores(companyId);
+        console.log(`[TFC Upload] Looking for store code: "${storeCode}" in company ${companyId}`);
+        console.log(`[TFC Upload] Available stores:`, stores.map(s => ({ id: s.id, code: s.code, name: s.name })));
         const store = stores.find(s => s.code === storeCode);
 
         if (!store) {
+          console.error(`[TFC Upload] Store not found for code: "${storeCode}"`);
+          console.error(`[TFC Upload] Store codes available:`, stores.map(s => s.code));
           return res.status(400).json({
-            message: `Store not found for code: ${storeCode}`,
+            message: `Store not found for code: ${storeCode}. Available codes: ${stores.map(s => s.code).join(', ')}`,
           });
         }
 
         // Create sales upload batch
+        const userId = (req as any).user?.id;
         const batch = await storage.createSalesUploadBatch({
           companyId,
           storeId: store.id,
+          uploadedBy: userId,
           salesDate,
           fileName: req.file.originalname,
-          recordCount: rows.length,
           status: "processing",
         });
 
@@ -5687,7 +5694,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           const salesRecord = await storage.createDailyMenuItemSales({
-            batchId: batch.id,
             companyId,
             storeId: store.id,
             menuItemId: menuItem.id,
@@ -5695,6 +5701,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             qtySold: row.qty_sold,
             netSales: row.net_sales,
             daypartId: null, // TODO: Map daypart name to ID
+            sourceBatchId: batch.id,
           });
 
           salesRecords.push(salesRecord);
