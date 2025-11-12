@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary goal is to optimize operations, reduce waste, and enhance profitability. The system provides advanced unit conversions, supports nested recipes, integrates with POS sales in real-time, offers detailed variance reporting, manages dual pricing (Last Cost and Weighted Average Cost), and facilitates vendor price comparison for purchase orders. It offers a robust solution for multi-store inventory and costing management.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its core purpose is to optimize operations, minimize waste, and boost profitability through advanced features like unit conversions, nested recipes, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The system offers robust multi-store inventory and costing management capabilities.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -38,7 +38,7 @@ This project is a comprehensive inventory management and recipe costing system d
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
-The system utilizes a multi-tenant architecture with robust data isolation at both the company and store levels, designed for integration with Thrive Control Center (TCC).
+The system employs a multi-tenant architecture with data isolation at company and store levels, designed for integration with Thrive Control Center (TCC).
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
@@ -50,10 +50,10 @@ The system utilizes a multi-tenant architecture with robust data isolation at bo
 - **Runtime**: Node.js with TypeScript.
 - **Web Framework**: Express.js for RESTful APIs.
 - **API Design**: RESTful, WebSocket for real-time data, Zod validation.
-- **Database Layer**: Drizzle ORM, PostgreSQL (Neon serverless), schema-first with migrations.
+- **Database Layer**: Drizzle ORM, PostgreSQL, schema-first with migrations.
 - **Core Domain Models**: Users, Storage Locations, Units, Inventory Items, Vendors, Recipes (nested), Inventory Counts, Purchase Orders, POS Sales, Transfer/Waste Logs.
 - **Business Logic**: Unit conversion, recursive recipe costing, location-based inventory, theoretical vs. actual usage variance, purchase order workflows, COGS analysis.
-- **Authentication & Authorization**: Hybrid authentication (username/password and enterprise SSO via Replit OpenID Connect) with Role-Based Access Control (RBAC) supporting hierarchical permissions (`global_admin`, `company_admin`, `store_manager`, `store_user`). Includes a user invitation system.
+- **Authentication & Authorization**: Hybrid authentication (username/password and enterprise SSO via Replit OpenID Connect) with Role-Based Access Control (RBAC) supporting hierarchical permissions.
 
 ### Architectural Decisions
 - **Application Structure**: Single-page application with co-served API and frontend.
@@ -69,7 +69,7 @@ The system utilizes a multi-tenant architecture with robust data isolation at bo
 - **Store-to-Store Transfer Orders**: Tracks inventory movement with a defined workflow.
 - **Waste Tracking Module**: Comprehensive waste logging with store-level isolation and automatic value calculation.
 - **Security**: HMAC-SHA256 for securing API integrations.
-- **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching layer with graceful fallback, response compression (gzip). Caching strategy includes lookup tables and frequently-mutated resources with specific TTLs and invalidation.
+- **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching layer with graceful fallback, response compression (gzip).
 
 ## External Dependencies
 - **Database Services**: Neon serverless PostgreSQL, `@neondatabase/serverless`.

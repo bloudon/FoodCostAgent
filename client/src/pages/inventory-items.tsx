@@ -207,27 +207,12 @@ export default function InventoryItems() {
               Inventory Items ({filteredItems.length})
             </h1>
           </div>
-          <div className="flex items-center gap-3">
-            <Store className="h-5 w-5 text-muted-foreground" />
-            <Select value={selectedStore} onValueChange={setSelectedStore}>
-              <SelectTrigger className="w-[200px]" data-testid="select-store-filter">
-                <SelectValue placeholder="Select store" />
-              </SelectTrigger>
-              <SelectContent>
-                {stores?.filter(s => s.status === 'active').map((store) => (
-                  <SelectItem key={store.id} value={store.id}>
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button asChild data-testid="button-add-item">
-              <Link href="/inventory-items/new">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Item
-              </Link>
-            </Button>
-          </div>
+          <Button asChild data-testid="button-add-item">
+            <Link href="/inventory-items/new">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Item
+            </Link>
+          </Button>
         </div>
 
         {/* Filters */}
