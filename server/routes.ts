@@ -995,11 +995,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get compatible units for a given unit (same kind: weight/volume/count)
-  app.get("/api/units/compatible", async (req, res) => {
+  app.get("/api/units/compatible", requireAuth, async (req, res) => {
     const { unitId } = req.query;
     
     if (!unitId || typeof unitId !== 'string') {
       return res.status(400).json({ error: "unitId query parameter is required" });
+    }
+
+    const companyId = (req as any).companyId;
+    if (!companyId) {
+      return res.status(401).json({ error: "Company ID required" });
+    }
+
+    // Get company to check unit system preference
+    const company = await storage.getCompany(companyId);
+    if (!company) {
+      return res.status(404).json({ error: "Company not found" });
     }
 
     const units = await storage.getUnits();
@@ -1009,8 +1020,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ error: "Unit not found" });
     }
 
-    // Return units of the same kind (weight/volume/count)
-    const compatibleUnits = units.filter(u => u.kind === targetUnit.kind);
+    // Fractional pound units to exclude (can be entered in ounces instead)
+    const fractionalPounds = ['eighth-pound', 'quarter-pound', 'half-pound'];
+
+    // Filter units by:
+    // 1. Same kind (weight/volume/count)
+    // 2. Company's unit system preference (imperial/metric/both)
+    // 3. Exclude fractional pounds
+    let compatibleUnits = units.filter(u => {
+      if (u.kind !== targetUnit.kind) return false;
+      if (fractionalPounds.includes(u.name)) return false;
+      
+      // If company prefers "both" or unit has no system, include it
+      if (company.preferredUnitSystem === 'both' || !u.system) return true;
+      
+      // Otherwise, match the company's preference
+      return u.system === company.preferredUnitSystem;
+    });
+
     res.json(compatibleUnits);
   });
 
