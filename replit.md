@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary goal is to optimize operations, reduce waste, and improve profitability. Key capabilities include advanced unit conversions, nested recipes, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The system aims to provide a robust solution for managing inventory and costing in a multi-store environment.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary goal is to optimize operations, reduce waste, and enhance profitability. The system provides advanced unit conversions, supports nested recipes, integrates with POS sales in real-time, offers detailed variance reporting, manages dual pricing (Last Cost and Weighted Average Cost), and facilitates vendor price comparison for purchase orders. It offers a robust solution for multi-store inventory and costing management.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -38,7 +38,7 @@ This project is a comprehensive inventory management and recipe costing system d
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
-The system employs a multi-tenant architecture with robust data isolation at both the company and store levels, designed for integration with Thrive Control Center (TCC).
+The system utilizes a multi-tenant architecture with robust data isolation at both the company and store levels, designed for integration with Thrive Control Center (TCC).
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
@@ -72,7 +72,6 @@ The system employs a multi-tenant architecture with robust data isolation at bot
 - **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching layer with graceful fallback, response compression (gzip). Caching strategy includes lookup tables and frequently-mutated resources with specific TTLs and invalidation.
 
 ## External Dependencies
-- **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
 - **Database Services**: Neon serverless PostgreSQL, `@neondatabase/serverless`.
 - **Real-time Communication**: `ws` (WebSockets).
 - **Image Processing**: Sharp.
