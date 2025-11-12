@@ -5923,15 +5923,52 @@ async function createPlaceholderRecipe(companyId: string, menuItemName: string, 
 async function calculateComponentCost(comp: any): Promise<number> {
   const units = await storage.getUnits();
   const inventoryItems = await storage.getInventoryItems();
-  
-  const unit = units.find((u) => u.id === comp.unitId);
-  const qty = unit ? comp.qty * unit.toBaseRatio : comp.qty;
+  const unitConversions = await storage.getUnitConversions();
 
   if (comp.componentType === "inventory_item") {
     const item = inventoryItems.find((i) => i.id === comp.componentId);
-    if (item) {
-      return qty * item.pricePerUnit;
+    if (!item) return 0;
+
+    const compUnit = units.find((u) => u.id === comp.unitId);
+    const itemUnit = units.find((u) => u.id === item.unitId);
+    
+    if (!compUnit || !itemUnit) return 0;
+
+    // Convert component quantity to inventory item's base unit
+    let convertedQty = comp.qty;
+    
+    if (comp.unitId === item.unitId) {
+      // Same unit, no conversion needed
+      convertedQty = comp.qty;
+    } else {
+      // Try direct conversion
+      const directConversion = unitConversions.find(
+        c => c.fromUnitId === comp.unitId && c.toUnitId === item.unitId
+      );
+      
+      if (directConversion) {
+        convertedQty = comp.qty * directConversion.conversionFactor;
+      } else {
+        // Try reverse conversion
+        const reverseConversion = unitConversions.find(
+          c => c.fromUnitId === item.unitId && c.toUnitId === comp.unitId
+        );
+        
+        if (reverseConversion) {
+          convertedQty = comp.qty / reverseConversion.conversionFactor;
+        } else if (compUnit.kind === itemUnit.kind) {
+          // Use base unit ratios (grams for weight, milliliters for volume)
+          convertedQty = (comp.qty * compUnit.toBaseRatio) / itemUnit.toBaseRatio;
+        } else {
+          // Incompatible unit types (e.g., weight vs count) - cannot convert
+          console.warn(`[Recipe Cost] Cannot convert ${compUnit.name} to ${itemUnit.name} - incompatible unit types`);
+          return 0;
+        }
+      }
     }
+
+    return convertedQty * item.pricePerUnit;
+    
   } else if (comp.componentType === "recipe") {
     const subRecipe = await storage.getRecipe(comp.componentId);
     if (subRecipe) {
@@ -5939,6 +5976,10 @@ async function calculateComponentCost(comp: any): Promise<number> {
       const subRecipeYieldUnit = units.find(u => u.id === subRecipe.yieldUnitId);
       const subRecipeYieldQty = subRecipeYieldUnit ? subRecipe.yieldQty * subRecipeYieldUnit.toBaseRatio : subRecipe.yieldQty;
       const costPerUnit = subRecipeYieldQty > 0 ? subRecipeCost / subRecipeYieldQty : 0;
+      
+      const compUnit = units.find((u) => u.id === comp.unitId);
+      const qty = compUnit ? comp.qty * compUnit.toBaseRatio : comp.qty;
+      
       return qty * costPerUnit;
     }
   }
