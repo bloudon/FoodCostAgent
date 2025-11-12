@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system for multi-company food service businesses, especially pizza restaurants. It aims to optimize operations, minimize waste, and enhance profitability through advanced unit conversions, nested recipes, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary goal is to optimize operations, reduce waste, and improve profitability. Key capabilities include advanced unit conversions, nested recipes, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The system aims to provide a robust solution for managing inventory and costing in a multi-store environment.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -38,14 +38,13 @@ This project is a comprehensive inventory management and recipe costing system f
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
-Multi-tenant architecture with data isolation at company and store levels, integrated with Thrive Control Center (TCC).
+The system employs a multi-tenant architecture with robust data isolation at both the company and store levels, designed for integration with Thrive Control Center (TCC).
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
 - **UI**: `shadcn/ui` components (Radix UI, Tailwind CSS) for custom theming, dark/light modes, and responsive navigation.
 - **State Management**: TanStack Query, React Context for global store selection.
 - **Routing**: Wouter.
-- **Global Store Context**: `StoreProvider` manages selected store state application-wide.
 
 ### Backend
 - **Runtime**: Node.js with TypeScript.
@@ -54,26 +53,23 @@ Multi-tenant architecture with data isolation at company and store levels, integ
 - **Database Layer**: Drizzle ORM, PostgreSQL (Neon serverless), schema-first with migrations.
 - **Core Domain Models**: Users, Storage Locations, Units, Inventory Items, Vendors, Recipes (nested), Inventory Counts, Purchase Orders, POS Sales, Transfer/Waste Logs.
 - **Business Logic**: Unit conversion, recursive recipe costing, location-based inventory, theoretical vs. actual usage variance, purchase order workflows, COGS analysis.
-- **Authentication & Sessions**: Hybrid authentication (username/password and enterprise SSO via Replit OpenID Connect).
-- **Role-Based Access Control**: Hierarchical permissions (`global_admin`, `company_admin`, `store_manager`, `store_user`).
-- **User Invitation System**: Supports dual authentication and company/role/store assignment.
+- **Authentication & Authorization**: Hybrid authentication (username/password and enterprise SSO via Replit OpenID Connect) with Role-Based Access Control (RBAC) supporting hierarchical permissions (`global_admin`, `company_admin`, `store_manager`, `store_user`). Includes a user invitation system.
 
 ### Architectural Decisions
 - **Application Structure**: Single-page application with co-served API and frontend.
 - **Real-time Data**: WebSocket for POS data.
 - **Precision**: Micro-unit system for accurate tracking and costing.
-- **Inventory Adjustments**: Automated for transfers/waste, historical recipe versioning.
+- **Inventory Adjustments**: Automated for transfers/waste, with historical recipe versioning.
 - **Inventory Count Sessions**: Auto-populates items, updates `store_inventory_items.onHandQty`, and locks sessions.
 - **Purchase Order Management**: Supports unit/case ordering, vendor-specific filtering, and keyboard-optimized entry.
-- **Terminology Standardization**: Consistent use of "inventory item."
 - **Receiving Module**: Supports partial receipts, resumable sessions, and allows editing unit prices.
 - **Vendor Integration**: Pluggable adapter pattern for distributors.
-- **Object Storage**: Google Cloud Storage (via Replit's object storage) for inventory item images, using presigned URLs and on-the-fly thumbnails.
+- **Object Storage**: Google Cloud Storage (via Replit's object storage) for inventory item images, utilizing presigned URLs and on-the-fly thumbnails.
 - **Unified Orders Page**: Consolidates Purchase Orders, Receiving, and Transfer Orders.
 - **Store-to-Store Transfer Orders**: Tracks inventory movement with a defined workflow.
 - **Waste Tracking Module**: Comprehensive waste logging with store-level isolation and automatic value calculation.
-- **HMAC Authentication**: Hierarchical HMAC-SHA256 for securing API integrations.
-- **Scalability Optimizations**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching layer with graceful fallback, response compression (gzip). Caching strategy includes lookup tables (units, categories, vendors, storage locations) and frequently-mutated resources (inventory items, recipes, menu items) with specific TTLs and invalidation mechanisms.
+- **Security**: HMAC-SHA256 for securing API integrations.
+- **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching layer with graceful fallback, response compression (gzip). Caching strategy includes lookup tables and frequently-mutated resources with specific TTLs and invalidation.
 
 ## External Dependencies
 - **Third-Party UI Libraries**: Radix UI, Lucide React, Embla Carousel, cmdk, date-fns, Recharts.
