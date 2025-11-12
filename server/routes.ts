@@ -994,6 +994,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(units);
   });
 
+  // Get compatible units for a given unit (same kind: weight/volume/count)
+  app.get("/api/units/compatible", async (req, res) => {
+    const { unitId } = req.query;
+    
+    if (!unitId || typeof unitId !== 'string') {
+      return res.status(400).json({ error: "unitId query parameter is required" });
+    }
+
+    const units = await storage.getUnits();
+    const targetUnit = units.find(u => u.id === unitId);
+    
+    if (!targetUnit) {
+      return res.status(404).json({ error: "Unit not found" });
+    }
+
+    // Return units of the same kind (weight/volume/count)
+    const compatibleUnits = units.filter(u => u.kind === targetUnit.kind);
+    res.json(compatibleUnits);
+  });
+
   app.post("/api/units", async (req, res) => {
     try {
       const data = insertUnitSchema.parse(req.body);

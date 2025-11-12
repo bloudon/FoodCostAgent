@@ -264,12 +264,14 @@ export default function RecipeBuilder() {
   const [pendingItem, setPendingItem] = useState<DraggableItem | null>(null);
   const [dialogQty, setDialogQty] = useState("");
   const [dialogUnitId, setDialogUnitId] = useState("");
+  const [baseUnitIdForAdd, setBaseUnitIdForAdd] = useState<string | null>(null);
 
   // Edit component dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingComponent, setEditingComponent] = useState<ComponentWithDetails | null>(null);
   const [editQty, setEditQty] = useState("");
   const [editUnitId, setEditUnitId] = useState("");
+  const [baseUnitIdForEdit, setBaseUnitIdForEdit] = useState<string | null>(null);
 
   // Edit inventory item dialog state
   const [editingInventoryItem, setEditingInventoryItem] = useState<any | null>(null);
@@ -318,6 +320,30 @@ export default function RecipeBuilder() {
   const { data: recipeStores } = useQuery<any[]>({
     queryKey: ["/api/store-recipes", id],
     enabled: !isNew && !!id,
+  });
+
+  // Fetch compatible units for add dialog
+  const { data: compatibleUnitsForAdd } = useQuery<Unit[]>({
+    queryKey: ["/api/units/compatible", baseUnitIdForAdd],
+    queryFn: async () => {
+      if (!baseUnitIdForAdd) return [];
+      const response = await fetch(`/api/units/compatible?unitId=${baseUnitIdForAdd}`);
+      if (!response.ok) throw new Error('Failed to fetch compatible units');
+      return response.json();
+    },
+    enabled: !!baseUnitIdForAdd && showAddDialog,
+  });
+
+  // Fetch compatible units for edit dialog
+  const { data: compatibleUnitsForEdit } = useQuery<Unit[]>({
+    queryKey: ["/api/units/compatible", baseUnitIdForEdit],
+    queryFn: async () => {
+      if (!baseUnitIdForEdit) return [];
+      const response = await fetch(`/api/units/compatible?unitId=${baseUnitIdForEdit}`);
+      if (!response.ok) throw new Error('Failed to fetch compatible units');
+      return response.json();
+    },
+    enabled: !!baseUnitIdForEdit && editDialogOpen,
   });
 
   // Calculate component cost
@@ -427,6 +453,7 @@ export default function RecipeBuilder() {
           pricePerUnit: inventoryItem.pricePerUnit,
         });
         setDialogUnitId(inventoryItem.unitId);
+        setBaseUnitIdForAdd(inventoryItem.unitId);
         setShowAddDialog(true);
       } else if (recipeItem) {
         setPendingItem({
@@ -435,6 +462,7 @@ export default function RecipeBuilder() {
           type: "recipe",
         });
         setDialogUnitId(recipeItem.yieldUnitId);
+        setBaseUnitIdForAdd(recipeItem.yieldUnitId);
         setShowAddDialog(true);
       }
     }
@@ -463,6 +491,7 @@ export default function RecipeBuilder() {
         pricePerUnit: item.pricePerUnit || 0,
       });
       setDialogUnitId(item.unitId);
+      setBaseUnitIdForAdd(item.unitId);
       setShowAddDialog(true);
     } else if (item.type === "recipe") {
       const recipe = recipes?.find((r) => r.id === item.id);
@@ -473,6 +502,7 @@ export default function RecipeBuilder() {
           type: "recipe",
         });
         setDialogUnitId(recipe.yieldUnitId);
+        setBaseUnitIdForAdd(recipe.yieldUnitId);
         setShowAddDialog(true);
       }
     }
@@ -517,6 +547,20 @@ export default function RecipeBuilder() {
     setEditingComponent(component);
     setEditQty(component.qty.toString());
     setEditUnitId(component.unitId);
+    
+    // Set base unit ID based on component type
+    if (component.componentType === "inventory_item") {
+      const item = inventoryItems?.find(i => i.id === component.componentId);
+      if (item) {
+        setBaseUnitIdForEdit(item.unitId);
+      }
+    } else if (component.componentType === "recipe") {
+      const recipe = recipes?.find(r => r.id === component.componentId);
+      if (recipe) {
+        setBaseUnitIdForEdit(recipe.yieldUnitId);
+      }
+    }
+    
     setEditDialogOpen(true);
   };
 
@@ -1206,7 +1250,7 @@ export default function RecipeBuilder() {
                   <SelectValue placeholder="Select unit" />
                 </SelectTrigger>
                 <SelectContent>
-                  {units?.map((unit) => (
+                  {(compatibleUnitsForAdd?.length ? compatibleUnitsForAdd : units)?.map((unit) => (
                     <SelectItem key={unit.id} value={unit.id}>
                       {formatUnitName(unit.name)}
                     </SelectItem>
@@ -1254,7 +1298,7 @@ export default function RecipeBuilder() {
                   <SelectValue placeholder="Select unit" />
                 </SelectTrigger>
                 <SelectContent>
-                  {units?.map((unit) => (
+                  {(compatibleUnitsForEdit?.length ? compatibleUnitsForEdit : units)?.map((unit) => (
                     <SelectItem key={unit.id} value={unit.id}>
                       {formatUnitName(unit.name)}
                     </SelectItem>
