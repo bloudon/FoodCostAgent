@@ -1,10 +1,10 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary purpose is to optimize operations, minimize waste, and enhance profitability. Key capabilities include advanced unit conversions (40 kitchen units), support for nested recipes, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The system aims to provide a robust and efficient solution for managing complex restaurant operations.
+This project is a comprehensive inventory management and recipe costing system for multi-company food service businesses, especially pizza restaurants. It aims to optimize operations, minimize waste, and enhance profitability through advanced unit conversions, nested recipes, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders.
 
 ## User Preferences
-Preferred communication style: Simple, everyday language.
+- Preferred communication style: Simple, everyday language.
 - Default Unit of Measure for Inventory Items: Pound should be the default unit when creating new inventory items.
 - Unit Abbreviation: "Pound" displays as "lb." throughout the UI.
 - Yield Field: Yield is stored as a percentage value (0-100).
@@ -33,11 +33,12 @@ Preferred communication style: Simple, everyday language.
 - Vendor Delivery Scheduling: Delivery scheduling is managed at the vendor level. Each vendor has `deliveryDays` (array of weekdays when vendor delivers) and `leadDaysAhead` (number of days before delivery that orders must be placed). Vendors page includes checkboxes for each weekday and a numeric input for lead days ahead in the add/edit vendor dialog. Lead time field has been completely removed from vendor items (vendor_items table no longer has leadTimeDays column). This centralizes delivery scheduling at the vendor level for more efficient order planning.
 - Default Categories: All companies automatically start with three default categories: "Frozen", "Walk-In", and "Dry/Pantry". Companies can customize and add additional categories as needed. Default categories are created via createDefaultCategories() helper function in seed.ts.
 - Comprehensive Kitchen Units: System includes 40 comprehensive kitchen measurement units covering both imperial and metric systems. Weight units (11): gram, kilogram, metric ton, ounce, half-ounce, quarter-ounce, pound, half-pound, quarter-pound, eighth-pound, ton. Volume units (19): milliliter, centiliter, deciliter, liter, hectoliter, drop, dash, pinch, teaspoon, half-teaspoon, tablespoon, half-cup, quarter-cup, pint, quart, gallon. Count units (10): each, half-dozen, dozen, roll, case, box, bag, bottle, jar, can. All units use precise conversion ratios normalized to micro-units (grams for weight, milliliters for volume). Companies have a `preferredUnitSystem` setting (imperial/metric/both) to control default unit display preferences throughout the application.
+- Unit Compatibility Filtering: Recipe builder implements intelligent unit filtering to prevent incompatible unit selections. When adding or editing ingredients, the unit dropdown automatically filters to show only units matching the ingredient's measurement kind (weight/volume/count). Backend endpoint GET `/api/units/compatible?unitId=<uuid>` returns filtered units by matching the `kind` field. Frontend uses React Query with custom queryFn to fetch compatible units, implementing length-aware fallback `(compatibleUnits?.length ? compatibleUnits : allUnits)` to ensure dropdown always has options. This prevents logical errors like mixing "each" with "pounds" or "ounces" with "gallons", ensuring accurate recipe costing and unit conversions.
 
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
-The system employs a multi-tenant architecture with data isolation at both company and store levels, integrated with Thrive Control Center (TCC).
+Multi-tenant architecture with data isolation at company and store levels, integrated with Thrive Control Center (TCC).
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
