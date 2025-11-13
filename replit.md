@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system for multi-company food service businesses, especially pizza restaurants. It aims to optimize operations, minimize waste, and increase profitability through advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual pricing models (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The system supports multi-store management and integrates with existing restaurant ecosystems to enhance financial control and operational efficiency. The business vision is to provide a robust, scalable solution that addresses complex inventory and costing challenges for multi-unit restaurant operators, leading to significant cost savings and improved decision-making.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary purpose is to optimize operations, minimize waste, and increase profitability. Key capabilities include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual pricing models (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The system supports multi-store management and integrates with existing restaurant ecosystems to enhance financial control and operational efficiency, providing a scalable solution for complex inventory and costing challenges.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -13,7 +13,7 @@ This project is a comprehensive inventory management and recipe costing system f
 - Store Locations: Inventory items require assignment to at least one store location during creation.
 - Storage Locations: Inventory items can be associated with multiple storage locations; at least one is required. Storage Locations page features drag-and-drop reordering. Locations display in a vertical stacked list with GripVertical drag handles. Order changes persist immediately to database via transaction-based bulk updates. The sortOrder field is managed automatically by drag position, removed from create/edit forms. Error handling ensures UI resyncs on failed reorder attempts. Inventory count displays respect storage location sortOrder - both the location summary cards and the grouped item displays are sorted by storage location sortOrder for consistent organization.
 - Recipe `canBeIngredient`: Recipes include a `canBeIngredient` checkbox field (0/1 in DB) to mark if they can be used as ingredients in other recipes.
-- Category Filtering in Recipe Builder: Categories include a `showAsIngredient` field (0/1 in DB) controlling whether items in that category appear in the recipe builder's ingredient selection.
+- Category Filtering in Recipe Builder: Categories include a `showAsIngredient` field (0/1 in DB) controlling whether items in this category appear in the recipe builder's ingredient selection.
 - Waste Percentage Removal: The waste percentage field has been removed from recipes.
 - Recipe Cost Calculation Fix: Ingredient prices must be converted to base unit prices before multiplication.
 - Recipe Company Isolation: Implement comprehensive company-level isolation for recipes and recipe components.
