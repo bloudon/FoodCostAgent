@@ -3385,12 +3385,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const status = req.query.status as string | undefined;
       
       // Fetch both purchase orders and transfer orders
-      const [purchaseOrders, transferOrders, vendors, stores] = await Promise.all([
+      const [purchaseOrders, transferOrders, vendors, stores, allReceipts] = await Promise.all([
         storage.getPurchaseOrders(companyId, storeId),
         storage.getTransferOrders(companyId, storeId),
         storage.getVendors(companyId),
-        storage.getCompanyStores(companyId)
+        storage.getCompanyStores(companyId),
+        storage.getReceipts(companyId)
       ]);
+      
+      // Build a map of purchase order ID to latest receipt completion timestamp
+      const poCompletionMap = new Map<string, string>();
+      for (const receipt of allReceipts) {
+        if (receipt.status === "completed" && receipt.purchaseOrderId && receipt.receivedAt) {
+          const existing = poCompletionMap.get(receipt.purchaseOrderId);
+          if (!existing || new Date(receipt.receivedAt) > new Date(existing)) {
+            poCompletionMap.set(receipt.purchaseOrderId, receipt.receivedAt);
+          }
+        }
+      }
       
       // Transform purchase orders
       const poPromises = purchaseOrders.map(async (po) => {
@@ -3400,12 +3412,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const lineCount = lines.length;
         const totalAmount = lines.reduce((sum, line) => sum + (line.orderedQty * line.priceEach), 0);
         
+        // For received purchase orders, get completion timestamp from map
+        const completedAt = po.status === "received" ? (poCompletionMap.get(po.id) || null) : null;
+        
         return {
           id: po.id,
           type: "purchase" as const,
           status: po.status,
           createdAt: po.createdAt,
           expectedDate: po.expectedDate,
+          completedAt: completedAt,
           vendorName: vendor?.name || "Unknown",
           fromStore: vendor?.name, // Vendor as "source" for purchase orders
           toStore: store?.name, // Receiving store
@@ -3438,6 +3454,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           status: to.status,
           createdAt: to.createdAt,
           expectedDate: to.expectedDate,
+          completedAt: to.completedAt || null,
           vendorName: `${fromStore?.name || "Unknown"} → ${toStore?.name || "Unknown"}`,
           fromStore: fromStore?.name,
           toStore: toStore?.name,

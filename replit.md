@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary purpose is to optimize operations, minimize waste, and enhance profitability. Key capabilities include unit conversions, nested recipes, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders, all within a robust multi-store management framework.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary goal is to optimize operations, minimize waste, and increase profitability. Key features include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual pricing models (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The system supports multi-store management and integrates with existing restaurant ecosystems to enhance financial control and operational efficiency. The business vision is to provide a robust, scalable solution that addresses the complex inventory and costing challenges faced by multi-unit restaurant operators, leading to significant cost savings and improved decision-making.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -11,7 +11,7 @@ This project is a comprehensive inventory management and recipe costing system d
 - Par Level & Reorder Level: Stored on `inventory_items` table as default values, overrideable at the store level.
 - Active/Inactive Status: Dual-level active status (global and store-specific).
 - Store Locations: Inventory items require assignment to at least one store location during creation.
-- Storage Locations: Inventory items can be associated with multiple storage locations; at least one is required. Storage Locations page features drag-and-drop reordering using @dnd-kit library. Locations display in a vertical stacked list with GripVertical drag handles. Order changes persist immediately to database via transaction-based bulk updates. The sortOrder field is managed automatically by drag position, removed from create/edit forms. Error handling ensures UI resyncs on failed reorder attempts. Inventory count displays respect storage location sortOrder - both the location summary cards and the grouped item displays are sorted by storage location sortOrder for consistent organization.
+- Storage Locations: Inventory items can be associated with multiple storage locations; at least one is required. Storage Locations page features drag-and-drop reordering. Locations display in a vertical stacked list with GripVertical drag handles. Order changes persist immediately to database via transaction-based bulk updates. The sortOrder field is managed automatically by drag position, removed from create/edit forms. Error handling ensures UI resyncs on failed reorder attempts. Inventory count displays respect storage location sortOrder - both the location summary cards and the grouped item displays are sorted by storage location sortOrder for consistent organization.
 - Recipe `canBeIngredient`: Recipes include a `canBeIngredient` checkbox field (0/1 in DB) to mark if they can be used as ingredients in other recipes.
 - Category Filtering in Recipe Builder: Categories include a `showAsIngredient` field (0/1 in DB) controlling whether items in that category appear in the recipe builder's ingredient selection.
 - Waste Percentage Removal: The waste percentage field has been removed from recipes.
@@ -34,12 +34,12 @@ This project is a comprehensive inventory management and recipe costing system d
 - Default Categories: All companies automatically start with three default categories: "Frozen", "Walk-In", and "Dry/Pantry". Companies can customize and add additional categories as needed. Default categories are created via createDefaultCategories() helper function in seed.ts.
 - Comprehensive Kitchen Units: System includes 40 comprehensive kitchen measurement units covering both imperial and metric systems. Weight units (11): gram, kilogram, metric ton, ounce, half-ounce, quarter-ounce, pound, half-pound, quarter-pound, eighth-pound, ton. Volume units (19): milliliter, centiliter, deciliter, liter, hectoliter, drop, dash, pinch, teaspoon, half-teaspoon, tablespoon, half-cup, quarter-cup, pint, quart, gallon. Count units (10): each, half-dozen, dozen, roll, case, box, bag, bottle, jar, can. All units use precise conversion ratios normalized to micro-units (grams for weight, milliliters for volume). Companies have a `preferredUnitSystem` setting (imperial/metric/both) to control default unit display preferences throughout the application.
 - Unit Compatibility Filtering: Recipe builder implements intelligent unit filtering to prevent incompatible unit selections. When adding or editing ingredients, the unit dropdown automatically filters to show only units matching the ingredient's measurement kind (weight/volume/count) and the company's preferredUnitSystem setting (imperial/metric/both). Backend endpoint GET `/api/units/compatible?unitId=<uuid>` (requires authentication) returns filtered units by matching the `kind` field and `system` field, while excluding fractional pound units (eighth-pound, quarter-pound, half-pound) since those values can be entered in ounces. Frontend uses React Query with custom queryFn to fetch compatible units, implementing length-aware fallback `(compatibleUnits?.length ? compatibleUnits : allUnits)` to ensure dropdown always has options. For example, an imperial company adding a pound-based item sees only imperial weight units (pound, ounce, ton, half-ounce, quarter-ounce), not metric units (gram, kilogram). This prevents logical errors like mixing "each" with "pounds" or selecting metric units in an imperial-preference company, ensuring accurate recipe costing and unit conversions.
-- Recipe Cost Caching: Recipes list displays real-time calculated costs instead of stale database values. GET /api/recipes endpoint calculates costs on-demand using bulk-loaded data (recipes, components, inventory items, units) with parallel processing and per-request memoization for efficiency. Calculated costs overwrite the `computedCost` field in API responses, ensuring frontend displays fresh values. 5-minute cache (key: `recipes:costs:${companyId}`) optimizes performance while maintaining accuracy. Centralized cache invalidation via `cacheInvalidator.invalidateRecipes()` ensures cache is cleared when recipes, recipe components, or inventory prices change. All mutation routes (recipe create/update, component add/edit/delete, inventory price changes) automatically invalidate the cache. Multi-tenant isolation maintained throughout with correct company-scoped data fetching.
+- Recipe Cost Caching: Recipes list displays real-time calculated costs instead of stale database values. GET /api/recipes endpoint calculates costs on-demand using bulk-loaded data (recipes, components, inventory items, units) with parallel processing and per-request memoization for efficiency. Calculated costs overwrite the `computedCost` field in API responses, ensuring frontend displays fresh values. 5-minute cache (key: `recipes:costs:${companyId}`) optimizes performance while maintaining accuracy. Centralized cache invalidation via `cacheInvalidator.invalidateRecipes()` ensures cache is cleared when recipes, recipe components, or inventory prices changes. All mutation routes (recipe create/update, component add/edit/delete, inventory price changes) automatically invalidate the cache. Multi-tenant isolation maintained throughout with correct company-scoped data fetching.
 
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
-The system employs a multi-tenant architecture with data isolation at company and store levels, designed for integration with Thrive Control Center (TCC).
+The system employs a multi-tenant architecture with data isolation at company and store levels, designed for integration with existing restaurant management systems.
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
@@ -54,11 +54,11 @@ The system employs a multi-tenant architecture with data isolation at company an
 - **Database Layer**: Drizzle ORM, PostgreSQL, schema-first with migrations.
 - **Core Domain Models**: Users, Storage Locations, Units, Inventory Items, Vendors, Recipes (nested), Inventory Counts, Purchase Orders, POS Sales, Transfer/Waste Logs.
 - **Business Logic**: Unit conversion, recursive recipe costing, location-based inventory, theoretical vs. actual usage variance, purchase order workflows, COGS analysis.
-- **Authentication & Authorization**: Hybrid authentication (username/password and enterprise SSO via Replit OpenID Connect) with Role-Based Access Control (RBAC) supporting hierarchical permissions.
+- **Authentication & Authorization**: Hybrid authentication (username/password and enterprise SSO) with Role-Based Access Control (RBAC) supporting hierarchical permissions.
 
 ### Architectural Decisions
 - **Application Structure**: Single-page application with co-served API and frontend.
-- **Real-time Data**: WebSocket for POS data.
+- **Real-time Data**: WebSocket for POS data integration.
 - **Precision**: Micro-unit system for accurate tracking and costing.
 - **Inventory Adjustments**: Automated for transfers/waste, with historical recipe versioning.
 - **Inventory Count Sessions**: Auto-populates items, updates `store_inventory_items.onHandQty`, and locks sessions.
@@ -73,7 +73,7 @@ The system employs a multi-tenant architecture with data isolation at company an
 - **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching layer with graceful fallback, response compression (gzip).
 
 ## External Dependencies
-- **Database Services**: Neon serverless PostgreSQL, `@neondatabase/serverless`.
+- **Database Services**: Neon serverless PostgreSQL.
 - **Real-time Communication**: `ws` (WebSockets).
 - **Image Processing**: Sharp.
 - **Vendor Integrations**: Sysco, GFS, US Foods (via custom adapters).

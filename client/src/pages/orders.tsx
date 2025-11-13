@@ -22,6 +22,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -40,6 +46,7 @@ type UnifiedOrder = {
   status: string;
   createdAt: string;
   expectedDate: string | null;
+  completedAt: string | null;
   vendorName: string;
   fromStore?: string;
   toStore?: string;
@@ -306,13 +313,32 @@ export default function Orders() {
                         ${order.totalAmount.toFixed(2)}
                       </TableCell>
                       <TableCell>
-                        <Badge 
-                          variant="secondary"
-                          className={statusColors[order.status] || ""}
-                          data-testid={`badge-status-${order.id}`}
-                        >
-                          {order.status.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                        </Badge>
+                        {(order.status === "completed" || order.status === "received") && order.completedAt ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge 
+                                  variant="secondary"
+                                  className={`${statusColors[order.status] || ""} cursor-help`}
+                                  data-testid={`badge-status-${order.id}`}
+                                >
+                                  {order.status.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Completed at: {new Date(order.completedAt).toLocaleString()}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          <Badge 
+                            variant="secondary"
+                            className={statusColors[order.status] || ""}
+                            data-testid={`badge-status-${order.id}`}
+                          >
+                            {order.status.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
