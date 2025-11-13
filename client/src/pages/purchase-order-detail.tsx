@@ -194,6 +194,7 @@ export default function PurchaseOrderDetail() {
     category: string | null;
     previousQty: number;
     receivedQty: number;
+    transferredQty: number;
     currentQty: number;
     usage: number;
     unitId: string;
@@ -202,6 +203,7 @@ export default function PurchaseOrderDetail() {
     previousCountId: string;
     currentCountId: string;
     receiptIds: string[];
+    transferOrderIds: string[];
   };
 
   const { data: usageData } = useQuery<UsageData[]>({
@@ -710,6 +712,7 @@ export default function PurchaseOrderDetail() {
                           <TableHead className="text-right">Prev Count</TableHead>
                           <TableHead className="text-right">Received</TableHead>
                           <TableHead className="text-right">Current</TableHead>
+                          <TableHead className="text-right">Transfers</TableHead>
                           <TableHead className="text-right">Usage</TableHead>
                           <TableHead className="w-[120px]">Cases</TableHead>
                         </>
@@ -721,6 +724,7 @@ export default function PurchaseOrderDetail() {
                           <TableHead className="text-right">Prev Count</TableHead>
                           <TableHead className="text-right">Received</TableHead>
                           <TableHead className="text-right">Current</TableHead>
+                          <TableHead className="text-right">Transfers</TableHead>
                           <TableHead className="text-right">Usage</TableHead>
                           <TableHead className="w-[120px]">Qty</TableHead>
                         </>
@@ -750,7 +754,7 @@ export default function PurchaseOrderDetail() {
                         return sortedCategories.map(categoryName => (
                           <>
                             <TableRow key={`category-${categoryName}`} className="bg-muted/50">
-                              <TableCell colSpan={isMiscGrocery ? 9 : 10} className="font-semibold py-2">
+                              <TableCell colSpan={isMiscGrocery ? 10 : 11} className="font-semibold py-2">
                                 {categoryName}
                               </TableCell>
                             </TableRow>
@@ -922,6 +926,9 @@ export default function PurchaseOrderDetail() {
                                   </Link>
                                 ) : '-'}
                               </TableCell>
+                              <TableCell className="text-right font-mono text-sm" data-testid={`text-transfers-${itemId}`}>
+                                {usage ? usage.transferredQty.toFixed(2) : '-'}
+                              </TableCell>
                               <TableCell className="text-right">
                                 {(() => {
                                   if (!usage) {
@@ -1051,6 +1058,9 @@ export default function PurchaseOrderDetail() {
                                   </Link>
                                 ) : '-'}
                               </TableCell>
+                              <TableCell className="text-right font-mono text-sm" data-testid={`text-transfers-${itemId}`}>
+                                {usage ? usage.transferredQty.toFixed(2) : '-'}
+                              </TableCell>
                               <TableCell className="text-right">
                                 {(() => {
                                   if (!usage) {
@@ -1176,6 +1186,9 @@ export default function PurchaseOrderDetail() {
                                   <TableCell className="text-right font-mono text-sm">
                                     {usage ? usage.currentQty.toFixed(2) : '-'}
                                   </TableCell>
+                                  <TableCell className="text-right font-mono text-sm" data-testid={`text-transfers-${itemId}`}>
+                                    {usage ? usage.transferredQty.toFixed(2) : '-'}
+                                  </TableCell>
                                   <TableCell className="text-right">
                                     {(() => {
                                       if (!usage) {
@@ -1230,6 +1243,9 @@ export default function PurchaseOrderDetail() {
                                   </TableCell>
                                   <TableCell className="text-right font-mono text-sm">
                                     {usage ? usage.currentQty.toFixed(2) : '-'}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-sm" data-testid={`text-transfers-${itemId}`}>
+                                    {usage ? usage.transferredQty.toFixed(2) : '-'}
                                   </TableCell>
                                   <TableCell className="text-right">
                                     {(() => {

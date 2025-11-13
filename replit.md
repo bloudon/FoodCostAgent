@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system for multi-company food service businesses, particularly pizza restaurants. It aims to optimize operations, minimize waste, and enhance profitability through advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual pricing models (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The system supports multi-store management and integrates with existing restaurant ecosystems to provide a scalable solution for complex inventory and costing challenges, ultimately improving financial control and operational efficiency. The business vision is to empower food service businesses with robust financial control and operational efficiency, thereby increasing their market potential and ambition for growth.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its core purpose is to optimize operations, reduce waste, and boost profitability. Key features include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual pricing models (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The system supports multi-store management, aiming to improve financial control and operational efficiency across an enterprise.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -42,7 +42,7 @@ This project is a comprehensive inventory management and recipe costing system f
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
-The system employs a multi-tenant architecture with data isolation at company and store levels, designed for integration with existing restaurant management systems.
+The system employs a multi-tenant architecture with data isolation at company and store levels.
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
