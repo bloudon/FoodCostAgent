@@ -1380,6 +1380,23 @@ export class DatabaseStorage implements IStorage {
       return [];
     }
 
+    // Validate both counts belong to the same store and company (data isolation)
+    if (previousCount.storeId !== storeId || currentCount.storeId !== storeId) {
+      return [];
+    }
+
+    if (previousCount.companyId !== currentCount.companyId) {
+      return [];
+    }
+
+    const companyId = previousCount.companyId;
+
+    // CRITICAL: Verify the store actually belongs to this company to prevent cross-tenant data access
+    const [store] = await db.select().from(companyStores).where(eq(companyStores.id, storeId));
+    if (!store || store.companyId !== companyId) {
+      return [];
+    }
+
     // Get all count lines for previous count, aggregated by inventoryItemId
     const previousLines = await db
       .select({
@@ -1403,6 +1420,7 @@ export class DatabaseStorage implements IStorage {
       .groupBy(inventoryCountLines.inventoryItemId, inventoryCountLines.unitId);
 
     // Get all receipts between the two count dates for this store with receipt IDs
+    // CRITICAL: Filter by companyId to ensure multi-tenant data isolation
     const receivedItems = await db
       .select({
         inventoryItemId: vendorItems.inventoryItemId,
@@ -1414,6 +1432,7 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(vendorItems, eq(receiptLines.vendorItemId, vendorItems.id))
       .where(
         and(
+          eq(receipts.companyId, companyId),
           eq(receipts.storeId, storeId),
           gte(receipts.receivedAt, previousCount.countDate),
           lte(receipts.receivedAt, currentCount.countDate),
@@ -1422,6 +1441,7 @@ export class DatabaseStorage implements IStorage {
       );
 
     // Get all outbound transfers between the two count dates for this store
+    // CRITICAL: Filter by companyId to ensure multi-tenant data isolation
     const transferredItems = await db
       .select({
         inventoryItemId: transferOrderLines.inventoryItemId,
@@ -1432,6 +1452,7 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
       .where(
         and(
+          eq(transferOrders.companyId, companyId),
           eq(transferOrders.fromStoreId, storeId),
           gte(transferOrders.completedAt, previousCount.countDate),
           lte(transferOrders.completedAt, currentCount.countDate),
