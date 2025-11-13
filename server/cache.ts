@@ -210,6 +210,9 @@ export class CacheInvalidator {
     // Invalidate list cache
     await this.cache.del(CacheKeys.recipesList(companyId));
     
+    // Invalidate recipe costs cache (used by GET /api/recipes for calculated costs)
+    await this.cache.del(`recipes:costs:${companyId}`);
+    
     // Invalidate item caches
     if (recipeId) {
       // Specific recipe

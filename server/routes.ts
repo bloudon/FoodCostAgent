@@ -2271,8 +2271,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ RECIPES ============
   app.get("/api/recipes", requireAuth, async (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-    const recipes = await storage.getRecipes((req as any).companyId);
-    res.json(recipes);
+    const companyId = (req as any).companyId;
+    
+    // Try to get from cache first
+    const cacheKey = `recipes:costs:${companyId}`;
+    const cached = await cache.get<any[]>(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+    
+    // Calculate costs with preloaded data for efficiency
+    const recipes = await storage.getRecipes(companyId);
+    const units = await storage.getUnits();
+    const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
+    
+    // Preload all recipe components in bulk (parallel instead of sequential)
+    const componentPromises = recipes.map(async (recipe) => ({
+      recipeId: recipe.id,
+      components: await storage.getRecipeComponents(recipe.id)
+    }));
+    const componentResults = await Promise.all(componentPromises);
+    const allComponents = new Map<string, RecipeComponent[]>(
+      componentResults.map(r => [r.recipeId, r.components])
+    );
+    
+    // Create recipe map for quick lookup
+    const recipeMap = new Map(recipes.map(r => [r.id, r]));
+    
+    // Prepare preloaded data
+    const preloadedData = {
+      recipes: recipeMap,
+      components: allComponents,
+      units,
+      inventoryItems
+    };
+    
+    // Calculate all recipe costs with shared memo
+    const memo = new Map<string, number>();
+    const recipesWithCosts = await Promise.all(
+      recipes.map(async (recipe) => {
+        const cost = await calculateRecipeCost(recipe.id, preloadedData, memo);
+        return {
+          ...recipe,
+          computedCost: cost  // Overwrite computedCost with fresh calculated value
+        };
+      })
+    );
+    
+    // Cache for 5 minutes (300 seconds)
+    await cache.set(cacheKey, recipesWithCosts, 300);
+    
+    res.json(recipesWithCosts);
   });
 
   app.get("/api/recipes/:id", requireAuth, async (req, res) => {
@@ -2320,7 +2369,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/recipes", requireAuth, async (req, res) => {
     try {
       const data = insertRecipeSchema.parse(req.body);
-      const recipe = await storage.createRecipe({ ...data, companyId: (req as any).companyId! });
+      const companyId = (req as any).companyId!;
+      const recipe = await storage.createRecipe({ ...data, companyId });
+      
+      // Invalidate recipe caches (including costs cache)
+      await cacheInvalidator.invalidateRecipes(companyId);
+      
       res.status(201).json(recipe);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -2347,6 +2401,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       await storage.updateRecipe(req.params.id, updateData);
+      
+      // Invalidate recipe caches (including costs cache)
+      await cacheInvalidator.invalidateRecipes((req as any).companyId, req.params.id);
+      
       const updated = await storage.getRecipe(req.params.id, (req as any).companyId);
       res.json(updated);
     } catch (error: any) {
@@ -2463,6 +2521,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedCost = await calculateRecipeCost(data.recipeId);
       await storage.updateRecipe(data.recipeId, { computedCost: updatedCost });
       
+      // Invalidate recipe caches (including costs cache)
+      await cacheInvalidator.invalidateRecipes((req as any).companyId, data.recipeId);
+      
       res.status(201).json(component);
     } catch (error: any) {
       console.error("Recipe component creation error:", error);
@@ -2510,6 +2571,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedCost = await calculateRecipeCost(component.recipeId);
       await storage.updateRecipe(component.recipeId, { computedCost: updatedCost });
       
+      // Invalidate recipe caches (including costs cache)
+      await cacheInvalidator.invalidateRecipes((req as any).companyId, component.recipeId);
+      
       const updated = await storage.getRecipeComponent(req.params.id);
       res.json(updated);
     } catch (error: any) {
@@ -2535,6 +2599,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const updatedCost = await calculateRecipeCost(recipeId);
       await storage.updateRecipe(recipeId, { computedCost: updatedCost });
+      
+      // Invalidate recipe caches (including costs cache)
+      await cacheInvalidator.invalidateRecipes((req as any).companyId, recipeId);
       
       res.status(204).send();
     } catch (error: any) {
@@ -6126,13 +6193,32 @@ async function findAffectedRecipesByInventoryItem(inventoryItemId: string, compa
   return sorted;
 }
 
-async function calculateRecipeCost(recipeId: string): Promise<number> {
-  const recipe = await storage.getRecipe(recipeId);
-  if (!recipe) return 0;
+// Optimized version with preloaded data and memoization
+async function calculateRecipeCost(
+  recipeId: string,
+  preloadedData?: {
+    recipes?: Map<string, Recipe>;
+    components?: Map<string, RecipeComponent[]>;
+    units?: Unit[];
+    inventoryItems?: InventoryItem[];
+  },
+  memo?: Map<string, number>
+): Promise<number> {
+  // Check memo first to avoid redundant calculations
+  if (memo?.has(recipeId)) {
+    return memo.get(recipeId)!;
+  }
 
-  const components = await storage.getRecipeComponents(recipeId);
-  const units = await storage.getUnits();
-  const inventoryItems = await storage.getInventoryItems();
+  // Get recipe first to extract companyId for multi-tenant safety
+  const recipe = preloadedData?.recipes?.get(recipeId) || await storage.getRecipe(recipeId);
+  if (!recipe) {
+    return 0;
+  }
+
+  // Get preloaded data or fetch with companyId for multi-tenant isolation
+  const units = preloadedData?.units || await storage.getUnits();
+  const inventoryItems = preloadedData?.inventoryItems || await storage.getInventoryItems(undefined, undefined, recipe.companyId);
+  const components = preloadedData?.components?.get(recipeId) || await storage.getRecipeComponents(recipeId);
   
   let totalCost = 0;
 
@@ -6152,9 +6238,9 @@ async function calculateRecipeCost(recipeId: string): Promise<number> {
         totalCost += qty * effectiveCost;
       }
     } else if (comp.componentType === "recipe") {
-      const subRecipe = await storage.getRecipe(comp.componentId);
+      const subRecipe = preloadedData?.recipes?.get(comp.componentId) || await storage.getRecipe(comp.componentId);
       if (subRecipe) {
-        const subRecipeCost = await calculateRecipeCost(comp.componentId);
+        const subRecipeCost = await calculateRecipeCost(comp.componentId, preloadedData, memo);
         // Convert sub-recipe's yield to cost per unit, then scale by quantity needed
         const subRecipeYieldUnit = units.find(u => u.id === subRecipe.yieldUnitId);
         const subRecipeYieldQty = subRecipeYieldUnit ? subRecipe.yieldQty * subRecipeYieldUnit.toBaseRatio : subRecipe.yieldQty;
@@ -6162,6 +6248,11 @@ async function calculateRecipeCost(recipeId: string): Promise<number> {
         totalCost += qty * costPerUnit;
       }
     }
+  }
+
+  // Store in memo before returning
+  if (memo) {
+    memo.set(recipeId, totalCost);
   }
 
   return totalCost;
