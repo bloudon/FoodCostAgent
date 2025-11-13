@@ -155,7 +155,11 @@ export default function PurchaseOrderDetail() {
     queryKey: ["/api/vendors"],
   });
 
-  const { data: stores } = useAccessibleStores();
+  const { data: stores, isLoading: storesLoading } = useAccessibleStores();
+  
+  // Hide transfers column for single-store companies (transfers require minimum 2 stores)
+  // Show column while loading to prevent layout shift for multi-store users
+  const hasMultipleStores = storesLoading ? true : (stores?.length ?? 0) >= 2;
 
   const { data: categories } = useQuery<Category[]>({
     queryKey: ["/api/categories"],
@@ -712,7 +716,7 @@ export default function PurchaseOrderDetail() {
                           <TableHead className="text-right">Prev Count</TableHead>
                           <TableHead className="text-right">Received</TableHead>
                           <TableHead className="text-right">Current</TableHead>
-                          <TableHead className="text-right">Transfers</TableHead>
+                          {hasMultipleStores && <TableHead className="text-right">Transfers</TableHead>}
                           <TableHead className="text-right">Usage</TableHead>
                           <TableHead className="w-[120px]">Cases</TableHead>
                         </>
@@ -724,9 +728,9 @@ export default function PurchaseOrderDetail() {
                           <TableHead className="text-right">Prev Count</TableHead>
                           <TableHead className="text-right">Received</TableHead>
                           <TableHead className="text-right">Current</TableHead>
-                          <TableHead className="text-right">Transfers</TableHead>
+                          {hasMultipleStores && <TableHead className="text-right">Transfers</TableHead>}
                           <TableHead className="text-right">Usage</TableHead>
-                          <TableHead className="w-[120px]">Qty</TableHead>
+                          <TableHead className="text-right w-[120px]">Qty</TableHead>
                         </>
                       )}
                       <TableHead className="text-right">Total</TableHead>
@@ -754,7 +758,7 @@ export default function PurchaseOrderDetail() {
                         return sortedCategories.map(categoryName => (
                           <>
                             <TableRow key={`category-${categoryName}`} className="bg-muted/50">
-                              <TableCell colSpan={isMiscGrocery ? 10 : 11} className="font-semibold py-2">
+                              <TableCell colSpan={isMiscGrocery ? (hasMultipleStores ? 10 : 9) : (hasMultipleStores ? 11 : 10)} className="font-semibold py-2">
                                 {categoryName}
                               </TableCell>
                             </TableRow>
@@ -926,9 +930,11 @@ export default function PurchaseOrderDetail() {
                                   </Link>
                                 ) : '-'}
                               </TableCell>
-                              <TableCell className="text-right font-mono text-sm" data-testid={`text-transfers-${itemId}`}>
-                                {usage ? usage.transferredQty.toFixed(2) : '-'}
-                              </TableCell>
+                              {hasMultipleStores && (
+                                <TableCell className="text-right font-mono text-sm" data-testid={`text-transfers-${itemId}`}>
+                                  {usage ? usage.transferredQty.toFixed(2) : '-'}
+                                </TableCell>
+                              )}
                               <TableCell className="text-right">
                                 {(() => {
                                   if (!usage) {
@@ -1058,9 +1064,11 @@ export default function PurchaseOrderDetail() {
                                   </Link>
                                 ) : '-'}
                               </TableCell>
-                              <TableCell className="text-right font-mono text-sm" data-testid={`text-transfers-${itemId}`}>
-                                {usage ? usage.transferredQty.toFixed(2) : '-'}
-                              </TableCell>
+                              {hasMultipleStores && (
+                                <TableCell className="text-right font-mono text-sm" data-testid={`text-transfers-${itemId}`}>
+                                  {usage ? usage.transferredQty.toFixed(2) : '-'}
+                                </TableCell>
+                              )}
                               <TableCell className="text-right">
                                 {(() => {
                                   if (!usage) {

@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system for multi-company food service businesses, especially pizza restaurants. It aims to optimize operations, minimize waste, and improve profitability across multiple store locations. Key features include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual pricing models (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The system's ambition is to become a leading tool for multi-unit restaurant operational efficiency, driving business growth and market leadership.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary purpose is to optimize operations, minimize waste, and enhance profitability across multiple locations. Key capabilities include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The ambition is to become a leading tool for operational efficiency in multi-unit restaurant environments.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -39,46 +39,47 @@ This project is a comprehensive inventory management and recipe costing system f
 - Date Formatting & Timezone Safety: All date displays use `formatDateString()` helper that parses YYYY-MM-DD strings into local timezone Date objects (avoiding UTC conversion bugs). Purchase order Expected Date field uses standard HTML `<input type="date">` matching rest of application. Date flow is entirely string-based: backend sends YYYY-MM-DD, frontend stores/edits as string, display converts to local timezone only. This ensures dates remain stable across all timezones with no day-shift bugs. Helper function parses string manually: `new Date(year, month - 1, day)` creates Date in local timezone, not UTC midnight.
 - Receiving Page Status Display: Consolidated duplicate status badges into single Badge component with conditional styling. Shows green "received" badge when receipt is completed OR purchase order status is "received". Eliminates redundant duplicate badges that previously appeared on completed receipts.
 - Transfer Order Usage Tracking: Usage calculation on Purchase Order detail page now accounts for outbound transfers to prevent over-ordering. Formula updated to: Usage = Previous Count + Received - Transferred - Current. New "Transfers" column displays between "Current" and "Usage" columns, showing quantities transferred out (via completed transfer orders where fromStoreId matches store) during the count period. Backend getItemUsageBetweenCounts() fetches transfer order lines for completed transfers, aggregates by inventory item, and includes transferOrderIds array for audit trail. **CRITICAL SECURITY**: Multi-tenant data isolation enforced with comprehensive validation - verifies both inventory counts belong to requested store and share same companyId, validates store ownership via companyStores lookup, and filters ALL downstream queries (receipts, transfers) by BOTH companyId AND storeId to prevent cross-tenant data leakage.
+- Conditional Transfer UI Rendering: Transfer-related features are automatically hidden for single-store companies (transfers require minimum 2 stores). Sidebar's "Transfer Orders" menu item is conditionally rendered based on accessible stores count via `useAccessibleStores()` hook. Purchase Order detail page's "Transfers" column (header and data cells) is conditionally rendered using the same logic. Implementation uses loading-state guard (`hasMultipleStores = storesLoading ? true : (stores?.length ?? 0) >= 2`) to prevent UI flicker and layout shift for multi-store users during initial data fetch. Once store data loads, transfer features are properly hidden for single-store companies while remaining visible for multi-store companies. Table colspan adjustments ensure correct layout when Transfers column is hidden.
 
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
-The system utilizes a multi-tenant architecture with robust data isolation at both company and store levels.
+The system employs a multi-tenant architecture with robust data isolation at both company and store levels.
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
-- **UI**: `shadcn/ui` components (built on Radix UI and Tailwind CSS) for custom theming, dark/light modes, and responsive navigation.
-- **State Management**: TanStack Query for data fetching and caching, React Context for global store selection.
+- **UI**: `shadcn/ui` components (Radix UI, Tailwind CSS) for custom theming, dark/light modes, and responsive navigation.
+- **State Management**: TanStack Query for data fetching/caching, React Context for global store selection.
 - **Routing**: Wouter for client-side routing.
 
 ### Backend
 - **Runtime**: Node.js with TypeScript.
-- **Web Framework**: Express.js for building RESTful APIs.
-- **API Design**: RESTful principles, WebSocket for real-time data push, and Zod for schema validation.
-- **Database Layer**: Drizzle ORM, PostgreSQL database, with a schema-first approach and migrations for database evolution.
-- **Core Domain Models**: Includes Users, Storage Locations, Units, Inventory Items, Vendors, Recipes (with nested structures), Inventory Counts, Purchase Orders, POS Sales, and Transfer/Waste Logs.
-- **Business Logic**: Encompasses unit conversion, recursive recipe costing, location-based inventory management, theoretical versus actual usage variance analysis, comprehensive purchase order workflows, and Cost of Goods Sold (COGS) analysis.
-- **Authentication & Authorization**: Hybrid authentication supporting both username/password and enterprise Single Sign-On (SSO), with Role-Based Access Control (RBAC) for hierarchical permissions.
+- **Web Framework**: Express.js for RESTful APIs.
+- **API Design**: RESTful, WebSocket for real-time data, Zod for schema validation.
+- **Database Layer**: Drizzle ORM, PostgreSQL, schema-first approach with migrations.
+- **Core Domain Models**: Users, Storage Locations, Units, Inventory Items, Vendors, Recipes (nested), Inventory Counts, Purchase Orders, POS Sales, Transfer/Waste Logs.
+- **Business Logic**: Unit conversion, recursive recipe costing, location-based inventory, theoretical vs. actual usage variance, comprehensive PO workflows, COGS analysis.
+- **Authentication & Authorization**: Hybrid authentication (username/password, SSO), Role-Based Access Control (RBAC).
 
 ### Architectural Decisions
-- **Application Structure**: A single-page application integrating both the API and frontend within a co-served environment.
-- **Real-time Data**: WebSocket technology is used for real-time POS data integration.
-- **Precision**: A micro-unit system ensures high precision in inventory tracking and costing calculations.
-- **Inventory Adjustments**: Automated adjustments for transfers and waste, supported by historical recipe versioning.
-- **Inventory Count Sessions**: Features auto-population of items, updates to `store_inventory_items.onHandQty`, and session locking.
-- **Purchase Order Management**: Supports ordering by unit or case, vendor-specific filtering, and keyboard-optimized data entry.
-- **Receiving Module**: Designed for partial receipts, resumable sessions, and on-the-fly editing of unit prices.
-- **Vendor Integration**: A pluggable adapter pattern facilitates integration with various distributors.
-- **Object Storage**: Leverages Replit's object storage for inventory item images, utilizing presigned URLs and on-the-fly thumbnail generation.
-- **Unified Orders Page**: Consolidates Purchase Orders, Receiving, and Transfer Orders into a single, cohesive interface.
-- **Store-to-Store Transfer Orders**: Manages and tracks inventory movement between store locations with a defined workflow.
-- **Waste Tracking Module**: Provides comprehensive waste logging with store-level isolation and automatic value calculation.
-- **Security**: HMAC-SHA256 is used for securing API integrations.
-- **Scalability**: Achieved through connection pooling, composite indexes, atomic transactions, session cleanup, a Redis caching layer with graceful fallback, and response compression (gzip).
+- **Application Structure**: Single-page application integrating API and frontend.
+- **Real-time Data**: WebSocket for real-time POS data.
+- **Precision**: Micro-unit system for accurate tracking and costing.
+- **Inventory Adjustments**: Automated for transfers and waste, with historical recipe versioning.
+- **Inventory Count Sessions**: Auto-population, `onHandQty` updates, session locking.
+- **Purchase Order Management**: Ordering by unit/case, vendor filtering, keyboard-optimized entry.
+- **Receiving Module**: Partial receipts, resumable sessions, on-the-fly unit price editing.
+- **Vendor Integration**: Pluggable adapter pattern.
+- **Object Storage**: Replit's object storage for images (presigned URLs, thumbnail generation).
+- **Unified Orders Page**: Consolidates Purchase Orders, Receiving, Transfer Orders.
+- **Store-to-Store Transfer Orders**: Manages inter-store inventory movement.
+- **Waste Tracking Module**: Comprehensive logging with store-level isolation.
+- **Security**: HMAC-SHA256 for API integrations.
+- **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching, response compression (gzip).
 
 ## External Dependencies
 - **Database Services**: Neon serverless PostgreSQL.
 - **Real-time Communication**: `ws` (WebSockets library).
 - **Image Processing**: Sharp.
-- **Object Storage**: Replit's object storage (backed by Google Cloud Storage).
+- **Object Storage**: Replit's object storage (Google Cloud Storage).
 - **Vendor Integrations**: Sysco, GFS, US Foods (via custom adapters).

@@ -31,6 +31,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/lib/auth-context";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 
 const menuItems = [
   {
@@ -72,6 +73,7 @@ const menuItems = [
     title: "Transfer Orders",
     url: "/transfer-orders",
     icon: ArrowLeftRight,
+    requiresMultipleStores: true,
   },
   {
     title: "Waste Entry",
@@ -129,16 +131,23 @@ const settingsItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
+  const { data: accessibleStores, isLoading: storesLoading } = useAccessibleStores();
 
   // Store level users should only see Dashboard, Inventory Sessions and Orders
   const isStoreUser = user?.role === 'store_user';
   
-  // Filter menu items based on user role
+  // Hide transfer-related items for companies with less than 2 stores
+  // Show all items while loading to prevent flicker for multi-store users
+  const hasMultipleStores = storesLoading ? true : (accessibleStores?.length ?? 0) >= 2;
+  
+  // Filter menu items based on user role and store count
   const visibleMenuItems = isStoreUser 
     ? menuItems.filter(item => 
         item.title === 'Dashboard' || item.title === 'Inventory Sessions' || item.title === 'Orders'
       )
-    : menuItems;
+    : menuItems.filter(item => 
+        !item.requiresMultipleStores || hasMultipleStores
+      );
 
   return (
     <Sidebar>
