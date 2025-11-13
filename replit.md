@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system for multi-company food service businesses, particularly pizza restaurants. It aims to optimize operations, minimize waste, and boost profitability through features like unit conversions, nested recipes, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The system offers robust multi-store inventory and costing management.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary purpose is to optimize operations, minimize waste, and enhance profitability. Key capabilities include unit conversions, nested recipes, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders, all within a robust multi-store management framework.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -39,7 +39,7 @@ This project is a comprehensive inventory management and recipe costing system f
 ## System Architecture
 
 ### Multi-Company Enterprise Architecture
-The system uses a multi-tenant architecture with data isolation at company and store levels, designed for integration with Thrive Control Center (TCC).
+The system employs a multi-tenant architecture with data isolation at company and store levels, designed for integration with Thrive Control Center (TCC).
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
