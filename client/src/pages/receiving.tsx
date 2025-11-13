@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { formatDateString } from "@/lib/utils";
 
 type PurchaseOrderDisplay = {
   id: string;
@@ -154,10 +155,7 @@ export default function Receiving() {
                             <TableCell className="font-medium">{order.vendorName}</TableCell>
                             <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                             <TableCell>
-                              {order.expectedDate 
-                                ? new Date(order.expectedDate).toLocaleDateString()
-                                : '-'
-                              }
+                              {formatDateString(order.expectedDate)}
                             </TableCell>
                             <TableCell className="text-right">{order.lineCount}</TableCell>
                             <TableCell className="text-right font-mono">
@@ -215,10 +213,7 @@ export default function Receiving() {
                             <TableCell className="font-medium">{order.vendorName}</TableCell>
                             <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                             <TableCell>
-                              {order.expectedDate 
-                                ? new Date(order.expectedDate).toLocaleDateString()
-                                : '-'
-                              }
+                              {formatDateString(order.expectedDate)}
                             </TableCell>
                             <TableCell className="text-right">{order.lineCount}</TableCell>
                             <TableCell className="text-right font-mono">

@@ -1,15 +1,12 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Save, Package, Search, PackageCheck, TrendingDown, CalendarIcon } from "lucide-react";
+import { ArrowLeft, Save, Package, Search, PackageCheck, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { formatDateString } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -362,16 +359,8 @@ export default function PurchaseOrderDetail() {
       setSelectedVendor(purchaseOrder.vendorId);
       setSelectedStore((purchaseOrder as any).storeId || "");
       
-      // Format expected date for date input (YYYY-MM-DD)
-      if (purchaseOrder.expectedDate) {
-        const date = new Date(purchaseOrder.expectedDate);
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        setExpectedDate(`${year}-${month}-${day}`);
-      } else {
-        setExpectedDate("");
-      }
+      // Use date string directly (already in YYYY-MM-DD format from backend)
+      setExpectedDate(purchaseOrder.expectedDate?.slice(0, 10) || "");
       
       setNotes((purchaseOrder as any).notes || "");
     }
@@ -581,41 +570,19 @@ export default function PurchaseOrderDetail() {
             </label>
             {isReceived ? (
               <div className="py-2 text-sm" data-testid="text-expected-date">
-                {expectedDate ? new Date(expectedDate).toLocaleDateString() : '-'}
+                {formatDateString(expectedDate)}
               </div>
             ) : (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !expectedDate && "text-muted-foreground"
-                    )}
-                    data-testid="button-expected-date"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {expectedDate ? format(new Date(expectedDate), "PPP") : <span>Pick a date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={expectedDate ? new Date(expectedDate) : undefined}
-                    onSelect={(date) => {
-                      if (date) {
-                        const year = date.getFullYear();
-                        const month = String(date.getMonth() + 1).padStart(2, '0');
-                        const day = String(date.getDate()).padStart(2, '0');
-                        setExpectedDate(`${year}-${month}-${day}`);
-                        setHasUnsavedChanges(true);
-                      }
-                    }}
-                    initialFocus
-                    data-testid="calendar-expected-date"
-                  />
-                </PopoverContent>
-              </Popover>
+              <Input
+                type="date"
+                value={expectedDate}
+                onChange={(e) => {
+                  setExpectedDate(e.target.value);
+                  setHasUnsavedChanges(true);
+                }}
+                className="min-h-10"
+                data-testid="input-expected-date"
+              />
             )}
           </div>
 

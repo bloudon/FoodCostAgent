@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatDateString } from "@/lib/utils";
 
 type UnifiedOrder = {
   id: string;
@@ -130,7 +131,7 @@ export default function Orders() {
 
   const filteredOrders = orders?.filter((order) => {
     const createdDate = new Date(order.createdAt).toLocaleDateString();
-    const expectedDate = order.expectedDate ? new Date(order.expectedDate).toLocaleDateString() : '';
+    const expectedDate = formatDateString(order.expectedDate);
     
     const matchesSearch = order.vendorName?.toLowerCase().includes(search.toLowerCase()) ||
       order.id?.toLowerCase().includes(search.toLowerCase()) ||

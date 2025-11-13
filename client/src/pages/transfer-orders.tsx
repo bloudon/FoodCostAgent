@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatDateString } from "@/lib/utils";
 
 type TransferOrderDisplay = {
   id: string;
@@ -205,9 +206,7 @@ export default function TransferOrders() {
                     </TableCell>
                     <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                     <TableCell>
-                      {order.expectedDate 
-                        ? new Date(order.expectedDate).toLocaleDateString() 
-                        : "-"}
+                      {formatDateString(order.expectedDate)}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button

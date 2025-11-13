@@ -32,3 +32,21 @@ export function formatRecipeName(recipeName: string | undefined): string {
   // Capitalize the first letter
   return recipeName.charAt(0).toUpperCase() + recipeName.slice(1);
 }
+
+export function formatDateString(dateString: string | null | undefined): string {
+  if (!dateString) return '-';
+  
+  // Parse YYYY-MM-DD string without timezone conversion
+  // This avoids the timezone shift bug when using new Date()
+  const parts = dateString.slice(0, 10).split('-');
+  if (parts.length !== 3) return dateString;
+  
+  const year = parseInt(parts[0]);
+  const month = parseInt(parts[1]);
+  const day = parseInt(parts[2]);
+  
+  // Create date in local timezone (no UTC conversion)
+  const date = new Date(year, month - 1, day);
+  
+  return date.toLocaleDateString();
+}
