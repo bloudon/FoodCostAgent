@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Search, Pencil, Trash2, MapPin, GripVertical } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -130,6 +131,8 @@ export default function StorageLocations() {
   const [deletingLocation, setDeletingLocation] = useState<any | null>(null);
   const { toast } = useToast();
 
+  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+
   const { data: locations, isLoading } = useQuery<any[]>({
     queryKey: ["/api/storage-locations"],
   });
@@ -145,6 +148,8 @@ export default function StorageLocations() {
     resolver: zodResolver(insertStorageLocationSchema.omit({ sortOrder: true })),
     defaultValues: {
       name: "",
+      allowCaseCounting: 0,
+      companyId: selectedCompanyId || "",
     },
   });
 
@@ -236,6 +241,8 @@ export default function StorageLocations() {
     setEditingLocation(location);
     form.reset({
       name: location.name,
+      allowCaseCounting: location.allowCaseCounting ?? 0,
+      companyId: location.companyId || selectedCompanyId || "",
     });
   };
 
@@ -243,6 +250,8 @@ export default function StorageLocations() {
     setIsAddDialogOpen(true);
     form.reset({
       name: "",
+      allowCaseCounting: 0,
+      companyId: selectedCompanyId || "",
     });
   };
 
@@ -388,6 +397,27 @@ export default function StorageLocations() {
                       <Input placeholder="Walk-In Cooler" {...field} data-testid="input-location-name" />
                     </FormControl>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="allowCaseCounting"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value === 1}
+                        onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
+                        data-testid="checkbox-allow-case-counting"
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Allow Case Counting</FormLabel>
+                      <p className="text-sm text-muted-foreground">
+                        Enable case count fields for items in this location
+                      </p>
+                    </div>
                   </FormItem>
                 )}
               />

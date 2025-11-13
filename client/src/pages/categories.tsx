@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Search, Pencil, Trash2, Tag } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -58,6 +59,8 @@ export default function Categories() {
     defaultValues: {
       name: "",
       sortOrder: 0,
+      showAsIngredient: 1,
+      isTareWeightCategory: 0,
       companyId: selectedCompanyId || "",
     },
   });
@@ -135,6 +138,8 @@ export default function Categories() {
     form.reset({ 
       name: "", 
       sortOrder: 0,
+      showAsIngredient: 1,
+      isTareWeightCategory: 0,
       companyId: selectedCompanyId || "",
     });
     setIsAddDialogOpen(true);
@@ -144,6 +149,8 @@ export default function Categories() {
     form.reset({
       name: category.name,
       sortOrder: category.sortOrder,
+      showAsIngredient: category.showAsIngredient ?? 1,
+      isTareWeightCategory: category.isTareWeightCategory ?? 0,
       companyId: category.companyId,
     });
     setEditingCategory(category);
@@ -308,6 +315,48 @@ export default function Categories() {
                       />
                     </FormControl>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="showAsIngredient"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value === 1}
+                        onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
+                        data-testid="checkbox-show-as-ingredient"
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Show as Ingredient</FormLabel>
+                      <p className="text-sm text-muted-foreground">
+                        Items in this category can be used as ingredients in recipes
+                      </p>
+                    </div>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="isTareWeightCategory"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value === 1}
+                        onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
+                        data-testid="checkbox-tare-weight-category"
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Tare Weight Category</FormLabel>
+                      <p className="text-sm text-muted-foreground">
+                        Enable case counting for items in this category
+                      </p>
+                    </div>
                   </FormItem>
                 )}
               />

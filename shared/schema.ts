@@ -215,6 +215,7 @@ export const storageLocations = pgTable("storage_locations", {
   companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
+  allowCaseCounting: integer("allow_case_counting").notNull().default(0), // 1 if items in this location should show case count fields
 });
 
 export const insertStorageLocationSchema = createInsertSchema(storageLocations).omit({ id: true });
@@ -228,6 +229,7 @@ export const categories = pgTable("categories", {
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
   showAsIngredient: integer("show_as_ingredient").notNull().default(1), // 1 if items in this category can be used as ingredients
+  isTareWeightCategory: integer("is_tare_weight_category").notNull().default(0), // 1 if this is a tare weight category (enables case counting)
 }, (table) => ({
   uniqueCompanyCategory: unique().on(table.companyId, table.name),
 }));
