@@ -201,6 +201,7 @@ export interface IStorage {
     category: string | null;
     previousQty: number;
     receivedQty: number;
+    transferredQty: number;
     currentQty: number;
     usage: number;
     unitId: string;
@@ -209,6 +210,7 @@ export interface IStorage {
     previousCountId: string;
     currentCountId: string;
     receiptIds: string[];
+    transferOrderIds: string[];
   }>>;
 
   // Purchase Orders
@@ -1359,6 +1361,7 @@ export class DatabaseStorage implements IStorage {
     category: string | null;
     previousQty: number;
     receivedQty: number;
+    transferredQty: number;
     currentQty: number;
     usage: number;
     unitId: string;
@@ -1367,6 +1370,7 @@ export class DatabaseStorage implements IStorage {
     previousCountId: string;
     currentCountId: string;
     receiptIds: string[];
+    transferOrderIds: string[];
   }>> {
     // Get both count records to retrieve their count dates
     const [previousCount] = await db.select().from(inventoryCounts).where(eq(inventoryCounts.id, previousCountId));
@@ -1417,6 +1421,24 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
+    // Get all outbound transfers between the two count dates for this store
+    const transferredItems = await db
+      .select({
+        inventoryItemId: transferOrderLines.inventoryItemId,
+        transferOrderId: transferOrders.id,
+        shippedQty: transferOrderLines.shippedQty,
+      })
+      .from(transferOrderLines)
+      .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
+      .where(
+        and(
+          eq(transferOrders.fromStoreId, storeId),
+          gte(transferOrders.completedAt, previousCount.countDate),
+          lte(transferOrders.completedAt, currentCount.countDate),
+          eq(transferOrders.status, 'completed')
+        )
+      );
+
     // Create maps for easy lookup
     const previousMap = new Map(previousLines.map(l => [l.inventoryItemId, { qty: l.totalQty, unitId: l.unitId }]));
     const currentMap = new Map(currentLines.map(l => [l.inventoryItemId, { qty: l.totalQty, unitId: l.unitId }]));
@@ -1430,6 +1452,17 @@ export class DatabaseStorage implements IStorage {
       const existing = receivedMap.get(item.inventoryItemId)!;
       existing.qty += item.receivedQty;
       existing.receiptIds.add(item.receiptId);
+    }
+
+    // Aggregate transferred items by inventory item with transfer order IDs
+    const transferredMap = new Map<string, { qty: number; transferOrderIds: Set<string> }>();
+    for (const item of transferredItems) {
+      if (!transferredMap.has(item.inventoryItemId)) {
+        transferredMap.set(item.inventoryItemId, { qty: 0, transferOrderIds: new Set() });
+      }
+      const existing = transferredMap.get(item.inventoryItemId)!;
+      existing.qty += item.shippedQty || 0;
+      existing.transferOrderIds.add(item.transferOrderId);
     }
 
     // Get all unique inventory item IDs from all sources
@@ -1461,8 +1494,12 @@ export class DatabaseStorage implements IStorage {
       const receivedData = receivedMap.get(itemId);
       const receivedQty = receivedData?.qty || 0;
       const receiptIds = receivedData ? Array.from(receivedData.receiptIds) : [];
+      const transferredData = transferredMap.get(itemId);
+      const transferredQty = transferredData?.qty || 0;
+      const transferOrderIds = transferredData ? Array.from(transferredData.transferOrderIds) : [];
       
-      const usage = (previousQty + receivedQty) - currentQty;
+      // Usage = Previous + Received - Transferred - Current
+      const usage = (previousQty + receivedQty - transferredQty) - currentQty;
       const isNegativeUsage = usage < 0;
 
       return {
@@ -1471,6 +1508,7 @@ export class DatabaseStorage implements IStorage {
         category: item?.categoryId || null,
         previousQty,
         receivedQty,
+        transferredQty,
         currentQty,
         usage,
         unitId: item?.unitId || '',
@@ -1479,6 +1517,7 @@ export class DatabaseStorage implements IStorage {
         previousCountId,
         currentCountId,
         receiptIds,
+        transferOrderIds,
       };
     });
 
