@@ -27,6 +27,7 @@ import {
   NavigationMenuLink,
   NavigationMenuList,
   NavigationMenuTrigger,
+  NavigationMenuViewport,
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu";
 import {
@@ -253,6 +254,7 @@ export function AppHeader() {
               </NavigationMenuItem>
             ))}
           </NavigationMenuList>
+          <NavigationMenuViewport />
         </NavigationMenu>
 
         {/* Spacer */}
