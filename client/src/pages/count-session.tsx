@@ -1023,18 +1023,22 @@ export default function CountSession() {
                         <AccordionItem key={groupKey} value={groupKey} id={anchorId} className="border rounded-md mb-2">
                           <AccordionTrigger className="px-4 py-2 hover:no-underline bg-muted/30 hover:bg-muted/50 data-[state=open]:bg-muted/40" tabIndex={-1} data-testid={`accordion-group-${groupKey}`}>
                             <div className="flex items-center justify-between w-full pr-4">
-                              <div className="flex items-center gap-4 flex-1">
+                              <div className="flex items-center gap-2 sm:gap-4 flex-1">
                                 <span className="font-medium text-left">
                                   {groupName}
                                 </span>
                                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                                  <span>{lines.length} items</span>
+                                  {/* Mobile: Show dollar value, Desktop: Show item count */}
+                                  <span className="sm:hidden font-mono">${totalValue.toFixed(2)}</span>
+                                  <span className="hidden sm:inline">{lines.length} items</span>
                                 </div>
                               </div>
                               <div className="flex items-center gap-6 text-sm">
                                 <div className="text-right">
-                                  <div className="font-mono font-semibold">${totalValue.toFixed(2)}</div>
-                                  <div className="text-xs text-muted-foreground">Total Value</div>
+                                  {/* Mobile: Show total qty, Desktop: Show dollar value */}
+                                  <div className="font-mono font-semibold sm:hidden">{totalQty.toFixed(2)}</div>
+                                  <div className="font-mono font-semibold hidden sm:block">${totalValue.toFixed(2)}</div>
+                                  <div className="text-xs text-muted-foreground hidden sm:block">Total Value</div>
                                 </div>
                               </div>
                             </div>
