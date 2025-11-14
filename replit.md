@@ -1,10 +1,11 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system for multi-company food service businesses, especially pizza restaurants. Its main purpose is to boost operational efficiency, reduce waste, and increase profitability across multiple locations. Key features include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing via vendor price comparison. The system provides robust cost control and extensive operational oversight for multi-unit restaurant environments, supporting business growth and scalability.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary goal is to enhance operational efficiency, minimize waste, and boost profitability across multiple locations. Key capabilities include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing through vendor price comparison. The system aims to provide robust cost control and extensive operational oversight for multi-unit restaurant environments, supporting business growth and scalability.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
+- Navigation Layout: Horizontal top navigation with mega menu dropdowns for desktop (≥768px), mobile hamburger menu with accordion sections for mobile (<768px). Top info bar displays company name, store selector, user email (hidden on mobile), logout button, and theme toggle.
 - Default Unit of Measure for Inventory Items: Pound should be the default unit when creating new inventory items.
 - Unit Abbreviation: "Pound" displays as "lb." throughout the UI.
 - Yield Field: Yield is stored as a percentage value (0-100).
