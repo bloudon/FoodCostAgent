@@ -50,8 +50,7 @@ type PurchaseOrder = {
   id: string;
   orderNumber: string;
   vendorId: string;
-  orderDate: string;
-  receivedAt: string;
+  expectedDate: string;
 };
 
 type VarianceResponse = {
@@ -232,7 +231,7 @@ export default function TfcVariance() {
                 {varianceData && varianceData.purchaseOrders && varianceData.purchaseOrders.length > 0 && (
                   <div className="border-t border-border pt-3">
                     <p className="text-sm font-medium text-foreground mb-2">
-                      Purchase Orders Received ({varianceData.purchaseOrders.length}):
+                      Purchase Orders Delivered ({varianceData.purchaseOrders.length}):
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {varianceData.purchaseOrders.map((po) => (

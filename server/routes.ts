@@ -6268,29 +6268,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
         items,
       }));
 
-      // Get purchase orders received during this period
-      // Query receipts to find which orders were received in this timeframe
-      // Include both 'locked' and 'completed' receipts (locked = finalized during receiving workflow)
-      const receivedReceiptsInPeriod = await db.query.receipts.findMany({
+      // Get purchase orders delivered during this period
+      // Use expected delivery date (when inventory arrived) rather than received date (when entered into system)
+      // For orders without an expectedDate, use the receipt's receivedAt as fallback
+      const allReceivedOrders = await db.query.purchaseOrders.findMany({
         where: and(
-          eq(receipts.companyId, companyId),
-          eq(receipts.storeId, storeId as string),
-          inArray(receipts.status, ['locked', 'completed']),
-          gte(receipts.receivedAt, new Date(previousCount.countDate)),
-          lte(receipts.receivedAt, new Date(currentCount.countDate))
+          eq(purchaseOrders.companyId, companyId),
+          eq(purchaseOrders.storeId, storeId as string),
+          eq(purchaseOrders.status, 'received')
         ),
-        orderBy: (receipts, { asc }) => [asc(receipts.receivedAt)],
       });
 
-      // Get unique purchase order IDs from receipts
-      const uniquePurchaseOrderIds = [...new Set(receivedReceiptsInPeriod.map(r => r.purchaseOrderId))];
-
-      // Fetch the purchase orders
-      const receivedOrders = uniquePurchaseOrderIds.length > 0
-        ? await db.query.purchaseOrders.findMany({
-            where: inArray(purchaseOrders.id, uniquePurchaseOrderIds),
+      // Get receipts for these orders to use as fallback date
+      const receiptsForOrders = allReceivedOrders.length > 0
+        ? await db.query.receipts.findMany({
+            where: and(
+              eq(receipts.companyId, companyId),
+              eq(receipts.storeId, storeId as string),
+              inArray(receipts.purchaseOrderId, allReceivedOrders.map(po => po.id)),
+              inArray(receipts.status, ['locked', 'completed'])
+            ),
           })
         : [];
+
+      // Build a map of purchaseOrderId to latest receipt date for efficient lookups
+      const receiptDateMap = new Map<string, Date>();
+      receiptsForOrders.forEach(receipt => {
+        const existingDate = receiptDateMap.get(receipt.purchaseOrderId);
+        const currentDate = new Date(receipt.receivedAt);
+        if (!existingDate || currentDate > existingDate) {
+          receiptDateMap.set(receipt.purchaseOrderId, currentDate);
+        }
+      });
+
+      // Hoist date objects outside the filter loop
+      const startDate = new Date(previousCount.countDate);
+      const endDate = new Date(currentCount.countDate);
+
+      // Filter orders by date range (using expectedDate if available, otherwise receipt receivedAt)
+      const deliveredOrders = allReceivedOrders.filter(po => {
+        // Use expectedDate if available
+        if (po.expectedDate) {
+          const expectedDate = new Date(po.expectedDate);
+          return expectedDate >= startDate && expectedDate <= endDate;
+        }
+        
+        // Fallback to receipt receivedAt if no expectedDate
+        const receiptDate = receiptDateMap.get(po.id);
+        if (receiptDate) {
+          return receiptDate >= startDate && receiptDate <= endDate;
+        }
+        
+        return false; // Exclude if no date available
+      }).sort((a, b) => {
+        const dateA = a.expectedDate ? new Date(a.expectedDate) : receiptDateMap.get(a.id) || new Date(0);
+        const dateB = b.expectedDate ? new Date(b.expectedDate) : receiptDateMap.get(b.id) || new Date(0);
+        return dateA.getTime() - dateB.getTime();
+      });
 
       res.json({
         previousCountId,
@@ -6301,18 +6335,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         summary,
         categories: groupedItems,
         items: varianceItems, // Flat list for convenience
-        purchaseOrders: receivedOrders.map(po => {
-          // Find the latest receipt for this PO to get receivedAt timestamp
-          const latestReceipt = receivedReceiptsInPeriod
-            .filter(r => r.purchaseOrderId === po.id)
-            .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())[0];
+        purchaseOrders: deliveredOrders.map(po => {
+          // Use expectedDate if available, otherwise fall back to receipt receivedAt from map
+          let deliveryDate = '';
+          if (po.expectedDate) {
+            deliveryDate = po.expectedDate.toISOString().split('T')[0];
+          } else {
+            const receiptDate = receiptDateMap.get(po.id);
+            if (receiptDate) {
+              deliveryDate = receiptDate.toISOString().split('T')[0];
+            }
+          }
           
           return {
             id: po.id,
             orderNumber: po.id.substring(0, 8), // Use first 8 chars of UUID as order number
             vendorId: po.vendorId,
-            orderDate: po.expectedDate ? po.expectedDate.toISOString().split('T')[0] : '',
-            receivedAt: latestReceipt?.receivedAt.toISOString() || '',
+            expectedDate: deliveryDate,
           };
         }),
         salesSummary: {
