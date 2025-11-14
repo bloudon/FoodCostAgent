@@ -1318,6 +1318,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Vendor not found" });
       }
       
+      // Protect "Misc Grocery" vendor from deletion
+      const isMiscGrocery = existing.name?.toLowerCase().includes('misc grocery') || false;
+      if (isMiscGrocery) {
+        return res.status(400).json({ 
+          error: "Cannot delete Misc Grocery vendor. This is a system vendor used for unit-based ordering." 
+        });
+      }
+      
+      // Check if vendor has any purchase orders
+      const purchaseOrders = await storage.getPurchaseOrders(companyId);
+      const vendorPOs = purchaseOrders.filter(po => po.vendorId === req.params.id);
+      
+      if (vendorPOs.length > 0) {
+        return res.status(400).json({ 
+          error: "Cannot delete vendor with purchase orders. Please deactivate the vendor instead." 
+        });
+      }
+      
+      // Check if vendor has any vendor items (products)
+      const vendorItems = await storage.getVendorItems(req.params.id, companyId);
+      
+      if (vendorItems.length > 0) {
+        return res.status(400).json({ 
+          error: "Cannot delete vendor with products. Please deactivate the vendor instead." 
+        });
+      }
+      
       await storage.deleteVendor(req.params.id);
       await cache.del(CacheKeys.vendors(companyId));
       res.status(204).send();

@@ -272,7 +272,10 @@ export default function Vendors() {
           ))
         ) : filteredVendors && filteredVendors.length > 0 ? (
           <>
-            {filteredVendors.map((vendor) => (
+            {filteredVendors.map((vendor) => {
+              const isMiscGrocery = vendor.name?.toLowerCase().includes('misc grocery') || false;
+              
+              return (
               <Card key={vendor.id} className="hover-elevate transition-all" data-testid={`card-vendor-${vendor.id}`}>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
                   <CardTitle className="text-lg" data-testid={`text-vendor-name-${vendor.id}`}>{vendor.name}</CardTitle>
@@ -285,14 +288,16 @@ export default function Vendors() {
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button 
-                      size="icon" 
-                      variant="ghost"
-                      onClick={() => handleDeleteClick(vendor)}
-                      data-testid={`button-delete-vendor-${vendor.id}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {!isMiscGrocery && (
+                      <Button 
+                        size="icon" 
+                        variant="ghost"
+                        onClick={() => handleDeleteClick(vendor)}
+                        data-testid={`button-delete-vendor-${vendor.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -344,7 +349,8 @@ export default function Vendors() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
             <Card 
               className="border-dashed border-2 hover-elevate cursor-pointer transition-all" 
               onClick={handleCreateClick}
