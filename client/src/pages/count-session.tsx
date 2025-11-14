@@ -1112,26 +1112,19 @@ export default function CountSession() {
                                               </button>
                                             )}
                                           </div>
-                                          <div className="flex items-center gap-6 text-sm">
+                                          <div className="flex items-center gap-3 sm:gap-6 text-sm">
                                             <div className="font-mono font-semibold" data-testid={`text-item-total-qty-${itemId}`}>
                                               {currentTotal.toFixed(2)}
                                             </div>
-                                            <div className="text-muted-foreground">
+                                            <div className="text-muted-foreground hidden sm:block">
                                               {formatUnitName(unitName)}
                                             </div>
-                                            <div className="font-mono" data-testid={`text-item-unit-price-${itemId}`}>
+                                            <div className="font-mono hidden sm:block" data-testid={`text-item-unit-price-${itemId}`}>
                                               ${(firstLine.unitCost || 0).toFixed(2)}
                                             </div>
                                             <div className="font-mono font-semibold" data-testid={`text-item-total-value-${itemId}`}>
                                               ${itemTotalValue.toFixed(2)}
                                             </div>
-                                            {previousTotal > 0 && previousCountId && (
-                                              <Link href={`/count/${previousCountId}?from=${countId}&item=${itemId}`}>
-                                                <div className="text-muted-foreground hover:underline cursor-pointer" data-testid={`link-previous-${itemId}`}>
-                                                  Prev: <span className="font-mono">{previousTotal.toFixed(2)}</span> {formatUnitName(unitName)}
-                                                </div>
-                                              </Link>
-                                            )}
                                           </div>
                                         </div>
                                         
@@ -1204,6 +1197,17 @@ export default function CountSession() {
                                             );
                                           })}
                                         </div>
+                                        
+                                        {/* Item Footer */}
+                                        {previousTotal > 0 && previousCountId && (
+                                          <div className="pt-2 border-t">
+                                            <Link href={`/count/${previousCountId}?from=${countId}&item=${itemId}`}>
+                                              <div className="text-sm text-muted-foreground hover:underline cursor-pointer" data-testid={`link-previous-${itemId}`}>
+                                                Previous count: <span className="font-mono">{previousTotal.toFixed(2)}</span> {formatUnitName(unitName)}
+                                              </div>
+                                            </Link>
+                                          </div>
+                                        )}
                                       </div>
                                     );
                                   });
