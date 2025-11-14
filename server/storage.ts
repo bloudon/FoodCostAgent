@@ -1641,7 +1641,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getReceiptLinesByReceiptId(receiptId: string): Promise<ReceiptLine[]> {
-    return db.select().from(receiptLines).where(eq(receiptLines.receiptId, receiptId));
+    return db
+      .select({
+        id: receiptLines.id,
+        receiptId: receiptLines.receiptId,
+        vendorItemId: receiptLines.vendorItemId,
+        receivedQty: receiptLines.receivedQty,
+        unitId: receiptLines.unitId,
+        priceEach: receiptLines.priceEach,
+        unitName: units.name,
+      })
+      .from(receiptLines)
+      .leftJoin(units, eq(receiptLines.unitId, units.id))
+      .where(eq(receiptLines.receiptId, receiptId));
   }
 
   async createReceiptLine(insertLine: InsertReceiptLine): Promise<ReceiptLine> {

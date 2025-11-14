@@ -78,6 +78,7 @@ type ReceiptLine = {
   receivedQty: number;
   unitId: string;
   priceEach: number;
+  unitName?: string | null;
 };
 
 type InventoryItem = {
