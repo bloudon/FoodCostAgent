@@ -71,7 +71,6 @@ export default function TfcVariance() {
   const { selectedStoreId, stores } = useStoreContext();
   const companyId = getEffectiveCompanyId();
 
-  const [previousCountId, setPreviousCountId] = useState<string>("");
   const [currentCountId, setCurrentCountId] = useState<string>("");
 
   // Fetch applied inventory counts for the selected store
@@ -80,10 +79,15 @@ export default function TfcVariance() {
     enabled: !!companyId && !!selectedStoreId,
   });
 
-  // Filter applied counts and sort by date descending
+  // Filter applied counts and sort by date ascending (oldest first)
   const appliedCounts = inventoryCounts
     .filter((count) => count.applied === 1)
-    .sort((a, b) => new Date(b.countDate).getTime() - new Date(a.countDate).getTime());
+    .sort((a, b) => new Date(a.countDate).getTime() - new Date(b.countDate).getTime());
+
+  // Automatically determine the previous count (the one immediately before the selected current count)
+  const currentCountIndex = appliedCounts.findIndex((c) => c.id === currentCountId);
+  const previousCount = currentCountIndex > 0 ? appliedCounts[currentCountIndex - 1] : null;
+  const previousCountId = previousCount?.id || "";
 
   // Fetch variance data when both counts are selected
   const { data: varianceData, isLoading: isLoadingVariance, error: varianceError } = useQuery<VarianceResponse>({
@@ -138,7 +142,7 @@ export default function TfcVariance() {
       <div className="mb-6">
         <Card>
           <CardContent className="pt-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium">Store</label>
                 <Select value={selectedStoreId} disabled={stores.length <= 1}>
@@ -156,43 +160,18 @@ export default function TfcVariance() {
               </div>
 
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Previous Count</label>
-                <Select
-                  value={previousCountId}
-                  onValueChange={setPreviousCountId}
-                  data-testid="select-previous-count"
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select count..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {appliedCounts.map((count) => (
-                      <SelectItem key={count.id} value={count.id}>
-                        {formatDate(count.countDate)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Current Count</label>
+                <label className="text-sm font-medium">Ending Inventory Count</label>
                 <Select
                   value={currentCountId}
                   onValueChange={setCurrentCountId}
-                  data-testid="select-current-count"
+                  data-testid="select-ending-count"
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select count..." />
+                    <SelectValue placeholder="Select count date..." />
                   </SelectTrigger>
                   <SelectContent>
                     {appliedCounts
-                      .filter((count) => {
-                        if (!previousCountId) return true;
-                        const previousDate = appliedCounts.find((c) => c.id === previousCountId)?.countDate;
-                        if (!previousDate) return true;
-                        return new Date(count.countDate).getTime() > new Date(previousDate).getTime();
-                      })
+                      .filter((_, index) => index > 0)
                       .map((count) => (
                         <SelectItem key={count.id} value={count.id}>
                           {formatDate(count.countDate)}
@@ -202,6 +181,23 @@ export default function TfcVariance() {
                 </Select>
               </div>
             </div>
+
+            {currentCountId && previousCount && (
+              <div className="mt-4 p-3 bg-muted/50 rounded-md">
+                <p className="text-sm text-muted-foreground">
+                  Comparing: <span className="font-medium text-foreground">{formatDate(previousCount.countDate)}</span>
+                  {" → "}
+                  <span className="font-medium text-foreground">
+                    {formatDate(appliedCounts.find((c) => c.id === currentCountId)?.countDate || "")}
+                  </span>
+                  {varianceData && (
+                    <span className="ml-2">
+                      ({varianceData.daySpan} {varianceData.daySpan === 1 ? "Day" : "Days"})
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
 
             {varianceData && (
               <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">

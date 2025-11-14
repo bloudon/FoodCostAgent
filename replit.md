@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance operational efficiency, reduce waste, and improve profitability. Key features include precise unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing through vendor price comparison. The system aims to provide a scalable, end-to-end solution for complex inventory and costing challenges across multiple locations, aspiring to be a market leader in the food service industry.
+This project is a multi-company inventory management and recipe costing system for food service businesses. Its core purpose is to enhance operational efficiency, reduce waste, and improve profitability through precise unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing, and optimized purchasing. The system aims to provide a scalable, end-to-end solution for complex inventory and costing challenges across multiple locations, aspiring to be a market leader in the food service industry.
 
 # User Preferences
 
@@ -56,13 +56,10 @@ This project is a multi-company inventory management and recipe costing system d
 - **Database**: PostgreSQL accessed via Drizzle ORM.
 - **Application Structure**: Multi-tenant Single-Page Application (SPA).
 - **Precision**: Micro-unit system for accurate inventory and costing.
-- **Inventory Management**: Automated adjustments, historical recipe versioning, auto-populated/locked inventory count sessions, dynamic `onHandQty` updates.
-- **Purchase Order Management**: Unit/case ordering, vendor filtering, keyboard-optimized data entry, partial receipts, resumable sessions, on-the-fly unit price editing.
-- **Vendor Integration**: Pluggable adapter pattern.
+- **Key Modules**: Automated adjustments, historical recipe versioning, auto-populated/locked inventory count sessions, dynamic `onHandQty` updates, unit/case ordering, vendor filtering, keyboard-optimized data entry, partial receipts, resumable sessions, on-the-fly unit price editing, store-to-store transfer orders, waste tracking.
+- **Integration Pattern**: Pluggable adapter pattern for vendors.
 - **Object Storage**: Presigned URLs and thumbnail generation.
-- **Unified Orders Page**: Centralized interface for Purchase Orders, Receiving, and Transfer Orders.
-- **Store-to-Store Transfer Orders**: Enables inter-store inventory movement.
-- **Waste Tracking Module**: Comprehensive logging and management with store-level isolation.
+- **Unified Interface**: Centralized interface for Purchase Orders, Receiving, and Transfer Orders.
 - **Security**: HMAC-SHA256 for secure API integrations.
 - **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching, response compression (gzip).
 
