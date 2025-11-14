@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary goal is to enhance operational efficiency, minimize waste, and boost profitability across multiple locations. Key features include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing through vendor price comparison. The vision is to provide a crucial tool for food service operators, offering robust cost control and comprehensive operational oversight in multi-unit restaurant environments.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary purpose is to enhance operational efficiency, minimize waste, and boost profitability across multiple locations. Key capabilities include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing through vendor price comparison. The system provides robust cost control and extensive operational oversight for multi-unit restaurant environments.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -43,6 +43,7 @@ This project is a comprehensive inventory management and recipe costing system d
 - Transfer Order Usage Tracking: Usage calculation on Purchase Order detail page now accounts for outbound transfers to prevent over-ordering. Formula updated to: Usage = Previous Count + Received - Transferred - Current. New "Transfers" column displays between "Current" and "Usage" columns, showing quantities transferred out during the count period. Multi-tenant data isolation enforced with comprehensive validation.
 - Conditional Transfer UI Rendering: Transfer-related features are automatically hidden for single-store companies (transfers require minimum 2 stores). Sidebar's "Transfer Orders" menu item is conditionally rendered based on accessible stores count. Purchase Order detail page's "Transfers" column is conditionally rendered using the same logic.
 - Tare Weight Categories & Case Counting: Categories table includes `isTareWeightCategory` field (integer 0/1, default 0) to identify categories that enable case counting in inventory counts. Storage Locations table includes `allowCaseCounting` field (integer 0/1, default 0) to enable case count fields for items in specific locations. Both fields appear as checkboxes in their respective management UIs.
+- Mobile Responsiveness for Inventory Counts: Count session page fully optimized for mobile warehouse usage. Touch-friendly inputs (h-10 on mobile, h-9 on desktop), responsive layouts with sm: breakpoint at 640px, compact sticky dashboard (reduced padding and text sizes, hidden icons on mobile), wrapping item headers that stack vertically on small screens, and hidden "Previous" links on mobile for cleaner interface. All layouts transition smoothly from mobile → tablet → desktop without horizontal overflow.
 
 ## System Architecture
 
