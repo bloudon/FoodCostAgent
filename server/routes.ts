@@ -6278,19 +6278,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           gte(receipts.receivedAt, new Date(previousCount.countDate)),
           lte(receipts.receivedAt, new Date(currentCount.countDate))
         ),
-        with: {
-          purchaseOrder: true,
-        },
         orderBy: (receipts, { asc }) => [asc(receipts.receivedAt)],
       });
 
-      // Extract unique purchase orders from receipts
-      const receivedOrders = receivedReceiptsInPeriod
-        .filter(r => r.purchaseOrder)
-        .map(r => r.purchaseOrder!)
-        .filter((po, index, self) => 
-          index === self.findIndex(p => p.id === po.id)
-        );
+      // Get unique purchase order IDs from receipts
+      const uniquePurchaseOrderIds = [...new Set(receivedReceiptsInPeriod.map(r => r.purchaseOrderId))];
+
+      // Fetch the purchase orders
+      const receivedOrders = uniquePurchaseOrderIds.length > 0
+        ? await db.query.purchaseOrders.findMany({
+            where: inArray(purchaseOrders.id, uniquePurchaseOrderIds),
+          })
+        : [];
 
       res.json({
         previousCountId,
@@ -6304,7 +6303,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         purchaseOrders: receivedOrders.map(po => {
           // Find the latest receipt for this PO to get receivedAt timestamp
           const latestReceipt = receivedReceiptsInPeriod
-            .filter(r => r.purchaseOrder?.id === po.id)
+            .filter(r => r.purchaseOrderId === po.id)
             .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())[0];
           
           return {
