@@ -6270,11 +6270,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get purchase orders received during this period
       // Query receipts to find which orders were received in this timeframe
+      // Include both 'locked' and 'completed' receipts (locked = finalized during receiving workflow)
       const receivedReceiptsInPeriod = await db.query.receipts.findMany({
         where: and(
           eq(receipts.companyId, companyId),
           eq(receipts.storeId, storeId as string),
-          eq(receipts.status, 'completed'),
+          inArray(receipts.status, ['locked', 'completed']),
           gte(receipts.receivedAt, new Date(previousCount.countDate)),
           lte(receipts.receivedAt, new Date(currentCount.countDate))
         ),
@@ -6308,7 +6309,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           return {
             id: po.id,
-            orderNumber: po.orderNumber,
+            orderNumber: po.id.substring(0, 8), // Use first 8 chars of UUID as order number
             vendorId: po.vendorId,
             orderDate: po.expectedDate ? po.expectedDate.toISOString().split('T')[0] : '',
             receivedAt: latestReceipt?.receivedAt.toISOString() || '',
