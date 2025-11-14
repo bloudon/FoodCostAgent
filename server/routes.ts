@@ -2841,6 +2841,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return {
         ...line,
         unitName: unit?.name || "unit",
+        unitAbbreviation: unit?.abbreviation || "unit",
         inventoryItem: enrichedItem,
         storageLocationName: storageLocation?.name || null
       };
@@ -2860,7 +2861,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     const enriched = {
       ...line,
-      unitName: unit?.name || "unit"
+      unitName: unit?.name || "unit",
+      unitAbbreviation: unit?.abbreviation || "unit"
     };
     
     res.json(enriched);

@@ -1096,6 +1096,7 @@ export default function CountSession() {
                                 {lines.map((line, idx) => {
                                   const item = line.inventoryItem;
                                   const unitName = item?.unitName || 'unit';
+                                  const unitAbbr = line.unitAbbreviation || 'unit';
                                   const category = categoriesData?.find(c => c.id === item?.categoryId);
                                   const location = storageLocations?.find(l => l.id === line.storageLocationId);
                                   const mode = getCountMode(category, location);
@@ -1131,16 +1132,13 @@ export default function CountSession() {
                                           </span>
                                         </div>
                                         <div className="flex items-center gap-6 text-sm">
-                                          <div className="text-muted-foreground">
-                                            {formatUnitName(unitName)}
-                                          </div>
                                           {mode === 'case' && item?.caseSize && (
                                             <div className="text-muted-foreground">
-                                              Case: {item.caseSize} {formatUnitName(unitName)}
+                                              Case: {item.caseSize} {unitAbbr}
                                             </div>
                                           )}
                                           <div className="font-mono">
-                                            ${(line.unitCost || 0).toFixed(2)}
+                                            ${(line.unitCost || 0).toFixed(2)} / {unitAbbr}
                                           </div>
                                           {previousQty > 0 && previousCountId && (
                                             <Link href={`/count/${previousCountId}?from=${countId}&item=${line.inventoryItemId}`}>
