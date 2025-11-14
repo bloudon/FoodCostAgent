@@ -1136,7 +1136,7 @@ export default function CountSession() {
                                             const mode = getCountMode(category, location);
                                             
                                             return (
-                                            <div key={line.id} className="grid grid-cols-1 sm:grid-cols-[160px_1fr_100px] gap-2 items-center" data-testid={`location-input-${line.id}`}>
+                                            <div key={line.id} className={`grid grid-cols-1 sm:grid-cols-[160px_1fr_100px] gap-2 items-center px-2 py-1.5 rounded ${idx % 2 === 0 ? '' : 'bg-muted/20'}`} data-testid={`location-input-${line.id}`}>
                                               <label className="text-sm text-muted-foreground">
                                                 {line.storageLocationName || 'Unknown'}:
                                               </label>
