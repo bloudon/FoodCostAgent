@@ -1,25 +1,135 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Calendar, Download } from "lucide-react";
+import { Download, TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth-context";
+import { useStoreContext } from "@/hooks/use-store-context";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+
+type InventoryCount = {
+  id: string;
+  countDate: string;
+  applied: number;
+  completedAt: string | null;
+};
+
+type VarianceItem = {
+  inventoryItemId: string;
+  inventoryItemName: string;
+  category: string | null;
+  previousQty: number;
+  receivedQty: number;
+  currentQty: number;
+  actualUsage: number;
+  theoreticalUsage: number;
+  varianceUnits: number;
+  varianceCost: number;
+  variancePercent: number;
+  unitName: string;
+  pricePerUnit: number;
+};
+
+type VarianceResponse = {
+  previousCountId: string;
+  currentCountId: string;
+  daySpan: number;
+  previousCountDate: string;
+  currentCountDate: string;
+  summary: {
+    totalVarianceCost: number;
+    positiveVarianceCost: number;
+    negativeVarianceCost: number;
+    totalTheoreticalCost: number;
+    totalActualCost: number;
+  };
+  categories: Array<{
+    categoryId: string;
+    categoryName: string;
+    items: VarianceItem[];
+  }>;
+  items: VarianceItem[];
+};
 
 export default function TfcVariance() {
-  const now = new Date();
-  const sevenDaysAgo = new Date(now);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const { getEffectiveCompanyId } = useAuth();
+  const { selectedStoreId, stores } = useStoreContext();
+  const companyId = getEffectiveCompanyId();
+
+  const [previousCountId, setPreviousCountId] = useState<string>("");
+  const [currentCountId, setCurrentCountId] = useState<string>("");
+
+  // Fetch applied inventory counts for the selected store
+  const { data: inventoryCounts = [] } = useQuery<InventoryCount[]>({
+    queryKey: ["/api/inventory-counts", companyId, selectedStoreId],
+    enabled: !!companyId && !!selectedStoreId,
+  });
+
+  // Filter applied counts and sort by date descending
+  const appliedCounts = inventoryCounts
+    .filter((count) => count.applied === 1)
+    .sort((a, b) => new Date(b.countDate).getTime() - new Date(a.countDate).getTime());
+
+  // Fetch variance data when both counts are selected
+  const { data: varianceData, isLoading: isLoadingVariance, error: varianceError } = useQuery<VarianceResponse>({
+    queryKey: [
+      "/api/tfc/variance",
+      {
+        previousCountId,
+        currentCountId,
+        storeId: selectedStoreId,
+      },
+    ],
+    enabled: !!previousCountId && !!currentCountId && !!selectedStoreId && !!companyId,
+    retry: false,
+  });
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(value);
+  };
+
+  const formatNumber = (value: number, decimals = 2) => {
+    return value.toFixed(decimals);
+  };
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
 
   return (
-    <div className="p-8">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="p-4 sm:p-8">
+      <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-variance-title">
             Food Cost Variance
           </h1>
           <p className="text-muted-foreground mt-2">
-            Compare theoretical vs. actual ingredient usage and cost
+            Compare theoretical vs. actual ingredient usage between inventory counts
           </p>
         </div>
-        <Button variant="outline" data-testid="button-export-report">
+        <Button variant="outline" data-testid="button-export-report" disabled>
           <Download className="h-4 w-4 mr-2" />
           Export
         </Button>
@@ -28,68 +138,271 @@ export default function TfcVariance() {
       <div className="mb-6">
         <Card>
           <CardContent className="pt-6">
-            <div className="flex gap-4 items-end flex-wrap">
-              <div className="flex-1 min-w-[200px]">
-                <label className="text-sm font-medium mb-2 block">Start Date</label>
-                <Input
-                  type="date"
-                  defaultValue={sevenDaysAgo.toISOString().split('T')[0]}
-                  data-testid="input-start-date"
-                />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Store</label>
+                <Select value={selectedStoreId} disabled={stores.length <= 1}>
+                  <SelectTrigger data-testid="select-store">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stores.map((store) => (
+                      <SelectItem key={store.id} value={store.id}>
+                        {store.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="flex-1 min-w-[200px]">
-                <label className="text-sm font-medium mb-2 block">End Date</label>
-                <Input
-                  type="date"
-                  defaultValue={now.toISOString().split('T')[0]}
-                  data-testid="input-end-date"
-                />
+
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Previous Count</label>
+                <Select
+                  value={previousCountId}
+                  onValueChange={setPreviousCountId}
+                  data-testid="select-previous-count"
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select count..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {appliedCounts.map((count) => (
+                      <SelectItem key={count.id} value={count.id}>
+                        {formatDate(count.countDate)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <Button data-testid="button-generate-report">
-                <Calendar className="h-4 w-4 mr-2" />
-                Generate Report
-              </Button>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Current Count</label>
+                <Select
+                  value={currentCountId}
+                  onValueChange={setCurrentCountId}
+                  data-testid="select-current-count"
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select count..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {appliedCounts
+                      .filter((count) => {
+                        if (!previousCountId) return true;
+                        const previousDate = appliedCounts.find((c) => c.id === previousCountId)?.countDate;
+                        if (!previousDate) return true;
+                        return new Date(count.countDate).getTime() > new Date(previousDate).getTime();
+                      })
+                      .map((count) => (
+                        <SelectItem key={count.id} value={count.id}>
+                          {formatDate(count.countDate)}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+
+            {varianceData && (
+              <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                <Activity className="h-4 w-4" />
+                <span>
+                  {varianceData.daySpan} {varianceData.daySpan === 1 ? "Day" : "Days"} between counts
+                </span>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3 mb-6">
-        {[
-          { title: "Total Variance", value: "-", description: "Actual vs. theoretical" },
-          { title: "Positive Variance", value: "-", description: "Lower usage than expected" },
-          { title: "Negative Variance", value: "-", description: "Higher usage than expected" },
-        ].map((stat) => (
-          <Card key={stat.title}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {stat.title}
-              </CardTitle>
+      {!varianceData && !isLoadingVariance && (
+        <Card>
+          <CardContent className="py-12">
+            <div className="text-center text-muted-foreground">
+              <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p className="font-medium">Select Inventory Counts</p>
+              <p className="text-sm mt-1">
+                Choose a previous and current count to view variance analysis
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isLoadingVariance && (
+        <Card>
+          <CardContent className="py-12">
+            <div className="text-center text-muted-foreground">
+              <p>Loading variance data...</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {varianceData && (
+        <>
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 mb-6">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <TrendingDown className="h-4 w-4" />
+                  Total Variance
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={`text-2xl font-bold font-mono ${
+                    varianceData.summary.totalVarianceCost > 0
+                      ? "text-destructive"
+                      : varianceData.summary.totalVarianceCost < 0
+                      ? "text-green-600"
+                      : ""
+                  }`}
+                  data-testid="text-total-variance"
+                >
+                  {formatCurrency(varianceData.summary.totalVarianceCost)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Actual vs. theoretical cost
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <TrendingDown className="h-4 w-4 text-destructive" />
+                  Negative Variance
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className="text-2xl font-bold font-mono text-destructive"
+                  data-testid="text-negative-variance"
+                >
+                  {formatCurrency(varianceData.summary.negativeVarianceCost)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Higher usage than expected
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-green-600" />
+                  Positive Variance
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className="text-2xl font-bold font-mono text-green-600"
+                  data-testid="text-positive-variance"
+                >
+                  {formatCurrency(varianceData.summary.positiveVarianceCost)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Lower usage than expected
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Variance by Ingredient</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold font-mono" data-testid={`text-${stat.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                {stat.value}
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Item</TableHead>
+                      <TableHead className="text-right">Previous</TableHead>
+                      <TableHead className="text-right">Received</TableHead>
+                      <TableHead className="text-right">Current</TableHead>
+                      <TableHead className="text-right">Actual</TableHead>
+                      <TableHead className="text-right">Theoretical</TableHead>
+                      <TableHead className="text-right">Variance</TableHead>
+                      <TableHead className="text-right">Variance %</TableHead>
+                      <TableHead className="text-right">Cost Impact</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {varianceData.items.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center text-muted-foreground">
+                          No variance data available for the selected period
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      varianceData.items
+                        .sort((a, b) => Math.abs(b.varianceCost) - Math.abs(a.varianceCost))
+                        .map((item) => (
+                          <TableRow key={item.inventoryItemId} data-testid={`row-variance-item-${item.inventoryItemId}`}>
+                            <TableCell className="font-medium">
+                              {item.inventoryItemName}
+                              <span className="text-xs text-muted-foreground ml-2">
+                                ({item.unitName})
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm">
+                              {formatNumber(item.previousQty)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm">
+                              {formatNumber(item.receivedQty)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm">
+                              {formatNumber(item.currentQty)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm font-medium">
+                              {formatNumber(item.actualUsage)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm">
+                              {formatNumber(item.theoreticalUsage)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Badge
+                                variant={
+                                  item.varianceUnits > 0.5
+                                    ? "destructive"
+                                    : item.varianceUnits < -0.5
+                                    ? "default"
+                                    : "secondary"
+                                }
+                                className="font-mono"
+                              >
+                                {item.varianceUnits > 0 ? "+" : ""}
+                                {formatNumber(item.varianceUnits)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm">
+                              {item.varianceUnits > 0 ? "+" : ""}
+                              {formatNumber(item.variancePercent, 1)}%
+                            </TableCell>
+                            <TableCell
+                              className={`text-right font-mono font-medium ${
+                                item.varianceCost > 0
+                                  ? "text-destructive"
+                                  : item.varianceCost < 0
+                                  ? "text-green-600"
+                                  : ""
+                              }`}
+                            >
+                              {item.varianceCost > 0 ? "+" : ""}
+                              {formatCurrency(item.varianceCost)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                    )}
+                  </TableBody>
+                </Table>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {stat.description}
-              </p>
             </CardContent>
           </Card>
-        ))}
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Variance by Ingredient</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center text-muted-foreground py-8">
-            <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>No data available</p>
-            <p className="text-sm mt-1">Upload sales data and generate a report to see variance details</p>
-          </div>
-        </CardContent>
-      </Card>
+        </>
+      )}
     </div>
   );
 }

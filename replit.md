@@ -2,6 +2,10 @@
 
 This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance operational efficiency, reduce waste, and improve profitability. Key features include precise unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing through vendor price comparison. The system aims to deliver a scalable, end-to-end solution for complex inventory and costing challenges across multiple locations, aspiring to be a market leader in the food service industry.
 
+# Recent Changes
+
+- **TFC Variance Report (November 14, 2025)**: Implemented simplified variance calculation using inventory count IDs instead of date ranges. Features: count selector dropdowns, day span display (e.g., "7 Days"), theoretical vs actual usage comparison, summary statistics (total/positive/negative variance), detailed item table grouped by category. Backend uses existing `getItemUsageBetweenCounts` for actual usage and batch-loads menu items/recipes/components to calculate theoretical usage from sales data. Multi-tenant isolation enforced via store-company validation.
+
 # User Preferences
 
 - Preferred communication style: Simple, everyday language.

@@ -6071,16 +6071,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Store not found or access denied" });
       }
 
-      // Validate counts exist and belong to the same company/store
-      const previousCount = await storage.getInventoryCount(previousCountId as string, companyId);
-      const currentCount = await storage.getInventoryCount(currentCountId as string, companyId);
+      // Validate counts exist, belong to the same company, and belong to the validated store
+      const previousCount = await db.query.inventoryCounts.findFirst({
+        where: and(
+          eq(inventoryCounts.id, previousCountId as string),
+          eq(inventoryCounts.companyId, companyId),
+          eq(inventoryCounts.storeId, storeId as string)
+        ),
+      });
+
+      const currentCount = await db.query.inventoryCounts.findFirst({
+        where: and(
+          eq(inventoryCounts.id, currentCountId as string),
+          eq(inventoryCounts.companyId, companyId),
+          eq(inventoryCounts.storeId, storeId as string)
+        ),
+      });
 
       if (!previousCount || !currentCount) {
-        return res.status(404).json({ message: "One or both inventory counts not found" });
-      }
-
-      if (previousCount.storeId !== storeId || currentCount.storeId !== storeId) {
-        return res.status(400).json({ message: "Counts must belong to the specified store" });
+        return res.status(404).json({ message: "One or both inventory counts not found or do not belong to this store" });
       }
 
       if (new Date(previousCount.countDate) >= new Date(currentCount.countDate)) {
