@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Pencil, Trash2, MapPin, GripVertical } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, MapPin, GripVertical, Package } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -98,6 +98,9 @@ function SortableLocation({ location, onEdit, onDelete }: SortableLocationProps)
               <CardTitle className="text-lg" data-testid={`text-location-name-${location.id}`}>
                 {location.name}
               </CardTitle>
+              {!!location.allowCaseCounting && (
+                <Package className="h-4 w-4 text-muted-foreground" data-testid={`icon-case-counting-${location.id}`} />
+              )}
             </div>
             <div className="flex gap-1">
               <Button
@@ -305,6 +308,13 @@ export default function StorageLocations() {
           <Plus className="h-4 w-4 mr-2" />
           New Location
         </Button>
+      </div>
+
+      <div className="mb-6 flex items-center gap-6 text-sm text-muted-foreground" data-testid="legend-storage-locations">
+        <div className="flex items-center gap-2">
+          <Package className="h-4 w-4" />
+          <span data-testid="text-case-counting-legend">Case counting enabled</span>
+        </div>
       </div>
 
       <div className="mb-6">
