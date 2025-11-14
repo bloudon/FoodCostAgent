@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is an inventory management and recipe costing system for multi-company food service businesses, especially pizza restaurants. Its main goal is to optimize operations, reduce waste, and improve profitability across various locations. Key features include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchasing. The system aims to be a leading solution for operational efficiency in multi-unit restaurant environments, enhancing business vision and market potential.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary purpose is to enhance operational efficiency, reduce waste, and boost profitability across multiple locations. Key capabilities include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing through vendor price comparison. The business vision is to become an essential tool for food service operators, providing robust cost control and operational oversight in multi-unit restaurant environments.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -25,7 +25,7 @@ This project is an inventory management and recipe costing system for multi-comp
 - Menu Item Management: Menu items can be created manually via "Add Menu Item" dialog with form validation (required: name, PLU/SKU; optional: department, category, size, price, recipe, isRecipeItem flag). Recipe selection dropdown allows linking recipes during creation or editing. "Create new recipe with this name" link navigates to Recipe Builder with menu item name pre-populated. Menu items can be edited by clicking the item name or via the actions dropdown menu. Edit dialog includes all fields plus price and recipe selection. Active/inactive status toggle via dropdown actions menu. Department, category, and type filters (Recipe Item/Non-Recipe Item/All) enable easy sorting and filtering. Table displays Recipe Cost (computed from recipe) and Price columns, with Status and Type columns removed for cleaner UI. SKU cleanup script automatically removes pipe symbols from imported POS data and generates abbreviated SKUs (max 10 characters) from item names, with sequential numbering for duplicates.
 - Menu Item Store Assignment: Menu items require assignment to at least one store during creation and editing, matching inventory items pattern. Store checkboxes appear in both Add and Edit dialogs with validation.
 - Recipe Cost Display: Menu Items page displays computed recipe costs for all menu items that have recipes assigned, including both placeholder and complete recipes. Items without recipes show "-" in the Recipe Cost column.
-- Menu Items Table Enhancements: Removed the Recipe status badge column. Added Food Cost % column (calculated as recipe cost / price * 100) as the rightmost data column. All columns are sortable with visual sort indicators (ArrowUpDown, ArrowUp, ArrowDown icons). Clicking a column header sorts ascending, clicking again reverses to descending. Food Cost % displays as a percentage with one decimal trace (e.g., "25.4%") when both recipe cost and price exist, otherwise shows "-". Recipe Cost values are clickable links that navigate to the recipe edit page.
+- Menu Items Table Enhancements: Removed the Recipe status badge column. Added Food Cost % column (calculated as recipe cost / price * 100) as the rightmost data column. All columns are sortable with visual sort indicators (ArrowUpDown, ArrowUp, ArrowDown icons). Clicking a column header sorts ascending, clicking again reverses to descending. Food Cost % displays as a percentage with one decimal trace (e.4%) when both recipe cost and price exist, otherwise shows "-". Recipe Cost values are clickable links that navigate to the recipe edit page.
 - Recipe Builder Smart Back Button: Back button in Recipe Builder uses intelligent navigation - if browser history exists (history.length > 1), returns to previous page preserving navigation context; otherwise falls back to /recipes.
 - Dual Pricing Model: Inventory items track both Last Cost (pricePerUnit - most recent purchase price) and Weighted Average Cost (avgCostPerUnit - WAC calculated across all receipts). Inventory Items page displays both price columns. WAC is calculated during receiving using company-wide quantities: `((totalCompanyQty * currentAvgCost) + (receivedQty * receivedPrice)) / (totalCompanyQty + receivedPrice)) / (totalCompanyQty + receivedQty)`.
 - Vendor Price Comparison: Purchase order creation includes a "Compare Prices" button (TrendingDown icon) on each item row that opens a dialog showing all vendor prices for that item. The dialog displays vendor name, SKU, case size, unit price, and case price, sorted by case price (lowest first). The lowest-priced vendor is highlighted with a "Best Price" badge. Uses vendor-specific case sizes and includes zero-priced items (promotional offers). Only excludes vendors with null/undefined prices.
@@ -36,8 +36,8 @@ This project is an inventory management and recipe costing system for multi-comp
 - Default Categories: All companies automatically start with three default categories: "Frozen", "Walk-In", and "Dry/Pantry". Companies can customize and add additional categories as needed.
 - Comprehensive Kitchen Units: System includes 40 comprehensive kitchen measurement units covering both imperial and metric systems. Companies have a `preferredUnitSystem` setting (imperial/metric/both) to control default unit display preferences throughout the application.
 - Unit Compatibility Filtering: Recipe builder implements intelligent unit filtering to prevent incompatible unit selections. When adding or editing ingredients, the unit dropdown automatically filters to show only units matching the ingredient's measurement kind (weight/volume/count) and the company's preferredUnitSystem setting (imperial/metric/both). Backend endpoint GET `/api/units/compatible?unitId=<uuid>` returns filtered units. Frontend uses React Query with custom queryFn to fetch compatible units, implementing length-aware fallback `(compatibleUnits?.length ? compatibleUnits : allUnits)` to ensure dropdown always has options.
-- Recipe Cost Caching: Recipes list displays real-time calculated costs instead of stale database values. GET /api/recipes endpoint calculates costs on-demand using bulk-loaded data with parallel processing and per-request memoization. Calculated costs overwrite the `computedCost` field in API responses. A 5-minute cache (`recipes:costs:${companyId}`) optimizes performance. Cache invalidation via `cacheInvalidator.invalidateRecipes()` ensures the cache is cleared when recipes, recipe components, or inventory prices change.
-- Order Completion Timestamps: Orders page displays completion timestamps via mouseover tooltips on status badges. For transfer orders with status="completed", tooltip shows `transferOrder.completedAt`. For purchase orders with status="received", tooltip shows the latest completed receipt's `receivedAt` timestamp. Tooltip displays formatted timestamp using `.toLocaleString()`. Only orders with status="completed" or status="received" AND a valid completedAt value show the tooltip.
+- Recipe Cost Caching: Recipes list displays real-time calculated costs instead of stale database values. GET /api/recipes endpoint calculates costs on-demand using bulk-loaded data with parallel processing and per-request memoization. Calculated costs overwrite the `computedCost` field in API responses. A 5-minute cache (`recipes:costs:${companyId}`) optimizes performance. Cache invalidation via `cacheInvalidator.invalidateRecipes()` ensures the cache is cleared when recipes, recipe components, or inventory prices changes.
+- Order Completion Timestamps: Orders page displays completion timestamps via mouseover tooltips on status badges. For transfer orders with status="completed", tooltip shows `transferOrder.completedAt`. For purchase orders with status="received", tooltip shows the latest completed receipt's `receivedAt` timestamp. Only orders with status="completed" or "received" AND a valid completedAt value show the tooltip.
 - Date Formatting & Timezone Safety: All date displays use `formatDateString()` helper that parses YYYY-MM-DD strings into local timezone Date objects. Purchase order Expected Date field uses standard HTML `<input type="date">`. Date flow is entirely string-based: backend sends YYYY-MM-DD, frontend stores/edits as string, display converts to local timezone only.
 - Receiving Page Status Display: Consolidated duplicate status badges into single Badge component with conditional styling. Shows green "received" badge when receipt is completed OR purchase order status is "received".
 - Transfer Order Usage Tracking: Usage calculation on Purchase Order detail page now accounts for outbound transfers to prevent over-ordering. Formula updated to: Usage = Previous Count + Received - Transferred - Current. New "Transfers" column displays between "Current" and "Usage" columns, showing quantities transferred out during the count period. Multi-tenant data isolation enforced with comprehensive validation.
@@ -51,33 +51,33 @@ The system employs a multi-tenant architecture with robust data isolation at bot
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
-- **UI**: `shadcn/ui` components (Radix UI, Tailwind CSS).
-- **State Management**: TanStack Query, React Context.
-- **Routing**: Wouter.
+- **UI**: `shadcn/ui` components, built on Radix UI and styled with Tailwind CSS.
+- **State Management**: TanStack Query for data fetching/caching; React Context for global state.
+- **Routing**: Wouter for client-side navigation.
 
 ### Backend
 - **Runtime**: Node.js with TypeScript.
-- **Web Framework**: Express.js (RESTful APIs).
-- **API Design**: RESTful, WebSocket, Zod for schema validation.
-- **Database Layer**: Drizzle ORM, PostgreSQL.
+- **Web Framework**: Express.js for RESTful APIs.
+- **API Design**: RESTful principles, WebSockets for real-time communication, Zod for schema validation.
+- **Database Layer**: Drizzle ORM with PostgreSQL.
 
 ### Architectural Decisions
-- **Application Structure**: Single-page application.
-- **Real-time Data**: WebSocket for POS data.
-- **Precision**: Micro-unit system for accurate tracking and costing.
-- **Inventory Management**: Automated adjustments, historical recipe versioning, auto-population of inventory count sessions, session locking, `onHandQty` updates.
-- **Purchase Order Management**: Ordering by unit/case, vendor filtering, keyboard-optimized entry, partial receipts, resumable sessions, on-the-fly unit price editing.
+- **Application Structure**: Single-Page Application (SPA).
+- **Real-time Data**: WebSockets for real-time updates (e.g., POS data).
+- **Precision**: Micro-unit system for accurate inventory and costing.
+- **Inventory Management**: Automated adjustments, historical recipe versioning, auto-populated and locked inventory count sessions, dynamic `onHandQty` updates.
+- **Purchase Order Management**: Unit/case ordering, vendor filtering, keyboard-optimized data entry, partial receipts, resumable sessions, on-the-fly unit price editing.
 - **Vendor Integration**: Pluggable adapter pattern.
-- **Object Storage**: Replit's object storage for images (presigned URLs, thumbnail generation).
-- **Unified Orders Page**: Consolidates Purchase Orders, Receiving, and Transfer Orders.
+- **Object Storage**: Replit's object storage for images, including presigned URLs and thumbnail generation.
+- **Unified Orders Page**: Centralized interface for Purchase Orders, Receiving, and Transfer Orders.
 - **Store-to-Store Transfer Orders**: Facilitates inter-store inventory movement.
-- **Waste Tracking Module**: Comprehensive logging of waste with store-level isolation.
-- **Security**: HMAC-SHA256 for API integrations.
+- **Waste Tracking Module**: Comprehensive logging and management of waste with store-level isolation.
+- **Security**: HMAC-SHA256 for secure API integrations.
 - **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching, response compression (gzip).
 
 ## External Dependencies
 - **Database Services**: Neon serverless PostgreSQL.
-- **Real-time Communication**: `ws` (WebSockets library).
+- **Real-time Communication**: `ws` library (WebSockets).
 - **Image Processing**: Sharp.
 - **Object Storage**: Replit's object storage.
-- **Vendor Integrations**: Sysco, GFS, US Foods (via custom adapters).
+- **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods.

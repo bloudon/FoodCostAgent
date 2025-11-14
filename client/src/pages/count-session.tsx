@@ -94,41 +94,45 @@ function CountQuantityEditor({
     const looseUnits = isEditing ? editingLooseUnits : (line.looseUnits != null ? line.looseUnits.toString() : '');
     
     return (
-      <div className="flex items-center gap-2">
-        <div className="flex flex-col">
-          <label className="text-xs text-muted-foreground mb-1">Cases</label>
-          <Input
-            type="number"
-            step="1"
-            min="0"
-            value={caseQty}
-            onFocus={onFocus}
-            onChange={(e) => onCaseQtyChange(e.target.value)}
-            onBlur={onBlur}
-            onKeyDown={onKeyDown}
-            className="w-24 h-9"
-            disabled={readOnly}
-            data-testid={`input-case-qty-${line.id}`}
-          />
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 flex-1">
+        <div className="flex items-center gap-2 sm:gap-3 flex-1 sm:flex-none">
+          <div className="flex flex-col flex-1 sm:flex-none">
+            <label className="text-xs text-muted-foreground mb-1">Cases</label>
+            <Input
+              type="number"
+              step="1"
+              min="0"
+              value={caseQty}
+              onFocus={onFocus}
+              onChange={(e) => onCaseQtyChange(e.target.value)}
+              onBlur={onBlur}
+              onKeyDown={onKeyDown}
+              className="w-full sm:w-24 h-10 sm:h-9 text-base"
+              disabled={readOnly}
+              data-testid={`input-case-qty-${line.id}`}
+            />
+          </div>
+          <div className="flex flex-col flex-1 sm:flex-none">
+            <label className="text-xs text-muted-foreground mb-1">Loose Units</label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              value={looseUnits}
+              onFocus={onFocus}
+              onChange={(e) => onLooseUnitsChange(e.target.value)}
+              onBlur={onBlur}
+              onKeyDown={onKeyDown}
+              className="w-full sm:w-24 h-10 sm:h-9 text-base"
+              disabled={readOnly}
+              data-testid={`input-loose-units-${line.id}`}
+            />
+          </div>
         </div>
-        <div className="flex flex-col">
-          <label className="text-xs text-muted-foreground mb-1">Loose Units</label>
-          <Input
-            type="number"
-            step="0.01"
-            min="0"
-            value={looseUnits}
-            onFocus={onFocus}
-            onChange={(e) => onLooseUnitsChange(e.target.value)}
-            onBlur={onBlur}
-            onKeyDown={onKeyDown}
-            className="w-24 h-9"
-            disabled={readOnly}
-            data-testid={`input-loose-units-${line.id}`}
-          />
-        </div>
-        <div className="text-sm text-muted-foreground mt-5">
-          = {((parseFloat(caseQty.toString()) || 0) * (item?.caseSize || 0) + (parseFloat(looseUnits.toString()) || 0)).toFixed(2)} {item?.unitName}
+        <div className="flex-1 text-right w-full sm:w-auto">
+          <div className="text-base font-semibold font-mono text-muted-foreground">
+            = {((parseFloat(caseQty.toString()) || 0) * (item?.caseSize || 0) + (parseFloat(looseUnits.toString()) || 0)).toFixed(2)} {item?.unitName}
+          </div>
         </div>
       </div>
     );
@@ -145,7 +149,7 @@ function CountQuantityEditor({
       onChange={(e) => onQtyChange(e.target.value)}
       onBlur={onBlur}
       onKeyDown={onKeyDown}
-      className="w-32 h-9"
+      className="w-full sm:w-32 h-10 sm:h-9 text-base"
       disabled={readOnly}
       data-testid={`input-qty-${line.id}`}
     />
@@ -613,21 +617,22 @@ export default function CountSession() {
   const isReadOnly = count && (count.canEdit === false || count.applied === 1);
   
   return (
-    <div className="p-8">
-      <div className="mb-8">
+    <div className="p-4 sm:p-8">
+      <div className="mb-4 sm:mb-8">
         <Link href={sourceCountId ? `/count/${sourceCountId}` : "/inventory-sessions"}>
           <Button variant="ghost" className="mb-4" data-testid="button-back">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            {sourceCountId ? "Back to Previous Session" : "Back to Sessions"}
+            <span className="hidden sm:inline">{sourceCountId ? "Back to Previous Session" : "Back to Sessions"}</span>
+            <span className="sm:hidden">Back</span>
           </Button>
         </Link>
         
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-session-title">
-              Count Session Details {company && store && `(${company.name} - ${store.name})`}
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight" data-testid="text-session-title">
+              Count Session <span className="hidden sm:inline">Details</span> {company && store && <span className="text-lg sm:text-2xl">({company.name} - {store.name})</span>}
             </h1>
-            <p className="text-muted-foreground mt-2">
+            <p className="text-sm sm:text-base text-muted-foreground mt-2">
               {countDate?.toLocaleDateString()} {countDate?.toLocaleTimeString()}
             </p>
             {!isReadOnly ? (
@@ -698,33 +703,33 @@ export default function CountSession() {
       )}
 
       {/* Mini Dashboard - Sticky Stats Bar */}
-      <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-8 -mx-8 px-8 py-3">
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="flex items-center gap-3">
-            <DollarSign className="h-5 w-5 text-muted-foreground" />
+      <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-4 sm:mb-8 -mx-4 sm:-mx-8 px-4 sm:px-8 py-2 sm:py-3">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+          <div className="flex items-center gap-2">
+            <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground hidden sm:block" />
             <div>
-              <div className="text-sm text-muted-foreground">Total Value</div>
-              <div className="text-lg font-bold font-mono" data-testid="text-dashboard-total-value">
+              <div className="text-xs sm:text-sm text-muted-foreground">Value</div>
+              <div className="text-sm sm:text-lg font-bold font-mono" data-testid="text-dashboard-total-value">
                 ${totalValue.toFixed(2)}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Package className="h-5 w-5 text-muted-foreground" />
+          <div className="flex items-center gap-2">
+            <Package className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground hidden sm:block" />
             <div>
-              <div className="text-sm text-muted-foreground">Total Items</div>
-              <div className="text-lg font-bold font-mono" data-testid="text-dashboard-total-items">
+              <div className="text-xs sm:text-sm text-muted-foreground">Items</div>
+              <div className="text-sm sm:text-lg font-bold font-mono" data-testid="text-dashboard-total-items">
                 {totalItems}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Layers className="h-5 w-5 text-muted-foreground" />
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground hidden sm:block" />
             <div>
-              <div className="text-sm text-muted-foreground">Categories</div>
-              <div className="text-lg font-bold font-mono" data-testid="text-dashboard-categories">
+              <div className="text-xs sm:text-sm text-muted-foreground">Categories</div>
+              <div className="text-sm sm:text-lg font-bold font-mono" data-testid="text-dashboard-categories">
                 {displayedCategories}
               </div>
             </div>
@@ -1035,51 +1040,60 @@ export default function CountSession() {
                                               <label className="w-40 text-sm text-muted-foreground">
                                                 {line.storageLocationName || 'Unknown'}:
                                               </label>
-                                              {isReadOnly ? (
-                                                <div className="w-32 h-9 flex items-center font-mono font-semibold" data-testid={`text-qty-${line.id}`}>
-                                                  {line.qty}
-                                                </div>
-                                              ) : (
-                                                <CountQuantityEditor
-                                                  line={line}
-                                                  item={item}
-                                                  mode={mode}
-                                                  isEditing={editingLineId === line.id}
-                                                  editingQty={editingQty}
-                                                  editingCaseQty={editingCaseQty}
-                                                  editingLooseUnits={editingLooseUnits}
-                                                  onFocus={() => handleStartEdit(line, mode)}
-                                                  onQtyChange={setEditingQty}
-                                                  onCaseQtyChange={setEditingCaseQty}
-                                                  onLooseUnitsChange={setEditingLooseUnits}
-                                                  onBlur={() => {
-                                                    if (editingLineId === line.id) {
-                                                      handleSaveEdit(line.id, mode, item);
-                                                    }
-                                                  }}
-                                                  onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                      e.preventDefault();
-                                                      handleSaveEdit(line.id, mode, item);
-                                                      // Focus next input if available
-                                                      if (idx < itemLines.length - 1) {
-                                                        const nextLine = itemLines[idx + 1];
-                                                        setTimeout(() => {
-                                                          const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
-                                                          if (nextInput) {
-                                                            nextInput.focus();
-                                                            nextInput.select();
+                                              <div className="flex items-center gap-3 flex-1">
+                                                {isReadOnly ? (
+                                                  <>
+                                                    <div className="w-32 h-9 flex items-center font-mono font-semibold" data-testid={`text-qty-${line.id}`}>
+                                                      {line.qty}
+                                                    </div>
+                                                    <div className="flex-1 text-right text-base font-semibold font-mono text-muted-foreground">
+                                                      = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                                    </div>
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <CountQuantityEditor
+                                                      line={line}
+                                                      item={item}
+                                                      mode={mode}
+                                                      isEditing={editingLineId === line.id}
+                                                      editingQty={editingQty}
+                                                      editingCaseQty={editingCaseQty}
+                                                      editingLooseUnits={editingLooseUnits}
+                                                      onFocus={() => handleStartEdit(line, mode)}
+                                                      onQtyChange={setEditingQty}
+                                                      onCaseQtyChange={setEditingCaseQty}
+                                                      onLooseUnitsChange={setEditingLooseUnits}
+                                                      onBlur={() => {
+                                                        if (editingLineId === line.id) {
+                                                          handleSaveEdit(line.id, mode, item);
+                                                        }
+                                                      }}
+                                                      onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                          e.preventDefault();
+                                                          handleSaveEdit(line.id, mode, item);
+                                                          // Focus next input if available
+                                                          if (idx < itemLines.length - 1) {
+                                                            const nextLine = itemLines[idx + 1];
+                                                            setTimeout(() => {
+                                                              const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
+                                                              if (nextInput) {
+                                                                nextInput.focus();
+                                                                nextInput.select();
+                                                              }
+                                                            }, 0);
                                                           }
-                                                        }, 0);
-                                                      }
-                                                    } else if (e.key === 'Escape') {
-                                                      handleCancelEdit();
-                                                    }
-                                                  }}
-                                                />
-                                              )}
-                                              <div className="text-sm text-muted-foreground font-mono ml-2">
-                                                = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                                        } else if (e.key === 'Escape') {
+                                                          handleCancelEdit();
+                                                        }
+                                                      }}
+                                                    />
+                                                    <div className="flex-1 text-right text-base font-semibold font-mono text-muted-foreground">
+                                                      = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                                    </div>
+                                                  </>
+                                                )}
                                               </div>
                                             </div>
                                             );
@@ -1111,8 +1125,8 @@ export default function CountSession() {
                                   return (
                                     <div key={line.id} className="border rounded-lg p-3 space-y-2" data-testid={`item-input-${line.id}`}>
                                       {/* Item Info Header */}
-                                      <div className="flex items-center justify-between gap-4 pb-2 border-b">
-                                        <div className="flex items-center gap-4 flex-1">
+                                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 pb-2 border-b">
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 flex-1">
                                           {isReadOnly ? (
                                             <div className="font-medium" data-testid={`text-item-name-${line.inventoryItemId}`}>
                                               {item?.name || 'Unknown'}
@@ -1127,22 +1141,20 @@ export default function CountSession() {
                                               {item?.name || 'Unknown'}
                                             </button>
                                           )}
-                                          <span className="text-sm text-muted-foreground">
-                                            {item?.category || 'Uncategorized'}
-                                          </span>
+                                          <div className="flex items-center gap-2 sm:gap-4 text-sm text-muted-foreground flex-wrap">
+                                            <span>{item?.category || 'Uncategorized'}</span>
+                                            {mode === 'case' && item?.caseSize && (
+                                              <span>Case: {item.caseSize} {unitAbbr}</span>
+                                            )}
+                                          </div>
                                         </div>
-                                        <div className="flex items-center gap-6 text-sm">
-                                          {mode === 'case' && item?.caseSize && (
-                                            <div className="text-muted-foreground">
-                                              Case: {item.caseSize} {unitAbbr}
-                                            </div>
-                                          )}
-                                          <div className="font-mono">
+                                        <div className="flex items-center gap-3 sm:gap-6 text-sm flex-wrap">
+                                          <div className="font-mono whitespace-nowrap">
                                             ${(line.unitCost || 0).toFixed(2)} / {unitAbbr}
                                           </div>
                                           {previousQty > 0 && previousCountId && (
                                             <Link href={`/count/${previousCountId}?from=${countId}&item=${line.inventoryItemId}`}>
-                                              <div className="text-muted-foreground hover:underline cursor-pointer" data-testid={`link-previous-${line.id}`}>
+                                              <div className="text-muted-foreground hover:underline cursor-pointer whitespace-nowrap hidden sm:block" data-testid={`link-previous-${line.id}`}>
                                                 Prev: <span className="font-mono">{previousQty.toFixed(2)}</span> {formatUnitName(unitName)}
                                               </div>
                                             </Link>
@@ -1151,55 +1163,64 @@ export default function CountSession() {
                                       </div>
                                       
                                       {/* Quantity Input */}
-                                      <div className="flex items-center gap-3">
-                                        <label className="w-20 text-sm text-muted-foreground">
+                                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                                        <label className="text-sm text-muted-foreground sm:w-20">
                                           Qty:
                                         </label>
-                                        {isReadOnly ? (
-                                          <div className="w-32 h-9 flex items-center font-mono font-semibold" data-testid={`text-qty-${line.id}`}>
-                                            {line.qty}
-                                          </div>
-                                        ) : (
-                                          <CountQuantityEditor
-                                            line={line}
-                                            item={item}
-                                            mode={mode}
-                                            isEditing={editingLineId === line.id}
-                                            editingQty={editingQty}
-                                            editingCaseQty={editingCaseQty}
-                                            editingLooseUnits={editingLooseUnits}
-                                            onFocus={() => handleStartEdit(line, mode)}
-                                            onQtyChange={setEditingQty}
-                                            onCaseQtyChange={setEditingCaseQty}
-                                            onLooseUnitsChange={setEditingLooseUnits}
-                                            onBlur={() => {
-                                              if (editingLineId === line.id) {
-                                                handleSaveEdit(line.id, mode, item);
-                                              }
-                                            }}
-                                            onKeyDown={(e) => {
-                                              if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                handleSaveEdit(line.id, mode, item);
-                                                // Focus next input if available
-                                                if (idx < lines.length - 1) {
-                                                  const nextLine = lines[idx + 1];
-                                                  setTimeout(() => {
-                                                    const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
-                                                    if (nextInput) {
-                                                      nextInput.focus();
-                                                      nextInput.select();
+                                        <div className="flex items-center gap-3 flex-1">
+                                          {isReadOnly ? (
+                                            <>
+                                              <div className="w-32 h-9 flex items-center font-mono font-semibold" data-testid={`text-qty-${line.id}`}>
+                                                {line.qty}
+                                              </div>
+                                              <div className="flex-1 text-right text-base font-semibold font-mono text-muted-foreground">
+                                                = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                              </div>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <CountQuantityEditor
+                                                line={line}
+                                                item={item}
+                                                mode={mode}
+                                                isEditing={editingLineId === line.id}
+                                                editingQty={editingQty}
+                                                editingCaseQty={editingCaseQty}
+                                                editingLooseUnits={editingLooseUnits}
+                                                onFocus={() => handleStartEdit(line, mode)}
+                                                onQtyChange={setEditingQty}
+                                                onCaseQtyChange={setEditingCaseQty}
+                                                onLooseUnitsChange={setEditingLooseUnits}
+                                                onBlur={() => {
+                                                  if (editingLineId === line.id) {
+                                                    handleSaveEdit(line.id, mode, item);
+                                                  }
+                                                }}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    handleSaveEdit(line.id, mode, item);
+                                                    // Focus next input if available
+                                                    if (idx < lines.length - 1) {
+                                                      const nextLine = lines[idx + 1];
+                                                      setTimeout(() => {
+                                                        const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
+                                                        if (nextInput) {
+                                                          nextInput.focus();
+                                                          nextInput.select();
+                                                        }
+                                                      }, 0);
                                                     }
-                                                  }, 0);
-                                                }
-                                              } else if (e.key === 'Escape') {
-                                                handleCancelEdit();
-                                              }
-                                            }}
-                                          />
-                                        )}
-                                        <div className="text-sm text-muted-foreground font-mono ml-2">
-                                          = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                                  } else if (e.key === 'Escape') {
+                                                    handleCancelEdit();
+                                                  }
+                                                }}
+                                              />
+                                              <div className="flex-1 text-right text-base font-semibold font-mono text-muted-foreground">
+                                                = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                              </div>
+                                            </>
+                                          )}
                                         </div>
                                       </div>
                                     </div>
