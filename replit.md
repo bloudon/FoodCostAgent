@@ -1,11 +1,9 @@
-# Restaurant Inventory & Recipe Costing Application
+### Overview
+This project is a multi-company inventory management and recipe costing system for food service businesses. Its primary goal is to enhance operational efficiency, minimize waste, and boost profitability. Key capabilities include precise unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing through vendor price comparison. The system offers a scalable solution for complex inventory and costing challenges across multiple locations, aiming to provide a comprehensive solution from inventory to recipe costing.
 
-## Overview
-This project is a comprehensive inventory management and recipe costing system for multi-company food service businesses. Its primary goal is to boost operational efficiency, minimize waste, and increase profitability. Key capabilities include precise unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing via vendor price comparison. The system offers a scalable solution to complex inventory and costing challenges, enhancing financial control and supporting strategic decision-making across multiple locations.
-
-## User Preferences
+### User Preferences
 - Preferred communication style: Simple, everyday language.
-- Navigation Layout: Horizontal top navigation with mega menu dropdowns for desktop (≥768px), mobile hamburger menu with accordion sections for mobile (<768px). Top info bar displays company name, store selector, user email (hidden on mobile), logout button, and theme toggle.
+- Navigation Layout: Horizontal top navigation with dropdown menus for desktop (≥768px), mobile hamburger menu with accordion sections for mobile (<768px). Desktop navigation uses Radix DropdownMenu components (replacing NavigationMenu) for proper per-trigger positioning. Each dropdown aligns under its respective trigger button. Top info bar displays company name, store selector, user email (hidden on mobile), logout button, and theme toggle.
 - Default Unit of Measure for Inventory Items: Pound should be the default unit when creating new inventory items.
 - Unit Abbreviation: "Pound" displays as "lb." throughout the UI.
 - Yield Field: Yield is stored as a percentage value (0-100).
@@ -48,35 +46,34 @@ This project is a comprehensive inventory management and recipe costing system f
 - Inventory Count Smooth Scrolling Anchors: Category and location filter cards implement smooth scrolling to corresponding accordion sections. `generateAnchorId()` helper creates URL-safe IDs preserving UUIDs and using hash-based suffixes for special characters. `scrollToSection()` waits 300ms for accordion expansion before scrolling, respects `prefers-reduced-motion` accessibility preference, and focuses trigger elements for keyboard navigation. Accordion uses controlled state that resets when groupBy mode changes to prevent stale section IDs.
 - Inventory Count Layout Optimization: Accordion headers show simplified layout (group name + total value only, item count hidden on mobile). Location value rows within category view use CSS grid layout (160px label, flexible input, 100px right-aligned value column) for clean alignment across all breakpoints. Previous count value moved to dedicated footer section with border separator, removed from crowded item header. Alternating row striping (bg-muted/20 opacity) applied to location input rows for subtle visual separation.
 
-## System Architecture
-
-### Frontend
+### System Architecture
+#### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
-- **UI**: `shadcn/ui` components, built on Radix UI and styled with Tailwind CSS.
-- **State Management**: TanStack Query for data fetching/caching; React Context for global state.
-- **Routing**: Wouter for client-side navigation.
+- **UI**: `shadcn/ui` components (Radix UI, Tailwind CSS).
+- **State Management**: TanStack Query (data fetching/caching), React Context (global state).
+- **Routing**: Wouter.
 
-### Backend
+#### Backend
 - **Runtime**: Node.js with TypeScript.
-- **Web Framework**: Express.js for RESTful APIs.
-- **API Design**: RESTful principles, WebSockets for real-time communication, Zod for schema validation.
+- **Web Framework**: Express.js (RESTful APIs).
+- **API Design**: RESTful principles, WebSockets, Zod for schema validation.
 - **Database Layer**: Drizzle ORM with PostgreSQL.
 
-### Architectural Decisions
-- **Application Structure**: Single-Page Application (SPA) with multi-tenant architecture.
-- **Real-time Data**: WebSockets for real-time updates.
-- **Precision**: Micro-unit system for accurate inventory and costing.
-- **Inventory Management**: Automated adjustments, historical recipe versioning, auto-populated and locked inventory count sessions, dynamic `onHandQty` updates.
+#### Architectural Decisions
+- **Application Structure**: Single-Page Application (SPA), multi-tenant.
+- **Real-time Data**: WebSockets.
+- **Precision**: Micro-unit system for accurate inventory/costing.
+- **Inventory Management**: Automated adjustments, historical recipe versioning, auto-populated/locked inventory count sessions, dynamic `onHandQty` updates.
 - **Purchase Order Management**: Unit/case ordering, vendor filtering, keyboard-optimized data entry, partial receipts, resumable sessions, on-the-fly unit price editing.
 - **Vendor Integration**: Pluggable adapter pattern.
-- **Object Storage**: Presigned URLs and thumbnail generation for images.
-- **Unified Orders Page**: Centralized interface for Purchase Orders, Receiving, and Transfer Orders.
+- **Object Storage**: Presigned URLs and thumbnail generation.
+- **Unified Orders Page**: Centralized interface for POs, Receiving, Transfer Orders.
 - **Store-to-Store Transfer Orders**: Facilitates inter-store inventory movement.
-- **Waste Tracking Module**: Comprehensive logging and management of waste with store-level isolation.
+- **Waste Tracking Module**: Comprehensive logging and management with store-level isolation.
 - **Security**: HMAC-SHA256 for secure API integrations.
 - **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching, response compression (gzip).
 
-## External Dependencies
+### External Dependencies
 - **Database Services**: Neon serverless PostgreSQL.
 - **Real-time Communication**: `ws` library (WebSockets).
 - **Image Processing**: Sharp.

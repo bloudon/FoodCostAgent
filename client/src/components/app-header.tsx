@@ -21,15 +21,11 @@ import {
   X,
 } from "lucide-react";
 import {
-  NavigationMenu,
-  NavigationMenuContent,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuTrigger,
-  NavigationMenuViewport,
-  navigationMenuTriggerStyle,
-} from "@/components/ui/navigation-menu";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sheet,
   SheetContent,
@@ -205,57 +201,52 @@ export function AppHeader() {
         </div>
 
         {/* Desktop Navigation */}
-        <NavigationMenu className="hidden md:flex">
-          <NavigationMenuList>
-            {/* Dashboard - no submenu */}
-            <NavigationMenuItem>
-              <NavigationMenuLink
-                asChild
-                className={cn(
-                  navigationMenuTriggerStyle(),
-                  location === "/" && "bg-accent"
-                )}
-              >
-                <Link href="/" data-testid="link-dashboard">
-                  <Home className="h-4 w-4 mr-2" />
-                  Dashboard
-                </Link>
-              </NavigationMenuLink>
-            </NavigationMenuItem>
+        <nav className="hidden md:flex items-center gap-1">
+          {/* Dashboard - no submenu */}
+          <Link href="/" data-testid="link-dashboard">
+            <Button
+              variant="ghost"
+              className={cn(
+                "h-10 px-4 py-2",
+                location === "/" && "bg-accent"
+              )}
+            >
+              <Home className="h-4 w-4 mr-2" />
+              Dashboard
+            </Button>
+          </Link>
 
-            {/* Mega menu sections */}
-            {visibleSections.map((section) => (
-              <NavigationMenuItem key={section.title}>
-                <NavigationMenuTrigger data-testid={`menu-${section.title.toLowerCase()}`}>
+          {/* Dropdown menu sections */}
+          {visibleSections.map((section) => (
+            <DropdownMenu key={section.title}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="inline-flex h-10 items-center justify-center rounded-md bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none disabled:pointer-events-none disabled:opacity-50"
+                  data-testid={`menu-${section.title.toLowerCase()}`}
+                >
                   {section.title}
-                </NavigationMenuTrigger>
-                <NavigationMenuContent>
-                  <div className="w-64 p-2">
-                    {section.items.map((item) => (
-                      <NavigationMenuLink
-                        key={item.url}
-                        asChild
-                        className={cn(
-                          "flex items-center gap-3 rounded-md px-3 py-2 text-sm hover-elevate active-elevate-2 transition-colors",
-                          location === item.url && "bg-accent"
-                        )}
-                      >
-                        <Link
-                          href={item.url}
-                          data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
-                        >
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.title}</span>
-                        </Link>
-                      </NavigationMenuLink>
-                    ))}
-                  </div>
-                </NavigationMenuContent>
-              </NavigationMenuItem>
-            ))}
-          </NavigationMenuList>
-          <NavigationMenuViewport />
-        </NavigationMenu>
+                  <svg className="ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-64" align="start">
+                {section.items.map((item) => (
+                  <DropdownMenuItem key={item.url} asChild>
+                    <Link
+                      href={item.url}
+                      className="flex items-center gap-3 cursor-pointer"
+                      data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ))}
+        </nav>
 
         {/* Spacer */}
         <div className="flex-1" />
