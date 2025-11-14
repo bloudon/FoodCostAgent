@@ -1,4 +1,4 @@
-import { eq, and, or, gte, lte, isNull, inArray, sql } from "drizzle-orm";
+import { eq, and, or, gte, lte, isNull, inArray, sql, desc, asc } from "drizzle-orm";
 import { db } from "./db";
 import { cache, CacheKeys } from "./cache";
 import {
@@ -1564,6 +1564,250 @@ export class DatabaseStorage implements IStorage {
         transferOrderIds,
       };
     });
+
+    return usageData;
+  }
+
+  // Get item usage by date range for variance reporting
+  async getItemUsageByDateRange(
+    companyId: string,
+    storeId: string,
+    startDate: Date,
+    endDate: Date,
+    categoryId?: string,
+    search?: string
+  ): Promise<Array<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    category: string | null;
+    categoryName: string | null;
+    previousQty: number;
+    receivedQty: number;
+    transferredQty: number;
+    wasteQty: number;
+    currentQty: number;
+    actualUsage: number;
+    unitId: string;
+    unitName: string;
+    pricePerUnit: number;
+    avgCostPerUnit: number;
+  }>> {
+    // CRITICAL: Verify store belongs to company for multi-tenant isolation
+    const [store] = await db.select().from(companyStores).where(
+      and(
+        eq(companyStores.id, storeId),
+        eq(companyStores.companyId, companyId)
+      )
+    );
+    if (!store) {
+      return [];
+    }
+
+    // Find the latest inventory count before or on startDate
+    const [previousCount] = await db
+      .select()
+      .from(inventoryCounts)
+      .where(
+        and(
+          eq(inventoryCounts.companyId, companyId),
+          eq(inventoryCounts.storeId, storeId),
+          eq(inventoryCounts.applied, 1),
+          lte(inventoryCounts.countDate, startDate)
+        )
+      )
+      .orderBy(desc(inventoryCounts.countDate))
+      .limit(1);
+
+    // Find the earliest inventory count after or on endDate
+    const [currentCount] = await db
+      .select()
+      .from(inventoryCounts)
+      .where(
+        and(
+          eq(inventoryCounts.companyId, companyId),
+          eq(inventoryCounts.storeId, storeId),
+          eq(inventoryCounts.applied, 1),
+          gte(inventoryCounts.countDate, endDate)
+        )
+      )
+      .orderBy(asc(inventoryCounts.countDate))
+      .limit(1);
+
+    if (!previousCount || !currentCount) {
+      // Need both counts to calculate usage
+      return [];
+    }
+
+    // Get all count lines for previous count
+    const previousLines = await db
+      .select({
+        inventoryItemId: inventoryCountLines.inventoryItemId,
+        totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+        unitId: inventoryCountLines.unitId,
+      })
+      .from(inventoryCountLines)
+      .where(eq(inventoryCountLines.inventoryCountId, previousCount.id))
+      .groupBy(inventoryCountLines.inventoryItemId, inventoryCountLines.unitId);
+
+    // Get all count lines for current count
+    const currentLines = await db
+      .select({
+        inventoryItemId: inventoryCountLines.inventoryItemId,
+        totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+        unitId: inventoryCountLines.unitId,
+      })
+      .from(inventoryCountLines)
+      .where(eq(inventoryCountLines.inventoryCountId, currentCount.id))
+      .groupBy(inventoryCountLines.inventoryItemId, inventoryCountLines.unitId);
+
+    // Get all receipts between the two count dates
+    const receivedItems = await db
+      .select({
+        inventoryItemId: vendorItems.inventoryItemId,
+        receivedQty: receiptLines.receivedQty,
+      })
+      .from(receiptLines)
+      .innerJoin(receipts, eq(receiptLines.receiptId, receipts.id))
+      .innerJoin(vendorItems, eq(receiptLines.vendorItemId, vendorItems.id))
+      .where(
+        and(
+          eq(receipts.companyId, companyId),
+          eq(receipts.storeId, storeId),
+          gte(receipts.receivedAt, previousCount.countDate),
+          lte(receipts.receivedAt, currentCount.countDate),
+          eq(receipts.status, 'completed')
+        )
+      );
+
+    // Get all outbound transfers between the two count dates
+    const transferredItems = await db
+      .select({
+        inventoryItemId: transferOrderLines.inventoryItemId,
+        transferredQty: transferOrderLines.shippedQty,
+      })
+      .from(transferOrderLines)
+      .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
+      .where(
+        and(
+          eq(transferOrders.companyId, companyId),
+          eq(transferOrders.fromStoreId, storeId),
+          gte(transferOrders.completedAt, previousCount.countDate),
+          lte(transferOrders.completedAt, currentCount.countDate),
+          eq(transferOrders.status, 'completed')
+        )
+      );
+
+    // Get all waste entries between the two count dates
+    const wastedItems = await db
+      .select({
+        inventoryItemId: wasteLogs.inventoryItemId,
+        wasteQty: wasteLogs.qty,
+      })
+      .from(wasteLogs)
+      .where(
+        and(
+          eq(wasteLogs.companyId, companyId),
+          eq(wasteLogs.storeId, storeId),
+          gte(wasteLogs.wastedAt, previousCount.countDate),
+          lte(wasteLogs.wastedAt, currentCount.countDate)
+        )
+      );
+
+    // Get all inventory item details with category names
+    // Filter out nulls from waste logs (which can be menu item waste)
+    const allItemIds = new Set<string>([
+      ...previousLines.map(l => l.inventoryItemId),
+      ...currentLines.map(l => l.inventoryItemId),
+      ...receivedItems.map(r => r.inventoryItemId),
+      ...transferredItems.map(t => t.inventoryItemId),
+      ...wastedItems.map(w => w.inventoryItemId).filter((id): id is string => id !== null),
+    ]);
+
+    const items = await db
+      .select({
+        id: inventoryItems.id,
+        name: inventoryItems.name,
+        categoryId: inventoryItems.categoryId,
+        categoryName: categories.name,
+        unitId: inventoryItems.unitId,
+        unitName: units.name,
+        pricePerUnit: inventoryItems.pricePerUnit,
+        avgCostPerUnit: inventoryItems.avgCostPerUnit,
+      })
+      .from(inventoryItems)
+      .leftJoin(categories, eq(inventoryItems.categoryId, categories.id))
+      .leftJoin(units, eq(inventoryItems.unitId, units.id))
+      .where(
+        and(
+          eq(inventoryItems.companyId, companyId),
+          inArray(inventoryItems.id, Array.from(allItemIds))
+        )
+      );
+
+    // Build lookup maps
+    const itemDetailsMap = new Map(items.map(i => [i.id, i]));
+    const previousMap = new Map(previousLines.map(l => ({ id: l.inventoryItemId, qty: l.totalQty })).map(x => [x.id, x]));
+    const currentMap = new Map(currentLines.map(l => ({ id: l.inventoryItemId, qty: l.totalQty })).map(x => [x.id, x]));
+    
+    const receivedMap = new Map<string, number>();
+    receivedItems.forEach(r => {
+      receivedMap.set(r.inventoryItemId, (receivedMap.get(r.inventoryItemId) || 0) + r.receivedQty);
+    });
+
+    const transferredMap = new Map<string, number>();
+    transferredItems.forEach(t => {
+      transferredMap.set(t.inventoryItemId, (transferredMap.get(t.inventoryItemId) || 0) + (t.transferredQty || 0));
+    });
+
+    const wasteMap = new Map<string, number>();
+    wastedItems.forEach(w => {
+      // Only include inventory waste (not menu item waste)
+      if (w.inventoryItemId) {
+        wasteMap.set(w.inventoryItemId, (wasteMap.get(w.inventoryItemId) || 0) + w.wasteQty);
+      }
+    });
+
+    // Calculate usage for each item
+    let usageData = Array.from(allItemIds).map(itemId => {
+      const item = itemDetailsMap.get(itemId);
+      const previousQty = previousMap.get(itemId)?.qty || 0;
+      const currentQty = currentMap.get(itemId)?.qty || 0;
+      const receivedQty = receivedMap.get(itemId) || 0;
+      const transferredQty = transferredMap.get(itemId) || 0;
+      const wasteQty = wasteMap.get(itemId) || 0;
+      
+      // Actual Usage = Previous + Received - Transferred - Waste - Current
+      const actualUsage = previousQty + receivedQty - transferredQty - wasteQty - currentQty;
+
+      return {
+        inventoryItemId: itemId,
+        inventoryItemName: item?.name || 'Unknown',
+        category: item?.categoryId || null,
+        categoryName: item?.categoryName || null,
+        previousQty,
+        receivedQty,
+        transferredQty,
+        wasteQty,
+        currentQty,
+        actualUsage,
+        unitId: item?.unitId || '',
+        unitName: item?.unitName || 'unit',
+        pricePerUnit: item?.pricePerUnit || 0,
+        avgCostPerUnit: item?.avgCostPerUnit || 0,
+      };
+    });
+
+    // Apply filters
+    if (categoryId) {
+      usageData = usageData.filter(item => item.category === categoryId);
+    }
+
+    if (search) {
+      const searchLower = search.toLowerCase();
+      usageData = usageData.filter(item => 
+        item.inventoryItemName.toLowerCase().includes(searchLower)
+      );
+    }
 
     return usageData;
   }

@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its core purpose is to boost operational efficiency, minimize waste, and enhance profitability. Key functionalities include precise unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing through vendor price comparison. The system provides a scalable, end-to-end solution for managing complex inventory and costing challenges across multiple locations, ensuring comprehensive financial control and streamlined operations.
+This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance operational efficiency, reduce waste, and improve profitability. Key features include precise unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing through vendor price comparison. The system aims to deliver a scalable, end-to-end solution for complex inventory and costing challenges across multiple locations, aspiring to be a market leader in the food service industry.
 
 # User Preferences
 
@@ -28,7 +28,7 @@ This project is a multi-company inventory management and recipe costing system d
 - Recipe Cost Display: Menu Items page displays computed recipe costs for all menu items that have recipes assigned, including both placeholder and complete recipes. Items without recipes show "-" in the Recipe Cost column.
 - Menu Items Table Enhancements: Removed the Recipe status badge column. Added Food Cost % column (calculated as recipe cost / price * 100) as the rightmost data column. All columns are sortable with visual sort indicators (ArrowUpDown, ArrowUp, ArrowDown icons). Clicking a column header sorts ascending, clicking again reverses to descending. Food Cost % displays as a percentage with one decimal trace (e.g., 4%) when both recipe cost and price exist, otherwise shows "-". Recipe Cost values are clickable links that navigate to the recipe edit page.
 - Recipe Builder Smart Back Button: Back button in Recipe Builder uses intelligent navigation - if browser history exists (history.length > 1), returns to previous page preserving navigation context; otherwise falls back to /recipes.
-- Dual Pricing Model: Inventory items track both Last Cost (pricePerUnit - most recent purchase price) and Weighted Average Cost (avgCostPerUnit - WAC calculated across all receipts). Inventory Items page displays both price columns. WAC is calculated during receiving using company-wide quantities: `((totalCompanyQty * currentAvgCost) + (receivedQty * receivedPrice)) / (totalCompanyQty + receivedQty)`.
+- Dual Pricing Model: Inventory items track both Last Cost (pricePerUnit - most recent purchase price) and Weighted Average Cost (avgCostPerUnit - WAC calculated across all receipts). Inventory Items page displays both price columns. WAC is calculated during receiving using company-wide quantities: `((totalCompanyQty * currentAvgCost) + (receivedQty * receivedPrice)) / (totalCompanyQty + qty))`.
 - Vendor Price Comparison: Purchase order creation includes a "Compare Prices" button (TrendingDown icon) on each item row that opens a dialog showing all vendor prices for that item. The dialog displays vendor name, SKU, case size, unit price, and case price, sorted by case price (lowest first). The lowest-priced vendor is highlighted with a "Best Price" badge. Uses vendor-specific case sizes and includes zero-priced items (promotional offers). Only excludes vendors with null/undefined prices.
 - Vendor-Specific Purchase Order Pricing: Purchase orders use vendor-specific pricing (vendor_items.lastPrice) instead of general inventory pricing (inventory_items.pricePerUnit). All pricing logic uses nullish coalescing (`??`) to preserve legitimate zero-priced vendor items (promotional offers, free samples) while falling back to inventory pricing only when vendor prices are null/undefined.
 - Vendor Delivery Scheduling: Delivery scheduling is managed at the vendor level. Each vendor has `deliveryDays` (array of weekdays when vendor delivers) and `leadDaysAhead` (number of days before delivery that orders must be placed). Vendors page includes checkboxes for each weekday and a numeric input for lead days ahead in the add/edit vendor dialog. Lead time field has been completely removed from vendor items.
@@ -51,31 +51,20 @@ This project is a multi-company inventory management and recipe costing system d
 
 # System Architecture
 
-## Frontend
-- **Framework**: React 18 with TypeScript and Vite.
-- **UI**: `shadcn/ui` components (Radix UI, Tailwind CSS).
-- **State Management**: TanStack Query (data fetching/caching), React Context (global state).
-- **Routing**: Wouter.
-
-## Backend
-- **Runtime**: Node.js with TypeScript.
-- **Web Framework**: Express.js (RESTful APIs).
-- **API Design**: RESTful principles, WebSockets, Zod for schema validation.
-- **Database Layer**: Drizzle ORM with PostgreSQL.
-
-## Architectural Decisions
-- **Application Structure**: Single-Page Application (SPA), multi-tenant.
-- **Real-time Data**: WebSockets for dynamic updates.
-- **Precision**: Micro-unit system for accurate inventory and costing calculations.
-- **Inventory Management**: Automated adjustments, historical recipe versioning, auto-populated/locked inventory count sessions, dynamic `onHandQty` updates.
+- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS) for components, TanStack Query for data fetching, React Context for state management, and Wouter for routing.
+- **Backend**: Node.js (TypeScript) with Express.js for RESTful APIs and WebSockets for real-time communication. Zod is used for schema validation.
+- **Database**: PostgreSQL accessed via Drizzle ORM.
+- **Application Structure**: Multi-tenant Single-Page Application (SPA).
+- **Precision**: Micro-unit system for accurate inventory and costing.
+- **Inventory Management**: Features automated adjustments, historical recipe versioning, auto-populated/locked inventory count sessions, and dynamic `onHandQty` updates.
 - **Purchase Order Management**: Supports unit/case ordering, vendor filtering, keyboard-optimized data entry, partial receipts, resumable sessions, and on-the-fly unit price editing.
-- **Vendor Integration**: Pluggable adapter pattern.
-- **Object Storage**: Presigned URLs and thumbnail generation.
-- **Unified Orders Page**: Centralized interface for Purchase Orders, Receiving, and Transfer Orders.
-- **Store-to-Store Transfer Orders**: Facilitates inter-store inventory movement.
-- **Waste Tracking Module**: Comprehensive logging and management with store-level isolation.
+- **Vendor Integration**: Utilizes a pluggable adapter pattern.
+- **Object Storage**: Employs presigned URLs and thumbnail generation for object management.
+- **Unified Orders Page**: Provides a centralized interface for Purchase Orders, Receiving, and Transfer Orders.
+- **Store-to-Store Transfer Orders**: Enables inter-store inventory movement.
+- **Waste Tracking Module**: Offers comprehensive logging and management with store-level isolation.
 - **Security**: HMAC-SHA256 for secure API integrations.
-- **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching, response compression (gzip).
+- **Scalability**: Achieved through connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching, and response compression (gzip).
 
 # External Dependencies
 
