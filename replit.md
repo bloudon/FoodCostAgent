@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary goal is to optimize operations, minimize waste, and enhance profitability across multiple locations. Key capabilities include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The long-term vision is to establish this system as a leading solution for operational efficiency in multi-unit restaurant environments.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary goal is to optimize operations, reduce waste, and enhance profitability across multiple locations. Key capabilities include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The long-term vision is to establish the system as a leader in operational efficiency for multi-unit restaurant environments.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -49,32 +49,32 @@ The system employs a multi-tenant architecture with robust data isolation at bot
 
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
-- **UI**: `shadcn/ui` components (Radix UI, Tailwind CSS) for custom theming, dark/light modes, and responsive navigation.
-- **State Management**: TanStack Query for data fetching/caching, React Context for global store selection.
-- **Routing**: Wouter for client-side routing.
+- **UI**: `shadcn/ui` components (Radix UI, Tailwind CSS).
+- **State Management**: TanStack Query, React Context.
+- **Routing**: Wouter.
 
 ### Backend
 - **Runtime**: Node.js with TypeScript.
-- **Web Framework**: Express.js for RESTful APIs.
-- **API Design**: RESTful, WebSocket for real-time data, Zod for schema validation.
-- **Database Layer**: Drizzle ORM, PostgreSQL, schema-first approach with migrations.
+- **Web Framework**: Express.js (RESTful APIs).
+- **API Design**: RESTful, WebSocket, Zod for schema validation.
+- **Database Layer**: Drizzle ORM, PostgreSQL (Neon), schema-first approach.
 - **Core Domain Models**: Users, Storage Locations, Units, Inventory Items, Vendors, Recipes (nested), Inventory Counts, Purchase Orders, POS Sales, Transfer/Waste Logs.
 - **Business Logic**: Unit conversion, recursive recipe costing, location-based inventory, theoretical vs. actual usage variance, comprehensive PO workflows, COGS analysis.
 - **Authentication & Authorization**: Hybrid authentication (username/password, SSO), Role-Based Access Control (RBAC).
 
 ### Architectural Decisions
-- **Application Structure**: Single-page application integrating API and frontend.
-- **Real-time Data**: WebSocket for real-time POS data.
-- **Precision**: Micro-unit system for accurate tracking and costing across imperial and metric units.
-- **Inventory Management**: Automated adjustments for transfers and waste, historical recipe versioning, auto-population of inventory count sessions, session locking, and `onHandQty` updates.
-- **Purchase Order Management**: Ordering by unit/case, vendor filtering, keyboard-optimized entry, partial receipts, resumable sessions, and on-the-fly unit price editing.
-- **Vendor Integration**: Pluggable adapter pattern for seamless integration with various vendors.
-- **Object Storage**: Utilizes Replit's object storage for images, including presigned URLs and thumbnail generation.
-- **Unified Orders Page**: Consolidates Purchase Orders, Receiving, and Transfer Orders for streamlined management.
-- **Store-to-Store Transfer Orders**: Facilitates efficient inter-store inventory movement.
-- **Waste Tracking Module**: Provides comprehensive logging of waste with store-level isolation.
-- **Security**: Implements HMAC-SHA256 for API integrations to ensure data integrity and authenticity.
-- **Scalability**: Achieved through connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching, and response compression (gzip).
+- **Application Structure**: Single-page application.
+- **Real-time Data**: WebSocket for POS data.
+- **Precision**: Micro-unit system for accurate tracking and costing.
+- **Inventory Management**: Automated adjustments, historical recipe versioning, auto-population of inventory count sessions, session locking, `onHandQty` updates.
+- **Purchase Order Management**: Ordering by unit/case, vendor filtering, keyboard-optimized entry, partial receipts, resumable sessions, on-the-fly unit price editing.
+- **Vendor Integration**: Pluggable adapter pattern.
+- **Object Storage**: Replit's object storage for images (presigned URLs, thumbnail generation).
+- **Unified Orders Page**: Consolidates Purchase Orders, Receiving, and Transfer Orders.
+- **Store-to-Store Transfer Orders**: Facilitates inter-store inventory movement.
+- **Waste Tracking Module**: Comprehensive logging of waste with store-level isolation.
+- **Security**: HMAC-SHA256 for API integrations.
+- **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching, response compression (gzip).
 
 ## External Dependencies
 - **Database Services**: Neon serverless PostgreSQL.
