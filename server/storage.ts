@@ -1442,26 +1442,41 @@ export class DatabaseStorage implements IStorage {
       .where(eq(inventoryCountLines.inventoryCountId, currentCountId))
       .groupBy(inventoryCountLines.inventoryItemId, inventoryCountLines.unitId);
 
-    // Get all receipts between the two count dates for this store with receipt IDs
+    // Get all receipts for purchase orders delivered between the two count dates
+    // Use expected delivery date (when inventory arrived) with fallback to receivedAt
     // CRITICAL: Filter by companyId to ensure multi-tenant data isolation
-    const receivedItems = await db
+    const allReceipts = await db
       .select({
         inventoryItemId: vendorItems.inventoryItemId,
         receiptId: receipts.id,
         receivedQty: receiptLines.receivedQty,
+        purchaseOrderId: receipts.purchaseOrderId,
+        expectedDate: purchaseOrders.expectedDate,
+        receivedAt: receipts.receivedAt,
       })
       .from(receiptLines)
       .innerJoin(receipts, eq(receiptLines.receiptId, receipts.id))
       .innerJoin(vendorItems, eq(receiptLines.vendorItemId, vendorItems.id))
+      .innerJoin(purchaseOrders, eq(receipts.purchaseOrderId, purchaseOrders.id))
       .where(
         and(
           eq(receipts.companyId, companyId),
           eq(receipts.storeId, storeId),
-          gte(receipts.receivedAt, previousCount.countDate),
-          lte(receipts.receivedAt, currentCount.countDate),
-          eq(receipts.status, 'completed')
+          inArray(receipts.status, ['locked', 'completed'])
         )
       );
+
+    // Filter by delivery date (expectedDate if available, otherwise receivedAt)
+    const receivedItems = allReceipts.filter(item => {
+      const deliveryDate = item.expectedDate || item.receivedAt;
+      if (!deliveryDate) return false;
+      
+      const deliveryTimestamp = new Date(deliveryDate).getTime();
+      const startTimestamp = new Date(previousCount.countDate).getTime();
+      const endTimestamp = new Date(currentCount.countDate).getTime();
+      
+      return deliveryTimestamp >= startTimestamp && deliveryTimestamp <= endTimestamp;
+    });
 
     // Get all outbound transfers between the two count dates for this store
     // CRITICAL: Filter by companyId to ensure multi-tenant data isolation
