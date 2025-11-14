@@ -1,6 +1,6 @@
 # Overview
 
-This project delivers a multi-company inventory management and recipe costing system tailored for food service businesses. Its primary goal is to enhance operational efficiency, reduce waste, and improve profitability across multiple locations. Key functionalities include precise unit conversions, advanced nested recipe management, real-time POS sales integration, comprehensive variance reporting, dual inventory pricing (last cost & weighted average), and optimized purchasing. The system aims to provide a complete solution for food service operations to effectively control costs and inventory, leading to improved financial performance and streamlined operations.
+This project delivers a multi-company inventory management and recipe costing system specifically designed for food service businesses. Its primary goal is to boost operational efficiency, minimize waste, and improve profitability across multiple locations. Key capabilities include precise unit conversions, advanced nested recipe management, real-time POS sales integration, comprehensive variance reporting, dual inventory pricing (last cost & weighted average), and optimized purchasing. The system aims to be a holistic solution for food service operations to effectively control costs and inventory, leading to enhanced financial performance and streamlined operations.
 
 # User Preferences
 
