@@ -2809,16 +2809,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/inventory-count-lines/:countId", async (req, res) => {
     const lines = await storage.getInventoryCountLines(req.params.countId);
-    const units = await storage.getUnits();
-    const inventoryItems = await storage.getInventoryItems();
-    const categories = await storage.getCategories();
     
-    // Get the count to find which company this is for (to get storage locations)
+    // Get the count to find which company this is for (CRITICAL: do this first for multi-tenant isolation)
     const count = await storage.getInventoryCount(req.params.countId);
     const companyId = count?.companyId;
     
-    // Fetch storage locations for the company
-    const storageLocations = companyId ? await storage.getStorageLocations(companyId) : [];
+    if (!companyId) {
+      return res.status(400).json({ error: "Count has no associated company" });
+    }
+    
+    // Fetch data filtered by company for multi-tenant safety
+    const units = await storage.getUnits();
+    const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
+    const categories = await storage.getCategories(companyId);
+    const storageLocations = await storage.getStorageLocations(companyId);
     
     const enriched = lines.map(line => {
       const unit = units.find(u => u.id === line.unitId);
