@@ -360,6 +360,13 @@ export default function PurchaseOrderDetail() {
     savePOMutation.mutate(poData);
   };
 
+  // Auto-select single store for new purchase orders in single-store companies
+  useEffect(() => {
+    if (isNew && stores?.length === 1 && !selectedStore) {
+      setSelectedStore(stores[0].id);
+    }
+  }, [isNew, stores, selectedStore]);
+
   useEffect(() => {
     if (purchaseOrder && !isNew) {
       setSelectedVendor(purchaseOrder.vendorId);
@@ -517,33 +524,35 @@ export default function PurchaseOrderDetail() {
         <div className="p-6 pt-2 space-y-6">
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Store Location</label>
-            <Select 
-              value={selectedStore} 
-              onValueChange={(value) => {
-                setSelectedStore(value);
-                setHasUnsavedChanges(true);
-                // Clear vendor and quantities when store changes
-                if (value !== selectedStore) {
-                  setSelectedVendor("");
-                  setCaseQuantities({});
-                }
-              }}
-              disabled={!isNew}
-            >
-              <SelectTrigger data-testid="select-store">
-                <SelectValue placeholder="Select store" />
-              </SelectTrigger>
-              <SelectContent>
-                {stores?.map((store) => (
-                  <SelectItem key={store.id} value={store.id}>
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {(stores?.length ?? 0) > 1 && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Store Location</label>
+              <Select 
+                value={selectedStore} 
+                onValueChange={(value) => {
+                  setSelectedStore(value);
+                  setHasUnsavedChanges(true);
+                  // Clear vendor and quantities when store changes
+                  if (value !== selectedStore) {
+                    setSelectedVendor("");
+                    setCaseQuantities({});
+                  }
+                }}
+                disabled={!isNew}
+              >
+                <SelectTrigger data-testid="select-store">
+                  <SelectValue placeholder="Select store" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores?.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-2">
             <label className="text-sm font-medium">Vendor</label>
