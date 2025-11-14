@@ -6121,6 +6121,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           )
         );
 
+      // Calculate sales totals
+      const totalItemsSold = salesData.reduce((sum, sale) => sum + sale.qtySold, 0);
+      const totalNetSales = salesData.reduce((sum, sale) => sum + sale.netSales, 0);
+
       // Calculate theoretical usage from sales (batch loading to avoid N+1)
       const theoreticalUsageMap = new Map<string, { qty: number; cost: number }>();
       
@@ -6292,6 +6296,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           orderDate: po.orderDate,
           receivedAt: po.updatedAt,
         })),
+        salesSummary: {
+          totalItemsSold,
+          totalNetSales,
+        },
       });
 
     } catch (error: any) {

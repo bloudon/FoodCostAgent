@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { Download, TrendingUp, TrendingDown, Activity, DollarSign, ShoppingCart } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useStoreContext } from "@/hooks/use-store-context";
@@ -73,6 +74,10 @@ type VarianceResponse = {
   }>;
   items: VarianceItem[];
   purchaseOrders: PurchaseOrder[];
+  salesSummary: {
+    totalItemsSold: number;
+    totalNetSales: number;
+  };
 };
 
 export default function TfcVariance() {
@@ -190,11 +195,32 @@ export default function TfcVariance() {
               <div className="mt-4 p-3 bg-muted/50 rounded-md space-y-3">
                 <div>
                   <p className="text-sm text-muted-foreground">
-                    Comparing: <span className="font-medium text-foreground">{formatDate(previousCount.countDate)}</span>
+                    Comparing:{" "}
+                    {varianceData ? (
+                      <Link 
+                        href={`/count/${varianceData.previousCountId}`}
+                        className="font-medium text-foreground hover:text-primary hover:underline"
+                        data-testid="link-previous-count"
+                      >
+                        {formatDate(previousCount.countDate)}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-foreground">{formatDate(previousCount.countDate)}</span>
+                    )}
                     {" → "}
-                    <span className="font-medium text-foreground">
-                      {formatDate(appliedCounts.find((c) => c.id === currentCountId)?.countDate || "")}
-                    </span>
+                    {varianceData ? (
+                      <Link 
+                        href={`/count/${varianceData.currentCountId}`}
+                        className="font-medium text-foreground hover:text-primary hover:underline"
+                        data-testid="link-current-count"
+                      >
+                        {formatDate(appliedCounts.find((c) => c.id === currentCountId)?.countDate || "")}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-foreground">
+                        {formatDate(appliedCounts.find((c) => c.id === currentCountId)?.countDate || "")}
+                      </span>
+                    )}
                     {varianceData && (
                       <span className="ml-2">
                         ({varianceData.daySpan} {varianceData.daySpan === 1 ? "Day" : "Days"})
@@ -254,6 +280,44 @@ export default function TfcVariance() {
 
       {varianceData && (
         <>
+          {/* Sales Summary Section */}
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 mb-6">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <ShoppingCart className="h-4 w-4" />
+                  Total Items Sold
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-mono" data-testid="text-total-items-sold">
+                  {varianceData.salesSummary.totalItemsSold.toLocaleString()}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  During {varianceData.daySpan} {varianceData.daySpan === 1 ? "day" : "days"}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Total Net Sales
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-mono" data-testid="text-total-net-sales">
+                  {formatCurrency(varianceData.salesSummary.totalNetSales)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  From POS sales data
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Variance Summary Section */}
           <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 mb-6">
             <Card>
               <CardHeader className="pb-2">
