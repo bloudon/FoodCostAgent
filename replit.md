@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system for multi-company food service businesses. It aims to enhance operational efficiency, reduce waste, and improve profitability. Key features include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing, and optimized purchasing through vendor price comparison. The system provides a scalable solution for complex inventory and costing challenges, strengthening financial control and supporting strategic decision-making across multiple locations.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses. Its primary goal is to enhance operational efficiency, reduce waste, and improve profitability. Key capabilities include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing, and optimized purchasing through vendor price comparison. The system provides a scalable solution for complex inventory and costing challenges, strengthening financial control and supporting strategic decision-making across multiple locations.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
