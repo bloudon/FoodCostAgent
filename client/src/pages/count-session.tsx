@@ -1091,6 +1091,7 @@ export default function CountSession() {
                                       .reduce((sum, pl) => sum + (pl.qty || 0), 0);
                                     
                                     const unitName = item?.unitName || 'unit';
+                                    const unitAbbr = firstLine.unitAbbreviation || 'unit';
                                     
                                     return (
                                       <div key={itemId} className="border rounded-lg p-3 space-y-3" data-testid={`item-group-${itemId}`}>
@@ -1116,8 +1117,8 @@ export default function CountSession() {
                                             <div className="font-mono font-semibold" data-testid={`text-item-total-qty-${itemId}`}>
                                               {currentTotal.toFixed(2)}
                                             </div>
-                                            <div className="text-muted-foreground hidden sm:block">
-                                              {formatUnitName(unitName)}
+                                            <div className="text-muted-foreground">
+                                              {unitAbbr}
                                             </div>
                                             <div className="font-mono hidden sm:block" data-testid={`text-item-unit-price-${itemId}`}>
                                               ${(firstLine.unitCost || 0).toFixed(2)}
