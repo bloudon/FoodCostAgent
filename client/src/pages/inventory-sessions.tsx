@@ -206,6 +206,10 @@ export default function InventorySessions() {
     if (selectedStoreId !== "all") {
       setDialogStoreId(selectedStoreId);
     }
+    // Auto-select if only one store is available
+    else if (stores.length === 1) {
+      setDialogStoreId(stores[0].id);
+    }
     setDialogOpen(true);
   };
 
