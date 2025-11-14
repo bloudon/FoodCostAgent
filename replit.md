@@ -1,11 +1,10 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary purpose is to enhance operational efficiency, reduce waste, and improve profitability across multiple locations. It offers features such as precise unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (last cost & weighted average), and optimized purchasing. The system aims to be a scalable, end-to-end solution for complex inventory and costing challenges in the food service industry.
+This project delivers a multi-company inventory management and recipe costing system tailored for food service businesses. Its primary goal is to enhance operational efficiency, reduce waste, and improve profitability across multiple locations. Key functionalities include precise unit conversions, advanced nested recipe management, real-time POS sales integration, comprehensive variance reporting, dual inventory pricing (last cost & weighted average), and optimized purchasing. The system aims to provide a complete solution for food service operations to effectively control costs and inventory, leading to improved financial performance and streamlined operations.
 
 # User Preferences
 
 - Preferred communication style: Simple, everyday language.
-- Navigation Layout: Horizontal top navigation with dropdown menus for desktop (≥768px), mobile hamburger menu with accordion sections for mobile (<768px). Desktop navigation uses Radix DropdownMenu components for proper per-trigger positioning. Each dropdown aligns under its respective trigger button. Top info bar displays company name, store selector, user email (hidden on mobile), logout button, and theme toggle.
 - Default Unit of Measure for Inventory Items: Pound should be the default unit when creating new inventory items.
 - Unit Abbreviation: "Pound" displays as "lb." throughout the UI.
 - Yield Field: Yield is stored as a percentage value (0-100).
@@ -18,7 +17,6 @@ This project is a multi-company inventory management and recipe costing system d
 - Waste Percentage Removal: The waste percentage field has been removed from recipes.
 - Recipe Cost Calculation Fix: Ingredient prices must be converted to base unit prices before multiplication.
 - Recipe Company Isolation: Implement comprehensive company-level isolation for recipes and recipe components.
-- Recipe Builder UI Redesign: Optimized layout for ingredients window space, with recipe name and total cost on the same row, yield fields and "Can be used as ingredient" checkbox within a collapsed accordion, and reduced heading font size for ingredients section.
 - Recipe Cost Recalculation on Inventory Price Changes: Automatically recalculate all affected recipes when an inventory item's price changes, including nested recipes, ensuring recalculation in dependency order.
 - Number Input Fields: All number input fields throughout the application have spinner controls (up/down arrows) removed for a cleaner interface.
 - Recipe Name Capitalization: Recipe names are automatically displayed with the first letter capitalized in all UI presentations (recipe list, detail pages, dropdowns) while preserving the original database values.
@@ -26,8 +24,6 @@ This project is a multi-company inventory management and recipe costing system d
 - Menu Item Management: Menu items can be created manually via "Add Menu Item" dialog with form validation (required: name, PLU/SKU; optional: department, category, size, price, recipe, isRecipeItem flag). Recipe selection dropdown allows linking recipes during creation or editing. "Create new recipe with this name" link navigates to Recipe Builder with menu item name pre-populated. Menu items can be edited by clicking the item name or via the actions dropdown menu. Edit dialog includes all fields plus price and recipe selection. Active/inactive status toggle via dropdown actions menu. Department, category, and type filters (Recipe Item/Non-Recipe Item/All) enable easy sorting and filtering. Table displays Recipe Cost (computed from recipe) and Price columns, with Status and Type columns removed for cleaner UI. SKU cleanup script automatically removes pipe symbols from imported POS data and generates abbreviated SKUs (max 10 characters) from item names, with sequential numbering for duplicates.
 - Menu Item Store Assignment: Menu items require assignment to at least one store during creation and editing, matching inventory items pattern. Store checkboxes appear in both Add and Edit dialogs with validation.
 - Recipe Cost Display: Menu Items page displays computed recipe costs for all menu items that have recipes assigned, including both placeholder and complete recipes. Items without recipes show "-" in the Recipe Cost column.
-- Menu Items Table Enhancements: Removed the Recipe status badge column. Added Food Cost % column (calculated as recipe cost / price * 100) as the rightmost data column. All columns are sortable with visual sort indicators (ArrowUpDown, ArrowUp, ArrowDown icons). Clicking a column header sorts ascending, clicking again reverses to descending. Food Cost % displays as a percentage with one decimal trace (e.g., 4%) when both recipe cost and price exist, otherwise shows "-". Recipe Cost values are clickable links that navigate to the recipe edit page.
-- Recipe Builder Smart Back Button: Back button in Recipe Builder uses intelligent navigation - if browser history exists (history.length > 1), returns to previous page preserving navigation context; otherwise falls back to /recipes.
 - Dual Pricing Model: Inventory items track both Last Cost (pricePerUnit - most recent purchase price) and Weighted Average Cost (avgCostPerUnit - WAC calculated across all receipts). Inventory Items page displays both price columns. WAC is calculated during receiving using company-wide quantities: `((totalCompanyQty * currentAvgCost) + (receivedQty * received * receivedPrice)) / (totalCompanyQty + qty))`.
 - Vendor Price Comparison: Purchase order creation includes a "Compare Prices" button (TrendingDown icon) on each item row that opens a dialog showing all vendor prices for an item. The dialog displays vendor name, SKU, case size, unit price, and case price, sorted by case price (lowest first). The lowest-priced vendor is highlighted with a "Best Price" badge. Uses vendor-specific case sizes and includes zero-priced items (promotional offers). Only excludes vendors with null/undefined prices.
 - Vendor-Specific Purchase Order Pricing: Purchase orders use vendor-specific pricing (vendor_items.lastPrice) instead of general inventory pricing (inventory_items.pricePerUnit). All pricing logic uses nullish coalescing (`??`) to preserve legitimate zero-priced vendor items (promotional offers, free samples) while falling back to inventory pricing only when vendor prices are null/undefined.
@@ -44,28 +40,33 @@ This project is a multi-company inventory management and recipe costing system d
 - Transfer Order Usage Tracking: Usage calculation on Purchase Order detail page now accounts for outbound transfers to prevent over-ordering. Formula updated to: Usage = Previous Count + Received - Transferred - Current. New "Transfers" column displays between "Current" and "Usage" and "Usage" columns, showing quantities transferred out during the count period. Multi-tenant data isolation enforced with comprehensive validation.
 - Conditional Transfer UI Rendering: Transfer-related features are automatically hidden for single-store companies (transfers require minimum 2 stores). Sidebar's "Transfer Orders" menu item is conditionally rendered based on accessible stores count. Purchase Order detail page's "Transfers" column is conditionally rendered using the same logic.
 - Tare Weight Categories & Case Counting: Categories table includes `isTareWeightCategory` field (integer 0/1, default 0) to identify categories that enable case counting in inventory counts. Storage Locations table includes `allowCaseCounting` field (integer 0/1, default 0) to enable case count fields for items in specific locations. Both fields appear as checkboxes in their respective management UIs.
-- Mobile Responsiveness for Inventory Counts: Count session page fully optimized for mobile warehouse usage. Touch-friendly inputs (h-10 on mobile, h-9 on desktop), responsive layouts with sm: breakpoint at 640px, compact sticky dashboard (reduced padding and text sizes, hidden icons on mobile), wrapping item headers that stack vertically on small screens, and hidden "Previous" links on mobile for cleaner interface. All layouts transition smoothly from mobile → tablet → desktop without horizontal overflow.
 - Inventory Count Smooth Scrolling Anchors: Category and location filter cards implement smooth scrolling to corresponding accordion sections. `generateAnchorId()` helper creates URL-safe IDs preserving UUIDs and using hash-based suffixes for special characters. `scrollToSection()` waits 300ms for accordion expansion before scrolling, respects `prefers-reduced-motion` accessibility preference, and focuses trigger elements for keyboard navigation. Accordion uses controlled state that resets when groupBy mode changes to prevent stale section IDs.
 - Inventory Count Layout Optimization: Accordion headers show simplified layout (group name + total value only, item count hidden on mobile). Location value rows within category view use CSS grid layout (160px label, flexible input, 100px right-aligned value column) for clean alignment across all breakpoints. Previous count value moved to dedicated footer section with border separator, removed from crowded item header. Alternating row striping (bg-muted/20 opacity) applied to location input rows for subtle visual separation.
 - Inventory Count Text Search: Count session page includes text search input that filters items by name or PLU/SKU (case-insensitive). Search integrates seamlessly with existing grouping modes (location/category) and other filters. Search input positioned before "Group by" buttons with Search icon, width 200px. "Clear Filters" button clears search along with other active filters. Empty accordion groups are automatically hidden when search filters out all items.
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter.
+- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
 - **Backend**: Node.js (TypeScript) with Express.js for RESTful APIs and WebSockets, using Zod for schema validation.
-- **Database**: PostgreSQL accessed via Drizzle ORM.
+- **Database**: PostgreSQL, managed via Drizzle ORM.
 - **Application Structure**: Multi-tenant Single-Page Application (SPA).
-- **Core Features**: Automated adjustments, historical recipe versioning, auto-populated/locked inventory count sessions, dynamic `onHandQty` updates, unit/case ordering, vendor filtering, keyboard-optimized data entry, partial receipts, resumable sessions, on-the-fly unit price editing, store-to-store transfer orders, and waste tracking.
-- **Precision**: Micro-unit system for accurate inventory and costing.
-- **Integration Pattern**: Pluggable adapter pattern for external vendors.
-- **Unified Interface**: Centralized interface for Purchase Orders, Receiving, and Transfer Orders.
-- **Security**: HMAC-SHA256 for secure API integrations.
-- **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching, and response compression (gzip).
+- **Core Features**: Automated inventory adjustments, historical recipe versioning, auto-populated inventory count sessions, dynamic `onHandQty` updates, unit and case ordering, vendor filtering, keyboard-optimized data entry, partial receipts, resumable sessions, on-the-fly unit price editing, store-to-store transfer orders, and waste tracking.
+- **UI/UX Decisions**:
+    - **Navigation**: Horizontal top navigation for desktop with dropdowns; mobile features a hamburger menu with accordion sections. Top info bar displays company name, store selector, user email, logout, and theme toggle.
+    - **Recipe Builder**: Optimized layout for ingredients, with recipe name and total cost on one row. Yield fields and "Can be used as ingredient" are in a collapsed accordion, and ingredient section headings are smaller.
+    - **Menu Items Table**: Includes a sortable Food Cost % column, and clickable Recipe Cost values link to the recipe edit page.
+    - **Smart Back Button**: Recipe builder's back button intelligently navigates using browser history or defaults to `/recipes`.
+    - **Mobile Inventory Counts**: Fully optimized for mobile warehouse use, including touch-friendly inputs, responsive layouts, a compact sticky dashboard, and wrapping item headers.
+- **Precision**: Utilizes a micro-unit system for accurate inventory and costing calculations.
+- **Integration Pattern**: Employs a pluggable adapter pattern for integrating with external vendors.
+- **Unified Interface**: Centralized interface for managing Purchase Orders, Receiving, and Transfer Orders.
+- **Security**: Uses HMAC-SHA256 for secure API integrations.
+- **Scalability**: Achieved through connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching, and response compression (gzip).
 
 # External Dependencies
 
 - **Database Services**: Neon serverless PostgreSQL.
-- **Real-time Communication**: `ws` library (WebSockets).
+- **Real-time Communication**: `ws` library for WebSockets.
 - **Image Processing**: Sharp.
-- **Object Storage**: Replit's object storage.
-- **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods.
+- **Object Storage**: Replit's native object storage.
+- **Vendor Integrations**: Custom adapters developed for Sysco, GFS, and US Foods.
