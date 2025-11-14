@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary purpose is to enhance operational efficiency, reduce waste, and boost profitability across multiple locations. Key capabilities include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing through vendor price comparison. The business vision is to become an essential tool for food service operators, providing robust cost control and operational oversight in multi-unit restaurant environments.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary goal is to enhance operational efficiency, minimize waste, and boost profitability across multiple locations. Key features include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing through vendor price comparison. The vision is to provide a crucial tool for food service operators, offering robust cost control and comprehensive operational oversight in multi-unit restaurant environments.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -63,12 +63,12 @@ The system employs a multi-tenant architecture with robust data isolation at bot
 
 ### Architectural Decisions
 - **Application Structure**: Single-Page Application (SPA).
-- **Real-time Data**: WebSockets for real-time updates (e.g., POS data).
+- **Real-time Data**: WebSockets for real-time updates.
 - **Precision**: Micro-unit system for accurate inventory and costing.
 - **Inventory Management**: Automated adjustments, historical recipe versioning, auto-populated and locked inventory count sessions, dynamic `onHandQty` updates.
 - **Purchase Order Management**: Unit/case ordering, vendor filtering, keyboard-optimized data entry, partial receipts, resumable sessions, on-the-fly unit price editing.
 - **Vendor Integration**: Pluggable adapter pattern.
-- **Object Storage**: Replit's object storage for images, including presigned URLs and thumbnail generation.
+- **Object Storage**: Presigned URLs and thumbnail generation for images.
 - **Unified Orders Page**: Centralized interface for Purchase Orders, Receiving, and Transfer Orders.
 - **Store-to-Store Transfer Orders**: Facilitates inter-store inventory movement.
 - **Waste Tracking Module**: Comprehensive logging and management of waste with store-level isolation.
