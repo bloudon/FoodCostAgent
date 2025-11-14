@@ -259,7 +259,27 @@ export default function CountSession() {
     },
   });
 
+  // Helper function to get the current quantity (either from editing state or stored value)
+  const getCurrentQty = (line: any, mode: CountMode, item: any) => {
+    if (editingLineId === line.id) {
+      if (mode === 'case') {
+        const cases = parseFloat(editingCaseQty) || 0;
+        const loose = parseFloat(editingLooseUnits) || 0;
+        const caseSize = item?.caseSize || 0;
+        return (cases * caseSize) + loose;
+      } else {
+        return parseFloat(editingQty) || 0;
+      }
+    }
+    return line.qty;
+  };
+
   const handleStartEdit = (line: any, mode: CountMode) => {
+    // Don't re-initialize if we're already editing this line (moving between fields)
+    if (editingLineId === line.id) {
+      return;
+    }
+    
     setEditingLineId(line.id);
     
     if (mode === 'case') {
@@ -1059,7 +1079,7 @@ export default function CountSession() {
                                                 />
                                               )}
                                               <div className="text-sm text-muted-foreground font-mono ml-2">
-                                                = ${(line.qty * (line.unitCost || 0)).toFixed(2)}
+                                                = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
                                               </div>
                                             </div>
                                             );
@@ -1181,7 +1201,7 @@ export default function CountSession() {
                                           />
                                         )}
                                         <div className="text-sm text-muted-foreground font-mono ml-2">
-                                          = ${(line.qty * (line.unitCost || 0)).toFixed(2)}
+                                          = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
                                         </div>
                                       </div>
                                     </div>
