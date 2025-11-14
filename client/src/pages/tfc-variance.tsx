@@ -92,12 +92,7 @@ export default function TfcVariance() {
   // Fetch variance data when both counts are selected
   const { data: varianceData, isLoading: isLoadingVariance, error: varianceError } = useQuery<VarianceResponse>({
     queryKey: [
-      "/api/tfc/variance",
-      {
-        previousCountId,
-        currentCountId,
-        storeId: selectedStoreId,
-      },
+      `/api/tfc/variance?previousCountId=${previousCountId}&currentCountId=${currentCountId}&storeId=${selectedStoreId}`,
     ],
     enabled: !!previousCountId && !!currentCountId && !!selectedStoreId && !!companyId,
     retry: false,
