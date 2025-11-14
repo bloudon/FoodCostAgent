@@ -211,9 +211,9 @@ export default function TfcVariance() {
           <CardContent className="py-12">
             <div className="text-center text-muted-foreground">
               <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="font-medium">Select Inventory Counts</p>
+              <p className="font-medium">Select Ending Inventory Count</p>
               <p className="text-sm mt-1">
-                Choose a previous and current count to view variance analysis
+                Choose an ending count to compare with the previous count
               </p>
             </div>
           </CardContent>
