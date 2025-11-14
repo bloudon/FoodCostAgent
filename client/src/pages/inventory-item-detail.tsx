@@ -59,6 +59,7 @@ type InventoryItem = {
 type Unit = {
   id: string;
   name: string;
+  abbreviation: string;
   kind: string;
   toBaseRatio: number;
   system: string;
@@ -627,7 +628,7 @@ export default function InventoryItemDetail() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="caseSize">Case Size (lbs)</Label>
+                <Label htmlFor="caseSize">Case Size ({unit?.abbreviation || 'units'})</Label>
                 <Input
                   id="caseSize"
                   type="number"
