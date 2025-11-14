@@ -6053,6 +6053,225 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get variance report between two inventory counts
+  app.get("/api/tfc/variance", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { previousCountId, currentCountId, storeId, categoryId, search } = req.query;
+
+      if (!companyId || !previousCountId || !currentCountId || !storeId) {
+        return res.status(400).json({ 
+          message: "Missing required parameters: previousCountId, currentCountId, storeId" 
+        });
+      }
+
+      // CRITICAL: Verify store belongs to company (multi-tenant isolation)
+      const store = await storage.getCompanyStore(storeId as string, companyId);
+      if (!store) {
+        return res.status(403).json({ message: "Store not found or access denied" });
+      }
+
+      // Validate counts exist and belong to the same company/store
+      const previousCount = await storage.getInventoryCount(previousCountId as string, companyId);
+      const currentCount = await storage.getInventoryCount(currentCountId as string, companyId);
+
+      if (!previousCount || !currentCount) {
+        return res.status(404).json({ message: "One or both inventory counts not found" });
+      }
+
+      if (previousCount.storeId !== storeId || currentCount.storeId !== storeId) {
+        return res.status(400).json({ message: "Counts must belong to the specified store" });
+      }
+
+      if (new Date(previousCount.countDate) >= new Date(currentCount.countDate)) {
+        return res.status(400).json({ message: "Previous count must be earlier than current count" });
+      }
+
+      // Calculate day span between counts
+      const daySpan = Math.ceil(
+        (new Date(currentCount.countDate).getTime() - new Date(previousCount.countDate).getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      // Get actual usage from existing function
+      const actualUsageData = await storage.getItemUsageBetweenCounts(
+        storeId as string,
+        previousCountId as string,
+        currentCountId as string
+      );
+
+      // Get sales data between the two count dates
+      const salesData = await db
+        .select()
+        .from(dailyMenuItemSales)
+        .where(
+          and(
+            eq(dailyMenuItemSales.companyId, companyId),
+            eq(dailyMenuItemSales.storeId, storeId as string),
+            gte(dailyMenuItemSales.salesDate, previousCount.countDate),
+            lte(dailyMenuItemSales.salesDate, currentCount.countDate)
+          )
+        );
+
+      // Calculate theoretical usage from sales (batch loading to avoid N+1)
+      const theoreticalUsageMap = new Map<string, { qty: number; cost: number }>();
+      
+      if (salesData.length > 0) {
+        // Batch-fetch menu items with recipes
+        const uniqueMenuItemIds = [...new Set(salesData.map(s => s.menuItemId))];
+        const menuItems = await Promise.all(
+          uniqueMenuItemIds.map(id => storage.getMenuItem(id))
+        );
+        const menuItemsMap = new Map(menuItems.filter(m => m && m.recipeId).map(m => [m!.id, m!]));
+
+        // Batch-fetch recipes
+        const uniqueRecipeIds = [...new Set(Array.from(menuItemsMap.values()).map(m => m.recipeId!))];
+        const recipes = await Promise.all(
+          uniqueRecipeIds.map(id => storage.getRecipe(id, companyId))
+        );
+        const recipesMap = new Map(recipes.filter(r => r).map(r => [r!.id, r!]));
+
+        // Batch-fetch all recipe components
+        const allComponents = await Promise.all(
+          uniqueRecipeIds.map(id => storage.getRecipeComponents(id))
+        );
+        const componentsMap = new Map(uniqueRecipeIds.map((id, idx) => [id, allComponents[idx]]));
+
+        // Batch-fetch inventory items
+        const allInventoryItemIds = new Set<string>();
+        allComponents.forEach(components => {
+          components.forEach(c => {
+            if (c.componentType === 'inventory_item') {
+              allInventoryItemIds.add(c.componentId);
+            }
+          });
+        });
+        const inventoryItems = await Promise.all(
+          Array.from(allInventoryItemIds).map(id => storage.getInventoryItem(id))
+        );
+        const inventoryItemsMap = new Map(inventoryItems.filter(i => i).map(i => [i!.id, i!]));
+
+        // Now calculate theoretical usage with in-memory lookups
+        for (const sale of salesData) {
+          if (sale.qtySold <= 0) continue;
+
+          const menuItem = menuItemsMap.get(sale.menuItemId);
+          if (!menuItem || !menuItem.recipeId) continue;
+
+          const components = componentsMap.get(menuItem.recipeId);
+          if (!components) continue;
+
+          for (const component of components) {
+            if (component.componentType === 'inventory_item') {
+              const item = inventoryItemsMap.get(component.componentId);
+              if (!item) continue;
+
+              // Calculate quantity needed (component.qty is already in base units)
+              const qtyNeeded = component.qty * sale.qtySold;
+              const pricePerUnit = item.pricePerUnit || 0; // Guard against missing price
+              
+              const existing = theoreticalUsageMap.get(item.id);
+              if (existing) {
+                existing.qty += qtyNeeded;
+                existing.cost += qtyNeeded * pricePerUnit;
+              } else {
+                theoreticalUsageMap.set(item.id, {
+                  qty: qtyNeeded,
+                  cost: qtyNeeded * pricePerUnit,
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // Combine actual and theoretical usage
+      const allItemIds = new Set([
+        ...actualUsageData.map(a => a.inventoryItemId),
+        ...Array.from(theoreticalUsageMap.keys()),
+      ]);
+
+      let varianceItems = Array.from(allItemIds).map(itemId => {
+        const actualData = actualUsageData.find(a => a.inventoryItemId === itemId);
+        const theoreticalData = theoreticalUsageMap.get(itemId);
+
+        const actualUsage = actualData?.usage || 0;
+        const theoreticalUsage = theoreticalData?.qty || 0;
+        const varianceUnits = actualUsage - theoreticalUsage;
+        const pricePerUnit = actualData?.pricePerUnit || 0; // Guard against missing price
+        const varianceCost = varianceUnits * pricePerUnit;
+        const variancePercent = theoreticalUsage > 0 ? (varianceUnits / theoreticalUsage) * 100 : 0;
+
+        return {
+          inventoryItemId: itemId,
+          inventoryItemName: actualData?.inventoryItemName || 'Unknown',
+          category: actualData?.category,
+          previousQty: actualData?.previousQty || 0,
+          receivedQty: actualData?.receivedQty || 0,
+          currentQty: actualData?.currentQty || 0,
+          actualUsage,
+          theoreticalUsage,
+          varianceUnits,
+          varianceCost,
+          variancePercent,
+          unitName: actualData?.unitName || '',
+          pricePerUnit,
+        };
+      });
+
+      // Apply filters
+      if (categoryId) {
+        varianceItems = varianceItems.filter(item => item.category === categoryId);
+      }
+
+      if (search) {
+        const searchLower = (search as string).toLowerCase();
+        varianceItems = varianceItems.filter(item =>
+          item.inventoryItemName.toLowerCase().includes(searchLower)
+        );
+      }
+
+      // Calculate summary stats
+      const summary = {
+        totalVarianceCost: varianceItems.reduce((sum, item) => sum + item.varianceCost, 0),
+        positiveVarianceCost: varianceItems.filter(i => i.varianceCost > 0).reduce((sum, item) => sum + item.varianceCost, 0),
+        negativeVarianceCost: varianceItems.filter(i => i.varianceCost < 0).reduce((sum, item) => sum + Math.abs(item.varianceCost), 0),
+        totalTheoreticalCost: varianceItems.reduce((sum, item) => sum + (item.theoreticalUsage * item.pricePerUnit), 0),
+        totalActualCost: varianceItems.reduce((sum, item) => sum + (item.actualUsage * item.pricePerUnit), 0),
+      };
+
+      // Group by category
+      const categories = new Map<string, typeof varianceItems>();
+      varianceItems.forEach(item => {
+        const categoryKey = item.category || 'Uncategorized';
+        if (!categories.has(categoryKey)) {
+          categories.set(categoryKey, []);
+        }
+        categories.get(categoryKey)!.push(item);
+      });
+
+      const groupedItems = Array.from(categories.entries()).map(([categoryId, items]) => ({
+        categoryId,
+        categoryName: categoryId, // Will be enriched on frontend
+        items,
+      }));
+
+      res.json({
+        previousCountId,
+        currentCountId,
+        daySpan,
+        previousCountDate: previousCount.countDate,
+        currentCountDate: currentCount.countDate,
+        summary,
+        categories: groupedItems,
+        items: varianceItems, // Flat list for convenience
+      });
+
+    } catch (error: any) {
+      console.error('Variance calculation error:', error);
+      res.status(500).json({ message: "Failed to calculate variance", error: error.message });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
