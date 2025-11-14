@@ -656,7 +656,7 @@ export default function InventoryItemDetail() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="unitId">Unit of Measure</Label>
+                <Label htmlFor="unitId">Unit of Measure *</Label>
                 <Select
                   value={getFieldValue("unitId", item.unitId)}
                   onValueChange={(value) => {
