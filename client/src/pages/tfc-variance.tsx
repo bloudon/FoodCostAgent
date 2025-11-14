@@ -45,6 +45,14 @@ type VarianceItem = {
   pricePerUnit: number;
 };
 
+type PurchaseOrder = {
+  id: string;
+  orderNumber: string;
+  vendorId: string;
+  orderDate: string;
+  receivedAt: string;
+};
+
 type VarianceResponse = {
   previousCountId: string;
   currentCountId: string;
@@ -64,6 +72,7 @@ type VarianceResponse = {
     items: VarianceItem[];
   }>;
   items: VarianceItem[];
+  purchaseOrders: PurchaseOrder[];
 };
 
 export default function TfcVariance() {
@@ -178,28 +187,41 @@ export default function TfcVariance() {
             </div>
 
             {currentCountId && previousCount && (
-              <div className="mt-4 p-3 bg-muted/50 rounded-md">
-                <p className="text-sm text-muted-foreground">
-                  Comparing: <span className="font-medium text-foreground">{formatDate(previousCount.countDate)}</span>
-                  {" → "}
-                  <span className="font-medium text-foreground">
-                    {formatDate(appliedCounts.find((c) => c.id === currentCountId)?.countDate || "")}
-                  </span>
-                  {varianceData && (
-                    <span className="ml-2">
-                      ({varianceData.daySpan} {varianceData.daySpan === 1 ? "Day" : "Days"})
+              <div className="mt-4 p-3 bg-muted/50 rounded-md space-y-3">
+                <div>
+                  <p className="text-sm text-muted-foreground">
+                    Comparing: <span className="font-medium text-foreground">{formatDate(previousCount.countDate)}</span>
+                    {" → "}
+                    <span className="font-medium text-foreground">
+                      {formatDate(appliedCounts.find((c) => c.id === currentCountId)?.countDate || "")}
                     </span>
-                  )}
-                </p>
-              </div>
-            )}
-
-            {varianceData && (
-              <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
-                <Activity className="h-4 w-4" />
-                <span>
-                  {varianceData.daySpan} {varianceData.daySpan === 1 ? "Day" : "Days"} between counts
-                </span>
+                    {varianceData && (
+                      <span className="ml-2">
+                        ({varianceData.daySpan} {varianceData.daySpan === 1 ? "Day" : "Days"})
+                      </span>
+                    )}
+                  </p>
+                </div>
+                
+                {varianceData && varianceData.purchaseOrders && varianceData.purchaseOrders.length > 0 && (
+                  <div className="border-t border-border pt-3">
+                    <p className="text-sm font-medium text-foreground mb-2">
+                      Purchase Orders Received ({varianceData.purchaseOrders.length}):
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {varianceData.purchaseOrders.map((po) => (
+                        <a
+                          key={po.id}
+                          href={`/purchase-orders/${po.id}`}
+                          className="text-sm text-primary hover:underline"
+                          data-testid={`link-po-${po.id}`}
+                        >
+                          #{po.orderNumber}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

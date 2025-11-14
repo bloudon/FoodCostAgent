@@ -6264,6 +6264,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         items,
       }));
 
+      // Get purchase orders received during this period
+      const receivedOrders = await db.query.purchaseOrders.findMany({
+        where: and(
+          eq(purchaseOrders.companyId, companyId),
+          eq(purchaseOrders.storeId, storeId as string),
+          eq(purchaseOrders.status, 'received'),
+          gte(purchaseOrders.updatedAt, previousCount.countDate),
+          lte(purchaseOrders.updatedAt, currentCount.countDate)
+        ),
+        orderBy: (purchaseOrders, { asc }) => [asc(purchaseOrders.updatedAt)],
+      });
+
       res.json({
         previousCountId,
         currentCountId,
@@ -6273,6 +6285,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         summary,
         categories: groupedItems,
         items: varianceItems, // Flat list for convenience
+        purchaseOrders: receivedOrders.map(po => ({
+          id: po.id,
+          orderNumber: po.orderNumber,
+          vendorId: po.vendorId,
+          orderDate: po.orderDate,
+          receivedAt: po.updatedAt,
+        })),
       });
 
     } catch (error: any) {
