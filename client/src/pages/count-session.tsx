@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -186,6 +186,7 @@ export default function CountSession() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [selectedItemId, setSelectedItemId] = useState<string>(filterItemId || "all");
+  const [search, setSearch] = useState("");
   const [openAccordionSections, setOpenAccordionSections] = useState<string[]>([]);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   
@@ -641,6 +642,16 @@ export default function CountSession() {
   // Filter lines for display (all filters applied)
   let filteredLines = countLines || [];
   
+  // Text search filter
+  if (search) {
+    filteredLines = filteredLines.filter(line => {
+      const item = line.inventoryItem;
+      const matchesName = item?.name?.toLowerCase().includes(search.toLowerCase());
+      const matchesPluSku = item?.pluSku?.toLowerCase().includes(search.toLowerCase());
+      return matchesName || matchesPluSku;
+    });
+  }
+  
   if (selectedCategory !== "all") {
     filteredLines = filteredLines.filter(line => {
       const item = line.inventoryItem;
@@ -937,7 +948,17 @@ export default function CountSession() {
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <CardTitle>Items</CardTitle>
             <div className="flex items-center gap-4 flex-wrap">
-              {(selectedCategory !== "all" || selectedLocation !== "all" || selectedItemId !== "all") && (
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search items..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9 w-[200px]"
+                  data-testid="input-search-count-lines"
+                />
+              </div>
+              {(selectedCategory !== "all" || selectedLocation !== "all" || selectedItemId !== "all" || search) && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -945,6 +966,7 @@ export default function CountSession() {
                     setSelectedCategory("all");
                     setSelectedLocation("all");
                     setSelectedItemId("all");
+                    setSearch("");
                   }}
                   data-testid="button-clear-filters"
                 >
