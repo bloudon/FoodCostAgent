@@ -75,7 +75,7 @@ export default function TfcVariance() {
 
   // Fetch applied inventory counts for the selected store
   const { data: inventoryCounts = [] } = useQuery<InventoryCount[]>({
-    queryKey: ["/api/inventory-counts", { companyId, storeId: selectedStoreId }],
+    queryKey: [`/api/inventory-counts?companyId=${companyId}&storeId=${selectedStoreId}`],
     enabled: !!companyId && !!selectedStoreId,
   });
 
