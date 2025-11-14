@@ -158,10 +158,19 @@ function CountQuantityEditor({
 
 // Helper function to generate URL-safe anchor IDs
 function generateAnchorId(prefix: string, value: string): string {
-  // For UUIDs (locations), keep as-is with prefix
-  // For category names, slugify them
-  const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  return `${prefix}-${slug}`;
+  // For UUIDs and already URL-safe strings (like location IDs), use as-is
+  const isUrlSafe = /^[a-z0-9-]+$/i.test(value);
+  if (isUrlSafe) {
+    return `${prefix}-${value}`;
+  }
+  
+  // For categories with special characters, create a unique hash to prevent collisions
+  const sanitized = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  // Simple hash to distinguish similar category names
+  const hash = value.split('').reduce((acc, char) => {
+    return ((acc << 5) - acc) + char.charCodeAt(0);
+  }, 0);
+  return `${prefix}-${sanitized}-${Math.abs(hash)}`;
 }
 
 export default function CountSession() {
@@ -251,10 +260,10 @@ export default function CountSession() {
     queryKey: ["/api/categories"],
   });
   
-  // Initialize accordion sections to be open by default when data loads
+  // Initialize and reset accordion sections when data loads or groupBy changes
   useEffect(() => {
-    if (countLines && countLines.length > 0 && openAccordionSections.length === 0) {
-      // Group lines to get all groupKeys
+    if (countLines && countLines.length > 0) {
+      // Group lines to get all groupKeys for the current groupBy mode
       const grouped: Record<string, any[]> = {};
       countLines.forEach(line => {
         let groupKey: string;
@@ -269,10 +278,11 @@ export default function CountSession() {
         grouped[groupKey].push(line);
       });
       
-      // Open all sections by default
+      // Reset accordion sections to open all current groups
+      // This ensures stale keys from previous groupBy mode are removed
       setOpenAccordionSections(Object.keys(grouped));
     }
-  }, [countLines, groupBy, openAccordionSections.length]);
+  }, [countLines, groupBy]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; qty: number; caseQty?: number | null; looseUnits?: number | null }) => {
@@ -489,31 +499,45 @@ export default function CountSession() {
     const anchorId = generateAnchorId(prefix, groupKey);
     
     // Open the target accordion section if not already open
-    if (!openAccordionSections.includes(groupKey)) {
+    const needsToOpen = !openAccordionSections.includes(groupKey);
+    if (needsToOpen) {
       setOpenAccordionSections(prev => [...prev, groupKey]);
     }
     
-    // Scroll to the element after a brief delay to allow accordion to open
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        const element = document.getElementById(anchorId);
-        if (element) {
-          // Check for reduced motion preference
-          const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-          
-          element.scrollIntoView({
-            behavior: prefersReducedMotion ? 'auto' : 'smooth',
-            block: 'start',
-          });
-          
-          // Focus the element for accessibility
+    // Wait for accordion expansion before scrolling
+    const waitForExpansionAndScroll = () => {
+      const element = document.getElementById(anchorId);
+      if (!element) return;
+      
+      const checkAndScroll = () => {
+        // Check for reduced motion preference
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        
+        element.scrollIntoView({
+          behavior: prefersReducedMotion ? 'auto' : 'smooth',
+          block: 'start',
+        });
+        
+        // Focus the element for accessibility
+        requestAnimationFrame(() => {
           const trigger = element.querySelector('[role="button"]');
           if (trigger instanceof HTMLElement) {
             trigger.focus({ preventScroll: true });
           }
-        }
-      }, 100);
-    });
+        });
+      };
+      
+      // If accordion was already open or doesn't need animation, scroll immediately
+      if (!needsToOpen) {
+        requestAnimationFrame(checkAndScroll);
+        return;
+      }
+      
+      // Wait for accordion transition to complete (typical transition is 200-300ms)
+      setTimeout(checkAndScroll, 300);
+    };
+    
+    requestAnimationFrame(waitForExpansionAndScroll);
   };
 
   const unlockCountMutation = useMutation({
@@ -1023,23 +1047,17 @@ export default function CountSession() {
                         <AccordionItem key={groupKey} value={groupKey} id={anchorId} className="border rounded-md mb-2">
                           <AccordionTrigger className="px-4 py-2 hover:no-underline bg-muted/30 hover:bg-muted/50 data-[state=open]:bg-muted/40" tabIndex={-1} data-testid={`accordion-group-${groupKey}`}>
                             <div className="flex items-center justify-between w-full pr-4">
-                              <div className="flex items-center gap-2 sm:gap-4 flex-1">
+                              <div className="flex items-center gap-4 flex-1">
                                 <span className="font-medium text-left">
                                   {groupName}
                                 </span>
-                                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                                  {/* Mobile: Show dollar value, Desktop: Show item count */}
-                                  <span className="sm:hidden font-mono">${totalValue.toFixed(2)}</span>
-                                  <span className="hidden sm:inline">{lines.length} items</span>
-                                </div>
+                                <span className="text-sm text-muted-foreground hidden sm:inline">
+                                  {lines.length} items
+                                </span>
                               </div>
-                              <div className="flex items-center gap-6 text-sm">
-                                <div className="text-right">
-                                  {/* Mobile: Show total qty, Desktop: Show dollar value */}
-                                  <div className="font-mono font-semibold sm:hidden">{totalQty.toFixed(2)}</div>
-                                  <div className="font-mono font-semibold hidden sm:block">${totalValue.toFixed(2)}</div>
-                                  <div className="text-xs text-muted-foreground hidden sm:block">Total Value</div>
-                                </div>
+                              <div className="text-right">
+                                <div className="font-mono font-semibold">${totalValue.toFixed(2)}</div>
+                                <div className="text-xs text-muted-foreground hidden sm:block">Total Value</div>
                               </div>
                             </div>
                           </AccordionTrigger>
@@ -1125,65 +1143,63 @@ export default function CountSession() {
                                             const mode = getCountMode(category, location);
                                             
                                             return (
-                                            <div key={line.id} className="flex items-center gap-3" data-testid={`location-input-${line.id}`}>
-                                              <label className="w-40 text-sm text-muted-foreground">
+                                            <div key={line.id} className="grid grid-cols-1 sm:grid-cols-[160px_1fr_100px] gap-2 items-center" data-testid={`location-input-${line.id}`}>
+                                              <label className="text-sm text-muted-foreground">
                                                 {line.storageLocationName || 'Unknown'}:
                                               </label>
-                                              <div className="flex items-center gap-3 flex-1">
-                                                {isReadOnly ? (
-                                                  <>
-                                                    <div className="w-32 h-9 flex items-center font-mono font-semibold" data-testid={`text-qty-${line.id}`}>
-                                                      {line.qty}
-                                                    </div>
-                                                    <div className="flex-1 text-right text-base font-semibold font-mono text-muted-foreground">
-                                                      = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
-                                                    </div>
-                                                  </>
-                                                ) : (
-                                                  <>
-                                                    <CountQuantityEditor
-                                                      line={line}
-                                                      item={item}
-                                                      mode={mode}
-                                                      isEditing={editingLineId === line.id}
-                                                      editingQty={editingQty}
-                                                      editingCaseQty={editingCaseQty}
-                                                      editingLooseUnits={editingLooseUnits}
-                                                      onFocus={() => handleStartEdit(line, mode)}
-                                                      onQtyChange={setEditingQty}
-                                                      onCaseQtyChange={setEditingCaseQty}
-                                                      onLooseUnitsChange={setEditingLooseUnits}
-                                                      onBlur={() => {
-                                                        if (editingLineId === line.id) {
-                                                          handleSaveEdit(line.id, mode, item);
+                                              {isReadOnly ? (
+                                                <>
+                                                  <div className="h-9 sm:h-10 flex items-center font-mono font-semibold" data-testid={`text-qty-${line.id}`}>
+                                                    {line.qty}
+                                                  </div>
+                                                  <div className="text-right font-mono font-semibold text-muted-foreground">
+                                                    ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                                  </div>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <CountQuantityEditor
+                                                    line={line}
+                                                    item={item}
+                                                    mode={mode}
+                                                    isEditing={editingLineId === line.id}
+                                                    editingQty={editingQty}
+                                                    editingCaseQty={editingCaseQty}
+                                                    editingLooseUnits={editingLooseUnits}
+                                                    onFocus={() => handleStartEdit(line, mode)}
+                                                    onQtyChange={setEditingQty}
+                                                    onCaseQtyChange={setEditingCaseQty}
+                                                    onLooseUnitsChange={setEditingLooseUnits}
+                                                    onBlur={() => {
+                                                      if (editingLineId === line.id) {
+                                                        handleSaveEdit(line.id, mode, item);
+                                                      }
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                      if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        handleSaveEdit(line.id, mode, item);
+                                                        // Focus next input if available
+                                                        if (idx < itemLines.length - 1) {
+                                                          const nextLine = itemLines[idx + 1];
+                                                          setTimeout(() => {
+                                                            const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
+                                                            if (nextInput) {
+                                                              nextInput.focus();
+                                                              nextInput.select();
+                                                            }
+                                                          }, 0);
                                                         }
-                                                      }}
-                                                      onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                          e.preventDefault();
-                                                          handleSaveEdit(line.id, mode, item);
-                                                          // Focus next input if available
-                                                          if (idx < itemLines.length - 1) {
-                                                            const nextLine = itemLines[idx + 1];
-                                                            setTimeout(() => {
-                                                              const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
-                                                              if (nextInput) {
-                                                                nextInput.focus();
-                                                                nextInput.select();
-                                                              }
-                                                            }, 0);
-                                                          }
-                                                        } else if (e.key === 'Escape') {
-                                                          handleCancelEdit();
-                                                        }
-                                                      }}
-                                                    />
-                                                    <div className="flex-1 text-right text-base font-semibold font-mono text-muted-foreground">
-                                                      = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
-                                                    </div>
-                                                  </>
-                                                )}
-                                              </div>
+                                                      } else if (e.key === 'Escape') {
+                                                        handleCancelEdit();
+                                                      }
+                                                    }}
+                                                  />
+                                                  <div className="text-right font-mono font-semibold text-muted-foreground">
+                                                    ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                                  </div>
+                                                </>
+                                              )}
                                             </div>
                                             );
                                           })}

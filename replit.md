@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system for multi-company food service businesses. It aims to enhance operational efficiency, reduce waste, and boost profitability across multiple locations. Key capabilities include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing through vendor price comparison. The system provides a robust and scalable solution for complex inventory and costing challenges, enabling improved financial control and strategic decision-making.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses. Its primary goal is to boost operational efficiency, cut waste, and increase profitability. Key capabilities include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), and optimized purchasing through vendor price comparison. The system offers a scalable solution for complex inventory and costing challenges, enhancing financial control and strategic decision-making across multiple locations.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -48,9 +48,6 @@ This project is a comprehensive inventory management and recipe costing system f
 
 ## System Architecture
 
-### Multi-Company Enterprise Architecture
-The system employs a multi-tenant architecture with robust data isolation at both company and store levels.
-
 ### Frontend
 - **Framework**: React 18 with TypeScript and Vite.
 - **UI**: `shadcn/ui` components, built on Radix UI and styled with Tailwind CSS.
@@ -64,7 +61,7 @@ The system employs a multi-tenant architecture with robust data isolation at bot
 - **Database Layer**: Drizzle ORM with PostgreSQL.
 
 ### Architectural Decisions
-- **Application Structure**: Single-Page Application (SPA).
+- **Application Structure**: Single-Page Application (SPA) with multi-tenant architecture.
 - **Real-time Data**: WebSockets for real-time updates.
 - **Precision**: Micro-unit system for accurate inventory and costing.
 - **Inventory Management**: Automated adjustments, historical recipe versioning, auto-populated and locked inventory count sessions, dynamic `onHandQty` updates.
