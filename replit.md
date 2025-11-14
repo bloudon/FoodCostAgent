@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system for food service businesses. Its core purpose is to enhance operational efficiency, reduce waste, and improve profitability. Key features include precise unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing, and optimized purchasing. The system aims to provide a scalable, end-to-end solution for complex inventory and costing challenges across multiple locations, with the ambition of becoming a market leader in the food service industry.
+This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its core purpose is to boost operational efficiency, minimize waste, and enhance profitability across multiple locations. Key capabilities include precise unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (last cost & weighted average), and optimized purchasing. The system aims to be a scalable, end-to-end solution for complex inventory and costing challenges, aspiring to be a market leader in the food service industry.
 
 # User Preferences
 
@@ -52,16 +52,15 @@ This project is a multi-company inventory management and recipe costing system f
 # System Architecture
 
 - **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter.
-- **Backend**: Node.js (TypeScript) with Express.js for RESTful APIs and WebSockets. Zod for schema validation.
+- **Backend**: Node.js (TypeScript) with Express.js for RESTful APIs and WebSockets, using Zod for schema validation.
 - **Database**: PostgreSQL accessed via Drizzle ORM.
 - **Application Structure**: Multi-tenant Single-Page Application (SPA).
+- **Core Features**: Automated adjustments, historical recipe versioning, auto-populated/locked inventory count sessions, dynamic `onHandQty` updates, unit/case ordering, vendor filtering, keyboard-optimized data entry, partial receipts, resumable sessions, on-the-fly unit price editing, store-to-store transfer orders, and waste tracking.
 - **Precision**: Micro-unit system for accurate inventory and costing.
-- **Key Modules**: Automated adjustments, historical recipe versioning, auto-populated/locked inventory count sessions, dynamic `onHandQty` updates, unit/case ordering, vendor filtering, keyboard-optimized data entry, partial receipts, resumable sessions, on-the-fly unit price editing, store-to-store transfer orders, waste tracking.
-- **Integration Pattern**: Pluggable adapter pattern for vendors.
-- **Object Storage**: Presigned URLs and thumbnail generation.
+- **Integration Pattern**: Pluggable adapter pattern for external vendors.
 - **Unified Interface**: Centralized interface for Purchase Orders, Receiving, and Transfer Orders.
 - **Security**: HMAC-SHA256 for secure API integrations.
-- **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching, response compression (gzip).
+- **Scalability**: Connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching, and response compression (gzip).
 
 # External Dependencies
 
