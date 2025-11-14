@@ -90,8 +90,8 @@ function CountQuantityEditor({
   readOnly = false
 }: CountQuantityEditorProps) {
   if (mode === 'case') {
-    const caseQty = isEditing ? editingCaseQty : (line.caseQty ?? 0);
-    const looseUnits = isEditing ? editingLooseUnits : (line.looseUnits ?? 0);
+    const caseQty = isEditing ? editingCaseQty : (line.caseQty != null ? line.caseQty.toString() : '');
+    const looseUnits = isEditing ? editingLooseUnits : (line.looseUnits != null ? line.looseUnits.toString() : '');
     
     return (
       <div className="flex items-center gap-2">
@@ -134,6 +134,8 @@ function CountQuantityEditor({
     );
   }
   
+  // Both 'tare' and 'simple' modes show a single quantity field
+  // Tare weight categories use regular qty field for accurate scale measurements
   return (
     <Input
       type="number"
