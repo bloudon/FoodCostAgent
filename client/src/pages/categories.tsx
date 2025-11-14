@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Pencil, Trash2, Tag, GripVertical } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Tag, GripVertical, Scale } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -98,6 +98,9 @@ function SortableCategory({ category, onEdit, onDelete }: SortableCategoryProps)
               <CardTitle className="text-lg" data-testid={`text-category-name-${category.id}`}>
                 {category.name}
               </CardTitle>
+              {!!category.isTareWeightCategory && (
+                <Scale className="h-4 w-4 text-muted-foreground" data-testid={`icon-tare-weight-${category.id}`} />
+              )}
             </div>
             <div className="flex gap-1">
               <Button
@@ -308,6 +311,13 @@ export default function Categories() {
           <Plus className="h-4 w-4 mr-2" />
           New Category
         </Button>
+      </div>
+
+      <div className="mb-6 flex items-center gap-6 text-sm text-muted-foreground" data-testid="legend-categories">
+        <div className="flex items-center gap-2">
+          <Scale className="h-4 w-4" />
+          <span data-testid="text-tare-weight-legend">Tare weight category (case counting enabled)</span>
+        </div>
       </div>
 
       <div className="mb-6">
