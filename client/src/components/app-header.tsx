@@ -208,18 +208,18 @@ export function AppHeader() {
           <NavigationMenuList>
             {/* Dashboard - no submenu */}
             <NavigationMenuItem>
-              <Link href="/">
-                <NavigationMenuLink
-                  className={cn(
-                    navigationMenuTriggerStyle(),
-                    location === "/" && "bg-accent"
-                  )}
-                  data-testid="link-dashboard"
-                >
+              <NavigationMenuLink
+                asChild
+                className={cn(
+                  navigationMenuTriggerStyle(),
+                  location === "/" && "bg-accent"
+                )}
+              >
+                <Link href="/" data-testid="link-dashboard">
                   <Home className="h-4 w-4 mr-2" />
                   Dashboard
-                </NavigationMenuLink>
-              </Link>
+                </Link>
+              </NavigationMenuLink>
             </NavigationMenuItem>
 
             {/* Mega menu sections */}
@@ -231,18 +231,22 @@ export function AppHeader() {
                 <NavigationMenuContent>
                   <div className="w-64 p-2">
                     {section.items.map((item) => (
-                      <Link key={item.url} href={item.url}>
-                        <NavigationMenuLink
-                          className={cn(
-                            "flex items-center gap-3 rounded-md px-3 py-2 text-sm hover-elevate active-elevate-2 transition-colors",
-                            location === item.url && "bg-accent"
-                          )}
+                      <NavigationMenuLink
+                        key={item.url}
+                        asChild
+                        className={cn(
+                          "flex items-center gap-3 rounded-md px-3 py-2 text-sm hover-elevate active-elevate-2 transition-colors",
+                          location === item.url && "bg-accent"
+                        )}
+                      >
+                        <Link
+                          href={item.url}
                           data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
                         >
                           <item.icon className="h-4 w-4" />
                           <span>{item.title}</span>
-                        </NavigationMenuLink>
-                      </Link>
+                        </Link>
+                      </NavigationMenuLink>
                     ))}
                   </div>
                 </NavigationMenuContent>
