@@ -109,6 +109,7 @@ export interface IStorage {
   createCategory(category: InsertCategory): Promise<Category>;
   updateCategory(id: string, companyId: string, category: Partial<Category>): Promise<Category | undefined>;
   deleteCategory(id: string, companyId: string): Promise<void>;
+  reorderCategories(companyId: string, categoryOrders: { id: string; sortOrder: number }[]): Promise<void>;
 
   // Units
   getUnits(): Promise<Unit[]>;
@@ -786,6 +787,21 @@ export class DatabaseStorage implements IStorage {
         eq(categories.id, id),
         eq(categories.companyId, companyId)
       ));
+  }
+
+  async reorderCategories(companyId: string, categoryOrders: { id: string; sortOrder: number }[]): Promise<void> {
+    // Update all categories in a transaction
+    await db.transaction(async (tx) => {
+      for (const { id, sortOrder } of categoryOrders) {
+        await tx
+          .update(categories)
+          .set({ sortOrder })
+          .where(and(
+            eq(categories.id, id),
+            eq(categories.companyId, companyId)
+          ));
+      }
+    });
   }
 
   // Units
