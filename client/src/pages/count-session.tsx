@@ -156,6 +156,14 @@ function CountQuantityEditor({
   );
 }
 
+// Helper function to generate URL-safe anchor IDs
+function generateAnchorId(prefix: string, value: string): string {
+  // For UUIDs (locations), keep as-is with prefix
+  // For category names, slugify them
+  const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return `${prefix}-${slug}`;
+}
+
 export default function CountSession() {
   const params = useParams();
   const countId = params.id;
@@ -169,6 +177,7 @@ export default function CountSession() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [selectedItemId, setSelectedItemId] = useState<string>(filterItemId || "all");
+  const [openAccordionSections, setOpenAccordionSections] = useState<string[]>([]);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   
   // Update filter when URL parameters change
@@ -181,6 +190,7 @@ export default function CountSession() {
       setSelectedItemId("all");
     }
   }, [window.location.search]);
+  
   const [editingQty, setEditingQty] = useState<string>("");
   const [editingCaseQty, setEditingCaseQty] = useState<string>("");
   const [editingLooseUnits, setEditingLooseUnits] = useState<string>("");
@@ -240,6 +250,29 @@ export default function CountSession() {
   const { data: categoriesData } = useQuery<any[]>({
     queryKey: ["/api/categories"],
   });
+  
+  // Initialize accordion sections to be open by default when data loads
+  useEffect(() => {
+    if (countLines && countLines.length > 0 && openAccordionSections.length === 0) {
+      // Group lines to get all groupKeys
+      const grouped: Record<string, any[]> = {};
+      countLines.forEach(line => {
+        let groupKey: string;
+        if (groupBy === "location") {
+          groupKey = line.inventoryItem?.storageLocationId || "unknown";
+        } else {
+          groupKey = line.inventoryItem?.category || "Uncategorized";
+        }
+        if (!grouped[groupKey]) {
+          grouped[groupKey] = [];
+        }
+        grouped[groupKey].push(line);
+      });
+      
+      // Open all sections by default
+      setOpenAccordionSections(Object.keys(grouped));
+    }
+  }, [countLines, groupBy, openAccordionSections.length]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; qty: number; caseQty?: number | null; looseUnits?: number | null }) => {
@@ -450,6 +483,38 @@ export default function CountSession() {
       });
     },
   });
+
+  // Helper function to scroll to a section and open it
+  const scrollToSection = (groupKey: string, prefix: string) => {
+    const anchorId = generateAnchorId(prefix, groupKey);
+    
+    // Open the target accordion section if not already open
+    if (!openAccordionSections.includes(groupKey)) {
+      setOpenAccordionSections(prev => [...prev, groupKey]);
+    }
+    
+    // Scroll to the element after a brief delay to allow accordion to open
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const element = document.getElementById(anchorId);
+        if (element) {
+          // Check for reduced motion preference
+          const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          
+          element.scrollIntoView({
+            behavior: prefersReducedMotion ? 'auto' : 'smooth',
+            block: 'start',
+          });
+          
+          // Focus the element for accessibility
+          const trigger = element.querySelector('[role="button"]');
+          if (trigger instanceof HTMLElement) {
+            trigger.focus({ preventScroll: true });
+          }
+        }
+      }, 100);
+    });
+  };
 
   const unlockCountMutation = useMutation({
     mutationFn: async () => {
@@ -755,7 +820,15 @@ export default function CountSession() {
                     className={`border rounded-lg p-4 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
                       selectedCategory === category ? 'bg-accent border-accent-border' : ''
                     }`}
-                    onClick={() => setSelectedCategory(selectedCategory === category ? "all" : category)}
+                    onClick={() => {
+                      if (selectedCategory === category) {
+                        setSelectedCategory("all");
+                      } else {
+                        setSelectedCategory(category);
+                        setGroupBy("category");
+                        scrollToSection(category, "category");
+                      }
+                    }}
                     tabIndex={-1}
                     data-testid={`card-category-${category.toLowerCase().replace(/\s+/g, '-')}`}
                   >
@@ -803,7 +876,15 @@ export default function CountSession() {
                     className={`border rounded-lg p-4 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
                       selectedLocation === locationId ? 'bg-accent border-accent-border' : ''
                     }`}
-                    onClick={() => setSelectedLocation(selectedLocation === locationId ? "all" : locationId)}
+                    onClick={() => {
+                      if (selectedLocation === locationId) {
+                        setSelectedLocation("all");
+                      } else {
+                        setSelectedLocation(locationId);
+                        setGroupBy("location");
+                        scrollToSection(locationId, "location");
+                      }
+                    }}
                     tabIndex={-1}
                     data-testid={`card-location-${data.name.toLowerCase().replace(/\s+/g, '-')}`}
                   >
@@ -915,7 +996,8 @@ export default function CountSession() {
                 return (
                   <Accordion 
                     type="multiple" 
-                    defaultValue={groupOrder} 
+                    value={openAccordionSections}
+                    onValueChange={setOpenAccordionSections}
                     className="w-full"
                     key={groupOrder.join(',') + groupBy} // Force remount when filtered items or groupBy changes
                   >
@@ -934,8 +1016,11 @@ export default function CountSession() {
                       const totalQty = lines.reduce((sum, l) => sum + l.qty, 0);
                       const totalValue = lines.reduce((sum, l) => sum + (l.qty * (l.unitCost || 0)), 0);
                       
+                      // Generate anchor ID for this section
+                      const anchorId = generateAnchorId(groupBy, groupKey);
+                      
                       return (
-                        <AccordionItem key={groupKey} value={groupKey} className="border rounded-md mb-2">
+                        <AccordionItem key={groupKey} value={groupKey} id={anchorId} className="border rounded-md mb-2">
                           <AccordionTrigger className="px-4 py-2 hover:no-underline bg-muted/30 hover:bg-muted/50 data-[state=open]:bg-muted/40" tabIndex={-1} data-testid={`accordion-group-${groupKey}`}>
                             <div className="flex items-center justify-between w-full pr-4">
                               <div className="flex items-center gap-4 flex-1">
