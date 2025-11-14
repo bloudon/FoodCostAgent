@@ -44,6 +44,112 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatUnitName } from "@/lib/utils";
 import type { Company, CompanyStore } from "@shared/schema";
 
+type CountMode = 'tare' | 'case' | 'simple';
+
+function getCountMode(category: any, location: any): CountMode {
+  if (category?.isTareWeightCategory === 1) {
+    return 'tare';
+  }
+  if (location?.allowCaseCounting === 1) {
+    return 'case';
+  }
+  return 'simple';
+}
+
+interface CountQuantityEditorProps {
+  line: any;
+  item: any;
+  mode: CountMode;
+  isEditing: boolean;
+  editingQty: string;
+  editingCaseQty: string;
+  editingLooseUnits: string;
+  onFocus: () => void;
+  onQtyChange: (value: string) => void;
+  onCaseQtyChange: (value: string) => void;
+  onLooseUnitsChange: (value: string) => void;
+  onBlur: () => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  readOnly?: boolean;
+}
+
+function CountQuantityEditor({
+  line,
+  item,
+  mode,
+  isEditing,
+  editingQty,
+  editingCaseQty,
+  editingLooseUnits,
+  onFocus,
+  onQtyChange,
+  onCaseQtyChange,
+  onLooseUnitsChange,
+  onBlur,
+  onKeyDown,
+  readOnly = false
+}: CountQuantityEditorProps) {
+  if (mode === 'case') {
+    const caseQty = isEditing ? editingCaseQty : (line.caseQty ?? 0);
+    const looseUnits = isEditing ? editingLooseUnits : (line.looseUnits ?? 0);
+    
+    return (
+      <div className="flex items-center gap-2">
+        <div className="flex flex-col">
+          <label className="text-xs text-muted-foreground mb-1">Cases</label>
+          <Input
+            type="number"
+            step="1"
+            min="0"
+            value={caseQty}
+            onFocus={onFocus}
+            onChange={(e) => onCaseQtyChange(e.target.value)}
+            onBlur={onBlur}
+            onKeyDown={onKeyDown}
+            className="w-24 h-9"
+            disabled={readOnly}
+            data-testid={`input-case-qty-${line.id}`}
+          />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-xs text-muted-foreground mb-1">Loose Units</label>
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            value={looseUnits}
+            onFocus={onFocus}
+            onChange={(e) => onLooseUnitsChange(e.target.value)}
+            onBlur={onBlur}
+            onKeyDown={onKeyDown}
+            className="w-24 h-9"
+            disabled={readOnly}
+            data-testid={`input-loose-units-${line.id}`}
+          />
+        </div>
+        <div className="text-sm text-muted-foreground mt-5">
+          = {((parseFloat(caseQty.toString()) || 0) * (item?.caseSize || 0) + (parseFloat(looseUnits.toString()) || 0)).toFixed(2)} {item?.unitName}
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <Input
+      type="number"
+      step="0.01"
+      value={isEditing ? editingQty : line.qty}
+      onFocus={onFocus}
+      onChange={(e) => onQtyChange(e.target.value)}
+      onBlur={onBlur}
+      onKeyDown={onKeyDown}
+      className="w-32 h-9"
+      disabled={readOnly}
+      data-testid={`input-qty-${line.id}`}
+    />
+  );
+}
+
 export default function CountSession() {
   const params = useParams();
   const countId = params.id;
@@ -70,6 +176,8 @@ export default function CountSession() {
     }
   }, [window.location.search]);
   const [editingQty, setEditingQty] = useState<string>("");
+  const [editingCaseQty, setEditingCaseQty] = useState<string>("");
+  const [editingLooseUnits, setEditingLooseUnits] = useState<string>("");
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [wasTabPressed, setWasTabPressed] = useState(false);
   const [itemEditForm, setItemEditForm] = useState({
@@ -128,8 +236,12 @@ export default function CountSession() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; qty: number }) => {
-      return apiRequest("PATCH", `/api/inventory-count-lines/${data.id}`, { qty: data.qty });
+    mutationFn: async (data: { id: string; qty: number; caseQty?: number | null; looseUnits?: number | null }) => {
+      return apiRequest("PATCH", `/api/inventory-count-lines/${data.id}`, { 
+        qty: data.qty,
+        caseQty: data.caseQty,
+        looseUnits: data.looseUnits
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
@@ -145,26 +257,68 @@ export default function CountSession() {
     },
   });
 
-  const handleStartEdit = (line: any) => {
+  const handleStartEdit = (line: any, mode: CountMode) => {
     setEditingLineId(line.id);
-    setEditingQty(line.qty.toString());
+    
+    if (mode === 'case') {
+      // Initialize case counting fields - use existing values or fallback to calculated from qty
+      const item = countLines?.find(l => l.id === line.id)?.inventoryItem;
+      const caseSize = item?.caseSize || 1;
+      
+      if (line.caseQty != null && line.looseUnits != null) {
+        // Use existing case count data
+        setEditingCaseQty(line.caseQty.toString());
+        setEditingLooseUnits(line.looseUnits.toString());
+      } else {
+        // Fallback: calculate from qty
+        const cases = Math.floor(line.qty / caseSize);
+        const loose = line.qty % caseSize;
+        setEditingCaseQty(cases.toString());
+        setEditingLooseUnits(loose.toFixed(2));
+      }
+      setEditingQty("");
+    } else {
+      // Simple or tare mode - just use qty
+      setEditingQty(line.qty.toString());
+      setEditingCaseQty("");
+      setEditingLooseUnits("");
+    }
   };
 
-  const handleSaveEdit = (lineId: string) => {
+  const handleSaveEdit = (lineId: string, mode: CountMode, item: any) => {
     // Prevent edits in read-only mode
     if (count && count.canEdit === false) {
       return;
     }
     
-    const qty = parseFloat(editingQty);
+    let qty: number;
+    let caseQty: number | null = null;
+    let looseUnits: number | null = null;
+    
+    if (mode === 'case') {
+      // Calculate qty from case counts
+      const cases = parseFloat(editingCaseQty) || 0;
+      const loose = parseFloat(editingLooseUnits) || 0;
+      const caseSize = item?.caseSize || 0;
+      
+      qty = (cases * caseSize) + loose;
+      caseQty = cases;
+      looseUnits = loose;
+    } else {
+      // Simple or tare mode - use qty directly
+      qty = parseFloat(editingQty) || 0;
+    }
+    
     if (!isNaN(qty) && qty >= 0) {
-      updateMutation.mutate({ id: lineId, qty });
+      updateMutation.mutate({ id: lineId, qty, caseQty, looseUnits });
     }
   };
 
   const handleCancelEdit = () => {
     setEditingLineId(null);
     setEditingQty("");
+    setEditingCaseQty("");
+    setEditingLooseUnits("");
   };
 
   const handleOpenItemEdit = (item: any) => {
@@ -846,7 +1000,12 @@ export default function CountSession() {
                                         
                                         {/* Location Inputs */}
                                         <div className="grid grid-cols-1 gap-2">
-                                          {itemLines.map((line, idx) => (
+                                          {itemLines.map((line, idx) => {
+                                            const category = categoriesData?.find(c => c.id === item?.categoryId);
+                                            const location = storageLocations?.find(l => l.id === line.storageLocationId);
+                                            const mode = getCountMode(category, location);
+                                            
+                                            return (
                                             <div key={line.id} className="flex items-center gap-3" data-testid={`location-input-${line.id}`}>
                                               <label className="w-40 text-sm text-muted-foreground">
                                                 {line.storageLocationName || 'Unknown'}:
@@ -856,28 +1015,27 @@ export default function CountSession() {
                                                   {line.qty}
                                                 </div>
                                               ) : (
-                                                <Input
-                                                  type="number"
-                                                  step="0.01"
-                                                  value={editingLineId === line.id ? editingQty : line.qty}
-                                                  onFocus={() => {
-                                                    setEditingLineId(line.id);
-                                                    setEditingQty(line.qty.toString());
-                                                  }}
-                                                  onChange={(e) => {
-                                                    if (editingLineId === line.id) {
-                                                      setEditingQty(e.target.value);
-                                                    }
-                                                  }}
+                                                <CountQuantityEditor
+                                                  line={line}
+                                                  item={item}
+                                                  mode={mode}
+                                                  isEditing={editingLineId === line.id}
+                                                  editingQty={editingQty}
+                                                  editingCaseQty={editingCaseQty}
+                                                  editingLooseUnits={editingLooseUnits}
+                                                  onFocus={() => handleStartEdit(line, mode)}
+                                                  onQtyChange={setEditingQty}
+                                                  onCaseQtyChange={setEditingCaseQty}
+                                                  onLooseUnitsChange={setEditingLooseUnits}
                                                   onBlur={() => {
                                                     if (editingLineId === line.id) {
-                                                      handleSaveEdit(line.id);
+                                                      handleSaveEdit(line.id, mode, item);
                                                     }
                                                   }}
                                                   onKeyDown={(e) => {
                                                     if (e.key === 'Enter') {
                                                       e.preventDefault();
-                                                      handleSaveEdit(line.id);
+                                                      handleSaveEdit(line.id, mode, item);
                                                       // Focus next input if available
                                                       if (idx < itemLines.length - 1) {
                                                         const nextLine = itemLines[idx + 1];
@@ -893,15 +1051,14 @@ export default function CountSession() {
                                                       handleCancelEdit();
                                                     }
                                                   }}
-                                                  className="w-32 h-9"
-                                                  data-testid={`input-qty-${line.id}`}
                                                 />
                                               )}
                                               <div className="text-sm text-muted-foreground font-mono ml-2">
                                                 = ${(line.qty * (line.unitCost || 0)).toFixed(2)}
                                               </div>
                                             </div>
-                                          ))}
+                                            );
+                                          })}
                                         </div>
                                       </div>
                                     );
@@ -914,6 +1071,9 @@ export default function CountSession() {
                                 {lines.map((line, idx) => {
                                   const item = line.inventoryItem;
                                   const unitName = item?.unitName || 'unit';
+                                  const category = categoriesData?.find(c => c.id === item?.categoryId);
+                                  const location = storageLocations?.find(l => l.id === line.storageLocationId);
+                                  const mode = getCountMode(category, location);
                                   
                                   // Get previous quantity for this specific item at this location
                                   const previousLine = previousLines.find(
@@ -972,28 +1132,27 @@ export default function CountSession() {
                                             {line.qty}
                                           </div>
                                         ) : (
-                                          <Input
-                                            type="number"
-                                            step="0.01"
-                                            value={editingLineId === line.id ? editingQty : line.qty}
-                                            onFocus={() => {
-                                              setEditingLineId(line.id);
-                                              setEditingQty(line.qty.toString());
-                                            }}
-                                            onChange={(e) => {
-                                              if (editingLineId === line.id) {
-                                                setEditingQty(e.target.value);
-                                              }
-                                            }}
+                                          <CountQuantityEditor
+                                            line={line}
+                                            item={item}
+                                            mode={mode}
+                                            isEditing={editingLineId === line.id}
+                                            editingQty={editingQty}
+                                            editingCaseQty={editingCaseQty}
+                                            editingLooseUnits={editingLooseUnits}
+                                            onFocus={() => handleStartEdit(line, mode)}
+                                            onQtyChange={setEditingQty}
+                                            onCaseQtyChange={setEditingCaseQty}
+                                            onLooseUnitsChange={setEditingLooseUnits}
                                             onBlur={() => {
                                               if (editingLineId === line.id) {
-                                                handleSaveEdit(line.id);
+                                                handleSaveEdit(line.id, mode, item);
                                               }
                                             }}
                                             onKeyDown={(e) => {
                                               if (e.key === 'Enter') {
                                                 e.preventDefault();
-                                                handleSaveEdit(line.id);
+                                                handleSaveEdit(line.id, mode, item);
                                                 // Focus next input if available
                                                 if (idx < lines.length - 1) {
                                                   const nextLine = lines[idx + 1];
@@ -1009,8 +1168,6 @@ export default function CountSession() {
                                                 handleCancelEdit();
                                               }
                                             }}
-                                            className="w-32 h-9"
-                                            data-testid={`input-qty-${line.id}`}
                                           />
                                         )}
                                         <div className="text-sm text-muted-foreground font-mono ml-2">

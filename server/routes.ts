@@ -2939,7 +2939,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const updatedLine = await storage.updateInventoryCountLine(req.params.id, lineData);
+      // Server-side validation and qty recalculation for case counting
+      const updates: any = { ...lineData };
+      
+      // Validate case counting fields
+      if (updates.caseQty != null || updates.looseUnits != null) {
+        const caseQty = updates.caseQty ?? 0;
+        const looseUnits = updates.looseUnits ?? 0;
+        
+        if (caseQty < 0) {
+          return res.status(400).json({ error: "Case quantity cannot be negative" });
+        }
+        if (looseUnits < 0) {
+          return res.status(400).json({ error: "Loose units cannot be negative" });
+        }
+        
+        // Recalculate qty from case counts (server-side integrity check)
+        // Get inventory item to retrieve case size
+        const item = await storage.getInventoryItem(existingLine.inventoryItemId);
+        if (item) {
+          const caseSize = item.caseSize || 0;
+          updates.qty = (caseQty * caseSize) + looseUnits;
+        }
+      } else if (updates.qty != null) {
+        // Regular qty update - clear case counting fields
+        if (updates.qty < 0) {
+          return res.status(400).json({ error: "Quantity cannot be negative" });
+        }
+        updates.caseQty = null;
+        updates.looseUnits = null;
+      }
+
+      const updatedLine = await storage.updateInventoryCountLine(req.params.id, updates);
 
       // Note: Inventory counts record what was counted, they don't update inventory levels
       // Inventory adjustments should be done separately if needed

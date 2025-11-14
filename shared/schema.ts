@@ -465,7 +465,9 @@ export const inventoryCountLines = pgTable("inventory_count_lines", {
   inventoryCountId: varchar("inventory_count_id").notNull(),
   inventoryItemId: varchar("inventory_item_id").notNull(),
   storageLocationId: varchar("storage_location_id").notNull(), // Track qty per storage location
-  qty: real("qty").notNull().default(0), // quantity in base units
+  qty: real("qty").notNull().default(0), // quantity in base units (calculated from caseQty + looseUnits or entered directly)
+  caseQty: real("case_qty"), // number of full cases (for case counting)
+  looseUnits: real("loose_units"), // number of loose units from opened cases (for case counting)
   unitId: varchar("unit_id").notNull(),
   unitCost: real("unit_cost").notNull().default(0), // price per unit at time of count (snapshot)
   userId: varchar("user_id"),

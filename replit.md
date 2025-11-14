@@ -1,7 +1,7 @@
 # Restaurant Inventory & Recipe Costing Application
 
 ## Overview
-This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary goal is to optimize operations, minimize waste, and enhance profitability across multiple locations. Key capabilities include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The long-term vision is to establish the system as a leader in operational efficiency for multi-unit restaurant environments.
+This project is a comprehensive inventory management and recipe costing system designed for multi-company food service businesses, particularly pizza restaurants. Its primary purpose is to optimize operations, reduce waste, and enhance profitability across multiple locations. Key features include advanced unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual pricing (Last Cost and Weighted Average Cost), and vendor price comparison for purchase orders. The long-term vision is to establish this application as a leading solution for operational efficiency in multi-unit restaurant environments.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language.
@@ -27,7 +27,7 @@ This project is a comprehensive inventory management and recipe costing system d
 - Recipe Cost Display: Menu Items page displays computed recipe costs for all menu items that have recipes assigned, including both placeholder and complete recipes. Items without recipes show "-" in the Recipe Cost column.
 - Menu Items Table Enhancements: Removed the Recipe status badge column. Added Food Cost % column (calculated as recipe cost / price * 100) as the rightmost data column. All columns are sortable with visual sort indicators (ArrowUpDown, ArrowUp, ArrowDown icons). Clicking a column header sorts ascending, clicking again reverses to descending. Food Cost % displays as a percentage with one decimal trace (e.g., "25.4%") when both recipe cost and price exist, otherwise shows "-". Recipe Cost values are clickable links that navigate to the recipe edit page.
 - Recipe Builder Smart Back Button: Back button in Recipe Builder uses intelligent navigation - if browser history exists (history.length > 1), returns to previous page preserving navigation context; otherwise falls back to /recipes. This ensures users navigating from Menu Items return to Menu Items, while users from Recipes index return to Recipes, and direct URL access falls back gracefully.
-- Dual Pricing Model: Inventory items track both Last Cost (pricePerUnit - most recent purchase price) and Weighted Average Cost (avgCostPerUnit - WAC calculated across all receipts). Inventory Items page displays both price columns for better pricing visibility and decision-making. WAC is calculated during receiving using company-wide quantities: `((totalCompanyQty * currentAvgCost) + (receivedQty * receivedPrice)) / (totalCompanyQty + receivedQty)`.
+- Dual Pricing Model: Inventory items track both Last Cost (pricePerUnit - most recent purchase price) and Weighted Average Cost (avgCostPerUnit - WAC calculated across all receipts). Inventory Items page displays both price columns for better pricing visibility and decision-making. WAC is calculated during receiving using company-wide quantities: `((totalCompanyQty * currentAvgCost) + (receivedQty * receivedPrice)) / (totalCompanyQty + receivedPrice)) / (totalCompanyQty + receivedQty)`.
 - Vendor Price Comparison: Purchase order creation includes a "Compare Prices" button (TrendingDown icon) on each item row that opens a dialog showing all vendor prices for that item. The dialog displays vendor name, SKU, case size, unit price, and case price, sorted by case price (lowest first). The lowest-priced vendor is highlighted with a "Best Price" badge. Uses vendor-specific case sizes and includes zero-priced items (promotional offers). Only excludes vendors with null/undefined prices.
 - Vendor-Specific Purchase Order Pricing: Purchase orders use vendor-specific pricing (vendor_items.lastPrice) instead of general inventory pricing (inventory_items.pricePerUnit). All pricing logic uses nullish coalescing (`??`) to preserve legitimate zero-priced vendor items (promotional offers, free samples) while falling back to inventory pricing only when vendor prices are null/undefined. This ensures accurate vendor-specific costing for purchase orders, receipts, and price comparisons.
 - Vendor Delivery Scheduling: Delivery scheduling is managed at the vendor level. Each vendor has `deliveryDays` (array of weekdays when vendor delivers) and `leadDaysAhead` (number of days before delivery that orders must be placed). Vendors page includes checkboxes for each weekday and a numeric input for lead days ahead in the add/edit vendor dialog. Lead time field has been completely removed from vendor items (vendor_items table no longer has leadTimeDays column). This centralizes delivery scheduling at the vendor level for more efficient order planning.
@@ -57,7 +57,7 @@ The system employs a multi-tenant architecture with robust data isolation at bot
 - **Runtime**: Node.js with TypeScript.
 - **Web Framework**: Express.js (RESTful APIs).
 - **API Design**: RESTful, WebSocket, Zod for schema validation.
-- **Database Layer**: Drizzle ORM, PostgreSQL (Neon), schema-first approach.
+- **Database Layer**: Drizzle ORM, PostgreSQL.
 - **Core Domain Models**: Users, Storage Locations, Units, Inventory Items, Vendors, Recipes (nested), Inventory Counts, Purchase Orders, POS Sales, Transfer/Waste Logs.
 - **Business Logic**: Unit conversion, recursive recipe costing, location-based inventory, theoretical vs. actual usage variance, comprehensive PO workflows, COGS analysis.
 - **Authentication & Authorization**: Hybrid authentication (username/password, SSO), Role-Based Access Control (RBAC).
@@ -80,5 +80,5 @@ The system employs a multi-tenant architecture with robust data isolation at bot
 - **Database Services**: Neon serverless PostgreSQL.
 - **Real-time Communication**: `ws` (WebSockets library).
 - **Image Processing**: Sharp.
-- **Object Storage**: Replit's object storage (powered by Google Cloud Storage).
+- **Object Storage**: Replit's object storage.
 - **Vendor Integrations**: Sysco, GFS, US Foods (via custom adapters).
