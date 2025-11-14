@@ -6269,16 +6269,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }));
 
       // Get purchase orders received during this period
-      const receivedOrders = await db.query.purchaseOrders.findMany({
+      // Query receipts to find which orders were received in this timeframe
+      const receivedReceiptsInPeriod = await db.query.receipts.findMany({
         where: and(
-          eq(purchaseOrders.companyId, companyId),
-          eq(purchaseOrders.storeId, storeId as string),
-          eq(purchaseOrders.status, 'received'),
-          gte(purchaseOrders.updatedAt, previousCount.countDate),
-          lte(purchaseOrders.updatedAt, currentCount.countDate)
+          eq(receipts.companyId, companyId),
+          eq(receipts.storeId, storeId as string),
+          eq(receipts.status, 'completed'),
+          gte(receipts.receivedAt, new Date(previousCount.countDate)),
+          lte(receipts.receivedAt, new Date(currentCount.countDate))
         ),
-        orderBy: (purchaseOrders, { asc }) => [asc(purchaseOrders.updatedAt)],
+        with: {
+          purchaseOrder: true,
+        },
+        orderBy: (receipts, { asc }) => [asc(receipts.receivedAt)],
       });
+
+      // Extract unique purchase orders from receipts
+      const receivedOrders = receivedReceiptsInPeriod
+        .filter(r => r.purchaseOrder)
+        .map(r => r.purchaseOrder!)
+        .filter((po, index, self) => 
+          index === self.findIndex(p => p.id === po.id)
+        );
 
       res.json({
         previousCountId,
@@ -6289,13 +6301,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         summary,
         categories: groupedItems,
         items: varianceItems, // Flat list for convenience
-        purchaseOrders: receivedOrders.map(po => ({
-          id: po.id,
-          orderNumber: po.orderNumber,
-          vendorId: po.vendorId,
-          orderDate: po.orderDate,
-          receivedAt: po.updatedAt,
-        })),
+        purchaseOrders: receivedOrders.map(po => {
+          // Find the latest receipt for this PO to get receivedAt timestamp
+          const latestReceipt = receivedReceiptsInPeriod
+            .filter(r => r.purchaseOrder?.id === po.id)
+            .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())[0];
+          
+          return {
+            id: po.id,
+            orderNumber: po.orderNumber,
+            vendorId: po.vendorId,
+            orderDate: po.expectedDate ? po.expectedDate.toISOString().split('T')[0] : '',
+            receivedAt: latestReceipt?.receivedAt.toISOString() || '',
+          };
+        }),
         salesSummary: {
           totalItemsSold,
           totalNetSales,
