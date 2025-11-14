@@ -263,20 +263,15 @@ export default function CountSession() {
     setEditingLineId(line.id);
     
     if (mode === 'case') {
-      // Initialize case counting fields - use existing values or fallback to calculated from qty
-      const item = countLines?.find(l => l.id === line.id)?.inventoryItem;
-      const caseSize = item?.caseSize || 1;
-      
-      if (line.caseQty != null && line.looseUnits != null) {
+      // Initialize case counting fields - use existing values or start with blank
+      if (line.caseQty != null || line.looseUnits != null) {
         // Use existing case count data
-        setEditingCaseQty(line.caseQty.toString());
-        setEditingLooseUnits(line.looseUnits.toString());
+        setEditingCaseQty(line.caseQty != null ? line.caseQty.toString() : '');
+        setEditingLooseUnits(line.looseUnits != null ? line.looseUnits.toString() : '');
       } else {
-        // Fallback: calculate from qty
-        const cases = Math.floor(line.qty / caseSize);
-        const loose = line.qty % caseSize;
-        setEditingCaseQty(cases.toString());
-        setEditingLooseUnits(loose.toFixed(2));
+        // Start with empty fields for first-time entry
+        setEditingCaseQty('');
+        setEditingLooseUnits('');
       }
       setEditingQty("");
     } else {
@@ -299,13 +294,21 @@ export default function CountSession() {
     
     if (mode === 'case') {
       // Calculate qty from case counts
-      const cases = parseFloat(editingCaseQty) || 0;
-      const loose = parseFloat(editingLooseUnits) || 0;
+      // Only save values if they're actually entered (not empty strings)
+      const casesValue = editingCaseQty.trim();
+      const looseValue = editingLooseUnits.trim();
       const caseSize = item?.caseSize || 0;
       
+      const cases = casesValue !== '' ? parseFloat(casesValue) : 0;
+      const loose = looseValue !== '' ? parseFloat(looseValue) : 0;
+      
       qty = (cases * caseSize) + loose;
-      caseQty = cases;
-      looseUnits = loose;
+      
+      // Only store case counts if at least one field has a value
+      if (casesValue !== '' || looseValue !== '') {
+        caseQty = casesValue !== '' ? cases : 0;
+        looseUnits = looseValue !== '' ? loose : 0;
+      }
     } else {
       // Simple or tare mode - use qty directly
       qty = parseFloat(editingQty) || 0;
@@ -1111,6 +1114,11 @@ export default function CountSession() {
                                           <div className="text-muted-foreground">
                                             {formatUnitName(unitName)}
                                           </div>
+                                          {mode === 'case' && item?.caseSize && (
+                                            <div className="text-muted-foreground">
+                                              Case: {item.caseSize} {formatUnitName(unitName)}
+                                            </div>
+                                          )}
                                           <div className="font-mono">
                                             ${(line.unitCost || 0).toFixed(2)}
                                           </div>
@@ -1127,7 +1135,7 @@ export default function CountSession() {
                                       {/* Quantity Input */}
                                       <div className="flex items-center gap-3">
                                         <label className="w-20 text-sm text-muted-foreground">
-                                          Quantity:
+                                          Qty:
                                         </label>
                                         {isReadOnly ? (
                                           <div className="w-32 h-9 flex items-center font-mono font-semibold" data-testid={`text-qty-${line.id}`}>
