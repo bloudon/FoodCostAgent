@@ -1187,6 +1187,13 @@ export class DatabaseStorage implements IStorage {
     
     // Filter by company if provided - join with vendors table
     if (companyId) {
+      const companyConditions = [eq(vendors.companyId, companyId)];
+      
+      // Also apply vendorId filter if provided
+      if (conditions.length > 0) {
+        companyConditions.push(...conditions);
+      }
+      
       return db
         .select({
           id: vendorItems.id,
@@ -1201,7 +1208,7 @@ export class DatabaseStorage implements IStorage {
         })
         .from(vendorItems)
         .innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
-        .where(eq(vendors.companyId, companyId));
+        .where(and(...companyConditions));
     }
     
     if (conditions.length > 0) {
