@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system for food service businesses. Its primary goal is to enhance operational efficiency, minimize waste, and improve profitability across multiple locations. Key features include accurate unit conversions, multi-level nested recipe management, POS sales data integration, detailed variance reporting, dual inventory pricing, streamlined purchasing, and comprehensive business intelligence. The system aims to be a scalable and impactful solution in the food service technology sector.
+This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its core purpose is to enhance operational efficiency, minimize waste, and boost profitability across various business locations. Key functionalities include accurate unit conversions, multi-level nested recipe management, integration with POS sales data, detailed variance reporting, dual inventory pricing, streamlined purchasing, and comprehensive business intelligence. The system aims to be a scalable and impactful solution within the food service technology sector.
 
 # User Preferences
 
@@ -48,20 +48,22 @@ This project is a multi-company inventory management and recipe costing system f
 - TFC Unit System Clarification: The `theoretical_usage_lines.requiredQtyBaseUnit` field stores quantities in each inventory item's unit (e.g., pounds for cheese, fluid ounces for liquids), NOT in micro-units. The term "base unit" refers to the inventory item's base unit, not the system's canonical base (grams/mL). Both actual usage (from inventory counts) and theoretical usage (from stored theoretical usage runs) are already in the same inventory-item-level units, requiring no conversion in variance calculations. The `units.toBaseRatio` field converts to canonical base units (grams/mL) and should NOT be used for variance comparisons. Recipe component calculations use `convertToBaseUnit()` to ensure recipe ingredients are converted into the target inventory item's unit before storage. The variance endpoint queries stored `theoretical_usage_lines` (which already have unit conversions applied) rather than recalculating from recipe components to ensure consistency with the theoretical detail modal.
 - TFC Variance Cost Calculation: Variance cost impact is calculated as (variance units × weighted average cost per unit). The `getItemUsageBetweenCounts` function returns `pricePerUnit` populated from `inventory_items.avgCostPerUnit` (weighted average cost) for accurate cost calculations. Variance cost = (actualUsage - theoreticalUsage) × pricePerUnit.
 - TFC Variance Table Enhancements: Variance report includes WAC (Weighted Average Cost) column positioned between Variance % and Cost Impact, displaying the per-unit cost used in variance calculations. Table includes totals row at bottom showing sum of all variance costs with color-coded display (red for over-usage, green for savings) and bold styling with muted background.
+- TFC Purchase Order Receipt Modal: Purchase orders displayed in the "Purchase Orders Delivered" section are clickable, opening a modal dialog that shows receipt details without leaving the variance page. Modal displays received items with quantities, prices, and line totals, along with receipt status and timestamp. Includes "View Full Order" button to navigate to the complete purchase order page. Backend endpoint `/api/purchase-orders/:poId/receipts` enriches receipt lines with inventory item names, vendor SKUs, and unit names for complete display.
+- TFC Variance Summary Cards: Variance page displays inventory count periods as a grid of clickable summary cards instead of a dropdown selector. Each card shows: Inventory Date, Inventory Value (total count value), Total Sales (POS sales for the period), Total Variance $ and % (aggregated across all items). Cards use responsive layout (1/2/3 columns on mobile/tablet/desktop) with hover elevation and selected state styling (border-primary bg-accent). Backend endpoint `/api/tfc/variance/summaries?storeId=X` calculates and returns summaries for all count periods. Frontend auto-selects the most recent period on load and clears selection when store changes to prevent stale count ID/store ID mismatches. Provides immediate visual overview of variance trends across multiple periods.
 
 # System Architecture
 
--   **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
--   **Backend**: Node.js (TypeScript) with Express.js and Zod for validation.
--   **Database**: PostgreSQL with Drizzle ORM.
--   **Application Structure**: Multi-tenant Single-Page Application (SPA) with strict data isolation per company.
--   **UI/UX Decisions**: Consistent navigation, informative top bar, theme toggling, and an intuitive Recipe Builder with cost visualization. Features include sortable tables, touch-friendly inventory count interfaces, comprehensive kitchen unit system with configurable preferences, and real-time cached recipe cost calculations. Conditional UI rendering supports multi-tenancy. Inventory count functionality includes tare weight categories and case counting. The TFC Theoretical Usage Detail modal provides proportional usage distribution.
--   **Technical Implementations**: Utilizes a micro-unit system for precise inventory tracking, a pluggable adapter pattern for vendor integrations, and centralized order management. Security features include HMAC-SHA256, connection pooling, composite indexes, atomic transactions, Redis caching, and response compression for optimized performance and data integrity.
+- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
+- **Backend**: Node.js (TypeScript) with Express.js and Zod for validation.
+- **Database**: PostgreSQL powered by Drizzle ORM.
+- **Application Structure**: Multi-tenant Single-Page Application (SPA) with strict data isolation.
+- **UI/UX Decisions**: Consistent navigation, informative top bar, theme toggling, intuitive Recipe Builder with cost visualization, sortable tables, touch-friendly inventory count interfaces, comprehensive kitchen unit system, and real-time cached recipe cost calculations. Conditional UI rendering for multi-tenancy. Inventory count enhancements include tare weight categories and case counting. TFC Theoretical Usage Detail modal provides proportional usage distribution.
+- **Technical Implementations**: Micro-unit system for precise inventory, pluggable adapter pattern for vendor integrations, centralized order management. Security features include HMAC-SHA256, connection pooling, composite indexes, atomic transactions, Redis caching, and response compression.
 
 # External Dependencies
 
--   **Database Services**: Neon serverless PostgreSQL
--   **Real-time Communication**: `ws` library for WebSockets
--   **Image Processing**: Sharp
--   **Object Storage**: Replit's native object storage
--   **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods
+- **Database Services**: Neon serverless PostgreSQL.
+- **Real-time Communication**: `ws` library (WebSockets).
+- **Image Processing**: Sharp.
+- **Object Storage**: Replit's native object storage.
+- **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods.
