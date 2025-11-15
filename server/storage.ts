@@ -207,6 +207,7 @@ export interface IStorage {
     usage: number;
     unitId: string;
     unitName: string;
+    pricePerUnit: number;
     isNegativeUsage: boolean;
     previousCountId: string;
     currentCountId: string;
@@ -1389,6 +1390,7 @@ export class DatabaseStorage implements IStorage {
     usage: number;
     unitId: string;
     unitName: string;
+    pricePerUnit: number;
     isNegativeUsage: boolean;
     previousCountId: string;
     currentCountId: string;
@@ -1530,7 +1532,7 @@ export class DatabaseStorage implements IStorage {
       ...Array.from(currentMap.keys()),
     ]);
 
-    // Get inventory item details for all items
+    // Get inventory item details for all items including price
     const itemDetails = await db
       .select({
         id: inventoryItems.id,
@@ -1538,6 +1540,7 @@ export class DatabaseStorage implements IStorage {
         categoryId: inventoryItems.categoryId,
         unitId: inventoryItems.unitId,
         unitName: units.name,
+        avgCostPerUnit: inventoryItems.avgCostPerUnit,
       })
       .from(inventoryItems)
       .innerJoin(units, eq(inventoryItems.unitId, units.id))
@@ -1572,6 +1575,7 @@ export class DatabaseStorage implements IStorage {
         usage,
         unitId: item?.unitId || '',
         unitName: item?.unitName || 'unit',
+        pricePerUnit: item?.avgCostPerUnit || 0,
         isNegativeUsage,
         previousCountId,
         currentCountId,
