@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary purpose is to boost operational efficiency, minimize waste, and increase profitability across various business locations. Key capabilities include precise unit conversions, multi-level nested recipe management, POS sales data integration, detailed variance reporting, dual inventory pricing (last cost & weighted average), streamlined purchasing, and comprehensive business intelligence. The system aims to be a scalable solution in the food service technology sector.
+This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary goal is to boost operational efficiency, minimize waste, and increase profitability across various business locations. Key functionalities include precise unit conversions, multi-level nested recipe management, integration with POS sales data, detailed variance reporting, dual inventory pricing (last cost & weighted average), streamlined purchasing, and comprehensive business intelligence. The system aims to be a scalable solution in the food service technology sector.
 
 # User Preferences
 
@@ -56,8 +56,8 @@ This project is a multi-company inventory management and recipe costing system d
 - **Backend**: Node.js (TypeScript) with Express.js and Zod for validation.
 - **Database**: PostgreSQL managed via Drizzle ORM.
 - **Application Structure**: A multi-tenant Single-Page Application (SPA) with strict data isolation per company.
-- **UI/UX Decisions**: Focuses on consistent navigation, an informative top bar, theme toggling, and an intuitive Recipe Builder with cost visualization. Features include sortable tables, touch-friendly inventory count interfaces, and a comprehensive kitchen unit system with configurable `preferredUnitSystem` settings and intelligent unit filtering. Real-time, cached recipe cost calculations and conditional UI rendering support multi-tenant data isolation. Enhanced inventory counts incorporate tare weight categories and case counting. The TFC Theoretical Usage Detail modal provides proportional usage distribution.
-- **Technical Implementations**: Utilizes a micro-unit system for precise inventory, a pluggable adapter pattern for vendor integrations, and centralized order management. Security measures include HMAC-SHA256, connection pooling, composite indexes, atomic transactions, Redis caching, and response compression.
+- **UI/UX Decisions**: Consistent navigation, informative top bar, theme toggling, and an intuitive Recipe Builder with cost visualization. Features include sortable tables, touch-friendly inventory count interfaces, and a comprehensive kitchen unit system with configurable `preferredUnitSystem` settings and intelligent unit filtering. Real-time, cached recipe cost calculations and conditional UI rendering support multi-tenant data isolation. Enhanced inventory counts incorporate tare weight categories and case counting. The TFC Theoretical Usage Detail modal provides proportional usage distribution.
+- **Technical Implementations**: Micro-unit system for precise inventory, pluggable adapter pattern for vendor integrations, and centralized order management. Security measures include HMAC-SHA256, connection pooling, composite indexes, atomic transactions, Redis caching, and response compression.
 
 # External Dependencies
 
