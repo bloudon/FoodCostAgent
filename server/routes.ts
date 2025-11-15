@@ -6085,6 +6085,166 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get variance summaries for all count periods
+  app.get("/api/tfc/variance/summaries", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { storeId } = req.query;
+
+      if (!companyId || !storeId) {
+        return res.status(400).json({ 
+          message: "Missing required parameter: storeId" 
+        });
+      }
+
+      // CRITICAL: Verify store belongs to company (multi-tenant isolation)
+      const store = await storage.getCompanyStore(storeId as string, companyId);
+      if (!store) {
+        return res.status(403).json({ message: "Store not found or access denied" });
+      }
+
+      // Get all applied counts for this store, sorted by count date descending
+      const allCounts = await db.query.inventoryCounts.findMany({
+        where: and(
+          eq(inventoryCounts.companyId, companyId),
+          eq(inventoryCounts.storeId, storeId as string),
+          eq(inventoryCounts.status, 'applied')
+        ),
+      });
+
+      const sortedCounts = allCounts.sort((a, b) => 
+        new Date(b.countDate).getTime() - new Date(a.countDate).getTime()
+      );
+
+      if (sortedCounts.length < 2) {
+        // Need at least two counts to calculate variance
+        return res.json([]);
+      }
+
+      // Calculate summaries for each count period (current count paired with its previous)
+      const summaries = await Promise.all(
+        sortedCounts.slice(0, -1).map(async (currentCount, index) => {
+          const previousCount = sortedCounts[index + 1];
+
+          // Get inventory count lines for current count to calculate total value
+          const currentLines = await db.query.inventoryCountLines.findMany({
+            where: eq(inventoryCountLines.countId, currentCount.id),
+          });
+
+          const inventoryValue = currentLines.reduce((sum, line) => {
+            return sum + (line.qty * (line.unitCost || 0));
+          }, 0);
+
+          // Get sales data between the two count dates
+          const salesData = await db
+            .select()
+            .from(dailyMenuItemSales)
+            .where(
+              and(
+                eq(dailyMenuItemSales.companyId, companyId),
+                eq(dailyMenuItemSales.storeId, storeId as string),
+                gte(dailyMenuItemSales.salesDate, previousCount.countDate),
+                lte(dailyMenuItemSales.salesDate, currentCount.countDate)
+              )
+            );
+
+          const totalSales = salesData.reduce((sum, sale) => sum + sale.netSales, 0);
+
+          // Get theoretical usage from stored runs
+          const theoreticalUsageMap = new Map<string, { qty: number; cost: number }>();
+          
+          const theoreticalRuns = await db
+            .select()
+            .from(theoreticalUsageRuns)
+            .where(
+              and(
+                eq(theoreticalUsageRuns.companyId, companyId),
+                eq(theoreticalUsageRuns.storeId, storeId as string),
+                gte(theoreticalUsageRuns.salesDate, previousCount.countDate),
+                lte(theoreticalUsageRuns.salesDate, currentCount.countDate)
+              )
+            );
+
+          if (theoreticalRuns.length > 0) {
+            const runIds = theoreticalRuns.map(r => r.id);
+            
+            const theoreticalLines = await db
+              .select()
+              .from(theoreticalUsageLines)
+              .where(inArray(theoreticalUsageLines.runId, runIds));
+
+            for (const line of theoreticalLines) {
+              const existing = theoreticalUsageMap.get(line.inventoryItemId);
+              if (existing) {
+                existing.qty += line.requiredQtyBaseUnit;
+                existing.cost += line.costAtSale;
+              } else {
+                theoreticalUsageMap.set(line.inventoryItemId, {
+                  qty: line.requiredQtyBaseUnit,
+                  cost: line.costAtSale,
+                });
+              }
+            }
+          }
+
+          // Get actual usage
+          const actualUsageData = await storage.getItemUsageBetweenCounts(
+            storeId as string,
+            previousCount.id,
+            currentCount.id
+          );
+
+          // Calculate variance
+          const allItemIds = new Set([
+            ...actualUsageData.map(a => a.inventoryItemId),
+            ...Array.from(theoreticalUsageMap.keys()),
+          ]);
+
+          let totalVarianceCost = 0;
+          let totalTheoreticalCost = 0;
+
+          for (const itemId of allItemIds) {
+            const actualData = actualUsageData.find(a => a.inventoryItemId === itemId);
+            const theoreticalData = theoreticalUsageMap.get(itemId);
+
+            const actualUsage = actualData?.usage || 0;
+            const theoreticalUsage = theoreticalData?.qty || 0;
+            const pricePerUnit = actualData?.pricePerUnit || 0;
+
+            const varianceUnits = actualUsage - theoreticalUsage;
+            const varianceCost = varianceUnits * pricePerUnit;
+            const theoreticalCost = theoreticalUsage * pricePerUnit;
+
+            totalVarianceCost += varianceCost;
+            totalTheoreticalCost += theoreticalCost;
+          }
+
+          const totalVariancePercent = totalTheoreticalCost > 0 
+            ? (totalVarianceCost / totalTheoreticalCost) * 100 
+            : 0;
+
+          return {
+            currentCountId: currentCount.id,
+            previousCountId: previousCount.id,
+            inventoryDate: currentCount.countDate,
+            inventoryValue,
+            totalSales,
+            totalVarianceCost,
+            totalVariancePercent,
+            daySpan: Math.ceil(
+              (new Date(currentCount.countDate).getTime() - new Date(previousCount.countDate).getTime()) / (1000 * 60 * 60 * 24)
+            ),
+          };
+        })
+      );
+
+      res.json(summaries);
+    } catch (error: any) {
+      console.error('Get variance summaries error:', error);
+      res.status(500).json({ message: "Failed to fetch variance summaries", error: error.message });
+    }
+  });
+
   // Get variance report between two inventory counts
   app.get("/api/tfc/variance", requireAuth, async (req, res) => {
     try {
