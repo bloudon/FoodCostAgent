@@ -6312,6 +6312,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return dateA.getTime() - dateB.getTime();
       });
 
+      // Fetch vendor information for purchase orders
+      const vendorIds = [...new Set(deliveredOrders.map(po => po.vendorId))];
+      const vendors = vendorIds.length > 0
+        ? await Promise.all(vendorIds.map(id => storage.getVendor(id)))
+        : [];
+      const vendorMap = new Map(vendors.filter(v => v).map(v => [v!.id, v!.name]));
+
       res.json({
         previousCountId,
         currentCountId,
@@ -6337,6 +6344,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: po.id,
             orderNumber: po.id.substring(0, 8), // Use first 8 chars of UUID as order number
             vendorId: po.vendorId,
+            vendorName: vendorMap.get(po.vendorId) || 'Unknown Vendor',
             expectedDate: deliveryDate,
           };
         }),

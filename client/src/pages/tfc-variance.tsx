@@ -51,6 +51,7 @@ type PurchaseOrder = {
   id: string;
   orderNumber: string;
   vendorId: string;
+  vendorName: string;
   expectedDate: string;
 };
 
@@ -132,6 +133,15 @@ export default function TfcVariance() {
       day: "numeric",
       year: "numeric",
     });
+  };
+
+  const formatPurchaseOrderDate = (dateStr: string) => {
+    // Format as M/D/YY
+    const date = new Date(dateStr);
+    const month = date.getMonth() + 1; // 0-indexed
+    const day = date.getDate();
+    const year = date.getFullYear().toString().slice(-2); // Last 2 digits
+    return `${month}/${day}/${year}`;
   };
 
   return (
@@ -237,18 +247,20 @@ export default function TfcVariance() {
                     <p className="text-sm font-medium text-foreground mb-2">
                       Purchase Orders Delivered ({varianceData.purchaseOrders.length}):
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      {varianceData.purchaseOrders.map((po) => (
-                        <a
-                          key={po.id}
-                          href={`/purchase-orders/${po.id}`}
-                          className="text-sm text-primary hover:underline"
-                          data-testid={`link-po-${po.id}`}
-                        >
-                          #{po.orderNumber}
-                        </a>
+                    <p className="text-sm text-primary" data-testid="text-purchase-orders">
+                      {varianceData.purchaseOrders.map((po, index) => (
+                        <span key={po.id}>
+                          <a
+                            href={`/purchase-orders/${po.id}`}
+                            className="hover:underline"
+                            data-testid={`link-po-${po.id}`}
+                          >
+                            {formatPurchaseOrderDate(po.expectedDate)} - {po.vendorName}
+                          </a>
+                          {index < varianceData.purchaseOrders.length - 1 && " | "}
+                        </span>
                       ))}
-                    </div>
+                    </p>
                   </div>
                 )}
               </div>
