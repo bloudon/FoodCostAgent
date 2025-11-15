@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system for food service businesses. Its core purpose is to optimize operational efficiency, reduce waste, and increase profitability across various business locations. Key functionalities include accurate unit conversions, multi-level nested recipe management, integration with POS sales data, detailed variance reporting, dual inventory pricing (last cost & weighted average), streamlined purchasing, and comprehensive business intelligence. The system aims to be a scalable and impactful solution in the food service technology sector.
+This project is a multi-company inventory management and recipe costing system for food service businesses. Its primary goal is to enhance operational efficiency, minimize waste, and improve profitability across multiple locations. Key features include accurate unit conversions, multi-level nested recipe management, POS sales data integration, detailed variance reporting, dual inventory pricing, streamlined purchasing, and comprehensive business intelligence. The system aims to be a scalable and impactful solution in the food service technology sector.
 
 # User Preferences
 
@@ -51,17 +51,17 @@ This project is a multi-company inventory management and recipe costing system f
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
-- **Backend**: Node.js (TypeScript) with Express.js and Zod for validation.
-- **Database**: PostgreSQL managed via Drizzle ORM.
-- **Application Structure**: A multi-tenant Single-Page Application (SPA) with strict data isolation per company.
-- **UI/UX Decisions**: Emphasizes consistent navigation, informative top bar, theme toggling, intuitive Recipe Builder with cost visualization, sortable tables, touch-friendly inventory count interfaces, and a comprehensive kitchen unit system with configurable preferences. Real-time, cached recipe cost calculations and conditional UI rendering are key for multi-tenancy. Inventory count functionality includes tare weight categories and case counting. The TFC Theoretical Usage Detail modal provides proportional usage distribution.
-- **Technical Implementations**: Utilizes a micro-unit system for precise inventory tracking, a pluggable adapter pattern for vendor integrations, and centralized order management. Security features include HMAC-SHA256, connection pooling, composite indexes, atomic transactions, Redis caching, and response compression.
+-   **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
+-   **Backend**: Node.js (TypeScript) with Express.js and Zod for validation.
+-   **Database**: PostgreSQL with Drizzle ORM.
+-   **Application Structure**: Multi-tenant Single-Page Application (SPA) with strict data isolation per company.
+-   **UI/UX Decisions**: Consistent navigation, informative top bar, theme toggling, and an intuitive Recipe Builder with cost visualization. Features include sortable tables, touch-friendly inventory count interfaces, comprehensive kitchen unit system with configurable preferences, and real-time cached recipe cost calculations. Conditional UI rendering supports multi-tenancy. Inventory count functionality includes tare weight categories and case counting. The TFC Theoretical Usage Detail modal provides proportional usage distribution.
+-   **Technical Implementations**: Utilizes a micro-unit system for precise inventory tracking, a pluggable adapter pattern for vendor integrations, and centralized order management. Security features include HMAC-SHA256, connection pooling, composite indexes, atomic transactions, Redis caching, and response compression for optimized performance and data integrity.
 
 # External Dependencies
 
-- **Database Services**: Neon serverless PostgreSQL.
-- **Real-time Communication**: `ws` library (WebSockets).
-- **Image Processing**: Sharp.
-- **Object Storage**: Replit's native object storage.
-- **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods.
+-   **Database Services**: Neon serverless PostgreSQL
+-   **Real-time Communication**: `ws` library for WebSockets
+-   **Image Processing**: Sharp
+-   **Object Storage**: Replit's native object storage
+-   **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods

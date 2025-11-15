@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,17 @@ type InventoryCount = {
   countDate: string;
   applied: number;
   completedAt: string | null;
+};
+
+type VarianceSummary = {
+  currentCountId: string;
+  previousCountId: string;
+  inventoryDate: string;
+  inventoryValue: number;
+  totalSales: number;
+  totalVarianceCost: number;
+  totalVariancePercent: number;
+  daySpan: number;
 };
 
 type VarianceItem = {
@@ -87,7 +98,7 @@ export default function TfcVariance() {
   const { selectedStoreId, stores } = useStoreContext();
   const companyId = getEffectiveCompanyId();
 
-  const [currentCountId, setCurrentCountId] = useState<string>("");
+  const [selectedSummary, setSelectedSummary] = useState<VarianceSummary | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedItemName, setSelectedItemName] = useState<string>("");
@@ -96,21 +107,27 @@ export default function TfcVariance() {
   const [selectedVendorName, setSelectedVendorName] = useState<string>("");
   const [selectedExpectedDate, setSelectedExpectedDate] = useState<string>("");
 
-  // Fetch applied inventory counts for the selected store
-  const { data: inventoryCounts = [] } = useQuery<InventoryCount[]>({
-    queryKey: [`/api/inventory-counts?companyId=${companyId}&storeId=${selectedStoreId}`],
+  // Fetch variance summaries for the selected store
+  const { data: summaries = [], isLoading: isLoadingSummaries } = useQuery<VarianceSummary[]>({
+    queryKey: [`/api/tfc/variance/summaries?storeId=${selectedStoreId}`],
     enabled: !!companyId && !!selectedStoreId,
   });
 
-  // Filter applied counts and sort by date ascending (oldest first)
-  const appliedCounts = inventoryCounts
-    .filter((count) => count.applied === 1)
-    .sort((a, b) => new Date(a.countDate).getTime() - new Date(b.countDate).getTime());
+  // Clear selected summary when store changes or when summaries load
+  useEffect(() => {
+    setSelectedSummary(null);
+  }, [selectedStoreId]);
 
-  // Automatically determine the previous count (the one immediately before the selected current count)
-  const currentCountIndex = appliedCounts.findIndex((c) => c.id === currentCountId);
-  const previousCount = currentCountIndex > 0 ? appliedCounts[currentCountIndex - 1] : null;
-  const previousCountId = previousCount?.id || "";
+  // Auto-select the most recent summary (first in list) when summaries load
+  useEffect(() => {
+    if (summaries.length > 0 && !selectedSummary) {
+      setSelectedSummary(summaries[0]);
+    }
+  }, [summaries, selectedSummary]);
+
+  // Get currentCountId and previousCountId from selected summary
+  const currentCountId = selectedSummary?.currentCountId || "";
+  const previousCountId = selectedSummary?.previousCountId || "";
 
   // Fetch variance data when both counts are selected
   const { data: varianceData, isLoading: isLoadingVariance, error: varianceError } = useQuery<VarianceResponse>({
@@ -167,87 +184,146 @@ export default function TfcVariance() {
       </div>
 
       <div className="mb-6">
+        <h2 className="text-lg font-semibold mb-4">Select Inventory Period</h2>
+        
+        {isLoadingSummaries ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <Card key={i} className="animate-pulse">
+                <CardHeader className="space-y-2">
+                  <div className="h-4 bg-muted rounded w-32" />
+                  <div className="h-3 bg-muted rounded w-24" />
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="h-3 bg-muted rounded w-full" />
+                  <div className="h-3 bg-muted rounded w-full" />
+                  <div className="h-3 bg-muted rounded w-3/4" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : summaries.length === 0 ? (
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-muted-foreground text-center">
+                No variance data available. You need at least two applied inventory counts to generate variance reports.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {summaries.map((summary) => (
+              <Card
+                key={summary.currentCountId}
+                className={`cursor-pointer transition-colors hover-elevate ${
+                  selectedSummary?.currentCountId === summary.currentCountId
+                    ? "border-primary bg-accent"
+                    : ""
+                }`}
+                onClick={() => setSelectedSummary(summary)}
+                data-testid={`card-summary-${summary.currentCountId}`}
+              >
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center justify-between">
+                    <span data-testid={`text-inventory-date-${summary.currentCountId}`}>
+                      {formatDate(summary.inventoryDate)}
+                    </span>
+                    <Badge variant={summary.totalVarianceCost > 0 ? "destructive" : "default"} data-testid={`badge-variance-${summary.currentCountId}`}>
+                      {summary.totalVariancePercent > 0 ? "+" : ""}
+                      {formatNumber(summary.totalVariancePercent, 1)}%
+                    </Badge>
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    {summary.daySpan} {summary.daySpan === 1 ? "day" : "days"}
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Inventory Value:</span>
+                    <span className="font-medium" data-testid={`text-inventory-value-${summary.currentCountId}`}>
+                      {formatCurrency(summary.inventoryValue)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Total Sales:</span>
+                    <span className="font-medium" data-testid={`text-total-sales-${summary.currentCountId}`}>
+                      {formatCurrency(summary.totalSales)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm pt-2 border-t">
+                    <span className="text-muted-foreground">Variance:</span>
+                    <span
+                      className={`font-semibold ${
+                        summary.totalVarianceCost > 0 ? "text-destructive" : "text-green-600 dark:text-green-400"
+                      }`}
+                      data-testid={`text-variance-cost-${summary.currentCountId}`}
+                    >
+                      {summary.totalVarianceCost > 0 ? "+" : ""}
+                      {formatCurrency(summary.totalVarianceCost)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {!varianceData && !isLoadingVariance && summaries.length > 0 && !selectedSummary && (
         <Card>
-          <CardContent className="pt-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Store</label>
-                <Select value={selectedStoreId} disabled={stores.length <= 1}>
-                  <SelectTrigger data-testid="select-store">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {stores.map((store) => (
-                      <SelectItem key={store.id} value={store.id}>
-                        {store.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Ending Inventory Count</label>
-                <Select
-                  value={currentCountId}
-                  onValueChange={setCurrentCountId}
-                  data-testid="select-ending-count"
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select count date..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {appliedCounts
-                      .filter((_, index) => index > 0)
-                      .map((count) => (
-                        <SelectItem key={count.id} value={count.id}>
-                          {formatDate(count.countDate)}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
+          <CardContent className="py-12">
+            <div className="text-center text-muted-foreground">
+              <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p className="font-medium">Select an Inventory Period</p>
+              <p className="text-sm mt-1">
+                Click on a period above to view detailed variance analysis
+              </p>
             </div>
+          </CardContent>
+        </Card>
+      )}
 
-            {currentCountId && previousCount && (
-              <div className="mt-4 p-3 bg-muted/50 rounded-md space-y-3">
+      {isLoadingVariance && (
+        <Card>
+          <CardContent className="py-12">
+            <div className="text-center text-muted-foreground">
+              <p>Loading variance data...</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {varianceData && (
+        <>
+          {/* Period Comparison Info */}
+          <Card className="mb-6">
+            <CardContent className="pt-6">
+              <div className="space-y-3">
                 <div>
                   <p className="text-sm text-muted-foreground">
                     Comparing:{" "}
-                    {varianceData ? (
-                      <Link 
-                        href={`/count/${varianceData.previousCountId}`}
-                        className="font-medium text-foreground hover:text-primary hover:underline"
-                        data-testid="link-previous-count"
-                      >
-                        {formatDate(previousCount.countDate)}
-                      </Link>
-                    ) : (
-                      <span className="font-medium text-foreground">{formatDate(previousCount.countDate)}</span>
-                    )}
+                    <Link 
+                      href={`/count/${varianceData.previousCountId}`}
+                      className="font-medium text-foreground hover:text-primary hover:underline"
+                      data-testid="link-previous-count"
+                    >
+                      {formatDate(varianceData.previousCountDate)}
+                    </Link>
                     {" → "}
-                    {varianceData ? (
-                      <Link 
-                        href={`/count/${varianceData.currentCountId}`}
-                        className="font-medium text-foreground hover:text-primary hover:underline"
-                        data-testid="link-current-count"
-                      >
-                        {formatDate(appliedCounts.find((c) => c.id === currentCountId)?.countDate || "")}
-                      </Link>
-                    ) : (
-                      <span className="font-medium text-foreground">
-                        {formatDate(appliedCounts.find((c) => c.id === currentCountId)?.countDate || "")}
-                      </span>
-                    )}
-                    {varianceData && (
-                      <span className="ml-2">
-                        ({varianceData.daySpan} {varianceData.daySpan === 1 ? "Day" : "Days"})
-                      </span>
-                    )}
+                    <Link 
+                      href={`/count/${varianceData.currentCountId}`}
+                      className="font-medium text-foreground hover:text-primary hover:underline"
+                      data-testid="link-current-count"
+                    >
+                      {formatDate(varianceData.currentCountDate)}
+                    </Link>
+                    <span className="ml-2">
+                      ({varianceData.daySpan} {varianceData.daySpan === 1 ? "Day" : "Days"})
+                    </span>
                   </p>
                 </div>
                 
-                {varianceData && varianceData.purchaseOrders && varianceData.purchaseOrders.length > 0 && (
+                {varianceData.purchaseOrders && varianceData.purchaseOrders.length > 0 && (
                   <div className="border-t border-border pt-3">
                     <p className="text-sm font-medium text-foreground mb-2">
                       Purchase Orders Delivered ({varianceData.purchaseOrders.length}):
@@ -274,37 +350,9 @@ export default function TfcVariance() {
                   </div>
                 )}
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
 
-      {!varianceData && !isLoadingVariance && (
-        <Card>
-          <CardContent className="py-12">
-            <div className="text-center text-muted-foreground">
-              <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="font-medium">Select Ending Inventory Count</p>
-              <p className="text-sm mt-1">
-                Choose an ending count to compare with the previous count
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {isLoadingVariance && (
-        <Card>
-          <CardContent className="py-12">
-            <div className="text-center text-muted-foreground">
-              <p>Loading variance data...</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {varianceData && (
-        <>
           {/* Sales Summary Section */}
           <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 mb-6">
             <Card>
