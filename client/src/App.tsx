@@ -101,47 +101,7 @@ function ProtectedLayoutContent() {
     <div className="flex flex-col h-screen w-full">
       {isGlobalAdmin && <GlobalAdminHeader />}
       
-      {/* Top Navigation Bar with company/store info */}
-      <div className="flex items-center justify-between px-4 sm:px-6 py-2 border-b bg-background">
-        <div className="flex items-center gap-3 sm:gap-4">
-          {company && (
-            <h2 className="text-base sm:text-lg font-semibold whitespace-nowrap" data-testid="text-company-name">
-              {company.name}
-            </h2>
-          )}
-          {stores.length > 0 && (
-            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-              <SelectTrigger className="w-[140px] sm:w-[180px]" data-testid="select-store">
-                <Store className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Select store" />
-              </SelectTrigger>
-              <SelectContent>
-                {stores.map((store) => (
-                  <SelectItem key={store.id} value={store.id} data-testid={`select-store-${store.id}`}>
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground mr-2 hidden sm:inline" data-testid="text-user-email">
-            {user?.email}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={logout}
-            data-testid="button-logout"
-          >
-            <LogOut className="h-5 w-5" />
-          </Button>
-          <ThemeToggle />
-        </div>
-      </div>
-
-      {/* Horizontal Navigation Menu */}
+      {/* Compact Combined Header */}
       <AppHeader />
 
       {/* Main Content */}

@@ -19,6 +19,7 @@ import {
   Key,
   Menu,
   X,
+  LogOut,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -43,6 +44,16 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
+import { useCompany } from "@/hooks/use-company";
+import { useStoreContext } from "@/hooks/use-store-context";
+import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface NavItem {
   title: string;
@@ -103,7 +114,9 @@ const navigationSections: NavSection[] = [
 export function AppHeader() {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const { company } = useCompany();
+  const { selectedStoreId, setSelectedStoreId, stores } = useStoreContext();
   const { data: accessibleStores, isLoading: storesLoading } = useAccessibleStores();
 
   // Store level users should only see Dashboard, Inventory Sessions and Orders
@@ -138,7 +151,7 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex h-14 items-center px-4 sm:px-6">
+      <div className="flex h-12 items-center px-4 sm:px-6 gap-3">
         {/* Mobile Menu */}
         <div className="flex md:hidden">
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -152,6 +165,31 @@ export function AppHeader() {
               <SheetHeader>
                 <SheetTitle>Navigation</SheetTitle>
               </SheetHeader>
+              
+              {/* Company/Store Info in Mobile */}
+              <div className="mt-4 pb-4 border-b">
+                {company && (
+                  <div className="font-semibold mb-2" data-testid="text-company-name">
+                    {company.name}
+                  </div>
+                )}
+                {stores.length > 0 && (
+                  <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+                    <SelectTrigger className="w-full" data-testid="select-store">
+                      <Store className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Select store" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stores.map((store) => (
+                        <SelectItem key={store.id} value={store.id} data-testid={`select-store-${store.id}`}>
+                          {store.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              
               <div className="mt-6">
                 {/* Dashboard - always visible */}
                 <Link href="/" onClick={() => setMobileMenuOpen(false)}>
@@ -195,9 +233,53 @@ export function AppHeader() {
                     </AccordionItem>
                   ))}
                 </Accordion>
+                
+                {/* User Controls in Mobile */}
+                <div className="mt-6 pt-4 border-t space-y-2">
+                  <div className="text-sm text-muted-foreground mb-2" data-testid="text-user-email">
+                    {user?.email}
+                  </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">Theme</span>
+                    <ThemeToggle />
+                  </div>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={logout}
+                    data-testid="button-logout"
+                  >
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Logout
+                  </Button>
+                </div>
               </div>
             </SheetContent>
           </Sheet>
+        </div>
+
+        {/* Company Name and Store Selector - Desktop */}
+        <div className="hidden md:flex items-center gap-3">
+          {company && (
+            <h2 className="text-base font-semibold whitespace-nowrap" data-testid="text-company-name">
+              {company.name}
+            </h2>
+          )}
+          {stores.length > 0 && (
+            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+              <SelectTrigger className="w-[140px] h-9" data-testid="select-store">
+                <Store className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Select store" />
+              </SelectTrigger>
+              <SelectContent>
+                {stores.map((store) => (
+                  <SelectItem key={store.id} value={store.id} data-testid={`select-store-${store.id}`}>
+                    {store.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         {/* Desktop Navigation */}
@@ -207,7 +289,7 @@ export function AppHeader() {
             <Button
               variant="ghost"
               className={cn(
-                "h-10 px-4 py-2",
+                "h-9 px-3 py-2",
                 location === "/" && "bg-accent"
               )}
             >
@@ -221,7 +303,7 @@ export function AppHeader() {
             <DropdownMenu key={section.title}>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="inline-flex h-10 items-center justify-center rounded-md bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none disabled:pointer-events-none disabled:opacity-50"
+                  className="inline-flex h-9 items-center justify-center rounded-md bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none disabled:pointer-events-none disabled:opacity-50"
                   data-testid={`menu-${section.title.toLowerCase()}`}
                 >
                   {section.title}
@@ -250,6 +332,23 @@ export function AppHeader() {
 
         {/* Spacer */}
         <div className="flex-1" />
+
+        {/* User Controls - Desktop */}
+        <div className="hidden md:flex items-center gap-2">
+          <span className="text-sm text-muted-foreground" data-testid="text-user-email">
+            {user?.email}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            onClick={logout}
+            data-testid="button-logout"
+          >
+            <LogOut className="h-4 w-4" />
+          </Button>
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

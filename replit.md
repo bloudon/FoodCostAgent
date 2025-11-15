@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system for food service businesses. Its core purpose is to enhance operational efficiency, minimize waste, and boost profitability across various business locations. Key capabilities include accurate unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), streamlined purchasing, and robust business intelligence. The system aims to be a scalable solution in the food service technology sector, optimizing food costs and operational workflows to provide a significant competitive advantage and achieve market leadership.
+This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its core purpose is to boost operational efficiency, minimize waste, and increase profitability across various business locations. Key features include precise unit conversions, multi-level nested recipe management, integration with POS sales data, comprehensive variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), streamlined purchasing, and robust business intelligence capabilities. The system boasts a compact single-row navigation header, ensuring optimal usability on both desktop and mobile devices. The long-term vision is to establish this system as a scalable, market-leading solution in food service technology, specifically aimed at optimizing food costs and operational workflows.
 
 # User Preferences
 
@@ -53,12 +53,12 @@ This project is a multi-company inventory management and recipe costing system f
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query for data fetching, React Context for state management, and Wouter for routing.
-- **Backend**: Node.js (TypeScript) with Express.js for the API and Zod for schema validation.
+- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
+- **Backend**: Node.js (TypeScript) with Express.js and Zod for schema validation.
 - **Database**: PostgreSQL managed with Drizzle ORM.
-- **Application Structure**: A multi-tenant Single-Page Application (SPA) ensuring strict data isolation between companies.
-- **UI/UX Decisions**: Consistent navigation, informative top bar, theme toggling, intuitive Recipe Builder with cost visualization, sortable tables, touch-friendly inventory count interfaces, and conditional UI rendering for multi-tenancy. Includes comprehensive kitchen unit system, real-time cached recipe cost calculations, tare weight categories, case counting, and a TFC Theoretical Usage Detail modal for proportional usage distribution.
-- **Technical Implementations**: Micro-unit system for precise tracking, pluggable adapter pattern for vendor integrations, centralized order management, and robust security features (HMAC-SHA256, connection pooling, composite indexes, atomic transactions, Redis caching, response compression).
+- **Application Structure**: Multi-tenant Single-Page Application (SPA) with strict data isolation.
+- **UI/UX Decisions**: Compact single-row navigation header, consistent navigation, theme toggling, intuitive Recipe Builder with cost visualization, sortable tables, touch-friendly inventory count interfaces, and conditional UI rendering for multi-tenancy. Includes a comprehensive kitchen unit system, real-time cached recipe cost calculations, tare weight categories, case counting, and TFC Theoretical Usage Detail modal.
+- **Technical Implementations**: Micro-unit system, pluggable adapter pattern for vendor integrations, centralized order management, and robust security features (HMAC-SHA256, connection pooling, composite indexes, atomic transactions, Redis caching, response compression).
 
 # External Dependencies
 
@@ -66,4 +66,4 @@ This project is a multi-company inventory management and recipe costing system f
 - **Real-time Communication**: `ws` library (WebSockets).
 - **Image Processing**: Sharp.
 - **Object Storage**: Replit's native object storage.
-- **Vendor Integrations**: Custom adapters developed for Sysco, GFS, and US Foods.
+- **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods.
