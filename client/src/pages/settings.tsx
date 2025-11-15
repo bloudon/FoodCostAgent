@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield } from "lucide-react";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -52,6 +52,12 @@ export default function Settings() {
   // Fetch current user with SSO info
   const { data: currentUser } = useQuery<any>({
     queryKey: ["/api/auth/me"],
+  });
+
+  // QuickBooks connection status
+  const { data: qbStatus, isLoading: qbStatusLoading, refetch: refetchQbStatus } = useQuery<any>({
+    queryKey: ["/api/quickbooks/status"],
+    retry: false,
   });
 
   // Vendor credentials query disabled - integrations tab removed
@@ -264,7 +270,7 @@ export default function Settings() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 max-w-4xl">
+        <TabsList className="grid w-full grid-cols-6 max-w-5xl">
           <TabsTrigger value="company" data-testid="tab-company">
             <Building2 className="h-4 w-4 mr-2" />
             Company
@@ -276,6 +282,10 @@ export default function Settings() {
           <TabsTrigger value="user" data-testid="tab-user">
             <User className="h-4 w-4 mr-2" />
             Profile
+          </TabsTrigger>
+          <TabsTrigger value="integrations" data-testid="tab-integrations">
+            <DollarSign className="h-4 w-4 mr-2" />
+            Integrations
           </TabsTrigger>
           <TabsTrigger value="connections" data-testid="tab-connections">
             <Plug className="h-4 w-4 mr-2" />
@@ -483,6 +493,142 @@ export default function Settings() {
                   Please select a company first
                 </CardDescription>
               </CardHeader>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>QuickBooks Online</CardTitle>
+              <CardDescription>
+                Connect your QuickBooks Online account to automatically sync received purchase orders as bills
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {qbStatusLoading ? (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Checking connection status...</span>
+                </div>
+              ) : qbStatus?.connected ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500" />
+                    <span className="font-medium">Connected to QuickBooks Online</span>
+                  </div>
+                  <div className="grid gap-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Connection Level:</span>
+                      <Badge variant="outline">
+                        {qbStatus.connectionLevel === "company" ? "Company-Wide" : "Store-Specific"}
+                      </Badge>
+                    </div>
+                    {qbStatus.lastSyncedAt && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Last Synced:</span>
+                        <span>{new Date(qbStatus.lastSyncedAt).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {qbStatus.expiresAt && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Token Expires:</span>
+                        <span>{new Date(qbStatus.expiresAt).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                  </div>
+                  <Separator />
+                  <Button
+                    variant="destructive"
+                    onClick={async () => {
+                      try {
+                        await apiRequest("POST", "/api/quickbooks/disconnect", {});
+                        refetchQbStatus();
+                        toast({
+                          title: "Success",
+                          description: "QuickBooks disconnected successfully",
+                        });
+                      } catch (error: any) {
+                        toast({
+                          title: "Error",
+                          description: error.message || "Failed to disconnect QuickBooks",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                    data-testid="button-disconnect-quickbooks"
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Disconnect QuickBooks
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <XCircle className="h-5 w-5" />
+                    <span>Not connected to QuickBooks Online</span>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Connecting to QuickBooks Online allows you to:
+                    </p>
+                    <ul className="text-sm text-muted-foreground list-disc pl-6 space-y-1">
+                      <li>Automatically create bills when purchase orders are received</li>
+                      <li>Sync vendor information between systems</li>
+                      <li>Track synchronization status and history</li>
+                      <li>Reduce manual data entry and errors</li>
+                    </ul>
+                  </div>
+                  <Separator />
+                  <Button
+                    onClick={() => {
+                      window.location.href = "/api/quickbooks/connect";
+                    }}
+                    data-testid="button-connect-quickbooks"
+                  >
+                    <DollarSign className="h-4 w-4 mr-2" />
+                    Connect to QuickBooks Online
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    You will be redirected to QuickBooks to authorize the connection
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {qbStatus?.connected && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Vendor Mapping</CardTitle>
+                <CardDescription>
+                  Map your vendors to QuickBooks vendors for accurate bill creation
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm text-muted-foreground">
+                  Vendor mapping configuration will be available here. This allows you to match your
+                  internal vendors with QuickBooks vendors to ensure bills are created with the correct
+                  vendor information.
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {qbStatus?.connected && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Sync History</CardTitle>
+                <CardDescription>
+                  View synchronization logs and status for purchase orders
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm text-muted-foreground">
+                  Sync history and monitoring tools will be available here. Track which purchase orders
+                  have been synced to QuickBooks, view any errors, and retry failed synchronizations.
+                </div>
+              </CardContent>
             </Card>
           )}
         </TabsContent>
