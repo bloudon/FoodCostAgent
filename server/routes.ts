@@ -14,7 +14,7 @@ import { getAccessibleStores } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, dailyMenuItemSales } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -6125,77 +6125,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalItemsSold = salesData.reduce((sum, sale) => sum + sale.qtySold, 0);
       const totalNetSales = salesData.reduce((sum, sale) => sum + sale.netSales, 0);
 
-      // Calculate theoretical usage from sales (batch loading to avoid N+1)
+      // Get theoretical usage from stored runs (already converted to inventory item units)
       const theoreticalUsageMap = new Map<string, { qty: number; cost: number }>();
       
       // Initialize map outside if block for use later in response assembly
       const inventoryItemsMap = new Map<string, any>();
       
-      if (salesData.length > 0) {
-        // Batch-fetch menu items with recipes
-        const uniqueMenuItemIds = [...new Set(salesData.map(s => s.menuItemId))];
-        const menuItems = await Promise.all(
-          uniqueMenuItemIds.map(id => storage.getMenuItem(id))
+      // Fetch theoretical usage runs for this date range
+      const theoreticalRuns = await db
+        .select()
+        .from(theoreticalUsageRuns)
+        .where(
+          and(
+            eq(theoreticalUsageRuns.companyId, companyId),
+            eq(theoreticalUsageRuns.storeId, storeId as string),
+            gte(theoreticalUsageRuns.salesDate, previousCount.countDate),
+            lte(theoreticalUsageRuns.salesDate, currentCount.countDate)
+          )
         );
-        const menuItemsMap = new Map(menuItems.filter(m => m && m.recipeId).map(m => [m!.id, m!]));
 
-        // Batch-fetch recipes
-        const uniqueRecipeIds = [...new Set(Array.from(menuItemsMap.values()).map(m => m.recipeId!))];
-        const recipes = await Promise.all(
-          uniqueRecipeIds.map(id => storage.getRecipe(id, companyId))
-        );
-        const recipesMap = new Map(recipes.filter(r => r).map(r => [r!.id, r!]));
+      if (theoreticalRuns.length > 0) {
+        const runIds = theoreticalRuns.map(r => r.id);
+        
+        // Fetch all theoretical usage lines for these runs
+        const theoreticalLines = await db
+          .select()
+          .from(theoreticalUsageLines)
+          .where(inArray(theoreticalUsageLines.runId, runIds));
 
-        // Batch-fetch all recipe components
-        const allComponents = await Promise.all(
-          uniqueRecipeIds.map(id => storage.getRecipeComponents(id))
-        );
-        const componentsMap = new Map(uniqueRecipeIds.map((id, idx) => [id, allComponents[idx]]));
-
-        // Batch-fetch inventory items
-        const allInventoryItemIds = new Set<string>();
-        allComponents.forEach(components => {
-          components.forEach(c => {
-            if (c.componentType === 'inventory_item') {
-              allInventoryItemIds.add(c.componentId);
-            }
-          });
-        });
-        const inventoryItems = await Promise.all(
-          Array.from(allInventoryItemIds).map(id => storage.getInventoryItem(id))
-        );
-        inventoryItems.filter(i => i).forEach(i => inventoryItemsMap.set(i!.id, i!));
-
-        // Now calculate theoretical usage with in-memory lookups
-        for (const sale of salesData) {
-          if (sale.qtySold <= 0) continue;
-
-          const menuItem = menuItemsMap.get(sale.menuItemId);
-          if (!menuItem || !menuItem.recipeId) continue;
-
-          const components = componentsMap.get(menuItem.recipeId);
-          if (!components) continue;
-
-          for (const component of components) {
-            if (component.componentType === 'inventory_item') {
-              const item = inventoryItemsMap.get(component.componentId);
-              if (!item) continue;
-
-              // Calculate quantity needed (component.qty is already in base units)
-              const qtyNeeded = component.qty * sale.qtySold;
-              const pricePerUnit = item.pricePerUnit || 0; // Guard against missing price
-              
-              const existing = theoreticalUsageMap.get(item.id);
-              if (existing) {
-                existing.qty += qtyNeeded;
-                existing.cost += qtyNeeded * pricePerUnit;
-              } else {
-                theoreticalUsageMap.set(item.id, {
-                  qty: qtyNeeded,
-                  cost: qtyNeeded * pricePerUnit,
-                });
-              }
-            }
+        // Aggregate theoretical usage by inventory item (accumulate across multiple runs)
+        for (const line of theoreticalLines) {
+          const existing = theoreticalUsageMap.get(line.inventoryItemId);
+          if (existing) {
+            existing.qty += line.requiredQtyBaseUnit;
+            existing.cost += line.costAtSale;
+          } else {
+            theoreticalUsageMap.set(line.inventoryItemId, {
+              qty: line.requiredQtyBaseUnit,
+              cost: line.costAtSale,
+            });
           }
         }
       }

@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system designed for food service businesses. It aims to enhance operational efficiency, reduce waste, and improve profitability across multiple locations. Key capabilities include precise unit conversions, comprehensive nested recipe management, integration with POS sales data, detailed variance reporting, dual inventory pricing (last cost & weighted average), and streamlined purchasing. The system provides a complete business intelligence solution for the food service industry.
+This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary goal is to boost operational efficiency, minimize waste, and increase profitability across multiple locations. Key features include precise unit conversions, nested recipe management, integration with POS sales data, detailed variance reporting, dual inventory pricing (last cost & weighted average), and streamlined purchasing. The system provides comprehensive business intelligence to support informed decision-making and optimize food service operations.
 
 # User Preferences
 
@@ -44,37 +44,37 @@ This project is a multi-company inventory management and recipe costing system d
 - Inventory Count Layout Optimization: Accordion headers show simplified layout (group name + total value only, item count hidden on mobile). Location value rows within category view use CSS grid layout (160px label, flexible input, 100px right-aligned value column) for clean alignment. Previous count value moved to dedicated footer section. Alternating row striping (bg-muted/20 opacity) applied to location input rows.
 - Inventory Count Text Search: Count session page includes text search input that filters items by name or PLU/SKU (case-insensitive). Search integrates seamlessly with existing grouping modes and other filters. "Clear Filters" button clears search along with other active filters. Empty accordion groups are automatically hidden when search filters out all items.
 - TFC Theoretical Usage Detail: TFC Variance Report features clickable theoretical usage values that open a detailed breakdown modal. Dialog displays summary cards (Total Quantity, Total Cost, Menu Items count) and a Menu Item Breakdown table showing which menu items contributed to theoretical usage. Backend endpoint `/api/tfc/variance/theoretical-detail` aggregates stored theoretical_usage_lines data across multiple runs within the count period, distributing usage proportionally based on menu item quantities sold. Data is fetched lazily via React Query only when dialog opens, with per-item caching for performance.
-- TFC Unit System Clarification: The `theoretical_usage_lines.requiredQtyBaseUnit` field stores quantities in each inventory item's unit (e.g., pounds for cheese, fluid ounces for liquids), NOT in micro-units. The term "base unit" refers to the inventory item's base unit, not the system's canonical base (grams/mL). Both actual usage (from inventory counts) and theoretical usage (from recipe calculations) are already in the same inventory-item-level units, requiring no conversion in variance calculations. The `units.toBaseRatio` field converts to canonical base units (grams/mL) and should NOT be used for variance comparisons. Recipe component calculations use `convertToBaseUnit()` to ensure recipe ingredients are converted into the target inventory item's unit before storage.
+- TFC Unit System Clarification: The `theoretical_usage_lines.requiredQtyBaseUnit` field stores quantities in each inventory item's unit (e.g., pounds for cheese, fluid ounces for liquids), NOT in micro-units. The term "base unit" refers to the inventory item's base unit, not the system's canonical base (grams/mL). Both actual usage (from inventory counts) and theoretical usage (from stored theoretical usage runs) are already in the same inventory-item-level units, requiring no conversion in variance calculations. The `units.toBaseRatio` field converts to canonical base units (grams/mL) and should NOT be used for variance comparisons. Recipe component calculations use `convertToBaseUnit()` to ensure recipe ingredients are converted into the target inventory item's unit before storage. The variance endpoint queries stored `theoretical_usage_lines` (which already have unit conversions applied) rather than recalculating from recipe components to ensure consistency with the theoretical detail modal.
 
 # System Architecture
 
 -   **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
--   **Backend**: Node.js (TypeScript) with Express.js for RESTful APIs and WebSockets, using Zod for data validation.
+-   **Backend**: Node.js (TypeScript) with Express.js, using Zod for validation.
 -   **Database**: PostgreSQL, managed by Drizzle ORM.
 -   **Application Structure**: Multi-tenant Single-Page Application (SPA).
 -   **UI/UX Decisions**:
-    -   **Navigation**: Horizontal top navigation for desktop, hamburger menu for mobile. Top info bar displays company name, store selector, user email, logout, and theme toggle.
-    -   **Recipe Builder**: Optimized layout for ingredient management, displaying recipe name and total cost on a single row.
-    -   **Menu Items Table**: Features a sortable Food Cost % column and clickable Recipe Cost values linking to the recipe edit page.
-    -   **Mobile Inventory Counts**: Optimized for mobile warehouse use with touch-friendly inputs, responsive layouts, a compact sticky dashboard, and wrapping item headers.
+    -   **Navigation**: Horizontal top navigation for desktop, hamburger menu for mobile; top info bar includes company name, store selector, user email, logout, and theme toggle.
+    -   **Recipe Builder**: Optimized for ingredient management, displaying recipe name and total cost.
+    -   **Menu Items Table**: Features a sortable Food Cost % column and clickable Recipe Cost that links to recipe editing.
+    -   **Mobile Inventory Counts**: Optimized with touch-friendly inputs, responsive layouts, a compact sticky dashboard, and wrapping item headers.
 -   **Technical Implementations**:
     -   Micro-unit system for accurate inventory and costing.
     -   Pluggable adapter pattern for external vendor integrations.
     -   Centralized management for Purchase Orders, Receiving, and Transfer Orders.
     -   HMAC-SHA256 for secure API integrations.
-    -   Scalability features: connection pooling, composite indexes, atomic transactions, Redis caching, and response compression (gzip).
+    -   Scalability features include connection pooling, composite indexes, atomic transactions, Redis caching, and response compression (gzip).
 -   **Feature Specifications**:
-    -   Automated inventory adjustments, historical recipe versioning.
-    -   Auto-populated inventory count sessions, dynamic `onHandQty` updates.
-    -   Unit and case ordering, vendor filtering, keyboard-optimized data entry.
-    -   Partial receipts, resumable sessions, on-the-fly unit price editing.
-    -   Store-to-store transfer orders, and waste tracking.
+    -   Automated inventory adjustments and historical recipe versioning.
+    -   Auto-populated inventory count sessions and dynamic `onHandQty` updates.
+    -   Unit and case ordering, vendor filtering, and keyboard-optimized data entry.
+    -   Support for partial receipts, resumable sessions, and on-the-fly unit price editing.
+    -   Store-to-store transfer orders and waste tracking.
 -   **System Design Choices**:
     -   Multi-tenant architecture for company isolation.
-    -   Real-time cost calculations with caching for performance.
-    -   Comprehensive unit management with compatibility filtering.
-    -   Robust vendor management with delivery scheduling and deletion constraints.
-    -   Placeholder system for menu item onboarding.
+    -   Real-time cost calculations with robust caching mechanisms.
+    -   Comprehensive unit management with intelligent compatibility filtering.
+    -   Robust vendor management including delivery scheduling and deletion constraints.
+    -   Placeholder system for efficient menu item onboarding.
 
 # External Dependencies
 
