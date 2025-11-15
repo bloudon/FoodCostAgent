@@ -6108,7 +6108,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         where: and(
           eq(inventoryCounts.companyId, companyId),
           eq(inventoryCounts.storeId, storeId as string),
-          eq(inventoryCounts.status, 'applied')
+          eq(inventoryCounts.applied, 1)
         ),
       });
 
