@@ -2373,6 +2373,23 @@ export class DatabaseStorage implements IStorage {
       .where(eq(theoreticalUsageLines.runId, runId))
       .orderBy(theoreticalUsageLines.inventoryItemId);
   }
+
+  async getTheoreticalUsageLinesForRuns(
+    runIds: string[],
+    inventoryItemId: string
+  ): Promise<TheoreticalUsageLine[]> {
+    if (runIds.length === 0) return [];
+    
+    return db
+      .select()
+      .from(theoreticalUsageLines)
+      .where(
+        and(
+          inArray(theoreticalUsageLines.runId, runIds),
+          eq(theoreticalUsageLines.inventoryItemId, inventoryItemId)
+        )
+      );
+  }
 }
 
 export const storage = new DatabaseStorage();

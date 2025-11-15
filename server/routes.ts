@@ -6366,6 +6366,155 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get theoretical usage detail for a specific ingredient
+  app.get("/api/tfc/variance/theoretical-detail", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { previousCountId, currentCountId, storeId, inventoryItemId } = req.query;
+
+      if (!companyId || !previousCountId || !currentCountId || !storeId || !inventoryItemId) {
+        return res.status(400).json({ 
+          message: "Missing required parameters: previousCountId, currentCountId, storeId, inventoryItemId" 
+        });
+      }
+
+      // CRITICAL: Verify store belongs to company (multi-tenant isolation)
+      const store = await storage.getCompanyStore(storeId as string, companyId);
+      if (!store) {
+        return res.status(403).json({ message: "Store not found or access denied" });
+      }
+
+      // Validate counts exist, belong to the same company, and belong to the validated store
+      const previousCount = await db.query.inventoryCounts.findFirst({
+        where: and(
+          eq(inventoryCounts.id, previousCountId as string),
+          eq(inventoryCounts.companyId, companyId),
+          eq(inventoryCounts.storeId, storeId as string)
+        ),
+      });
+
+      const currentCount = await db.query.inventoryCounts.findFirst({
+        where: and(
+          eq(inventoryCounts.id, currentCountId as string),
+          eq(inventoryCounts.companyId, companyId),
+          eq(inventoryCounts.storeId, storeId as string)
+        ),
+      });
+
+      if (!previousCount || !currentCount) {
+        return res.status(404).json({ message: "One or both inventory counts not found or do not belong to this store" });
+      }
+
+      // Get theoretical usage runs for the date range
+      const runs = await storage.getTheoreticalUsageRuns(
+        companyId,
+        storeId as string,
+        new Date(previousCount.countDate),
+        new Date(currentCount.countDate)
+      );
+
+      if (runs.length === 0) {
+        return res.json({
+          summary: {
+            inventoryItemId: inventoryItemId as string,
+            totalQty: 0,
+            totalCost: 0,
+            unitName: '',
+          },
+          menuItems: [],
+        });
+      }
+
+      // Get theoretical usage lines for these runs and this inventory item
+      const runIds = runs.map(r => r.id);
+      const lines = await storage.getTheoreticalUsageLinesForRuns(
+        runIds,
+        inventoryItemId as string
+      );
+
+      if (lines.length === 0) {
+        return res.json({
+          summary: {
+            inventoryItemId: inventoryItemId as string,
+            totalQty: 0,
+            totalCost: 0,
+            unitName: '',
+          },
+          menuItems: [],
+        });
+      }
+
+      // Aggregate sourceMenuItems across all lines
+      interface MenuItemContribution {
+        menuItemId: string;
+        menuItemName: string;
+        qtySold: number;
+        theoreticalQty: number;
+        cost: number;
+      }
+
+      const menuItemMap = new Map<string, MenuItemContribution>();
+
+      for (const line of lines) {
+        const sourceMenuItems = JSON.parse(line.sourceMenuItems) as Array<{
+          menuItemId: string;
+          menuItemName: string;
+          qtySold: number;
+        }>;
+
+        for (const source of sourceMenuItems) {
+          const existing = menuItemMap.get(source.menuItemId);
+          if (existing) {
+            existing.qtySold += source.qtySold;
+          } else {
+            menuItemMap.set(source.menuItemId, {
+              menuItemId: source.menuItemId,
+              menuItemName: source.menuItemName,
+              qtySold: source.qtySold,
+              theoreticalQty: 0,
+              cost: 0,
+            });
+          }
+        }
+      }
+
+      // Calculate theoretical qty and cost per menu item
+      // For each menu item, determine its share of the total theoretical usage
+      const totalQty = lines.reduce((sum, line) => sum + line.requiredQtyBaseUnit, 0);
+      const totalCost = lines.reduce((sum, line) => sum + line.costAtSale, 0);
+      const totalQtySold = Array.from(menuItemMap.values()).reduce((sum, mi) => sum + mi.qtySold, 0);
+
+      // Distribute theoretical qty proportionally to qty sold
+      for (const menuItem of menuItemMap.values()) {
+        const proportion = totalQtySold > 0 ? menuItem.qtySold / totalQtySold : 0;
+        menuItem.theoreticalQty = totalQty * proportion;
+        menuItem.cost = totalCost * proportion;
+      }
+
+      // Get inventory item details for unit info
+      const inventoryItem = await storage.getInventoryItem(inventoryItemId as string);
+      const unit = inventoryItem ? await storage.getUnit(inventoryItem.unitId) : null;
+
+      res.json({
+        summary: {
+          inventoryItemId: inventoryItemId as string,
+          inventoryItemName: inventoryItem?.name || 'Unknown',
+          totalQty,
+          totalCost,
+          unitName: unit?.name || '',
+          unitAbbreviation: unit?.abbreviation || '',
+        },
+        menuItems: Array.from(menuItemMap.values()).sort((a, b) => 
+          b.qtySold - a.qtySold // Sort by qty sold descending
+        ),
+      });
+
+    } catch (error: any) {
+      console.error('Theoretical detail error:', error);
+      res.status(500).json({ message: "Failed to fetch theoretical usage detail", error: error.message });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance operational efficiency, reduce waste, and improve profitability across multiple locations. Key features include precise unit conversions, advanced nested recipe management, real-time POS sales integration, comprehensive variance reporting, dual inventory pricing (last cost & weighted average), and optimized purchasing. The system aims to be a complete solution for cost and inventory management, ultimately improving financial performance and streamlining operations in the food service industry.
+This project is a multi-company inventory management and recipe costing system for food service businesses. Its primary goal is to enhance operational efficiency, reduce waste, and improve profitability across multiple locations. Key capabilities include precise unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (last cost & weighted average), and streamlined purchasing workflows. The system offers a comprehensive solution for managing inventory and optimizing recipe costs in multi-store environments, serving as a powerful business intelligence tool for the food service industry.
 
 # User Preferences
 
@@ -46,22 +46,21 @@ This project is a multi-company inventory management and recipe costing system d
 
 # System Architecture
 
--   **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter.
--   **Backend**: Node.js (TypeScript) with Express.js for RESTful APIs and WebSockets, using Zod for validation.
+-   **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
+-   **Backend**: Node.js (TypeScript) with Express.js for RESTful APIs and WebSockets, using Zod for data validation.
 -   **Database**: PostgreSQL, managed by Drizzle ORM.
 -   **Application Structure**: Multi-tenant Single-Page Application (SPA).
 -   **UI/UX Decisions**:
-    -   **Navigation**: Horizontal top navigation for desktop with dropdowns; mobile uses a hamburger menu with accordion sections. Top info bar displays company name, store selector, user email, logout, and theme toggle.
-    -   **Recipe Builder**: Optimized layout for ingredients, with recipe name and total cost on one row. Yield fields and "Can be used as ingredient" are in a collapsed accordion, and ingredient section headings are smaller.
-    -   **Menu Items Table**: Includes a sortable Food Cost % column, and clickable Recipe Cost values link to the recipe edit page.
-    -   **Smart Back Button**: Recipe builder's back button intelligently navigates using browser history or defaults to `/recipes`.
-    -   **Mobile Inventory Counts**: Fully optimized for mobile warehouse use, including touch-friendly inputs, responsive layouts, a compact sticky dashboard, and wrapping item headers.
+    -   **Navigation**: Horizontal top navigation for desktop, hamburger menu for mobile. Top info bar displays company name, store selector, user email, logout, and theme toggle.
+    -   **Recipe Builder**: Optimized layout for ingredient management, displaying recipe name and total cost on a single row.
+    -   **Menu Items Table**: Features a sortable Food Cost % column and clickable Recipe Cost values linking to the recipe edit page.
+    -   **Mobile Inventory Counts**: Optimized for mobile warehouse use with touch-friendly inputs, responsive layouts, a compact sticky dashboard, and wrapping item headers.
 -   **Technical Implementations**:
     -   Micro-unit system for accurate inventory and costing.
     -   Pluggable adapter pattern for external vendor integrations.
     -   Centralized management for Purchase Orders, Receiving, and Transfer Orders.
     -   HMAC-SHA256 for secure API integrations.
-    -   Scalability achieved via connection pooling, composite indexes, atomic transactions, session cleanup, Redis caching, and response compression (gzip).
+    -   Scalability features: connection pooling, composite indexes, atomic transactions, Redis caching, and response compression (gzip).
 -   **Core Features**: Automated inventory adjustments, historical recipe versioning, auto-populated inventory count sessions, dynamic `onHandQty` updates, unit and case ordering, vendor filtering, keyboard-optimized data entry, partial receipts, resumable sessions, on-the-fly unit price editing, store-to-store transfer orders, and waste tracking.
 
 # External Dependencies

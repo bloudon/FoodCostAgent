@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { TheoreticalDetailDialog } from "@/components/theoretical-detail-dialog";
 
 type InventoryCount = {
   id: string;
@@ -85,6 +86,9 @@ export default function TfcVariance() {
   const companyId = getEffectiveCompanyId();
 
   const [currentCountId, setCurrentCountId] = useState<string>("");
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectedItemName, setSelectedItemName] = useState<string>("");
 
   // Fetch applied inventory counts for the selected store
   const { data: inventoryCounts = [] } = useQuery<InventoryCount[]>({
@@ -436,7 +440,18 @@ export default function TfcVariance() {
                               {formatNumber(item.actualUsage)}
                             </TableCell>
                             <TableCell className="text-right font-mono text-sm">
-                              {formatNumber(item.theoreticalUsage)}
+                              <Button
+                                variant="link"
+                                className="h-auto p-0 font-mono text-sm hover:underline"
+                                onClick={() => {
+                                  setSelectedItemId(item.inventoryItemId);
+                                  setSelectedItemName(item.inventoryItemName);
+                                  setDetailDialogOpen(true);
+                                }}
+                                data-testid={`button-theoretical-detail-${item.inventoryItemId}`}
+                              >
+                                {formatNumber(item.theoreticalUsage)}
+                              </Button>
                             </TableCell>
                             <TableCell className="text-right">
                               <Badge
@@ -477,6 +492,16 @@ export default function TfcVariance() {
               </div>
             </CardContent>
           </Card>
+
+          <TheoreticalDetailDialog
+            open={detailDialogOpen}
+            onOpenChange={setDetailDialogOpen}
+            inventoryItemId={selectedItemId}
+            inventoryItemName={selectedItemName}
+            previousCountId={previousCountId}
+            currentCountId={currentCountId}
+            storeId={selectedStoreId || ""}
+          />
         </>
       )}
     </div>
