@@ -150,18 +150,18 @@ export function AppHeader() {
   const visibleSections = getVisibleSections();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex h-12 items-center justify-between px-4 sm:px-6 gap-3">
+    <header className="sticky top-0 z-50 w-full border-b bg-primary text-primary-foreground shadow-sm">
+      <div className="flex h-[75px] items-center justify-between px-4 sm:px-6 gap-4">
         {/* Logo Placeholder */}
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center" data-testid="logo-placeholder">
-            <ChefHat className="h-5 w-5 text-primary" />
+        <div className="flex items-center gap-3">
+          <div className="h-[60px] w-[60px] rounded-lg bg-primary-foreground/10 flex items-center justify-center" data-testid="logo-placeholder">
+            <ChefHat className="h-10 w-10 text-primary-foreground" />
           </div>
-          <span className="hidden sm:inline text-sm font-semibold">Logo</span>
+          <span className="hidden sm:inline text-lg font-bold">FoodCost Pro</span>
         </div>
 
         {/* Desktop: Company/Store + Navigation (Centered) */}
-        <div className="hidden md:flex items-center gap-3 flex-1 justify-center">
+        <div className="hidden md:flex items-center gap-4 flex-1 justify-center">
           {/* Company Name and Store Selector */}
           <div className="flex items-center gap-3">
             {company && (
@@ -171,7 +171,7 @@ export function AppHeader() {
             )}
             {stores.length > 0 && (
               <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-                <SelectTrigger className="w-[140px] h-9" data-testid="select-store">
+                <SelectTrigger className="w-[150px] h-10 bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20" data-testid="select-store">
                   <Store className="h-4 w-4 mr-2" />
                   <SelectValue placeholder="Select store" />
                 </SelectTrigger>
@@ -193,71 +193,85 @@ export function AppHeader() {
               <Button
                 variant="ghost"
                 className={cn(
-                  "h-9 px-3 py-2",
-                  location === "/" && "bg-accent"
+                  "h-10 px-4 py-2 text-base bg-primary-foreground/10 hover:bg-primary-foreground/20 text-primary-foreground",
+                  location === "/" && "bg-primary-foreground/30"
                 )}
               >
-                <Home className="h-4 w-4 mr-2" />
+                <Home className="h-5 w-5 mr-2" />
                 Dashboard
               </Button>
             </Link>
 
             {/* Dropdown menu sections */}
-            {visibleSections.map((section) => (
-              <DropdownMenu key={section.title}>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="inline-flex h-9 items-center justify-center rounded-md bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none disabled:pointer-events-none disabled:opacity-50"
-                    data-testid={`menu-${section.title.toLowerCase()}`}
-                  >
-                    {section.title}
-                    <svg className="ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-64" align="start">
-                  {section.items.map((item) => (
-                    <DropdownMenuItem key={item.url} asChild>
-                      <Link
-                        href={item.url}
-                        className="flex items-center gap-3 cursor-pointer"
-                        data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
-                      >
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ))}
+            {visibleSections.map((section) => {
+              const sectionIcons = {
+                'Menu': UtensilsCrossed,
+                'Inventory': Warehouse,
+                'Purchasing': ShoppingCart,
+                'Reports': BarChart3,
+                'Settings': Settings,
+              };
+              const SectionIcon = sectionIcons[section.title as keyof typeof sectionIcons];
+              
+              return (
+                <DropdownMenu key={section.title}>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="inline-flex h-10 items-center justify-center rounded-md bg-primary-foreground/10 hover:bg-primary-foreground/20 px-4 py-2 text-base font-medium transition-colors focus:bg-primary-foreground/20 focus:outline-none disabled:pointer-events-none disabled:opacity-50 text-primary-foreground"
+                      data-testid={`menu-${section.title.toLowerCase()}`}
+                    >
+                      {SectionIcon && <SectionIcon className="h-5 w-5 mr-2" />}
+                      {section.title}
+                      <svg className="ml-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-64" align="start">
+                    {section.items.map((item) => (
+                      <DropdownMenuItem key={item.url} asChild>
+                        <Link
+                          href={item.url}
+                          className="flex items-center gap-3 cursor-pointer"
+                          data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                        >
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.title}</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              );
+            })}
           </nav>
         </div>
 
         {/* User Controls - Desktop (Right aligned) */}
-        <div className="hidden md:flex items-center gap-2">
-          <span className="text-sm text-muted-foreground" data-testid="text-user-email">
+        <div className="hidden md:flex items-center gap-3">
+          <span className="text-sm text-primary-foreground/80" data-testid="text-user-email">
             {user?.email}
           </span>
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9"
+            className="h-10 w-10 bg-primary-foreground/10 hover:bg-primary-foreground/20 text-primary-foreground"
             onClick={logout}
             data-testid="button-logout"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-5 w-5" />
           </Button>
-          <ThemeToggle />
+          <div className="bg-primary-foreground/10 hover:bg-primary-foreground/20 rounded-md">
+            <ThemeToggle />
+          </div>
         </div>
 
         {/* Mobile Menu - Right aligned */}
         <div className="flex md:hidden">
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" data-testid="button-mobile-menu">
-                <Menu className="h-5 w-5" />
+              <Button variant="ghost" size="icon" className="h-10 w-10 bg-primary-foreground/10 hover:bg-primary-foreground/20 text-primary-foreground" data-testid="button-mobile-menu">
+                <Menu className="h-6 w-6" />
                 <span className="sr-only">Toggle menu</span>
               </Button>
             </SheetTrigger>
