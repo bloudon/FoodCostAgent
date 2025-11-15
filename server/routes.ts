@@ -6128,9 +6128,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Calculate theoretical usage from sales (batch loading to avoid N+1)
       const theoreticalUsageMap = new Map<string, { qty: number; cost: number }>();
       
-      // Initialize maps outside if block for use later in response assembly
+      // Initialize map outside if block for use later in response assembly
       const inventoryItemsMap = new Map<string, any>();
-      const unitsMap = new Map<string, any>();
       
       if (salesData.length > 0) {
         // Batch-fetch menu items with recipes
@@ -6166,13 +6165,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           Array.from(allInventoryItemIds).map(id => storage.getInventoryItem(id))
         );
         inventoryItems.filter(i => i).forEach(i => inventoryItemsMap.set(i!.id, i!));
-
-        // Batch-fetch units for conversion from base to macro units
-        const uniqueUnitIds = [...new Set(inventoryItems.filter(i => i && i.unitId).map(i => i!.unitId))];
-        const units = await Promise.all(
-          uniqueUnitIds.map(id => storage.getUnit(id))
-        );
-        units.filter(u => u).forEach(u => unitsMap.set(u!.id, u!));
 
         // Now calculate theoretical usage with in-memory lookups
         for (const sale of salesData) {
@@ -6221,48 +6213,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           additionalItemIds.map(id => storage.getInventoryItem(id))
         );
         additionalItems.forEach(item => {
-          if (item) {
-            inventoryItemsMap.set(item.id, item);
-            if (item.unitId && !unitsMap.has(item.unitId)) {
-              // We'll need to fetch units for these items too
-            }
-          }
+          if (item) inventoryItemsMap.set(item.id, item);
         });
-
-        // Fetch any missing units
-        const missingUnitIds = Array.from(inventoryItemsMap.values())
-          .filter(item => item.unitId && !unitsMap.has(item.unitId))
-          .map(item => item.unitId);
-        if (missingUnitIds.length > 0) {
-          const missingUnits = await Promise.all(
-            missingUnitIds.map(id => storage.getUnit(id))
-          );
-          missingUnits.forEach(unit => {
-            if (unit) unitsMap.set(unit.id, unit);
-          });
-        }
       }
 
       let varianceItems = Array.from(allItemIds).map(itemId => {
         const actualData = actualUsageData.find(a => a.inventoryItemId === itemId);
         const theoreticalData = theoreticalUsageMap.get(itemId);
 
-        // Get inventory item and unit for conversion
+        // Get inventory item for fallback name
         const item = inventoryItemsMap.get(itemId);
-        const unit = item && item.unitId ? unitsMap.get(item.unitId) : null;
-        const toBaseRatio = unit?.toBaseRatio || 1;
 
-        // Guard against invalid toBaseRatio
-        const safeToBaseRatio = toBaseRatio > 0 ? toBaseRatio : 1;
-
-        const actualUsage = actualData?.usage || 0; // Already in macro units
-        const theoreticalUsageBaseUnits = theoreticalData?.qty || 0; // In base units (ounces)
-        
-        // Convert theoretical usage from base units to macro units
-        const theoreticalUsage = theoreticalUsageBaseUnits / safeToBaseRatio;
+        const actualUsage = actualData?.usage || 0;
+        const theoreticalUsage = theoreticalData?.qty || 0;
         
         const varianceUnits = actualUsage - theoreticalUsage;
-        const pricePerUnit = actualData?.pricePerUnit || 0; // Guard against missing price
+        const pricePerUnit = actualData?.pricePerUnit || 0;
         const varianceCost = varianceUnits * pricePerUnit;
         const variancePercent = theoreticalUsage > 0 ? (varianceUnits / theoreticalUsage) * 100 : 0;
 
@@ -6274,11 +6240,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           receivedQty: actualData?.receivedQty || 0,
           currentQty: actualData?.currentQty || 0,
           actualUsage,
-          theoreticalUsage, // Now in macro units
+          theoreticalUsage,
           varianceUnits,
           varianceCost,
           variancePercent,
-          unitName: actualData?.unitName || unit?.name || '',
+          unitName: actualData?.unitName || '',
           pricePerUnit,
         };
       });
@@ -6532,25 +6498,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Calculate theoretical qty and cost per menu item
       // For each menu item, determine its share of the total theoretical usage
-      const totalQtyBaseUnits = lines.reduce((sum, line) => sum + line.requiredQtyBaseUnit, 0);
+      const totalQty = lines.reduce((sum, line) => sum + line.requiredQtyBaseUnit, 0);
       const totalCost = lines.reduce((sum, line) => sum + line.costAtSale, 0);
       const totalQtySold = Array.from(menuItemMap.values()).reduce((sum, mi) => sum + mi.qtySold, 0);
 
-      // Get inventory item details for unit info and conversion
+      // Get inventory item details for unit info
       const inventoryItem = await storage.getInventoryItem(inventoryItemId as string);
       const unit = inventoryItem ? await storage.getUnit(inventoryItem.unitId) : null;
-      const toBaseRatio = unit?.toBaseRatio || 1;
-      
-      // Guard against invalid toBaseRatio
-      const safeToBaseRatio = toBaseRatio > 0 ? toBaseRatio : 1;
-
-      // Convert totalQty from base units to macro units
-      const totalQty = totalQtyBaseUnits / safeToBaseRatio;
 
       // Distribute theoretical qty proportionally to qty sold
       for (const menuItem of menuItemMap.values()) {
         const proportion = totalQtySold > 0 ? menuItem.qtySold / totalQtySold : 0;
-        menuItem.theoreticalQty = totalQty * proportion; // Now in macro units
+        menuItem.theoreticalQty = totalQty * proportion;
         menuItem.cost = totalCost * proportion;
       }
 
