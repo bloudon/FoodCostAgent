@@ -3946,13 +3946,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(receipts);
   });
 
-  // Get receipts for a specific purchase order
+  // Get receipts for a specific purchase order with line details
   app.get("/api/purchase-orders/:poId/receipts", requireAuth, async (req, res) => {
     try {
       const { poId } = req.params;
       const allReceipts = await storage.getReceipts(req.companyId!);
       const poReceipts = allReceipts.filter(r => r.purchaseOrderId === poId);
-      res.json(poReceipts);
+      
+      // Fetch lines and item details for each receipt
+      const receiptsWithLines = await Promise.all(
+        poReceipts.map(async (receipt) => {
+          const lines = await storage.getReceiptLinesByReceiptId(receipt.id);
+          
+          // Get vendor items to fetch item names and details
+          const vendorItems = await storage.getVendorItems(undefined, req.companyId!);
+          const inventoryItems = await storage.getInventoryItems(req.companyId!);
+          const units = await storage.getUnits();
+          
+          // Enrich lines with item details
+          const enrichedLines = lines.map(line => {
+            const vendorItem = vendorItems.find(vi => vi.id === line.vendorItemId);
+            const inventoryItem = inventoryItems.find(ii => ii.id === vendorItem?.inventoryItemId);
+            const unit = units.find(u => u.id === line.unitId);
+            
+            return {
+              ...line,
+              itemName: inventoryItem?.name || vendorItem?.name || "Unknown Item",
+              vendorSku: vendorItem?.vendorSku || null,
+              unitName: unit?.name || "unit",
+            };
+          });
+          
+          return {
+            ...receipt,
+            lines: enrichedLines,
+          };
+        })
+      );
+      
+      res.json(receiptsWithLines);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

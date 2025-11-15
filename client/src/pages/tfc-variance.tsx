@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { TheoreticalDetailDialog } from "@/components/theoretical-detail-dialog";
+import { ReceiptModal } from "@/components/receipt-modal";
 
 type InventoryCount = {
   id: string;
@@ -90,6 +91,10 @@ export default function TfcVariance() {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedItemName, setSelectedItemName] = useState<string>("");
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [selectedPurchaseOrderId, setSelectedPurchaseOrderId] = useState<string | null>(null);
+  const [selectedVendorName, setSelectedVendorName] = useState<string>("");
+  const [selectedExpectedDate, setSelectedExpectedDate] = useState<string>("");
 
   // Fetch applied inventory counts for the selected store
   const { data: inventoryCounts = [] } = useQuery<InventoryCount[]>({
@@ -250,13 +255,18 @@ export default function TfcVariance() {
                     <p className="text-sm text-primary" data-testid="text-purchase-orders">
                       {varianceData.purchaseOrders.map((po, index) => (
                         <span key={po.id}>
-                          <a
-                            href={`/purchase-orders/${po.id}`}
-                            className="hover:underline"
-                            data-testid={`link-po-${po.id}`}
+                          <button
+                            onClick={() => {
+                              setSelectedPurchaseOrderId(po.id);
+                              setSelectedVendorName(po.vendorName);
+                              setSelectedExpectedDate(po.expectedDate);
+                              setReceiptModalOpen(true);
+                            }}
+                            className="hover:underline cursor-pointer text-primary"
+                            data-testid={`button-po-${po.id}`}
                           >
                             {formatPurchaseOrderDate(po.expectedDate)} - {po.vendorName}
-                          </a>
+                          </button>
                           {index < varianceData.purchaseOrders.length - 1 && " | "}
                         </span>
                       ))}
@@ -537,6 +547,14 @@ export default function TfcVariance() {
             previousCountId={previousCountId}
             currentCountId={currentCountId}
             storeId={selectedStoreId || ""}
+          />
+          
+          <ReceiptModal
+            open={receiptModalOpen}
+            onOpenChange={setReceiptModalOpen}
+            purchaseOrderId={selectedPurchaseOrderId}
+            vendorName={selectedVendorName}
+            expectedDate={selectedExpectedDate}
           />
         </>
       )}
