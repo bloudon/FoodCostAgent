@@ -49,6 +49,9 @@ import {
   theoreticalUsageRuns, type TheoreticalUsageRun, type InsertTheoreticalUsageRun,
   theoreticalUsageLines, type TheoreticalUsageLine, type InsertTheoreticalUsageLine,
   dayparts, type Daypart, type InsertDaypart,
+  quickbooksConnections, type QuickBooksConnection, type InsertQuickBooksConnection,
+  quickbooksVendorMappings, type QuickBooksVendorMapping, type InsertQuickBooksVendorMapping,
+  quickbooksSyncLogs, type QuickBooksSyncLog, type InsertQuickBooksSyncLog,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -383,6 +386,26 @@ export interface IStorage {
   // TFC - Theoretical Usage Lines
   createTheoreticalUsageLines(lines: InsertTheoreticalUsageLine[]): Promise<TheoreticalUsageLine[]>;
   getTheoreticalUsageLines(runId: string): Promise<TheoreticalUsageLine[]>;
+
+  // QuickBooks - Connections
+  getQuickBooksConnection(companyId: string, storeId?: string): Promise<QuickBooksConnection | undefined>;
+  createQuickBooksConnection(connection: InsertQuickBooksConnection): Promise<QuickBooksConnection>;
+  updateQuickBooksConnection(id: string, companyId: string, updates: Partial<QuickBooksConnection>): Promise<QuickBooksConnection | undefined>;
+  updateQuickBooksTokens(companyId: string, storeId: string | null, tokens: { accessToken: string; refreshToken: string; accessTokenExpiresAt: Date; refreshTokenExpiresAt: Date }): Promise<void>;
+  disconnectQuickBooks(companyId: string, storeId?: string): Promise<void>;
+  
+  // QuickBooks - Vendor Mappings
+  getQuickBooksVendorMapping(vendorId: string, companyId: string): Promise<QuickBooksVendorMapping | undefined>;
+  getQuickBooksVendorMappings(companyId: string): Promise<QuickBooksVendorMapping[]>;
+  createQuickBooksVendorMapping(mapping: InsertQuickBooksVendorMapping): Promise<QuickBooksVendorMapping>;
+  updateQuickBooksVendorMapping(id: string, companyId: string, updates: Partial<QuickBooksVendorMapping>): Promise<QuickBooksVendorMapping | undefined>;
+  deleteQuickBooksVendorMapping(id: string, companyId: string): Promise<void>;
+  
+  // QuickBooks - Sync Logs
+  getQuickBooksSyncLog(purchaseOrderId: string, companyId: string): Promise<QuickBooksSyncLog | undefined>;
+  getQuickBooksSyncLogs(companyId: string, syncStatus?: string): Promise<QuickBooksSyncLog[]>;
+  createQuickBooksSyncLog(log: InsertQuickBooksSyncLog): Promise<QuickBooksSyncLog>;
+  updateQuickBooksSyncLog(id: string, companyId: string, updates: Partial<QuickBooksSyncLog>): Promise<QuickBooksSyncLog | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2393,6 +2416,214 @@ export class DatabaseStorage implements IStorage {
           eq(theoreticalUsageLines.inventoryItemId, inventoryItemId)
         )
       );
+  }
+
+  // QuickBooks - Connections
+  async getQuickBooksConnection(companyId: string, storeId?: string): Promise<QuickBooksConnection | undefined> {
+    // Store-level connection overrides company-level connection
+    // First check for store-level connection if storeId provided
+    if (storeId) {
+      const [storeConnection] = await db
+        .select()
+        .from(quickbooksConnections)
+        .where(
+          and(
+            eq(quickbooksConnections.companyId, companyId),
+            eq(quickbooksConnections.storeId, storeId),
+            eq(quickbooksConnections.isActive, 1)
+          )
+        );
+      
+      if (storeConnection) {
+        return storeConnection;
+      }
+    }
+
+    // Fall back to company-level connection (storeId is null)
+    const [companyConnection] = await db
+      .select()
+      .from(quickbooksConnections)
+      .where(
+        and(
+          eq(quickbooksConnections.companyId, companyId),
+          isNull(quickbooksConnections.storeId),
+          eq(quickbooksConnections.isActive, 1)
+        )
+      );
+    
+    return companyConnection || undefined;
+  }
+
+  async createQuickBooksConnection(connection: InsertQuickBooksConnection): Promise<QuickBooksConnection> {
+    const [newConnection] = await db
+      .insert(quickbooksConnections)
+      .values(connection)
+      .returning();
+    return newConnection;
+  }
+
+  async updateQuickBooksConnection(id: string, companyId: string, updates: Partial<QuickBooksConnection>): Promise<QuickBooksConnection | undefined> {
+    const [updated] = await db
+      .update(quickbooksConnections)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(
+        and(
+          eq(quickbooksConnections.id, id),
+          eq(quickbooksConnections.companyId, companyId)
+        )
+      )
+      .returning();
+    return updated || undefined;
+  }
+
+  async updateQuickBooksTokens(
+    companyId: string,
+    storeId: string | null,
+    tokens: { accessToken: string; refreshToken: string; accessTokenExpiresAt: Date; refreshTokenExpiresAt: Date }
+  ): Promise<void> {
+    const whereConditions = storeId
+      ? and(
+          eq(quickbooksConnections.companyId, companyId),
+          eq(quickbooksConnections.storeId, storeId)
+        )
+      : and(
+          eq(quickbooksConnections.companyId, companyId),
+          isNull(quickbooksConnections.storeId)
+        );
+
+    await db
+      .update(quickbooksConnections)
+      .set({ ...tokens, updatedAt: new Date() })
+      .where(whereConditions);
+  }
+
+  async disconnectQuickBooks(companyId: string, storeId?: string): Promise<void> {
+    const whereConditions = storeId
+      ? and(
+          eq(quickbooksConnections.companyId, companyId),
+          eq(quickbooksConnections.storeId, storeId)
+        )
+      : and(
+          eq(quickbooksConnections.companyId, companyId),
+          isNull(quickbooksConnections.storeId)
+        );
+
+    await db
+      .update(quickbooksConnections)
+      .set({ isActive: 0, updatedAt: new Date() })
+      .where(whereConditions);
+  }
+
+  // QuickBooks - Vendor Mappings
+  async getQuickBooksVendorMapping(vendorId: string, companyId: string): Promise<QuickBooksVendorMapping | undefined> {
+    const [mapping] = await db
+      .select()
+      .from(quickbooksVendorMappings)
+      .where(
+        and(
+          eq(quickbooksVendorMappings.vendorId, vendorId),
+          eq(quickbooksVendorMappings.companyId, companyId)
+        )
+      );
+    return mapping || undefined;
+  }
+
+  async getQuickBooksVendorMappings(companyId: string): Promise<QuickBooksVendorMapping[]> {
+    return db
+      .select()
+      .from(quickbooksVendorMappings)
+      .where(eq(quickbooksVendorMappings.companyId, companyId));
+  }
+
+  async createQuickBooksVendorMapping(mapping: InsertQuickBooksVendorMapping): Promise<QuickBooksVendorMapping> {
+    const [newMapping] = await db
+      .insert(quickbooksVendorMappings)
+      .values(mapping)
+      .returning();
+    return newMapping;
+  }
+
+  async updateQuickBooksVendorMapping(id: string, companyId: string, updates: Partial<QuickBooksVendorMapping>): Promise<QuickBooksVendorMapping | undefined> {
+    const [updated] = await db
+      .update(quickbooksVendorMappings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(
+        and(
+          eq(quickbooksVendorMappings.id, id),
+          eq(quickbooksVendorMappings.companyId, companyId)
+        )
+      )
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteQuickBooksVendorMapping(id: string, companyId: string): Promise<void> {
+    await db
+      .delete(quickbooksVendorMappings)
+      .where(
+        and(
+          eq(quickbooksVendorMappings.id, id),
+          eq(quickbooksVendorMappings.companyId, companyId)
+        )
+      );
+  }
+
+  // QuickBooks - Sync Logs
+  async getQuickBooksSyncLog(purchaseOrderId: string, companyId: string): Promise<QuickBooksSyncLog | undefined> {
+    const [log] = await db
+      .select()
+      .from(quickbooksSyncLogs)
+      .where(
+        and(
+          eq(quickbooksSyncLogs.purchaseOrderId, purchaseOrderId),
+          eq(quickbooksSyncLogs.companyId, companyId)
+        )
+      )
+      .orderBy(desc(quickbooksSyncLogs.createdAt));
+    return log || undefined;
+  }
+
+  async getQuickBooksSyncLogs(companyId: string, syncStatus?: string): Promise<QuickBooksSyncLog[]> {
+    if (syncStatus) {
+      return db
+        .select()
+        .from(quickbooksSyncLogs)
+        .where(
+          and(
+            eq(quickbooksSyncLogs.companyId, companyId),
+            eq(quickbooksSyncLogs.syncStatus, syncStatus)
+          )
+        )
+        .orderBy(desc(quickbooksSyncLogs.createdAt));
+    }
+    
+    return db
+      .select()
+      .from(quickbooksSyncLogs)
+      .where(eq(quickbooksSyncLogs.companyId, companyId))
+      .orderBy(desc(quickbooksSyncLogs.createdAt));
+  }
+
+  async createQuickBooksSyncLog(log: InsertQuickBooksSyncLog): Promise<QuickBooksSyncLog> {
+    const [newLog] = await db
+      .insert(quickbooksSyncLogs)
+      .values(log)
+      .returning();
+    return newLog;
+  }
+
+  async updateQuickBooksSyncLog(id: string, companyId: string, updates: Partial<QuickBooksSyncLog>): Promise<QuickBooksSyncLog | undefined> {
+    const [updated] = await db
+      .update(quickbooksSyncLogs)
+      .set(updates)
+      .where(
+        and(
+          eq(quickbooksSyncLogs.id, id),
+          eq(quickbooksSyncLogs.companyId, companyId)
+        )
+      )
+      .returning();
+    return updated || undefined;
   }
 }
 

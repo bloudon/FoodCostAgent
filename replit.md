@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system for food service businesses. Its primary goal is to boost operational efficiency, cut waste, and increase profitability across various business locations. It offers features like precise unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing, streamlined purchasing, and robust business intelligence. This scalable, multi-tenant solution optimizes food costs and operational workflows through strict data isolation, providing granular control over inventory and recipes for significant cost savings and improved financial performance.
+This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance operational efficiency, reduce waste, and improve profitability across various business locations. Key capabilities include precise unit conversions, multi-level nested recipe management, integration with POS sales data, comprehensive variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), streamlined purchasing, and robust business intelligence. It is a scalable, multi-tenant solution with strict data isolation, offering granular control over costs and operations for food service operators. The business vision is to become the leading inventory and recipe management solution for multi-location food service businesses, empowering them with data-driven insights to optimize their operations and maximize profit margins.
 
 # User Preferences
 
@@ -50,20 +50,22 @@ This project is a multi-company inventory management and recipe costing system f
 - TFC Variance Table Enhancements: Variance report includes WAC (Weighted Average Cost) column positioned between Variance % and Cost Impact, displaying the per-unit cost used in variance calculations. Table includes totals row at bottom showing sum of all variance costs with color-coded display (red for over-usage, green for savings) and bold styling with muted background.
 - TFC Purchase Order Receipt Modal: Purchase orders displayed in the "Purchase Orders Delivered" section are clickable, opening a modal dialog that shows receipt details without leaving the variance page. Modal displays received items with quantities, prices, and line totals, along with receipt status and timestamp. Includes "View Full Order" button to navigate to the complete purchase order page. Backend endpoint `/api/purchase-orders/:poId/receipts` nourishes receipt lines with inventory item names, vendor SKUs, and unit names for complete display.
 - TFC Variance Summary Cards: Variance page displays inventory count periods as a grid of clickable summary cards instead of a dropdown selector. Each card shows: Inventory Date, Inventory Value (total count value), Total Sales (POS sales for the period), Total Variance $ and % (aggregated across all items). Cards use responsive layout (1/2/3 columns on mobile/tablet/desktop) with hover elevation and selected state styling (border-primary bg-accent). Backend endpoint `/api/tfc/variance/summaries?storeId=X` calculates and returns summaries for all count periods. Frontend auto-selects the most recent period on load and clears selection when store changes to prevent stale count ID/store ID mismatches. Provides immediate visual overview of variance trends across multiple periods.
+- QuickBooks Online Integration: OAuth 2.0 integration for pushing received purchase orders as bills. Multi-tenant architecture supports both company-level and store-level QB connections with store-level connections overriding company-level. Backend includes three tables: `quickbooks_connections` (OAuth tokens with company/store isolation), `quickbooks_vendor_mappings` (maps FoodCost Pro vendors to QB vendors), `quickbooks_sync_logs` (tracks sync status with retry logic). OAuth flow uses HMAC-SHA256 signed state parameters to prevent tampering and replay attacks (1-hour expiry). All routes include multi-tenant security validation (store ownership verification). Storage interface provides complete CRUD operations for connections, mappings, and sync logs. Environment variables required: QUICKBOOKS_CLIENT_ID, QUICKBOOKS_CLIENT_SECRET, QUICKBOOKS_ENVIRONMENT. Future work: encrypt access/refresh tokens at rest, implement bill-pushing logic on purchase order receipt completion, create frontend UI for QB settings/vendor mapping/sync monitoring.
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
-- **Backend**: Node.js (TypeScript) with Express.js and Zod for schema validation.
-- **Database**: PostgreSQL managed with Drizzle ORM.
-- **Application Structure**: Multi-tenant Single-Page Application (SPA) with strict data isolation.
-- **UI/UX Decisions**: Compact single-row navigation, mobile hamburger menu, intuitive Recipe Builder with cost visualization, sortable tables, touch-friendly inventory count interfaces, theme toggling, conditional UI rendering for multi-tenancy, comprehensive kitchen unit system, real-time cached recipe cost calculations, tare weight categories and case counting, TFC Theoretical Usage Detail modal, inventory count smooth scrolling anchors and layout optimization.
-- **Technical Implementations**: Micro-unit system, pluggable adapter pattern for vendor integrations, centralized order management, robust security (HMAC-SHA256), connection pooling, composite indexes, atomic transactions, Redis caching, and response compression.
+-   **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for a responsive Single Page Application (SPA).
+-   **Backend**: Node.js (TypeScript) with Express.js and Zod for API and data validation.
+-   **Database**: PostgreSQL, managed with Drizzle ORM.
+-   **Application Structure**: Multi-tenant SPA with strict data isolation.
+-   **UI/UX Decisions**: Compact navigation, mobile-friendly design, intuitive Recipe Builder with real-time cost visualization, sortable tables, touch-friendly interfaces, theme toggling, conditional UI rendering, comprehensive kitchen unit system, real-time cached recipe cost calculations, tare weight categories, case counting, TFC Theoretical Usage Detail modal, inventory count smooth scrolling, and optimized layouts.
+-   **Technical Implementations**: Micro-unit system for precise measurements, pluggable adapter pattern for vendor integrations, centralized order management, HMAC-SHA256 security, connection pooling, composite indexes, atomic transactions, Redis caching, and response compression.
 
 # External Dependencies
 
-- **Database Services**: Neon serverless PostgreSQL.
-- **Real-time Communication**: `ws` library (WebSockets).
-- **Image Processing**: Sharp.
-- **Object Storage**: Replit's native object storage.
-- **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods.
+-   **Database Services**: Neon serverless PostgreSQL.
+-   **Real-time Communication**: `ws` library for WebSockets.
+-   **Image Processing**: Sharp.
+-   **Object Storage**: Replit's native object storage.
+-   **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods.
+-   **QuickBooks Online Integration**: OAuth 2.0 integration via `intuit-oauth` package for pushing received invoices as bills.

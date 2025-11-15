@@ -992,3 +992,72 @@ export const insertOrderGuideLineSchema = createInsertSchema(orderGuideLines).om
 export type InsertOrderGuideLine = z.infer<typeof insertOrderGuideLineSchema>;
 export type OrderGuideLine = typeof orderGuideLines.$inferSelect;
 
+// QuickBooks Connections (company or store level - company overrides store)
+export const quickbooksConnections = pgTable("quickbooks_connections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(), // Always required for multi-tenant isolation
+  storeId: varchar("store_id"), // If null, this is a company-level connection
+  realmId: text("realm_id").notNull(), // QuickBooks company ID
+  accessToken: text("access_token").notNull(), // Encrypted in storage layer
+  refreshToken: text("refresh_token").notNull(), // Encrypted in storage layer
+  accessTokenExpiresAt: timestamp("access_token_expires_at").notNull(),
+  refreshTokenExpiresAt: timestamp("refresh_token_expires_at").notNull(),
+  isActive: integer("is_active").notNull().default(1), // 1=active, 0=disconnected
+  lastSyncedAt: timestamp("last_synced_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  // Ensure one connection per company or per store
+  companyStoreIdx: index("qb_connections_company_store_idx").on(table.companyId, table.storeId),
+}));
+
+export const insertQuickBooksConnectionSchema = createInsertSchema(quickbooksConnections)
+  .omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertQuickBooksConnection = z.infer<typeof insertQuickBooksConnectionSchema>;
+export type QuickBooksConnection = typeof quickbooksConnections.$inferSelect;
+
+// QuickBooks Vendor Mappings (simple one-to-one mapping)
+export const quickbooksVendorMappings = pgTable("quickbooks_vendor_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  vendorId: varchar("vendor_id").notNull(), // Our vendor ID
+  quickbooksVendorId: text("quickbooks_vendor_id").notNull(), // QB vendor ID
+  quickbooksVendorName: text("quickbooks_vendor_name").notNull(), // QB vendor display name (cached for display)
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  // Ensure one mapping per vendor per company
+  uniqueVendorMapping: unique().on(table.companyId, table.vendorId),
+  vendorIdx: index("qb_vendor_mappings_vendor_idx").on(table.vendorId),
+}));
+
+export const insertQuickBooksVendorMappingSchema = createInsertSchema(quickbooksVendorMappings)
+  .omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertQuickBooksVendorMapping = z.infer<typeof insertQuickBooksVendorMappingSchema>;
+export type QuickBooksVendorMapping = typeof quickbooksVendorMappings.$inferSelect;
+
+// QuickBooks Sync Logs (tracks all sync attempts with retry logic)
+export const quickbooksSyncLogs = pgTable("quickbooks_sync_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  purchaseOrderId: varchar("purchase_order_id").notNull(), // PO being synced
+  quickbooksBillId: text("quickbooks_bill_id"), // QB bill ID (null if sync failed)
+  syncStatus: text("sync_status").notNull(), // 'pending', 'success', 'failed', 'retry_exhausted'
+  attemptCount: integer("attempt_count").notNull().default(0), // Number of attempts (max 2: original + 1 retry)
+  errorMessage: text("error_message"), // Error details if failed
+  errorCode: text("error_code"), // QB API error code if available
+  lastAttemptAt: timestamp("last_attempt_at"),
+  succeededAt: timestamp("succeeded_at"), // When sync succeeded
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  // Fast lookups by PO and sync status for manual retry
+  poIdx: index("qb_sync_logs_po_idx").on(table.purchaseOrderId),
+  statusIdx: index("qb_sync_logs_status_idx").on(table.syncStatus),
+  companyStatusIdx: index("qb_sync_logs_company_status_idx").on(table.companyId, table.syncStatus),
+}));
+
+export const insertQuickBooksSyncLogSchema = createInsertSchema(quickbooksSyncLogs)
+  .omit({ id: true, createdAt: true });
+export type InsertQuickBooksSyncLog = z.infer<typeof insertQuickBooksSyncLogSchema>;
+export type QuickBooksSyncLog = typeof quickbooksSyncLogs.$inferSelect;
+

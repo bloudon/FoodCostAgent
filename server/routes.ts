@@ -6,6 +6,7 @@ import multer from "multer";
 import { storage } from "./storage";
 import { parseCSV } from "./services/tfcCsv";
 import { TheoreticalUsageService } from "./services/theoreticalUsage";
+import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
@@ -47,6 +48,7 @@ import {
   insertCompanySchema,
   insertCompanyStoreSchema,
   insertInvitationSchema,
+  insertQuickBooksVendorMappingSchema,
 } from "@shared/schema";
 
 // Swagger/OpenAPI Configuration
@@ -6698,6 +6700,264 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Theoretical detail error:', error);
       res.status(500).json({ message: "Failed to fetch theoretical usage detail", error: error.message });
+    }
+  });
+
+  // ============ QUICKBOOKS INTEGRATION ============
+
+  // Helper function to create signed OAuth state parameter
+  const createSignedState = (data: any): string => {
+    const payload = Buffer.from(JSON.stringify(data)).toString("base64");
+    const signature = crypto
+      .createHmac("sha256", process.env.SESSION_SECRET || "fallback-secret")
+      .update(payload)
+      .digest("hex");
+    return `${payload}.${signature}`;
+  };
+
+  // Helper function to verify and decode signed state parameter
+  const verifySignedState = (signedState: string): any => {
+    const [payload, signature] = signedState.split(".");
+    if (!payload || !signature) {
+      throw new Error("Invalid state format");
+    }
+
+    const expectedSignature = crypto
+      .createHmac("sha256", process.env.SESSION_SECRET || "fallback-secret")
+      .update(payload)
+      .digest("hex");
+
+    if (signature !== expectedSignature) {
+      throw new Error("State signature verification failed");
+    }
+
+    return JSON.parse(Buffer.from(payload, "base64").toString());
+  };
+
+  // GET /api/quickbooks/connect - Initiate OAuth flow
+  app.get("/api/quickbooks/connect", requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { storeId } = req.query; // Optional: if provided, creates store-level connection
+
+      // Validate storeId if provided
+      if (storeId && typeof storeId !== "string") {
+        return res.status(400).json({ error: "Invalid storeId parameter" });
+      }
+
+      // Verify store ownership if storeId provided
+      if (storeId) {
+        const store = await storage.getCompanyStore(storeId);
+        if (!store || store.companyId !== companyId) {
+          return res.status(403).json({ error: "Access denied to this store" });
+        }
+      }
+
+      const oauthClient = createOAuthClient();
+
+      // Create signed state parameter to prevent tampering
+      const stateData = {
+        companyId,
+        storeId: storeId || null,
+        userId: req.user!.id,
+        timestamp: Date.now(),
+      };
+      const state = createSignedState(stateData);
+
+      const authUri = oauthClient.authorizeUri({
+        scope: [OAuthClient.scopes.Accounting],
+        state,
+      });
+
+      res.redirect(authUri);
+    } catch (error: any) {
+      console.error("QuickBooks connect error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/quickbooks/callback - Handle OAuth callback
+  app.get("/api/quickbooks/callback", async (req, res) => {
+    try {
+      const { state } = req.query;
+
+      if (!state || typeof state !== "string") {
+        return res.status(400).send("Missing state parameter");
+      }
+
+      // Verify and decode state parameter
+      let stateData: any;
+      try {
+        stateData = verifySignedState(state);
+      } catch (error) {
+        console.error("State verification failed:", error);
+        return res.redirect("/settings/integrations?qb_error=state_invalid");
+      }
+
+      const { companyId, storeId, timestamp } = stateData;
+
+      // Prevent replay attacks - reject states older than 1 hour
+      if (Date.now() - timestamp > 60 * 60 * 1000) {
+        return res.redirect("/settings/integrations?qb_error=state_expired");
+      }
+
+      // Additional security check: verify store still belongs to company
+      if (storeId) {
+        const store = await storage.getCompanyStore(storeId);
+        if (!store || store.companyId !== companyId) {
+          return res.redirect("/settings/integrations?qb_error=invalid_store");
+        }
+      }
+
+      const oauthClient = createOAuthClient();
+      const authResponse = await oauthClient.createToken(req.url);
+      const token = authResponse.getJson();
+
+      // Store tokens in database (TODO: Encrypt tokens at rest)
+      const accessTokenExpiresAt = new Date(Date.now() + token.expires_in * 1000);
+      const refreshTokenExpiresAt = new Date(Date.now() + token.x_refresh_token_expires_in * 1000);
+
+      await storage.createQuickBooksConnection({
+        companyId,
+        storeId: storeId || null,
+        realmId: authResponse.token.realmId,
+        accessToken: token.access_token,
+        refreshToken: token.refresh_token,
+        accessTokenExpiresAt,
+        refreshTokenExpiresAt,
+      });
+
+      // Redirect to settings page with success message
+      const redirectPath = storeId 
+        ? `/settings/integrations?storeId=${storeId}&qb_connected=true`
+        : `/settings/integrations?qb_connected=true`;
+      
+      res.redirect(redirectPath);
+    } catch (error: any) {
+      console.error("QuickBooks callback error:", error);
+      res.redirect("/settings/integrations?qb_error=true");
+    }
+  });
+
+  // GET /api/quickbooks/status - Get connection status
+  app.get("/api/quickbooks/status", requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { storeId } = req.query;
+
+      // Verify store ownership if storeId provided
+      if (storeId && typeof storeId === "string") {
+        const store = await storage.getCompanyStore(storeId);
+        if (!store || store.companyId !== companyId) {
+          return res.status(403).json({ error: "Access denied to this store" });
+        }
+      }
+
+      const connection = await getActiveConnection(
+        companyId,
+        storeId as string | undefined
+      );
+
+      if (!connection) {
+        return res.json({ connected: false });
+      }
+
+      res.json({
+        connected: true,
+        connectionLevel: connection.storeId ? "store" : "company",
+        storeId: connection.storeId,
+        lastSyncedAt: connection.lastSyncedAt,
+        expiresAt: connection.accessTokenExpiresAt,
+      });
+    } catch (error: any) {
+      console.error("QuickBooks status error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/quickbooks/disconnect - Disconnect QuickBooks
+  app.post("/api/quickbooks/disconnect", requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { storeId } = req.body; // Optional: disconnect specific store
+
+      // Verify store ownership if storeId provided
+      if (storeId) {
+        const store = await storage.getCompanyStore(storeId);
+        if (!store || store.companyId !== companyId) {
+          return res.status(403).json({ error: "Access denied to this store" });
+        }
+      }
+
+      await storage.disconnectQuickBooks(companyId, storeId);
+
+      res.json({ success: true, message: "QuickBooks disconnected successfully" });
+    } catch (error: any) {
+      console.error("QuickBooks disconnect error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/quickbooks/vendors/mappings - Get all vendor mappings
+  app.get("/api/quickbooks/vendors/mappings", requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+
+      const mappings = await storage.getQuickBooksVendorMappings(companyId);
+      res.json(mappings);
+    } catch (error: any) {
+      console.error("QuickBooks vendor mappings error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/quickbooks/vendors/mappings - Create vendor mapping
+  app.post("/api/quickbooks/vendors/mappings", requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+
+      const validatedData = insertQuickBooksVendorMappingSchema.parse({
+        ...req.body,
+        companyId,
+      });
+
+      const mapping = await storage.createQuickBooksVendorMapping(validatedData);
+      res.json(mapping);
+    } catch (error: any) {
+      console.error("QuickBooks create vendor mapping error:", error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // DELETE /api/quickbooks/vendors/mappings/:id - Delete vendor mapping
+  app.delete("/api/quickbooks/vendors/mappings/:id", requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { id } = req.params;
+
+      await storage.deleteQuickBooksVendorMapping(id, companyId);
+      res.json({ success: true, message: "Vendor mapping deleted successfully" });
+    } catch (error: any) {
+      console.error("QuickBooks delete vendor mapping error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/quickbooks/sync-logs - Get sync logs
+  app.get("/api/quickbooks/sync-logs", requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { syncStatus } = req.query;
+
+      const logs = await storage.getQuickBooksSyncLogs(
+        companyId,
+        syncStatus as string | undefined
+      );
+      
+      res.json(logs);
+    } catch (error: any) {
+      console.error("QuickBooks sync logs error:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 
