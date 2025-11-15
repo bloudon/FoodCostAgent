@@ -14,7 +14,7 @@ import { getAccessibleStores } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -6128,7 +6128,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           // Get inventory count lines for current count to calculate total value
           const currentLines = await db.query.inventoryCountLines.findMany({
-            where: eq(inventoryCountLines.countId, currentCount.id),
+            where: eq(inventoryCountLines.inventoryCountId, currentCount.id),
           });
 
           const inventoryValue = currentLines.reduce((sum, line) => {

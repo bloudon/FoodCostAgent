@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system for food service businesses. Its primary goal is to boost operational efficiency, cut waste, and increase profitability across various business locations. Key features include accurate unit conversions, multi-level nested recipe management, POS sales data integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), streamlined purchasing, and comprehensive business intelligence. The system aims to be a scalable solution in the food service technology sector, optimizing food costs and operational workflows to provide a significant market advantage.
+This project is a multi-company inventory management and recipe costing system for food service businesses. Its core purpose is to enhance operational efficiency, minimize waste, and boost profitability across various business locations. Key capabilities include accurate unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), streamlined purchasing, and robust business intelligence. The system aims to be a scalable solution in the food service technology sector, optimizing food costs and operational workflows to provide a significant competitive advantage and achieve market leadership.
 
 # User Preferences
 
@@ -53,11 +53,11 @@ This project is a multi-company inventory management and recipe costing system f
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) utilizing `shadcn/ui` (Radix UI, Tailwind CSS) for UI components, TanStack Query for data fetching, React Context for state management, and Wouter for routing.
+- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query for data fetching, React Context for state management, and Wouter for routing.
 - **Backend**: Node.js (TypeScript) with Express.js for the API and Zod for schema validation.
 - **Database**: PostgreSQL managed with Drizzle ORM.
-- **Application Structure**: A multi-tenant Single-Page Application (SPA) designed to ensure strict data isolation between companies.
-- **UI/UX Decisions**: Consistent navigation, informative top bar, theme toggling, intuitive Recipe Builder with cost visualization, sortable tables, touch-friendly inventory count interfaces, comprehensive kitchen unit system, real-time cached recipe cost calculations, and conditional UI rendering for multi-tenancy. Enhancements include tare weight categories and case counting, and a TFC Theoretical Usage Detail modal for proportional usage distribution.
+- **Application Structure**: A multi-tenant Single-Page Application (SPA) ensuring strict data isolation between companies.
+- **UI/UX Decisions**: Consistent navigation, informative top bar, theme toggling, intuitive Recipe Builder with cost visualization, sortable tables, touch-friendly inventory count interfaces, and conditional UI rendering for multi-tenancy. Includes comprehensive kitchen unit system, real-time cached recipe cost calculations, tare weight categories, case counting, and a TFC Theoretical Usage Detail modal for proportional usage distribution.
 - **Technical Implementations**: Micro-unit system for precise tracking, pluggable adapter pattern for vendor integrations, centralized order management, and robust security features (HMAC-SHA256, connection pooling, composite indexes, atomic transactions, Redis caching, response compression).
 
 # External Dependencies
