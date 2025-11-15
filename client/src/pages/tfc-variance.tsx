@@ -418,86 +418,110 @@ export default function TfcVariance() {
                       <TableHead className="text-right">Theoretical</TableHead>
                       <TableHead className="text-right">Variance</TableHead>
                       <TableHead className="text-right">Variance %</TableHead>
+                      <TableHead className="text-right">WAC</TableHead>
                       <TableHead className="text-right">Cost Impact</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {varianceData.items.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center text-muted-foreground">
+                        <TableCell colSpan={10} className="text-center text-muted-foreground">
                           No variance data available for the selected period
                         </TableCell>
                       </TableRow>
                     ) : (
-                      varianceData.items
-                        .sort((a, b) => Math.abs(b.varianceCost) - Math.abs(a.varianceCost))
-                        .map((item) => (
-                          <TableRow key={item.inventoryItemId} data-testid={`row-variance-item-${item.inventoryItemId}`}>
-                            <TableCell className="font-medium">
-                              {item.inventoryItemName}
-                              <span className="text-xs text-muted-foreground ml-2">
-                                ({item.unitName})
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-sm">
-                              {formatNumber(item.previousQty)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-sm">
-                              {formatNumber(item.receivedQty)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-sm">
-                              {formatNumber(item.currentQty)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-sm font-medium">
-                              {formatNumber(item.actualUsage)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-sm">
-                              <Button
-                                variant="link"
-                                className="h-auto p-0 font-mono text-sm hover:underline"
-                                onClick={() => {
-                                  setSelectedItemId(item.inventoryItemId);
-                                  setSelectedItemName(item.inventoryItemName);
-                                  setDetailDialogOpen(true);
-                                }}
-                                data-testid={`button-theoretical-detail-${item.inventoryItemId}`}
-                              >
-                                {formatNumber(item.theoreticalUsage)}
-                              </Button>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Badge
-                                variant={
-                                  item.varianceUnits > 0.5
-                                    ? "destructive"
-                                    : item.varianceUnits < -0.5
-                                    ? "default"
-                                    : "secondary"
-                                }
-                                className="font-mono"
-                              >
+                      <>
+                        {varianceData.items
+                          .sort((a, b) => Math.abs(b.varianceCost) - Math.abs(a.varianceCost))
+                          .map((item) => (
+                            <TableRow key={item.inventoryItemId} data-testid={`row-variance-item-${item.inventoryItemId}`}>
+                              <TableCell className="font-medium">
+                                {item.inventoryItemName}
+                                <span className="text-xs text-muted-foreground ml-2">
+                                  ({item.unitName})
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-sm">
+                                {formatNumber(item.previousQty)}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-sm">
+                                {formatNumber(item.receivedQty)}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-sm">
+                                {formatNumber(item.currentQty)}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-sm font-medium">
+                                {formatNumber(item.actualUsage)}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-sm">
+                                <Button
+                                  variant="ghost"
+                                  className="h-auto p-0 font-mono text-sm hover:underline"
+                                  onClick={() => {
+                                    setSelectedItemId(item.inventoryItemId);
+                                    setSelectedItemName(item.inventoryItemName);
+                                    setDetailDialogOpen(true);
+                                  }}
+                                  data-testid={`button-theoretical-detail-${item.inventoryItemId}`}
+                                >
+                                  {formatNumber(item.theoreticalUsage)}
+                                </Button>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Badge
+                                  variant={
+                                    item.varianceUnits > 0.5
+                                      ? "destructive"
+                                      : item.varianceUnits < -0.5
+                                      ? "default"
+                                      : "secondary"
+                                  }
+                                  className="font-mono"
+                                >
+                                  {item.varianceUnits > 0 ? "+" : ""}
+                                  {formatNumber(item.varianceUnits)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-sm">
                                 {item.varianceUnits > 0 ? "+" : ""}
-                                {formatNumber(item.varianceUnits)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-sm">
-                              {item.varianceUnits > 0 ? "+" : ""}
-                              {formatNumber(item.variancePercent, 1)}%
-                            </TableCell>
-                            <TableCell
-                              className={`text-right font-mono font-medium ${
-                                item.varianceCost > 0
-                                  ? "text-destructive"
-                                  : item.varianceCost < 0
-                                  ? "text-green-600"
-                                  : ""
-                              }`}
-                            >
-                              {item.varianceCost > 0 ? "+" : ""}
-                              {formatCurrency(item.varianceCost)}
-                            </TableCell>
-                          </TableRow>
-                        ))
+                                {formatNumber(item.variancePercent, 1)}%
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-sm">
+                                {formatCurrency(item.pricePerUnit)}
+                              </TableCell>
+                              <TableCell
+                                className={`text-right font-mono font-medium ${
+                                  item.varianceCost > 0
+                                    ? "text-destructive"
+                                    : item.varianceCost < 0
+                                    ? "text-green-600"
+                                    : ""
+                                }`}
+                              >
+                                {item.varianceCost > 0 ? "+" : ""}
+                                {formatCurrency(item.varianceCost)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        <TableRow className="border-t-2 bg-muted/20 font-bold">
+                          <TableCell colSpan={9} className="text-right font-semibold">
+                            Total
+                          </TableCell>
+                          <TableCell
+                            className={`text-right font-mono font-bold ${
+                              varianceData.summary.totalVarianceCost > 0
+                                ? "text-destructive"
+                                : varianceData.summary.totalVarianceCost < 0
+                                ? "text-green-600"
+                                : ""
+                            }`}
+                            data-testid="text-variance-total"
+                          >
+                            {varianceData.summary.totalVarianceCost > 0 ? "+" : ""}
+                            {formatCurrency(varianceData.summary.totalVarianceCost)}
+                          </TableCell>
+                        </TableRow>
+                      </>
                     )}
                   </TableBody>
                 </Table>
