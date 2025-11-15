@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary purpose is to enhance operational efficiency, reduce waste, and improve profitability across multiple locations. Key capabilities include precise unit conversions, nested recipe management, real-time POS sales integration, detailed variance reporting, dual inventory pricing (last cost & weighted average), and streamlined purchasing workflows. It offers a comprehensive solution for inventory management and recipe cost optimization in multi-store environments, serving as a powerful business intelligence tool for the food service industry.
+This project is a multi-company inventory management and recipe costing system designed for food service businesses. It aims to enhance operational efficiency, reduce waste, and improve profitability across multiple locations. Key features include precise unit conversions, nested recipe management, POS sales data integration, detailed variance reporting, dual inventory pricing (last cost & weighted average), and streamlined purchasing. The system functions as a comprehensive business intelligence platform for the food service industry.
 
 # User Preferences
 
@@ -47,27 +47,38 @@ This project is a multi-company inventory management and recipe costing system d
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
-- **Backend**: Node.js (TypeScript) with Express.js for RESTful APIs and WebSockets, using Zod for data validation.
-- **Database**: PostgreSQL, managed by Drizzle ORM.
-- **Application Structure**: Multi-tenant Single-Page Application (SPA).
-- **UI/UX Decisions**:
-    - **Navigation**: Horizontal top navigation for desktop, hamburger menu for mobile. Top info bar displays company name, store selector, user email, logout, and theme toggle.
-    - **Recipe Builder**: Optimized layout for ingredient management, displaying recipe name and total cost on a single row.
-    - **Menu Items Table**: Features a sortable Food Cost % column and clickable Recipe Cost values linking to the recipe edit page.
-    - **Mobile Inventory Counts**: Optimized for mobile warehouse use with touch-friendly inputs, responsive layouts, a compact sticky dashboard, and wrapping item headers.
-- **Technical Implementations**:
-    - Micro-unit system for accurate inventory and costing.
-    - Pluggable adapter pattern for external vendor integrations.
-    - Centralized management for Purchase Orders, Receiving, and Transfer Orders.
-    - HMAC-SHA256 for secure API integrations.
-    - Scalability features: connection pooling, composite indexes, atomic transactions, Redis caching, and response compression (gzip).
-- **Core Features**: Automated inventory adjustments, historical recipe versioning, auto-populated inventory count sessions, dynamic `onHandQty` updates, unit and case ordering, vendor filtering, keyboard-optimized data entry, partial receipts, resumable sessions, on-the-fly unit price editing, store-to-store transfer orders, and waste tracking.
+-   **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
+-   **Backend**: Node.js (TypeScript) with Express.js for RESTful APIs and WebSockets, using Zod for data validation.
+-   **Database**: PostgreSQL, managed by Drizzle ORM.
+-   **Application Structure**: Multi-tenant Single-Page Application (SPA).
+-   **UI/UX Decisions**:
+    -   **Navigation**: Horizontal top navigation for desktop, hamburger menu for mobile. Top info bar displays company name, store selector, user email, logout, and theme toggle.
+    -   **Recipe Builder**: Optimized layout for ingredient management, displaying recipe name and total cost on a single row.
+    -   **Menu Items Table**: Features a sortable Food Cost % column and clickable Recipe Cost values linking to the recipe edit page.
+    -   **Mobile Inventory Counts**: Optimized for mobile warehouse use with touch-friendly inputs, responsive layouts, a compact sticky dashboard, and wrapping item headers.
+-   **Technical Implementations**:
+    -   Micro-unit system for accurate inventory and costing.
+    -   Pluggable adapter pattern for external vendor integrations.
+    -   Centralized management for Purchase Orders, Receiving, and Transfer Orders.
+    -   HMAC-SHA256 for secure API integrations.
+    -   Scalability features: connection pooling, composite indexes, atomic transactions, Redis caching, and response compression (gzip).
+-   **Feature Specifications**:
+    -   Automated inventory adjustments, historical recipe versioning.
+    -   Auto-populated inventory count sessions, dynamic `onHandQty` updates.
+    -   Unit and case ordering, vendor filtering, keyboard-optimized data entry.
+    -   Partial receipts, resumable sessions, on-the-fly unit price editing.
+    -   Store-to-store transfer orders, and waste tracking.
+-   **System Design Choices**:
+    -   Multi-tenant architecture for company isolation.
+    -   Real-time cost calculations with caching for performance.
+    -   Comprehensive unit management with compatibility filtering.
+    -   Robust vendor management with delivery scheduling and deletion constraints.
+    -   Placeholder system for menu item onboarding.
 
 # External Dependencies
 
-- **Database Services**: Neon serverless PostgreSQL.
-- **Real-time Communication**: `ws` library for WebSockets.
-- **Image Processing**: Sharp.
-- **Object Storage**: Replit's native object storage.
-- **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods.
+-   **Database Services**: Neon serverless PostgreSQL.
+-   **Real-time Communication**: `ws` library for WebSockets.
+-   **Image Processing**: Sharp.
+-   **Object Storage**: Replit's native object storage.
+-   **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods.
