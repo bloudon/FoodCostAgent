@@ -6,14 +6,19 @@ import type { QuickBooksConnection } from "@shared/schema";
 export function createOAuthClient(): OAuthClient {
   const clientId = process.env.QUICKBOOKS_CLIENT_ID;
   const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET;
-  const redirectUri = process.env.QUICKBOOKS_REDIRECT_URI;
   const environment = process.env.QUICKBOOKS_ENVIRONMENT || "sandbox";
 
-  if (!clientId || !clientSecret || !redirectUri) {
+  if (!clientId || !clientSecret) {
     throw new Error(
-      "Missing QuickBooks credentials. Please set QUICKBOOKS_CLIENT_ID, QUICKBOOKS_CLIENT_SECRET, and QUICKBOOKS_REDIRECT_URI environment variables."
+      "Missing QuickBooks credentials. Please set QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET in Replit Secrets."
     );
   }
+
+  // Auto-construct redirect URI based on Replit domain
+  const replitDomain = process.env.REPLIT_DEV_DOMAIN || process.env.REPL_SLUG;
+  const redirectUri = replitDomain 
+    ? `https://${replitDomain}/api/quickbooks/callback`
+    : process.env.QUICKBOOKS_REDIRECT_URI || "http://localhost:5000/api/quickbooks/callback";
 
   return new OAuthClient({
     clientId,
