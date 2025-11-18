@@ -4,9 +4,9 @@ import type { QuickBooksConnection } from "@shared/schema";
 
 // Initialize OAuth Client with environment configuration
 export function createOAuthClient(): OAuthClient {
-  const clientId = process.env.QUICKBOOKS_CLIENT_ID;
-  const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET;
-  const environment = process.env.QUICKBOOKS_ENVIRONMENT || "sandbox";
+  const clientId = process.env.QUICKBOOKS_CLIENT_ID?.trim();
+  const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET?.trim();
+  const environment = (process.env.QUICKBOOKS_ENVIRONMENT || "sandbox").trim();
 
   if (!clientId || !clientSecret) {
     throw new Error(
