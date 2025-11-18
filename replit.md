@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its core purpose is to boost operational efficiency, minimize waste, and increase profitability across multiple locations. Key features include precise unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing, streamlined purchasing, and robust business intelligence. It is a scalable, multi-tenant solution aimed at data-driven optimization and maximizing profit margins in multi-location food service operations.
+This project is a multi-company inventory management and recipe costing system for food service businesses. Its core purpose is to enhance operational efficiency, minimize waste, and boost profitability across multiple locations. Key capabilities include precise unit conversions, multi-level nested recipe management, POS sales integration, detailed variance reporting, dual inventory pricing, streamlined purchasing, and robust business intelligence. The system aims to be a scalable, multi-tenant solution that facilitates data-driven decisions and maximizes profit margins for multi-location food service operations.
 
 # User Preferences
 
@@ -60,6 +60,7 @@ This project is a multi-company inventory management and recipe costing system d
 - **Application Structure**: Multi-tenant SPA with strict data isolation.
 - **UI/UX Decisions**: Compact navigation, mobile-friendly design, intuitive Recipe Builder with real-time cost visualization, sortable tables, touch-friendly interfaces, theme toggling, conditional UI rendering, comprehensive kitchen unit system, real-time cached recipe cost calculations, tare weight categories, case counting, TFC Theoretical Usage Detail modal, inventory count smooth scrolling, and optimized layouts.
 - **Technical Implementations**: Micro-unit system for precise measurements, pluggable adapter pattern for vendor integrations, centralized order management, HMAC-SHA256 security, connection pooling, composite indexes, atomic transactions, Redis caching, and response compression.
+- **Feature Specifications**: Dual Inventory Pricing (Last Cost, WAC), Vendor Price Comparison and specific PO pricing, configurable Vendor Delivery Scheduling, Vendor Deletion Constraints (deactivation preferred), Default Categories, Unit Compatibility Filtering in Recipe Builder, 5-minute Recipe Cost Caching with invalidation, Order Completion Timestamps, YYYY-MM-DD Date Formatting with local timezone display, Consolidated Badge component for Receiving Status, Transfer Order Usage Tracking, Conditional Transfer UI rendering for single-store companies, Tare Weight/Case Counting via category/location flags, Inventory Count Smooth Scrolling Anchors and optimized layout, Inventory Count Text Search, TFC Theoretical Usage Detail modal, formatted TFC Purchase Order Display, TFC Unit System (item's base unit), TFC Variance Cost Calculation using WAC, TFC Variance Table with WAC column and color-coded totals, TFC Purchase Order Receipt Modal, TFC Variance Summary Cards.
 
 # External Dependencies
 
@@ -68,4 +69,4 @@ This project is a multi-company inventory management and recipe costing system d
 - **Image Processing**: Sharp.
 - **Object Storage**: Replit's native object storage.
 - **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods.
-- **QuickBooks Online Integration**: OAuth 2.0 integration via `intuit-oauth` package for pushing received invoices as bills.
+- **QuickBooks Online Integration**: OAuth 2.0 integration via `intuit-oauth` package.
