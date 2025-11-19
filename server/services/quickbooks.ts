@@ -332,7 +332,7 @@ export async function syncVendorsFromQuickBooks(
           }
         } else {
           // Try to match by name or account number
-          const matchedVendor = existingVendors.find(v =>
+          const matchedVendor = existingVendors.find((v: any) =>
             v.name.toLowerCase().trim() === qbVendor.displayName.toLowerCase().trim() ||
             (v.accountNumber && qbVendor.accountNumber && 
              v.accountNumber.toLowerCase().trim() === qbVendor.accountNumber.toLowerCase().trim())
