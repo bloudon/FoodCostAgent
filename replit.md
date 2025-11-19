@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system for food service businesses. Its core purpose is to boost operational efficiency, cut waste, and increase profitability across various locations. Key capabilities include precise unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost & Weighted Average Cost), streamlined purchasing, and robust business intelligence. It is designed as a scalable, multi-tenant solution with ambitions for market expansion and integration with broader financial tools.
+This project is a multi-company inventory management and recipe costing system for food service businesses. Its core purpose is to enhance operational efficiency, minimize waste, and increase profitability across multiple locations. Key capabilities include precise unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost & Weighted Average Cost), streamlined purchasing, and robust business intelligence features. The system is designed as a scalable, multi-tenant solution with significant market expansion potential and future integration with broader financial tools.
 
 # User Preferences
 
@@ -30,6 +30,7 @@ This project is a multi-company inventory management and recipe costing system f
 - Vendor Delivery Scheduling: Delivery scheduling is managed at the vendor level. Each vendor has `deliveryDays` (array of weekdays when vendor delivers) and `leadDaysAhead` (number of days before delivery that orders must be placed). Vendors page includes checkboxes for each weekday and a numeric input for lead days ahead in the add/edit vendor dialog. Lead time field has been completely removed from vendor items.
 - Vendor Deletion Constraints: Vendors with purchase orders or vendor items (products) cannot be deleted - only deactivated. Backend enforces constraints returning 400 errors with guidance to deactivate instead. Frontend displays error messages via toast notifications.
 - Misc Grocery Vendor Protection: "Misc Grocery" is a system vendor automatically created for each company. Frontend hides delete button for vendors with names containing "misc grocery" (case-insensitive). Backend additionally blocks deletion attempts via API.
+- Vendor Compliance Fields: Vendors table includes compliance and accounting fields to support expense gateway functionality when products are received. Fields include: `active` (integer 0/1, default 1) for vendor status, `taxId` (text) for Tax ID/EIN, `requires1099` (integer 0/1, default 0) for 1099 reporting requirements, `paymentTerms` (text) for payment terms (e.g., "Net 30", "COD"), `creditLimit` (real) for maximum credit limit, and `certifications` (text array) for vendor certifications (e.g., Organic, Kosher, Halal). Vendors page add/edit dialog includes "Compliance & Accounting" section with all fields. QuickBooks vendor mapping automatically filters to show only active vendors (active = 1).
 - Default Categories: All companies automatically start with three default categories: "Frozen", "Walk-In", and "Dry/Pantry". Companies can customize and add additional categories as needed.
 - Comprehensive Kitchen Units: System includes 40 comprehensive kitchen measurement units covering both imperial and metric systems. Companies have a `preferredUnitSystem` setting (imperial/metric/both) to control default unit display preferences.
 - Unit Compatibility Filtering: Recipe builder implements intelligent unit filtering to prevent incompatible unit selections. When adding or editing ingredients, the unit dropdown automatically filters to show only units matching the ingredient's measurement kind (weight/volume/count) and the company's preferredUnitSystem setting (imperial/metric/both). Backend endpoint GET `/api/units/compatible?unitId=<uuid>` returns filtered units. Frontend uses React Query with custom queryFn to fetch compatible units, implementing length-aware fallback `(compatibleUnits?.length ? compatibleUnits : allUnits)` to ensure dropdown always has options.
@@ -54,13 +55,13 @@ This project is a multi-company inventory management and recipe costing system f
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter.
-- **Backend**: Node.js (TypeScript), Express.js, and Zod for validation.
-- **Database**: PostgreSQL with Drizzle ORM.
-- **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation.
-- **UI/UX Decisions**: Compact navigation, mobile-friendly design, intuitive Recipe Builder with real-time cost visualization, sortable tables, touch-friendly interfaces, theme toggling, conditional UI rendering, optimized inventory count layouts, and visual variance reporting (summary cards, detailed modals).
+- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for a modern, responsive SPA.
+- **Backend**: Node.js (TypeScript) with Express.js and Zod for API development and validation.
+- **Database**: PostgreSQL managed with Drizzle ORM.
+- **Application Structure**: Multi-tenant SPA with stringent data isolation.
+- **UI/UX Decisions**: Compact navigation, mobile-first design, intuitive Recipe Builder with real-time cost visualization, sortable/filterable tables, touch-friendly interfaces, theme toggling, conditional UI rendering, optimized inventory count layouts, and advanced visual variance reporting via summary cards and detailed modals.
 - **Technical Implementations**: Micro-unit system, pluggable adapter pattern for vendor integrations, centralized order management, HMAC-SHA256 for OAuth security, connection pooling, composite indexes, atomic transactions, Redis caching, response compression, and robust multi-tenant data isolation.
-- **Feature Specifications**: Dual Inventory Pricing (Last Cost & WAC), Vendor Price Comparison with PO-specific pricing, configurable Vendor Delivery Scheduling, Vendor Deletion Constraints, Default Categories, intelligent Unit Compatibility Filtering, 5-minute Recipe Cost Caching with invalidation, Order Completion Timestamps, YYYY-MM-DD Date Formatting, consolidated Badge component for Receiving Status, Transfer Order Usage Tracking (with conditional UI), Tare Weight/Case Counting, Inventory Count smooth scrolling and text search, TFC Theoretical Usage Detail modal, formatted TFC Purchase Order Display, TFC Unit System clarity (item's base unit), TFC Variance Cost Calculation using WAC, enhanced TFC Variance Table (WAC column, color-coded totals), TFC Purchase Order Receipt Modal, TFC Variance Summary Cards, and comprehensive QuickBooks Online Integration.
+- **Feature Specifications**: Dual inventory pricing (Last Cost & WAC), vendor price comparison, configurable vendor delivery scheduling, vendor deletion constraints, default categories, intelligent unit compatibility filtering, 5-minute recipe cost caching with invalidation, order completion timestamps, YYYY-MM-DD date formatting, consolidated receiving status badge, transfer order usage tracking (with conditional UI), tare weight/case counting, inventory count smooth scrolling and text search, TFC theoretical usage detail modal, formatted TFC purchase order display, TFC unit system clarity (item's base unit), TFC variance cost calculation using WAC, enhanced TFC variance table (WAC column, color-coded totals), TFC purchase order receipt modal, TFC variance summary cards, and comprehensive QuickBooks Online Integration.
 
 # External Dependencies
 
@@ -69,4 +70,4 @@ This project is a multi-company inventory management and recipe costing system f
 - **Image Processing**: Sharp.
 - **Object Storage**: Replit's native object storage.
 - **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods.
-- **QuickBooks Online Integration**: OAuth 2.0 integration via `intuit-oauth` package.
+- **QuickBooks Online Integration**: `intuit-oauth` package.

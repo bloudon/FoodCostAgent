@@ -219,12 +219,12 @@ export default function Vendors() {
       phone: vendor.phone || "",
       website: vendor.website || "",
       deliveryDays: vendor.deliveryDays || [],
-      leadDaysAhead: vendor.leadDaysAhead || undefined,
+      leadDaysAhead: vendor.leadDaysAhead ?? undefined,
       active: vendor.active ?? 1,
       taxId: vendor.taxId || "",
       requires1099: vendor.requires1099 ?? 0,
       paymentTerms: vendor.paymentTerms || "",
-      creditLimit: vendor.creditLimit || undefined,
+      creditLimit: vendor.creditLimit ?? undefined,
       certifications: vendor.certifications || [],
     });
     setIsDialogOpen(true);
