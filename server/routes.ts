@@ -6738,8 +6738,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/quickbooks/connect - Initiate OAuth flow
   app.get("/api/quickbooks/connect", requireAuth, async (req, res) => {
     try {
-      const { companyId } = req.user!;
+      const companyId = (req as any).companyId; // Get from req, not req.user
       const { storeId } = req.query; // Optional: if provided, creates store-level connection
+      
+      if (!companyId) {
+        return res.status(400).json({ error: "No company selected. Please select a company first." });
+      }
 
       // Validate storeId if provided
       if (storeId && typeof storeId !== "string") {
@@ -6845,8 +6849,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/quickbooks/status - Get connection status
   app.get("/api/quickbooks/status", requireAuth, async (req, res) => {
     try {
-      const { companyId } = req.user!;
+      const companyId = (req as any).companyId; // Get from req, not req.user
       const { storeId } = req.query;
+      
+      if (!companyId) {
+        return res.json({ connected: false });
+      }
 
       // Verify store ownership if storeId provided
       if (storeId && typeof storeId === "string") {

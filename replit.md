@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system for food service businesses. Its purpose is to enhance operational efficiency, minimize waste, and boost profitability across multiple locations. Key capabilities include precise unit conversions, multi-level nested recipe management, POS sales data integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), streamlined purchasing, and robust business intelligence. It is a scalable, multi-tenant solution designed to empower data-driven decision-making and profit optimization for multi-location food service operations.
+This project is a multi-company inventory management and recipe costing system for food service businesses. Its primary goal is to boost operational efficiency, reduce waste, and maximize profitability across various locations. Key features include precise unit conversions, multi-level nested recipe management, POS sales data integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), streamlined purchasing, and robust business intelligence. It's designed as a scalable, multi-tenant solution to support data-driven decision-making and profit optimization for multi-location food service operations.
 
 # User Preferences
 
@@ -54,13 +54,13 @@ This project is a multi-company inventory management and recipe costing system f
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter.
-- **Backend**: Node.js (TypeScript) with Express.js and Zod.
+- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
+- **Backend**: Node.js (TypeScript) with Express.js and Zod for schema validation.
 - **Database**: PostgreSQL, managed with Drizzle ORM.
-- **Application Structure**: Multi-tenant SPA with strict data isolation.
+- **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation.
 - **UI/UX Decisions**: Compact navigation, mobile-friendly design, intuitive Recipe Builder with real-time cost visualization, sortable tables, touch-friendly interfaces, theme toggling, conditional UI rendering, and optimized inventory count layouts.
 - **Technical Implementations**: Micro-unit system, pluggable adapter pattern for vendor integrations, centralized order management, HMAC-SHA256 security, connection pooling, composite indexes, atomic transactions, Redis caching, and response compression.
-- **Feature Specifications**: Dual Inventory Pricing (Last Cost, WAC), Vendor Price Comparison and specific PO pricing, configurable Vendor Delivery Scheduling, Vendor Deletion Constraints, Default Categories, Unit Compatibility Filtering in Recipe Builder, 5-minute Recipe Cost Caching with invalidation, Order Completion Timestamps, YYYY-MM-DD Date Formatting with local timezone display, Consolidated Badge component for Receiving Status, Transfer Order Usage Tracking with conditional UI, Tare Weight/Case Counting via category/location flags, Inventory Count Smooth Scrolling Anchors, Inventory Count Text Search, TFC Theoretical Usage Detail modal, formatted TFC Purchase Order Display, TFC Unit System (item's base unit), TFC Variance Cost Calculation using WAC, TFC Variance Table with WAC column and color-coded totals, TFC Purchase Order Receipt Modal, and TFC Variance Summary Cards.
+- **Feature Specifications**: Dual Inventory Pricing (Last Cost, WAC), Vendor Price Comparison and specific PO pricing, configurable Vendor Delivery Scheduling, Vendor Deletion Constraints, Default Categories, Unit Compatibility Filtering in Recipe Builder, 5-minute Recipe Cost Caching with invalidation, Order Completion Timestamps, YYYY-MM-DD Date Formatting with local timezone display, Consolidated Badge component for Receiving Status, Transfer Order Usage Tracking with conditional UI, Tare Weight/Case Counting via category/location flags, Inventory Count Smooth Scrolling Anchors, Inventory Count Text Search, TFC Theoretical Usage Detail modal, formatted TFC Purchase Order Display, TFC Unit System (item's base unit), TFC Variance Cost Calculation using WAC, TFC Variance Table with WAC column and color-coded totals, TFC Purchase Order Receipt Modal, TFC Variance Summary Cards, and QuickBooks Online Integration.
 
 # External Dependencies
 
