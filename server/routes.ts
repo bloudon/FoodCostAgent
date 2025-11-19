@@ -6954,6 +6954,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/quickbooks/vendors - Fetch vendors from QuickBooks
+  app.get("/api/quickbooks/vendors", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { storeId } = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({ error: "No company selected" });
+      }
+
+      // Verify store ownership if storeId provided
+      if (storeId && typeof storeId === "string") {
+        const store = await storage.getCompanyStore(storeId);
+        if (!store || store.companyId !== companyId) {
+          return res.status(403).json({ error: "Access denied to this store" });
+        }
+      }
+
+      const { fetchQuickBooksVendors } = await import("./services/quickbooks");
+      const vendors = await fetchQuickBooksVendors(companyId, storeId as string | undefined);
+      
+      res.json(vendors);
+    } catch (error: any) {
+      console.error("QuickBooks fetch vendors error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // GET /api/quickbooks/vendors/mappings - Get all vendor mappings
   app.get("/api/quickbooks/vendors/mappings", requireAuth, async (req, res) => {
     try {
