@@ -360,12 +360,22 @@ export const vendors = pgTable("vendors", {
   website: text("website"),
   deliveryDays: text("delivery_days").array(), // Days of week when vendor delivers (e.g., ["Monday", "Wednesday", "Friday"])
   leadDaysAhead: integer("lead_days_ahead"), // Number of days ahead to place orders before delivery
+  active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
+  taxId: text("tax_id"), // Tax ID / EIN for 1099 reporting
+  requires1099: integer("requires_1099").notNull().default(0), // 1 = requires 1099, 0 = does not require
+  paymentTerms: text("payment_terms"), // e.g., "Net 30", "COD", "Net 15"
+  creditLimit: real("credit_limit"), // Maximum credit limit
+  certifications: text("certifications").array(), // e.g., ["Organic", "Kosher", "Halal", "Non-GMO"]
 });
 
 export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true }).extend({
   orderGuideType: z.string().min(1).default("manual"),
   deliveryDays: z.array(z.enum(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])).optional(),
   leadDaysAhead: z.number().int().min(0).max(30).optional(),
+  active: z.number().int().min(0).max(1).default(1).optional(),
+  requires1099: z.number().int().min(0).max(1).default(0).optional(),
+  creditLimit: z.number().min(0).optional(),
+  certifications: z.array(z.string()).optional(),
 });
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type Vendor = typeof vendors.$inferSelect;
