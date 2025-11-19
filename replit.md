@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system for food service businesses. Its core purpose is to boost operational efficiency, cut waste, and increase profitability across various locations. Key features include precise unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost & Weighted Average Cost), streamlined purchasing, and robust business intelligence. It is designed as a scalable, multi-tenant solution with ambitions for integration with broader financial tools, providing a competitive edge in the food service sector.
+This project is a multi-company inventory management and recipe costing system for food service businesses. It aims to boost operational efficiency, reduce waste, and increase profitability across multiple locations. Key features include accurate unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost & Weighted Average Cost), streamlined purchasing, and robust business intelligence. It is built as a scalable, multi-tenant solution with integration aspirations for broader financial tools, providing a competitive advantage in the food service industry.
 
 # User Preferences
 
@@ -14,7 +14,6 @@ This project is a multi-company inventory management and recipe costing system f
 - Storage Locations: Inventory items can be associated with multiple storage locations; at least one is required. Storage Locations page features drag-and-drop reordering. Inventory count displays respect storage location sortOrder.
 - Recipe `canBeIngredient`: Recipes include a `canBeIngredient` checkbox field (0/1 in DB) to mark if they can be used as ingredients in other recipes.
 - Category Filtering in Recipe Builder: Categories include a `showAsIngredient` field (0/1 in DB) controlling whether items in this category appear in the recipe builder's ingredient selection.
-- Waste Percentage Removal: The waste percentage field has been removed from recipes.
 - Recipe Cost Calculation Fix: Ingredient prices must be converted to base unit prices before multiplication.
 - Recipe Company Isolation: Implement comprehensive company-level isolation for recipes and recipe components.
 - Recipe Cost Recalculation on Inventory Price Changes: Automatically recalculate all affected recipes when an inventory item's price changes, including nested recipes, ensuring recalculation in dependency order.
