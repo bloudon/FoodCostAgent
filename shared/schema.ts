@@ -366,6 +366,10 @@ export const vendors = pgTable("vendors", {
   paymentTerms: text("payment_terms"), // e.g., "Net 30", "COD", "Net 15"
   creditLimit: real("credit_limit"), // Maximum credit limit
   certifications: text("certifications").array(), // e.g., ["Organic", "Kosher", "Halal", "Non-GMO"]
+  qbVendorId: text("qb_vendor_id"), // QuickBooks vendor ID (if synced from QB)
+  sourceOfTruth: text("source_of_truth").notNull().default("manual"), // "quickbooks" or "manual" - indicates which system manages core fields
+  lastSyncAt: timestamp("last_sync_at"), // Timestamp of last sync from QuickBooks
+  syncStatus: text("sync_status"), // "synced", "conflict", "error", "pending", null for manual vendors
 });
 
 export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true }).extend({
@@ -376,6 +380,10 @@ export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true })
   requires1099: z.number().int().min(0).max(1).default(0).optional(),
   creditLimit: z.number().min(0).optional(),
   certifications: z.array(z.string()).optional(),
+  qbVendorId: z.string().optional(),
+  sourceOfTruth: z.enum(["quickbooks", "manual"]).default("manual").optional(),
+  lastSyncAt: z.date().optional(),
+  syncStatus: z.enum(["synced", "conflict", "error", "pending"]).optional(),
 });
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type Vendor = typeof vendors.$inferSelect;
