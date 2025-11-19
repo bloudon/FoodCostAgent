@@ -1619,6 +1619,147 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * @swagger
+   * /api/order-guides/upload:
+   *   post:
+   *     summary: Upload order guide with smart matching
+   *     description: Parse CSV, match to inventory items, and stage for review
+   *     tags: [Order Guides]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [csvContent, vendorKey, vendorId]
+   *             properties:
+   *               csvContent:
+   *                 type: string
+   *               vendorKey:
+   *                 type: string
+   *                 enum: [sysco, gfs, usfoods]
+   *               vendorId:
+   *                 type: string
+   *               fileName:
+   *                 type: string
+   *               skipRows:
+   *                 type: number
+   *     responses:
+   *       200:
+   *         description: Order guide uploaded and matched
+   */
+  app.post("/api/order-guides/upload", requireAuth, async (req, res) => {
+    try {
+      const { csvContent, vendorKey, vendorId, fileName, skipRows } = req.body;
+      const companyId = (req as any).companyId;
+      const storeId = (req as any).storeId;
+
+      if (!csvContent || !vendorKey || !vendorId) {
+        return res.status(400).json({ error: 'csvContent, vendorKey, and vendorId are required' });
+      }
+
+      const { OrderGuideProcessor } = await import('./services/orderGuideProcessor');
+      const processor = new OrderGuideProcessor(storage);
+
+      const result = await processor.processUpload({
+        csvContent,
+        vendorKey: vendorKey as 'sysco' | 'gfs' | 'usfoods',
+        vendorId,
+        companyId,
+        storeId,
+        fileName: fileName || 'order_guide.csv',
+        skipRows: skipRows || 0,
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('[Order Guide Upload Error]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * @swagger
+   * /api/order-guides/{id}/review:
+   *   get:
+   *     summary: Get order guide for review
+   *     description: Returns order guide with lines grouped by match status
+   *     tags: [Order Guides]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Order guide with grouped matches
+   */
+  app.get("/api/order-guides/:id/review", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const { OrderGuideProcessor } = await import('./services/orderGuideProcessor');
+      const processor = new OrderGuideProcessor(storage);
+
+      const review = await processor.getForReview(id);
+      res.json(review);
+    } catch (error: any) {
+      console.error('[Order Guide Review Error]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * @swagger
+   * /api/order-guides/{id}/approve:
+   *   post:
+   *     summary: Approve order guide and create vendor items
+   *     description: Create vendor_items for all matched inventory items
+   *     tags: [Order Guides]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               createNewInventoryItems:
+   *                 type: boolean
+   *     responses:
+   *       200:
+   *         description: Order guide approved
+   */
+  app.post("/api/order-guides/:id/approve", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { createNewInventoryItems } = req.body;
+      const companyId = (req as any).companyId;
+      const userId = (req as any).userId;
+
+      const { OrderGuideProcessor } = await import('./services/orderGuideProcessor');
+      const processor = new OrderGuideProcessor(storage);
+
+      const result = await processor.approve({
+        orderGuideId: id,
+        companyId,
+        approvedBy: userId,
+        createNewInventoryItems: createNewInventoryItems || false,
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('[Order Guide Approval Error]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // PunchOut - Initialize Session
   app.post("/api/vendors/:vendorKey/punchout/init", requireAuth, async (req, res) => {
     try {
