@@ -1,3 +1,4 @@
+import { parse } from 'csv-parse/sync';
 import type { OrderGuide, VendorProduct, VendorKey } from '../types';
 
 /**
@@ -5,6 +6,7 @@ import type { OrderGuide, VendorProduct, VendorKey } from '../types';
  * 
  * Handles CSV-based order guide imports from vendors.
  * Each vendor has slightly different CSV formats, so we map them to a common structure.
+ * Uses robust csv-parse library for reliable parsing.
  */
 
 export interface CsvParseOptions {
@@ -83,18 +85,19 @@ export class CsvOrderGuide {
     const { vendorKey, skipRows = 0, delimiter = ',' } = options;
     const mapping = VENDOR_MAPPINGS[vendorKey];
 
-    const lines = csvContent.split('\n').slice(skipRows);
-    const headers = lines[0].split(delimiter).map(h => h.trim());
-    
+    // Parse CSV with robust csv-parse library
+    const records = parse(csvContent, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+      bom: true, // Handle UTF-8 BOM
+      delimiter,
+      from: skipRows + 1, // Skip header rows if needed
+    }) as Record<string, string>[];
+
     const products: VendorProduct[] = [];
 
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      if (!line.trim()) continue;
-
-      const values = this.parseCsvLine(line, delimiter);
-      const row = this.createRowObject(headers, values);
-
+    for (const row of records) {
       const product: VendorProduct = {
         vendorSku: this.getValue(row, mapping.vendorSku),
         vendorProductName: this.getValue(row, mapping.productName),
@@ -119,45 +122,6 @@ export class CsvOrderGuide {
       products,
       effectiveDate: new Date().toISOString(),
     };
-  }
-
-  /**
-   * Parse CSV line handling quoted fields
-   */
-  private static parseCsvLine(line: string, delimiter: string): string[] {
-    const values: string[] = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === delimiter && !inQuotes) {
-        values.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    
-    values.push(current.trim());
-    return values;
-  }
-
-  /**
-   * Create row object from headers and values
-   */
-  private static createRowObject(
-    headers: string[],
-    values: string[]
-  ): Record<string, string> {
-    const obj: Record<string, string> = {};
-    headers.forEach((header, i) => {
-      obj[header] = values[i] || '';
-    });
-    return obj;
   }
 
   /**

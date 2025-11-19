@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its core purpose is to enhance operational efficiency, reduce waste, and improve profitability across multiple locations. Key features include precise unit conversions, multi-level nested recipe management, POS sales data integration, detailed variance reporting, dual inventory pricing (Last Cost & Weighted Average Average Cost), streamlined purchasing, and robust business intelligence. The system is built as a scalable, multi-tenant solution with aspirations for future expansion into broader financial tools for the food service industry.
+This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its core purpose is to enhance operational efficiency, reduce waste, and improve profitability across various locations. Key capabilities include precise unit conversions, multi-level nested recipe management, POS sales data integration, detailed variance reporting, dual inventory pricing (Last Cost & Weighted Average Average Cost), streamlined purchasing, and robust business intelligence. The system is built as a scalable, multi-tenant solution with aspirations to expand into a comprehensive suite of financial tools for the food service industry.
 
 # User Preferences
 
@@ -55,7 +55,7 @@ This project is a multi-company inventory management and recipe costing system d
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for a responsive SPA.
+- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter.
 - **Backend**: Node.js (TypeScript) with Express.js and Zod for validation.
 - **Database**: PostgreSQL managed via Drizzle ORM.
 - **Application Structure**: Multi-tenant SPA with strict data isolation, micro-unit system, pluggable adapter pattern, centralized order management, HMAC-SHA256 for secure OAuth, database connection pooling, composite indexes, atomic transactions, Redis caching, and response compression.
