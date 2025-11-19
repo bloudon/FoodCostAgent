@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance operational efficiency, reduce waste, and improve profitability across various locations. Key capabilities include precise unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost & Weighted Average Cost), streamlined purchasing, and robust business intelligence. The system is a scalable, multi-tenant solution aiming for integration with broader financial tools, providing a competitive edge in the food service sector.
+This project is a multi-company inventory management and recipe costing system for food service businesses. Its core purpose is to boost operational efficiency, cut waste, and increase profitability across various locations. Key features include precise unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost & Weighted Average Cost), streamlined purchasing, and robust business intelligence. It is designed as a scalable, multi-tenant solution with ambitions for integration with broader financial tools, providing a competitive edge in the food service sector.
 
 # User Preferences
 
@@ -56,7 +56,7 @@ This project is a multi-company inventory management and recipe costing system d
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for a responsive Single Page Application.
+- **Frontend**: React 18 (TypeScript, Vite) utilizing `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for a responsive Single Page Application.
 - **Backend**: Node.js (TypeScript) with Express.js and Zod for validation.
 - **Database**: PostgreSQL managed via Drizzle ORM.
 - **Application Structure**: Multi-tenant SPA with strict data isolation.
