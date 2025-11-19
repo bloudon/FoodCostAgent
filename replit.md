@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance operational efficiency, reduce waste, and improve profitability across various business locations. It offers features such as precise unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost & Weighted Average Cost), streamlined purchasing, and robust business intelligence. Conceived as a scalable, multi-tenant solution, the system has the potential for integration with broader financial tools, providing a competitive advantage in the food service sector.
+This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance operational efficiency, reduce waste, and improve profitability across various locations. Key capabilities include precise unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost & Weighted Average Cost), streamlined purchasing, and robust business intelligence. The system is a scalable, multi-tenant solution aiming for integration with broader financial tools, providing a competitive edge in the food service sector.
 
 # User Preferences
 
@@ -56,13 +56,13 @@ This project is a multi-company inventory management and recipe costing system d
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) utilizing `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for a responsive Single Page Application.
-- **Backend**: Node.js (TypeScript) with Express.js and Zod for robust validation.
+- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for a responsive Single Page Application.
+- **Backend**: Node.js (TypeScript) with Express.js and Zod for validation.
 - **Database**: PostgreSQL managed via Drizzle ORM.
-- **Application Structure**: Multi-tenant SPA with strict data isolation ensuring data segregation between companies.
-- **UI/UX Decisions**: Features a compact navigation, mobile-first design, an intuitive Recipe Builder with real-time cost updates, sortable and filterable tables, touch-friendly interfaces, theme toggling, conditional UI rendering, optimized inventory count layouts, and advanced visual variance reporting.
-- **Technical Implementations**: Incorporates a micro-unit system for precise measurements, a pluggable adapter pattern for extensibility, centralized order management, HMAC-SHA256 for secure OAuth, database connection pooling, composite indexes for performance, atomic transactions, Redis caching for speed, response compression, and robust multi-tenant data isolation mechanisms.
-- **Feature Specifications**: Includes dual inventory pricing (Last Cost & WAC), vendor price comparison, configurable vendor delivery scheduling, vendor deletion constraints, automatic default categories, intelligent unit compatibility filtering, a 5-minute recipe cost cache with invalidation, order completion timestamps, YYYY-MM-DD date formatting, consolidated receiving status badges, transfer order usage tracking (with conditional UI), tare weight and case counting functionalities, smooth scrolling and text search in inventory counts, a theoretical usage detail modal in TFC reports, formatted TFC purchase order display, TFC unit system clarification, TFC variance cost calculation using WAC, an enhanced TFC variance table, a TFC purchase order receipt modal, TFC variance summary cards, and comprehensive QuickBooks Online Integration.
+- **Application Structure**: Multi-tenant SPA with strict data isolation.
+- **UI/UX Decisions**: Compact navigation, mobile-first design, intuitive Recipe Builder with real-time cost updates, sortable/filterable tables, touch-friendly interfaces, theme toggling, conditional UI rendering, optimized inventory count layouts, and advanced visual variance reporting.
+- **Technical Implementations**: Micro-unit system for precise measurements, pluggable adapter pattern, centralized order management, HMAC-SHA256 for secure OAuth, database connection pooling, composite indexes, atomic transactions, Redis caching, response compression, and robust multi-tenant data isolation.
+- **Feature Specifications**: Dual inventory pricing (Last Cost & WAC), vendor price comparison, configurable vendor delivery scheduling, vendor deletion constraints, automatic default categories, intelligent unit compatibility filtering, 5-minute recipe cost cache with invalidation, order completion timestamps, YYYY-MM-DD date formatting, consolidated receiving status badges, transfer order usage tracking (with conditional UI), tare weight and case counting, smooth scrolling and text search in inventory counts, theoretical usage detail modal in TFC reports, formatted TFC purchase order display, TFC unit system clarification, TFC variance cost calculation using WAC, enhanced TFC variance table, TFC purchase order receipt modal, TFC variance summary cards, and comprehensive QuickBooks Online Integration.
 
 # External Dependencies
 
