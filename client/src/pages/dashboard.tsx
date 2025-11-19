@@ -71,6 +71,20 @@ export default function Dashboard() {
   const storePurchaseOrdersRecent = [...storePurchaseOrdersAll]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 3);
+
+  // Fetch all receipts to calculate actual received values
+  const { data: allReceipts = [] } = useQuery<any[]>({
+    queryKey: ["/api/receipts"],
+  });
+
+  // Create a map of purchase order ID to receipt lines for quick lookup
+  const receiptsByPO = new Map<string, any[]>();
+  allReceipts.forEach((receipt: any) => {
+    if (receipt.status === "completed") {
+      const existing = receiptsByPO.get(receipt.purchaseOrderId) || [];
+      receiptsByPO.set(receipt.purchaseOrderId, [...existing, receipt]);
+    }
+  });
   
   // Get most recent count for this store (already filtered server-side, copy to avoid cache mutation)
   const mostRecentCount = inventoryCounts && inventoryCounts.length > 0
@@ -92,6 +106,22 @@ export default function Dashboard() {
     }
     return sum;
   }, 0) || 0;
+
+  // Helper function to get actual received value for a purchase order from completed receipts
+  const getActualReceivedValue = (purchaseOrderId: string): number | null => {
+    const completedReceipts = receiptsByPO.get(purchaseOrderId);
+    
+    if (!completedReceipts || completedReceipts.length === 0) {
+      return null; // No completed receipts, show expected value
+    }
+    
+    // Sum up the totalAmount from all completed receipts for this PO
+    const total = completedReceipts.reduce((sum: number, receipt: any) => {
+      return sum + (receipt.totalAmount || 0);
+    }, 0);
+    
+    return total;
+  };
 
   // Stats filtered by selected store
   const totalItems = inventoryItems?.filter(i => i.active === 1).length || 0;
@@ -345,9 +375,15 @@ export default function Dashboard() {
                         >
                           {order.status.replace('_', ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                         </Badge>
-                        <p className="font-medium text-sm font-mono" data-testid={`text-order-total-${order.id}`}>
-                          ${(order.totalAmount || 0).toFixed(2)}
-                        </p>
+                        {(() => {
+                          const actualValue = getActualReceivedValue(order.id);
+                          const displayValue = actualValue !== null ? actualValue : (order.totalAmount || 0);
+                          return (
+                            <p className="font-medium text-sm font-mono" data-testid={`text-order-total-${order.id}`}>
+                              ${displayValue.toFixed(2)}
+                            </p>
+                          );
+                        })()}
                       </div>
                     </div>
                   </Link>

@@ -4087,7 +4087,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ RECEIPTS ============
   app.get("/api/receipts", requireAuth, async (req, res) => {
     const receipts = await storage.getReceipts(req.companyId!);
-    res.json(receipts);
+    
+    // Enrich each receipt with calculated total amount from receipt lines
+    const receiptsWithTotals = await Promise.all(
+      receipts.map(async (receipt) => {
+        const lines = await storage.getReceiptLinesByReceiptId(receipt.id);
+        const totalAmount = lines.reduce((sum, line) => {
+          return sum + (line.receivedQty * line.priceEach);
+        }, 0);
+        
+        return {
+          ...receipt,
+          totalAmount,
+        };
+      })
+    );
+    
+    res.json(receiptsWithTotals);
   });
 
   // Get receipts for a specific purchase order with line details
