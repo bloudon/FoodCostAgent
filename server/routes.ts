@@ -6907,6 +6907,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/quickbooks/refresh-token - Manually refresh access token
+  // Restricted to global admins and company admins for security
+  app.post("/api/quickbooks/refresh-token", requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const companyId = (req as any).companyId;
+      const { storeId } = req.body;
+
+      if (!companyId) {
+        return res.status(400).json({ error: "No company selected" });
+      }
+
+      // Security: Only allow global admins or company admins to manually refresh tokens
+      if (user.role !== "global_admin" && user.role !== "company_admin") {
+        return res.status(403).json({ error: "Only admins can manually refresh QuickBooks tokens" });
+      }
+
+      // Verify store ownership if storeId provided
+      if (storeId) {
+        const store = await storage.getCompanyStore(storeId);
+        if (!store || store.companyId !== companyId) {
+          return res.status(403).json({ error: "Access denied to this store" });
+        }
+      }
+
+      // Get connection to check if it exists
+      const connection = await storage.getQuickBooksConnection(companyId, storeId);
+      if (!connection) {
+        return res.status(404).json({ error: "QuickBooks connection not found" });
+      }
+
+      // Force a token refresh by calling the service directly
+      const { refreshTokenIfNeeded } = await import("./services/quickbooks");
+      await refreshTokenIfNeeded(companyId, storeId || null);
+
+      res.json({ success: true, message: "Token refresh completed successfully" });
+    } catch (error: any) {
+      console.error("Manual QuickBooks token refresh error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // GET /api/quickbooks/vendors/mappings - Get all vendor mappings
   app.get("/api/quickbooks/vendors/mappings", requireAuth, async (req, res) => {
     try {
