@@ -977,6 +977,8 @@ export type EdiMessage = typeof ediMessages.$inferSelect;
 // Order Guides - Metadata about fetched order guides
 export const orderGuides = pgTable("order_guides", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(), // Multi-tenant isolation
+  vendorId: varchar("vendor_id"), // Reference to vendor (nullable for legacy imports)
   vendorKey: text("vendor_key").notNull(), // sysco, gfs, usfoods
   fetchedAt: timestamp("fetched_at").notNull().defaultNow(),
   source: text("source").notNull(), // csv, api, edi, punchout
@@ -984,7 +986,13 @@ export const orderGuides = pgTable("order_guides", {
   fileName: text("file_name"),
   effectiveDate: timestamp("effective_date"),
   expirationDate: timestamp("expiration_date"),
-});
+  status: text("status").notNull().default("pending_review"), // pending_review, approved, rejected
+  approvedAt: timestamp("approved_at"),
+  approvedBy: varchar("approved_by"), // User ID who approved
+}, (table) => ({
+  companyIdx: index("order_guides_company_idx").on(table.companyId),
+  vendorIdx: index("order_guides_vendor_idx").on(table.vendorId),
+}));
 
 export const insertOrderGuideSchema = createInsertSchema(orderGuides).omit({ id: true, fetchedAt: true });
 export type InsertOrderGuide = z.infer<typeof insertOrderGuideSchema>;
@@ -1004,7 +1012,16 @@ export const orderGuideLines = pgTable("order_guide_lines", {
   gtin: text("gtin"), // Global Trade Item Number / UPC
   category: text("category"),
   brandName: text("brand_name"),
-});
+  // Matching workflow fields
+  matchStatus: text("match_status").notNull().default("pending"), // auto_matched, needs_review, new_item, user_confirmed, user_rejected
+  matchedInventoryItemId: varchar("matched_inventory_item_id"), // Nullable - linked inventory item
+  matchConfidence: real("match_confidence"), // 0-100 confidence score
+  userDecision: text("user_decision"), // approved, rejected, create_new, null=pending
+  createdInventoryItemId: varchar("created_inventory_item_id"), // If new inventory item was created from this line
+}, (table) => ({
+  orderGuideIdx: index("order_guide_lines_guide_idx").on(table.orderGuideId),
+  matchedItemIdx: index("order_guide_lines_matched_idx").on(table.matchedInventoryItemId),
+}));
 
 export const insertOrderGuideLineSchema = createInsertSchema(orderGuideLines).omit({ id: true });
 export type InsertOrderGuideLine = z.infer<typeof insertOrderGuideLineSchema>;
