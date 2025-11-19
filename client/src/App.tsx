@@ -29,6 +29,7 @@ import RecipeBuilder from "@/pages/recipe-builder";
 import UnitConversions from "@/pages/unit-conversions";
 import Vendors from "@/pages/vendors";
 import VendorDetail from "@/pages/vendor-detail";
+import OrderGuideReview from "@/pages/order-guide-review";
 import Orders from "@/pages/orders";
 import PurchaseOrderDetail from "@/pages/purchase-order-detail";
 import ReceivingDetail from "@/pages/receiving-detail";
@@ -124,6 +125,7 @@ function ProtectedLayoutContent() {
               <Route path="/recipes" component={Recipes} />
               <Route path="/vendors/:id" component={VendorDetail} />
               <Route path="/vendors" component={Vendors} />
+              <Route path="/order-guides/:id/review" component={OrderGuideReview} />
               <Route path="/orders" component={Orders} />
               <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
               <Route path="/receiving/:poId" component={ReceivingDetail} />
