@@ -6913,11 +6913,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user!;
       const companyId = (req as any).companyId;
-      const { storeId } = req.body;
 
       if (!companyId) {
         return res.status(400).json({ error: "No company selected" });
       }
+
+      // Validate request payload
+      const refreshTokenSchema = z.object({
+        storeId: z.string().optional(),
+      });
+      const { storeId } = refreshTokenSchema.parse(req.body);
 
       // Security: Only allow global admins or company admins to manually refresh tokens
       if (user.role !== "global_admin" && user.role !== "company_admin") {
