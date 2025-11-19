@@ -6741,10 +6741,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const companyId = (req as any).companyId; // Get from req, not req.user
       const { storeId } = req.query; // Optional: if provided, creates store-level connection
       
-      console.log("🔍 QB Connect - companyId from req:", companyId);
-      console.log("🔍 QB Connect - user:", req.user);
-      console.log("🔍 QB Connect - full req keys:", Object.keys(req));
-      
       if (!companyId) {
         return res.status(400).json({ error: "No company selected. Please select a company first." });
       }
@@ -6798,14 +6794,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let stateData: any;
       try {
         stateData = verifySignedState(state);
-        console.log("✅ QB Callback - Decoded state data:", stateData);
       } catch (error) {
         console.error("State verification failed:", error);
         return res.redirect("/settings?qb_error=state_invalid");
       }
 
       const { companyId, storeId, timestamp } = stateData;
-      console.log("✅ QB Callback - Extracted values:", { companyId, storeId, timestamp });
 
       // Prevent replay attacks - reject states older than 1 hour
       if (Date.now() - timestamp > 60 * 60 * 1000) {
