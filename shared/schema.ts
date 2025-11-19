@@ -1034,13 +1034,17 @@ export const insertQuickBooksConnectionSchema = createInsertSchema(quickbooksCon
 export type InsertQuickBooksConnection = z.infer<typeof insertQuickBooksConnectionSchema>;
 export type QuickBooksConnection = typeof quickbooksConnections.$inferSelect;
 
-// QuickBooks Vendor Mappings (simple one-to-one mapping)
+// QuickBooks Vendor Mappings (vendor sync and reconciliation)
 export const quickbooksVendorMappings = pgTable("quickbooks_vendor_mappings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   vendorId: varchar("vendor_id").notNull(), // Our vendor ID
   quickbooksVendorId: text("quickbooks_vendor_id").notNull(), // QB vendor ID
   quickbooksVendorName: text("quickbooks_vendor_name").notNull(), // QB vendor display name (cached for display)
+  lastSyncAt: timestamp("last_sync_at"), // Timestamp of last sync from QuickBooks
+  syncStatus: text("sync_status"), // "synced", "conflict", "error", "pending"
+  conflictFlag: integer("conflict_flag").notNull().default(0), // 1 if there's a conflict that needs resolution, 0 otherwise
+  conflictDetails: text("conflict_details"), // JSON string describing the conflict
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
@@ -1050,7 +1054,13 @@ export const quickbooksVendorMappings = pgTable("quickbooks_vendor_mappings", {
 }));
 
 export const insertQuickBooksVendorMappingSchema = createInsertSchema(quickbooksVendorMappings)
-  .omit({ id: true, createdAt: true, updatedAt: true });
+  .omit({ id: true, createdAt: true, updatedAt: true })
+  .extend({
+    lastSyncAt: z.date().optional(),
+    syncStatus: z.enum(["synced", "conflict", "error", "pending"]).optional(),
+    conflictFlag: z.number().int().min(0).max(1).default(0).optional(),
+    conflictDetails: z.string().optional(),
+  });
 export type InsertQuickBooksVendorMapping = z.infer<typeof insertQuickBooksVendorMappingSchema>;
 export type QuickBooksVendorMapping = typeof quickbooksVendorMappings.$inferSelect;
 
