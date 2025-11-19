@@ -167,3 +167,44 @@ export async function refreshAllActiveConnections(): Promise<{
 
   return results;
 }
+
+// Fetch vendors from QuickBooks
+export async function fetchQuickBooksVendors(
+  companyId: string,
+  storeId?: string
+): Promise<Array<{ id: string; displayName: string; active: boolean }>> {
+  const { client, connection } = await getAuthenticatedClient(companyId, storeId);
+
+  const apiUrl = process.env.QUICKBOOKS_ENVIRONMENT === "production"
+    ? "https://quickbooks.api.intuit.com"
+    : "https://sandbox-quickbooks.api.intuit.com";
+
+  const query = "SELECT * FROM Vendor WHERE Active = true ORDER BY DisplayName ASC";
+  const url = `${apiUrl}/v3/company/${connection.realmId}/query?query=${encodeURIComponent(query)}`;
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${client.getToken().access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`QuickBooks API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const vendors = data.QueryResponse?.Vendor || [];
+
+    return vendors.map((vendor: any) => ({
+      id: vendor.Id,
+      displayName: vendor.DisplayName,
+      active: vendor.Active,
+    }));
+  } catch (error: any) {
+    console.error("Error fetching QuickBooks vendors:", error);
+    throw new Error(`Failed to fetch QuickBooks vendors: ${error.message}`);
+  }
+}
