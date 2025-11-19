@@ -31,8 +31,11 @@ export class ItemMatcher {
     companyId: string,
     storeId: string
   ): Promise<MatchResult> {
-    // Get all inventory items for this company
-    const inventoryItems = await this.storage.getInventoryItems(companyId);
+    // Get all inventory items and categories for this company
+    const [inventoryItems, categories] = await Promise.all([
+      this.storage.getInventoryItems(companyId),
+      this.storage.getCategories(companyId)
+    ]);
     
     if (inventoryItems.length === 0) {
       return {
@@ -44,6 +47,9 @@ export class ItemMatcher {
       };
     }
 
+    // Build category lookup map
+    const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+
     let bestMatch: MatchResult = {
       inventoryItemId: null,
       inventoryItemName: null,
@@ -54,16 +60,19 @@ export class ItemMatcher {
 
     // Try each matching strategy
     for (const item of inventoryItems) {
+      const itemCategoryName = item.categoryId ? categoryMap.get(item.categoryId) : null;
+      
       const scores = {
         name: this.calculateNameSimilarity(vendorProduct.vendorProductName, item.name),
         sku: this.checkSkuMatch(vendorProduct.vendorSku, item.pluSku),
-        category: 0, // TODO: Implement category matching
+        category: this.calculateCategoryMatch(vendorProduct.categoryCode, itemCategoryName),
       };
 
       // Calculate weighted score
       const totalScore = (
-        scores.name * 0.7 +  // Name is most important
-        scores.sku * 0.3     // SKU is secondary
+        scores.name * 0.6 +     // Name is most important
+        scores.sku * 0.25 +     // SKU is secondary
+        scores.category * 0.15  // Category provides additional signal
       );
 
       if (totalScore > bestMatch.score) {
@@ -148,6 +157,47 @@ export class ItemMatcher {
     if (v.includes(i) || i.includes(v)) return 0.5;
 
     return 0;
+  }
+
+  /**
+   * Calculate category match score
+   * Maps vendor category codes (e.g., "DAIRY", "PRODUCE") to inventory category names
+   */
+  private calculateCategoryMatch(vendorCategory?: string | null, inventoryCategory?: string | null): number {
+    if (!vendorCategory || !inventoryCategory) return 0;
+
+    const v = vendorCategory.toLowerCase().trim();
+    const i = inventoryCategory.toLowerCase().trim();
+
+    // Exact match
+    if (v === i) return 1.0;
+
+    // Substring match (e.g., "frozen" matches "frozen foods")
+    if (v.includes(i) || i.includes(v)) return 0.8;
+
+    // Common category mappings (vendor codes to common names)
+    const categoryMappings: Record<string, string[]> = {
+      'dairy': ['dairy', 'milk', 'cheese', 'walk-in'],
+      'frozen': ['frozen', 'freezer'],
+      'produce': ['produce', 'fruits', 'vegetables', 'fresh'],
+      'meat': ['meat', 'protein', 'butcher', 'walk-in'],
+      'dry': ['dry', 'pantry', 'grocery'],
+      'beverage': ['beverage', 'drinks', 'soda'],
+      'bakery': ['bakery', 'bread', 'baked goods'],
+    };
+
+    // Check if vendor category maps to inventory category
+    for (const [key, variants] of Object.entries(categoryMappings)) {
+      if (v.includes(key) || variants.some(variant => v.includes(variant))) {
+        if (variants.some(variant => i.includes(variant))) {
+          return 0.7; // Good semantic match
+        }
+      }
+    }
+
+    // Fuzzy similarity for unmapped categories
+    const similarity = this.calculateNameSimilarity(v, i);
+    return similarity > 0.5 ? similarity * 0.6 : 0; // Scale down fuzzy category matches
   }
 
   /**

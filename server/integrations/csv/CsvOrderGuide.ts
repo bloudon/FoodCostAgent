@@ -98,12 +98,17 @@ export class CsvOrderGuide {
     const products: VendorProduct[] = [];
 
     for (const row of records) {
+      const caseSizeRaw = this.getValue(row, mapping.caseSize);
+      const innerPackRaw = this.getValue(row, mapping.innerPack);
+      
       const product: VendorProduct = {
         vendorSku: this.getValue(row, mapping.vendorSku),
         vendorProductName: this.getValue(row, mapping.productName),
         description: this.getValue(row, mapping.description),
-        caseSize: this.parseNumber(this.getValue(row, mapping.caseSize)),
-        innerPack: this.parseNumber(this.getValue(row, mapping.innerPack)),
+        caseSize: this.parseNumber(caseSizeRaw),
+        caseSizeRaw: caseSizeRaw || undefined,      // Preserve raw pack string (e.g., "6/5 LB")
+        innerPack: this.parseNumber(innerPackRaw),
+        innerPackRaw: innerPackRaw || undefined,    // Preserve raw inner pack string
         unit: this.getValue(row, mapping.unit),
         price: this.parsePrice(this.getValue(row, mapping.price)),
         brandName: this.getValue(row, mapping.brand),

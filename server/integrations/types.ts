@@ -8,8 +8,10 @@ export interface VendorProduct {
   vendorSku: string;
   vendorProductName: string;
   description?: string;
-  caseSize?: number;
-  innerPack?: number;
+  caseSize?: number;           // Parsed numeric value for calculations
+  caseSizeRaw?: string;        // Original pack string from vendor (e.g., "6/5 LB")
+  innerPack?: number;          // Parsed numeric value for calculations
+  innerPackRaw?: string;       // Original inner pack string from vendor
   unit?: string;
   price?: number;
   brandName?: string;
