@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2 } from "lucide-react";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -47,6 +47,8 @@ export default function Settings() {
   const [isVendorMappingDialogOpen, setIsVendorMappingDialogOpen] = useState(false);
   const [selectedVendorId, setSelectedVendorId] = useState<string>("");
   const [selectedQbVendorId, setSelectedQbVendorId] = useState<string>("");
+  const [isVendorSyncDialogOpen, setIsVendorSyncDialogOpen] = useState(false);
+  const [selectedVendorsForSync, setSelectedVendorsForSync] = useState<Set<string>>(new Set());
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
 
   const { data: company, isLoading: companyLoading } = useQuery<Company>({
@@ -88,6 +90,13 @@ export default function Settings() {
   const { data: vendorMappings = [], isLoading: vendorMappingsLoading, refetch: refetchVendorMappings } = useQuery<QuickBooksVendorMapping[]>({
     queryKey: ["/api/quickbooks/vendors/mappings"],
     enabled: !!qbStatus?.connected,
+    retry: false,
+  });
+
+  // Vendor preview for sync
+  const { data: vendorPreview = [], isLoading: vendorPreviewLoading, refetch: refetchVendorPreview } = useQuery<any[]>({
+    queryKey: ["/api/quickbooks/vendors/preview"],
+    enabled: isVendorSyncDialogOpen && !!qbStatus?.connected,
     retry: false,
   });
 
@@ -216,6 +225,30 @@ export default function Settings() {
       toast({
         title: "Error",
         description: error.message || "Failed to delete vendor mapping",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Sync selected vendors from QuickBooks
+  const syncVendorsMutation = useMutation({
+    mutationFn: async (selectedVendorIds: string[]) => {
+      return await apiRequest("POST", "/api/quickbooks/vendors/sync", { selectedVendorIds });
+    },
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/vendors/mappings"] });
+      setIsVendorSyncDialogOpen(false);
+      setSelectedVendorsForSync(new Set());
+      toast({
+        title: "Success",
+        description: `Synced ${result.summary.created + result.summary.updated + result.summary.matched} vendors successfully`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to sync vendors",
         variant: "destructive",
       });
     },
@@ -713,6 +746,32 @@ export default function Settings() {
           {qbStatus?.connected && (
             <Card>
               <CardHeader>
+                <CardTitle>Vendor Import from QuickBooks</CardTitle>
+                <CardDescription>
+                  Automatically import vendor information from QuickBooks Online
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Import vendors from your QuickBooks account. You can review and select which vendors to import,
+                    and we'll automatically match them with any existing vendors.
+                  </p>
+                  <Button
+                    onClick={() => setIsVendorSyncDialogOpen(true)}
+                    data-testid="button-sync-vendors"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Sync Vendors from QuickBooks
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {qbStatus?.connected && (
+            <Card>
+              <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle>Vendor Mapping</CardTitle>
@@ -865,6 +924,183 @@ export default function Settings() {
               </CardContent>
             </Card>
           )}
+
+          {/* Vendor Sync Dialog */}
+          <Dialog open={isVendorSyncDialogOpen} onOpenChange={setIsVendorSyncDialogOpen}>
+            <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+              <DialogHeader>
+                <DialogTitle>Import Vendors from QuickBooks</DialogTitle>
+                <DialogDescription>
+                  Select which vendors you want to import from QuickBooks. We'll automatically detect matches with your existing vendors.
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="flex-1 overflow-auto">
+                {vendorPreviewLoading ? (
+                  <div className="flex items-center justify-center p-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : vendorPreview.length === 0 ? (
+                  <div className="text-center p-8 border rounded-lg border-dashed">
+                    <p className="text-sm text-muted-foreground">
+                      No QuickBooks vendors found to import
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedVendorsForSync.size === vendorPreview.filter(v => v.matchType === "new_vendor" || v.matchType === "exact_match").length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              // Select all new vendors and exact matches
+                              const newSet = new Set(
+                                vendorPreview
+                                  .filter(v => v.matchType === "new_vendor" || v.matchType === "exact_match")
+                                  .map(v => v.qbVendor.id)
+                              );
+                              setSelectedVendorsForSync(newSet);
+                            } else {
+                              setSelectedVendorsForSync(new Set());
+                            }
+                          }}
+                          className="h-4 w-4"
+                          data-testid="checkbox-select-all-vendors"
+                        />
+                        <span className="text-sm font-medium">
+                          Select All ({vendorPreview.filter(v => v.matchType === "new_vendor" || v.matchType === "exact_match").length} available)
+                        </span>
+                      </div>
+                      <Badge variant="outline">
+                        {selectedVendorsForSync.size} selected
+                      </Badge>
+                    </div>
+
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[50px]"></TableHead>
+                          <TableHead>QuickBooks Vendor</TableHead>
+                          <TableHead>Match Status</TableHead>
+                          <TableHead>Existing Vendor</TableHead>
+                          <TableHead>Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {vendorPreview.map((item) => {
+                          const isAlreadySynced = item.matchType === "already_synced";
+                          const isPossibleMatch = item.matchType === "possible_match";
+                          const canSelect = !isAlreadySynced && !isPossibleMatch;
+
+                          return (
+                            <TableRow key={item.qbVendor.id} data-testid={`vendor-preview-row-${item.qbVendor.id}`}>
+                              <TableCell>
+                                {canSelect ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedVendorsForSync.has(item.qbVendor.id)}
+                                    onChange={(e) => {
+                                      const newSet = new Set(selectedVendorsForSync);
+                                      if (e.target.checked) {
+                                        newSet.add(item.qbVendor.id);
+                                      } else {
+                                        newSet.delete(item.qbVendor.id);
+                                      }
+                                      setSelectedVendorsForSync(newSet);
+                                    }}
+                                    className="h-4 w-4"
+                                    data-testid={`checkbox-vendor-${item.qbVendor.id}`}
+                                  />
+                                ) : (
+                                  <div className="h-4 w-4" />
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {item.qbVendor.displayName}
+                              </TableCell>
+                              <TableCell>
+                                {item.matchType === "already_synced" && (
+                                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                    Already Synced
+                                  </Badge>
+                                )}
+                                {item.matchType === "exact_match" && (
+                                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                    Exact Match
+                                  </Badge>
+                                )}
+                                {item.matchType === "possible_match" && (
+                                  <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                    Possible Match
+                                  </Badge>
+                                )}
+                                {item.matchType === "new_vendor" && (
+                                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                                    New Vendor
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {item.existingVendor ? (
+                                  <span className="text-sm text-muted-foreground">
+                                    {item.existingVendor.name}
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-muted-foreground italic">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {item.recommendedAction === "create" && (
+                                  <span className="text-sm text-muted-foreground">Create new</span>
+                                )}
+                                {item.recommendedAction === "link" && (
+                                  <span className="text-sm text-muted-foreground">Link existing</span>
+                                )}
+                                {item.recommendedAction === "update" && (
+                                  <span className="text-sm text-muted-foreground">Update existing</span>
+                                )}
+                                {item.recommendedAction === "skip" && (
+                                  <span className="text-sm text-muted-foreground">Skip</span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter className="flex-shrink-0">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsVendorSyncDialogOpen(false);
+                    setSelectedVendorsForSync(new Set());
+                  }}
+                  data-testid="button-cancel-vendor-sync"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    syncVendorsMutation.mutate(Array.from(selectedVendorsForSync));
+                  }}
+                  disabled={syncVendorsMutation.isPending || selectedVendorsForSync.size === 0}
+                  data-testid="button-import-vendors"
+                >
+                  {syncVendorsMutation.isPending && (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  )}
+                  Import {selectedVendorsForSync.size > 0 && `(${selectedVendorsForSync.size})`} Vendors
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {qbStatus?.connected && (
             <Card>
