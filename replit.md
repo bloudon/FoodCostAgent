@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system for food service businesses. It aims to boost operational efficiency, minimize waste, and increase profitability across various business locations. Key features include precise unit conversions, nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), streamlined purchasing, and robust business intelligence. The project aspires to be a leading financial management solution in the food service industry.
+This project is a multi-company inventory management and recipe costing system for food service businesses. Its primary goal is to enhance operational efficiency, minimize waste, and boost profitability across various locations. Key features include precise unit conversions, nested recipe management, POS sales data integration, detailed variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), streamlined purchasing, and robust business intelligence. The system aims to become a leading financial management solution in the food service industry.
 
 # User Preferences
 
@@ -59,10 +59,9 @@ This project is a multi-company inventory management and recipe costing system f
 - **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter, optimized for mobile-first and touch-friendly experiences.
 - **Backend**: Node.js (TypeScript) with Express.js and Zod for validation.
 - **Database**: PostgreSQL managed via Drizzle ORM, utilizing connection pooling, composite indexes, and atomic transactions.
-- **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation, a micro-unit system, a pluggable adapter pattern for external integrations, centralized order management, HMAC-SHA256 for secure OAuth, Redis caching, and response compression.
+- **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation, a micro-unit system for precision, a pluggable adapter pattern for external integrations, centralized order management, HMAC-SHA256 for secure OAuth, Redis caching, and response compression.
 - **UI/UX Decisions**: Compact navigation, intuitive Recipe Builder with real-time cost updates, sortable/filterable data tables, theme toggling, conditional UI rendering, optimized inventory count layouts (smooth scrolling, text search, simplified accordion headers, CSS grid layouts), and advanced visual variance reporting (summary cards, detailed modals).
 - **Technical Implementations**: Comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), and sophisticated QuickBooks Online integration with multi-tenant support, selective vendor import, and automated token refreshing.
-- **Feature Specifications**: Includes dual inventory pricing, vendor price comparison, configurable vendor delivery schedules, automatic default categories, intelligent unit compatibility filtering, 5-minute recipe cost cache with invalidation, order completion timestamps, YYYY-MM-DD date formatting, consolidated receiving status badges, transfer order usage tracking, tare weight and case counting, theoretical usage detail modal, formatted TFC purchase order display, TFC unit system clarifications, TFC variance cost calculation using WAC, enhanced TFC variance table with WAC column and color-coded totals, TFC purchase order receipt modal, TFC variance summary cards, and multi-tenant QuickBooks Online Integration with selective vendor import and token auto-refresh.
 - **System Design Choices**: Emphasizes multi-tenancy, strict data isolation, a micro-unit system for precision, and a pluggable adapter pattern for flexible integrations. Security is prioritized through HMAC-SHA256 for OAuth and comprehensive validation.
 
 # External Dependencies

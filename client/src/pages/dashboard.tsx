@@ -2,9 +2,33 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStoreContext } from "@/hooks/use-store-context";
+
+const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline", className: string }> = {
+  "pending": { 
+    variant: "secondary",
+    className: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-yellow-500/20"
+  },
+  "ordered": { 
+    variant: "secondary",
+    className: "bg-blue-500/10 text-blue-700 border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20"
+  },
+  "in_transit": { 
+    variant: "secondary",
+    className: "bg-purple-500/10 text-purple-700 border-purple-500/20 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20"
+  },
+  "received": { 
+    variant: "secondary",
+    className: "bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20"
+  },
+  "completed": { 
+    variant: "secondary",
+    className: "bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20"
+  },
+};
 
 export default function Dashboard() {
   const { selectedStoreId, selectedStore, stores, isLoading: storesLoading } = useStoreContext();
@@ -267,15 +291,17 @@ export default function Dashboard() {
                           #{order.id.slice(0, 8)}
                         </p>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          <p className="text-xs text-muted-foreground capitalize" data-testid={`text-order-status-${order.id}`}>
-                            {order.status}
-                          </p>
-                          <p className="font-medium text-sm font-mono" data-testid={`text-order-total-${order.id}`}>
-                            ${(order.totalAmount || 0).toFixed(2)}
-                          </p>
-                        </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <Badge 
+                          variant={statusConfig[order.status]?.variant || "secondary"}
+                          className={statusConfig[order.status]?.className || ""}
+                          data-testid={`badge-order-status-${order.id}`}
+                        >
+                          {order.status.replace('_', ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                        </Badge>
+                        <p className="font-medium text-sm font-mono" data-testid={`text-order-total-${order.id}`}>
+                          ${(order.totalAmount || 0).toFixed(2)}
+                        </p>
                       </div>
                     </div>
                   </Link>

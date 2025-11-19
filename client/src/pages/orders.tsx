@@ -333,13 +333,15 @@ export default function Orders() {
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Badge 
-                                  variant={statusConfig[order.status]?.variant || "secondary"}
-                                  className={`${statusConfig[order.status]?.className || ""} cursor-help`}
-                                  data-testid={`badge-status-${order.id}`}
-                                >
-                                  {order.status.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                                </Badge>
+                                <span className="cursor-help inline-block">
+                                  <Badge 
+                                    variant={statusConfig[order.status]?.variant || "secondary"}
+                                    className={statusConfig[order.status]?.className || ""}
+                                    data-testid={`badge-status-${order.id}`}
+                                  >
+                                    {order.status.replace('_', ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                                  </Badge>
+                                </span>
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p>Completed at: {new Date(order.completedAt).toLocaleString()}</p>
@@ -352,7 +354,7 @@ export default function Orders() {
                             className={statusConfig[order.status]?.className || ""}
                             data-testid={`badge-status-${order.id}`}
                           >
-                            {order.status.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                            {order.status.replace('_', ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                           </Badge>
                         )}
                       </TableCell>
