@@ -57,6 +57,15 @@ export default function Dashboard() {
 
   // Filter purchase orders by selected store client-side (copy array to avoid mutation)
   const storePurchaseOrdersAll = [...allPurchaseOrders].filter(po => po.storeId === selectedStoreId);
+
+  // Fetch variance summaries for the selected store
+  const { data: varianceSummaries = [], isLoading: varianceSummariesLoading } = useQuery<any[]>({
+    queryKey: [`/api/tfc/variance/summaries?storeId=${selectedStoreId}`],
+    enabled: !!selectedStoreId,
+  });
+
+  // Get the most recent variance summary (first in list)
+  const recentVariance = varianceSummaries.length > 0 ? varianceSummaries[0] : null;
   
   // Get last 3 purchase orders for quicklink display
   const storePurchaseOrdersRecent = [...storePurchaseOrdersAll]
@@ -88,14 +97,6 @@ export default function Dashboard() {
   const totalItems = inventoryItems?.filter(i => i.active === 1).length || 0;
   const totalCounts = inventoryCounts?.length || 0;
   const totalOrders = storePurchaseOrdersAll.length;
-  
-  // Calculate total inventory value for this store
-  const totalInventoryValue = inventoryItems?.reduce((sum, item) => {
-    if (item.active === 1) {
-      return sum + (item.pricePerUnit || 0);
-    }
-    return sum;
-  }, 0) || 0;
 
   const stats = [
     {
@@ -103,24 +104,39 @@ export default function Dashboard() {
       value: itemsLoading ? "..." : totalItems.toString(),
       icon: Package,
       description: "Inventory items at this store",
+      link: "/inventory",
     },
     {
-      title: "Inventory Value",
-      value: itemsLoading ? "..." : `$${totalInventoryValue.toFixed(2)}`,
-      icon: DollarSign,
-      description: "Total value of inventory items",
+      title: "Recent Variance",
+      value: varianceSummariesLoading 
+        ? "..." 
+        : recentVariance 
+          ? `$${Math.abs(recentVariance.totalVarianceCost).toFixed(2)}`
+          : "No data",
+      icon: TrendingUp,
+      description: recentVariance 
+        ? `${new Date(recentVariance.inventoryDate).toLocaleDateString()}`
+        : "Complete inventory counts to view",
+      link: "/variance",
+      variant: recentVariance?.totalVarianceCost 
+        ? recentVariance.totalVarianceCost > 0 
+          ? "negative" 
+          : "positive"
+        : undefined,
     },
     {
       title: "Inventory Counts",
       value: countsLoading ? "..." : totalCounts.toString(),
       icon: ClipboardList,
       description: "Count sessions for this store",
+      link: "/inventory-sessions",
     },
     {
       title: "Recent Orders",
       value: totalOrders.toString(),
       icon: PackageCheck,
       description: "Last 3 purchase orders",
+      link: "/orders",
     },
   ];
 
@@ -167,24 +183,54 @@ export default function Dashboard() {
 
       {/* Stats Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-        {stats.map((stat) => (
-          <Card key={stat.title} data-testid={`card-stat-${stat.title.toLowerCase().replace(/\s+/g, "-")}`}>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {stat.title}
-              </CardTitle>
-              <stat.icon className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold font-mono" data-testid={`text-stat-value-${stat.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                {stat.value}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {stat.description}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
+        {stats.map((stat) => {
+          const cardContent = (
+            <Card 
+              data-testid={`card-stat-${stat.title.toLowerCase().replace(/\s+/g, "-")}`}
+              className={stat.link ? "cursor-pointer hover-elevate" : ""}
+            >
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  {stat.title}
+                </CardTitle>
+                <stat.icon className={`h-4 w-4 ${
+                  stat.variant === "positive" 
+                    ? "text-green-600 dark:text-green-400" 
+                    : stat.variant === "negative"
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-muted-foreground"
+                }`} />
+              </CardHeader>
+              <CardContent>
+                <div 
+                  className={`text-2xl font-bold font-mono ${
+                    stat.variant === "positive" 
+                      ? "text-green-600 dark:text-green-400" 
+                      : stat.variant === "negative"
+                        ? "text-red-600 dark:text-red-400"
+                        : ""
+                  }`}
+                  data-testid={`text-stat-value-${stat.title.toLowerCase().replace(/\s+/g, "-")}`}
+                >
+                  {stat.value}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {stat.description}
+                </p>
+              </CardContent>
+            </Card>
+          );
+
+          return stat.link ? (
+            <Link key={stat.title} href={stat.link}>
+              {cardContent}
+            </Link>
+          ) : (
+            <div key={stat.title}>
+              {cardContent}
+            </div>
+          );
+        })}
       </div>
 
       {/* Quicklinks Section */}
