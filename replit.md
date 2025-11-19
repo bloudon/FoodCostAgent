@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system specifically designed for food service businesses. Its primary goal is to enhance operational efficiency, minimize waste, and boost profitability across various business locations. Key functionalities include precise unit conversions, management of nested recipes, integration with POS sales data, detailed variance reporting, dual inventory pricing, streamlined purchasing, and robust business intelligence tools. The long-term vision is to establish this system as a premier financial management solution within the food service industry.
+This project is a multi-company inventory management and recipe costing system for food service businesses. It aims to boost operational efficiency, minimize waste, and increase profitability across various business locations. Key features include precise unit conversions, nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost and Weighted Average Cost), streamlined purchasing, and robust business intelligence. The project aspires to be a leading financial management solution in the food service industry.
 
 # User Preferences
 
@@ -56,12 +56,12 @@ This project is a multi-company inventory management and recipe costing system s
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter, designed for a compact, mobile-first, and touch-friendly user experience.
-- **Backend**: Node.js (TypeScript) with Express.js and Zod for robust validation.
-- **Database**: PostgreSQL managed via Drizzle ORM, leveraging connection pooling, composite indexes, and atomic transactions.
+- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter, optimized for mobile-first and touch-friendly experiences.
+- **Backend**: Node.js (TypeScript) with Express.js and Zod for validation.
+- **Database**: PostgreSQL managed via Drizzle ORM, utilizing connection pooling, composite indexes, and atomic transactions.
 - **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation, a micro-unit system, a pluggable adapter pattern for external integrations, centralized order management, HMAC-SHA256 for secure OAuth, Redis caching, and response compression.
 - **UI/UX Decisions**: Compact navigation, intuitive Recipe Builder with real-time cost updates, sortable/filterable data tables, theme toggling, conditional UI rendering, optimized inventory count layouts (smooth scrolling, text search, simplified accordion headers, CSS grid layouts), and advanced visual variance reporting (summary cards, detailed modals).
-- **Technical Implementations**: Comprehensive unit conversion, multi-level nested recipe costing, a dual inventory pricing model (Last Cost & Weighted Average Cost), and a sophisticated QuickBooks Online integration with multi-tenant support, selective vendor import, and automated token refreshing.
+- **Technical Implementations**: Comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), and sophisticated QuickBooks Online integration with multi-tenant support, selective vendor import, and automated token refreshing.
 - **Feature Specifications**: Includes dual inventory pricing, vendor price comparison, configurable vendor delivery schedules, automatic default categories, intelligent unit compatibility filtering, 5-minute recipe cost cache with invalidation, order completion timestamps, YYYY-MM-DD date formatting, consolidated receiving status badges, transfer order usage tracking, tare weight and case counting, theoretical usage detail modal, formatted TFC purchase order display, TFC unit system clarifications, TFC variance cost calculation using WAC, enhanced TFC variance table with WAC column and color-coded totals, TFC purchase order receipt modal, TFC variance summary cards, and multi-tenant QuickBooks Online Integration with selective vendor import and token auto-refresh.
 - **System Design Choices**: Emphasizes multi-tenancy, strict data isolation, a micro-unit system for precision, and a pluggable adapter pattern for flexible integrations. Security is prioritized through HMAC-SHA256 for OAuth and comprehensive validation.
 

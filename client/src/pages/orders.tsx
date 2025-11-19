@@ -69,12 +69,27 @@ type Store = {
   name: string;
 };
 
-const statusColors: Record<string, string> = {
-  "pending": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
-  "ordered": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  "in_transit": "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-  "received": "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  "completed": "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline", className: string }> = {
+  "pending": { 
+    variant: "secondary",
+    className: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-yellow-500/20"
+  },
+  "ordered": { 
+    variant: "secondary",
+    className: "bg-blue-500/10 text-blue-700 border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20"
+  },
+  "in_transit": { 
+    variant: "secondary",
+    className: "bg-purple-500/10 text-purple-700 border-purple-500/20 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20"
+  },
+  "received": { 
+    variant: "secondary",
+    className: "bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20"
+  },
+  "completed": { 
+    variant: "secondary",
+    className: "bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20"
+  },
 };
 
 export default function Orders() {
@@ -319,8 +334,8 @@ export default function Orders() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Badge 
-                                  variant="secondary"
-                                  className={`${statusColors[order.status] || ""} cursor-help`}
+                                  variant={statusConfig[order.status]?.variant || "secondary"}
+                                  className={`${statusConfig[order.status]?.className || ""} cursor-help`}
                                   data-testid={`badge-status-${order.id}`}
                                 >
                                   {order.status.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
@@ -333,8 +348,8 @@ export default function Orders() {
                           </TooltipProvider>
                         ) : (
                           <Badge 
-                            variant="secondary"
-                            className={statusColors[order.status] || ""}
+                            variant={statusConfig[order.status]?.variant || "secondary"}
+                            className={statusConfig[order.status]?.className || ""}
                             data-testid={`badge-status-${order.id}`}
                           >
                             {order.status.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
