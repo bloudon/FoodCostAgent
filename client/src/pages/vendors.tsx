@@ -475,7 +475,7 @@ export default function Vendors() {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent data-testid="dialog-vendor-form">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dialog-vendor-form">
           <DialogHeader>
             <DialogTitle data-testid="text-dialog-title">
               {editingVendor ? "Edit Vendor" : "Create Vendor"}
