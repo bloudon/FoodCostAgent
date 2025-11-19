@@ -7027,6 +7027,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/quickbooks/vendors/preview - Preview QB vendors for import
+  app.get("/api/quickbooks/vendors/preview", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { storeId } = req.query;
+
+      if (!companyId) {
+        return res.status(400).json({ error: "No company selected" });
+      }
+
+      // Verify store ownership if storeId provided
+      if (storeId && typeof storeId === "string") {
+        const store = await storage.getCompanyStore(storeId);
+        if (!store || store.companyId !== companyId) {
+          return res.status(403).json({ error: "Access denied to this store" });
+        }
+      }
+
+      const { previewQuickBooksVendors } = await import("./services/quickbooks");
+      const preview = await previewQuickBooksVendors(companyId, storeId as string | undefined);
+      
+      res.json(preview);
+    } catch (error: any) {
+      console.error("QuickBooks vendor preview error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/quickbooks/vendors/sync - Sync selected QB vendors to FoodCost Pro
+  app.post("/api/quickbooks/vendors/sync", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { selectedVendorIds, storeId } = req.body;
+
+      if (!companyId) {
+        return res.status(400).json({ error: "No company selected" });
+      }
+
+      if (!Array.isArray(selectedVendorIds) || selectedVendorIds.length === 0) {
+        return res.status(400).json({ error: "No vendors selected for import" });
+      }
+
+      // Verify store ownership if storeId provided
+      if (storeId) {
+        const store = await storage.getCompanyStore(storeId);
+        if (!store || store.companyId !== companyId) {
+          return res.status(403).json({ error: "Access denied to this store" });
+        }
+      }
+
+      const { syncVendorsFromQuickBooks } = await import("./services/quickbooks");
+      const result = await syncVendorsFromQuickBooks(companyId, selectedVendorIds, storeId);
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error("QuickBooks vendor sync error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // GET /api/quickbooks/sync-logs - Get sync logs
   app.get("/api/quickbooks/sync-logs", requireAuth, async (req, res) => {
     try {

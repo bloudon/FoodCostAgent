@@ -238,6 +238,19 @@ export async function fetchQuickBooksVendors(
   }
 }
 
+// Vendor preview item (shows what would happen during import)
+export interface VendorPreviewItem {
+  qbVendor: QuickBooksVendor;
+  matchType: "exact_match" | "possible_match" | "new_vendor" | "already_synced";
+  existingVendor?: {
+    id: string;
+    name: string;
+    accountNumber?: string;
+    sourceOfTruth: string;
+  };
+  recommendedAction: "link" | "create" | "update" | "skip";
+}
+
 // Vendor sync result interface
 export interface VendorSyncResult {
   success: boolean;
@@ -258,9 +271,95 @@ export interface VendorSyncResult {
   }>;
 }
 
-// Synchronize vendors from QuickBooks to FoodCost Pro
+// Preview QuickBooks vendors for import (does not modify database)
+export async function previewQuickBooksVendors(
+  companyId: string,
+  storeId?: string
+): Promise<VendorPreviewItem[]> {
+  try {
+    console.log(`🔍 Previewing vendors from QuickBooks for company ${companyId}`);
+    
+    // Fetch QB vendors
+    const qbVendors = await fetchQuickBooksVendors(companyId, storeId, false);
+    
+    // Get existing FoodCost Pro vendors
+    const existingVendors = await storage.getVendors(companyId);
+    
+    // Get existing QB vendor mappings
+    const existingMappings = await storage.getQuickBooksVendorMappings(companyId);
+    const mappingsByQbVendorId = new Map(
+      existingMappings.map(m => [m.quickbooksVendorId, m])
+    );
+    
+    // Build preview items
+    const preview: VendorPreviewItem[] = [];
+    
+    for (const qbVendor of qbVendors) {
+      // Check if already synced
+      const existingMapping = mappingsByQbVendorId.get(qbVendor.id);
+      
+      if (existingMapping) {
+        const existingVendor = existingVendors.find((v: any) => v.id === existingMapping.vendorId);
+        
+        if (existingVendor) {
+          preview.push({
+            qbVendor,
+            matchType: "already_synced",
+            existingVendor: {
+              id: existingVendor.id,
+              name: existingVendor.name,
+              accountNumber: existingVendor.accountNumber,
+              sourceOfTruth: existingVendor.sourceOfTruth,
+            },
+            recommendedAction: existingVendor.sourceOfTruth === "quickbooks" ? "update" : "skip",
+          });
+        }
+      } else {
+        // Try to find a match by name or account number
+        const matchedVendor = existingVendors.find((v: any) =>
+          v.name.toLowerCase().trim() === qbVendor.displayName.toLowerCase().trim() ||
+          (v.accountNumber && qbVendor.accountNumber && 
+           v.accountNumber.toLowerCase().trim() === qbVendor.accountNumber.toLowerCase().trim())
+        );
+        
+        if (matchedVendor) {
+          // Found a potential match
+          const isExactMatch = matchedVendor.name.toLowerCase().trim() === qbVendor.displayName.toLowerCase().trim();
+          
+          preview.push({
+            qbVendor,
+            matchType: isExactMatch ? "exact_match" : "possible_match",
+            existingVendor: {
+              id: matchedVendor.id,
+              name: matchedVendor.name,
+              accountNumber: matchedVendor.accountNumber,
+              sourceOfTruth: matchedVendor.sourceOfTruth,
+            },
+            recommendedAction: "link",
+          });
+        } else {
+          // No match found - would create new vendor
+          preview.push({
+            qbVendor,
+            matchType: "new_vendor",
+            recommendedAction: "create",
+          });
+        }
+      }
+    }
+    
+    console.log(`✅ Preview generated: ${preview.length} vendors`);
+    return preview;
+  } catch (error: any) {
+    console.error("❌ Vendor preview failed:", error);
+    throw new Error(`Failed to preview QuickBooks vendors: ${error.message}`);
+  }
+}
+
+// Synchronize selected vendors from QuickBooks to FoodCost Pro
 export async function syncVendorsFromQuickBooks(
   companyId: string,
+  selectedQbVendorIds: string[],
   storeId?: string
 ): Promise<VendorSyncResult> {
   const result: VendorSyncResult = {
@@ -279,8 +378,13 @@ export async function syncVendorsFromQuickBooks(
   try {
     // Fetch QB vendors
     console.log(`🔄 Fetching vendors from QuickBooks for company ${companyId}`);
-    const qbVendors = await fetchQuickBooksVendors(companyId, storeId, false);
+    const allQbVendors = await fetchQuickBooksVendors(companyId, storeId, false);
+    
+    // Filter to only selected vendors
+    const qbVendors = allQbVendors.filter(v => selectedQbVendorIds.includes(v.id));
     result.summary.total = qbVendors.length;
+    
+    console.log(`📋 Processing ${qbVendors.length} selected vendors out of ${allQbVendors.length} total`);
 
     // Get existing FoodCost Pro vendors
     const existingVendors = await storage.getVendors(companyId);
