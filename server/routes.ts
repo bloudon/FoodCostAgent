@@ -6741,6 +6741,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const companyId = (req as any).companyId; // Get from req, not req.user
       const { storeId } = req.query; // Optional: if provided, creates store-level connection
       
+      console.log("🔍 QB Connect - companyId from req:", companyId);
+      console.log("🔍 QB Connect - user:", req.user);
+      console.log("🔍 QB Connect - full req keys:", Object.keys(req));
+      
       if (!companyId) {
         return res.status(400).json({ error: "No company selected. Please select a company first." });
       }
