@@ -1,6 +1,6 @@
 # Overview
 
-This project is a multi-company inventory management and recipe costing system for food service businesses. It aims to improve operational efficiency, reduce waste, and increase profitability across multiple locations. Key features include precise unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost & Weighted Average Cost), streamlined purchasing, and robust business intelligence. It is a scalable, multi-tenant solution designed to optimize food costs and operational workflows through data-driven insights.
+This project is a multi-company inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance operational efficiency, reduce waste, and increase profitability across multiple locations. Key capabilities include precise unit conversions, multi-level nested recipe management, POS sales data integration, comprehensive variance reporting, dual inventory pricing (Last Cost & Weighted Average Cost), streamlined purchasing, and robust business intelligence. The system is built as a scalable, multi-tenant solution with future plans for market expansion and broader financial tool integration.
 
 # User Preferences
 
@@ -54,19 +54,19 @@ This project is a multi-company inventory management and recipe costing system f
 
 # System Architecture
 
--   **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter.
--   **Backend**: Node.js (TypeScript), Express.js, and Zod for validation.
--   **Database**: PostgreSQL with Drizzle ORM.
--   **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation.
--   **UI/UX Decisions**: Compact navigation, mobile-friendly design, intuitive Recipe Builder with real-time cost visualization, sortable tables, touch-friendly interfaces, theme toggling, conditional UI rendering, optimized inventory count layouts, and visual variance reporting (summary cards, detailed modals).
--   **Technical Implementations**: Micro-unit system, pluggable adapter pattern for vendor integrations, centralized order management, HMAC-SHA256 for OAuth security, connection pooling, composite indexes, atomic transactions, Redis caching, response compression, and robust multi-tenant data isolation.
--   **Feature Specifications**: Dual Inventory Pricing (Last Cost & WAC), Vendor Price Comparison with PO-specific pricing, configurable Vendor Delivery Scheduling, Vendor Deletion Constraints, Default Categories, intelligent Unit Compatibility Filtering, 5-minute Recipe Cost Caching with invalidation, Order Completion Timestamps, YYYY-MM-DD Date Formatting, consolidated Badge component for Receiving Status, Transfer Order Usage Tracking (with conditional UI), Tare Weight/Case Counting, Inventory Count smooth scrolling and text search, TFC Theoretical Usage Detail modal, formatted TFC Purchase Order Display, TFC Unit System clarity (item's base unit), TFC Variance Cost Calculation using WAC, enhanced TFC Variance Table (WAC column, color-coded totals), TFC Purchase Order Receipt Modal, TFC Variance Summary Cards, and comprehensive QuickBooks Online Integration.
+- **Frontend**: React 18 (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter.
+- **Backend**: Node.js (TypeScript), Express.js, and Zod for validation.
+- **Database**: PostgreSQL with Drizzle ORM.
+- **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation.
+- **UI/UX Decisions**: Compact navigation, mobile-friendly design, intuitive Recipe Builder with real-time cost visualization, sortable tables, touch-friendly interfaces, theme toggling, conditional UI rendering, optimized inventory count layouts, and visual variance reporting (summary cards, detailed modals).
+- **Technical Implementations**: Micro-unit system, pluggable adapter pattern for vendor integrations, centralized order management, HMAC-SHA256 for OAuth security, connection pooling, composite indexes, atomic transactions, Redis caching, response compression, and robust multi-tenant data isolation.
+- **Feature Specifications**: Dual Inventory Pricing (Last Cost & WAC), Vendor Price Comparison with PO-specific pricing, configurable Vendor Delivery Scheduling, Vendor Deletion Constraints, Default Categories, intelligent Unit Compatibility Filtering, 5-minute Recipe Cost Caching with invalidation, Order Completion Timestamps, YYYY-MM-DD Date Formatting, consolidated Badge component for Receiving Status, Transfer Order Usage Tracking (with conditional UI), Tare Weight/Case Counting, Inventory Count smooth scrolling and text search, TFC Theoretical Usage Detail modal, formatted TFC Purchase Order Display, TFC Unit System clarity (item's base unit), TFC Variance Cost Calculation using WAC, enhanced TFC Variance Table (WAC column, color-coded totals), TFC Purchase Order Receipt Modal, TFC Variance Summary Cards, and comprehensive QuickBooks Online Integration.
 
 # External Dependencies
 
--   **Database Services**: Neon serverless PostgreSQL.
--   **Real-time Communication**: `ws` library (WebSockets).
--   **Image Processing**: Sharp.
--   **Object Storage**: Replit's native object storage.
--   **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods.
--   **QuickBooks Online Integration**: OAuth 2.0 integration via `intuit-oauth` package.
+- **Database Services**: Neon serverless PostgreSQL.
+- **Real-time Communication**: `ws` library (WebSockets).
+- **Image Processing**: Sharp.
+- **Object Storage**: Replit's native object storage.
+- **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods.
+- **QuickBooks Online Integration**: OAuth 2.0 integration via `intuit-oauth` package.

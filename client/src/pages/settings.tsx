@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -19,7 +19,15 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Company, CompanyStore, SystemPreferences, VendorCredentials } from "@shared/schema";
+import type { Company, CompanyStore, SystemPreferences, VendorCredentials, Vendor, QuickBooksVendorMapping } from "@shared/schema";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -36,6 +44,9 @@ import { UsersManagement } from "@/components/UsersManagement";
 export default function Settings() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("company");
+  const [isVendorMappingDialogOpen, setIsVendorMappingDialogOpen] = useState(false);
+  const [selectedVendorId, setSelectedVendorId] = useState<string>("");
+  const [selectedQbVendorId, setSelectedQbVendorId] = useState<string>("");
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
 
   const { data: company, isLoading: companyLoading } = useQuery<Company>({
@@ -57,6 +68,26 @@ export default function Settings() {
   // QuickBooks connection status
   const { data: qbStatus, isLoading: qbStatusLoading, refetch: refetchQbStatus } = useQuery<any>({
     queryKey: ["/api/quickbooks/status"],
+    retry: false,
+  });
+
+  // FoodCost Pro vendors (for mapping)
+  const { data: vendors = [], isLoading: vendorsLoading } = useQuery<Vendor[]>({
+    queryKey: ["/api/vendors"],
+    enabled: !!qbStatus?.connected,
+  });
+
+  // QuickBooks vendors
+  const { data: qbVendors = [], isLoading: qbVendorsLoading } = useQuery<Array<{ id: string; displayName: string; active: boolean }>>({
+    queryKey: ["/api/quickbooks/vendors"],
+    enabled: !!qbStatus?.connected,
+    retry: false,
+  });
+
+  // Vendor mappings
+  const { data: vendorMappings = [], isLoading: vendorMappingsLoading, refetch: refetchVendorMappings } = useQuery<QuickBooksVendorMapping[]>({
+    queryKey: ["/api/quickbooks/vendors/mappings"],
+    enabled: !!qbStatus?.connected,
     retry: false,
   });
 
@@ -144,6 +175,71 @@ export default function Settings() {
       });
     },
   });
+
+  // Create vendor mapping mutation
+  const createVendorMappingMutation = useMutation({
+    mutationFn: async (data: { vendorId: string; qbVendorId: string; qbVendorName: string }) => {
+      return await apiRequest("POST", "/api/quickbooks/vendors/mappings", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/vendors/mappings"] });
+      setIsVendorMappingDialogOpen(false);
+      setSelectedVendorId("");
+      setSelectedQbVendorId("");
+      toast({
+        title: "Success",
+        description: "Vendor mapping created successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create vendor mapping",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete vendor mapping mutation
+  const deleteVendorMappingMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await apiRequest("DELETE", `/api/quickbooks/vendors/mappings/${id}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/vendors/mappings"] });
+      toast({
+        title: "Success",
+        description: "Vendor mapping deleted successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete vendor mapping",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleVendorMappingSubmit = () => {
+    if (!selectedVendorId || !selectedQbVendorId) {
+      toast({
+        title: "Validation Error",
+        description: "Please select both a vendor and a QuickBooks vendor",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const qbVendor = qbVendors.find(v => v.id === selectedQbVendorId);
+    if (!qbVendor) return;
+
+    createVendorMappingMutation.mutate({
+      vendorId: selectedVendorId,
+      qbVendorId: selectedQbVendorId,
+      qbVendorName: qbVendor.displayName,
+    });
+  };
 
   const handleCompanySave = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -617,17 +713,155 @@ export default function Settings() {
           {qbStatus?.connected && (
             <Card>
               <CardHeader>
-                <CardTitle>Vendor Mapping</CardTitle>
-                <CardDescription>
-                  Map your vendors to QuickBooks vendors for accurate bill creation
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Vendor Mapping</CardTitle>
+                    <CardDescription>
+                      Map your vendors to QuickBooks vendors for accurate bill creation
+                    </CardDescription>
+                  </div>
+                  <Dialog open={isVendorMappingDialogOpen} onOpenChange={setIsVendorMappingDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button data-testid="button-add-vendor-mapping">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Mapping
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Create Vendor Mapping</DialogTitle>
+                        <DialogDescription>
+                          Select a vendor from your system and map it to a QuickBooks vendor
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label>FoodCost Pro Vendor</Label>
+                          <Select value={selectedVendorId} onValueChange={setSelectedVendorId}>
+                            <SelectTrigger data-testid="select-foodcost-vendor">
+                              <SelectValue placeholder="Select vendor..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {vendorsLoading ? (
+                                <div className="flex items-center justify-center p-4">
+                                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                </div>
+                              ) : vendors.filter(v => v.active === 1).filter(v => !vendorMappings.some(m => m.vendorId === v.id)).length === 0 ? (
+                                <div className="p-4 text-sm text-muted-foreground text-center">
+                                  All vendors are already mapped
+                                </div>
+                              ) : (
+                                vendors
+                                  .filter(v => v.active === 1)
+                                  .filter(v => !vendorMappings.some(m => m.vendorId === v.id))
+                                  .map((vendor) => (
+                                    <SelectItem key={vendor.id} value={vendor.id}>
+                                      {vendor.name}
+                                    </SelectItem>
+                                  ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>QuickBooks Vendor</Label>
+                          <Select value={selectedQbVendorId} onValueChange={setSelectedQbVendorId}>
+                            <SelectTrigger data-testid="select-quickbooks-vendor">
+                              <SelectValue placeholder="Select QuickBooks vendor..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {qbVendorsLoading ? (
+                                <div className="flex items-center justify-center p-4">
+                                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                </div>
+                              ) : qbVendors.length === 0 ? (
+                                <div className="p-4 text-sm text-muted-foreground text-center">
+                                  No QuickBooks vendors found
+                                </div>
+                              ) : (
+                                qbVendors.map((qbVendor) => (
+                                  <SelectItem key={qbVendor.id} value={qbVendor.id}>
+                                    {qbVendor.displayName}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setIsVendorMappingDialogOpen(false);
+                            setSelectedVendorId("");
+                            setSelectedQbVendorId("");
+                          }}
+                          data-testid="button-cancel-vendor-mapping"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleVendorMappingSubmit}
+                          disabled={createVendorMappingMutation.isPending || !selectedVendorId || !selectedQbVendorId}
+                          data-testid="button-save-vendor-mapping"
+                        >
+                          {createVendorMappingMutation.isPending && (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          )}
+                          Save Mapping
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-sm text-muted-foreground">
-                  Vendor mapping configuration will be available here. This allows you to match your
-                  internal vendors with QuickBooks vendors to ensure bills are created with the correct
-                  vendor information.
-                </div>
+                {vendorMappingsLoading ? (
+                  <div className="flex items-center justify-center p-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : vendorMappings.length === 0 ? (
+                  <div className="text-center p-8 border rounded-lg border-dashed">
+                    <p className="text-sm text-muted-foreground">
+                      No vendor mappings configured yet. Click "Add Mapping" to get started.
+                    </p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>FoodCost Pro Vendor</TableHead>
+                        <TableHead>QuickBooks Vendor</TableHead>
+                        <TableHead className="w-[80px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {vendorMappings.map((mapping) => {
+                        const vendor = vendors.find(v => v.id === mapping.vendorId);
+                        return (
+                          <TableRow key={mapping.id} data-testid={`vendor-mapping-row-${mapping.id}`}>
+                            <TableCell className="font-medium">
+                              {vendor?.name || "Unknown Vendor"}
+                            </TableCell>
+                            <TableCell>{mapping.qbVendorName}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteVendorMappingMutation.mutate(mapping.id)}
+                                disabled={deleteVendorMappingMutation.isPending}
+                                data-testid={`button-delete-vendor-mapping-${mapping.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           )}
