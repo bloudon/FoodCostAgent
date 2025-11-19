@@ -6801,7 +6801,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("✅ QB Callback - Decoded state data:", stateData);
       } catch (error) {
         console.error("State verification failed:", error);
-        return res.redirect("/settings/integrations?qb_error=state_invalid");
+        return res.redirect("/settings?qb_error=state_invalid");
       }
 
       const { companyId, storeId, timestamp } = stateData;
@@ -6809,14 +6809,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Prevent replay attacks - reject states older than 1 hour
       if (Date.now() - timestamp > 60 * 60 * 1000) {
-        return res.redirect("/settings/integrations?qb_error=state_expired");
+        return res.redirect("/settings?qb_error=state_expired");
       }
 
       // Additional security check: verify store still belongs to company
       if (storeId) {
         const store = await storage.getCompanyStore(storeId);
         if (!store || store.companyId !== companyId) {
-          return res.redirect("/settings/integrations?qb_error=invalid_store");
+          return res.redirect("/settings?qb_error=invalid_store");
         }
       }
 
@@ -6840,13 +6840,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Redirect to settings page with success message
       const redirectPath = storeId 
-        ? `/settings/integrations?storeId=${storeId}&qb_connected=true`
-        : `/settings/integrations?qb_connected=true`;
+        ? `/settings?storeId=${storeId}&qb_connected=true`
+        : `/settings?qb_connected=true`;
       
       res.redirect(redirectPath);
     } catch (error: any) {
       console.error("QuickBooks callback error:", error);
-      res.redirect("/settings/integrations?qb_error=true");
+      res.redirect("/settings?qb_error=true");
     }
   });
 
