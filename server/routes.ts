@@ -7,6 +7,7 @@ import { storage } from "./storage";
 import { parseCSV } from "./services/tfcCsv";
 import { TheoreticalUsageService } from "./services/theoreticalUsage";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
+import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
