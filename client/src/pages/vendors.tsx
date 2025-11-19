@@ -79,6 +79,12 @@ export default function Vendors() {
       website: "",
       deliveryDays: [],
       leadDaysAhead: undefined,
+      active: 1,
+      taxId: "",
+      requires1099: 0,
+      paymentTerms: "",
+      creditLimit: undefined,
+      certifications: [],
     },
   });
 
@@ -194,6 +200,12 @@ export default function Vendors() {
       website: "",
       deliveryDays: [],
       leadDaysAhead: undefined,
+      active: 1,
+      taxId: "",
+      requires1099: 0,
+      paymentTerms: "",
+      creditLimit: undefined,
+      certifications: [],
     });
     setIsDialogOpen(true);
   };
@@ -208,6 +220,12 @@ export default function Vendors() {
       website: vendor.website || "",
       deliveryDays: vendor.deliveryDays || [],
       leadDaysAhead: vendor.leadDaysAhead || undefined,
+      active: vendor.active ?? 1,
+      taxId: vendor.taxId || "",
+      requires1099: vendor.requires1099 ?? 0,
+      paymentTerms: vendor.paymentTerms || "",
+      creditLimit: vendor.creditLimit || undefined,
+      certifications: vendor.certifications || [],
     });
     setIsDialogOpen(true);
   };
@@ -556,6 +574,110 @@ export default function Vendors() {
                   </FormItem>
                 )}
               />
+              
+              <div className="pt-4 border-t">
+                <h4 className="text-sm font-semibold mb-4">Compliance & Accounting</h4>
+                
+                <div className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="taxId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tax ID / EIN (Optional)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            placeholder="12-3456789" 
+                            {...field}
+                            value={field.value || ""}
+                            data-testid="input-vendor-tax-id"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Required for 1099 reporting
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="requires1099"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value === 1}
+                            onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
+                            data-testid="checkbox-requires-1099"
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel className="font-normal cursor-pointer">
+                            Requires 1099 reporting
+                          </FormLabel>
+                          <FormDescription>
+                            Check if this vendor requires annual 1099 forms
+                          </FormDescription>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="paymentTerms"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Payment Terms (Optional)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            placeholder="e.g., Net 30, COD, Net 15" 
+                            {...field}
+                            value={field.value || ""}
+                            data-testid="input-vendor-payment-terms"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Payment terms agreed with vendor
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="creditLimit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Credit Limit (Optional)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="e.g., 10000.00" 
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              field.onChange(value === "" ? undefined : parseFloat(value));
+                            }}
+                            data-testid="input-vendor-credit-limit"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Maximum credit limit approved for this vendor
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+              
               <DialogFooter>
                 <Button 
                   type="button" 
