@@ -168,18 +168,37 @@ export async function refreshAllActiveConnections(): Promise<{
   return results;
 }
 
-// Fetch vendors from QuickBooks
+// QuickBooks Vendor interface (maps to QB vendor fields)
+export interface QuickBooksVendor {
+  id: string;
+  displayName: string;
+  companyName?: string;
+  printOnCheckName?: string;
+  active: boolean;
+  taxIdentifier?: string; // Maps to our taxId field
+  accountNumber?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  termId?: string; // Payment terms reference ID
+  termName?: string; // Payment terms name (e.g., "Net 30")
+}
+
+// Fetch vendors from QuickBooks with comprehensive data
 export async function fetchQuickBooksVendors(
   companyId: string,
-  storeId?: string
-): Promise<Array<{ id: string; displayName: string; active: boolean }>> {
+  storeId?: string,
+  includeInactive: boolean = false
+): Promise<QuickBooksVendor[]> {
   const { client, connection } = await getAuthenticatedClient(companyId, storeId);
 
   const apiUrl = process.env.QUICKBOOKS_ENVIRONMENT === "production"
     ? "https://quickbooks.api.intuit.com"
     : "https://sandbox-quickbooks.api.intuit.com";
 
-  const query = "SELECT * FROM Vendor WHERE Active = true ORDER BY DisplayName ASC";
+  // Fetch all vendors (or only active ones)
+  const activeFilter = includeInactive ? "" : " WHERE Active = true";
+  const query = `SELECT * FROM Vendor${activeFilter} ORDER BY DisplayName ASC MAXRESULTS 1000`;
   const url = `${apiUrl}/v3/company/${connection.realmId}/query?query=${encodeURIComponent(query)}`;
 
   try {
@@ -198,13 +217,214 @@ export async function fetchQuickBooksVendors(
     const data = await response.json();
     const vendors = data.QueryResponse?.Vendor || [];
 
+    // Map QB vendor data to our structure
     return vendors.map((vendor: any) => ({
       id: vendor.Id,
       displayName: vendor.DisplayName,
-      active: vendor.Active,
+      companyName: vendor.CompanyName,
+      printOnCheckName: vendor.PrintOnCheckName,
+      active: vendor.Active ?? true,
+      taxIdentifier: vendor.TaxIdentifier || vendor.Vendor1099,
+      accountNumber: vendor.AcctNum,
+      email: vendor.PrimaryEmailAddr?.Address,
+      phone: vendor.PrimaryPhone?.FreeFormNumber || vendor.Mobile?.FreeFormNumber,
+      website: vendor.WebAddr?.URI,
+      termId: vendor.TermRef?.value,
+      termName: vendor.TermRef?.name,
     }));
   } catch (error: any) {
     console.error("Error fetching QuickBooks vendors:", error);
     throw new Error(`Failed to fetch QuickBooks vendors: ${error.message}`);
+  }
+}
+
+// Vendor sync result interface
+export interface VendorSyncResult {
+  success: boolean;
+  summary: {
+    total: number;
+    created: number;
+    updated: number;
+    matched: number;
+    skipped: number;
+    errors: number;
+  };
+  vendors: Array<{
+    qbVendorId: string;
+    qbVendorName: string;
+    foodCostVendorId?: string;
+    action: "created" | "updated" | "matched" | "skipped" | "error";
+    error?: string;
+  }>;
+}
+
+// Synchronize vendors from QuickBooks to FoodCost Pro
+export async function syncVendorsFromQuickBooks(
+  companyId: string,
+  storeId?: string
+): Promise<VendorSyncResult> {
+  const result: VendorSyncResult = {
+    success: false,
+    summary: {
+      total: 0,
+      created: 0,
+      updated: 0,
+      matched: 0,
+      skipped: 0,
+      errors: 0,
+    },
+    vendors: [],
+  };
+
+  try {
+    // Fetch QB vendors
+    console.log(`🔄 Fetching vendors from QuickBooks for company ${companyId}`);
+    const qbVendors = await fetchQuickBooksVendors(companyId, storeId, false);
+    result.summary.total = qbVendors.length;
+
+    // Get existing FoodCost Pro vendors
+    const existingVendors = await storage.getVendors(companyId);
+    
+    // Get existing QB vendor mappings
+    const existingMappings = await storage.getQuickBooksVendorMappings(companyId);
+    const mappingsByQbVendorId = new Map(
+      existingMappings.map(m => [m.quickbooksVendorId, m])
+    );
+
+    for (const qbVendor of qbVendors) {
+      try {
+        // Check if we already have a mapping for this QB vendor
+        const existingMapping = mappingsByQbVendorId.get(qbVendor.id);
+        
+        if (existingMapping) {
+          // Update existing vendor with QB data
+          const existingVendor = existingVendors.find((v: any) => v.id === existingMapping.vendorId);
+          
+          if (existingVendor && existingVendor.sourceOfTruth === "quickbooks") {
+            await storage.updateVendor(existingMapping.vendorId, {
+              name: qbVendor.displayName,
+              accountNumber: qbVendor.accountNumber,
+              phone: qbVendor.phone,
+              website: qbVendor.website,
+              taxId: qbVendor.taxIdentifier,
+              paymentTerms: qbVendor.termName,
+              active: qbVendor.active ? 1 : 0,
+              lastSyncAt: new Date(),
+              syncStatus: "synced",
+            });
+            
+            result.summary.updated++;
+            result.vendors.push({
+              qbVendorId: qbVendor.id,
+              qbVendorName: qbVendor.displayName,
+              foodCostVendorId: existingMapping.vendorId,
+              action: "updated",
+            });
+          } else {
+            // Vendor exists but is manually managed - skip update
+            result.summary.skipped++;
+            result.vendors.push({
+              qbVendorId: qbVendor.id,
+              qbVendorName: qbVendor.displayName,
+              foodCostVendorId: existingMapping.vendorId,
+              action: "skipped",
+            });
+          }
+        } else {
+          // Try to match by name or account number
+          const matchedVendor = existingVendors.find(v =>
+            v.name.toLowerCase().trim() === qbVendor.displayName.toLowerCase().trim() ||
+            (v.accountNumber && qbVendor.accountNumber && 
+             v.accountNumber.toLowerCase().trim() === qbVendor.accountNumber.toLowerCase().trim())
+          );
+
+          if (matchedVendor) {
+            // Found a match - create mapping and update vendor to QB-managed
+            await storage.createQuickBooksVendorMapping({
+              companyId,
+              vendorId: matchedVendor.id,
+              quickbooksVendorId: qbVendor.id,
+              quickbooksVendorName: qbVendor.displayName,
+              lastSyncAt: new Date(),
+              syncStatus: "synced",
+              conflictFlag: 0,
+            });
+
+            await storage.updateVendor(matchedVendor.id, {
+              qbVendorId: qbVendor.id,
+              sourceOfTruth: "quickbooks",
+              taxId: qbVendor.taxIdentifier || matchedVendor.taxId,
+              paymentTerms: qbVendor.termName || matchedVendor.paymentTerms,
+              phone: qbVendor.phone || matchedVendor.phone,
+              website: qbVendor.website || matchedVendor.website,
+              lastSyncAt: new Date(),
+              syncStatus: "synced",
+            });
+
+            result.summary.matched++;
+            result.vendors.push({
+              qbVendorId: qbVendor.id,
+              qbVendorName: qbVendor.displayName,
+              foodCostVendorId: matchedVendor.id,
+              action: "matched",
+            });
+          } else {
+            // No match found - create new vendor
+            const newVendor = await storage.createVendor({
+              companyId,
+              name: qbVendor.displayName,
+              accountNumber: qbVendor.accountNumber,
+              phone: qbVendor.phone,
+              website: qbVendor.website,
+              taxId: qbVendor.taxIdentifier,
+              paymentTerms: qbVendor.termName,
+              active: qbVendor.active ? 1 : 0,
+              qbVendorId: qbVendor.id,
+              sourceOfTruth: "quickbooks",
+              lastSyncAt: new Date(),
+              syncStatus: "synced",
+              orderGuideType: "manual",
+              requires1099: 0,
+            });
+
+            // Create mapping
+            await storage.createQuickBooksVendorMapping({
+              companyId,
+              vendorId: newVendor.id,
+              quickbooksVendorId: qbVendor.id,
+              quickbooksVendorName: qbVendor.displayName,
+              lastSyncAt: new Date(),
+              syncStatus: "synced",
+              conflictFlag: 0,
+            });
+
+            result.summary.created++;
+            result.vendors.push({
+              qbVendorId: qbVendor.id,
+              qbVendorName: qbVendor.displayName,
+              foodCostVendorId: newVendor.id,
+              action: "created",
+            });
+          }
+        }
+      } catch (error: any) {
+        console.error(`❌ Error processing QB vendor ${qbVendor.displayName}:`, error);
+        result.summary.errors++;
+        result.vendors.push({
+          qbVendorId: qbVendor.id,
+          qbVendorName: qbVendor.displayName,
+          action: "error",
+          error: error.message,
+        });
+      }
+    }
+
+    result.success = result.summary.errors === 0;
+    console.log(`✅ Vendor sync completed: ${result.summary.created} created, ${result.summary.updated} updated, ${result.summary.matched} matched, ${result.summary.skipped} skipped, ${result.summary.errors} errors`);
+    
+    return result;
+  } catch (error: any) {
+    console.error("❌ Vendor sync failed:", error);
+    throw new Error(`Failed to sync vendors from QuickBooks: ${error.message}`);
   }
 }
