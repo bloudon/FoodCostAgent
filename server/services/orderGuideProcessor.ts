@@ -107,7 +107,9 @@ export class OrderGuideProcessor {
         packSize: product.description,
         uom: product.unit,
         caseSize: product.caseSize ?? null,
+        caseSizeRaw: product.caseSizeRaw ?? null,         // Preserve raw pack string (e.g., "6/5 LB")
         innerPack: product.innerPack ?? null,
+        innerPackRaw: product.innerPackRaw ?? null,      // Preserve raw inner pack string
         price: product.price ?? null,
         brandName: product.brandName,
         category: product.categoryCode,

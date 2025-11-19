@@ -1006,8 +1006,10 @@ export const orderGuideLines = pgTable("order_guide_lines", {
   productName: text("product_name").notNull(),
   packSize: text("pack_size"),
   uom: text("uom"), // Unit of measure
-  caseSize: real("case_size"),
-  innerPack: real("inner_pack"),
+  caseSize: real("case_size"),             // Parsed numeric case size for calculations
+  caseSizeRaw: text("case_size_raw"),      // Original vendor pack string (e.g., "6/5 LB")
+  innerPack: real("inner_pack"),           // Parsed numeric inner pack for calculations
+  innerPackRaw: text("inner_pack_raw"),    // Original vendor inner pack string
   price: real("price"),
   gtin: text("gtin"), // Global Trade Item Number / UPC
   category: text("category"),
