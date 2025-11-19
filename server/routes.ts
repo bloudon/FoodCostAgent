@@ -6790,12 +6790,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let stateData: any;
       try {
         stateData = verifySignedState(state);
+        console.log("✅ QB Callback - Decoded state data:", stateData);
       } catch (error) {
         console.error("State verification failed:", error);
         return res.redirect("/settings/integrations?qb_error=state_invalid");
       }
 
       const { companyId, storeId, timestamp } = stateData;
+      console.log("✅ QB Callback - Extracted values:", { companyId, storeId, timestamp });
 
       // Prevent replay attacks - reject states older than 1 hour
       if (Date.now() - timestamp > 60 * 60 * 1000) {
