@@ -162,6 +162,7 @@ export class ItemMatcher {
   /**
    * Calculate category match score
    * Maps vendor category codes (e.g., "DAIRY", "PRODUCE") to inventory category names
+   * Supports case-insensitive matching with comprehensive synonym coverage
    */
   private calculateCategoryMatch(vendorCategory?: string | null, inventoryCategory?: string | null): number {
     if (!vendorCategory || !inventoryCategory) return 0;
@@ -175,23 +176,54 @@ export class ItemMatcher {
     // Substring match (e.g., "frozen" matches "frozen foods")
     if (v.includes(i) || i.includes(v)) return 0.8;
 
-    // Common category mappings (vendor codes to common names)
+    // Comprehensive category mappings (vendor codes to common names)
+    // Each key represents a category family with multiple synonyms/variants
     const categoryMappings: Record<string, string[]> = {
-      'dairy': ['dairy', 'milk', 'cheese', 'walk-in'],
-      'frozen': ['frozen', 'freezer'],
-      'produce': ['produce', 'fruits', 'vegetables', 'fresh'],
-      'meat': ['meat', 'protein', 'butcher', 'walk-in'],
-      'dry': ['dry', 'pantry', 'grocery'],
-      'beverage': ['beverage', 'drinks', 'soda'],
-      'bakery': ['bakery', 'bread', 'baked goods'],
+      // Dairy & Refrigerated
+      'dairy': ['dairy', 'milk', 'cheese', 'yogurt', 'butter', 'cream', 'refrigerated', 'cooler', 'walk-in'],
+      
+      // Frozen
+      'frozen': ['frozen', 'freezer', 'ice cream'],
+      
+      // Produce & Fresh
+      'produce': ['produce', 'fruits', 'vegetables', 'fresh', 'salad', 'greens', 'veggie', 'veg'],
+      
+      // Proteins & Meat
+      'protein': ['protein', 'proteins', 'meat', 'meats', 'poultry', 'chicken', 'beef', 'pork', 'butcher', 'walk-in'],
+      'seafood': ['seafood', 'fish', 'shellfish', 'salmon', 'shrimp', 'lobster'],
+      
+      // Dry & Pantry
+      'dry': ['dry', 'pantry', 'grocery', 'shelf-stable', 'canned', 'cans'],
+      'grains': ['grains', 'pasta', 'rice', 'flour', 'cereal'],
+      
+      // Beverages
+      'beverage': ['beverage', 'beverages', 'drinks', 'soda', 'juice', 'water', 'coffee', 'tea'],
+      
+      // Bakery
+      'bakery': ['bakery', 'bread', 'baked goods', 'pastry', 'pastries', 'rolls'],
+      
+      // Supplies & Non-Food
+      'supplies': ['supplies', 'disposable', 'disposables', 'paper', 'plastic', 'to-go', 'packaging'],
+      'cleaning': ['cleaning', 'janitorial', 'chemicals', 'sanitizer'],
+      
+      // Spices & Condiments
+      'spices': ['spice', 'spices', 'seasoning', 'seasonings', 'herbs'],
+      'condiments': ['condiment', 'condiments', 'sauce', 'sauces', 'dressing', 'dressings', 'ketchup', 'mustard'],
+      
+      // Oils & Fats
+      'oils': ['oil', 'oils', 'fat', 'fats', 'shortening', 'lard'],
     };
 
     // Check if vendor category maps to inventory category
     for (const [key, variants] of Object.entries(categoryMappings)) {
-      if (v.includes(key) || variants.some(variant => v.includes(variant))) {
-        if (variants.some(variant => i.includes(variant))) {
-          return 0.7; // Good semantic match
-        }
+      // Check if vendor category contains any variant
+      const vendorMatches = v.includes(key) || variants.some(variant => v.includes(variant));
+      
+      // Check if inventory category contains any variant
+      const inventoryMatches = variants.some(variant => i.includes(variant));
+      
+      if (vendorMatches && inventoryMatches) {
+        return 0.7; // Good semantic match
       }
     }
 

@@ -87,14 +87,14 @@ export class OrderGuideProcessor {
       else if (match.confidence === 'low') stats.lowConfidenceMatches++;
       else stats.noMatches++;
 
-      // Determine match status
-      let matchStatus: 'auto_matched' | 'needs_review' | 'new_item';
+      // Determine match status (aligned with getForReview() expectations)
+      let matchStatus: 'matched' | 'ambiguous' | 'new';
       if (match.confidence === 'high') {
-        matchStatus = 'auto_matched';
+        matchStatus = 'matched';  // High confidence = auto-matched
       } else if (match.confidence === 'medium' || match.confidence === 'low') {
-        matchStatus = 'needs_review';
+        matchStatus = 'ambiguous';  // Medium/low confidence = needs review
       } else {
-        matchStatus = 'new_item';
+        matchStatus = 'new';  // No match = new item
       }
 
       // Convert match score to 0-100 range
