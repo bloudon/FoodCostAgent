@@ -37,7 +37,7 @@ export async function getActiveConnection(
   return storage.getQuickBooksConnection(companyId, storeId);
 }
 
-// Refresh QuickBooks access token if needed (within 60 seconds of expiry)
+// Refresh QuickBooks access token if needed (within 5 minutes of expiry)
 export async function refreshTokenIfNeeded(
   companyId: string,
   storeId: string | null
@@ -48,14 +48,17 @@ export async function refreshTokenIfNeeded(
     throw new Error("No active QuickBooks connection found");
   }
 
-  // Check if token needs refresh (within 60 seconds of expiry)
+  // Check if token needs refresh (within 5 minutes of expiry)
   const now = Date.now();
   const expiresAt = new Date(connection.accessTokenExpiresAt).getTime();
+  const REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
 
-  if (now >= expiresAt - 60000) {
+  if (now >= expiresAt - REFRESH_BUFFER_MS) {
     const oauthClient = createOAuthClient();
 
     try {
+      console.log(`🔄 Refreshing QuickBooks token for company ${companyId}${storeId ? ` (store ${storeId})` : ''}`);
+      
       const authResponse = await oauthClient.refreshUsingToken(connection.refreshToken);
       const token = authResponse.getJson();
 
@@ -69,9 +72,30 @@ export async function refreshTokenIfNeeded(
         refreshTokenExpiresAt,
       });
 
+      console.log(`✅ QuickBooks token refreshed successfully. New expiry: ${accessTokenExpiresAt.toISOString()}`);
+
+      // Log successful refresh
+      await storage.logQuickBooksTokenEvent({
+        companyId,
+        storeId,
+        eventType: "refresh_success",
+        status: "success",
+      });
+
       return token.access_token;
     } catch (error: any) {
-      console.error("QuickBooks token refresh failed:", error);
+      console.error("❌ QuickBooks token refresh failed:", error);
+      
+      // Log failed refresh
+      await storage.logQuickBooksTokenEvent({
+        companyId,
+        storeId,
+        eventType: "refresh_failed",
+        status: "error",
+        errorCode: error.code || null,
+        errorMessage: error.message,
+      });
+      
       throw new Error(`Failed to refresh QuickBooks token: ${error.message}`);
     }
   }
@@ -100,4 +124,46 @@ export async function getAuthenticatedClient(
   } as any);
 
   return { client, connection };
+}
+
+// Refresh all active QuickBooks connections (for scheduled background job)
+export async function refreshAllActiveConnections(): Promise<{
+  success: number;
+  failed: number;
+  errors: Array<{ companyId: string; storeId: string | null; error: string }>;
+}> {
+  const results = {
+    success: 0,
+    failed: 0,
+    errors: [] as Array<{ companyId: string; storeId: string | null; error: string }>,
+  };
+
+  try {
+    // Get all active connections
+    const connections = await storage.getAllQuickBooksConnections();
+    
+    console.log(`🔄 Starting scheduled QuickBooks token refresh for ${connections.length} connection(s)`);
+
+    // Refresh each connection
+    for (const connection of connections) {
+      try {
+        await refreshTokenIfNeeded(connection.companyId, connection.storeId);
+        results.success++;
+      } catch (error: any) {
+        results.failed++;
+        results.errors.push({
+          companyId: connection.companyId,
+          storeId: connection.storeId,
+          error: error.message,
+        });
+        console.error(`❌ Failed to refresh token for company ${connection.companyId}:`, error.message);
+      }
+    }
+
+    console.log(`✅ QuickBooks token refresh completed: ${results.success} success, ${results.failed} failed`);
+  } catch (error: any) {
+    console.error("❌ Error in refreshAllActiveConnections:", error);
+  }
+
+  return results;
 }

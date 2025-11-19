@@ -52,6 +52,7 @@ import {
   quickbooksConnections, type QuickBooksConnection, type InsertQuickBooksConnection,
   quickbooksVendorMappings, type QuickBooksVendorMapping, type InsertQuickBooksVendorMapping,
   quickbooksSyncLogs, type QuickBooksSyncLog, type InsertQuickBooksSyncLog,
+  quickbooksTokenLogs, type QuickBooksTokenLog, type InsertQuickBooksTokenLog,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -389,10 +390,12 @@ export interface IStorage {
 
   // QuickBooks - Connections
   getQuickBooksConnection(companyId: string, storeId?: string): Promise<QuickBooksConnection | undefined>;
+  getAllQuickBooksConnections(): Promise<QuickBooksConnection[]>;
   createQuickBooksConnection(connection: InsertQuickBooksConnection): Promise<QuickBooksConnection>;
   updateQuickBooksConnection(id: string, companyId: string, updates: Partial<QuickBooksConnection>): Promise<QuickBooksConnection | undefined>;
   updateQuickBooksTokens(companyId: string, storeId: string | null, tokens: { accessToken: string; refreshToken: string; accessTokenExpiresAt: Date; refreshTokenExpiresAt: Date }): Promise<void>;
   disconnectQuickBooks(companyId: string, storeId?: string): Promise<void>;
+  logQuickBooksTokenEvent(log: InsertQuickBooksTokenLog): Promise<void>;
   
   // QuickBooks - Vendor Mappings
   getQuickBooksVendorMapping(vendorId: string, companyId: string): Promise<QuickBooksVendorMapping | undefined>;
@@ -2512,6 +2515,24 @@ export class DatabaseStorage implements IStorage {
       .update(quickbooksConnections)
       .set({ isActive: 0, updatedAt: new Date() })
       .where(whereConditions);
+  }
+
+  async getAllQuickBooksConnections(): Promise<QuickBooksConnection[]> {
+    // Return all active connections with non-expired refresh tokens
+    const now = new Date();
+    return db
+      .select()
+      .from(quickbooksConnections)
+      .where(
+        and(
+          eq(quickbooksConnections.isActive, 1),
+          gte(quickbooksConnections.refreshTokenExpiresAt, now)
+        )
+      );
+  }
+
+  async logQuickBooksTokenEvent(log: InsertQuickBooksTokenLog): Promise<void> {
+    await db.insert(quickbooksTokenLogs).values(log);
   }
 
   // QuickBooks - Vendor Mappings

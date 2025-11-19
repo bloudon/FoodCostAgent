@@ -1061,3 +1061,25 @@ export const insertQuickBooksSyncLogSchema = createInsertSchema(quickbooksSyncLo
 export type InsertQuickBooksSyncLog = z.infer<typeof insertQuickBooksSyncLogSchema>;
 export type QuickBooksSyncLog = typeof quickbooksSyncLogs.$inferSelect;
 
+// QuickBooks Token Refresh Logs - Lightweight logging for token operations
+export const quickbooksTokenLogs = pgTable("quickbooks_token_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id"), // Null for company-level connections
+  eventType: text("event_type").notNull(), // 'refresh_success', 'refresh_failed', 'manual_refresh'
+  status: text("status").notNull(), // 'success', 'error'
+  errorCode: text("error_code"), // QB API error code if available
+  errorMessage: text("error_message"), // Error details if failed
+  occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+}, (table) => ({
+  // Fast lookups by company and event type
+  companyIdx: index("qb_token_logs_company_idx").on(table.companyId),
+  eventTypeIdx: index("qb_token_logs_event_type_idx").on(table.eventType),
+  occurredAtIdx: index("qb_token_logs_occurred_at_idx").on(table.occurredAt),
+}));
+
+export const insertQuickBooksTokenLogSchema = createInsertSchema(quickbooksTokenLogs)
+  .omit({ id: true, occurredAt: true });
+export type InsertQuickBooksTokenLog = z.infer<typeof insertQuickBooksTokenLogSchema>;
+export type QuickBooksTokenLog = typeof quickbooksTokenLogs.$inferSelect;
+

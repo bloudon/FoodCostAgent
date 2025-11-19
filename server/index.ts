@@ -96,6 +96,34 @@ app.use((req, res, next) => {
   setInterval(cleanupSessionsJob, SESSION_CLEANUP_INTERVAL_MS);
   log(`🔄 Session cleanup job scheduled (every ${SESSION_CLEANUP_INTERVAL_MS / 1000 / 60} minutes)`);
 
+  // Start QuickBooks token refresh job (if QB credentials configured)
+  // Runs every hour with jitter to proactively refresh tokens before expiry
+  const hasQuickBooksCredentials = !!process.env.QUICKBOOKS_CLIENT_ID && !!process.env.QUICKBOOKS_CLIENT_SECRET;
+  if (hasQuickBooksCredentials) {
+    const { refreshAllActiveConnections } = await import("./services/quickbooks");
+    const QB_REFRESH_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+    const QB_JITTER_MS = 10 * 60 * 1000; // ±10 minutes
+    
+    const refreshQuickBooksTokensJob = async () => {
+      try {
+        const results = await refreshAllActiveConnections();
+        if (results.success > 0 || results.failed > 0) {
+          log(`🔄 QuickBooks token refresh: ${results.success} success, ${results.failed} failed`);
+        }
+      } catch (error) {
+        console.error('❌ QuickBooks token refresh job error:', error);
+      }
+    };
+    
+    // Run on startup, then every hour with random jitter
+    refreshQuickBooksTokensJob();
+    setInterval(() => {
+      const jitter = Math.random() * QB_JITTER_MS * 2 - QB_JITTER_MS; // Random ±10min
+      setTimeout(refreshQuickBooksTokensJob, jitter);
+    }, QB_REFRESH_INTERVAL_MS);
+    log(`🔄 QuickBooks token refresh job scheduled (every ${QB_REFRESH_INTERVAL_MS / 1000 / 60} minutes ±${QB_JITTER_MS / 1000 / 60}min)`);
+  }
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
