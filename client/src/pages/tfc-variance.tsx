@@ -107,6 +107,10 @@ export default function TfcVariance() {
   const [selectedVendorName, setSelectedVendorName] = useState<string>("");
   const [selectedExpectedDate, setSelectedExpectedDate] = useState<string>("");
 
+  // Read countId from URL parameter
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlCountId = urlParams.get('countId');
+
   // Fetch variance summaries for the selected store
   const { data: summaries = [], isLoading: isLoadingSummaries } = useQuery<VarianceSummary[]>({
     queryKey: [`/api/tfc/variance/summaries?storeId=${selectedStoreId}`],
@@ -118,12 +122,21 @@ export default function TfcVariance() {
     setSelectedSummary(null);
   }, [selectedStoreId]);
 
-  // Auto-select the most recent summary (first in list) when summaries load
+  // Auto-select summary based on URL parameter or default to most recent
   useEffect(() => {
     if (summaries.length > 0 && !selectedSummary) {
+      // If URL has countId, try to find and select that specific summary
+      if (urlCountId) {
+        const matchingSummary = summaries.find(s => s.currentCountId === urlCountId);
+        if (matchingSummary) {
+          setSelectedSummary(matchingSummary);
+          return;
+        }
+      }
+      // Default to most recent (first in list)
       setSelectedSummary(summaries[0]);
     }
-  }, [summaries, selectedSummary]);
+  }, [summaries, selectedSummary, urlCountId]);
 
   // Get currentCountId and previousCountId from selected summary
   const currentCountId = selectedSummary?.currentCountId || "";

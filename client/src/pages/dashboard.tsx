@@ -159,7 +159,9 @@ export default function Dashboard() {
       description: recentVariance 
         ? `${new Date(recentVariance.inventoryDate).toLocaleDateString()}`
         : "Complete inventory counts to view",
-      link: "/variance",
+      link: recentVariance 
+        ? `/tfc/variance?countId=${recentVariance.currentCountId}` 
+        : "/tfc/variance",
       variant: recentVariance?.totalVarianceCost 
         ? recentVariance.totalVarianceCost > 0 
           ? "negative" 
