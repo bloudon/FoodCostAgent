@@ -219,6 +219,18 @@ export interface IStorage {
     transferOrderIds: string[];
   }>>;
 
+  // Estimated On-Hand Calculation
+  getEstimatedOnHand(companyId: string, storeId: string): Promise<Array<{
+    inventoryItemId: string;
+    lastCountQty: number;
+    lastCountDate: string | null;
+    receivedQty: number;
+    wasteQty: number;
+    theoreticalUsageQty: number;
+    transferredOutQty: number;
+    estimatedOnHand: number;
+  }>>;
+
   // Purchase Orders
   getPurchaseOrders(companyId: string, storeId?: string): Promise<PurchaseOrder[]>;
   getPurchaseOrder(id: string, companyId: string): Promise<PurchaseOrder | undefined>;
@@ -1611,6 +1623,193 @@ export class DatabaseStorage implements IStorage {
     });
 
     return usageData;
+  }
+
+  // Estimated On-Hand Calculation
+  async getEstimatedOnHand(companyId: string, storeId: string): Promise<Array<{
+    inventoryItemId: string;
+    lastCountQty: number;
+    lastCountDate: string | null;
+    receivedQty: number;
+    wasteQty: number;
+    theoreticalUsageQty: number;
+    transferredOutQty: number;
+    estimatedOnHand: number;
+  }>> {
+    // Get the most recent inventory count for this store
+    const counts = await db
+      .select()
+      .from(inventoryCounts)
+      .where(and(
+        eq(inventoryCounts.companyId, companyId),
+        eq(inventoryCounts.storeId, storeId)
+      ))
+      .orderBy(desc(inventoryCounts.countDate));
+    
+    if (counts.length === 0) {
+      return [];
+    }
+    
+    const lastCount = counts[0];
+    const lastCountDate = lastCount.countDate;
+    
+    // Get all items from the last count, aggregated by inventoryItemId
+    const countLines = await db
+      .select({
+        inventoryItemId: inventoryCountLines.inventoryItemId,
+        totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+      })
+      .from(inventoryCountLines)
+      .where(eq(inventoryCountLines.inventoryCountId, lastCount.id))
+      .groupBy(inventoryCountLines.inventoryItemId);
+    
+    const lastCountMap = new Map(countLines.map(l => [l.inventoryItemId, l.totalQty]));
+    
+    // Get all receipts since the last count
+    const allReceipts = await db
+      .select({
+        inventoryItemId: vendorItems.inventoryItemId,
+        receivedQty: receiptLines.receivedQty,
+        expectedDate: purchaseOrders.expectedDate,
+        receivedAt: receipts.receivedAt,
+      })
+      .from(receiptLines)
+      .innerJoin(receipts, eq(receiptLines.receiptId, receipts.id))
+      .innerJoin(vendorItems, eq(receiptLines.vendorItemId, vendorItems.id))
+      .innerJoin(purchaseOrders, eq(receipts.purchaseOrderId, purchaseOrders.id))
+      .where(
+        and(
+          eq(receipts.companyId, companyId),
+          eq(receipts.storeId, storeId),
+          inArray(receipts.status, ['locked', 'completed'])
+        )
+      );
+    
+    // Filter receipts by delivery date after last count
+    const receivedItems = allReceipts.filter(item => {
+      const deliveryDate = item.expectedDate || item.receivedAt;
+      if (!deliveryDate) return false;
+      return new Date(deliveryDate) > new Date(lastCountDate);
+    });
+    
+    // Aggregate received quantities by item
+    const receivedMap = new Map<string, number>();
+    for (const item of receivedItems) {
+      receivedMap.set(item.inventoryItemId, (receivedMap.get(item.inventoryItemId) || 0) + item.receivedQty);
+    }
+    
+    // Get waste logs since last count
+    const wasteLogsData = await db
+      .select({
+        inventoryItemId: wasteLogs.inventoryItemId,
+        qty: wasteLogs.qty,
+      })
+      .from(wasteLogs)
+      .where(
+        and(
+          eq(wasteLogs.companyId, companyId),
+          eq(wasteLogs.storeId, storeId),
+          eq(wasteLogs.wasteType, 'inventory'),
+          gte(wasteLogs.wastedAt, lastCountDate)
+        )
+      );
+    
+    // Aggregate waste by item
+    const wasteMap = new Map<string, number>();
+    for (const waste of wasteLogsData) {
+      if (waste.inventoryItemId) {
+        wasteMap.set(waste.inventoryItemId, (wasteMap.get(waste.inventoryItemId) || 0) + waste.qty);
+      }
+    }
+    
+    // Get theoretical usage since last count
+    const theoreticalUsageRunsData = await db
+      .select()
+      .from(theoreticalUsageRuns)
+      .where(
+        and(
+          eq(theoreticalUsageRuns.companyId, companyId),
+          eq(theoreticalUsageRuns.storeId, storeId),
+          gte(theoreticalUsageRuns.salesDate, lastCountDate),
+          eq(theoreticalUsageRuns.status, 'completed')
+        )
+      );
+    
+    const runIds = theoreticalUsageRunsData.map(r => r.id);
+    
+    let theoreticalUsageLinesData: any[] = [];
+    if (runIds.length > 0) {
+      theoreticalUsageLinesData = await db
+        .select({
+          inventoryItemId: theoreticalUsageLines.inventoryItemId,
+          requiredQtyBaseUnit: theoreticalUsageLines.requiredQtyBaseUnit,
+        })
+        .from(theoreticalUsageLines)
+        .where(inArray(theoreticalUsageLines.theoreticalUsageRunId, runIds));
+    }
+    
+    // Aggregate theoretical usage by item
+    const theoreticalMap = new Map<string, number>();
+    for (const line of theoreticalUsageLinesData) {
+      theoreticalMap.set(line.inventoryItemId, (theoreticalMap.get(line.inventoryItemId) || 0) + line.requiredQtyBaseUnit);
+    }
+    
+    // Get outbound transfers since last count
+    const transferredItems = await db
+      .select({
+        inventoryItemId: transferOrderLines.inventoryItemId,
+        shippedQty: transferOrderLines.shippedQty,
+      })
+      .from(transferOrderLines)
+      .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
+      .where(
+        and(
+          eq(transferOrders.companyId, companyId),
+          eq(transferOrders.fromStoreId, storeId),
+          gte(transferOrders.completedAt, lastCountDate),
+          eq(transferOrders.status, 'completed')
+        )
+      );
+    
+    // Aggregate transferred quantities by item
+    const transferredMap = new Map<string, number>();
+    for (const item of transferredItems) {
+      transferredMap.set(item.inventoryItemId, (transferredMap.get(item.inventoryItemId) || 0) + (item.shippedQty || 0));
+    }
+    
+    // Get all unique inventory item IDs
+    const allItemIds = new Set([
+      ...Array.from(lastCountMap.keys()),
+      ...Array.from(receivedMap.keys()),
+      ...Array.from(wasteMap.keys()),
+      ...Array.from(theoreticalMap.keys()),
+      ...Array.from(transferredMap.keys()),
+    ]);
+    
+    // Calculate estimated on-hand for each item
+    const estimatedOnHandData = Array.from(allItemIds).map(itemId => {
+      const lastCountQty = lastCountMap.get(itemId) || 0;
+      const receivedQty = receivedMap.get(itemId) || 0;
+      const wasteQty = wasteMap.get(itemId) || 0;
+      const theoreticalUsageQty = theoreticalMap.get(itemId) || 0;
+      const transferredOutQty = transferredMap.get(itemId) || 0;
+      
+      // Formula: On-Hand = Last Count + Received - Waste - Theoretical Usage - Transferred Out
+      const estimatedOnHand = lastCountQty + receivedQty - wasteQty - theoreticalUsageQty - transferredOutQty;
+      
+      return {
+        inventoryItemId: itemId,
+        lastCountQty,
+        lastCountDate: lastCountDate.toISOString(),
+        receivedQty,
+        wasteQty,
+        theoreticalUsageQty,
+        transferredOutQty,
+        estimatedOnHand: Math.max(0, estimatedOnHand), // Don't show negative on-hand
+      };
+    });
+    
+    return estimatedOnHandData;
   }
 
   // Purchase Orders
