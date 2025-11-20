@@ -1,6 +1,6 @@
 # Overview
 
-This project is an inventory management and recipe costing system for food service businesses. Its main purpose is to increase profitability and operational efficiency through precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and detailed variance reporting. Key features include a dual inventory pricing model (Last Cost and Weighted Average Cost), streamlined purchasing, and business intelligence for cost and inventory control. The system aims to optimize food service operations, reduce waste, and improve financial tracking.
+This project is an inventory management and recipe costing system designed for food service businesses. Its primary purpose is to boost profitability and operational efficiency by offering precise unit conversions, managing nested recipes, integrating with POS sales data, and providing detailed variance reporting. Key features include a dual inventory pricing model (Last Cost and Weighted Average Cost), streamlined purchasing, and business intelligence tools for enhanced cost control and financial decision-making, ultimately optimizing operations and reducing waste.
 
 # User Preferences
 
@@ -65,12 +65,12 @@ This project is an inventory management and recipe costing system for food servi
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) SPA using `shadcn/ui` (Radix UI, Tailwind CSS) for a mobile-first design. State management with TanStack Query and React Context, Wouter for routing.
+- **Frontend**: React 18 (TypeScript, Vite) SPA with `shadcn/ui` (Radix UI, Tailwind CSS) for mobile-first design. State management uses TanStack Query and React Context, with Wouter for routing.
 - **Backend**: Node.js (TypeScript) with Express.js, using Zod for data validation.
 - **Database**: PostgreSQL with Drizzle ORM, configured for connection pooling, composite indexes, and atomic transactions.
 - **Application Structure**: Multi-tenant SPA with strict data isolation, micro-unit system, pluggable adapter pattern, centralized order management, and secure OAuth (HMAC-SHA256). Includes Redis caching and response compression.
-- **UI/UX Decisions**: Prioritizes compact navigation, intuitive Recipe Builder with real-time costing, and sortable/filterable data tables. Features theme toggling, optimized inventory count layouts (smooth scrolling, text search, simplified accordions, CSS grid), visual variance reporting (summary cards, detailed modals), and a Dashboard with clickable stat cards and mixed order displays. Consistent color-coded status badges and conditional UI rendering are used throughout.
-- **Technical Implementations**: Provides comprehensive unit conversion, multi-level nested recipe costing, and a dual inventory pricing model (Last Cost & Weighted Average Cost). Integrates with QuickBooks Online (multi-tenancy, selective vendor import, automated token refreshing). Features a sophisticated vendor order guide import (smart matching, approval workflow). Real-time recipe cost calculation is supported by an efficient caching strategy.
+- **UI/UX Decisions**: Prioritizes compact navigation, an intuitive Recipe Builder with real-time costing, and sortable/filterable data tables. Features theme toggling, optimized inventory count layouts (smooth scrolling, text search, simplified accordions, CSS grid), and visual variance reporting (summary cards, detailed modals). The Dashboard includes clickable stat cards and mixed order displays. Consistent color-coded status badges and conditional UI rendering are employed throughout.
+- **Technical Implementations**: Provides comprehensive unit conversion, multi-level nested recipe costing, and a dual inventory pricing model (Last Cost & Weighted Average Cost). Integrates with QuickBooks Online for multi-tenancy, selective vendor import, and automated token refreshing. Features a sophisticated vendor order guide import with smart matching and an approval workflow. Real-time recipe cost calculation is supported by an efficient caching strategy.
 - **System Design Choices**: Adheres to a strict multi-tenancy model with strong data isolation. Uses a micro-unit precision system for all inventory and recipe calculations. A pluggable integration adapter pattern allows for easy expansion. Security is implemented through HMAC-SHA256 for OAuth and extensive server-side data validation.
 
 # External Dependencies
