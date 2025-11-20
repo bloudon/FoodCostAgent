@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -131,6 +132,36 @@ export default function Dashboard() {
     }
     return sum;
   }, 0) || 0;
+
+  // Fetch all count lines for all counts at this store to calculate average inventory value
+  const { data: allCountLinesForStore } = useQuery<any[]>({
+    queryKey: [`/api/inventory-count-lines?storeId=${selectedStoreId}`],
+    enabled: !!selectedStoreId && !!inventoryCounts && inventoryCounts.length > 0,
+  });
+
+  // Calculate average inventory value across all counts
+  const averageInventoryValue = useMemo(() => {
+    if (!inventoryCounts || inventoryCounts.length === 0 || !allCountLinesForStore) {
+      return 0;
+    }
+
+    // Group lines by count ID
+    const countValues = new Map<string, number>();
+    
+    allCountLinesForStore.forEach(line => {
+      const currentValue = countValues.get(line.inventoryCountId) || 0;
+      if (line.qty && line.unitCost !== undefined) {
+        countValues.set(line.inventoryCountId, currentValue + (line.qty * line.unitCost));
+      }
+    });
+
+    // Calculate average
+    const values = Array.from(countValues.values());
+    if (values.length === 0) return 0;
+    
+    const sum = values.reduce((acc, val) => acc + val, 0);
+    return sum / values.length;
+  }, [inventoryCounts, allCountLinesForStore]);
 
   // Helper function to get actual received value for a purchase order from completed receipts
   const getActualReceivedValue = (purchaseOrderId: string): number | null => {
@@ -380,7 +411,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <ClipboardList className="h-5 w-5 text-muted-foreground" />
-                <CardTitle>Recent Inventory</CardTitle>
+                <CardTitle>Inventory Value</CardTitle>
               </div>
               <Link href="/inventory-sessions">
                 <Button variant="ghost" size="sm" data-testid="button-view-counts">
@@ -392,38 +423,65 @@ export default function Dashboard() {
           <CardContent>
             {countsLoading ? (
               <div className="space-y-2">
-                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-8 w-full" />
                 <Skeleton className="h-4 w-3/4" />
               </div>
             ) : mostRecentCount ? (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Date</p>
-                    <p className="font-medium font-mono text-sm" data-testid="text-recent-count-date">
-                      {new Date(mostRecentCount.countDate).toLocaleDateString()}
-                    </p>
+              <div className="space-y-4">
+                {/* Single clickable line for recent count */}
+                <Link href={`/count/${mostRecentCount.id}`}>
+                  <div className="cursor-pointer hover-elevate rounded-md p-3 border" data-testid="link-recent-count">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1">
+                        <p className="text-sm text-muted-foreground mb-1">
+                          {new Date(mostRecentCount.countDate).toLocaleDateString()} • {recentCountLines?.length || 0} items
+                        </p>
+                        <p className="text-2xl font-semibold font-mono" data-testid="text-recent-count-value">
+                          ${recentCountValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <ArrowRight className="h-5 w-5 text-muted-foreground" />
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Items</p>
-                    <p className="font-medium font-mono text-sm" data-testid="text-recent-count-items">
-                      {recentCountLines?.length || 0}
-                    </p>
+                </Link>
+
+                {/* Average inventory value comparison */}
+                {inventoryCounts && inventoryCounts.length > 1 && (
+                  <div className="pt-2 border-t">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Average Value</p>
+                        <p className="text-sm text-muted-foreground">
+                          Across {inventoryCounts.length} counts
+                        </p>
+                      </div>
+                      <p className="text-lg font-semibold font-mono" data-testid="text-average-inventory-value">
+                        ${averageInventoryValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    {averageInventoryValue > 0 && (
+                      <div className="mt-2">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs text-muted-foreground">vs Average:</p>
+                          <Badge 
+                            variant="secondary"
+                            className={
+                              recentCountValue > averageInventoryValue
+                                ? "bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400"
+                                : recentCountValue < averageInventoryValue
+                                  ? "bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/10 dark:text-red-400"
+                                  : ""
+                            }
+                            data-testid="badge-inventory-comparison"
+                          >
+                            {recentCountValue > averageInventoryValue ? "+" : ""}
+                            ${(recentCountValue - averageInventoryValue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </Badge>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Value</p>
-                    <p className="font-medium font-mono text-sm" data-testid="text-recent-count-value">
-                      ${recentCountValue.toFixed(2)}
-                    </p>
-                  </div>
-                </div>
-                <div className="pt-2">
-                  <Link href={`/count/${mostRecentCount.id}`}>
-                    <Button variant="outline" size="sm" className="w-full" data-testid="button-view-count-details">
-                      View Details
-                    </Button>
-                  </Link>
-                </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-6">

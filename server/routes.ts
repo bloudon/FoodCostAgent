@@ -2992,6 +2992,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // Fetch all count lines for all counts at a store (for analytics/dashboard)
+  app.get("/api/inventory-count-lines", requireAuth, async (req, res) => {
+    const storeId = req.query.storeId as string;
+    
+    if (!storeId) {
+      return res.status(400).json({ error: "storeId query parameter required" });
+    }
+    
+    const user = (req as any).user;
+    
+    // CRITICAL: Validate that the requested store exists and user has access
+    const store = await storage.getCompanyStore(storeId);
+    
+    if (!store) {
+      return res.status(404).json({ error: "Store not found" });
+    }
+    
+    // Validate access: users must belong to same company, global admins have access to all
+    if (user.role !== "global_admin" && user.companyId !== store.companyId) {
+      return res.status(403).json({ error: "Access denied: Store belongs to different company" });
+    }
+    
+    // Get all counts for this store (now validated for access)
+    const counts = await storage.getInventoryCounts(store.companyId, storeId);
+    
+    // Fetch all lines for all counts
+    const allLines: any[] = [];
+    for (const count of counts) {
+      const lines = await storage.getInventoryCountLines(count.id);
+      allLines.push(...lines);
+    }
+    
+    res.json(allLines);
+  });
+
   app.get("/api/inventory-count-lines/:countId", async (req, res) => {
     const lines = await storage.getInventoryCountLines(req.params.countId);
     
