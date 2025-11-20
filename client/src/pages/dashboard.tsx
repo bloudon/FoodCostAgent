@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed } from "lucide-react";
+import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed, AlertCircle, Calendar, Clock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStoreContext } from "@/hooks/use-store-context";
 
@@ -89,6 +89,12 @@ export default function Dashboard() {
   // Fetch menu items filtered by selected store
   const { data: allMenuItems = [], isLoading: menuItemsLoading } = useQuery<any[]>({
     queryKey: [`/api/menu-items?storeId=${selectedStoreId}`],
+    enabled: !!selectedStoreId,
+  });
+
+  // Fetch pending order deadlines
+  const { data: orderDeadlines = [], isLoading: deadlinesLoading } = useQuery<any[]>({
+    queryKey: [`/api/purchase-orders/deadlines?storeId=${selectedStoreId}`],
     enabled: !!selectedStoreId,
   });
   
@@ -216,6 +222,88 @@ export default function Dashboard() {
   // Full dashboard for admins and managers
   return (
     <div className="p-8">
+      {/* Pending Order Deadlines Header */}
+      {!deadlinesLoading && orderDeadlines.length > 0 && (
+        <Card className="mb-6 bg-gradient-to-r from-orange-50/50 to-red-50/50 dark:from-orange-950/20 dark:to-red-950/20 border-orange-200 dark:border-orange-800" data-testid="card-order-deadlines">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+              <CardTitle className="text-base">Pending Order Deadlines</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {orderDeadlines.slice(0, 5).map((deadline: any) => {
+                const isPastDue = deadline.isPastDue;
+                const isUrgent = deadline.isUrgent;
+                
+                return (
+                  <Link key={deadline.purchaseOrderId} href={`/orders/${deadline.purchaseOrderId}`}>
+                    <div 
+                      className={`flex items-center justify-between gap-4 p-3 rounded-lg border hover-elevate cursor-pointer ${
+                        isPastDue 
+                          ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800" 
+                          : isUrgent 
+                            ? "bg-orange-50 dark:bg-orange-950/30 border-orange-300 dark:border-orange-800"
+                            : "bg-background border-border"
+                      }`}
+                      data-testid={`deadline-${deadline.purchaseOrderId}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium text-sm truncate">{deadline.vendorName}</span>
+                          {deadline.internalOrderId && (
+                            <span className="text-xs text-muted-foreground">#{deadline.internalOrderId}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            <span>Deadline: {new Date(deadline.orderDeadline).toLocaleDateString()}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            <span>Delivery: {new Date(deadline.nextDeliveryDate).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge 
+                          variant={isPastDue ? "destructive" : isUrgent ? "secondary" : "outline"}
+                          className={
+                            isPastDue 
+                              ? "bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"
+                              : isUrgent 
+                                ? "bg-orange-500/10 text-orange-700 border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20"
+                                : ""
+                          }
+                        >
+                          {isPastDue 
+                            ? "Past Due" 
+                            : deadline.daysUntilDeadline === 0 
+                              ? "Due Today" 
+                              : deadline.daysUntilDeadline === 1 
+                                ? "Due Tomorrow"
+                                : `${deadline.daysUntilDeadline} days`
+                          }
+                        </Badge>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+              {orderDeadlines.length > 5 && (
+                <Link href="/orders">
+                  <Button variant="ghost" size="sm" className="w-full" data-testid="button-view-all-deadlines">
+                    View all {orderDeadlines.length} pending orders
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </Link>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
