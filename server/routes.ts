@@ -3774,12 +3774,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         const deliveryDayIndices = deliveryDays.map(day => dayNames.indexOf(day.toLowerCase()));
         
-        // Start from tomorrow
+        // Start from today (normalized to midnight)
         const searchDate = new Date(fromDate);
-        searchDate.setDate(searchDate.getDate() + 1);
         searchDate.setHours(0, 0, 0, 0);
         
-        // Search up to 14 days ahead for next delivery day
+        // Search up to 14 days ahead for next delivery day (including today)
         for (let i = 0; i < 14; i++) {
           const dayOfWeek = searchDate.getDay();
           if (deliveryDayIndices.includes(dayOfWeek)) {
