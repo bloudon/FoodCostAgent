@@ -247,7 +247,15 @@ export default function TransferOrderDetail() {
   };
 
   // Filter items by source store
-  const displayItems = inventoryItems || [];
+  // When receiving (in_transit), only show items with quantity > 0
+  // When editing (pending), show all items
+  const displayItems = (inventoryItems || []).filter(item => {
+    if (!transferOrder || transferOrder.status === "pending") {
+      return true; // Show all items when editing
+    }
+    // When receiving or viewing completed, only show items with quantity
+    return (quantities[item.id] || 0) > 0;
+  });
 
   const totalValue = displayItems.reduce((sum, item) => {
     const qty = quantities[item.id] || 0;
