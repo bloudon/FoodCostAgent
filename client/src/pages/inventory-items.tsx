@@ -121,6 +121,26 @@ export default function InventoryItems() {
     }
   }, [stores, selectedStore]);
 
+  // Fetch estimated on-hand data for the selected store
+  const { data: estimatedOnHandData } = useQuery<Array<{
+    inventoryItemId: string;
+    lastCountQty: number;
+    lastCountDate: string | null;
+    receivedQty: number;
+    wasteQty: number;
+    theoreticalUsageQty: number;
+    transferredOutQty: number;
+    estimatedOnHand: number;
+  }>>({
+    queryKey: ["/api/inventory-items/estimated-on-hand", selectedStore],
+    enabled: !!selectedStore && selectedStore !== "all",
+  });
+
+  // Create a map for quick lookup of estimated on-hand quantities
+  const estimatedOnHandMap = new Map(
+    estimatedOnHandData?.map(item => [item.inventoryItemId, item.estimatedOnHand]) || []
+  );
+
   const { data: inventoryItems, isLoading } = useQuery<InventoryItemDisplay[]>({
     queryKey: ["/api/inventory-items", selectedStore],
     queryFn: async () => {
@@ -297,6 +317,7 @@ export default function InventoryItems() {
                   <TableHead className="text-right">Last Cost</TableHead>
                   <TableHead className="text-right">Avg Cost (WAC)</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead className="text-right">Est. On-Hand</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -414,6 +435,19 @@ export default function InventoryItems() {
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
                         <span className={inventoryStatus.color}>{quantity.toFixed(2)}</span>
+                      </TableCell>
+                      <TableCell 
+                        className="text-right font-mono cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                        data-testid={`cell-estimated-on-hand-${item.id}`}
+                      >
+                        {estimatedOnHandMap.has(item.id) ? (
+                          <span className="text-blue-600 dark:text-blue-400">
+                            {estimatedOnHandMap.get(item.id)?.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
