@@ -58,6 +58,16 @@ export default function Dashboard() {
   // Filter purchase orders by selected store client-side (copy array to avoid mutation)
   const storePurchaseOrdersAll = [...allPurchaseOrders].filter(po => po.storeId === selectedStoreId);
 
+  // Transfer Orders - fetch all
+  const { data: allTransferOrders = [] } = useQuery<any[]>({
+    queryKey: ["/api/transfer-orders"],
+  });
+
+  // Filter transfer orders by selected store (either from or to this store)
+  const storeTransferOrders = [...allTransferOrders].filter(
+    to => to.fromStoreId === selectedStoreId || to.toStoreId === selectedStoreId
+  );
+
   // Fetch variance summaries for the selected store
   const { data: varianceSummaries = [], isLoading: varianceSummariesLoading } = useQuery<any[]>({
     queryKey: [`/api/tfc/variance/summaries?storeId=${selectedStoreId}`],
@@ -67,8 +77,11 @@ export default function Dashboard() {
   // Get the most recent variance summary (first in list)
   const recentVariance = varianceSummaries.length > 0 ? varianceSummaries[0] : null;
   
-  // Get last 3 purchase orders for quicklink display
-  const storePurchaseOrdersRecent = [...storePurchaseOrdersAll]
+  // Combine purchase orders and transfer orders, then get last 3 for quicklink display
+  const recentOrders = [
+    ...storePurchaseOrdersAll.map(po => ({ ...po, type: 'purchase' as const })),
+    ...storeTransferOrders.map(to => ({ ...to, type: 'transfer' as const }))
+  ]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 3);
 
@@ -441,49 +454,60 @@ export default function Dashboard() {
             </div>
           </CardHeader>
           <CardContent>
-            {storePurchaseOrdersRecent.length > 0 ? (
+            {recentOrders.length > 0 ? (
               <div className="space-y-2">
-                {storePurchaseOrdersRecent.map((order) => (
-                  <Link 
-                    key={order.id} 
-                    href={order.status === "pending" ? `/purchase-orders/${order.id}` : `/receiving/${order.id}`}
-                  >
-                    <div 
-                      className="flex items-center justify-between border-b last:border-0 pb-2 last:pb-0 cursor-pointer hover-elevate rounded p-2"
-                      data-testid={`row-order-${order.id}`}
+                {recentOrders.map((order: any) => {
+                  const isTransfer = order.type === 'transfer';
+                  const orderLink = isTransfer 
+                    ? `/transfer-orders/${order.id}`
+                    : order.status === "pending" 
+                      ? `/purchase-orders/${order.id}` 
+                      : `/receiving/${order.id}`;
+                  
+                  return (
+                    <Link 
+                      key={order.id} 
+                      href={orderLink}
                     >
-                      <div className="flex-1">
-                        <p className="font-medium text-sm" data-testid={`text-order-date-${order.id}`}>
-                          {new Date(order.createdAt).toLocaleDateString()}
-                        </p>
-                        <p className="text-xs text-muted-foreground" data-testid={`text-order-vendor-${order.id}`}>
-                          {order.vendorName}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          #{order.id.slice(0, 8)}
-                        </p>
+                      <div 
+                        className="flex items-center justify-between border-b last:border-0 pb-2 last:pb-0 cursor-pointer hover-elevate rounded p-2"
+                        data-testid={`row-order-${order.id}`}
+                      >
+                        <div className="flex-1">
+                          <p className="font-medium text-sm" data-testid={`text-order-date-${order.id}`}>
+                            {new Date(order.createdAt).toLocaleDateString()}
+                          </p>
+                          <p className="text-xs text-muted-foreground" data-testid={`text-order-vendor-${order.id}`}>
+                            {isTransfer 
+                              ? `${order.fromStoreName} → ${order.toStoreName}` 
+                              : order.vendorName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {isTransfer ? 'Transfer' : 'Purchase'} #{order.id.slice(0, 8)}
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <Badge 
+                            variant={statusConfig[order.status]?.variant || "secondary"}
+                            className={statusConfig[order.status]?.className || ""}
+                            data-testid={`badge-order-status-${order.id}`}
+                          >
+                            {order.status.replace('_', ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                          </Badge>
+                          {!isTransfer && (() => {
+                            const actualValue = getActualReceivedValue(order.id);
+                            const displayValue = actualValue !== null ? actualValue : (order.totalAmount || 0);
+                            return (
+                              <p className="font-medium text-sm font-mono" data-testid={`text-order-total-${order.id}`}>
+                                ${displayValue.toFixed(2)}
+                              </p>
+                            );
+                          })()}
+                        </div>
                       </div>
-                      <div className="flex flex-col items-end gap-2">
-                        <Badge 
-                          variant={statusConfig[order.status]?.variant || "secondary"}
-                          className={statusConfig[order.status]?.className || ""}
-                          data-testid={`badge-order-status-${order.id}`}
-                        >
-                          {order.status.replace('_', ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                        </Badge>
-                        {(() => {
-                          const actualValue = getActualReceivedValue(order.id);
-                          const displayValue = actualValue !== null ? actualValue : (order.totalAmount || 0);
-                          return (
-                            <p className="font-medium text-sm font-mono" data-testid={`text-order-total-${order.id}`}>
-                              ${displayValue.toFixed(2)}
-                            </p>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  </Link>
-                ))}
+                    </Link>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-6">

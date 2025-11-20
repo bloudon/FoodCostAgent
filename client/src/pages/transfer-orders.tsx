@@ -192,9 +192,9 @@ export default function TransferOrders() {
                   <TableRow key={order.id} data-testid={`row-transfer-${order.id}`}>
                     <TableCell>
                       <Link href={`/transfer-orders/${order.id}`}>
-                        <Button variant="ghost" className="p-0 h-auto font-normal hover:underline" data-testid={`link-transfer-${order.id}`}>
+                        <span className="text-primary hover:underline cursor-pointer font-medium" data-testid={`link-transfer-${order.id}`}>
                           #{order.id.slice(0, 8)}
-                        </Button>
+                        </span>
                       </Link>
                     </TableCell>
                     <TableCell>{order.fromStoreName}</TableCell>
