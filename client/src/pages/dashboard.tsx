@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp } from "lucide-react";
+import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStoreContext } from "@/hooks/use-store-context";
 
@@ -85,6 +85,12 @@ export default function Dashboard() {
       receiptsByPO.set(receipt.purchaseOrderId, [...existing, receipt]);
     }
   });
+
+  // Fetch menu items filtered by selected store
+  const { data: allMenuItems = [], isLoading: menuItemsLoading } = useQuery<any[]>({
+    queryKey: [`/api/menu-items?storeId=${selectedStoreId}`],
+    enabled: !!selectedStoreId,
+  });
   
   // Get most recent count for this store (already filtered server-side, copy to avoid cache mutation)
   const mostRecentCount = inventoryCounts && inventoryCounts.length > 0
@@ -126,7 +132,7 @@ export default function Dashboard() {
   // Stats filtered by selected store
   const totalItems = inventoryItems?.filter(i => i.active === 1).length || 0;
   const totalCounts = inventoryCounts?.length || 0;
-  const totalOrders = storePurchaseOrdersAll.length;
+  const totalMenuItems = allMenuItems?.filter(m => m.active === 1).length || 0;
 
   const stats = [
     {
@@ -162,11 +168,11 @@ export default function Dashboard() {
       link: "/inventory-sessions",
     },
     {
-      title: "Recent Orders",
-      value: totalOrders.toString(),
-      icon: PackageCheck,
-      description: "Last 3 purchase orders",
-      link: "/orders",
+      title: "Menu Items",
+      value: menuItemsLoading ? "..." : totalMenuItems.toString(),
+      icon: UtensilsCrossed,
+      description: "Active menu items at this store",
+      link: "/menu-items",
     },
   ];
 
