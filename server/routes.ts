@@ -3943,6 +3943,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get pending order deadlines based on vendor delivery schedules
+  app.get("/api/purchase-orders/deadlines", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const storeId = req.query.storeId as string | undefined;
+
+      // Get pending purchase orders for the store
+      const allOrders = await storage.getPurchaseOrders(companyId, storeId);
+      const pendingOrders = allOrders.filter(po => po.status === "pending");
+      
+      if (pendingOrders.length === 0) {
+        return res.json([]);
+      }
+
+      // Get vendors to access delivery schedules
+      const vendors = await storage.getVendors(companyId);
+      
+      // Helper function to calculate next delivery date
+      const getNextDeliveryDate = (deliveryDays: string[] | null, fromDate: Date = new Date()): Date | null => {
+        if (!deliveryDays || deliveryDays.length === 0) {
+          return null;
+        }
+        
+        const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const deliveryDayIndices = deliveryDays.map(day => dayNames.indexOf(day.toLowerCase()));
+        
+        // Start from tomorrow
+        const searchDate = new Date(fromDate);
+        searchDate.setDate(searchDate.getDate() + 1);
+        searchDate.setHours(0, 0, 0, 0);
+        
+        // Search up to 14 days ahead for next delivery day
+        for (let i = 0; i < 14; i++) {
+          const dayOfWeek = searchDate.getDay();
+          if (deliveryDayIndices.includes(dayOfWeek)) {
+            return new Date(searchDate);
+          }
+          searchDate.setDate(searchDate.getDate() + 1);
+        }
+        
+        return null;
+      };
+
+      // Calculate deadlines for each pending order
+      const deadlines = pendingOrders.map(po => {
+        const vendor = vendors.find(v => v.id === po.vendorId);
+        if (!vendor) {
+          return null;
+        }
+
+        const nextDelivery = getNextDeliveryDate(vendor.deliveryDays);
+        if (!nextDelivery) {
+          return null;
+        }
+
+        // Calculate order deadline (delivery date - lead days)
+        const leadDays = vendor.leadDaysAhead || 0;
+        const deadline = new Date(nextDelivery);
+        deadline.setDate(deadline.getDate() - leadDays);
+        
+        // Calculate days until deadline
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        const daysUntilDeadline = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        
+        return {
+          purchaseOrderId: po.id,
+          internalOrderId: po.internalOrderId,
+          vendorId: vendor.id,
+          vendorName: vendor.name,
+          nextDeliveryDate: nextDelivery.toISOString().split('T')[0], // YYYY-MM-DD
+          orderDeadline: deadline.toISOString().split('T')[0], // YYYY-MM-DD
+          daysUntilDeadline,
+          leadDaysAhead: leadDays,
+          isUrgent: daysUntilDeadline <= 1, // Deadline today or tomorrow
+          isPastDue: daysUntilDeadline < 0, // Deadline has passed
+        };
+      }).filter(d => d !== null);
+
+      // Sort by urgency (past due first, then by days until deadline ascending)
+      deadlines.sort((a, b) => {
+        if (a.isPastDue && !b.isPastDue) return -1;
+        if (!a.isPastDue && b.isPastDue) return 1;
+        return a.daysUntilDeadline - b.daysUntilDeadline;
+      });
+
+      res.json(deadlines);
+    } catch (error: any) {
+      console.error("Deadline calculation error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ============ VENDOR INTEGRATIONS ============
   const { getVendor, getAllVendors } = await import('./integrations');
 
