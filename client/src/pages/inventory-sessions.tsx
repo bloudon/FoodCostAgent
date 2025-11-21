@@ -171,11 +171,17 @@ export default function InventorySessions() {
       if (!dialogStoreId) {
         throw new Error("Please select a store location to create a count session");
       }
+      // Format date as YYYY-MM-DD string to prevent timezone shift
+      const year = countDate.getFullYear();
+      const month = String(countDate.getMonth() + 1).padStart(2, '0');
+      const day = String(countDate.getDate()).padStart(2, '0');
+      const countDateStr = `${year}-${month}-${day}`;
+      
       const response = await apiRequest("POST", "/api/inventory-counts", {
         userId: "system",
         companyId: selectedCompanyId,
         storeId: dialogStoreId,
-        countDate: countDate.toISOString(),
+        countDate: countDateStr,
         note: note || undefined,
       });
       return response.json();
