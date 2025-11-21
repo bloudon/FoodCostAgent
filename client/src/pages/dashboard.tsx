@@ -4,8 +4,9 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed, AlertCircle, Calendar, Clock } from "lucide-react";
+import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed, AlertCircle, Calendar, Clock, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useStoreContext } from "@/hooks/use-store-context";
 
 const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline", className: string }> = {
@@ -111,6 +112,60 @@ export default function Dashboard() {
     queryKey: [`/api/purchase-orders/deadlines?storeId=${selectedStoreId}`],
     enabled: !!selectedStoreId,
   });
+
+  // Fetch estimated on-hand inventory for critical items detection
+  const { data: estimatedOnHand = [], isLoading: estimatedLoading } = useQuery<Array<{
+    inventoryItemId: string;
+    lastCountQty: number;
+    lastCountDate: string | null;
+    receivedQty: number;
+    wasteQty: number;
+    theoreticalUsageQty: number;
+    transferredOutQty: number;
+    estimatedOnHand: number;
+  }>>({
+    queryKey: ["/api/inventory-items/estimated-on-hand", selectedStoreId],
+    queryFn: async () => {
+      if (!selectedStoreId || selectedStoreId === "all") {
+        return [];
+      }
+      const response = await fetch(`/api/inventory-items/estimated-on-hand?storeId=${selectedStoreId}`);
+      if (!response.ok) throw new Error("Failed to fetch estimated on-hand data");
+      return response.json();
+    },
+    enabled: !!selectedStoreId && selectedStoreId !== "all",
+  });
+
+  // Identify critical inventory items (estimated on-hand below reorder level)
+  const criticalItems = useMemo(() => {
+    if (!estimatedOnHand || !inventoryItems) return [];
+    
+    const criticalList: Array<{
+      id: string;
+      name: string;
+      estimatedOnHand: number;
+      reorderLevel: number;
+      unitAbbreviation: string;
+      deficit: number;
+    }> = [];
+
+    estimatedOnHand.forEach(est => {
+      const item = inventoryItems.find((inv: any) => inv.id === est.inventoryItemId);
+      if (item && item.reorderLevel && est.estimatedOnHand < item.reorderLevel) {
+        criticalList.push({
+          id: item.id,
+          name: item.name,
+          estimatedOnHand: est.estimatedOnHand,
+          reorderLevel: item.reorderLevel,
+          unitAbbreviation: item.unit?.abbreviation || item.unit?.name || '',
+          deficit: item.reorderLevel - est.estimatedOnHand,
+        });
+      }
+    });
+
+    // Sort by deficit (most critical first)
+    return criticalList.sort((a, b) => b.deficit - a.deficit);
+  }, [estimatedOnHand, inventoryItems]);
   
   // Get most recent count for this store (already filtered server-side, copy to avoid cache mutation)
   const mostRecentCount = inventoryCounts && inventoryCounts.length > 0
@@ -268,18 +323,22 @@ export default function Dashboard() {
   // Full dashboard for admins and managers
   return (
     <div className="p-8">
-      {/* Pending Order Deadlines Header */}
-      {!deadlinesLoading && orderDeadlines.length > 0 && (
-        <Card className="mb-6 bg-gradient-to-r from-orange-50/50 to-red-50/50 dark:from-orange-950/20 dark:to-red-950/20 border-orange-200 dark:border-orange-800" data-testid="card-order-deadlines">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-              <CardTitle className="text-base">Pending Order Deadlines</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {orderDeadlines.slice(0, 5).map((deadline: any) => {
+      {/* Alerts Section: Pending Orders & Critical Inventory (Split 50/50 on desktop) */}
+      {(!deadlinesLoading && orderDeadlines.length > 0) || (!estimatedLoading && criticalItems.length > 0) ? (
+        <div className="grid gap-6 lg:grid-cols-2 mb-6">
+          {/* Pending Order Deadlines */}
+          {!deadlinesLoading && orderDeadlines.length > 0 && (
+            <Card className="bg-gradient-to-r from-orange-50/50 to-red-50/50 dark:from-orange-950/20 dark:to-red-950/20 border-orange-200 dark:border-orange-800" data-testid="card-order-deadlines">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                  <CardTitle className="text-base">Pending Order Deadlines</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[400px] pr-4">
+                  <div className="space-y-3">
+                    {orderDeadlines.slice(0, 10).map((deadline: any) => {
                 const isPastDue = deadline.isPastDue;
                 const isUrgent = deadline.isUrgent;
                 
@@ -338,18 +397,95 @@ export default function Dashboard() {
                   </Link>
                 );
               })}
-              {orderDeadlines.length > 5 && (
-                <Link href="/orders">
-                  <Button variant="ghost" size="sm" className="w-full" data-testid="button-view-all-deadlines">
-                    View all {orderDeadlines.length} pending orders
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </Link>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                  </div>
+                </ScrollArea>
+                {orderDeadlines.length > 10 && (
+                  <div className="mt-3 pt-3 border-t">
+                    <Link href="/orders">
+                      <Button variant="ghost" size="sm" className="w-full" data-testid="button-view-all-deadlines">
+                        View all {orderDeadlines.length} pending orders
+                        <ArrowRight className="h-4 w-4 ml-2" />
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Critical Inventory Items */}
+          {!estimatedLoading && criticalItems.length > 0 && (
+            <Card className="bg-gradient-to-r from-red-50/50 to-orange-50/50 dark:from-red-950/20 dark:to-orange-950/20 border-red-200 dark:border-red-800" data-testid="card-critical-inventory">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                  <CardTitle className="text-base">Critical Inventory Levels</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[400px] pr-4">
+                  <div className="space-y-3">
+                    {criticalItems.slice(0, 20).map((item) => {
+                      const percentOfReorder = (item.estimatedOnHand / item.reorderLevel) * 100;
+                      const isCritical = percentOfReorder < 50;
+                      
+                      return (
+                        <Link key={item.id} href={`/inventory/${item.id}`}>
+                          <div 
+                            className={`flex items-center justify-between gap-4 p-3 rounded-lg border hover-elevate cursor-pointer ${
+                              isCritical 
+                                ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800" 
+                                : "bg-orange-50 dark:bg-orange-950/30 border-orange-300 dark:border-orange-800"
+                            }`}
+                            data-testid={`critical-item-${item.id}`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-medium text-sm truncate">{item.name}</span>
+                              </div>
+                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                <div className="flex items-center gap-1">
+                                  <Package className="h-3 w-3" />
+                                  <span>On Hand: {item.estimatedOnHand.toFixed(1)} {item.unitAbbreviation}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span>Reorder: {item.reorderLevel.toFixed(1)} {item.unitAbbreviation}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge 
+                                variant={isCritical ? "destructive" : "secondary"}
+                                className={
+                                  isCritical 
+                                    ? "bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"
+                                    : "bg-orange-500/10 text-orange-700 border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20"
+                                }
+                              >
+                                {isCritical ? "Critical" : "Low"} ({percentOfReorder.toFixed(0)}%)
+                              </Badge>
+                            </div>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+                {criticalItems.length > 20 && (
+                  <div className="mt-3 pt-3 border-t">
+                    <Link href="/inventory">
+                      <Button variant="ghost" size="sm" className="w-full" data-testid="button-view-all-critical">
+                        View all {criticalItems.length} critical items
+                        <ArrowRight className="h-4 w-4 ml-2" />
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      ) : null}
 
       {/* Stats Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
