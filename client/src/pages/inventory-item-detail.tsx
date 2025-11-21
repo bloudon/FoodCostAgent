@@ -186,11 +186,14 @@ export default function InventoryItemDetail() {
       return apiRequest("PATCH", `/api/inventory-items/${id}`, updates);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "locations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
-      // Invalidate estimated on-hand because par/reorder levels affect critical inventory display
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items/estimated-on-hand"] });
+      // Invalidate all inventory-items queries (list, detail, locations, estimated-on-hand)
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          Array.isArray(query.queryKey) && 
+          (query.queryKey[0] === "/api/inventory-items" ||
+           query.queryKey[0] === "/api/inventory-items/estimated-on-hand"),
+        refetchType: "active"
+      });
       // Invalidate all recipe queries (list, detail, components) because recipe costs depend on ingredient prices
       queryClient.invalidateQueries({ 
         predicate: (query) => 
