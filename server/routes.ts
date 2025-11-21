@@ -6215,7 +6215,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       for (const [key, rows] of salesByDateStore) {
         const [dateStr, storeCode] = key.split('|');
-        const salesDate = new Date(dateStr);
+        // Parse date as local timezone (not UTC) to prevent day-shift bug
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const salesDate = new Date(year, month - 1, day); // month is 0-indexed
 
         // Find store by code
         const stores = await storage.getCompanyStores(companyId);
