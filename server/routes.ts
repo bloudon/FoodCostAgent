@@ -2057,19 +2057,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/inventory-items/:id", requireAuth, async (req, res) => {
     const itemId = req.params.id;
+    const storeId = req.query.store_id as string | undefined;
     const companyId = (req as any).companyId as string;
     
-    // Try cache lookup
-    const cacheKey = CacheKeys.inventoryItem(companyId, itemId);
+    // Try cache lookup (include storeId in cache key to separate store-specific vs global)
+    const cacheKey = storeId 
+      ? `${CacheKeys.inventoryItem(companyId, itemId)}:store:${storeId}`
+      : CacheKeys.inventoryItem(companyId, itemId);
     const cached = await cache.get(cacheKey);
     if (cached) {
-      cacheLog(`HIT inventory item (${companyId}, ${itemId})`);
+      cacheLog(`HIT inventory item (${companyId}, ${itemId}, store=${storeId || '*'})`);
       return res.json(cached);
     }
-    cacheLog(`MISS inventory item (${companyId}, ${itemId})`);
+    cacheLog(`MISS inventory item (${companyId}, ${itemId}, store=${storeId || '*'})`);
     
-    // Cache miss - fetch from database
-    const item = await storage.getInventoryItem(itemId);
+    // Validate store ownership if storeId provided
+    if (storeId) {
+      const store = await storage.getCompanyStore(storeId);
+      if (!store || store.companyId !== companyId) {
+        return res.status(403).json({ error: "Access denied to this store" });
+      }
+    }
+    
+    // Fetch item - if storeId provided, get store-specific values
+    const item = await storage.getInventoryItem(itemId, storeId);
     if (!item) {
       return res.status(404).json({ error: "Inventory item not found" });
     }

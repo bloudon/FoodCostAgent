@@ -945,7 +945,35 @@ export class DatabaseStorage implements IStorage {
     return query;
   }
 
-  async getInventoryItem(id: string): Promise<InventoryItem | undefined> {
+  async getInventoryItem(id: string, storeId?: string): Promise<InventoryItem | undefined> {
+    // If storeId provided, join with store_inventory_items to get store-specific values
+    if (storeId) {
+      const result = await db.select({ 
+        inventoryItem: inventoryItems,
+        storeActive: storeInventoryItems.active,
+        onHandQty: storeInventoryItems.onHandQty,
+        parLevel: storeInventoryItems.parLevel,
+        reorderLevel: storeInventoryItems.reorderLevel
+      }).from(inventoryItems)
+        .innerJoin(storeInventoryItems, and(
+          eq(storeInventoryItems.inventoryItemId, inventoryItems.id),
+          eq(storeInventoryItems.storeId, storeId)
+        ))
+        .where(eq(inventoryItems.id, id));
+      
+      if (result.length === 0) return undefined;
+      
+      const row = result[0];
+      return {
+        ...row.inventoryItem,
+        active: row.storeActive,
+        onHandQty: row.onHandQty,
+        parLevel: row.parLevel ?? row.inventoryItem.parLevel,
+        reorderLevel: row.reorderLevel ?? row.inventoryItem.reorderLevel
+      };
+    }
+    
+    // No storeId - return global item
     const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id));
     return item || undefined;
   }

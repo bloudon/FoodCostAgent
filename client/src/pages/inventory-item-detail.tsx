@@ -131,7 +131,22 @@ export default function InventoryItemDetail() {
   });
 
   const { data: item, isLoading: itemLoading } = useQuery<InventoryItem>({
-    queryKey: ["/api/inventory-items", id],
+    queryKey: ["/api/inventory-items", id, "detail", selectedStoreId],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedStoreId && selectedStoreId !== "all") {
+        params.append("store_id", selectedStoreId);
+      }
+      const url = `/api/inventory-items/${id}${params.toString() ? `?${params.toString()}` : ""}`;
+      const response = await fetch(url, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      return response.json();
+    },
+    enabled: !!id,
   });
 
   const { data: units } = useQuery<Unit[]>({
