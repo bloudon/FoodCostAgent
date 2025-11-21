@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -189,6 +189,7 @@ export default function CountSession() {
   const [search, setSearch] = useState("");
   const [openAccordionSections, setOpenAccordionSections] = useState<string[]>([]);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
   
   // Update filter when URL parameters change
   useEffect(() => {
@@ -284,6 +285,34 @@ export default function CountSession() {
       setOpenAccordionSections(Object.keys(grouped));
     }
   }, [countLines, groupBy]);
+
+  // Handle scroll event to show/hide back to top button
+  useEffect(() => {
+    const handleScroll = (event?: Event) => {
+      // The scrolling happens on the main element, not the window
+      // Get the main element's scroll position
+      const mainElement = document.querySelector('main');
+      const scrollTop = mainElement ? mainElement.scrollTop : (window.scrollY || document.documentElement.scrollTop || document.body.scrollTop);
+      setShowBackToTop(scrollTop > 300);
+    };
+
+    // Find the main element and listen to its scroll event
+    const mainElement = document.querySelector('main');
+    
+    if (mainElement) {
+      mainElement.addEventListener('scroll', handleScroll);
+    }
+    
+    // Also listen to window scroll as fallback
+    window.addEventListener('scroll', handleScroll);
+    
+    return () => {
+      if (mainElement) {
+        mainElement.removeEventListener('scroll', handleScroll);
+      }
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; qty: number; caseQty?: number | null; looseUnits?: number | null }) => {
@@ -1483,6 +1512,26 @@ export default function CountSession() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Back to Top Button */}
+      {showBackToTop && (
+        <Button
+          onClick={() => {
+            // Scroll both window and the main element to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            // Also scroll the main element (which has overflow-auto)
+            const mainElement = document.querySelector('main');
+            if (mainElement) {
+              mainElement.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+          }}
+          size="icon"
+          className="fixed bottom-6 right-6 z-50 h-12 w-12 rounded-full shadow-lg"
+          data-testid="button-back-to-top"
+        >
+          <ArrowUp className="h-5 w-5" />
+        </Button>
+      )}
     </div>
   );
 }
