@@ -155,6 +155,7 @@ export interface IStorage {
   getInventoryItemStores(inventoryItemId: string): Promise<StoreInventoryItem[]>;
   createStoreInventoryItem(insertItem: InsertStoreInventoryItem): Promise<StoreInventoryItem>;
   updateStoreInventoryItemActive(storeId: string, inventoryItemId: string, active: number): Promise<void>;
+  updateStoreInventoryItem(storeId: string, inventoryItemId: string, updates: Partial<StoreInventoryItem>): Promise<StoreInventoryItem | undefined>;
   updateStoreInventoryItemQuantity(storeId: string, inventoryItemId: string, quantityDelta: number): Promise<StoreInventoryItem | undefined>;
   removeStoreInventoryItem(storeId: string, inventoryItemId: string): Promise<void>;
 
