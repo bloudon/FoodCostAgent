@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
+import { useStoreContext } from "@/hooks/use-store-context";
 import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { Button } from "@/components/ui/button";
@@ -107,7 +108,9 @@ type VendorItem = {
 export default function InventoryItemDetail() {
   const { id } = useParams();
   const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { selectedStoreId } = useStoreContext();
   const [editedFields, setEditedFields] = useState<Record<string, any>>({});
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
@@ -182,7 +185,7 @@ export default function InventoryItemDetail() {
   }, [storeData]);
 
   const updateMutation = useMutation({
-    mutationFn: async (updates: Partial<InventoryItem> & { locationIds?: string[] }) => {
+    mutationFn: async (updates: Partial<InventoryItem> & { locationIds?: string[]; storeId?: string }) => {
       return apiRequest("PATCH", `/api/inventory-items/${id}`, updates);
     },
     onSuccess: () => {
@@ -247,9 +250,19 @@ export default function InventoryItemDetail() {
             });
             return;
           }
-          updateMutation.mutate({ [field]: numValue });
+          // Include storeId for par/reorder levels when in store context
+          const updates: any = { [field]: numValue };
+          if ((field === "parLevel" || field === "reorderLevel") && selectedStoreId && selectedStoreId !== "all") {
+            updates.storeId = selectedStoreId;
+          }
+          updateMutation.mutate(updates);
         } else if (value === "" && (field === "parLevel" || field === "reorderLevel")) {
-          updateMutation.mutate({ [field]: null });
+          // Include storeId for par/reorder levels when in store context
+          const updates: any = { [field]: null };
+          if (selectedStoreId && selectedStoreId !== "all") {
+            updates.storeId = selectedStoreId;
+          }
+          updateMutation.mutate(updates);
         } else if (value === "" && field === "yieldPercent") {
           // Default to 95 if empty
           updateMutation.mutate({ [field]: 95 });

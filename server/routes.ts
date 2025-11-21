@@ -2232,6 +2232,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         delete updates.active;
       }
       
+      // Handle store-specific par/reorder level updates
+      if (storeId && (updates.parLevel !== undefined || updates.reorderLevel !== undefined)) {
+        // Verify store belongs to the item's company
+        const store = await storage.getCompanyStore(storeId);
+        if (!store || store.companyId !== currentItem.companyId) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+        
+        // Update store-specific par/reorder levels
+        const storeUpdates: any = {};
+        if (updates.parLevel !== undefined) {
+          storeUpdates.parLevel = updates.parLevel;
+          delete updates.parLevel;
+        }
+        if (updates.reorderLevel !== undefined) {
+          storeUpdates.reorderLevel = updates.reorderLevel;
+          delete updates.reorderLevel;
+        }
+        
+        if (Object.keys(storeUpdates).length > 0) {
+          await storage.updateStoreInventoryItem(storeId, req.params.id, storeUpdates);
+        }
+      }
+      
       // Validate numeric fields are not NaN
       if (updates.pricePerUnit !== undefined && isNaN(updates.pricePerUnit)) {
         return res.status(400).json({ error: "Invalid pricePerUnit value" });
