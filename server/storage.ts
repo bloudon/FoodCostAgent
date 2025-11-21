@@ -53,6 +53,7 @@ import {
   quickbooksVendorMappings, type QuickBooksVendorMapping, type InsertQuickBooksVendorMapping,
   quickbooksSyncLogs, type QuickBooksSyncLog, type InsertQuickBooksSyncLog,
   quickbooksTokenLogs, type QuickBooksTokenLog, type InsertQuickBooksTokenLog,
+  onboardingProgress, type OnboardingProgress, type InsertOnboardingProgress,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -462,6 +463,12 @@ export interface IStorage {
   getQuickBooksSyncLogs(companyId: string, syncStatus?: string): Promise<QuickBooksSyncLog[]>;
   createQuickBooksSyncLog(log: InsertQuickBooksSyncLog): Promise<QuickBooksSyncLog>;
   updateQuickBooksSyncLog(id: string, companyId: string, updates: Partial<QuickBooksSyncLog>): Promise<QuickBooksSyncLog | undefined>;
+  
+  // Onboarding Progress
+  getOnboardingProgress(companyId: string): Promise<OnboardingProgress | undefined>;
+  createOnboardingProgress(progress: InsertOnboardingProgress): Promise<OnboardingProgress>;
+  updateOnboardingProgress(companyId: string, updates: Partial<OnboardingProgress>): Promise<OnboardingProgress | undefined>;
+  completeOnboarding(companyId: string): Promise<OnboardingProgress | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3229,6 +3236,45 @@ export class DatabaseStorage implements IStorage {
       )
       .returning();
     return updated || undefined;
+  }
+
+  // Onboarding Progress
+  async getOnboardingProgress(companyId: string): Promise<OnboardingProgress | undefined> {
+    const [progress] = await db
+      .select()
+      .from(onboardingProgress)
+      .where(eq(onboardingProgress.companyId, companyId));
+    return progress || undefined;
+  }
+
+  async createOnboardingProgress(insertProgress: InsertOnboardingProgress): Promise<OnboardingProgress> {
+    const [progress] = await db
+      .insert(onboardingProgress)
+      .values(insertProgress)
+      .returning();
+    return progress;
+  }
+
+  async updateOnboardingProgress(companyId: string, updates: Partial<OnboardingProgress>): Promise<OnboardingProgress | undefined> {
+    const [updated] = await db
+      .update(onboardingProgress)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(onboardingProgress.companyId, companyId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async completeOnboarding(companyId: string): Promise<OnboardingProgress | undefined> {
+    const [completed] = await db
+      .update(onboardingProgress)
+      .set({ 
+        isCompleted: 1, 
+        completedAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(onboardingProgress.companyId, companyId))
+      .returning();
+    return completed || undefined;
   }
 }
 
