@@ -60,12 +60,12 @@ export default function Login() {
           <div className="flex justify-center">
             <div className="flex items-center gap-2">
               <Pizza className="h-10 w-10 text-primary" />
-              <h1 className="text-2xl font-bold">Restaurant Inventory</h1>
+              <h1 className="text-2xl font-bold">FnBcostpro.com</h1>
             </div>
           </div>
           <CardTitle>Sign In</CardTitle>
           <CardDescription>
-            Enter your credentials to access the inventory system
+            Enter your credentials to access your restaurant inventory system
           </CardDescription>
         </CardHeader>
         <CardContent>
