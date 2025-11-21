@@ -129,6 +129,7 @@ export default function TransferOrderDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items/estimated-on-hand"] });
       toast({ title: "Transfer executed", description: "Items have been shipped from source store" });
     },
     onError: (error: Error) => {
@@ -159,6 +160,7 @@ export default function TransferOrderDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items/estimated-on-hand"] });
       toast({ title: "Transfer completed", description: "Items have been received at destination store" });
     },
     onError: (error: Error) => {

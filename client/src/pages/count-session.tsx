@@ -510,6 +510,7 @@ export default function CountSession() {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts", countId] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items/estimated-on-hand"] });
       toast({
         title: "Inventory Count Applied",
         description: "On-hand quantities have been updated to match the counted values",

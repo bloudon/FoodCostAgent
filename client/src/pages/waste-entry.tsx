@@ -171,6 +171,7 @@ export default function WasteEntry() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/waste"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items/estimated-on-hand"] });
       toast({
         title: "Waste logged",
         description: "The waste entry has been recorded.",
