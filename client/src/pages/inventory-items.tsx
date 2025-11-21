@@ -632,7 +632,7 @@ function EstimatedOnHandBreakdownModal({
               {(error as Error).message || "An unexpected error occurred"}
             </div>
           </div>
-        ) : !breakdown ? (
+        ) : !breakdown || !breakdown.summary ? (
           <div className="flex items-center justify-center py-8">
             <div className="text-muted-foreground">No data available</div>
           </div>
@@ -683,7 +683,7 @@ function EstimatedOnHandBreakdownModal({
             {/* Breakdown Sections */}
             <div className="space-y-4">
               {/* Receipts */}
-              {breakdown.receipts.length > 0 && (
+              {breakdown.receipts && breakdown.receipts.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <div className="h-6 w-1 bg-green-500 rounded-full" />
@@ -708,7 +708,7 @@ function EstimatedOnHandBreakdownModal({
               )}
 
               {/* Theoretical Usage */}
-              {breakdown.theoreticalUsage.length > 0 && (
+              {breakdown.theoreticalUsage && breakdown.theoreticalUsage.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <div className="h-6 w-1 bg-orange-500 rounded-full" />
@@ -733,7 +733,7 @@ function EstimatedOnHandBreakdownModal({
               )}
 
               {/* Waste */}
-              {breakdown.waste.length > 0 && (
+              {breakdown.waste && breakdown.waste.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <div className="h-6 w-1 bg-red-500 rounded-full" />
@@ -758,7 +758,7 @@ function EstimatedOnHandBreakdownModal({
               )}
 
               {/* Transfers */}
-              {breakdown.transfers.length > 0 && (
+              {breakdown.transfers && breakdown.transfers.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <div className="h-6 w-1 bg-purple-500 rounded-full" />
@@ -783,10 +783,10 @@ function EstimatedOnHandBreakdownModal({
               )}
 
               {/* Empty state */}
-              {breakdown.receipts.length === 0 && 
-               breakdown.theoreticalUsage.length === 0 && 
-               breakdown.waste.length === 0 && 
-               breakdown.transfers.length === 0 && (
+              {(!breakdown.receipts || breakdown.receipts.length === 0) && 
+               (!breakdown.theoreticalUsage || breakdown.theoreticalUsage.length === 0) && 
+               (!breakdown.waste || breakdown.waste.length === 0) && 
+               (!breakdown.transfers || breakdown.transfers.length === 0) && (
                 <div className="text-center text-muted-foreground py-8">
                   No activity since last count
                 </div>
