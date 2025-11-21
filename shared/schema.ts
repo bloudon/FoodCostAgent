@@ -1134,3 +1134,25 @@ export const insertQuickBooksTokenLogSchema = createInsertSchema(quickbooksToken
 export type InsertQuickBooksTokenLog = z.infer<typeof insertQuickBooksTokenLogSchema>;
 export type QuickBooksTokenLog = typeof quickbooksTokenLogs.$inferSelect;
 
+// Onboarding Progress (tracks onboarding wizard completion for each company)
+export const onboardingProgress = pgTable("onboarding_progress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().unique(), // One progress record per company
+  currentStep: integer("current_step").notNull().default(1), // Current wizard step (1-7)
+  completedSteps: integer("completed_steps").array().notNull().default(sql`'{}'::integer[]`), // Array of completed step numbers
+  isCompleted: integer("is_completed").notNull().default(0), // 1 if onboarding fully completed
+  skippedSteps: integer("skipped_steps").array().notNull().default(sql`'{}'::integer[]`), // Array of skipped step numbers
+  stepData: text("step_data"), // JSON string for storing step-specific data/preferences
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"), // When onboarding was completed
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  // Fast lookup by company
+  companyIdx: index("onboarding_progress_company_idx").on(table.companyId),
+}));
+
+export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgress)
+  .omit({ id: true, startedAt: true, updatedAt: true });
+export type InsertOnboardingProgress = z.infer<typeof insertOnboardingProgressSchema>;
+export type OnboardingProgress = typeof onboardingProgress.$inferSelect;
+

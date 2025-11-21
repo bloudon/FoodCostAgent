@@ -1,6 +1,6 @@
 # Overview
 
-This project is an inventory management and recipe costing system for food service businesses. Its primary goal is to boost profitability and operational efficiency through precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and in-depth variance reporting. The system aims to minimize food waste, optimize profit margins, offer real-time inventory estimates, streamline vendor management, and provide powerful purchasing tools. It serves as a complete solution for managing food costs and optimizing kitchen operations, supporting business growth and market competitiveness.
+This project is an inventory management and recipe costing system designed for food service businesses. Its core purpose is to boost profitability and operational efficiency through features like precise unit conversions, nested recipe management, POS sales data integration, and comprehensive variance reporting. The system aims to minimize food waste, optimize profit margins, provide real-time inventory estimates, streamline vendor management, and offer robust purchasing tools to effectively control food costs and kitchen operations.
 
 # User Preferences
 
