@@ -1,6 +1,6 @@
 # Overview
 
-This project is an inventory management and recipe costing system for food service businesses. It aims to boost profitability and operational efficiency through precise unit conversions, comprehensive nested recipe management, POS sales data integration, and detailed variance reporting. The system provides data-driven insights to optimize food costs, streamline operations, reduce waste, and improve profit margins.
+This project is an inventory management and recipe costing system designed for food service businesses. Its primary purpose is to enhance profitability and operational efficiency by providing precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and detailed variance reporting. The system offers data-driven insights to optimize food costs, streamline operations, reduce waste, and improve profit margins.
 
 # User Preferences
 
@@ -71,10 +71,10 @@ This project is an inventory management and recipe costing system for food servi
 - **Frontend**: React 18 (TypeScript, Vite) SPA using `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing, with a mobile-first design.
 - **Backend**: Node.js (TypeScript) with Express.js and Zod for data validation.
 - **Database**: PostgreSQL, managed by Drizzle ORM, utilizing connection pooling, composite indexes, and atomic transactions.
-- **Application Structure**: Multi-tenant SPA with strict data isolation, micro-unit calculation precision, pluggable adapter pattern, centralized order management, secure OAuth (HMAC-SHA256), Redis caching, and response compression.
-- **UI/UX Decisions**: Mobile-first design, streamlined navigation, intuitive Recipe Builder with real-time costing, sortable/filterable data tables, theme toggling, optimized inventory count layouts, visual variance reporting, dynamic dashboard with clickable statistics, mixed display for recent orders, consistent color-coded status badges, and conditional UI rendering.
+- **Application Structure**: Multi-tenant SPA with strict data isolation.
+- **UI/UX Decisions**: Mobile-first design, intuitive Recipe Builder with real-time costing, sortable/filterable data tables, dynamic dashboard with clickable statistics, consistent color-coded status badges, and conditional UI rendering.
 - **Technical Implementations**: Comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), robust QuickBooks Online integration (multi-tenancy, selective vendor import, automated token refreshing), and intelligent vendor order guide import with fuzzy matching and approval workflows. Real-time recipe cost calculation is optimized through caching.
-- **System Design Choices**: Strict multi-tenancy with robust data isolation. Micro-unit precision for inventory and recipe calculations. Pluggable integration adapter pattern for extensibility. Security via HMAC-SHA256 for OAuth and extensive server-side data validation.
+- **System Design Choices**: Strict multi-tenancy with robust data isolation and micro-unit precision for calculations. Security via HMAC-SHA256 for OAuth and extensive server-side data validation.
 
 # External Dependencies
 
