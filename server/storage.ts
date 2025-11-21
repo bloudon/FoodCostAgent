@@ -1103,6 +1103,20 @@ export class DatabaseStorage implements IStorage {
       );
   }
 
+  async updateStoreInventoryItem(storeId: string, inventoryItemId: string, updates: Partial<StoreInventoryItem>): Promise<StoreInventoryItem | undefined> {
+    const [updated] = await db
+      .update(storeInventoryItems)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(
+        and(
+          eq(storeInventoryItems.storeId, storeId),
+          eq(storeInventoryItems.inventoryItemId, inventoryItemId)
+        )
+      )
+      .returning();
+    return updated || undefined;
+  }
+
   async updateStoreInventoryItemQuantity(storeId: string, inventoryItemId: string, quantityDelta: number): Promise<StoreInventoryItem | undefined> {
     const [updated] = await db
       .update(storeInventoryItems)
