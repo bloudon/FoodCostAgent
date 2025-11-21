@@ -1694,7 +1694,13 @@ export class DatabaseStorage implements IStorage {
     }
     
     const lastCount = counts[0];
-    const lastCountDate = lastCount.countDate;
+    const lastCountDate = lastCount.countDate; // Keep as Date object for WHERE clause comparisons
+    
+    // Convert to YYYY-MM-DD string for API response (use UTC methods)
+    const year = lastCountDate.getUTCFullYear();
+    const month = String(lastCountDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(lastCountDate.getUTCDate()).padStart(2, '0');
+    const lastCountDateString = `${year}-${month}-${day}`;
     
     // Get all items from the last count, aggregated by inventoryItemId
     const countLines = await db
@@ -1789,7 +1795,7 @@ export class DatabaseStorage implements IStorage {
           requiredQtyBaseUnit: theoreticalUsageLines.requiredQtyBaseUnit,
         })
         .from(theoreticalUsageLines)
-        .where(inArray(theoreticalUsageLines.theoreticalUsageRunId, runIds));
+        .where(inArray(theoreticalUsageLines.runId, runIds));
     }
     
     // Aggregate theoretical usage by item
@@ -1844,7 +1850,7 @@ export class DatabaseStorage implements IStorage {
       return {
         inventoryItemId: itemId,
         lastCountQty,
-        lastCountDate: lastCountDate.toISOString(),
+        lastCountDate: lastCountDateString, // YYYY-MM-DD string extracted from timestamp using UTC methods
         receivedQty,
         wasteQty,
         theoreticalUsageQty,
