@@ -1,6 +1,6 @@
 # Overview
 
-This project is an inventory management and recipe costing system for food service businesses. Its core purpose is to boost profitability and operational efficiency through precise unit conversions, management of complex nested recipes, integration with POS sales data, and detailed variance reporting. The system aims to optimize food costs, reduce waste, and enhance profit margins for restaurants.
+This project is an inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance profitability and operational efficiency by providing precise unit conversions, managing complex nested recipes, integrating with POS sales data, and offering detailed variance reporting. The system aims to optimize food costs, minimize waste, and improve profit margins for restaurants.
 
 # User Preferences
 
@@ -68,7 +68,7 @@ This project is an inventory management and recipe costing system for food servi
 
 # System Architecture
 
-- **Frontend**: Mobile-first React 18 SPA (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
+- **Frontend**: Mobile-first React 18 SPA (TypeScript, Vite) leveraging `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
 - **Backend**: Node.js (TypeScript) with Express.js for API services and Zod for data validation.
 - **Database**: PostgreSQL, managed with Drizzle ORM, connection pooling, composite indexes, and atomic transactions on Neon serverless.
 - **Application Structure**: Multi-tenant SPA with robust data isolation at company and store levels.
