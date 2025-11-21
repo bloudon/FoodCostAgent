@@ -1,10 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed, AlertCircle, Calendar, Clock, AlertTriangle } from "lucide-react";
+import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed, AlertCircle, Calendar, Clock, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useStoreContext } from "@/hooks/use-store-context";
@@ -34,6 +34,9 @@ const statusConfig: Record<string, { variant: "default" | "secondary" | "destruc
 
 export default function Dashboard() {
   const { selectedStoreId, selectedStore, stores, isLoading: storesLoading } = useStoreContext();
+  
+  // State for alerts carousel - MUST be at top before conditional returns
+  const [alertView, setAlertView] = useState<'orders' | 'inventory'>('orders');
 
   // Fetch data filtered by selected store using proper query parameters
   // Note: queryKey is joined with "/" so we use query string in the first element
@@ -320,201 +323,244 @@ export default function Dashboard() {
     return null;
   }
 
+  // Determine if each view has data
+  const hasOrders = !deadlinesLoading && orderDeadlines.length > 0;
+  const hasInventory = !estimatedLoading && criticalItems.length > 0;
+
+  // Auto-select the view that has data on initial load
+  useEffect(() => {
+    if (!hasOrders && hasInventory && alertView === 'orders') {
+      setAlertView('inventory');
+    }
+  }, [hasOrders, hasInventory]);
+
+  // Handle view navigation - always allow toggling between views
+  const navigateAlerts = (direction: 'prev' | 'next') => {
+    setAlertView(current => current === 'orders' ? 'inventory' : 'orders');
+  };
+
   // Full dashboard for admins and managers
   return (
     <div className="p-8">
-      {/* Alerts Section: Pending Orders & Critical Inventory (Split 50/50 on desktop) */}
-      <div className="grid gap-6 lg:grid-cols-2 mb-6">
-        {/* Pending Order Deadlines */}
-        {!deadlinesLoading && orderDeadlines.length > 0 ? (
-            <Card className="bg-gradient-to-r from-blue-50/50 to-slate-50/50 dark:from-blue-950/20 dark:to-slate-950/20 border-blue-200 dark:border-blue-800" data-testid="card-order-deadlines">
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  <CardTitle className="text-base">Pending Order Deadlines</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[130px] pr-4">
-                  <div className="space-y-3">
-                    {orderDeadlines.slice(0, 10).map((deadline: any) => {
-                const isPastDue = deadline.isPastDue;
-                const isUrgent = deadline.isUrgent;
-                
-                return (
-                  <Link key={deadline.purchaseOrderId} href={`/orders/${deadline.purchaseOrderId}`}>
-                    <div 
-                      className={`flex items-center justify-between gap-4 p-3 rounded-lg border hover-elevate cursor-pointer ${
-                        isPastDue 
-                          ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800" 
-                          : isUrgent 
-                            ? "bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800"
-                            : "bg-background border-border"
-                      }`}
-                      data-testid={`deadline-${deadline.purchaseOrderId}`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium text-sm truncate">{deadline.vendorName}</span>
-                          {deadline.internalOrderId && (
-                            <span className="text-xs text-muted-foreground">#{deadline.internalOrderId}</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            <span>Deadline: {new Date(deadline.orderDeadline).toLocaleDateString()}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            <span>Delivery: {new Date(deadline.nextDeliveryDate).toLocaleDateString()}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge 
-                          variant={isPastDue ? "destructive" : isUrgent ? "secondary" : "outline"}
-                          className={
-                            isPastDue 
-                              ? "bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"
-                              : isUrgent 
-                                ? "bg-blue-500/10 text-blue-700 border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20"
-                                : ""
-                          }
-                        >
-                          {isPastDue 
-                            ? "Past Due" 
-                            : deadline.daysUntilDeadline === 0 
-                              ? "Due Today" 
-                              : deadline.daysUntilDeadline === 1 
-                                ? "Due Tomorrow"
-                                : `${deadline.daysUntilDeadline} days`
-                          }
-                        </Badge>
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-                  </div>
-                </ScrollArea>
-                {orderDeadlines.length > 10 && (
-                  <div className="mt-3 pt-3 border-t">
-                    <Link href="/orders">
-                      <Button variant="ghost" size="sm" className="w-full" data-testid="button-view-all-deadlines">
-                        View all {orderDeadlines.length} pending orders
-                        <ArrowRight className="h-4 w-4 ml-2" />
-                      </Button>
-                    </Link>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-        ) : (
-          <Card className="bg-gradient-to-r from-slate-50/50 to-slate-50/50 dark:from-slate-950/20 dark:to-slate-950/20" data-testid="card-no-deadlines">
-            <CardHeader>
+      {/* Alerts Section: Single Carousel View (Orders OR Inventory) */}
+      <div className="mb-6">
+        <Card 
+          className={
+            alertView === 'orders' && hasOrders
+              ? "bg-gradient-to-r from-blue-50/50 to-slate-50/50 dark:from-blue-950/20 dark:to-slate-950/20 border-blue-200 dark:border-blue-800"
+              : alertView === 'inventory' && hasInventory
+                ? "bg-gradient-to-r from-red-50/50 to-slate-50/50 dark:from-red-950/20 dark:to-slate-950/20 border-red-200 dark:border-red-800"
+                : "bg-gradient-to-r from-slate-50/50 to-slate-50/50 dark:from-slate-950/20 dark:to-slate-950/20"
+          } 
+          data-testid={`card-alerts-${alertView}`}
+        >
+          <CardHeader>
+            <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <AlertCircle className="h-5 w-5 text-muted-foreground" />
-                <CardTitle className="text-base">Pending Order Deadlines</CardTitle>
+                {alertView === 'orders' ? (
+                  <AlertCircle className={`h-5 w-5 ${hasOrders ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}`} />
+                ) : (
+                  <AlertTriangle className={`h-5 w-5 ${hasInventory ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`} />
+                )}
+                <CardTitle className="text-base">
+                  {alertView === 'orders' 
+                    ? `Order Deadlines (${orderDeadlines.length})` 
+                    : `Inventory Alerts (${criticalItems.length})`
+                  }
+                </CardTitle>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[130px] flex items-center justify-center">
-                <p className="text-sm text-muted-foreground text-center">
-                  No pending orders with upcoming deadlines
-                </p>
+              
+              {/* Pagination Controls */}
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigateAlerts('prev')}
+                  aria-label="Previous alerts view"
+                  data-testid="button-alerts-prev"
+                  className="h-8 w-8"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigateAlerts('next')}
+                  aria-label="Next alerts view"
+                  data-testid="button-alerts-next"
+                  className="h-8 w-8"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </CardHeader>
 
-        {/* Critical Inventory Items */}
-        {!estimatedLoading && criticalItems.length > 0 ? (
-            <Card className="bg-gradient-to-r from-red-50/50 to-slate-50/50 dark:from-red-950/20 dark:to-slate-950/20 border-red-200 dark:border-red-800" data-testid="card-critical-inventory">
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
-                  <CardTitle className="text-base">Critical Inventory Levels</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[130px] pr-4">
-                  <div className="space-y-3">
-                    {criticalItems.slice(0, 20).map((item) => {
-                      const percentOfReorder = (item.estimatedOnHand / item.reorderLevel) * 100;
-                      const isCritical = percentOfReorder < 50;
-                      
-                      return (
-                        <Link key={item.id} href={`/inventory/${item.id}`}>
-                          <div 
-                            className={`flex items-center justify-between gap-4 p-3 rounded-lg border hover-elevate cursor-pointer ${
-                              isCritical 
-                                ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800" 
-                                : "bg-slate-50 dark:bg-slate-950/30 border-slate-300 dark:border-slate-800"
-                            }`}
-                            data-testid={`critical-item-${item.id}`}
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium text-sm truncate">{item.name}</span>
-                              </div>
-                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                <div className="flex items-center gap-1">
-                                  <Package className="h-3 w-3" />
-                                  <span>On Hand: {item.estimatedOnHand.toFixed(1)} {item.unitAbbreviation}</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <span>Reorder: {item.reorderLevel.toFixed(1)} {item.unitAbbreviation}</span>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Badge 
-                                variant={isCritical ? "destructive" : "secondary"}
-                                className={
-                                  isCritical 
-                                    ? "bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"
-                                    : "bg-slate-500/10 text-slate-700 border-slate-500/20 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20"
-                                }
+          <CardContent>
+            {/* Order Deadlines View */}
+            {alertView === 'orders' && (
+              <>
+                {hasOrders ? (
+                  <>
+                    <ScrollArea className="h-[160px] pr-4">
+                      <div className="space-y-3">
+                        {orderDeadlines.slice(0, 10).map((deadline: any) => {
+                          const isPastDue = deadline.isPastDue;
+                          const isUrgent = deadline.isUrgent;
+                          
+                          return (
+                            <Link key={deadline.purchaseOrderId} href={`/orders/${deadline.purchaseOrderId}`}>
+                              <div 
+                                className={`flex items-center justify-between gap-4 p-3 rounded-lg border hover-elevate cursor-pointer ${
+                                  isPastDue 
+                                    ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800" 
+                                    : isUrgent 
+                                      ? "bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800"
+                                      : "bg-background border-border"
+                                }`}
+                                data-testid={`deadline-${deadline.purchaseOrderId}`}
                               >
-                                {isCritical ? "Critical" : "Low"} ({percentOfReorder.toFixed(0)}%)
-                              </Badge>
-                            </div>
-                          </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="font-medium text-sm truncate">{deadline.vendorName}</span>
+                                    {deadline.internalOrderId && (
+                                      <span className="text-xs text-muted-foreground">#{deadline.internalOrderId}</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                    <div className="flex items-center gap-1">
+                                      <Clock className="h-3 w-3" />
+                                      <span>Deadline: {new Date(deadline.orderDeadline).toLocaleDateString()}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Calendar className="h-3 w-3" />
+                                      <span>Delivery: {new Date(deadline.nextDeliveryDate).toLocaleDateString()}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge 
+                                    variant={isPastDue ? "destructive" : isUrgent ? "secondary" : "outline"}
+                                    className={
+                                      isPastDue 
+                                        ? "bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"
+                                        : isUrgent 
+                                          ? "bg-blue-500/10 text-blue-700 border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20"
+                                          : ""
+                                    }
+                                  >
+                                    {isPastDue 
+                                      ? "Past Due" 
+                                      : deadline.daysUntilDeadline === 0 
+                                        ? "Due Today" 
+                                        : deadline.daysUntilDeadline === 1 
+                                          ? "Due Tomorrow"
+                                          : `${deadline.daysUntilDeadline} days`
+                                    }
+                                  </Badge>
+                                </div>
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                    {orderDeadlines.length > 10 && (
+                      <div className="mt-3 pt-3 border-t">
+                        <Link href="/orders">
+                          <Button variant="ghost" size="sm" className="w-full" data-testid="button-view-all-deadlines">
+                            View all {orderDeadlines.length} pending orders
+                            <ArrowRight className="h-4 w-4 ml-2" />
+                          </Button>
                         </Link>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
-                {criticalItems.length > 20 && (
-                  <div className="mt-3 pt-3 border-t">
-                    <Link href="/inventory">
-                      <Button variant="ghost" size="sm" className="w-full" data-testid="button-view-all-critical">
-                        View all {criticalItems.length} critical items
-                        <ArrowRight className="h-4 w-4 ml-2" />
-                      </Button>
-                    </Link>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="h-[160px] flex items-center justify-center">
+                    <p className="text-sm text-muted-foreground text-center">
+                      No pending orders with upcoming deadlines
+                    </p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-        ) : (
-          <Card className="bg-gradient-to-r from-slate-50/50 to-slate-50/50 dark:from-slate-950/20 dark:to-slate-950/20" data-testid="card-no-critical">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="h-5 w-5 text-muted-foreground" />
-                <CardTitle className="text-base">Critical Inventory Levels</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[130px] flex items-center justify-center">
-                <p className="text-sm text-muted-foreground text-center">
-                  All inventory levels are healthy
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              </>
+            )}
+
+            {/* Inventory Alerts View */}
+            {alertView === 'inventory' && (
+              <>
+                {hasInventory ? (
+                  <>
+                    <ScrollArea className="h-[160px] pr-4">
+                      <div className="space-y-3">
+                        {criticalItems.slice(0, 20).map((item) => {
+                          const percentOfReorder = (item.estimatedOnHand / item.reorderLevel) * 100;
+                          const isCritical = percentOfReorder < 50;
+                          
+                          return (
+                            <Link key={item.id} href={`/inventory/${item.id}`}>
+                              <div 
+                                className={`flex items-center justify-between gap-4 p-3 rounded-lg border hover-elevate cursor-pointer ${
+                                  isCritical 
+                                    ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800" 
+                                    : "bg-slate-50 dark:bg-slate-950/30 border-slate-300 dark:border-slate-800"
+                                }`}
+                                data-testid={`critical-item-${item.id}`}
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="font-medium text-sm truncate">{item.name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                    <div className="flex items-center gap-1">
+                                      <Package className="h-3 w-3" />
+                                      <span>On Hand: {item.estimatedOnHand.toFixed(1)} {item.unitAbbreviation}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <span>Reorder: {item.reorderLevel.toFixed(1)} {item.unitAbbreviation}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge 
+                                    variant={isCritical ? "destructive" : "secondary"}
+                                    className={
+                                      isCritical 
+                                        ? "bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"
+                                        : "bg-slate-500/10 text-slate-700 border-slate-500/20 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20"
+                                    }
+                                  >
+                                    {isCritical ? "Critical" : "Low"} ({percentOfReorder.toFixed(0)}%)
+                                  </Badge>
+                                </div>
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                    {criticalItems.length > 20 && (
+                      <div className="mt-3 pt-3 border-t">
+                        <Link href="/inventory">
+                          <Button variant="ghost" size="sm" className="w-full" data-testid="button-view-all-critical">
+                            View all {criticalItems.length} critical items
+                            <ArrowRight className="h-4 w-4 ml-2" />
+                          </Button>
+                        </Link>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="h-[160px] flex items-center justify-center">
+                    <p className="text-sm text-muted-foreground text-center">
+                      All inventory levels are healthy
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Stats Grid */}
