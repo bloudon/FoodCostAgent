@@ -7523,6 +7523,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ ONBOARDING ROUTES ============
+  
+  // GET /api/onboarding/progress - Get onboarding progress for current company
+  app.get("/api/onboarding/progress", requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      
+      if (!companyId) {
+        return res.status(400).json({ error: "No company selected" });
+      }
+
+      let progress = await storage.getOnboardingProgress(companyId);
+      
+      // If no progress exists, create initial progress record
+      if (!progress) {
+        progress = await storage.createOnboardingProgress({
+          companyId,
+          currentStep: 1,
+          completedSteps: [],
+          isCompleted: 0,
+          skippedSteps: [],
+        });
+      }
+
+      res.json(progress);
+    } catch (error: any) {
+      console.error("Get onboarding progress error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PATCH /api/onboarding/progress - Update onboarding progress
+  app.patch("/api/onboarding/progress", requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const updates = req.body;
+      
+      if (!companyId) {
+        return res.status(400).json({ error: "No company selected" });
+      }
+
+      const progress = await storage.updateOnboardingProgress(companyId, updates);
+      
+      if (!progress) {
+        return res.status(404).json({ error: "Onboarding progress not found" });
+      }
+
+      res.json(progress);
+    } catch (error: any) {
+      console.error("Update onboarding progress error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/onboarding/complete - Mark onboarding as completed
+  app.post("/api/onboarding/complete", requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      
+      if (!companyId) {
+        return res.status(400).json({ error: "No company selected" });
+      }
+
+      const progress = await storage.completeOnboarding(companyId);
+      
+      if (!progress) {
+        return res.status(404).json({ error: "Onboarding progress not found" });
+      }
+
+      res.json(progress);
+    } catch (error: any) {
+      console.error("Complete onboarding error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
