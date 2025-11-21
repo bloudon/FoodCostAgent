@@ -1,6 +1,6 @@
 # Overview
 
-This project is an inventory management and recipe costing system for food service businesses. Its primary goal is to enhance profitability and operational efficiency through precise unit conversions, management of complex nested recipes, integration with POS sales data, and comprehensive variance reporting. The system aims to minimize food waste, improve profit margins, enable data-driven decision-making, and strengthen market competitiveness.
+This project is an inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance profitability and operational efficiency by providing precise unit conversions, managing complex nested recipes, integrating with POS sales data, and offering comprehensive variance reporting. The system aims to minimize food waste, improve profit margins, and facilitate data-driven decision-making within the food service industry.
 
 # User Preferences
 
@@ -68,14 +68,13 @@ This project is an inventory management and recipe costing system for food servi
 
 # System Architecture
 
-- **Frontend**: Mobile-first React 18 SPA (TypeScript, Vite) with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
+- **Frontend**: Mobile-first React 18 SPA with TypeScript, Vite, `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
 - **Backend**: Node.js (TypeScript) with Express.js for RESTful APIs and Zod for data validation.
 - **Database**: PostgreSQL with Drizzle ORM, hosted on Neon serverless, utilizing connection pooling, composite indexes, and atomic transactions.
 - **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation.
-- **UI/UX Decisions**: Mobile-first design, intuitive recipe creation, dynamic dashboards, filterable data tables, consistent color-coded status badges, and conditional UI rendering (e.g., transfers for multi-store companies).
-- **Technical Implementations**: Comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), robust multi-tenant QuickBooks Online integration (OAuth 2.0, selective vendor import, automated token refresh), intelligent vendor order guide import with fuzzy matching, optimized real-time recipe cost calculation with caching, and dynamic estimated on-hand inventory with automated cache invalidation. Detailed Theoretical Food Cost (TFC) variance reporting through inventory movement tracking.
-- **System Design Choices**: Adherence to strict multi-tenancy principles, micro-unit precision for inventory calculations, HMAC-SHA256 for secure OAuth, extensive server-side validation, and robust vendor relationship management including delivery scheduling and compliance tracking.
-- **Date Handling**: Single-timezone architecture. Date-only fields are stored as PostgreSQL `timestamp without time zone` at midnight UTC. API boundaries use YYYY-MM-DD strings with UTC methods, and the frontend displays dates using a local timezone helper to prevent timezone-induced date shifts.
+- **UI/UX Decisions**: Mobile-first design; intuitive recipe creation; dynamic dashboards; filterable data tables; consistent color-coded status badges; conditional UI rendering based on user context; smooth scrolling anchors and "Back to Top" functionality; optimized inventory count layouts.
+- **Technical Implementations**: Comprehensive unit conversion; multi-level nested recipe costing; dual inventory pricing (Last Cost & Weighted Average Cost); robust multi-tenant QuickBooks Online integration (OAuth 2.0, selective vendor import, automated token refresh); intelligent vendor order guide import with fuzzy matching; optimized real-time recipe cost calculation with caching; dynamic estimated on-hand inventory with automated cache invalidation; detailed Theoretical Food Cost (TFC) variance reporting via meticulous inventory movement tracking; single-timezone date handling for consistency.
+- **System Design Choices**: Adheres to strict multi-tenancy principles; micro-unit precision for all inventory calculations; HMAC-SHA256 for secure OAuth processes; extensive server-side validation; robust vendor relationship management including delivery scheduling and compliance tracking; conditional rendering for multi-store features.
 
 # External Dependencies
 

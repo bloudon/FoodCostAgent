@@ -2026,7 +2026,7 @@ export class DatabaseStorage implements IStorage {
       );
     
     // Filter and format receipts
-    const receipts = receiptsData
+    const formattedReceipts = receiptsData
       .filter(r => {
         const deliveryDate = r.expectedDate || r.receivedAt;
         if (!deliveryDate) return false;
@@ -2155,7 +2155,7 @@ export class DatabaseStorage implements IStorage {
     }));
     
     // Calculate totals
-    const receivedQty = receipts.reduce((sum, r) => sum + r.qty, 0);
+    const receivedQty = formattedReceipts.reduce((sum, r) => sum + r.qty, 0);
     const wasteQty = waste.reduce((sum, w) => sum + w.qty, 0);
     const theoreticalUsageQty = theoreticalUsageData.reduce((sum, t) => sum + t.qty, 0);
     const transferredOutQty = transfers.reduce((sum, t) => sum + t.qty, 0);
@@ -2166,7 +2166,7 @@ export class DatabaseStorage implements IStorage {
       inventoryItemName: item.name,
       unitName: item.unitName || 'unit',
       lastCount: lastCountInfo,
-      receipts,
+      receipts: formattedReceipts,
       waste,
       theoreticalUsage: theoreticalUsageData,
       transfers,
