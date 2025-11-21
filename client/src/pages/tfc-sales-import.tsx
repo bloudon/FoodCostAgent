@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, Eye, PackageSearch } from "lucide-react";
@@ -164,6 +165,9 @@ export default function TfcSalesImport() {
       
       // Refresh the batch history
       refetchRuns();
+      
+      // Invalidate estimated on-hand cache since theoretical usage affects inventory estimates
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items/estimated-on-hand"] });
 
     } catch (error: any) {
       setUploadError(error.message || 'Failed to upload file');

@@ -1,4 +1,4 @@
-import { eq, and, or, gte, lte, isNull, inArray, sql, desc, asc } from "drizzle-orm";
+import { eq, and, or, gt, gte, lte, isNull, inArray, sql, desc, asc } from "drizzle-orm";
 import { db } from "./db";
 import { cache, CacheKeys } from "./cache";
 import {
@@ -1723,6 +1723,7 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Get theoretical usage since last count
+    // Use gt() not gte() - sales on the same day as count are excluded
     const theoreticalUsageRunsData = await db
       .select()
       .from(theoreticalUsageRuns)
@@ -1730,7 +1731,7 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(theoreticalUsageRuns.companyId, companyId),
           eq(theoreticalUsageRuns.storeId, storeId),
-          gte(theoreticalUsageRuns.salesDate, lastCountDate),
+          gt(theoreticalUsageRuns.salesDate, lastCountDate),
           eq(theoreticalUsageRuns.status, 'completed')
         )
       );
