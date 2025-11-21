@@ -2014,8 +2014,8 @@ export class DatabaseStorage implements IStorage {
       .from(receiptLines)
       .innerJoin(receipts, eq(receiptLines.receiptId, receipts.id))
       .innerJoin(vendorItems, eq(receiptLines.vendorItemId, vendorItems.id))
-      .innerJoin(purchaseOrders, eq(receipts.purchaseOrderId, purchaseOrders.id))
-      .innerJoin(vendors, eq(purchaseOrders.vendorId, vendors.id))
+      .leftJoin(purchaseOrders, eq(receipts.purchaseOrderId, purchaseOrders.id))
+      .leftJoin(vendors, eq(purchaseOrders.vendorId, vendors.id))
       .where(
         and(
           eq(vendorItems.inventoryItemId, inventoryItemId),
@@ -2035,8 +2035,8 @@ export class DatabaseStorage implements IStorage {
       .map(r => ({
         date: toDateString(r.expectedDate || r.receivedAt!),
         qty: r.receivedQty,
-        vendorName: r.vendorName,
-        poId: r.poId,
+        vendorName: r.vendorName || 'Direct Receipt',
+        poId: r.poId || null,
       }));
     
     // Get waste logs since last count
@@ -2044,7 +2044,7 @@ export class DatabaseStorage implements IStorage {
       .select({
         qty: wasteLogs.qty,
         wastedAt: wasteLogs.wastedAt,
-        reason: wasteLogs.reason,
+        reasonCode: wasteLogs.reasonCode,
       })
       .from(wasteLogs)
       .where(
@@ -2057,10 +2057,24 @@ export class DatabaseStorage implements IStorage {
         )
       );
     
+    // Helper function to convert reasonCode to human-readable text
+    const formatReasonCode = (code: string): string => {
+      const reasonMap: Record<string, string> = {
+        'SPOILED': 'Spoiled',
+        'DAMAGED': 'Damaged',
+        'OVERPRODUCTION': 'Overproduction',
+        'DROPPED': 'Dropped',
+        'EXPIRED': 'Expired',
+        'CONTAMINATED': 'Contaminated',
+        'OTHER': 'Other',
+      };
+      return reasonMap[code] || code || 'No reason provided';
+    };
+    
     const waste = wasteData.map(w => ({
       date: toDateString(w.wastedAt),
       qty: w.qty,
-      reason: w.reason || 'No reason provided',
+      reason: formatReasonCode(w.reasonCode),
     }));
     
     // Get theoretical usage since last count
@@ -2138,21 +2152,23 @@ export class DatabaseStorage implements IStorage {
     if (toStoreIds.length > 0) {
       const storesData = await db
         .select({
-          id: stores.id,
-          name: stores.name,
+          id: companyStores.id,
+          name: companyStores.name,
         })
-        .from(stores)
-        .where(inArray(stores.id, toStoreIds));
+        .from(companyStores)
+        .where(inArray(companyStores.id, toStoreIds));
       
       storeNamesMap = new Map(storesData.map(s => [s.id, s.name]));
     }
     
-    const transfers = transfersData.map(t => ({
-      date: toDateString(t.completedAt),
-      qty: t.shippedQty || 0,
-      toStoreName: storeNamesMap.get(t.toStoreId) || 'Unknown Store',
-      transferId: t.transferId,
-    }));
+    const transfers = transfersData
+      .filter(t => t.completedAt !== null) // Only include transfers with valid completion dates
+      .map(t => ({
+        date: toDateString(t.completedAt!),
+        qty: t.shippedQty || 0,
+        toStoreName: storeNamesMap.get(t.toStoreId) || 'Unknown Store',
+        transferId: t.transferId,
+      }));
     
     // Calculate totals
     const receivedQty = formattedReceipts.reduce((sum, r) => sum + r.qty, 0);

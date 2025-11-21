@@ -582,11 +582,20 @@ function EstimatedOnHandBreakdownModal({
     queryFn: async () => {
       if (!itemId || !storeId) return null;
       const response = await fetch(`/api/inventory-items/${itemId}/estimated-on-hand-breakdown?storeId=${storeId}`);
+      
+      // Handle 404 as "no data available" rather than an error
+      // This happens when there's no inventory count for the store
+      if (response.status === 404) {
+        return null;
+      }
+      
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: "Failed to fetch breakdown" }));
         throw new Error(errorData.error || "Failed to fetch breakdown");
       }
-      return response.json();
+      const data = await response.json();
+      // Ensure we return null if backend returned null (no count exists)
+      return data || null;
     },
     enabled: open && !!itemId && !!storeId,
   });
@@ -633,8 +642,14 @@ function EstimatedOnHandBreakdownModal({
             </div>
           </div>
         ) : !breakdown || !breakdown.summary ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="text-muted-foreground">No data available</div>
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <Package className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="font-medium text-muted-foreground mb-2">
+              No breakdown available
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Please complete an inventory count for this store to see the estimated on-hand breakdown.
+            </p>
           </div>
         ) : (
           <div className="space-y-6">
