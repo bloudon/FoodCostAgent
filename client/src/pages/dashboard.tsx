@@ -328,15 +328,15 @@ export default function Dashboard() {
         <div className="grid gap-6 lg:grid-cols-2 mb-6">
           {/* Pending Order Deadlines */}
           {!deadlinesLoading && orderDeadlines.length > 0 && (
-            <Card className="bg-gradient-to-r from-orange-50/50 to-red-50/50 dark:from-orange-950/20 dark:to-red-950/20 border-orange-200 dark:border-orange-800" data-testid="card-order-deadlines">
+            <Card className="bg-gradient-to-r from-blue-50/50 to-slate-50/50 dark:from-blue-950/20 dark:to-slate-950/20 border-blue-200 dark:border-blue-800" data-testid="card-order-deadlines">
               <CardHeader>
                 <div className="flex items-center gap-3">
-                  <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                  <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   <CardTitle className="text-base">Pending Order Deadlines</CardTitle>
                 </div>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[400px] pr-4">
+                <ScrollArea className="h-[130px] pr-4">
                   <div className="space-y-3">
                     {orderDeadlines.slice(0, 10).map((deadline: any) => {
                 const isPastDue = deadline.isPastDue;
@@ -349,7 +349,7 @@ export default function Dashboard() {
                         isPastDue 
                           ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800" 
                           : isUrgent 
-                            ? "bg-orange-50 dark:bg-orange-950/30 border-orange-300 dark:border-orange-800"
+                            ? "bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800"
                             : "bg-background border-border"
                       }`}
                       data-testid={`deadline-${deadline.purchaseOrderId}`}
@@ -379,7 +379,7 @@ export default function Dashboard() {
                             isPastDue 
                               ? "bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"
                               : isUrgent 
-                                ? "bg-orange-500/10 text-orange-700 border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20"
+                                ? "bg-blue-500/10 text-blue-700 border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20"
                                 : ""
                           }
                         >
@@ -415,7 +415,7 @@ export default function Dashboard() {
 
           {/* Critical Inventory Items */}
           {!estimatedLoading && criticalItems.length > 0 && (
-            <Card className="bg-gradient-to-r from-red-50/50 to-orange-50/50 dark:from-red-950/20 dark:to-orange-950/20 border-red-200 dark:border-red-800" data-testid="card-critical-inventory">
+            <Card className="bg-gradient-to-r from-red-50/50 to-slate-50/50 dark:from-red-950/20 dark:to-slate-950/20 border-red-200 dark:border-red-800" data-testid="card-critical-inventory">
               <CardHeader>
                 <div className="flex items-center gap-3">
                   <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
@@ -423,7 +423,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[400px] pr-4">
+                <ScrollArea className="h-[130px] pr-4">
                   <div className="space-y-3">
                     {criticalItems.slice(0, 20).map((item) => {
                       const percentOfReorder = (item.estimatedOnHand / item.reorderLevel) * 100;
@@ -435,7 +435,7 @@ export default function Dashboard() {
                             className={`flex items-center justify-between gap-4 p-3 rounded-lg border hover-elevate cursor-pointer ${
                               isCritical 
                                 ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800" 
-                                : "bg-orange-50 dark:bg-orange-950/30 border-orange-300 dark:border-orange-800"
+                                : "bg-slate-50 dark:bg-slate-950/30 border-slate-300 dark:border-slate-800"
                             }`}
                             data-testid={`critical-item-${item.id}`}
                           >
@@ -459,7 +459,7 @@ export default function Dashboard() {
                                 className={
                                   isCritical 
                                     ? "bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"
-                                    : "bg-orange-500/10 text-orange-700 border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20"
+                                    : "bg-slate-500/10 text-slate-700 border-slate-500/20 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20"
                                 }
                               >
                                 {isCritical ? "Critical" : "Low"} ({percentOfReorder.toFixed(0)}%)
