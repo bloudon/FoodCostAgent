@@ -1,6 +1,6 @@
 # Overview
 
-This project is an inventory management and recipe costing system designed for food service businesses. Its primary goal is to boost profitability and operational efficiency by offering precise unit conversions, managing complex nested recipes, integrating with POS sales data, and providing comprehensive variance reporting. The system aims to minimize food waste, enhance profit margins, facilitate data-driven decision-making, and improve market competitiveness.
+This project is an inventory management and recipe costing system designed for food service businesses. Its core purpose is to enhance profitability and operational efficiency through precise unit conversions, management of complex nested recipes, seamless integration with POS sales data, and comprehensive variance reporting. The system aims to minimize food waste, improve profit margins, support data-driven decisions, and strengthen market competitiveness.
 
 # User Preferences
 
@@ -68,19 +68,20 @@ This project is an inventory management and recipe costing system designed for f
 
 # System Architecture
 
-- **Frontend**: Mobile-first React 18 SPA (TypeScript, Vite) leveraging `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query for data fetching, React Context for state management, and Wouter for routing.
-- **Backend**: Node.js (TypeScript) with Express.js providing RESTful APIs, enhanced by Zod for robust data validation.
-- **Database**: PostgreSQL, managed with Drizzle ORM, hosted on Neon serverless for scalability, incorporating connection pooling, composite indexes, and atomic transactions to ensure data integrity and performance.
-- **Application Structure**: Designed as a multi-tenant Single Page Application (SPA) with strict data isolation enforced at both company and store levels to secure sensitive information.
-- **UI/UX Decisions**: Emphasizes a mobile-first design, intuitive recipe creation workflows, dynamic and customizable dashboards, filterable data tables for efficient data navigation, consistent color-coded status badges for clear visual cues, and conditional UI rendering to adapt to user context and permissions.
-- **Technical Implementations**: Features robust unit conversion capabilities, multi-level nested recipe costing, a dual inventory pricing model (Last Cost & Weighted Average Cost), comprehensive multi-tenant QuickBooks Online integration (including OAuth 2.0, selective vendor import, and automated token refresh), intelligent vendor order guide import with fuzzy matching for seamless data entry, optimized real-time recipe cost calculation with caching mechanisms, and dynamic estimated on-hand inventory with automated cache invalidation to provide up-to-date stock levels. The system meticulously tracks all inventory movements for accurate reporting and provides Theoretical Food Cost (TFC) variance reporting to highlight cost discrepancies.
-- **System Design Choices**: Adheres to strict multi-tenancy principles, maintains micro-unit precision for all calculations to ensure accuracy, utilizes HMAC-SHA256 for secure OAuth processes, incorporates extensive server-side validation to prevent data corruption and enhance security, and features robust vendor relationship management including detailed delivery scheduling and compliance tracking.
+- **Frontend**: Mobile-first React 18 SPA (TypeScript, Vite) utilizing `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
+- **Backend**: Node.js (TypeScript) with Express.js for RESTful APIs and Zod for data validation.
+- **Database**: PostgreSQL, managed with Drizzle ORM, hosted on Neon serverless with connection pooling, composite indexes, and atomic transactions.
+- **Application Structure**: Multi-tenant Single Page Application (SPA) with data isolation at company and store levels.
+- **UI/UX Decisions**: Mobile-first design, intuitive recipe creation, dynamic dashboards, filterable data tables, consistent color-coded status badges, and conditional UI rendering for feature visibility based on roles/data.
+- **Technical Implementations**: Unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), comprehensive multi-tenant QuickBooks Online integration (OAuth 2.0, selective vendor import, automated token refresh), intelligent vendor order guide import with fuzzy matching, optimized real-time recipe cost calculation with caching, and dynamic estimated on-hand inventory with automated cache invalidation. The system tracks all inventory movements and provides detailed Theoretical Food Cost (TFC) variance reporting.
+- **System Design Choices**: Adheres to strict multi-tenancy principles, maintains micro-unit precision, utilizes HMAC-SHA256 for secure OAuth, incorporates extensive server-side validation, and offers robust vendor relationship management including delivery scheduling and compliance tracking.
+- **Date Handling**: Single-timezone architecture. Date-only fields are stored as PostgreSQL `timestamp without time zone` at midnight UTC. API boundaries use YYYY-MM-DD strings with UTC methods. Frontend displays dates using a local timezone helper to prevent timezone-induced shifts.
 
 # External Dependencies
 
-- **Database Services**: Neon serverless PostgreSQL for scalable and reliable data storage.
-- **Real-time Communication**: `ws` library for WebSocket implementations, enabling real-time interactions.
-- **Image Processing**: Sharp for efficient image manipulation and optimization.
-- **Object Storage**: Replit's native object storage for storing various file assets.
-- **Vendor Integrations**: Custom adapters developed for seamless integration with Sysco, GFS, and US Foods order guides.
-- **QuickBooks Online Integration**: `intuit-oauth` package for managing OAuth 2.0 authentication and API interactions with QuickBooks Online.
+- **Database Services**: Neon serverless PostgreSQL.
+- **Real-time Communication**: `ws` library (WebSockets).
+- **Image Processing**: Sharp library.
+- **Object Storage**: Replit's native object storage solution.
+- **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods order guides.
+- **QuickBooks Online Integration**: `intuit-oauth` package for OAuth 2.0.

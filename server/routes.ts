@@ -6360,7 +6360,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const runs = await storage.getTheoreticalUsageRuns(companyId, storeId);
-      res.json(runs);
+      
+      // Convert salesDate timestamps to YYYY-MM-DD strings using UTC methods
+      const runsWithFormattedDates = runs.map(run => ({
+        ...run,
+        salesDate: run.salesDate instanceof Date
+          ? `${run.salesDate.getUTCFullYear()}-${String(run.salesDate.getUTCMonth() + 1).padStart(2, '0')}-${String(run.salesDate.getUTCDate()).padStart(2, '0')}`
+          : run.salesDate,
+      }));
+      
+      res.json(runsWithFormattedDates);
     } catch (error: any) {
       console.error('Get usage runs error:', error);
       res.status(500).json({ message: "Failed to fetch usage runs" });
@@ -6432,8 +6441,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       });
 
+      // Convert salesDate timestamp to YYYY-MM-DD string using UTC methods
+      const runWithFormattedDate = {
+        ...run,
+        salesDate: run.salesDate instanceof Date
+          ? `${run.salesDate.getUTCFullYear()}-${String(run.salesDate.getUTCMonth() + 1).padStart(2, '0')}-${String(run.salesDate.getUTCDate()).padStart(2, '0')}`
+          : run.salesDate,
+      };
+
       res.json({
-        run,
+        run: runWithFormattedDate,
         lines: detailedLines,
       });
     } catch (error: any) {

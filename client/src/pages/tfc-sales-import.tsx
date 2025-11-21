@@ -362,6 +362,11 @@ export default function TfcSalesImport() {
                 <div className="space-y-2">
                   {runs.map((run) => {
                     const storeName = stores.find(s => s.id === run.storeId)?.name || 'Unknown Store';
+                    // Parse YYYY-MM-DD string to Date in local timezone (no UTC conversion)
+                    const salesDateStr = typeof run.salesDate === 'string' ? run.salesDate : run.salesDate.toISOString().split('T')[0];
+                    const [year, month, day] = salesDateStr.split('-').map(Number);
+                    const salesDate = new Date(year, month - 1, day);
+                    
                     return (
                       <div
                         key={run.id}
@@ -371,7 +376,7 @@ export default function TfcSalesImport() {
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <h4 className="font-medium" data-testid="text-sales-date">
-                              {format(new Date(run.salesDate), 'MMM d, yyyy')}
+                              {format(salesDate, 'MMM d, yyyy')}
                             </h4>
                             <Badge variant="outline" className="text-xs" data-testid={`badge-store-${run.id}`}>
                               {storeName}
@@ -457,7 +462,17 @@ export default function TfcSalesImport() {
               <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-muted rounded-lg">
                 <div>
                   <p className="text-xs text-muted-foreground">Date</p>
-                  <p className="font-medium">{format(new Date(runDetails.run.salesDate), 'MMM d, yyyy')}</p>
+                  <p className="font-medium">
+                    {(() => {
+                      // Parse YYYY-MM-DD string to Date in local timezone (no UTC conversion)
+                      const salesDateStr = typeof runDetails.run.salesDate === 'string' 
+                        ? runDetails.run.salesDate 
+                        : runDetails.run.salesDate.toISOString().split('T')[0];
+                      const [year, month, day] = salesDateStr.split('-').map(Number);
+                      const salesDate = new Date(year, month - 1, day);
+                      return format(salesDate, 'MMM d, yyyy');
+                    })()}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Items Sold</p>
