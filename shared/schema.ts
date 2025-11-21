@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, timestamp, unique, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, timestamp, date, unique, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -462,17 +462,17 @@ export const inventoryCounts = pgTable("inventory_counts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   storeId: varchar("store_id").notNull(), // Store where count is performed
-  countDate: timestamp("count_date").notNull(), // Official inventory date of record (chosen by user)
-  countedAt: timestamp("counted_at").notNull().defaultNow(), // When the count session was created
+  countDate: date("count_date").notNull(), // Official inventory date (YYYY-MM-DD string)
+  countedAt: timestamp("counted_at").notNull().defaultNow(), // When the count session was created (local time)
   userId: varchar("user_id").notNull(),
   note: text("note"),
   applied: integer("applied").notNull().default(0), // 0 = not applied, 1 = applied to on-hand quantities
-  appliedAt: timestamp("applied_at"), // When the count was applied
+  appliedAt: timestamp("applied_at"), // When the count was applied (local time)
   appliedBy: varchar("applied_by"), // User who applied the count
 });
 
 export const insertInventoryCountSchema = createInsertSchema(inventoryCounts).omit({ id: true, countedAt: true }).extend({
-  countDate: z.string().transform(val => new Date(val)),
+  countDate: z.string(), // YYYY-MM-DD string, no conversion needed
 });
 export type InsertInventoryCount = z.infer<typeof insertInventoryCountSchema>;
 export type InventoryCount = typeof inventoryCounts.$inferSelect;
@@ -511,8 +511,8 @@ export const purchaseOrders = pgTable("purchase_orders", {
   storeId: varchar("store_id").notNull(), // Store receiving the order
   vendorId: varchar("vendor_id").notNull(),
   status: text("status").notNull().default("pending"), // pending, ordered, received
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  expectedDate: timestamp("expected_date"),
+  createdAt: timestamp("created_at").notNull().defaultNow(), // Created timestamp (local time)
+  expectedDate: date("expected_date"), // Expected delivery date (YYYY-MM-DD string)
   notes: text("notes"),
 }, (table) => ({
   // Optimize PO queries by company, store, and status
@@ -521,7 +521,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
 }));
 
 export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({ id: true, createdAt: true }).extend({
-  expectedDate: z.string().min(1, "Expected date is required").transform(val => new Date(val)),
+  expectedDate: z.string().min(1, "Expected date is required"), // YYYY-MM-DD string, no conversion needed
 });
 export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
@@ -669,14 +669,14 @@ export const salesUploadBatches = pgTable("sales_upload_batches", {
   storeId: varchar("store_id").notNull(),
   uploadedBy: varchar("uploaded_by").notNull(), // user ID
   fileName: text("file_name").notNull(),
-  salesDate: timestamp("sales_date").notNull(), // Date of sales in batch
+  salesDate: date("sales_date").notNull(), // Sales date (YYYY-MM-DD string)
   daypartId: varchar("daypart_id"), // Nullable for all-day aggregates
   status: text("status").notNull().default("processing"), // processing, completed, failed
   rowsProcessed: integer("rows_processed").notNull().default(0),
   rowsFailed: integer("rows_failed").notNull().default(0),
   errorLog: text("error_log"), // JSON array of error messages
-  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
-  completedAt: timestamp("completed_at"),
+  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(), // Upload timestamp (local time)
+  completedAt: timestamp("completed_at"), // Completion timestamp (local time)
 }, (table) => ({
   companyStoreDateIdx: index("sales_batches_company_store_date_idx").on(table.companyId, table.storeId, table.salesDate),
 }));
@@ -691,7 +691,7 @@ export const dailyMenuItemSales = pgTable("daily_menu_item_sales", {
   companyId: varchar("company_id").notNull(),
   storeId: varchar("store_id").notNull(),
   menuItemId: varchar("menu_item_id").notNull(),
-  salesDate: timestamp("sales_date").notNull(), // Date of sales
+  salesDate: date("sales_date").notNull(), // Sales date (YYYY-MM-DD string)
   daypartId: varchar("daypart_id"), // Nullable for all-day aggregates
   qtySold: real("qty_sold").notNull(),
   netSales: real("net_sales").notNull().default(0), // Total revenue (price * qty)
@@ -711,13 +711,13 @@ export const recipeCostSnapshots = pgTable("recipe_cost_snapshots", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   recipeId: varchar("recipe_id").notNull(),
   companyId: varchar("company_id").notNull(),
-  effectiveDate: timestamp("effective_date").notNull(), // Date this cost is effective
+  effectiveDate: date("effective_date").notNull(), // Effective date (YYYY-MM-DD string)
   computedCost: real("computed_cost").notNull(), // Snapshot of recipe.computedCost
   yieldQty: real("yield_qty").notNull(), // Snapshot of recipe.yieldQty
   yieldUnitId: varchar("yield_unit_id").notNull(), // Snapshot of recipe.yieldUnitId
   costPerServing: real("cost_per_serving").notNull(), // computedCost / yieldQty (normalized to serving)
   menuItemId: varchar("menu_item_id"), // Optional link to specific menu item
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(), // Created timestamp (local time)
 }, (table) => ({
   recipeEffectiveDateIdx: index("recipe_snapshots_recipe_date_idx").on(table.recipeId, table.effectiveDate),
   uniqueRecipeDate: unique().on(table.recipeId, table.effectiveDate), // One snapshot per recipe per day
@@ -732,7 +732,7 @@ export const theoreticalUsageRuns = pgTable("theoretical_usage_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   storeId: varchar("store_id").notNull(),
-  salesDate: timestamp("sales_date").notNull(), // Date being calculated
+  salesDate: date("sales_date").notNull(), // Sales date (YYYY-MM-DD string)
   sourceBatchId: varchar("source_batch_id").notNull(), // FK to sales_upload_batches
   status: text("status").notNull().default("running"), // running, completed, failed
   itemsProcessed: integer("items_processed").notNull().default(0),
@@ -741,8 +741,8 @@ export const theoreticalUsageRuns = pgTable("theoretical_usage_runs", {
   totalTheoreticalCost: real("total_theoretical_cost").notNull().default(0), // Total cost using last cost
   totalTheoreticalCostWAC: real("total_theoretical_cost_wac").notNull().default(0), // Total cost using WAC
   errorLog: text("error_log"), // JSON array of calculation errors
-  startedAt: timestamp("started_at").notNull().defaultNow(),
-  completedAt: timestamp("completed_at"),
+  startedAt: timestamp("started_at").notNull().defaultNow(), // Started timestamp (local time)
+  completedAt: timestamp("completed_at"), // Completed timestamp (local time)
 }, (table) => ({
   companyStoreDateIdx: index("usage_runs_company_store_date_idx").on(table.companyId, table.storeId, table.salesDate),
 }));
@@ -816,15 +816,15 @@ export const transferOrders = pgTable("transfer_orders", {
   fromStoreId: varchar("from_store_id").notNull(), // Source company store
   toStoreId: varchar("to_store_id").notNull(), // Destination company store
   status: text("status").notNull().default("pending"), // pending, in_transit, completed
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  expectedDate: timestamp("expected_date"),
-  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(), // Created timestamp (local time)
+  expectedDate: date("expected_date"), // Expected transfer date (YYYY-MM-DD string)
+  completedAt: timestamp("completed_at"), // Completed timestamp (local time)
   notes: text("notes"),
   createdBy: varchar("created_by"),
 });
 
 export const insertTransferOrderSchema = createInsertSchema(transferOrders).omit({ id: true, createdAt: true, completedAt: true }).extend({
-  expectedDate: z.coerce.date().optional(),
+  expectedDate: z.string().optional(), // YYYY-MM-DD string, no conversion needed
 });
 export type InsertTransferOrder = z.infer<typeof insertTransferOrderSchema>;
 export type TransferOrder = typeof transferOrders.$inferSelect;
