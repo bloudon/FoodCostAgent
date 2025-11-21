@@ -2024,6 +2024,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(aggregated);
   });
 
+  app.get("/api/inventory-items/estimated-on-hand", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const storeId = req.query.storeId as string;
+      
+      if (!companyId) {
+        return res.status(400).json({ error: "Company context required" });
+      }
+      
+      if (!storeId) {
+        return res.status(400).json({ error: "Store ID required" });
+      }
+      
+      // Validate store ownership
+      const store = await storage.getCompanyStore(storeId);
+      if (!store) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+      
+      if (store.companyId !== companyId) {
+        return res.status(403).json({ error: "Access denied to this store" });
+      }
+      
+      const estimatedOnHand = await storage.getEstimatedOnHand(companyId, storeId);
+      res.json(estimatedOnHand);
+    } catch (error: any) {
+      console.error("Estimated on-hand calculation error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/inventory-items/:id", requireAuth, async (req, res) => {
     const itemId = req.params.id;
     const companyId = (req as any).companyId as string;
@@ -2105,37 +2136,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         vendorPrices,
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get("/api/inventory-items/estimated-on-hand", requireAuth, async (req, res) => {
-    try {
-      const companyId = (req as any).companyId;
-      const storeId = req.query.storeId as string;
-      
-      if (!companyId) {
-        return res.status(400).json({ error: "Company context required" });
-      }
-      
-      if (!storeId) {
-        return res.status(400).json({ error: "Store ID required" });
-      }
-      
-      // Validate store ownership
-      const store = await storage.getCompanyStore(storeId);
-      if (!store) {
-        return res.status(404).json({ error: "Store not found" });
-      }
-      
-      if (store.companyId !== companyId) {
-        return res.status(403).json({ error: "Access denied to this store" });
-      }
-      
-      const estimatedOnHand = await storage.getEstimatedOnHand(companyId, storeId);
-      res.json(estimatedOnHand);
-    } catch (error: any) {
-      console.error("Estimated on-hand calculation error:", error);
       res.status(500).json({ error: error.message });
     }
   });

@@ -5,6 +5,7 @@ import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
+import { useStoreContext } from "@/hooks/use-store-context";
 import {
   Table,
   TableBody,
@@ -99,27 +100,17 @@ function getInventoryStatus(quantity: number, parLevel: number | null, reorderLe
 
 export default function InventoryItems() {
   const [search, setSearch] = useState("");
-  const [selectedStore, setSelectedStore] = useState<string>("");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [activeFilter, setActiveFilter] = useState<"active" | "inactive" | "all">("active");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(9999);
   const { toast } = useToast();
+  
+  // Use global store context instead of local state
+  const { selectedStoreId: selectedStore } = useStoreContext();
 
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
-
-  const { data: stores } = useAccessibleStores();
-
-  // Auto-select first store if none selected
-  useEffect(() => {
-    if (stores && stores.length > 0 && !selectedStore) {
-      const activeStores = stores.filter(s => s.status === 'active');
-      if (activeStores.length > 0) {
-        setSelectedStore(activeStores[0].id);
-      }
-    }
-  }, [stores, selectedStore]);
 
   // Fetch estimated on-hand data for the selected store
   const { data: estimatedOnHandData } = useQuery<Array<{
@@ -133,6 +124,14 @@ export default function InventoryItems() {
     estimatedOnHand: number;
   }>>({
     queryKey: ["/api/inventory-items/estimated-on-hand", selectedStore],
+    queryFn: async () => {
+      if (!selectedStore || selectedStore === "all") {
+        return [];
+      }
+      const response = await fetch(`/api/inventory-items/estimated-on-hand?storeId=${selectedStore}`);
+      if (!response.ok) throw new Error("Failed to fetch estimated on-hand data");
+      return response.json();
+    },
     enabled: !!selectedStore && selectedStore !== "all",
   });
 
