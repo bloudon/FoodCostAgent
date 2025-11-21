@@ -397,7 +397,7 @@ export default function Dashboard() {
                 
                 return (
                   <div className="min-h-[120px]">
-                    <Link href={`/orders/${deadline.purchaseOrderId}`}>
+                    <Link href={`/purchase-orders/${deadline.purchaseOrderId}`}>
                       <div 
                         className={`flex items-center justify-between gap-4 p-4 rounded-lg border hover-elevate cursor-pointer ${
                           isPastDue 
@@ -524,7 +524,7 @@ export default function Dashboard() {
                 
                 return (
                   <div className="min-h-[120px]">
-                    <Link href={`/inventory/${item.id}`}>
+                    <Link href={`/inventory-items/${item.id}`}>
                       <div 
                         className={`flex items-center justify-between gap-4 p-4 rounded-lg border hover-elevate cursor-pointer ${
                           isCritical 
