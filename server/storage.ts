@@ -232,6 +232,46 @@ export interface IStorage {
     estimatedOnHand: number;
   }>>;
 
+  // Estimated On-Hand Breakdown (detailed with dates)
+  getEstimatedOnHandBreakdown(companyId: string, storeId: string, inventoryItemId: string): Promise<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    unitName: string;
+    lastCount: {
+      qty: number;
+      date: string;
+    } | null;
+    receipts: Array<{
+      date: string;
+      qty: number;
+      vendorName: string;
+      poId: string;
+    }>;
+    waste: Array<{
+      date: string;
+      qty: number;
+      reason: string;
+    }>;
+    theoreticalUsage: Array<{
+      date: string;
+      qty: number;
+    }>;
+    transfers: Array<{
+      date: string;
+      qty: number;
+      toStoreName: string;
+      transferId: string;
+    }>;
+    summary: {
+      lastCountQty: number;
+      receivedQty: number;
+      wasteQty: number;
+      theoreticalUsageQty: number;
+      transferredOutQty: number;
+      estimatedOnHand: number;
+    };
+  } | null>;
+
   // Purchase Orders
   getPurchaseOrders(companyId: string, storeId?: string): Promise<PurchaseOrder[]>;
   getPurchaseOrder(id: string, companyId: string): Promise<PurchaseOrder | undefined>;
@@ -1860,6 +1900,285 @@ export class DatabaseStorage implements IStorage {
     });
     
     return estimatedOnHandData;
+  }
+
+  // Estimated On-Hand Breakdown (detailed with dates)
+  async getEstimatedOnHandBreakdown(companyId: string, storeId: string, inventoryItemId: string): Promise<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    unitName: string;
+    lastCount: {
+      qty: number;
+      date: string;
+    } | null;
+    receipts: Array<{
+      date: string;
+      qty: number;
+      vendorName: string;
+      poId: string;
+    }>;
+    waste: Array<{
+      date: string;
+      qty: number;
+      reason: string;
+    }>;
+    theoreticalUsage: Array<{
+      date: string;
+      qty: number;
+    }>;
+    transfers: Array<{
+      date: string;
+      qty: number;
+      toStoreName: string;
+      transferId: string;
+    }>;
+    summary: {
+      lastCountQty: number;
+      receivedQty: number;
+      wasteQty: number;
+      theoreticalUsageQty: number;
+      transferredOutQty: number;
+      estimatedOnHand: number;
+    };
+  } | null> {
+    // Get inventory item details
+    const [item] = await db
+      .select({
+        id: inventoryItems.id,
+        name: inventoryItems.name,
+        unitName: units.name,
+      })
+      .from(inventoryItems)
+      .leftJoin(units, eq(inventoryItems.unitId, units.id))
+      .where(
+        and(
+          eq(inventoryItems.id, inventoryItemId),
+          eq(inventoryItems.companyId, companyId)
+        )
+      );
+    
+    if (!item) return null;
+    
+    // Get the most recent inventory count for this store
+    const counts = await db
+      .select()
+      .from(inventoryCounts)
+      .where(and(
+        eq(inventoryCounts.companyId, companyId),
+        eq(inventoryCounts.storeId, storeId)
+      ))
+      .orderBy(desc(inventoryCounts.countDate));
+    
+    if (counts.length === 0) return null;
+    
+    const lastCount = counts[0];
+    const lastCountDate = lastCount.countDate;
+    
+    // Helper function to convert Date to YYYY-MM-DD using UTC methods
+    const toDateString = (date: Date): string => {
+      const year = date.getUTCFullYear();
+      const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(date.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    
+    // Get count quantity for this specific item
+    const [countLine] = await db
+      .select({
+        qty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+      })
+      .from(inventoryCountLines)
+      .where(
+        and(
+          eq(inventoryCountLines.inventoryCountId, lastCount.id),
+          eq(inventoryCountLines.inventoryItemId, inventoryItemId)
+        )
+      )
+      .groupBy(inventoryCountLines.inventoryItemId);
+    
+    const lastCountQty = countLine?.qty || 0;
+    const lastCountInfo = {
+      qty: lastCountQty,
+      date: toDateString(lastCountDate),
+    };
+    
+    // Get receipts since last count
+    const receiptsData = await db
+      .select({
+        receivedQty: receiptLines.receivedQty,
+        expectedDate: purchaseOrders.expectedDate,
+        receivedAt: receipts.receivedAt,
+        vendorName: vendors.name,
+        poId: purchaseOrders.id,
+      })
+      .from(receiptLines)
+      .innerJoin(receipts, eq(receiptLines.receiptId, receipts.id))
+      .innerJoin(vendorItems, eq(receiptLines.vendorItemId, vendorItems.id))
+      .innerJoin(purchaseOrders, eq(receipts.purchaseOrderId, purchaseOrders.id))
+      .innerJoin(vendors, eq(purchaseOrders.vendorId, vendors.id))
+      .where(
+        and(
+          eq(vendorItems.inventoryItemId, inventoryItemId),
+          eq(receipts.companyId, companyId),
+          eq(receipts.storeId, storeId),
+          inArray(receipts.status, ['locked', 'completed'])
+        )
+      );
+    
+    // Filter and format receipts
+    const receipts = receiptsData
+      .filter(r => {
+        const deliveryDate = r.expectedDate || r.receivedAt;
+        if (!deliveryDate) return false;
+        return new Date(deliveryDate) > new Date(lastCountDate);
+      })
+      .map(r => ({
+        date: toDateString(r.expectedDate || r.receivedAt!),
+        qty: r.receivedQty,
+        vendorName: r.vendorName,
+        poId: r.poId,
+      }));
+    
+    // Get waste logs since last count
+    const wasteData = await db
+      .select({
+        qty: wasteLogs.qty,
+        wastedAt: wasteLogs.wastedAt,
+        reason: wasteLogs.reason,
+      })
+      .from(wasteLogs)
+      .where(
+        and(
+          eq(wasteLogs.inventoryItemId, inventoryItemId),
+          eq(wasteLogs.companyId, companyId),
+          eq(wasteLogs.storeId, storeId),
+          eq(wasteLogs.wasteType, 'inventory'),
+          gte(wasteLogs.wastedAt, lastCountDate)
+        )
+      );
+    
+    const waste = wasteData.map(w => ({
+      date: toDateString(w.wastedAt),
+      qty: w.qty,
+      reason: w.reason || 'No reason provided',
+    }));
+    
+    // Get theoretical usage since last count
+    const theoreticalUsageRunsData = await db
+      .select({
+        id: theoreticalUsageRuns.id,
+        salesDate: theoreticalUsageRuns.salesDate,
+      })
+      .from(theoreticalUsageRuns)
+      .where(
+        and(
+          eq(theoreticalUsageRuns.companyId, companyId),
+          eq(theoreticalUsageRuns.storeId, storeId),
+          gt(theoreticalUsageRuns.salesDate, lastCountDate),
+          eq(theoreticalUsageRuns.status, 'completed')
+        )
+      );
+    
+    const runIds = theoreticalUsageRunsData.map(r => r.id);
+    
+    let theoreticalUsageData: Array<{ date: string; qty: number }> = [];
+    if (runIds.length > 0) {
+      const lines = await db
+        .select({
+          runId: theoreticalUsageLines.runId,
+          requiredQtyBaseUnit: theoreticalUsageLines.requiredQtyBaseUnit,
+        })
+        .from(theoreticalUsageLines)
+        .where(
+          and(
+            inArray(theoreticalUsageLines.runId, runIds),
+            eq(theoreticalUsageLines.inventoryItemId, inventoryItemId)
+          )
+        );
+      
+      // Group by date
+      const usageByDate = new Map<string, number>();
+      for (const line of lines) {
+        const run = theoreticalUsageRunsData.find(r => r.id === line.runId);
+        if (run) {
+          const dateStr = toDateString(run.salesDate);
+          usageByDate.set(dateStr, (usageByDate.get(dateStr) || 0) + line.requiredQtyBaseUnit);
+        }
+      }
+      
+      theoreticalUsageData = Array.from(usageByDate.entries()).map(([date, qty]) => ({
+        date,
+        qty,
+      }));
+    }
+    
+    // Get outbound transfers since last count
+    const transfersData = await db
+      .select({
+        shippedQty: transferOrderLines.shippedQty,
+        completedAt: transferOrders.completedAt,
+        toStoreId: transferOrders.toStoreId,
+        transferId: transferOrders.id,
+      })
+      .from(transferOrderLines)
+      .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
+      .where(
+        and(
+          eq(transferOrderLines.inventoryItemId, inventoryItemId),
+          eq(transferOrders.companyId, companyId),
+          eq(transferOrders.fromStoreId, storeId),
+          gte(transferOrders.completedAt, lastCountDate),
+          eq(transferOrders.status, 'completed')
+        )
+      );
+    
+    // Get store names for transfers
+    const toStoreIds = [...new Set(transfersData.map(t => t.toStoreId))];
+    let storeNamesMap = new Map<string, string>();
+    if (toStoreIds.length > 0) {
+      const storesData = await db
+        .select({
+          id: stores.id,
+          name: stores.name,
+        })
+        .from(stores)
+        .where(inArray(stores.id, toStoreIds));
+      
+      storeNamesMap = new Map(storesData.map(s => [s.id, s.name]));
+    }
+    
+    const transfers = transfersData.map(t => ({
+      date: toDateString(t.completedAt),
+      qty: t.shippedQty || 0,
+      toStoreName: storeNamesMap.get(t.toStoreId) || 'Unknown Store',
+      transferId: t.transferId,
+    }));
+    
+    // Calculate totals
+    const receivedQty = receipts.reduce((sum, r) => sum + r.qty, 0);
+    const wasteQty = waste.reduce((sum, w) => sum + w.qty, 0);
+    const theoreticalUsageQty = theoreticalUsageData.reduce((sum, t) => sum + t.qty, 0);
+    const transferredOutQty = transfers.reduce((sum, t) => sum + t.qty, 0);
+    const estimatedOnHand = Math.max(0, lastCountQty + receivedQty - wasteQty - theoreticalUsageQty - transferredOutQty);
+    
+    return {
+      inventoryItemId: item.id,
+      inventoryItemName: item.name,
+      unitName: item.unitName || 'unit',
+      lastCount: lastCountInfo,
+      receipts,
+      waste,
+      theoreticalUsage: theoreticalUsageData,
+      transfers,
+      summary: {
+        lastCountQty,
+        receivedQty,
+        wasteQty,
+        theoreticalUsageQty,
+        transferredOutQty,
+        estimatedOnHand,
+      },
+    };
   }
 
   // Purchase Orders

@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Package, Search, Plus, MoreVertical, Store } from "lucide-react";
+import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
@@ -28,10 +28,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { formatUnitName } from "@/lib/utils";
+import { formatUnitName, formatDateString } from "@/lib/utils";
 
 type InventoryItemDisplay = {
   id: string;
@@ -105,6 +112,8 @@ export default function InventoryItems() {
   const [activeFilter, setActiveFilter] = useState<"active" | "inactive" | "all">("active");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(9999);
+  const [breakdownItemId, setBreakdownItemId] = useState<string | null>(null);
+  const [breakdownItemName, setBreakdownItemName] = useState<string>("");
   const { toast } = useToast();
   
   // Use global store context instead of local state
@@ -436,9 +445,16 @@ export default function InventoryItems() {
                         <span className={inventoryStatus.color}>{quantity.toFixed(2)}</span>
                       </TableCell>
                       <TableCell 
-                        className="text-right font-mono cursor-pointer"
-                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                        className={`text-right font-mono ${estimatedOnHandMap.has(item.id) && selectedStore !== "all" ? "cursor-pointer hover:underline" : ""}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (estimatedOnHandMap.has(item.id) && selectedStore !== "all") {
+                            setBreakdownItemId(item.id);
+                            setBreakdownItemName(item.name);
+                          }
+                        }}
                         data-testid={`cell-estimated-on-hand-${item.id}`}
+                        title={selectedStore === "all" ? "Select a specific store to view breakdown" : "Click to view breakdown"}
                       >
                         {estimatedOnHandMap.has(item.id) ? (
                           <span className="text-blue-600 dark:text-blue-400">
@@ -534,6 +550,251 @@ export default function InventoryItems() {
           )}
         </div>
       </div>
+
+      {/* Estimated On-Hand Breakdown Modal */}
+      <EstimatedOnHandBreakdownModal
+        itemId={breakdownItemId}
+        itemName={breakdownItemName}
+        storeId={selectedStore !== "all" ? selectedStore : ""}
+        open={!!breakdownItemId}
+        onClose={() => setBreakdownItemId(null)}
+      />
     </div>
+  );
+}
+
+// Breakdown Modal Component
+function EstimatedOnHandBreakdownModal({
+  itemId,
+  itemName,
+  storeId,
+  open,
+  onClose,
+}: {
+  itemId: string | null;
+  itemName: string;
+  storeId: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { data: breakdown, isLoading, error } = useQuery({
+    queryKey: ["/api/inventory-items", itemId, "breakdown", storeId],
+    queryFn: async () => {
+      if (!itemId || !storeId) return null;
+      const response = await fetch(`/api/inventory-items/${itemId}/estimated-on-hand-breakdown?storeId=${storeId}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Failed to fetch breakdown" }));
+        throw new Error(errorData.error || "Failed to fetch breakdown");
+      }
+      return response.json();
+    },
+    enabled: open && !!itemId && !!storeId,
+  });
+
+  if (!open || !itemId) return null;
+
+  // Show error if store is not selected
+  if (!storeId) {
+    return (
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent data-testid="dialog-breakdown">
+          <DialogHeader>
+            <DialogTitle>Estimated On-Hand Breakdown</DialogTitle>
+            <DialogDescription>{itemName}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <Store className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">
+              Please select a specific store to view the estimated on-hand breakdown.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl max-h-[80vh] overflow-auto" data-testid="dialog-breakdown">
+        <DialogHeader>
+          <DialogTitle>Estimated On-Hand Breakdown</DialogTitle>
+          <DialogDescription>{itemName}</DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="text-muted-foreground">Loading breakdown...</div>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <div className="text-red-600 dark:text-red-400 mb-2">Error loading breakdown</div>
+            <div className="text-sm text-muted-foreground">
+              {(error as Error).message || "An unexpected error occurred"}
+            </div>
+          </div>
+        ) : !breakdown ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="text-muted-foreground">No data available</div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-card border rounded-lg p-4">
+                <div className="text-sm text-muted-foreground mb-1">Last Count</div>
+                <div className="text-2xl font-semibold">
+                  {breakdown.summary.lastCountQty.toFixed(2)} {breakdown.unitName}
+                </div>
+                {breakdown.lastCount && (
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {formatDateString(breakdown.lastCount.date)}
+                  </div>
+                )}
+              </div>
+              
+              <div className="bg-card border rounded-lg p-4">
+                <div className="text-sm text-muted-foreground mb-1">Net Change</div>
+                <div className="text-2xl font-semibold flex items-center gap-2">
+                  {(breakdown.summary.receivedQty - breakdown.summary.wasteQty - breakdown.summary.theoreticalUsageQty - breakdown.summary.transferredOutQty).toFixed(2)}
+                  {(breakdown.summary.receivedQty - breakdown.summary.wasteQty - breakdown.summary.theoreticalUsageQty - breakdown.summary.transferredOutQty) > 0 ? (
+                    <TrendingUp className="h-4 w-4 text-green-600" />
+                  ) : (breakdown.summary.receivedQty - breakdown.summary.wasteQty - breakdown.summary.theoreticalUsageQty - breakdown.summary.transferredOutQty) < 0 ? (
+                    <TrendingDown className="h-4 w-4 text-red-600" />
+                  ) : (
+                    <Minus className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Since last count
+                </div>
+              </div>
+              
+              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="text-sm text-blue-600 dark:text-blue-400 mb-1">Estimated On-Hand</div>
+                <div className="text-2xl font-semibold text-blue-600 dark:text-blue-400">
+                  {breakdown.summary.estimatedOnHand.toFixed(2)} {breakdown.unitName}
+                </div>
+                <div className="text-xs text-blue-600/70 dark:text-blue-400/70 mt-1">
+                  Current estimate
+                </div>
+              </div>
+            </div>
+
+            {/* Breakdown Sections */}
+            <div className="space-y-4">
+              {/* Receipts */}
+              {breakdown.receipts.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-1 bg-green-500 rounded-full" />
+                    <h3 className="font-semibold text-green-700 dark:text-green-400">
+                      Receipts (+{breakdown.summary.receivedQty.toFixed(2)} {breakdown.unitName})
+                    </h3>
+                  </div>
+                  <div className="ml-3 border-l-2 border-green-200 dark:border-green-800 pl-4 space-y-2">
+                    {breakdown.receipts.map((receipt, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-sm">
+                        <div className="flex flex-col">
+                          <span className="font-medium">{receipt.vendorName}</span>
+                          <span className="text-xs text-muted-foreground">{formatDateString(receipt.date)}</span>
+                        </div>
+                        <span className="font-mono text-green-700 dark:text-green-400">
+                          +{receipt.qty.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Theoretical Usage */}
+              {breakdown.theoreticalUsage.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-1 bg-orange-500 rounded-full" />
+                    <h3 className="font-semibold text-orange-700 dark:text-orange-400">
+                      Theoretical Usage (-{breakdown.summary.theoreticalUsageQty.toFixed(2)} {breakdown.unitName})
+                    </h3>
+                  </div>
+                  <div className="ml-3 border-l-2 border-orange-200 dark:border-orange-800 pl-4 space-y-2">
+                    {breakdown.theoreticalUsage.map((usage, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-sm">
+                        <div className="flex flex-col">
+                          <span className="font-medium">Sales</span>
+                          <span className="text-xs text-muted-foreground">{formatDateString(usage.date)}</span>
+                        </div>
+                        <span className="font-mono text-orange-700 dark:text-orange-400">
+                          -{usage.qty.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Waste */}
+              {breakdown.waste.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-1 bg-red-500 rounded-full" />
+                    <h3 className="font-semibold text-red-700 dark:text-red-400">
+                      Waste (-{breakdown.summary.wasteQty.toFixed(2)} {breakdown.unitName})
+                    </h3>
+                  </div>
+                  <div className="ml-3 border-l-2 border-red-200 dark:border-red-800 pl-4 space-y-2">
+                    {breakdown.waste.map((waste, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-sm">
+                        <div className="flex flex-col">
+                          <span className="font-medium">{waste.reason}</span>
+                          <span className="text-xs text-muted-foreground">{formatDateString(waste.date)}</span>
+                        </div>
+                        <span className="font-mono text-red-700 dark:text-red-400">
+                          -{waste.qty.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Transfers */}
+              {breakdown.transfers.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-1 bg-purple-500 rounded-full" />
+                    <h3 className="font-semibold text-purple-700 dark:text-purple-400">
+                      Transfers Out (-{breakdown.summary.transferredOutQty.toFixed(2)} {breakdown.unitName})
+                    </h3>
+                  </div>
+                  <div className="ml-3 border-l-2 border-purple-200 dark:border-purple-800 pl-4 space-y-2">
+                    {breakdown.transfers.map((transfer, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-sm">
+                        <div className="flex flex-col">
+                          <span className="font-medium">To {transfer.toStoreName}</span>
+                          <span className="text-xs text-muted-foreground">{formatDateString(transfer.date)}</span>
+                        </div>
+                        <span className="font-mono text-purple-700 dark:text-purple-400">
+                          -{transfer.qty.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state */}
+              {breakdown.receipts.length === 0 && 
+               breakdown.theoreticalUsage.length === 0 && 
+               breakdown.waste.length === 0 && 
+               breakdown.transfers.length === 0 && (
+                <div className="text-center text-muted-foreground py-8">
+                  No activity since last count
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -2055,6 +2055,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/inventory-items/:itemId/estimated-on-hand-breakdown", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const storeId = req.query.storeId as string;
+      const itemId = req.params.itemId;
+      
+      if (!companyId) {
+        return res.status(400).json({ error: "Company context required" });
+      }
+      
+      if (!storeId) {
+        return res.status(400).json({ error: "Store ID required. Please select a specific store." });
+      }
+      
+      // Validate store ownership
+      const store = await storage.getCompanyStore(storeId);
+      if (!store) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+      
+      if (store.companyId !== companyId) {
+        return res.status(403).json({ error: "Access denied to this store" });
+      }
+      
+      // Validate inventory item belongs to this company
+      const item = await storage.getInventoryItem(itemId);
+      if (!item) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      
+      if (item.companyId !== companyId) {
+        return res.status(403).json({ error: "Access denied to this inventory item" });
+      }
+      
+      const breakdown = await storage.getEstimatedOnHandBreakdown(companyId, storeId, itemId);
+      
+      if (!breakdown) {
+        return res.status(404).json({ error: "No breakdown data available. Please ensure an inventory count exists for this store." });
+      }
+      
+      res.json(breakdown);
+    } catch (error: any) {
+      console.error("Estimated on-hand breakdown error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/inventory-items/:id", requireAuth, async (req, res) => {
     const itemId = req.params.id;
     const storeId = req.query.store_id as string | undefined;
