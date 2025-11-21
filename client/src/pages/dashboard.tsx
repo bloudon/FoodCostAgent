@@ -39,6 +39,12 @@ export default function Dashboard() {
   const [orderIndex, setOrderIndex] = useState(0);
   const [inventoryIndex, setInventoryIndex] = useState(0);
 
+  // Reset pagination when store changes - MUST be before any conditional returns
+  useEffect(() => {
+    setOrderIndex(0);
+    setInventoryIndex(0);
+  }, [selectedStoreId]);
+
   // Fetch data filtered by selected store using proper query parameters
   // Note: queryKey is joined with "/" so we use query string in the first element
   const { data: inventoryItems, isLoading: itemsLoading } = useQuery<any[]>({
@@ -323,12 +329,6 @@ export default function Dashboard() {
   if (!selectedStoreId) {
     return null;
   }
-
-  // Reset pagination when store changes
-  useEffect(() => {
-    setOrderIndex(0);
-    setInventoryIndex(0);
-  }, [selectedStoreId]);
 
   // Full dashboard for admins and managers
   return (
