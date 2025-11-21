@@ -157,7 +157,7 @@ export function AppHeader() {
           <div className="h-[60px] w-[60px] rounded-lg bg-primary-foreground/10 flex items-center justify-center" data-testid="logo-placeholder">
             <ChefHat className="h-10 w-10 text-primary-foreground" />
           </div>
-          <span className="hidden sm:inline text-lg font-bold">FoodCost Pro</span>
+          <span className="hidden sm:inline text-lg font-bold">FnBcostpro.com</span>
         </div>
 
         {/* Desktop: Company/Store + Navigation (Centered) */}

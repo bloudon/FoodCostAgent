@@ -7370,7 +7370,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // POST /api/quickbooks/vendors/sync - Sync selected QB vendors to FoodCost Pro
+  // POST /api/quickbooks/vendors/sync - Sync selected QB vendors to FnBcostpro
   app.post("/api/quickbooks/vendors/sync", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;

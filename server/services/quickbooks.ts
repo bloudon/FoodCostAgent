@@ -282,7 +282,7 @@ export async function previewQuickBooksVendors(
     // Fetch QB vendors
     const qbVendors = await fetchQuickBooksVendors(companyId, storeId, false);
     
-    // Get existing FoodCost Pro vendors
+    // Get existing FnBcostpro vendors
     const existingVendors = await storage.getVendors(companyId);
     
     // Get existing QB vendor mappings
@@ -356,7 +356,7 @@ export async function previewQuickBooksVendors(
   }
 }
 
-// Synchronize selected vendors from QuickBooks to FoodCost Pro
+// Synchronize selected vendors from QuickBooks to FnBcostpro
 export async function syncVendorsFromQuickBooks(
   companyId: string,
   selectedQbVendorIds: string[],
@@ -386,7 +386,7 @@ export async function syncVendorsFromQuickBooks(
     
     console.log(`📋 Processing ${qbVendors.length} selected vendors out of ${allQbVendors.length} total`);
 
-    // Get existing FoodCost Pro vendors
+    // Get existing FnBcostpro vendors
     const existingVendors = await storage.getVendors(companyId);
     
     // Get existing QB vendor mappings

@@ -73,7 +73,7 @@ export default function Settings() {
     retry: false,
   });
 
-  // FoodCost Pro vendors (for mapping)
+  // FnBcostpro vendors (for mapping)
   const { data: vendors = [], isLoading: vendorsLoading } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors"],
     enabled: !!qbStatus?.connected,
@@ -795,9 +795,9 @@ export default function Settings() {
                       </DialogHeader>
                       <div className="space-y-4">
                         <div className="space-y-2">
-                          <Label>FoodCost Pro Vendor</Label>
+                          <Label>FnBcostpro Vendor</Label>
                           <Select value={selectedVendorId} onValueChange={setSelectedVendorId}>
-                            <SelectTrigger data-testid="select-foodcost-vendor">
+                            <SelectTrigger data-testid="select-fnbcostpro-vendor">
                               <SelectValue placeholder="Select vendor..." />
                             </SelectTrigger>
                             <SelectContent>
@@ -890,7 +890,7 @@ export default function Settings() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>FoodCost Pro Vendor</TableHead>
+                        <TableHead>FnBcostpro Vendor</TableHead>
                         <TableHead>QuickBooks Vendor</TableHead>
                         <TableHead className="w-[80px]"></TableHead>
                       </TableRow>
