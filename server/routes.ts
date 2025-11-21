@@ -6353,11 +6353,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/tfc/usage-runs", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
+      const storeId = req.query.store_id as string | undefined;
+      
       if (!companyId) {
         return res.status(400).json({ message: "Company context required" });
       }
 
-      const runs = await storage.getTheoreticalUsageRuns(companyId);
+      const runs = await storage.getTheoreticalUsageRuns(companyId, storeId);
       res.json(runs);
     } catch (error: any) {
       console.error('Get usage runs error:', error);

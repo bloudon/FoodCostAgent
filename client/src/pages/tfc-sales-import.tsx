@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
+import { useStoreContext } from "@/hooks/use-store-context";
 
 interface TheoreticalUsageRun {
   id: string;
@@ -57,10 +58,30 @@ export default function TfcSalesImport() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { selectedStoreId } = useStoreContext();
 
-  // Fetch theoretical usage runs
+  // Fetch stores for display
+  const { data: stores = [] } = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: ['/api/stores'],
+  });
+
+  // Fetch theoretical usage runs filtered by store
   const { data: runs = [], isLoading: runsLoading, refetch: refetchRuns } = useQuery<TheoreticalUsageRun[]>({
-    queryKey: ['/api/tfc/usage-runs'],
+    queryKey: ['/api/tfc/usage-runs', selectedStoreId],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedStoreId && selectedStoreId !== "all") {
+        params.append("store_id", selectedStoreId);
+      }
+      const url = `/api/tfc/usage-runs${params.toString() ? `?${params.toString()}` : ""}`;
+      const response = await fetch(url, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      return response.json();
+    },
   });
 
   // Fetch detailed usage for selected run
@@ -339,34 +360,39 @@ export default function TfcSalesImport() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {runs.map((run) => (
-                    <div
-                      key={run.id}
-                      className="border rounded-lg p-4 hover-elevate"
-                      data-testid={`card-usage-run-${run.id}`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium" data-testid="text-sales-date">
-                            {format(new Date(run.salesDate), 'MMM d, yyyy')}
-                          </h4>
-                          <Badge 
-                            variant={run.status === 'completed' ? 'default' : run.status === 'failed' ? 'destructive' : 'secondary'}
-                            data-testid={`badge-status-${run.id}`}
+                  {runs.map((run) => {
+                    const storeName = stores.find(s => s.id === run.storeId)?.name || 'Unknown Store';
+                    return (
+                      <div
+                        key={run.id}
+                        className="border rounded-lg p-4 hover-elevate"
+                        data-testid={`card-usage-run-${run.id}`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium" data-testid="text-sales-date">
+                              {format(new Date(run.salesDate), 'MMM d, yyyy')}
+                            </h4>
+                            <Badge variant="outline" className="text-xs" data-testid={`badge-store-${run.id}`}>
+                              {storeName}
+                            </Badge>
+                            <Badge 
+                              variant={run.status === 'completed' ? 'default' : run.status === 'failed' ? 'destructive' : 'secondary'}
+                              data-testid={`badge-status-${run.id}`}
+                            >
+                              {run.status}
+                            </Badge>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedRunId(run.id)}
+                            data-testid={`button-view-details-${run.id}`}
                           >
-                            {run.status}
-                          </Badge>
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </Button>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setSelectedRunId(run.id)}
-                          data-testid={`button-view-details-${run.id}`}
-                        >
-                          <Eye className="h-4 w-4 mr-2" />
-                          View Details
-                        </Button>
-                      </div>
                       <div className="grid grid-cols-3 gap-4 text-sm">
                         <div>
                           <p className="text-muted-foreground">Items Sold</p>
@@ -400,7 +426,8 @@ export default function TfcSalesImport() {
                         </div>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

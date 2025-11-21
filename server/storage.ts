@@ -2617,7 +2617,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(theoreticalUsageRuns)
       .where(and(...conditions))
-      .orderBy(theoreticalUsageRuns.salesDate);
+      .orderBy(desc(theoreticalUsageRuns.salesDate));
   }
 
   async updateTheoreticalUsageRun(
