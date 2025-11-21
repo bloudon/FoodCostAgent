@@ -1,6 +1,6 @@
 # Overview
 
-This project is an inventory management and recipe costing system for food service businesses. It aims to enhance profitability and operational efficiency through precise unit conversions, comprehensive nested recipe management, seamless POS sales data integration, and detailed variance reporting. The system provides data-driven insights to optimize food costs, streamline operations, minimize waste, and improve profit margins, enabling accurate cost control and informed decision-making.
+This project is an inventory management and recipe costing system for food service businesses. Its primary goal is to boost profitability and operational efficiency through precise unit conversions, comprehensive nested recipe management, POS sales data integration, and detailed variance reporting. The system provides actionable, data-driven insights to optimize food costs, streamline operations, minimize waste, and improve profit margins, ultimately enabling accurate cost control and informed decision-making. The business vision is to empower food service businesses with robust financial control and operational excellence.
 
 # User Preferences
 
@@ -68,19 +68,19 @@ This project is an inventory management and recipe costing system for food servi
 
 # System Architecture
 
-- **Frontend**: React 18 (TypeScript, Vite) SPA with `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter, designed with a mobile-first approach.
-- **Backend**: Node.js (TypeScript) with Express.js and Zod for data validation.
+- **Frontend**: React 18 (TypeScript, Vite) SPA utilizing `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing. Employs a mobile-first design philosophy.
+- **Backend**: Node.js (TypeScript) with Express.js and Zod for robust validation.
 - **Database**: PostgreSQL, managed by Drizzle ORM, featuring connection pooling, composite indexes, and atomic transactions.
-- **Application Structure**: Multi-tenant Single Page Application ensuring strict data isolation per company.
-- **UI/UX Decisions**: Mobile-first design, intuitive Recipe Builder with real-time costing, sortable and filterable data tables, dynamic dashboard with clickable statistics, consistent color-coded status badges, and conditional UI rendering.
-- **Technical Implementations**: Comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), robust QuickBooks Online integration (multi-tenancy, selective vendor import, automated token refreshing), and intelligent vendor order guide import with fuzzy matching and approval workflows. Real-time recipe cost calculation is optimized via caching.
-- **System Design Choices**: Strict multi-tenancy with robust data isolation and micro-unit precision for calculations. Security is enforced through HMAC-SHA256 for OAuth and extensive server-side data validation.
+- **Application Structure**: A multi-tenant Single Page Application designed for strict data isolation between companies.
+- **UI/UX Decisions**: Incorporates a mobile-first design, an intuitive Recipe Builder with real-time costing, sortable and filterable data tables, a dynamic dashboard with clickable statistics, consistent color-coded status badges for clear visual cues, and conditional UI rendering to adapt to user context (e.g., number of stores).
+- **Technical Implementations**: Includes comprehensive unit conversion, multi-level nested recipe costing, a dual inventory pricing model (Last Cost & Weighted Average Cost), a robust QuickBooks Online integration (supporting multi-tenancy, selective vendor import, and automated token refresh), and an intelligent vendor order guide import process featuring fuzzy matching and approval workflows. Real-time recipe cost calculation is optimized through sophisticated caching mechanisms.
+- **System Design Choices**: Adheres to a strict multi-tenancy model with robust data isolation and micro-unit precision for inventory tracking. Security is enforced through HMAC-SHA256 for OAuth flows and extensive server-side data validation.
 
 # External Dependencies
 
 - **Database Services**: Neon serverless PostgreSQL.
-- **Real-time Communication**: `ws` library for WebSockets.
-- **Image Processing**: Sharp.
+- **Real-time Communication**: `ws` library for WebSocket implementations.
+- **Image Processing**: Sharp for image manipulation.
 - **Object Storage**: Replit's native object storage.
-- **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods order guides.
+- **Vendor Integrations**: Custom adapters developed for Sysco, GFS, and US Foods order guides.
 - **QuickBooks Online Integration**: `intuit-oauth` package for OAuth 2.0.

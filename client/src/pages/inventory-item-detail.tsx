@@ -189,6 +189,8 @@ export default function InventoryItemDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "locations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      // Invalidate estimated on-hand because par/reorder levels affect critical inventory display
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items/estimated-on-hand"] });
       // Invalidate all recipe queries (list, detail, components) because recipe costs depend on ingredient prices
       queryClient.invalidateQueries({ 
         predicate: (query) => 

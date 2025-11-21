@@ -324,10 +324,9 @@ export default function Dashboard() {
   return (
     <div className="p-8">
       {/* Alerts Section: Pending Orders & Critical Inventory (Split 50/50 on desktop) */}
-      {(!deadlinesLoading && orderDeadlines.length > 0) || (!estimatedLoading && criticalItems.length > 0) ? (
-        <div className="grid gap-6 lg:grid-cols-2 mb-6">
-          {/* Pending Order Deadlines */}
-          {!deadlinesLoading && orderDeadlines.length > 0 && (
+      <div className="grid gap-6 lg:grid-cols-2 mb-6">
+        {/* Pending Order Deadlines */}
+        {!deadlinesLoading && orderDeadlines.length > 0 ? (
             <Card className="bg-gradient-to-r from-blue-50/50 to-slate-50/50 dark:from-blue-950/20 dark:to-slate-950/20 border-blue-200 dark:border-blue-800" data-testid="card-order-deadlines">
               <CardHeader>
                 <div className="flex items-center gap-3">
@@ -411,10 +410,26 @@ export default function Dashboard() {
                 )}
               </CardContent>
             </Card>
-          )}
+        ) : (
+          <Card className="bg-gradient-to-r from-slate-50/50 to-slate-50/50 dark:from-slate-950/20 dark:to-slate-950/20" data-testid="card-no-deadlines">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-muted-foreground" />
+                <CardTitle className="text-base">Pending Order Deadlines</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[130px] flex items-center justify-center">
+                <p className="text-sm text-muted-foreground text-center">
+                  No pending orders with upcoming deadlines
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-          {/* Critical Inventory Items */}
-          {!estimatedLoading && criticalItems.length > 0 && (
+        {/* Critical Inventory Items */}
+        {!estimatedLoading && criticalItems.length > 0 ? (
             <Card className="bg-gradient-to-r from-red-50/50 to-slate-50/50 dark:from-red-950/20 dark:to-slate-950/20 border-red-200 dark:border-red-800" data-testid="card-critical-inventory">
               <CardHeader>
                 <div className="flex items-center gap-3">
@@ -483,9 +498,24 @@ export default function Dashboard() {
                 )}
               </CardContent>
             </Card>
-          )}
-        </div>
-      ) : null}
+        ) : (
+          <Card className="bg-gradient-to-r from-slate-50/50 to-slate-50/50 dark:from-slate-950/20 dark:to-slate-950/20" data-testid="card-no-critical">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-muted-foreground" />
+                <CardTitle className="text-base">Critical Inventory Levels</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[130px] flex items-center justify-center">
+                <p className="text-sm text-muted-foreground text-center">
+                  All inventory levels are healthy
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* Stats Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
