@@ -1,6 +1,6 @@
 # Overview
 
-This project is an inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance profitability and operational efficiency by providing precise unit conversions, managing complex nested recipes, integrating with POS sales data, and offering detailed variance reporting. The system aims to optimize food costs, minimize waste, and improve profit margins for restaurants.
+This project is an inventory management and recipe costing system designed for food service businesses. Its core purpose is to enhance profitability and operational efficiency through precise unit conversions, management of complex nested recipes, integration with POS sales data, and detailed variance reporting. The system aims to significantly reduce food costs, minimize waste, and improve profit margins, thereby fostering data-driven decision-making, lowering operational overhead, and increasing market competitiveness.
 
 # User Preferences
 
@@ -68,13 +68,13 @@ This project is an inventory management and recipe costing system designed for f
 
 # System Architecture
 
-- **Frontend**: Mobile-first React 18 SPA (TypeScript, Vite) leveraging `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
+- **Frontend**: Mobile-first React 18 SPA (TypeScript, Vite) utilizing `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
 - **Backend**: Node.js (TypeScript) with Express.js for API services and Zod for data validation.
-- **Database**: PostgreSQL, managed with Drizzle ORM, connection pooling, composite indexes, and atomic transactions on Neon serverless.
-- **Application Structure**: Multi-tenant SPA with robust data isolation at company and store levels.
-- **UI/UX Decisions**: Mobile-first design, intuitive recipe builder, sortable/filterable data tables, dynamic dashboards with interactive statistics, consistent color-coded status badges, and conditional UI rendering.
-- **Technical Implementations**: Comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), robust multi-tenant QuickBooks Online integration (selective vendor import, automated token refresh), intelligent vendor order guide import with fuzzy matching, optimized real-time recipe cost calculation with caching and dependency-based invalidation, and dynamic estimated on-hand inventory with automatic cache invalidation.
-- **System Design Choices**: Strict multi-tenancy with robust data isolation and micro-unit precision for calculations. Security includes HMAC-SHA256 for OAuth and extensive server-side validation. Tracks all inventory movements (purchases, waste, transfers, theoretical usage, sales) for accurate estimated on-hand calculations and comprehensive variance reporting.
+- **Database**: PostgreSQL with Drizzle ORM, connection pooling, composite indexes, and atomic transactions on Neon serverless.
+- **Application Structure**: Multi-tenant Single Page Application (SPA) with robust data isolation at company and store levels.
+- **UI/UX Decisions**: Mobile-first design, intuitive recipe builder, dynamic dashboards with interactive statistics, sortable/filterable data tables, consistent color-coded status badges, and conditional UI rendering for feature visibility.
+- **Technical Implementations**: Comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), multi-tenant QuickBooks Online integration (selective vendor import, automated token refresh), intelligent vendor order guide import with fuzzy matching, optimized real-time recipe cost calculation with caching and dependency-based invalidation, and dynamic estimated on-hand inventory with automatic cache invalidation. The system tracks all inventory movements (purchases, waste, transfers, theoretical usage, sales) for accurate estimated on-hand reporting.
+- **System Design Choices**: Adheres to strict multi-tenancy principles with robust data isolation, micro-unit precision for calculations, HMAC-SHA256 for OAuth state parameters, and extensive server-side validation.
 
 # External Dependencies
 
@@ -83,4 +83,4 @@ This project is an inventory management and recipe costing system designed for f
 - **Image Processing**: Sharp.
 - **Object Storage**: Replit's native object storage.
 - **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods order guides.
-- **QuickBooks Online Integration**: `intuit-oauth` package for OAuth 2.0.
+- **QuickBooks Online Integration**: `intuit-oauth` package.
