@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Store, FolderTree, Check } from "lucide-react";
+import { Building2, Store, FolderTree, Check, Plus, Upload, Users, Info } from "lucide-react";
 import { useOnboarding } from "@/pages/onboarding";
 
 // Company Setup Form Schema
@@ -511,6 +511,90 @@ export function CategoriesReviewStep({ onComplete }: { onComplete: () => void })
 
       <div className="flex justify-end pt-6">
         <Button onClick={onComplete} data-testid="button-continue-categories">
+          Continue
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Vendors & Order Guides Step (vendor management and CSV import)
+export function VendorsOrderGuidesStep({ onComplete }: { onComplete: () => void }) {
+  return (
+    <div data-testid="step-vendors">
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-2">
+          <Building2 className="w-6 h-6 text-primary" />
+          <h2 className="text-2xl font-bold">Vendors & Order Guides</h2>
+        </div>
+        <p className="text-muted-foreground">
+          Add your vendors and import their order guides to quickly populate your inventory.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Getting Started</CardTitle>
+          <CardDescription>
+            You can add vendors manually or import order guides from Sysco, US Foods, or GFS.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card className="bg-muted/30 border-2">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-primary" />
+                  <CardTitle className="text-base">Add Vendors</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Manually add your vendors and configure delivery schedules.
+                </p>
+                <Button variant="outline" className="w-full" data-testid="button-add-vendor">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Vendor
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-muted/30 border-2">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Upload className="w-5 h-5 text-primary" />
+                  <CardTitle className="text-base">Import Order Guide</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Upload a CSV order guide to auto-populate inventory items.
+                </p>
+                <Button variant="outline" className="w-full" data-testid="button-import-order-guide">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Upload CSV
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <div className="flex gap-3">
+              <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-blue-900 dark:text-blue-100">
+                <p className="font-medium mb-1">Recommended: Import Order Guide</p>
+                <p className="text-blue-700 dark:text-blue-300">
+                  Importing an order guide from your distributor is the fastest way to set up your inventory.
+                  Our smart matching system will automatically link products and create new inventory items.
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex justify-end pt-6">
+        <Button onClick={onComplete} data-testid="button-continue-vendors">
           Continue
         </Button>
       </div>

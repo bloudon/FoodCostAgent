@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Stepper, Step } from "@/components/ui/stepper";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
-import { CompanySetupStep, StoreSetupStep, CategoriesReviewStep } from "@/pages/onboarding-steps";
+import { CompanySetupStep, StoreSetupStep, CategoriesReviewStep, VendorsOrderGuidesStep } from "@/pages/onboarding-steps";
 
 // Onboarding wizard steps
 const ONBOARDING_STEPS: Step[] = [
@@ -193,7 +193,7 @@ function renderStepContent(step: number, onStepComplete: () => void): JSX.Elemen
     case 3:
       return <CategoriesReviewStep onComplete={onStepComplete} />;
     case 4:
-      return <VendorsStep />;
+      return <VendorsOrderGuidesStep onComplete={onStepComplete} />;
     case 5:
       return <InventoryStep />;
     case 6:
