@@ -31,6 +31,7 @@ import Vendors from "@/pages/vendors";
 import VendorDetail from "@/pages/vendor-detail";
 import OrderGuideReview from "@/pages/order-guide-review";
 import Orders from "@/pages/orders";
+import PurchaseOrders from "@/pages/purchase-orders";
 import PurchaseOrderDetail from "@/pages/purchase-order-detail";
 import ReceivingDetail from "@/pages/receiving-detail";
 import TransferOrders from "@/pages/transfer-orders";
@@ -129,6 +130,7 @@ function ProtectedLayoutContent() {
               <Route path="/order-guides/:id/review" component={OrderGuideReview} />
               <Route path="/orders" component={Orders} />
               <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
+              <Route path="/purchase-orders" component={PurchaseOrders} />
               <Route path="/receiving/:poId" component={ReceivingDetail} />
               <Route path="/transfer-orders/:id" component={TransferOrderDetail} />
               <Route path="/transfer-orders" component={TransferOrders} />
