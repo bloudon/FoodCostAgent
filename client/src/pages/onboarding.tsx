@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Stepper, Step } from "@/components/ui/stepper";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { CompanySetupStep, StoreSetupStep, CategoriesReviewStep } from "@/pages/onboarding-steps";
 
 // Onboarding wizard steps
 const ONBOARDING_STEPS: Step[] = [
@@ -32,6 +33,22 @@ export function useOnboarding() {
     throw new Error("useOnboarding must be used within OnboardingProvider");
   }
   return context;
+}
+
+// Helper to check if a step is complete
+function isStepComplete(stepId: string, wizardData: Record<string, any>): boolean {
+  switch (stepId) {
+    case "welcome":
+      return true; // Welcome step is always complete
+    case "company":
+      return !!wizardData.company?.name;
+    case "stores":
+      return !!wizardData.store?.name;
+    case "categories":
+      return true; // Categories are auto-created
+    default:
+      return false;
+  }
 }
 
 export default function Onboarding() {
@@ -67,8 +84,21 @@ export default function Onboarding() {
   };
 
   const canGoBack = currentStep > 0;
-  const canSkip = currentStep > 0 && currentStep < ONBOARDING_STEPS.length - 1;
   const isLastStep = currentStep === ONBOARDING_STEPS.length - 1;
+  
+  // Check if current step is complete (gates Next button for required steps)
+  const currentStepId = ONBOARDING_STEPS[currentStep]?.id;
+  const isCurrentStepComplete = isStepComplete(currentStepId, wizardData);
+  
+  // Required steps that must be completed before proceeding
+  const REQUIRED_STEPS = ["company", "stores"];
+  const isRequiredStep = REQUIRED_STEPS.includes(currentStepId);
+  
+  // Can only proceed if: (1) step is complete, OR (2) step is not required
+  const canProceed = isCurrentStepComplete || !isRequiredStep;
+  
+  // Skip is only available for optional steps (not required steps, not first/last)
+  const canSkip = currentStep > 0 && currentStep < ONBOARDING_STEPS.length - 1 && !isRequiredStep;
 
   return (
     <OnboardingContext.Provider value={{ wizardData, updateWizardData }}>
@@ -82,15 +112,22 @@ export default function Onboarding() {
             </div>
           </div>
           
-          {/* Progress Stepper */}
-          <Stepper steps={ONBOARDING_STEPS} currentStep={currentStep} className="mt-6" />
+          {/* Progress Stepper - shows completion status */}
+          <Stepper 
+            steps={ONBOARDING_STEPS.map((step, index) => ({
+              ...step,
+              isComplete: index < currentStep || (index === currentStep && isStepComplete(step.id, wizardData))
+            }))} 
+            currentStep={currentStep} 
+            className="mt-6" 
+          />
         </div>
 
         {/* Step Content */}
         <div className="flex-1 max-w-5xl w-full mx-auto">
           <Card className="h-full">
             <CardContent className="p-6 md:p-8">
-              {renderStepContent(currentStep)}
+              {renderStepContent(currentStep, handleNext)}
             </CardContent>
           </Card>
         </div>
@@ -121,6 +158,7 @@ export default function Onboarding() {
               
               <Button
                 onClick={handleNext}
+                disabled={!canProceed}
                 data-testid="button-next"
               >
                 {isLastStep ? (
@@ -143,17 +181,17 @@ export default function Onboarding() {
   );
 }
 
-// Placeholder step content - will be implemented in subsequent tasks
-function renderStepContent(step: number): JSX.Element {
+// Render step content with onComplete handler
+function renderStepContent(step: number, onStepComplete: () => void): JSX.Element {
   switch (step) {
     case 0:
       return <WelcomeStep />;
     case 1:
-      return <CompanyStep />;
+      return <CompanySetupStep onComplete={onStepComplete} />;
     case 2:
-      return <StoresStep />;
+      return <StoreSetupStep onComplete={onStepComplete} />;
     case 3:
-      return <CategoriesStep />;
+      return <CategoriesReviewStep onComplete={onStepComplete} />;
     case 4:
       return <VendorsStep />;
     case 5:
@@ -185,35 +223,7 @@ function WelcomeStep() {
   );
 }
 
-function CompanyStep() {
-  return (
-    <div data-testid="step-company">
-      <h2 className="text-2xl font-bold mb-2">Company Setup</h2>
-      <p className="text-muted-foreground mb-6">Enter your company information</p>
-      <p className="text-sm">Company setup form will be implemented here...</p>
-    </div>
-  );
-}
-
-function StoresStep() {
-  return (
-    <div data-testid="step-stores">
-      <h2 className="text-2xl font-bold mb-2">Store & Storage Locations</h2>
-      <p className="text-muted-foreground mb-6">Configure your store locations and storage areas</p>
-      <p className="text-sm">Store/storage setup will be implemented here...</p>
-    </div>
-  );
-}
-
-function CategoriesStep() {
-  return (
-    <div data-testid="step-categories">
-      <h2 className="text-2xl font-bold mb-2">Categories</h2>
-      <p className="text-muted-foreground mb-6">Organize your inventory with categories</p>
-      <p className="text-sm">Category management will be implemented here...</p>
-    </div>
-  );
-}
+// These step components are now imported from onboarding-steps.tsx
 
 function VendorsStep() {
   return (
