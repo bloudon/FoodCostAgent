@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, Store, FolderTree, Check, Plus, Upload, Users, Info } from "lucide-react";
 import { useOnboarding } from "@/pages/onboarding";
 
@@ -33,7 +34,26 @@ const companyFormSchema = z.object({
   city: z.string().optional(),
   state: z.string().optional(),
   postalCode: z.string().optional(),
-});
+  posProvider: z.enum(['thrive', 'toast', 'hungerrush', 'clover', 'other', 'none']).optional(),
+  tccAccountId: z.string().optional(),
+}).refine(
+  (data) => {
+    // If Thrive POS is selected, TCC ID is required and must be a valid UUID
+    if (data.posProvider === 'thrive') {
+      if (!data.tccAccountId || data.tccAccountId.trim() === '') {
+        return false;
+      }
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      return uuidRegex.test(data.tccAccountId);
+    }
+    return true;
+  },
+  {
+    message: "TCC Account ID is required and must be a valid UUID for Thrive POS users",
+    path: ["tccAccountId"],
+  }
+);
 
 type CompanyFormValues = z.infer<typeof companyFormSchema>;
 
@@ -55,13 +75,25 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
       city: "",
       state: "",
       postalCode: "",
+      posProvider: undefined,
+      tccAccountId: "",
     },
   });
 
+  // Watch posProvider field to conditionally show TCC ID
+  const posProvider = form.watch("posProvider");
+
   const onSubmit = async (data: CompanyFormValues) => {
+    // Normalize empty strings to undefined for optional fields
+    const normalizedData = {
+      ...data,
+      tccAccountId: data.tccAccountId?.trim() || undefined,
+      posProvider: data.posProvider || undefined,
+    };
+    
     // Just save to wizard context - no API call yet
     // The signup API will be called in the Store Setup step
-    updateWizardData("company", data);
+    updateWizardData("company", normalizedData);
     
     toast({
       title: "Company information saved",
@@ -157,6 +189,58 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
                 </FormItem>
               )}
             />
+
+            <FormField
+              control={form.control}
+              name="posProvider"
+              render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel>POS System Provider</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-pos-provider">
+                        <SelectValue placeholder="Select your POS system (optional)" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="thrive">Thrive POS (The Chef's Companion)</SelectItem>
+                      <SelectItem value="toast">Toast POS</SelectItem>
+                      <SelectItem value="hungerrush">HungerRush</SelectItem>
+                      <SelectItem value="clover">Clover</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                      <SelectItem value="none">No POS System</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription className="text-xs">
+                    Select your point-of-sale system for menu and sales integration
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {posProvider === 'thrive' && (
+              <FormField
+                control={form.control}
+                name="tccAccountId"
+                render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>TCC Account ID *</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" 
+                        {...field} 
+                        data-testid="input-tcc-account-id" 
+                      />
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      Your Thrive POS (The Chef's Companion) account identifier
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}

@@ -133,8 +133,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: z.string().email(),
         password: z.string().min(6, "Password must be at least 6 characters"),
         company: insertCompanySchema.omit({ id: true, tccAccountId: true }).extend({
-          tccAccountId: z.string().uuid().optional(), // Optional - database will auto-generate if not provided
-        }),
+          posProvider: z.enum(['thrive', 'toast', 'hungerrush', 'clover', 'other', 'none']).optional(),
+          tccAccountId: z.string().optional(),
+        }).refine(
+          (data) => {
+            // If Thrive POS is selected, TCC ID is required and must be a valid UUID
+            if (data.posProvider === 'thrive') {
+              if (!data.tccAccountId || data.tccAccountId.trim() === '') {
+                return false;
+              }
+              // Validate UUID format
+              const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+              return uuidRegex.test(data.tccAccountId);
+            }
+            return true;
+          },
+          {
+            message: "TCC Account ID is required and must be a valid UUID for Thrive POS users",
+            path: ["tccAccountId"],
+          }
+        ),
         store: insertCompanyStoreSchema.omit({ id: true, companyId: true }),
       });
 
@@ -155,6 +173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { companies, users, companyStores, vendors, storageLocations, categories } = await import("@shared/schema");
         
         // Whitelist only allowed company fields to prevent field injection attacks
+        // Normalize empty strings to undefined for nullable fields
         const safeCompanyData = {
           name: company.name,
           legalName: company.legalName,
@@ -165,7 +184,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           city: company.city,
           state: company.state,
           postalCode: company.postalCode,
-          tccAccountId: company.tccAccountId, // Optional - will be auto-generated if not provided
+          posProvider: company.posProvider || undefined, // POS system provider
+          tccAccountId: (company.tccAccountId?.trim() || undefined), // Optional - only required for Thrive POS users
         };
         
         // Create company first
