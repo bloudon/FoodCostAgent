@@ -51,9 +51,15 @@
 
   --popover-border: 240 6% 90%;
 
-  --primary: 217 91% 60%;
+  /* Header/Menu: Slate Blue Grey */
+  --primary: 215 16% 47%;
 
   --primary-foreground: 0 0% 100%;
+
+  /* Button Accent: Periwinkle Blue */
+  --accent-button: 217 91% 60%;
+
+  --accent-button-foreground: 0 0% 100%;
 
   --secondary: 240 5% 90%;
 
@@ -123,6 +129,10 @@
   /* Fallback for older browsers */
   --destructive-border: hsl(var(--destructive));
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --accent-button-border: hsl(var(--accent-button));
+  --accent-button-border: hsl(from hsl(var(--accent-button)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
 .dark {
@@ -169,9 +179,15 @@
 
   --popover-border: 240 4% 16%;
 
-  --primary: 217 91% 65%;
+  /* Header/Menu: Slate Blue Grey (Dark Mode) */
+  --primary: 215 20% 52%;
 
   --primary-foreground: 0 0% 100%;
+
+  /* Button Accent: Periwinkle Blue (Dark Mode) */
+  --accent-button: 217 91% 65%;
+
+  --accent-button-foreground: 0 0% 100%;
 
   --secondary: 240 4% 16%;
 
@@ -205,6 +221,10 @@
   --shadow-lg: 0px 10px 20px -4px hsl(0 0% 0% / 0.5), 0px 4px 8px -2px hsl(0 0% 0% / 0.45);
   --shadow-xl: 0px 20px 30px -6px hsl(0 0% 0% / 0.55), 0px 8px 16px -4px hsl(0 0% 0% / 0.5);
   --shadow-2xl: 0px 30px 50px -12px hsl(0 0% 0% / 0.6);
+
+  /* Fallback for older browsers */
+  --accent-button-border: hsl(var(--accent-button));
+  --accent-button-border: hsl(from hsl(var(--accent-button)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
 }
 
