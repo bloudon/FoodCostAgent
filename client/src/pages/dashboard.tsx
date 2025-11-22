@@ -331,12 +331,18 @@ export default function Dashboard() {
   }
 
   // Full dashboard for admins and managers
+  // Calculate whether to show split layout or full width
+  const hasOrderDeadlines = orderDeadlines.length > 0;
+  const hasCriticalItems = criticalItems.length > 0;
+  const showBothSections = hasOrderDeadlines && hasCriticalItems;
+  
   return (
     <div className="p-8">
-      {/* Alerts Section: Split View with Independent Pagination */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        {/* Order Deadlines Card */}
-        <Card 
+      {/* Alerts Section: Dynamic Layout - Split or Full Width */}
+      <div className={`grid grid-cols-1 gap-4 mb-6 ${showBothSections ? 'lg:grid-cols-2' : ''}`}>
+        {/* Order Deadlines Card - Only show if has data */}
+        {hasOrderDeadlines && (
+          <Card 
           className={
             orderDeadlines.length > 0
               ? "bg-gradient-to-r from-blue-50/50 to-slate-50/50 dark:from-blue-950/20 dark:to-slate-950/20 border-blue-200 dark:border-blue-800"
@@ -461,9 +467,11 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
+        )}
 
-        {/* Inventory Alerts Card */}
-        <Card 
+        {/* Inventory Alerts Card - Only show if has data */}
+        {hasCriticalItems && (
+          <Card 
           className={
             criticalItems.length > 0
               ? "bg-gradient-to-r from-red-50/50 to-slate-50/50 dark:from-red-950/20 dark:to-slate-950/20 border-red-200 dark:border-red-800"
@@ -573,6 +581,7 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
+        )}
       </div>
 
       {/* Stats Grid */}
