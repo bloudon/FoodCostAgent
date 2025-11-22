@@ -20,8 +20,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Building2, Store, FolderTree, Check, Plus, Upload, Users, Info } from "lucide-react";
 import { useOnboarding } from "@/pages/onboarding";
 
-// Company Setup Form Schema
+// Company Setup Form Schema (includes user credentials for signup)
 const companyFormSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
   name: z.string().min(1, "Company name is required"),
   legalName: z.string().optional(),
   contactEmail: z.string().email("Invalid email").optional().or(z.literal("")),
@@ -42,6 +44,8 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
   const form = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
     defaultValues: wizardData.company || {
+      email: "",
+      password: "",
       name: "",
       legalName: "",
       contactEmail: "",
@@ -54,41 +58,18 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
     },
   });
 
-  const createCompanyMutation = useMutation({
-    mutationFn: async (data: CompanyFormValues) => {
-      const response = await apiRequest("POST", "/api/companies", data);
-      
-      // Check for HTTP errors
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: "Failed to create company" }));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
-    },
-    onSuccess: (company) => {
-      // Save company data to wizard context
-      updateWizardData("company", company);
-      
-      toast({
-        title: "Company created",
-        description: "Your company has been set up successfully.",
-      });
-      
-      // Move to next step
-      onComplete();
-    },
-    onError: (error: any) => {
-      toast({
-        variant: "destructive",
-        title: "Error creating company",
-        description: error.message || "Failed to create company. Please try again.",
-      });
-    },
-  });
-
   const onSubmit = async (data: CompanyFormValues) => {
-    createCompanyMutation.mutate(data);
+    // Just save to wizard context - no API call yet
+    // The signup API will be called in the Store Setup step
+    updateWizardData("company", data);
+    
+    toast({
+      title: "Company information saved",
+      description: "Proceed to add your first store location.",
+    });
+    
+    // Move to next step
+    onComplete();
   };
 
   return (
@@ -105,20 +86,60 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-2">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem className="md:col-span-2">
-                  <FormLabel>Company Name *</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., Joe's Pizza" {...field} data-testid="input-company-name" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+          {/* User Account Section */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Create Your Account</h3>
+            <div className="grid gap-6 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>Email Address *</FormLabel>
+                    <FormControl>
+                      <Input type="email" placeholder="your@email.com" {...field} data-testid="input-email" />
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      This will be your login email
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>Password *</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="At least 6 characters" {...field} data-testid="input-password" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+
+          {/* Company Information Section */}
+          <div className="space-y-4 pt-4 border-t">
+            <h3 className="text-lg font-semibold">Company Information</h3>
+            <div className="grid gap-6 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>Company Name *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., Joe's Pizza" {...field} data-testid="input-company-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
             <FormField
               control={form.control}
@@ -234,11 +255,12 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
                 </FormItem>
               )}
             />
+            </div>
           </div>
 
           <div className="flex justify-end pt-4">
-            <Button type="submit" disabled={createCompanyMutation.isPending} data-testid="button-save-company">
-              {createCompanyMutation.isPending ? "Creating..." : "Continue"}
+            <Button type="submit" data-testid="button-save-company">
+              Continue
             </Button>
           </div>
         </form>
@@ -281,29 +303,47 @@ export function StoreSetupStep({ onComplete }: { onComplete: () => void }) {
 
   const createStoreMutation = useMutation({
     mutationFn: async (data: StoreFormValues) => {
-      // Get company ID from wizard data
-      const companyId = wizardData.company?.id;
-      if (!companyId) {
-        throw new Error("Company must be created first");
+      // Get company data (including email/password) from wizard
+      const companyData = wizardData.company;
+      if (!companyData?.email || !companyData?.password) {
+        throw new Error("Company information is incomplete. Please go back and complete the company setup.");
       }
 
-      const response = await apiRequest("POST", "/api/stores", { ...data, companyId });
+      // Call the combined signup endpoint
+      const response = await apiRequest("POST", "/api/onboarding/signup", {
+        email: companyData.email,
+        password: companyData.password,
+        company: {
+          name: companyData.name,
+          legalName: companyData.legalName,
+          contactEmail: companyData.contactEmail,
+          phone: companyData.phone,
+          addressLine1: companyData.addressLine1,
+          addressLine2: companyData.addressLine2,
+          city: companyData.city,
+          state: companyData.state,
+          postalCode: companyData.postalCode,
+        },
+        store: data,
+      });
       
       // Check for HTTP errors
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: "Failed to create store" }));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({ message: "Failed to create account" }));
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`);
       }
       
       return await response.json();
     },
-    onSuccess: (store) => {
-      // Save store data to wizard context
-      updateWizardData("store", store);
+    onSuccess: (result) => {
+      // Save company and store data to wizard context
+      updateWizardData("company", result.company);
+      updateWizardData("store", result.store);
+      updateWizardData("user", result.user);
       
       toast({
-        title: "Store created",
-        description: "Your store location has been added successfully.",
+        title: "Account created successfully!",
+        description: "Welcome to FnBcostpro! Your account has been created and you're now logged in.",
       });
       
       // Move to next step
@@ -312,8 +352,8 @@ export function StoreSetupStep({ onComplete }: { onComplete: () => void }) {
     onError: (error: any) => {
       toast({
         variant: "destructive",
-        title: "Error creating store",
-        description: error.message || "Failed to create store. Please try again.",
+        title: "Error creating account",
+        description: error.message || "Failed to create your account. Please try again.",
       });
     },
   });

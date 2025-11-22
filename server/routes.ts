@@ -125,6 +125,151 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }));
 
   // ============ AUTHENTICATION ============
+  // ============ PUBLIC ONBOARDING/SIGNUP ============
+  // Public signup endpoint for self-service onboarding (no authentication required)
+  app.post("/api/onboarding/signup", async (req, res) => {
+    try {
+      const signupSchema = z.object({
+        email: z.string().email(),
+        password: z.string().min(6, "Password must be at least 6 characters"),
+        company: insertCompanySchema.omit({ id: true, tccAccountId: true }).extend({
+          tccAccountId: z.string().uuid().optional(), // Optional - database will auto-generate if not provided
+        }),
+        store: insertCompanyStoreSchema.omit({ id: true, companyId: true }),
+      });
+
+      const { email, password, company, store } = signupSchema.parse(req.body);
+
+      // Check if user already exists
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(409).json({ error: "Email already registered" });
+      }
+
+      // Hash password
+      const passwordHash = await hashPassword(password);
+
+      // Create user, company, and store in a transaction using db.transaction directly
+      const result = await db.transaction(async (tx) => {
+        // Import necessary tables
+        const { companies, users, companyStores, vendors, storageLocations, categories } = await import("@shared/schema");
+        
+        // Whitelist only allowed company fields to prevent field injection attacks
+        const safeCompanyData = {
+          name: company.name,
+          legalName: company.legalName,
+          contactEmail: company.contactEmail,
+          phone: company.phone,
+          addressLine1: company.addressLine1,
+          addressLine2: company.addressLine2,
+          city: company.city,
+          state: company.state,
+          postalCode: company.postalCode,
+          tccAccountId: company.tccAccountId, // Optional - will be auto-generated if not provided
+        };
+        
+        // Create company first
+        const [newCompany] = await tx.insert(companies).values(safeCompanyData).returning();
+
+        // Create user with company association
+        const [newUser] = await tx.insert(users).values({
+          email,
+          passwordHash,
+          role: "admin", // Company admin role
+          companyId: newCompany.id,
+        }).returning();
+
+        // Whitelist only allowed store fields to prevent field injection attacks
+        const safeStoreData = {
+          code: store.code,
+          name: store.name,
+          phone: store.phone,
+          addressLine1: store.addressLine1,
+          addressLine2: store.addressLine2,
+          city: store.city,
+          state: store.state,
+          postalCode: store.postalCode,
+          companyId: newCompany.id,
+        };
+        
+        // Create store
+        const [newStore] = await tx.insert(companyStores).values(safeStoreData).returning();
+
+        // Create default "Misc Grocery" vendor
+        await tx.insert(vendors).values({
+          companyId: newCompany.id,
+          name: "Misc Grocery",
+          orderGuideType: "manual",
+        });
+
+        // Create default storage locations
+        const defaultLocations = [
+          { name: "Walk-In Cooler", sortOrder: 1 },
+          { name: "Pantry", sortOrder: 2 },
+          { name: "Drink Cooler", sortOrder: 3 },
+          { name: "Walk-In Freezer", sortOrder: 4 },
+          { name: "Prep Table", sortOrder: 5 },
+          { name: "Front Counter", sortOrder: 6 },
+        ];
+
+        for (const location of defaultLocations) {
+          await tx.insert(storageLocations).values({
+            companyId: newCompany.id,
+            ...location,
+          });
+        }
+
+        // Create default categories
+        const defaultCategories = [
+          { name: "Frozen", showAsIngredient: 1 },
+          { name: "Walk-In", showAsIngredient: 1 },
+          { name: "Dry/Pantry", showAsIngredient: 1 },
+        ];
+
+        for (const category of defaultCategories) {
+          await tx.insert(categories).values({
+            companyId: newCompany.id,
+            ...category,
+          });
+        }
+
+        return { user: newUser, company: newCompany, store: newStore };
+      });
+
+      // Create session (log the user in)
+      const token = await createSession(
+        result.user.id,
+        req.headers["user-agent"],
+        req.ip
+      );
+
+      res.cookie("session", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      });
+
+      res.status(201).json({
+        user: {
+          id: result.user.id,
+          email: result.user.email,
+          role: result.user.role,
+          companyId: result.user.companyId,
+        },
+        company: result.company,
+        store: result.store,
+      });
+    } catch (error: any) {
+      console.error("Signup error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: "Invalid signup data", details: error.errors });
+      }
+      // Generic error message to avoid leaking SQL/stack traces
+      res.status(500).json({ error: "Failed to create account. Please try again." });
+    }
+  });
+
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { email, password } = z.object({

@@ -133,6 +133,23 @@ export default function Login() {
               Sign in with SSO
             </Button>
           </div>
+
+          <div className="relative mt-6">
+            <Separator />
+          </div>
+
+          <div className="mt-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              New to FnBcostpro?{" "}
+              <button
+                className="text-sm font-semibold text-primary hover:underline cursor-pointer"
+                onClick={() => setLocation("/onboarding")}
+                data-testid="link-sign-up"
+              >
+                Sign up for free
+              </button>
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>
