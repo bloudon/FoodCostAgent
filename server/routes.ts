@@ -1716,7 +1716,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * /api/order-guides/{id}/approve:
    *   post:
    *     summary: Approve order guide and create vendor items
-   *     description: Create vendor_items for all matched inventory items
+   *     description: Create vendor_items for matched items and auto-create inventory items for selected new items
    *     tags: [Order Guides]
    *     parameters:
    *       - in: path
@@ -1730,18 +1730,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
    *           schema:
    *             type: object
    *             properties:
-   *               createNewInventoryItems:
+   *               importAll:
    *                 type: boolean
+   *                 description: Import all items (overrides selectedLineIds)
+   *               selectedLineIds:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *                 description: Array of line IDs to import
    *     responses:
    *       200:
-   *         description: Order guide approved
+   *         description: Order guide approved with counts of created items
    */
   app.post("/api/order-guides/:id/approve", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const { createNewInventoryItems } = req.body;
       const companyId = (req as any).companyId;
+      const storeId = (req as any).storeId;
       const userId = (req as any).userId;
+
+      // Validate request body schema
+      const approvalSchema = z.object({
+        importAll: z.boolean().optional(),
+        selectedLineIds: z.array(z.string()).optional(),
+      }).refine(
+        (data) => data.importAll === true || (data.selectedLineIds && data.selectedLineIds.length > 0),
+        { message: 'Either importAll must be true or selectedLineIds must be a non-empty array' }
+      );
+
+      const validation = approvalSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          error: 'Invalid request body', 
+          details: validation.error.errors 
+        });
+      }
+
+      const { importAll, selectedLineIds } = validation.data;
 
       const { OrderGuideProcessor } = await import('./services/orderGuideProcessor');
       const processor = new OrderGuideProcessor(storage);
@@ -1749,14 +1774,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await processor.approve({
         orderGuideId: id,
         companyId,
+        storeId,
         approvedBy: userId,
-        createNewInventoryItems: createNewInventoryItems || false,
+        importAll: importAll || false,
+        selectedLineIds: selectedLineIds || [],
       });
 
       res.json(result);
     } catch (error: any) {
       console.error('[Order Guide Approval Error]', error);
-      res.status(500).json({ error: error.message });
+      // Determine appropriate HTTP status code
+      let statusCode = 500;
+      if (error.statusCode) {
+        statusCode = error.statusCode; // Use custom status code if set
+      } else if (error.message.includes('does not belong')) {
+        statusCode = 403; // Authorization error
+      } else if (error.message.includes('already been processed')) {
+        statusCode = 409; // Conflict - resource state issue
+      }
+      res.status(statusCode).json({ error: error.message });
     }
   });
 
