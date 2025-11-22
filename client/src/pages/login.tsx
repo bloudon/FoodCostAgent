@@ -107,9 +107,6 @@ export default function Login() {
             >
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
-            <p className="text-sm text-muted-foreground text-center">
-              Default: admin@pizza.com / admin123
-            </p>
           </form>
 
           <div className="relative my-6">
