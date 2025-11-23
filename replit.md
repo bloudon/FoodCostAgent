@@ -1,10 +1,11 @@
 # Overview
 
-This project is an inventory management and recipe costing system for food service businesses. Its core purpose is to enhance profitability and operational efficiency by providing precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and detailed variance reporting. The system aims to minimize waste, optimize profit margins, offer real-time inventory estimates, streamline vendor interactions, and accurately control food costs, thereby supporting business growth and informed decision-making.
+This project is an inventory management and recipe costing system for food service businesses (FNB Cost Pro). Its core purpose is to enhance profitability and operational efficiency by providing precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and detailed variance reporting. The system aims to minimize waste, optimize profit margins, offer real-time inventory estimates, streamline vendor interactions, and accurately control food costs, thereby supporting business growth and informed decision-making.
 
 # User Preferences
 
 - Preferred communication style: Simple, everyday language.
+- Branding: FNB Cost Pro logo (white "FNB" text with green "cost pro" and bottle icon on black background) integrated across all pages.
 - Color Scheme: Header/menu uses slate blue grey (`--primary: 215 16% 47%`), buttons use periwinkle blue accent (`--accent-button: 217 91% 60%`). Defined in `client/src/index.css` with dark mode variants.
 - Default Unit of Measure for Inventory Items: Pound should be the default unit when creating new inventory items.
 - Unit Abbreviation: "Pound" displays as "lb." throughout the UI.

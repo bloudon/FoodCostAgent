@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Pizza, Shield } from "lucide-react";
+import { Shield } from "lucide-react";
+import logoImage from "@assets/FNB Cost Pro v1 (1)_1763913220793.png";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -58,10 +59,11 @@ export default function Login() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
-            <div className="flex items-center gap-2">
-              <Pizza className="h-10 w-10 text-primary" />
-              <h1 className="text-2xl font-bold">FnBcostpro.com</h1>
-            </div>
+            <img 
+              src={logoImage} 
+              alt="FNB Cost Pro" 
+              className="h-20 w-auto"
+            />
           </div>
           <CardTitle>Sign In</CardTitle>
           <CardDescription>

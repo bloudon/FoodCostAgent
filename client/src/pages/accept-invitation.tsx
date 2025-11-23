@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Pizza, Shield, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Shield, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import logoImage from "@assets/FNB Cost Pro v1 (1)_1763913220793.png";
 
 interface InvitationDetails {
   email: string;
@@ -144,10 +145,11 @@ export default function AcceptInvitation() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
-            <div className="flex items-center gap-2">
-              <Pizza className="h-10 w-10 text-primary" />
-              <h1 className="text-2xl font-bold">Restaurant Inventory</h1>
-            </div>
+            <img 
+              src={logoImage} 
+              alt="FNB Cost Pro" 
+              className="h-20 w-auto"
+            />
           </div>
           <div className="flex justify-center">
             <CheckCircle className="h-16 w-16 text-green-600" />

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Stepper, Step } from "@/components/ui/stepper";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { CompanySetupStep, StoreSetupStep, CategoriesReviewStep, VendorsOrderGuidesStep } from "@/pages/onboarding-steps";
+import logoImage from "@assets/FNB Cost Pro v1 (1)_1763913220793.png";
 
 // Onboarding wizard steps
 const ONBOARDING_STEPS: Step[] = [
@@ -105,8 +106,15 @@ export default function Onboarding() {
       <div className="min-h-screen bg-background flex flex-col p-4 md:p-8">
         {/* Header */}
         <div className="max-w-5xl w-full mx-auto mb-8">
+          <div className="flex items-center justify-center mb-6">
+            <img 
+              src={logoImage} 
+              alt="FNB Cost Pro" 
+              className="h-16 w-auto"
+            />
+          </div>
           <div className="flex items-center justify-between mb-2">
-            <h1 className="text-2xl md:text-3xl font-bold">FnBcostpro Setup</h1>
+            <h1 className="text-2xl md:text-3xl font-bold">Setup Wizard</h1>
             <div className="text-sm text-muted-foreground">
               Step {currentStep + 1} of {ONBOARDING_STEPS.length}
             </div>
