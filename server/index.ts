@@ -138,6 +138,31 @@ app.use((req, res, next) => {
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
+    // In production, add a fast health check at root before serving static files
+    // This ensures deployment health checks get quick 200 responses
+    app.get('/', (req, res, next) => {
+      // Health check probes typically:
+      // 1. Have no User-Agent, or simple User-Agent (not a browser)
+      // 2. Don't request HTML specifically (or use Accept: */*)
+      // 3. Have no Referer header
+      const userAgent = req.get('user-agent') || '';
+      const hasReferer = !!req.get('referer');
+      const accept = req.get('accept') || '';
+      
+      // If this looks like a health check probe, return immediately
+      const isHealthCheck = 
+        !hasReferer && 
+        (!userAgent || !userAgent.includes('Mozilla')) &&
+        (!accept || accept === '*/*' || !accept.includes('text/html'));
+      
+      if (isHealthCheck) {
+        return res.status(200).send('OK');
+      }
+      
+      // Otherwise, proceed to serve the SPA
+      next();
+    });
+    
     serveStatic(app);
   }
 

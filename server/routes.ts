@@ -117,6 +117,11 @@ const swaggerOptions = {
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Health check endpoint for deployment monitoring
+  app.get('/api/health', (_req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
   // Swagger UI Documentation (mounted at /docs to avoid Vite middleware conflict)
   app.use('/docs', swaggerUi.serve);
   app.get('/docs', swaggerUi.setup(swaggerSpec, {

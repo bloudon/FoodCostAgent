@@ -610,8 +610,11 @@ Examples:
 }
 
 // Run if called directly (ES module check)
+// Only run main() if this file is executed directly, not when bundled
 const isMainModule = import.meta.url === `file://${process.argv[1]}`;
-if (isMainModule) {
+const isBundled = !import.meta.url.includes('/server/scripts/');
+
+if (isMainModule && !isBundled) {
   main().catch((error) => {
     console.error('\n❌ Fatal error:', error);
     process.exit(1);
