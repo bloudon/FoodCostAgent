@@ -5545,6 +5545,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
     }));
     
+    // Sort by expected date descending (most recent first), null dates at the end
+    ordersWithDetails.sort((a, b) => {
+      if (!a.expectedDate && !b.expectedDate) return 0;
+      if (!a.expectedDate) return 1;
+      if (!b.expectedDate) return -1;
+      return new Date(b.expectedDate).getTime() - new Date(a.expectedDate).getTime();
+    });
+    
     res.json(ordersWithDetails);
   });
 
