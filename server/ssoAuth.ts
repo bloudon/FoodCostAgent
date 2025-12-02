@@ -391,7 +391,10 @@ export const isSsoAuthenticated: RequestHandler = async (req, res, next) => {
       const dbUser = await storage.getUser(userId);
       if (dbUser) {
         (req as any).user = dbUser;
-        (req as any).companyId = dbUser.companyId || null;
+        // For global admins, use session's selectedCompanyId if available (matching cookie auth behavior)
+        // This ensures proper multi-tenant isolation when global admin switches between companies
+        const companyId = dbUser.companyId || (req.session as any)?.selectedCompanyId || null;
+        (req as any).companyId = companyId;
         (req as any).ssoAuth = true; // Mark as SSO authenticated
       }
     }
@@ -415,7 +418,9 @@ export const isSsoAuthenticated: RequestHandler = async (req, res, next) => {
       const dbUser = await storage.getUser(userId);
       if (dbUser) {
         (req as any).user = dbUser;
-        (req as any).companyId = dbUser.companyId || null;
+        // For global admins, use session's selectedCompanyId if available (matching cookie auth behavior)
+        const companyId = dbUser.companyId || (req.session as any)?.selectedCompanyId || null;
+        (req as any).companyId = companyId;
         (req as any).ssoAuth = true;
       }
     }
