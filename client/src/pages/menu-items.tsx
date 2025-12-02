@@ -1236,7 +1236,7 @@ export default function MenuItemsPage() {
             <div className="border rounded-lg">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-muted/50">
                     <TableHead 
                       className="cursor-pointer hover-elevate"
                       onClick={() => handleSort("name")}
@@ -1321,14 +1321,15 @@ export default function MenuItemsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedItems.map((item) => {
+                  {sortedItems.map((item, index) => {
                     const recipe = item.recipeId ? recipes?.find((r) => r.id === item.recipeId) : null;
+                    const rowClass = index % 2 === 1 ? "bg-muted/30" : "";
                     
                     return (
                       <TableRow 
                         key={item.id} 
                         data-testid={`row-menu-item-${item.id}`}
-                        className={item.active === 0 ? "opacity-60" : ""}
+                        className={`${rowClass} ${item.active === 0 ? "opacity-60" : ""}`}
                       >
                         <TableCell 
                           className="font-medium cursor-pointer hover-elevate" 
