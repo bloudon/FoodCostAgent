@@ -427,9 +427,9 @@ export default function TransferOrderDetail() {
             <span className="font-medium">{toStore?.name || 'Unknown'}</span>
           </div>
           {canEdit ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-1">
               <div className="flex items-center gap-1.5">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 <Input
                   type="date"
                   value={expectedDate}
@@ -438,13 +438,13 @@ export default function TransferOrderDetail() {
                   data-testid="input-expected-date"
                 />
               </div>
-              <div className="flex items-center gap-1.5">
-                <FileText className="h-4 w-4 text-muted-foreground" />
+              <div className="flex items-center gap-1.5 flex-1">
+                <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 <Input
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Add notes..."
-                  className="w-[180px] h-8 text-sm"
+                  className="flex-1 min-w-[250px] h-8 text-sm"
                   data-testid="input-notes"
                 />
               </div>
