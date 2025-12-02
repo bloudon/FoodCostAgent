@@ -48,6 +48,16 @@ export default function TransferOrderDetail() {
     enabled: !isNewOrder,
   });
 
+  // Fetch estimated on-hand for the "from" store
+  const effectiveFromStoreId = transferOrder?.fromStoreId || fromStoreId;
+  const { data: estimatedOnHand } = useQuery<Array<{
+    inventoryItemId: string;
+    estimatedOnHand: number;
+  }>>({
+    queryKey: ["/api/inventory-items/estimated-on-hand", { storeId: effectiveFromStoreId }],
+    enabled: !!effectiveFromStoreId,
+  });
+
   // Fetch transfer order lines if editing
   const { data: lines } = useQuery<TransferOrderLine[]>({
     queryKey: [`/api/transfer-order-lines?transferOrderId=${id}`],
@@ -482,25 +492,32 @@ export default function TransferOrderDetail() {
           <CardContent className="pt-0">
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-muted/50">
                   <TableHead>Item Name</TableHead>
                   <TableHead>Unit</TableHead>
+                  <TableHead className="text-right">Est. On Hand</TableHead>
                   <TableHead className="text-right">Price/Unit</TableHead>
                   <TableHead className="w-[150px]">Quantity</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {displayItems.map(item => {
+                {displayItems.map((item, index) => {
                   const qty = quantities[item.id] || 0;
                   const lineTotal = qty * (item.pricePerUnit || 0);
                   const unit = units?.find(u => u.id === item.unitId);
+                  const onHandData = estimatedOnHand?.find(e => e.inventoryItemId === item.id);
+                  const estOnHand = onHandData?.estimatedOnHand ?? null;
+                  const rowClass = index % 2 === 1 ? "bg-muted/30" : "";
                   
                   return (
-                    <TableRow key={item.id}>
+                    <TableRow key={item.id} className={rowClass}>
                       <TableCell className="font-medium">{item.name}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {unit?.name || '-'}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {estOnHand !== null ? estOnHand.toFixed(2) : '-'}
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         ${(item.pricePerUnit || 0).toFixed(2)}
