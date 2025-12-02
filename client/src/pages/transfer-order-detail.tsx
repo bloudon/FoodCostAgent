@@ -37,6 +37,11 @@ export default function TransferOrderDetail() {
     queryKey: ["/api/inventory-items"],
   });
 
+  // Fetch units
+  const { data: units } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/units"],
+  });
+
   // Fetch existing transfer order if editing
   const { data: transferOrder } = useQuery<TransferOrder>({
     queryKey: ["/api/transfer-orders", id],
@@ -421,35 +426,44 @@ export default function TransferOrderDetail() {
             <span className="text-sm text-muted-foreground">To:</span>
             <span className="font-medium">{toStore?.name || 'Unknown'}</span>
           </div>
-          {expectedDate && (
-            <div className="flex items-center gap-1.5 text-sm">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span>{formatDateString(expectedDate)}</span>
+          {canEdit ? (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="date"
+                  value={expectedDate}
+                  onChange={(e) => setExpectedDate(e.target.value)}
+                  className="w-[140px] h-8 text-sm"
+                  data-testid="input-expected-date"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add notes..."
+                  className="w-[180px] h-8 text-sm"
+                  data-testid="input-notes"
+                />
+              </div>
             </div>
-          )}
-          {notes && (
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <FileText className="h-4 w-4" />
-              <span className="truncate max-w-[200px]">{notes}</span>
-            </div>
-          )}
-          {canEdit && (
-            <div className="flex items-center gap-2 ml-auto">
-              <Input
-                type="date"
-                value={expectedDate}
-                onChange={(e) => setExpectedDate(e.target.value)}
-                className="w-[140px] h-8 text-sm"
-                data-testid="input-expected-date"
-              />
-              <Input
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Notes"
-                className="w-[150px] h-8 text-sm"
-                data-testid="input-notes"
-              />
-            </div>
+          ) : (
+            <>
+              {expectedDate && (
+                <div className="flex items-center gap-1.5 text-sm">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span>{formatDateString(expectedDate)}</span>
+                </div>
+              )}
+              {notes && (
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <FileText className="h-4 w-4" />
+                  <span className="truncate max-w-[200px]">{notes}</span>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -480,12 +494,13 @@ export default function TransferOrderDetail() {
                 {displayItems.map(item => {
                   const qty = quantities[item.id] || 0;
                   const lineTotal = qty * (item.pricePerUnit || 0);
+                  const unit = units?.find(u => u.id === item.unitId);
                   
                   return (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">{item.name}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {(item as any).unitName || '-'}
+                        {unit?.name || '-'}
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         ${(item.pricePerUnit || 0).toFixed(2)}

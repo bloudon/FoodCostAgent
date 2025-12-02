@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ArrowLeftRight, Search, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -189,54 +189,53 @@ export default function TransferOrders() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredOrders.map((order, index) => (
-                  <>
-                    <TableRow 
-                      key={order.id} 
-                      data-testid={`row-transfer-${order.id}`}
-                      className={index % 2 === 1 ? "bg-muted/30" : ""}
-                    >
-                      <TableCell>
-                        <Link href={`/transfer-orders/${order.id}`}>
-                          <span className="text-primary hover:underline cursor-pointer font-medium" data-testid={`link-transfer-${order.id}`}>
-                            {formatDateString(order.expectedDate) || "No date set"}
-                          </span>
-                        </Link>
-                      </TableCell>
-                      <TableCell>{order.fromStoreName}</TableCell>
-                      <TableCell>{order.toStoreName}</TableCell>
-                      <TableCell>
-                        <Badge className={statusColors[order.status]} data-testid={`badge-status-${order.id}`}>
-                          {order.status.replace('_', ' ')}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        ${(order.totalValue || 0).toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setOrderToDelete(order.id)}
-                          disabled={order.status === "completed"}
-                          data-testid={`button-delete-${order.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                    {order.notes && (
+                {filteredOrders.map((order, index) => {
+                  const rowClass = index % 2 === 1 ? "bg-muted/30" : "";
+                  return (
+                    <Fragment key={order.id}>
                       <TableRow 
-                        key={`${order.id}-notes`} 
-                        className={index % 2 === 1 ? "bg-muted/30" : ""}
+                        data-testid={`row-transfer-${order.id}`}
+                        className={rowClass}
                       >
-                        <TableCell colSpan={6} className="pt-0 pb-3 text-sm text-muted-foreground italic border-b">
-                          {order.notes}
+                        <TableCell>
+                          <Link href={`/transfer-orders/${order.id}`}>
+                            <span className="text-primary hover:underline cursor-pointer font-medium" data-testid={`link-transfer-${order.id}`}>
+                              {formatDateString(order.expectedDate) || "No date set"}
+                            </span>
+                          </Link>
+                        </TableCell>
+                        <TableCell>{order.fromStoreName}</TableCell>
+                        <TableCell>{order.toStoreName}</TableCell>
+                        <TableCell>
+                          <Badge className={statusColors[order.status]} data-testid={`badge-status-${order.id}`}>
+                            {order.status.replace('_', ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          ${(order.totalValue || 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setOrderToDelete(order.id)}
+                            disabled={order.status === "completed"}
+                            data-testid={`button-delete-${order.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
-                    )}
-                  </>
-                ))}
+                      {order.notes && (
+                        <TableRow className={rowClass}>
+                          <TableCell colSpan={6} className="pt-0 pb-3 text-sm text-muted-foreground italic border-b">
+                            {order.notes}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
