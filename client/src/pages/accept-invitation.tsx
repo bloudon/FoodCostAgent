@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, CheckCircle, XCircle, Loader2 } from "lucide-react";
-import logoImage from "@assets/FNB Cost Pro v1 (1)_1763913220793.png";
+import logoImage from "@assets/FNB Cost Pro v1 (2)_1764652779538.png";
 
 interface InvitationDetails {
   email: string;

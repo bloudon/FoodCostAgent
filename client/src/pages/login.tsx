@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Shield } from "lucide-react";
-import logoImage from "@assets/FNB Cost Pro v1 (1)_1763913220793.png";
+import logoImage from "@assets/FNB Cost Pro v1 (2)_1764652779538.png";
 
 export default function Login() {
   const [email, setEmail] = useState("");

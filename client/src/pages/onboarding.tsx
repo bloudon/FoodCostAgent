@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Stepper, Step } from "@/components/ui/stepper";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { CompanySetupStep, StoreSetupStep, CategoriesReviewStep, VendorsOrderGuidesStep } from "@/pages/onboarding-steps";
-import logoImage from "@assets/FNB Cost Pro v1 (1)_1763913220793.png";
+import logoImage from "@assets/FNB Cost Pro v1 (2)_1764652779538.png";
 
 // Onboarding wizard steps
 const ONBOARDING_STEPS: Step[] = [

@@ -21,7 +21,7 @@ import {
   X,
   LogOut,
 } from "lucide-react";
-import logoImage from "@assets/FNB Cost Pro v1 (1)_1763913220793.png";
+import logoImage from "@assets/FNB Cost Pro v1 (2)_1764652779538.png";
 import {
   DropdownMenu,
   DropdownMenuContent,
