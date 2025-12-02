@@ -283,7 +283,7 @@ export default function Orders() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredOrders.map((order) => {
+                {filteredOrders.map((order, index) => {
                   const createdDate = new Date(order.createdAt);
                   const expectedDate = order.expectedDate ? new Date(order.expectedDate) : null;
 
@@ -302,7 +302,7 @@ export default function Orders() {
                     <TableRow 
                       key={order.id} 
                       data-testid={`row-order-${order.id}`}
-                      className="cursor-pointer hover-elevate"
+                      className={`cursor-pointer hover-elevate ${index % 2 === 1 ? 'bg-muted/30' : ''}`}
                       onClick={() => setLocation(targetUrl)}
                     >
                       <TableCell className="font-mono text-sm">
