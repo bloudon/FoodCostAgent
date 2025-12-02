@@ -979,57 +979,6 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Quick Actions */}
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <ClipboardList className="h-4 w-4 text-muted-foreground" />
-              <CardTitle className="text-base">Inventory</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Link href="/inventory-sessions">
-              <Button className="w-full" data-testid="button-new-count-session">
-                New Count Session
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Truck className="h-4 w-4 text-muted-foreground" />
-              <CardTitle className="text-base">Purchase Orders</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Link href="/orders">
-              <Button className="w-full" data-testid="button-view-pos">
-                View Orders
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-              <CardTitle className="text-base">Variance Report</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Link href="/variance">
-              <Button className="w-full" data-testid="button-view-variance">
-                View Report
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }
