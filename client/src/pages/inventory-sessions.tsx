@@ -40,7 +40,7 @@ import { format } from "date-fns";
 import { useState } from "react";
 import type { Company, CompanyStore } from "@shared/schema";
 
-function SessionRow({ count, inventoryItems, stores }: any) {
+function SessionRow({ count, inventoryItems, stores, index }: any) {
   const { toast } = useToast();
   
   const { data: countLines } = useQuery<any[]>({
@@ -84,8 +84,10 @@ function SessionRow({ count, inventoryItems, stores }: any) {
     }
   };
 
+  const rowClass = index % 2 === 1 ? "bg-muted/30" : "";
+  
   return (
-    <TableRow data-testid={`row-session-${count.id}`}>
+    <TableRow data-testid={`row-session-${count.id}`} className={rowClass}>
       <TableCell>
         <div className="font-medium">{format(countDate, "PPP")}</div>
         <div className="text-xs text-muted-foreground">
@@ -405,7 +407,7 @@ export default function InventorySessions() {
           ) : sortedCounts && sortedCounts.length > 0 ? (
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-muted/50">
                   <TableHead>Inventory Date</TableHead>
                   <TableHead>Store</TableHead>
                   <TableHead>User</TableHead>
@@ -416,12 +418,13 @@ export default function InventorySessions() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedCounts.map((count) => (
+                {sortedCounts.map((count, index) => (
                   <SessionRow 
                     key={count.id} 
                     count={count}
                     inventoryItems={inventoryItems}
                     stores={stores}
+                    index={index}
                   />
                 ))}
               </TableBody>
