@@ -4,10 +4,12 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed, AlertCircle, Calendar, Clock, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed, AlertCircle, Calendar, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useStoreContext } from "@/hooks/use-store-context";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { format, subDays, startOfDay, endOfDay } from "date-fns";
 
 const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline", className: string }> = {
   "pending": { 
@@ -38,6 +40,9 @@ export default function Dashboard() {
   // State for pagination in each alert box - MUST be at top before conditional returns
   const [orderIndex, setOrderIndex] = useState(0);
   const [inventoryIndex, setInventoryIndex] = useState(0);
+  
+  // State for waste chart date range (7, 14, 30 days)
+  const [wasteDaysRange, setWasteDaysRange] = useState<7 | 14 | 30>(7);
 
   // Reset pagination when store changes - MUST be before any conditional returns
   useEffect(() => {
@@ -227,6 +232,57 @@ export default function Dashboard() {
     const sum = values.reduce((acc, val) => acc + val, 0);
     return sum / values.length;
   }, [inventoryCounts, allCountLinesForStore]);
+
+  // Calculate waste date range based on selected range
+  const wasteStartDate = useMemo(() => {
+    const today = new Date();
+    return format(startOfDay(subDays(today, wasteDaysRange - 1)), 'yyyy-MM-dd');
+  }, [wasteDaysRange]);
+  
+  const wasteEndDate = useMemo(() => {
+    return format(endOfDay(new Date()), 'yyyy-MM-dd');
+  }, []);
+
+  // Fetch waste logs for the selected store and date range
+  const { data: wasteLogs = [], isLoading: wasteLoading } = useQuery<any[]>({
+    queryKey: [`/api/waste?storeId=${selectedStoreId}&startDate=${wasteStartDate}&endDate=${wasteEndDate}`],
+    enabled: !!selectedStoreId && selectedStoreId !== "all",
+  });
+
+  // Process waste data for chart - group by date and type
+  const wasteChartData = useMemo(() => {
+    const today = new Date();
+    const dateMap = new Map<string, { date: string; displayDate: string; inventory: number; product: number }>();
+    
+    // Initialize all days in range with zero values
+    for (let i = wasteDaysRange - 1; i >= 0; i--) {
+      const date = subDays(today, i);
+      const dateKey = format(date, 'yyyy-MM-dd');
+      const displayDate = format(date, 'MMM d');
+      dateMap.set(dateKey, { date: dateKey, displayDate, inventory: 0, product: 0 });
+    }
+    
+    // Aggregate waste values by date and type
+    wasteLogs.forEach((log: any) => {
+      const logDate = format(new Date(log.wastedAt), 'yyyy-MM-dd');
+      const existing = dateMap.get(logDate);
+      if (existing) {
+        if (log.wasteType === 'inventory') {
+          existing.inventory += log.totalValue || 0;
+        } else if (log.wasteType === 'menu_item') {
+          existing.product += log.totalValue || 0;
+        }
+      }
+    });
+    
+    // Convert to array and sort by date
+    return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }, [wasteLogs, wasteDaysRange]);
+
+  // Calculate total waste for the period
+  const totalWaste = useMemo(() => {
+    return wasteChartData.reduce((sum, day) => sum + day.inventory + day.product, 0);
+  }, [wasteChartData]);
 
   // Helper function to get actual received value for a purchase order from completed receipts
   const getActualReceivedValue = (purchaseOrderId: string): number | null => {
@@ -808,6 +864,116 @@ export default function Dashboard() {
                     View Orders
                   </Button>
                 </Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Waste Chart Widget */}
+      <div className="mb-8">
+        <Card data-testid="card-waste-chart">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <Trash2 className="h-5 w-5 text-muted-foreground" />
+                <CardTitle>Waste Tracking</CardTitle>
+                <span className="text-sm text-muted-foreground font-mono" data-testid="text-waste-total">
+                  ${totalWaste.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 border rounded-md p-1">
+                  {([7, 14, 30] as const).map((days) => (
+                    <Button
+                      key={days}
+                      variant={wasteDaysRange === days ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={() => setWasteDaysRange(days)}
+                      className="h-7 px-2 text-xs"
+                      data-testid={`button-waste-${days}d`}
+                    >
+                      {days}d
+                    </Button>
+                  ))}
+                </div>
+                <Link href="/waste">
+                  <Button variant="ghost" size="sm" data-testid="button-view-waste">
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {wasteLoading ? (
+              <div className="h-[200px] flex items-center justify-center">
+                <Skeleton className="h-full w-full" />
+              </div>
+            ) : wasteChartData.every(d => d.inventory === 0 && d.product === 0) ? (
+              <div className="h-[200px] flex items-center justify-center">
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground mb-3">No waste recorded in the last {wasteDaysRange} days</p>
+                  <Link href="/waste">
+                    <Button size="sm" data-testid="button-log-waste">
+                      Log Waste
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="h-[200px]" data-testid="chart-waste">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={wasteChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+                    <XAxis 
+                      dataKey="displayDate" 
+                      className="text-xs"
+                      tick={{ fill: 'currentColor', fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis 
+                      className="text-xs"
+                      tick={{ fill: 'currentColor', fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(value) => `$${value}`}
+                      width={50}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--background))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '6px',
+                        fontSize: '12px'
+                      }}
+                      formatter={(value: number, name: string) => [
+                        `$${value.toFixed(2)}`, 
+                        name === 'inventory' ? 'Inventory' : 'Product'
+                      ]}
+                      labelFormatter={(label) => label}
+                    />
+                    <Legend 
+                      wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
+                      formatter={(value) => value === 'inventory' ? 'Inventory' : 'Product'}
+                    />
+                    <Bar 
+                      dataKey="inventory" 
+                      stackId="waste"
+                      fill="hsl(var(--chart-1))" 
+                      radius={[0, 0, 0, 0]}
+                      name="inventory"
+                    />
+                    <Bar 
+                      dataKey="product" 
+                      stackId="waste"
+                      fill="hsl(var(--chart-2))" 
+                      radius={[4, 4, 0, 0]}
+                      name="product"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             )}
           </CardContent>
