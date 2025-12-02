@@ -269,7 +269,7 @@ export default function Orders() {
         ) : (
           <div className="border rounded-lg">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-muted/50">
                 <TableRow>
                   <TableHead className="w-[100px]">Number</TableHead>
                   <TableHead className="w-[80px]">Type</TableHead>
