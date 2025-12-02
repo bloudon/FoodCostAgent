@@ -453,14 +453,14 @@ export default function TransferOrderDetail() {
             <>
               {expectedDate && (
                 <div className="flex items-center gap-1.5 text-sm">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                   <span>{formatDateString(expectedDate)}</span>
                 </div>
               )}
               {notes && (
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <FileText className="h-4 w-4" />
-                  <span className="truncate max-w-[200px]">{notes}</span>
+                <div className="flex items-start gap-1.5 text-sm text-muted-foreground flex-1">
+                  <FileText className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <span>{notes}</span>
                 </div>
               )}
             </>
