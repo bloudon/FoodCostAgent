@@ -21,7 +21,7 @@ import {
   X,
   LogOut,
 } from "lucide-react";
-import logoImage from "@assets/FNB Cost Pro v1 (2)_1764652779538.png";
+import logoImage from "@assets/FNB Cost Pro v1 (4)_1764653440689.png";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -152,13 +152,13 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-primary text-primary-foreground shadow-sm">
-      <div className="flex h-[75px] items-center justify-between px-4 sm:px-6 gap-4">
-        {/* Logo */}
-        <div className="flex items-center gap-3 shrink-0">
+      <div className="flex h-[70px] items-center justify-between pl-1 pr-4 sm:pr-6 gap-4">
+        {/* Logo - fills left side with minimal padding */}
+        <div className="flex items-center shrink-0">
           <img 
             src={logoImage} 
             alt="FNB Cost Pro" 
-            className="h-[50px] w-auto"
+            className="h-[62px] w-auto"
             data-testid="logo"
           />
         </div>
