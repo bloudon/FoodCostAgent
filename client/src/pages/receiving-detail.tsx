@@ -69,6 +69,7 @@ type DraftReceipt = {
   purchaseOrderId: string;
   status: string;
   storageLocationId: string | null;
+  receivedAt: string;
 };
 
 type ReceiptLine = {
@@ -521,19 +522,24 @@ export default function ReceivingDetail() {
               </p>
             )}
           </div>
-          <div className="flex gap-2 items-start">
-            <Badge 
-              className={
+          <div className="flex flex-col items-end gap-1">
+            <div 
+              className={`text-2xl font-bold uppercase px-4 py-2 rounded-md ${
                 purchaseOrder.status === "received" || isCompleted
                   ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
                   : purchaseOrder.status === "ordered" 
                     ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
                     : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
-              }
+              }`}
               data-testid="badge-po-status"
             >
               {isCompleted ? "received" : purchaseOrder.status}
-            </Badge>
+            </div>
+            {isCompleted && draftReceiptData?.receipt?.receivedAt && (
+              <p className="text-sm text-muted-foreground" data-testid="text-received-date">
+                {formatDateString(draftReceiptData.receipt.receivedAt)}
+              </p>
+            )}
           </div>
         </div>
 
