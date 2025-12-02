@@ -4988,7 +4988,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/menu-items", requireAuth, async (req, res) => {
     const companyId = req.companyId;
     const items = await db.select().from(menuItems).where(eq(menuItems.companyId, companyId!));
-    res.json(items);
+    
+    // Fetch all store-menu-item assignments for this company
+    const allStoreAssignments = await db.select().from(storeMenuItems)
+      .where(eq(storeMenuItems.companyId, companyId!));
+    
+    // Create a map of menuItemId -> storeIds[]
+    const storeAssignmentMap = new Map<string, string[]>();
+    for (const assignment of allStoreAssignments) {
+      const existing = storeAssignmentMap.get(assignment.menuItemId) || [];
+      existing.push(assignment.storeId);
+      storeAssignmentMap.set(assignment.menuItemId, existing);
+    }
+    
+    // Enrich items with their store assignments
+    const itemsWithStores = items.map(item => ({
+      ...item,
+      storeIds: storeAssignmentMap.get(item.id) || [],
+    }));
+    
+    res.json(itemsWithStores);
   });
 
   app.post("/api/menu-items", requireAuth, async (req, res) => {

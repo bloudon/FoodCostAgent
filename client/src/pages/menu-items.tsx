@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Upload, Package, Search, Filter, Plus, MoreVertical, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { useStoreContext } from "@/hooks/use-store-context";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -33,6 +34,7 @@ interface MenuItem {
   isRecipeItem: number;
   active: number;
   price: number | null;
+  storeIds: string[];
 }
 
 interface Recipe {
@@ -79,7 +81,10 @@ type AddMenuItemForm = z.infer<typeof addMenuItemFormSchema>;
 
 export default function MenuItemsPage() {
   const [search, setSearch] = useState("");
-  const [selectedStore, setSelectedStore] = useState<string>("all");
+  // Use global store context - sync with header store selector
+  const { selectedStoreId } = useStoreContext();
+  // Convert empty string to "all" for filtering logic
+  const selectedStore = selectedStoreId || "all";
   const [activeFilter, setActiveFilter] = useState<"active" | "inactive" | "all">("active");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -517,7 +522,9 @@ export default function MenuItemsPage() {
       typeFilter === "all" ? true :
       typeFilter === "recipe" ? item.isRecipeItem === 1 :
       item.isRecipeItem === 0;
-    return matchesSearch && matchesActive && matchesDepartment && matchesCategory && matchesType;
+    // Filter by store - only show items assigned to the selected store
+    const matchesStore = selectedStore === "all" || (item.storeIds && item.storeIds.includes(selectedStore));
+    return matchesSearch && matchesActive && matchesDepartment && matchesCategory && matchesType && matchesStore;
   }) || [];
 
   // Apply sorting
