@@ -5748,6 +5748,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const line of lines) {
           const shippedQty = line.shippedQty || line.requestedQty;
           
+          // Update the line with the actual shipped quantity
+          await tx
+            .update(transferOrderLines)
+            .set({ shippedQty })
+            .where(eq(transferOrderLines.id, line.id));
+          
           // Get current store inventory with explicit companyId filter
           const [existingStoreItem] = await tx
             .select()
@@ -5872,6 +5878,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .update(transferOrders)
           .set({ 
             status: "completed",
+            completedAt: new Date(),
             updatedAt: new Date()
           })
           .where(
