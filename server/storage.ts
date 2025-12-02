@@ -230,6 +230,7 @@ export interface IStorage {
     wasteQty: number;
     theoreticalUsageQty: number;
     transferredOutQty: number;
+    transferredInQty: number;
     estimatedOnHand: number;
   }>>;
 
@@ -246,7 +247,7 @@ export interface IStorage {
       date: string;
       qty: number;
       vendorName: string;
-      poId: string;
+      poId: string | null;
     }>;
     waste: Array<{
       date: string;
@@ -257,10 +258,16 @@ export interface IStorage {
       date: string;
       qty: number;
     }>;
-    transfers: Array<{
+    transfersOut: Array<{
       date: string;
       qty: number;
       toStoreName: string;
+      transferId: string;
+    }>;
+    transfersIn: Array<{
+      date: string;
+      qty: number;
+      fromStoreName: string;
       transferId: string;
     }>;
     summary: {
@@ -269,6 +276,7 @@ export interface IStorage {
       wasteQty: number;
       theoreticalUsageQty: number;
       transferredOutQty: number;
+      transferredInQty: number;
       estimatedOnHand: number;
     };
   } | null>;
@@ -1724,6 +1732,7 @@ export class DatabaseStorage implements IStorage {
     wasteQty: number;
     theoreticalUsageQty: number;
     transferredOutQty: number;
+    transferredInQty: number;
     estimatedOnHand: number;
   }>> {
     // Get the most recent inventory count for this store
@@ -1874,6 +1883,29 @@ export class DatabaseStorage implements IStorage {
       transferredMap.set(item.inventoryItemId, (transferredMap.get(item.inventoryItemId) || 0) + (item.shippedQty || 0));
     }
     
+    // Get inbound transfers since last count (where this store is the destination)
+    const transferredInItems = await db
+      .select({
+        inventoryItemId: transferOrderLines.inventoryItemId,
+        shippedQty: transferOrderLines.shippedQty,
+      })
+      .from(transferOrderLines)
+      .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
+      .where(
+        and(
+          eq(transferOrders.companyId, companyId),
+          eq(transferOrders.toStoreId, storeId),
+          gte(transferOrders.completedAt, lastCountDate),
+          eq(transferOrders.status, 'completed')
+        )
+      );
+    
+    // Aggregate transferred in quantities by item
+    const transferredInMap = new Map<string, number>();
+    for (const item of transferredInItems) {
+      transferredInMap.set(item.inventoryItemId, (transferredInMap.get(item.inventoryItemId) || 0) + (item.shippedQty || 0));
+    }
+    
     // Get all unique inventory item IDs
     const allItemIds = new Set([
       ...Array.from(lastCountMap.keys()),
@@ -1881,6 +1913,7 @@ export class DatabaseStorage implements IStorage {
       ...Array.from(wasteMap.keys()),
       ...Array.from(theoreticalMap.keys()),
       ...Array.from(transferredMap.keys()),
+      ...Array.from(transferredInMap.keys()),
     ]);
     
     // Calculate estimated on-hand for each item
@@ -1890,9 +1923,10 @@ export class DatabaseStorage implements IStorage {
       const wasteQty = wasteMap.get(itemId) || 0;
       const theoreticalUsageQty = theoreticalMap.get(itemId) || 0;
       const transferredOutQty = transferredMap.get(itemId) || 0;
+      const transferredInQty = transferredInMap.get(itemId) || 0;
       
-      // Formula: On-Hand = Last Count + Received - Waste - Theoretical Usage - Transferred Out
-      const estimatedOnHand = lastCountQty + receivedQty - wasteQty - theoreticalUsageQty - transferredOutQty;
+      // Formula: On-Hand = Last Count + Received + Transferred In - Waste - Theoretical Usage - Transferred Out
+      const estimatedOnHand = lastCountQty + receivedQty + transferredInQty - wasteQty - theoreticalUsageQty - transferredOutQty;
       
       return {
         inventoryItemId: itemId,
@@ -1902,6 +1936,7 @@ export class DatabaseStorage implements IStorage {
         wasteQty,
         theoreticalUsageQty,
         transferredOutQty,
+        transferredInQty,
         estimatedOnHand: Math.max(0, estimatedOnHand), // Don't show negative on-hand
       };
     });
@@ -1933,10 +1968,16 @@ export class DatabaseStorage implements IStorage {
       date: string;
       qty: number;
     }>;
-    transfers: Array<{
+    transfersOut: Array<{
       date: string;
       qty: number;
       toStoreName: string;
+      transferId: string;
+    }>;
+    transfersIn: Array<{
+      date: string;
+      qty: number;
+      fromStoreName: string;
       transferId: string;
     }>;
     summary: {
@@ -1945,6 +1986,7 @@ export class DatabaseStorage implements IStorage {
       wasteQty: number;
       theoreticalUsageQty: number;
       transferredOutQty: number;
+      transferredInQty: number;
       estimatedOnHand: number;
     };
   } | null> {
@@ -2134,7 +2176,7 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Get outbound transfers since last count
-    const transfersData = await db
+    const transfersOutData = await db
       .select({
         shippedQty: transferOrderLines.shippedQty,
         completedAt: transferOrders.completedAt,
@@ -2153,23 +2195,46 @@ export class DatabaseStorage implements IStorage {
         )
       );
     
-    // Get store names for transfers
-    const toStoreIds = [...new Set(transfersData.map(t => t.toStoreId))];
+    // Get inbound transfers since last count (where this store is the destination)
+    const transfersInData = await db
+      .select({
+        shippedQty: transferOrderLines.shippedQty,
+        completedAt: transferOrders.completedAt,
+        fromStoreId: transferOrders.fromStoreId,
+        transferId: transferOrders.id,
+      })
+      .from(transferOrderLines)
+      .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
+      .where(
+        and(
+          eq(transferOrderLines.inventoryItemId, inventoryItemId),
+          eq(transferOrders.companyId, companyId),
+          eq(transferOrders.toStoreId, storeId),
+          gte(transferOrders.completedAt, lastCountDate),
+          eq(transferOrders.status, 'completed')
+        )
+      );
+    
+    // Get store names for outbound transfers
+    const toStoreIds = [...new Set(transfersOutData.map(t => t.toStoreId))];
+    const fromStoreIds = [...new Set(transfersInData.map(t => t.fromStoreId))];
+    const allStoreIds = [...new Set([...toStoreIds, ...fromStoreIds])];
+    
     let storeNamesMap = new Map<string, string>();
-    if (toStoreIds.length > 0) {
+    if (allStoreIds.length > 0) {
       const storesData = await db
         .select({
           id: companyStores.id,
           name: companyStores.name,
         })
         .from(companyStores)
-        .where(inArray(companyStores.id, toStoreIds));
+        .where(inArray(companyStores.id, allStoreIds));
       
       storeNamesMap = new Map(storesData.map(s => [s.id, s.name]));
     }
     
-    const transfers = transfersData
-      .filter(t => t.completedAt !== null) // Only include transfers with valid completion dates
+    const transfersOut = transfersOutData
+      .filter(t => t.completedAt !== null)
       .map(t => ({
         date: toDateString(t.completedAt!),
         qty: t.shippedQty || 0,
@@ -2177,12 +2242,22 @@ export class DatabaseStorage implements IStorage {
         transferId: t.transferId,
       }));
     
+    const transfersIn = transfersInData
+      .filter(t => t.completedAt !== null)
+      .map(t => ({
+        date: toDateString(t.completedAt!),
+        qty: t.shippedQty || 0,
+        fromStoreName: storeNamesMap.get(t.fromStoreId) || 'Unknown Store',
+        transferId: t.transferId,
+      }));
+    
     // Calculate totals
     const receivedQty = formattedReceipts.reduce((sum, r) => sum + r.qty, 0);
     const wasteQty = waste.reduce((sum, w) => sum + w.qty, 0);
     const theoreticalUsageQty = theoreticalUsageData.reduce((sum, t) => sum + t.qty, 0);
-    const transferredOutQty = transfers.reduce((sum, t) => sum + t.qty, 0);
-    const estimatedOnHand = Math.max(0, lastCountQty + receivedQty - wasteQty - theoreticalUsageQty - transferredOutQty);
+    const transferredOutQty = transfersOut.reduce((sum, t) => sum + t.qty, 0);
+    const transferredInQty = transfersIn.reduce((sum, t) => sum + t.qty, 0);
+    const estimatedOnHand = Math.max(0, lastCountQty + receivedQty + transferredInQty - wasteQty - theoreticalUsageQty - transferredOutQty);
     
     return {
       inventoryItemId: item.id,
@@ -2192,13 +2267,15 @@ export class DatabaseStorage implements IStorage {
       receipts: formattedReceipts,
       waste,
       theoreticalUsage: theoreticalUsageData,
-      transfers,
+      transfersOut,
+      transfersIn,
       summary: {
         lastCountQty,
         receivedQty,
         wasteQty,
         theoreticalUsageQty,
         transferredOutQty,
+        transferredInQty,
         estimatedOnHand,
       },
     };

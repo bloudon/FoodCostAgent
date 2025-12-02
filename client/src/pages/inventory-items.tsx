@@ -772,8 +772,33 @@ function EstimatedOnHandBreakdownModal({
                 </div>
               )}
 
-              {/* Transfers */}
-              {breakdown.transfers && breakdown.transfers.length > 0 && (
+              {/* Transfers In */}
+              {breakdown.transfersIn && breakdown.transfersIn.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-1 bg-cyan-500 rounded-full" />
+                    <h3 className="font-semibold text-cyan-700 dark:text-cyan-400">
+                      Transfers In (+{breakdown.summary.transferredInQty.toFixed(2)} {breakdown.unitName})
+                    </h3>
+                  </div>
+                  <div className="ml-3 border-l-2 border-cyan-200 dark:border-cyan-800 pl-4 space-y-2">
+                    {breakdown.transfersIn.map((transfer, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-sm">
+                        <div className="flex flex-col">
+                          <span className="font-medium">From {transfer.fromStoreName}</span>
+                          <span className="text-xs text-muted-foreground">{formatDateString(transfer.date)}</span>
+                        </div>
+                        <span className="font-mono text-cyan-700 dark:text-cyan-400">
+                          +{transfer.qty.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Transfers Out */}
+              {breakdown.transfersOut && breakdown.transfersOut.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <div className="h-6 w-1 bg-purple-500 rounded-full" />
@@ -782,7 +807,7 @@ function EstimatedOnHandBreakdownModal({
                     </h3>
                   </div>
                   <div className="ml-3 border-l-2 border-purple-200 dark:border-purple-800 pl-4 space-y-2">
-                    {breakdown.transfers.map((transfer, idx) => (
+                    {breakdown.transfersOut.map((transfer, idx) => (
                       <div key={idx} className="flex justify-between items-center text-sm">
                         <div className="flex flex-col">
                           <span className="font-medium">To {transfer.toStoreName}</span>
@@ -801,7 +826,8 @@ function EstimatedOnHandBreakdownModal({
               {(!breakdown.receipts || breakdown.receipts.length === 0) && 
                (!breakdown.theoreticalUsage || breakdown.theoreticalUsage.length === 0) && 
                (!breakdown.waste || breakdown.waste.length === 0) && 
-               (!breakdown.transfers || breakdown.transfers.length === 0) && (
+               (!breakdown.transfersOut || breakdown.transfersOut.length === 0) &&
+               (!breakdown.transfersIn || breakdown.transfersIn.length === 0) && (
                 <div className="text-center text-muted-foreground py-8">
                   No activity since last count
                 </div>
