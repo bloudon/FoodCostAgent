@@ -12,7 +12,14 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Save, Package, ArrowRight, Calendar, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDateString } from "@/lib/utils";
+import { UserActionDate } from "@/components/user-action-date";
 import type { InventoryItem, CompanyStore, TransferOrder, TransferOrderLine } from "@shared/schema";
+
+interface TransferOrderWithUserNames extends TransferOrder {
+  createdByName?: string | null;
+  executedByName?: string | null;
+  receivedByName?: string | null;
+}
 
 export default function TransferOrderDetail() {
   const { id } = useParams();
@@ -43,7 +50,7 @@ export default function TransferOrderDetail() {
   });
 
   // Fetch existing transfer order if editing
-  const { data: transferOrder } = useQuery<TransferOrder>({
+  const { data: transferOrder } = useQuery<TransferOrderWithUserNames>({
     queryKey: ["/api/transfer-orders", id],
     enabled: !isNewOrder,
   });
@@ -321,7 +328,11 @@ export default function TransferOrderDetail() {
               </div>
               {transferOrder.status === "completed" && transferOrder.completedAt && (
                 <span className="text-sm text-muted-foreground" data-testid="text-completed-date">
-                  {formatDateString(transferOrder.completedAt.toString())}
+                  <UserActionDate
+                    date={transferOrder.completedAt.toString()}
+                    actionLabel="Received"
+                    userName={transferOrder.receivedByName}
+                  />
                 </span>
               )}
             </div>

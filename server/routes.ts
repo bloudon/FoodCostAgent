@@ -4007,6 +4007,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       });
       
+      // Collect all user IDs from transfer orders for batch lookup
+      const transferUserIds: string[] = [];
+      for (const to of transferOrders) {
+        if (to.createdBy) transferUserIds.push(to.createdBy);
+        if (to.executedBy) transferUserIds.push(to.executedBy);
+        if (to.receivedBy) transferUserIds.push(to.receivedBy);
+      }
+      
+      // Batch fetch user names (company-scoped for tenant isolation)
+      const userMap = await storage.getUsersByIds(transferUserIds, companyId);
+      
       // Transform transfer orders
       const toPromises = transferOrders.map(async (to) => {
         const fromStore = stores.find(s => s.id === to.fromStoreId);
@@ -4038,6 +4049,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           toStoreId: to.toStoreId,
           lineCount,
           totalAmount,
+          // User accountability fields
+          createdBy: to.createdBy,
+          createdByName: to.createdBy ? userMap.get(to.createdBy)?.fullName || null : null,
+          executedBy: to.executedBy,
+          executedByName: to.executedBy ? userMap.get(to.executedBy)?.fullName || null : null,
+          receivedBy: to.receivedBy,
+          receivedByName: to.receivedBy ? userMap.get(to.receivedBy)?.fullName || null : null,
         };
       });
       
@@ -4534,6 +4552,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/receipts", requireAuth, async (req, res) => {
     const receipts = await storage.getReceipts(req.companyId!);
     
+    // Collect user IDs for batch lookup
+    const userIds: string[] = [];
+    for (const receipt of receipts) {
+      if (receipt.receivedBy) userIds.push(receipt.receivedBy);
+    }
+    const userMap = await storage.getUsersByIds(userIds, req.companyId!);
+    
     // Enrich each receipt with calculated total amount from receipt lines
     const receiptsWithTotals = await Promise.all(
       receipts.map(async (receipt) => {
@@ -4545,6 +4570,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return {
           ...receipt,
           totalAmount,
+          receivedByName: receipt.receivedBy ? userMap.get(receipt.receivedBy)?.fullName || null : null,
         };
       })
     );
@@ -5407,7 +5433,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       filtered = filtered.filter(log => new Date(log.wastedAt) <= end);
     }
     
-    res.json(filtered);
+    // Collect user IDs for batch lookup
+    const userIds: string[] = [];
+    for (const log of filtered) {
+      if (log.loggedBy) userIds.push(log.loggedBy);
+    }
+    const userMap = await storage.getUsersByIds(userIds, req.companyId!);
+    
+    // Enrich with user names
+    const enriched = filtered.map(log => ({
+      ...log,
+      loggedByName: log.loggedBy ? userMap.get(log.loggedBy)?.fullName || null : null,
+    }));
+    
+    res.json(enriched);
   });
 
   app.post("/api/waste", requireAuth, async (req, res) => {
@@ -5525,6 +5564,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const stores = await storage.getCompanyStores(req.companyId!);
     const inventoryItems = await storage.getInventoryItems(undefined, undefined, req.companyId!);
     
+    // Collect user IDs for batch lookup
+    const userIds: string[] = [];
+    for (const order of orders) {
+      if (order.createdBy) userIds.push(order.createdBy);
+      if (order.executedBy) userIds.push(order.executedBy);
+      if (order.receivedBy) userIds.push(order.receivedBy);
+    }
+    const userMap = await storage.getUsersByIds(userIds, req.companyId!);
+    
     // Get all transfer order lines to calculate values
     const ordersWithDetails = await Promise.all(orders.map(async order => {
       const fromStore = stores.find(s => s.id === order.fromStoreId);
@@ -5543,6 +5591,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fromStoreName: fromStore?.name || "Unknown",
         toStoreName: toStore?.name || "Unknown",
         totalValue,
+        createdByName: order.createdBy ? userMap.get(order.createdBy)?.fullName || null : null,
+        executedByName: order.executedBy ? userMap.get(order.executedBy)?.fullName || null : null,
+        receivedByName: order.receivedBy ? userMap.get(order.receivedBy)?.fullName || null : null,
       };
     }));
     
@@ -5563,10 +5614,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ error: "Transfer order not found" });
     }
     
+    // Verify tenant access:
+    // - Regular users: order.companyId must match their user.companyId
+    // - Global admins: order.companyId must match their selectedCompanyId
+    const user = (req as any).user;
+    const isGlobalAdmin = user?.role === "global_admin";
+    const userCompanyId = isGlobalAdmin ? (req as any).selectedCompanyId : user?.companyId;
+    
+    if (!userCompanyId || order.companyId !== userCompanyId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    
     const lines = await storage.getTransferOrderLines(order.id);
-    const stores = await storage.getCompanyStores(req.companyId!);
+    const stores = await storage.getCompanyStores(order.companyId);
     const inventoryItems = await storage.getInventoryItems();
     const units = await storage.getUnits();
+    
+    // Collect user IDs for batch lookup - use order's companyId for tenant isolation
+    const userIds: string[] = [];
+    if (order.createdBy) userIds.push(order.createdBy);
+    if (order.executedBy) userIds.push(order.executedBy);
+    if (order.receivedBy) userIds.push(order.receivedBy);
+    const userMap = await storage.getUsersByIds(userIds, order.companyId);
     
     const linesWithDetails = lines.map(line => {
       const item = inventoryItems.find(i => i.id === line.inventoryItemId);
@@ -5586,6 +5655,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       fromStoreName: fromStore?.name || "Unknown",
       toStoreName: toStore?.name || "Unknown",
       lines: linesWithDetails,
+      createdByName: order.createdBy ? userMap.get(order.createdBy)?.fullName || null : null,
+      executedByName: order.executedBy ? userMap.get(order.executedBy)?.fullName || null : null,
+      receivedByName: order.receivedBy ? userMap.get(order.receivedBy)?.fullName || null : null,
     });
   });
 

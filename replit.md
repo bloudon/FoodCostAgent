@@ -21,6 +21,7 @@ This project is an inventory management and recipe costing system for food servi
 - Recipe Cost Recalculation on Inventory Price Changes: Automatically recalculate all affected recipes when an inventory item's price changes, including nested recipes, ensuring recalculation in dependency order.
 - Number Input Fields: All number input fields throughout the application have spinner controls (up/down arrows) removed.
 - Recipe Name Capitalization: Recipe names are automatically displayed with the first letter capitalized in all UI presentations while preserving the original database values.
+- User Accountability Tracking: All key actions (receipts completion, transfer creation/execution/receiving, waste logging) track the user who performed them. Dates display tooltips showing "Action by Username" on hover.
 
 # System Architecture
 

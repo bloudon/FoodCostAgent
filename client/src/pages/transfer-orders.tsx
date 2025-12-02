@@ -33,6 +33,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatDateString } from "@/lib/utils";
+import { UserActionDate } from "@/components/user-action-date";
 
 type TransferOrderDisplay = {
   id: string;
@@ -45,6 +46,9 @@ type TransferOrderDisplay = {
   expectedDate: string | null;
   notes: string | null;
   totalValue: number;
+  createdByName?: string | null;
+  executedByName?: string | null;
+  receivedByName?: string | null;
 };
 
 type Store = {
@@ -200,7 +204,13 @@ export default function TransferOrders() {
                         <TableCell>
                           <Link href={`/transfer-orders/${order.id}`}>
                             <span className="text-primary hover:underline cursor-pointer font-medium" data-testid={`link-transfer-${order.id}`}>
-                              {formatDateString(order.expectedDate) || "No date set"}
+                              {order.expectedDate ? (
+                                <UserActionDate
+                                  date={order.expectedDate}
+                                  actionLabel={order.status === "completed" ? "Completed" : order.status === "in_transit" ? "Shipped" : "Created"}
+                                  userName={order.status === "completed" ? order.receivedByName : order.status === "in_transit" ? order.executedByName : order.createdByName}
+                                />
+                              ) : "No date set"}
                             </span>
                           </Link>
                         </TableCell>

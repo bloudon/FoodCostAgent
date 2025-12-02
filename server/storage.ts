@@ -486,6 +486,41 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  async getUsersByIds(userIds: string[], companyId: string): Promise<Map<string, { id: string; firstName: string; lastName: string; fullName: string }>> {
+    if (userIds.length === 0) {
+      return new Map();
+    }
+    
+    const uniqueIds = Array.from(new Set(userIds.filter(id => id)));
+    if (uniqueIds.length === 0) {
+      return new Map();
+    }
+    
+    // Only fetch users belonging to the same company (tenant isolation)
+    const foundUsers = await db.select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+    }).from(users).where(
+      and(
+        inArray(users.id, uniqueIds),
+        eq(users.companyId, companyId)
+      )
+    );
+    
+    const userMap = new Map<string, { id: string; firstName: string; lastName: string; fullName: string }>();
+    for (const user of foundUsers) {
+      userMap.set(user.id, {
+        id: user.id,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        fullName: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Unknown User',
+      });
+    }
+    
+    return userMap;
+  }
+
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
     return user || undefined;
