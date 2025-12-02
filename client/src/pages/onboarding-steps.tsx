@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,8 +18,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, Store, FolderTree, Check, Plus, Upload, Users, Info } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Building2, Store, FolderTree, Check, Plus, Upload, Users, Info, CheckCircle } from "lucide-react";
 import { useOnboarding } from "@/pages/onboarding";
+import { insertVendorSchema, type Vendor } from "@shared/schema";
 
 // Company Setup Form Schema (includes user credentials for signup)
 const companyFormSchema = z.object({
@@ -642,8 +651,141 @@ export function CategoriesReviewStep({ onComplete }: { onComplete: () => void })
   );
 }
 
+// Vendor form schema for onboarding (simplified)
+const onboardingVendorFormSchema = insertVendorSchema.omit({ companyId: true }).pick({
+  name: true,
+  accountNumber: true,
+  phone: true,
+  orderGuideType: true,
+});
+type OnboardingVendorFormData = z.infer<typeof onboardingVendorFormSchema>;
+
 // Vendors & Order Guides Step (vendor management and CSV import)
 export function VendorsOrderGuidesStep({ onComplete }: { onComplete: () => void }) {
+  const { toast } = useToast();
+  const [isVendorDialogOpen, setIsVendorDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [selectedVendorForImport, setSelectedVendorForImport] = useState<string>("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [addedVendors, setAddedVendors] = useState<string[]>([]);
+
+  // Fetch existing vendors
+  const { data: vendors } = useQuery<Vendor[]>({
+    queryKey: ["/api/vendors"],
+  });
+
+  // Vendor form
+  const vendorForm = useForm<OnboardingVendorFormData>({
+    resolver: zodResolver(onboardingVendorFormSchema),
+    defaultValues: {
+      name: "",
+      accountNumber: "",
+      phone: "",
+      orderGuideType: "manual",
+    },
+  });
+
+  // Create vendor mutation
+  const createVendorMutation = useMutation({
+    mutationFn: async (data: OnboardingVendorFormData) => {
+      return await apiRequest("POST", "/api/vendors", {
+        ...data,
+        active: 1,
+      });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      setAddedVendors(prev => [...prev, variables.name]);
+      toast({
+        title: "Vendor Added",
+        description: `${variables.name} has been added successfully.`,
+      });
+      setIsVendorDialogOpen(false);
+      vendorForm.reset();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Upload order guide mutation
+  const uploadOrderGuideMutation = useMutation({
+    mutationFn: async ({ csvContent, vendorId, fileName }: { csvContent: string; vendorId: string; fileName: string }) => {
+      const vendor = vendors?.find(v => v.id === vendorId);
+      let vendorKey = 'sysco';
+      
+      if (vendor) {
+        const vendorName = vendor.name.toLowerCase();
+        if (vendorName.includes('sysco')) vendorKey = 'sysco';
+        else if (vendorName.includes('gfs') || vendorName.includes('gordon')) vendorKey = 'gfs';
+        else if (vendorName.includes('us foods') || vendorName.includes('usfoods')) vendorKey = 'usfoods';
+      }
+
+      return apiRequest('POST', '/api/order-guides/upload', {
+        csvContent,
+        vendorKey,
+        vendorId,
+        fileName,
+      });
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: 'Order Guide Uploaded',
+        description: `${data.totalItems} items processed with ${data.highConfidenceMatches} auto-matched`,
+      });
+      setIsImportDialogOpen(false);
+      setSelectedFile(null);
+      setSelectedVendorForImport('');
+      
+      // Navigate to review page
+      window.location.href = `/order-guides/${data.orderGuideId}/review`;
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Upload Failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+    }
+  };
+
+  const handleImportSubmit = async () => {
+    if (!selectedFile || !selectedVendorForImport) {
+      toast({
+        title: 'Missing Information',
+        description: 'Please select both a vendor and a CSV file',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const csvContent = e.target?.result as string;
+      uploadOrderGuideMutation.mutate({
+        csvContent,
+        vendorId: selectedVendorForImport,
+        fileName: selectedFile.name,
+      });
+    };
+    reader.readAsText(selectedFile);
+  };
+
+  const onVendorSubmit = (data: OnboardingVendorFormData) => {
+    createVendorMutation.mutate(data);
+  };
+
   return (
     <div data-testid="step-vendors">
       <div className="mb-6">
@@ -655,6 +797,18 @@ export function VendorsOrderGuidesStep({ onComplete }: { onComplete: () => void 
           Add your vendors and import their order guides to quickly populate your inventory.
         </p>
       </div>
+
+      {/* Show added vendors */}
+      {addedVendors.length > 0 && (
+        <Card className="mb-4 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20">
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+              <CheckCircle className="w-5 h-5" />
+              <span className="font-medium">Vendors Added: {addedVendors.join(", ")}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -676,7 +830,12 @@ export function VendorsOrderGuidesStep({ onComplete }: { onComplete: () => void 
                 <p className="text-sm text-muted-foreground mb-4">
                   Manually add your vendors and configure delivery schedules.
                 </p>
-                <Button variant="outline" className="w-full" data-testid="button-add-vendor">
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  onClick={() => setIsVendorDialogOpen(true)}
+                  data-testid="button-add-vendor"
+                >
                   <Plus className="w-4 h-4 mr-2" />
                   Add Vendor
                 </Button>
@@ -694,7 +853,12 @@ export function VendorsOrderGuidesStep({ onComplete }: { onComplete: () => void 
                 <p className="text-sm text-muted-foreground mb-4">
                   Upload a CSV order guide to auto-populate inventory items.
                 </p>
-                <Button variant="outline" className="w-full" data-testid="button-import-order-guide">
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  onClick={() => setIsImportDialogOpen(true)}
+                  data-testid="button-import-order-guide"
+                >
                   <Upload className="w-4 h-4 mr-2" />
                   Upload CSV
                 </Button>
@@ -722,6 +886,167 @@ export function VendorsOrderGuidesStep({ onComplete }: { onComplete: () => void 
           Continue
         </Button>
       </div>
+
+      {/* Add Vendor Dialog */}
+      <Dialog open={isVendorDialogOpen} onOpenChange={setIsVendorDialogOpen}>
+        <DialogContent data-testid="dialog-add-vendor">
+          <DialogHeader>
+            <DialogTitle>Add Vendor</DialogTitle>
+            <DialogDescription>
+              Add a new vendor to your system. You can add more details later.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...vendorForm}>
+            <form onSubmit={vendorForm.handleSubmit(onVendorSubmit)} className="space-y-4">
+              <FormField
+                control={vendorForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Vendor Name *</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="e.g., Sysco, US Foods, Gordon Food Service" 
+                        {...field} 
+                        data-testid="input-vendor-name"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={vendorForm.control}
+                name="accountNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Account Number</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="Your account number" 
+                        {...field}
+                        value={field.value || ""}
+                        data-testid="input-vendor-account"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={vendorForm.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Ordering Phone</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="(555) 123-4567" 
+                        {...field}
+                        value={field.value || ""}
+                        data-testid="input-vendor-phone"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => setIsVendorDialogOpen(false)}
+                  data-testid="button-cancel-vendor"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={createVendorMutation.isPending}
+                  data-testid="button-save-vendor"
+                >
+                  {createVendorMutation.isPending ? "Adding..." : "Add Vendor"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Order Guide Dialog */}
+      <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+        <DialogContent data-testid="dialog-import-order-guide">
+          <DialogHeader>
+            <DialogTitle>Import Order Guide</DialogTitle>
+            <DialogDescription>
+              Upload a CSV order guide from Sysco, US Foods, or GFS. The system will automatically match products to your inventory.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Select Vendor</label>
+              {vendors && vendors.length > 0 ? (
+                <Select value={selectedVendorForImport} onValueChange={setSelectedVendorForImport}>
+                  <SelectTrigger data-testid="select-vendor-import">
+                    <SelectValue placeholder="Choose a vendor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vendors.filter(v => v.active === 1).map(vendor => (
+                      <SelectItem key={vendor.id} value={vendor.id}>
+                        {vendor.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="text-sm text-muted-foreground p-3 bg-muted rounded-md">
+                  No vendors added yet. Please add a vendor first using the "Add Vendor" button.
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Upload CSV File</label>
+              <Input
+                type="file"
+                accept=".csv"
+                onChange={handleFileChange}
+                data-testid="input-file-import"
+              />
+              {selectedFile && (
+                <p className="text-sm text-muted-foreground">
+                  Selected: {selectedFile.name}
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-lg bg-muted p-4 space-y-2">
+              <p className="text-sm font-medium">How it works:</p>
+              <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1">
+                <li>Products are automatically matched to your inventory items</li>
+                <li>Review and approve the matched items</li>
+                <li>Vendor items are created with current pricing</li>
+              </ol>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsImportDialogOpen(false)}
+              data-testid="button-cancel-import"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleImportSubmit}
+              disabled={!selectedFile || !selectedVendorForImport || uploadOrderGuideMutation.isPending}
+              data-testid="button-submit-import"
+            >
+              {uploadOrderGuideMutation.isPending ? 'Uploading...' : 'Upload & Review'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
