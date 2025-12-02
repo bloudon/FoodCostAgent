@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Save, Package } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { formatDateString } from "@/lib/utils";
 import type { InventoryItem, CompanyStore, TransferOrder, TransferOrderLine } from "@shared/schema";
 
 export default function TransferOrderDetail() {
@@ -284,14 +285,30 @@ export default function TransferOrderDetail() {
             <h1 className="text-2xl font-bold" data-testid="text-page-title">
               {isNewOrder ? "New Transfer Order" : `Transfer Order ${id}`}
             </h1>
-            {transferOrder && (
-              <Badge variant={transferOrder.status === "completed" ? "default" : "secondary"} data-testid={`badge-status-${transferOrder.status}`}>
-                {transferOrder.status}
-              </Badge>
-            )}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-4">
+          {transferOrder && (
+            <div className="flex flex-col items-end gap-1">
+              <div 
+                className={`text-xl font-bold uppercase px-4 py-2 rounded-md ${
+                  transferOrder.status === "completed"
+                    ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                    : transferOrder.status === "in_transit"
+                      ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300"
+                      : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+                }`}
+                data-testid={`badge-status-${transferOrder.status}`}
+              >
+                {transferOrder.status.replace('_', ' ')}
+              </div>
+              {transferOrder.status === "completed" && transferOrder.completedAt && (
+                <p className="text-sm text-muted-foreground" data-testid="text-completed-date">
+                  {formatDateString(transferOrder.completedAt.toString())}
+                </p>
+              )}
+            </div>
+          )}
           {canEdit && !isNewOrder && (
             <Button
               onClick={handleUpdateOrder}
