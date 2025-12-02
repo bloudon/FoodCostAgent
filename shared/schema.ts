@@ -555,13 +555,14 @@ export const receipts = pgTable("receipts", {
   purchaseOrderId: varchar("purchase_order_id").notNull(),
   status: text("status").notNull().default("draft"), // draft, completed
   receivedAt: timestamp("received_at").notNull().defaultNow(),
+  receivedBy: varchar("received_by"), // User who received/completed the order
 }, (table) => ({
   // Optimize receipt queries by company, store, and date
   companyStoreReceivedIdx: index("receipts_company_store_received_idx").on(table.companyId, table.storeId, table.receivedAt),
   poIdIdx: index("receipts_po_id_idx").on(table.purchaseOrderId),
 }));
 
-export const insertReceiptSchema = createInsertSchema(receipts).omit({ id: true, receivedAt: true });
+export const insertReceiptSchema = createInsertSchema(receipts).omit({ id: true, receivedAt: true, receivedBy: true });
 export type InsertReceipt = z.infer<typeof insertReceiptSchema>;
 export type Receipt = typeof receipts.$inferSelect;
 
@@ -826,10 +827,12 @@ export const transferOrders = pgTable("transfer_orders", {
   expectedDate: timestamp("expected_date"),
   completedAt: timestamp("completed_at"),
   notes: text("notes"),
-  createdBy: varchar("created_by"),
+  createdBy: varchar("created_by"), // User who created the transfer order
+  executedBy: varchar("executed_by"), // User who executed/shipped the transfer
+  receivedBy: varchar("received_by"), // User who received/completed the transfer
 });
 
-export const insertTransferOrderSchema = createInsertSchema(transferOrders).omit({ id: true, createdAt: true, completedAt: true }).extend({
+export const insertTransferOrderSchema = createInsertSchema(transferOrders).omit({ id: true, createdAt: true, completedAt: true, executedBy: true, receivedBy: true }).extend({
   expectedDate: z.coerce.date().optional(),
 });
 export type InsertTransferOrder = z.infer<typeof insertTransferOrderSchema>;
