@@ -4842,6 +4842,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .update(receipts)
           .set({ 
             status: "completed",
+            receivedBy: req.userId, // Track who completed the receipt
             updatedAt: new Date()
           })
           .where(
@@ -5588,11 +5589,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  app.post("/api/transfer-orders", async (req, res) => {
+  app.post("/api/transfer-orders", requireAuth, async (req, res) => {
     try {
       const { insertTransferOrderSchema } = await import("@shared/schema");
       const orderData = insertTransferOrderSchema.parse(req.body);
-      const order = await storage.createTransferOrder(orderData);
+      // Set createdBy to current user
+      const orderWithUser = {
+        ...orderData,
+        createdBy: req.userId,
+      };
+      const order = await storage.createTransferOrder(orderWithUser);
       res.status(201).json(order);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -5789,6 +5795,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .update(transferOrders)
           .set({ 
             status: "in_transit",
+            executedBy: req.userId, // Track who executed the transfer
             updatedAt: new Date()
           })
           .where(
@@ -5879,6 +5886,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .set({ 
             status: "completed",
             completedAt: new Date(),
+            receivedBy: req.userId, // Track who received the transfer
             updatedAt: new Date()
           })
           .where(
