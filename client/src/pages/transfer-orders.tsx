@@ -43,6 +43,8 @@ type TransferOrderDisplay = {
   status: string;
   createdAt: string;
   expectedDate: string | null;
+  notes: string | null;
+  totalValue: number;
 };
 
 type Store = {
@@ -177,49 +179,63 @@ export default function TransferOrders() {
           <div className="border rounded-lg">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Transfer ID</TableHead>
+                <TableRow className="bg-muted/50">
+                  <TableHead>Expected Date</TableHead>
                   <TableHead>From Store</TableHead>
                   <TableHead>To Store</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Expected Date</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="text-right">Value</TableHead>
+                  <TableHead className="text-right w-[80px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredOrders.map((order) => (
-                  <TableRow key={order.id} data-testid={`row-transfer-${order.id}`}>
-                    <TableCell>
-                      <Link href={`/transfer-orders/${order.id}`}>
-                        <span className="text-primary hover:underline cursor-pointer font-medium" data-testid={`link-transfer-${order.id}`}>
-                          #{order.id.slice(0, 8)}
-                        </span>
-                      </Link>
-                    </TableCell>
-                    <TableCell>{order.fromStoreName}</TableCell>
-                    <TableCell>{order.toStoreName}</TableCell>
-                    <TableCell>
-                      <Badge className={statusColors[order.status]} data-testid={`badge-status-${order.id}`}>
-                        {order.status.replace('_', ' ')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      {formatDateString(order.expectedDate)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setOrderToDelete(order.id)}
-                        disabled={order.status === "completed"}
-                        data-testid={`button-delete-${order.id}`}
+                {filteredOrders.map((order, index) => (
+                  <>
+                    <TableRow 
+                      key={order.id} 
+                      data-testid={`row-transfer-${order.id}`}
+                      className={index % 2 === 1 ? "bg-muted/30" : ""}
+                    >
+                      <TableCell>
+                        <Link href={`/transfer-orders/${order.id}`}>
+                          <span className="text-primary hover:underline cursor-pointer font-medium" data-testid={`link-transfer-${order.id}`}>
+                            {formatDateString(order.expectedDate) || "No date set"}
+                          </span>
+                        </Link>
+                      </TableCell>
+                      <TableCell>{order.fromStoreName}</TableCell>
+                      <TableCell>{order.toStoreName}</TableCell>
+                      <TableCell>
+                        <Badge className={statusColors[order.status]} data-testid={`badge-status-${order.id}`}>
+                          {order.status.replace('_', ' ')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        ${(order.totalValue || 0).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setOrderToDelete(order.id)}
+                          disabled={order.status === "completed"}
+                          data-testid={`button-delete-${order.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    {order.notes && (
+                      <TableRow 
+                        key={`${order.id}-notes`} 
+                        className={index % 2 === 1 ? "bg-muted/30" : ""}
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                        <TableCell colSpan={6} className="pt-0 pb-3 text-sm text-muted-foreground italic border-b">
+                          {order.notes}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
                 ))}
               </TableBody>
             </Table>

@@ -5522,16 +5522,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/transfer-orders", requireAuth, async (req, res) => {
     const orders = await storage.getTransferOrders(req.companyId!);
     const stores = await storage.getCompanyStores(req.companyId!);
+    const inventoryItems = await storage.getInventoryItems(undefined, undefined, req.companyId!);
     
-    const ordersWithDetails = orders.map(order => {
+    // Get all transfer order lines to calculate values
+    const ordersWithDetails = await Promise.all(orders.map(async order => {
       const fromStore = stores.find(s => s.id === order.fromStoreId);
       const toStore = stores.find(s => s.id === order.toStoreId);
+      
+      // Get lines for this order and calculate total value
+      const lines = await storage.getTransferOrderLines(order.id);
+      const totalValue = lines.reduce((sum, line) => {
+        const item = inventoryItems.find(i => i.id === line.inventoryItemId);
+        const price = item?.pricePerUnit || 0;
+        return sum + (line.requestedQty * price);
+      }, 0);
+      
       return {
         ...order,
         fromStoreName: fromStore?.name || "Unknown",
         toStoreName: toStore?.name || "Unknown",
+        totalValue,
       };
-    });
+    }));
     
     res.json(ordersWithDetails);
   });
