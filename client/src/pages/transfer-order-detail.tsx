@@ -54,7 +54,7 @@ export default function TransferOrderDetail() {
     inventoryItemId: string;
     estimatedOnHand: number;
   }>>({
-    queryKey: ["/api/inventory-items/estimated-on-hand", { storeId: effectiveFromStoreId }],
+    queryKey: [`/api/inventory-items/estimated-on-hand?storeId=${effectiveFromStoreId}`],
     enabled: !!effectiveFromStoreId,
   });
 
