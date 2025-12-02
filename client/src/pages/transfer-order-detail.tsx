@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Save, Package } from "lucide-react";
+import { ArrowLeft, Save, Package, ArrowRight, Calendar, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDateString } from "@/lib/utils";
 import type { InventoryItem, CompanyStore, TransferOrder, TransferOrderLine } from "@shared/schema";
@@ -269,10 +269,14 @@ export default function TransferOrderDetail() {
   const canExecute = !isNewOrder && transferOrder?.status === "pending";
   const canReceive = !isNewOrder && transferOrder?.status === "in_transit";
 
+  const fromStore = stores?.find(s => s.id === fromStoreId);
+  const toStore = stores?.find(s => s.id === toStoreId);
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+    <div className="container mx-auto p-4 space-y-4">
+      {/* Compact Header */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
           <Button
             variant="ghost"
             size="icon"
@@ -281,17 +285,15 @@ export default function TransferOrderDetail() {
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="text-page-title">
-              {isNewOrder ? "New Transfer Order" : `Transfer Order ${id}`}
-            </h1>
-          </div>
+          <h1 className="text-xl font-bold" data-testid="text-page-title">
+            {isNewOrder ? "New Transfer Order" : "Transfer Order"}
+          </h1>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {transferOrder && (
-            <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-2">
               <div 
-                className={`text-xl font-bold uppercase px-4 py-2 rounded-md ${
+                className={`text-base font-bold uppercase px-3 py-1.5 rounded-md ${
                   transferOrder.status === "completed"
                     ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
                     : transferOrder.status === "in_transit"
@@ -303,137 +305,167 @@ export default function TransferOrderDetail() {
                 {transferOrder.status.replace('_', ' ')}
               </div>
               {transferOrder.status === "completed" && transferOrder.completedAt && (
-                <p className="text-sm text-muted-foreground" data-testid="text-completed-date">
+                <span className="text-sm text-muted-foreground" data-testid="text-completed-date">
                   {formatDateString(transferOrder.completedAt.toString())}
-                </p>
+                </span>
               )}
             </div>
           )}
           {canEdit && !isNewOrder && (
             <Button
+              size="sm"
               onClick={handleUpdateOrder}
               disabled={updateOrderMutation.isPending}
               data-testid="button-save"
             >
-              <Save className="h-4 w-4 mr-2" />
+              <Save className="h-4 w-4 mr-1" />
               Save
             </Button>
           )}
           {canExecute && (
             <Button
+              size="sm"
               onClick={handleExecuteTransfer}
               disabled={executeTransferMutation.isPending}
-              variant="default"
               data-testid="button-execute"
             >
-              <Package className="h-4 w-4 mr-2" />
-              Execute Transfer
+              <Package className="h-4 w-4 mr-1" />
+              Execute
             </Button>
           )}
           {canReceive && (
             <Button
+              size="sm"
               onClick={handleReceiveTransfer}
               disabled={receiveTransferMutation.isPending}
-              variant="default"
               data-testid="button-receive"
             >
-              <Package className="h-4 w-4 mr-2" />
-              Receive Transfer
+              <Package className="h-4 w-4 mr-1" />
+              Receive
             </Button>
           )}
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Transfer Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="from-store">From Store</Label>
-              <Select
-                value={fromStoreId}
-                onValueChange={setFromStoreId}
-                disabled={!isNewOrder}
+      {/* New Order Form - Compact inline */}
+      {isNewOrder && (
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="flex-1 min-w-[180px]">
+                <Label htmlFor="from-store" className="text-xs text-muted-foreground">From Store</Label>
+                <Select value={fromStoreId} onValueChange={setFromStoreId}>
+                  <SelectTrigger id="from-store" data-testid="select-from-store">
+                    <SelectValue placeholder="Select store" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stores?.map(store => (
+                      <SelectItem key={store.id} value={store.id}>{store.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <ArrowRight className="h-5 w-5 text-muted-foreground mb-2" />
+              <div className="flex-1 min-w-[180px]">
+                <Label htmlFor="to-store" className="text-xs text-muted-foreground">To Store</Label>
+                <Select value={toStoreId} onValueChange={setToStoreId}>
+                  <SelectTrigger id="to-store" data-testid="select-to-store">
+                    <SelectValue placeholder="Select store" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stores?.map(store => (
+                      <SelectItem key={store.id} value={store.id}>{store.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-[150px]">
+                <Label htmlFor="expected-date" className="text-xs text-muted-foreground">Expected Date</Label>
+                <Input
+                  id="expected-date"
+                  type="date"
+                  value={expectedDate}
+                  onChange={(e) => setExpectedDate(e.target.value)}
+                  data-testid="input-expected-date"
+                />
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <Label htmlFor="notes" className="text-xs text-muted-foreground">Notes</Label>
+                <Input
+                  id="notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Optional"
+                  data-testid="input-notes"
+                />
+              </div>
+              <Button
+                onClick={handleCreateOrder}
+                disabled={createOrderMutation.isPending}
+                data-testid="button-create-order"
               >
-                <SelectTrigger id="from-store" data-testid="select-from-store">
-                  <SelectValue placeholder="Select store" />
-                </SelectTrigger>
-                <SelectContent>
-                  {stores?.map(store => (
-                    <SelectItem key={store.id} value={store.id}>
-                      {store.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                Create Transfer
+              </Button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="to-store">To Store</Label>
-              <Select
-                value={toStoreId}
-                onValueChange={setToStoreId}
-                disabled={!isNewOrder}
-              >
-                <SelectTrigger id="to-store" data-testid="select-to-store">
-                  <SelectValue placeholder="Select store" />
-                </SelectTrigger>
-                <SelectContent>
-                  {stores?.map(store => (
-                    <SelectItem key={store.id} value={store.id}>
-                      {store.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          </CardContent>
+        </Card>
+      )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="expected-date">Expected Date</Label>
+      {/* Existing Order - Compact Summary Bar */}
+      {!isNewOrder && transferOrder && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 bg-muted/50 rounded-lg border">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">From:</span>
+            <span className="font-medium">{fromStore?.name || 'Unknown'}</span>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">To:</span>
+            <span className="font-medium">{toStore?.name || 'Unknown'}</span>
+          </div>
+          {expectedDate && (
+            <div className="flex items-center gap-1.5 text-sm">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <span>{formatDateString(expectedDate)}</span>
+            </div>
+          )}
+          {notes && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <FileText className="h-4 w-4" />
+              <span className="truncate max-w-[200px]">{notes}</span>
+            </div>
+          )}
+          {canEdit && (
+            <div className="flex items-center gap-2 ml-auto">
               <Input
-                id="expected-date"
                 type="date"
                 value={expectedDate}
                 onChange={(e) => setExpectedDate(e.target.value)}
-                disabled={!canEdit}
+                className="w-[140px] h-8 text-sm"
                 data-testid="input-expected-date"
               />
+              <Input
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Notes"
+                className="w-[150px] h-8 text-sm"
+                data-testid="input-notes"
+              />
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Input
-              id="notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              disabled={!canEdit}
-              placeholder="Optional notes"
-              data-testid="input-notes"
-            />
-          </div>
-
-          {isNewOrder && (
-            <Button
-              onClick={handleCreateOrder}
-              disabled={createOrderMutation.isPending}
-              data-testid="button-create-order"
-            >
-              Create Transfer Order
-            </Button>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      )}
 
+      {/* Items Table - Primary Content */}
       {!isNewOrder && (
         <Card>
-          <CardHeader>
-            <CardTitle>Items to Transfer</CardTitle>
+          <CardHeader className="py-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg">Transfer Items</CardTitle>
+              <div className="text-lg font-semibold" data-testid="text-total-value">
+                Total: ${totalValue.toFixed(2)}
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-0">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -481,12 +513,6 @@ export default function TransferOrderDetail() {
                 })}
               </TableBody>
             </Table>
-            
-            <div className="mt-4 flex justify-end">
-              <div className="text-lg font-semibold" data-testid="text-total-value">
-                Total Value: ${totalValue.toFixed(2)}
-              </div>
-            </div>
           </CardContent>
         </Card>
       )}
