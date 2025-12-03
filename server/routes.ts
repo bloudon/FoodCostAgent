@@ -3356,6 +3356,229 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ RECIPE CLEANUP ============
+  // Get orphaned recipes (recipes with no menu item link, not used as sub-recipes)
+  app.get("/api/recipes/orphaned", requireAuth, async (req, res) => {
+    try {
+      const companyId = req.companyId!;
+      
+      // Get all recipes for the company
+      const allRecipes = await db.select().from(recipes)
+        .where(eq(recipes.companyId, companyId));
+      
+      // Get all menu items for the company
+      const allMenuItems = await db.select().from(menuItems)
+        .where(eq(menuItems.companyId, companyId));
+      
+      // Get all recipe components to find sub-recipe usage
+      const allComponents = await db.select().from(recipeComponents);
+      
+      // Create lookup maps
+      const menuItemRecipeIds = new Set(allMenuItems.map(mi => mi.recipeId).filter(Boolean));
+      const subRecipeUsage = new Map<string, string[]>(); // recipeId -> array of parent recipe names that use it
+      
+      for (const comp of allComponents) {
+        if (comp.componentType === 'recipe') {
+          const parentRecipe = allRecipes.find(r => r.id === comp.recipeId);
+          if (parentRecipe) {
+            const existing = subRecipeUsage.get(comp.componentId) || [];
+            existing.push(parentRecipe.name);
+            subRecipeUsage.set(comp.componentId, existing);
+          }
+        }
+      }
+      
+      // Count children for each recipe (as parent)
+      const childCount = new Map<string, number>();
+      for (const recipe of allRecipes) {
+        if (recipe.parentRecipeId) {
+          childCount.set(recipe.parentRecipeId, (childCount.get(recipe.parentRecipeId) || 0) + 1);
+        }
+      }
+      
+      // Analyze each recipe
+      const orphanedRecipes = allRecipes.map(recipe => {
+        const hasMenuItemLink = menuItemRecipeIds.has(recipe.id);
+        const usedAsSubRecipe = subRecipeUsage.get(recipe.id) || [];
+        const children = childCount.get(recipe.id) || 0;
+        const isParentTemplate = children > 0;
+        
+        // A recipe is orphaned if:
+        // - No menu item links to it
+        // - Not used as a sub-recipe
+        // - Either has no children (not a parent template) OR is inactive
+        const isOrphaned = !hasMenuItemLink && usedAsSubRecipe.length === 0 && !isParentTemplate;
+        
+        // A recipe is a "safe delete" candidate if it's orphaned AND inactive
+        // Or if it's orphaned and has no children
+        const canSafelyDelete = isOrphaned && (recipe.isActive === 0 || children === 0);
+        
+        return {
+          id: recipe.id,
+          name: recipe.name,
+          sizeName: recipe.sizeName,
+          parentRecipeId: recipe.parentRecipeId,
+          isActive: recipe.isActive,
+          isPlaceholder: recipe.isPlaceholder,
+          computedCost: recipe.computedCost,
+          hasMenuItemLink,
+          usedAsSubRecipeIn: usedAsSubRecipe,
+          childCount: children,
+          isParentTemplate,
+          isOrphaned,
+          canSafelyDelete,
+          status: isOrphaned 
+            ? (canSafelyDelete ? 'orphaned_safe_delete' : 'orphaned_has_children')
+            : (hasMenuItemLink ? 'linked' : (usedAsSubRecipe.length > 0 ? 'sub_recipe' : 'parent_template'))
+        };
+      }).filter(r => r.isOrphaned || r.isParentTemplate);
+      
+      // Group by status for easier UI display
+      const grouped = {
+        orphaned: orphanedRecipes.filter(r => r.isOrphaned),
+        parentTemplates: orphanedRecipes.filter(r => r.isParentTemplate && !r.hasMenuItemLink),
+        total: orphanedRecipes.length
+      };
+      
+      res.json(grouped);
+    } catch (error: any) {
+      console.error("[Orphaned Recipes Error]", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Archive (soft-delete) an orphaned recipe
+  app.post("/api/recipes/:id/archive", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = req.companyId!;
+      
+      // Verify recipe belongs to company
+      const recipe = await storage.getRecipe(id, companyId);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+      
+      // Check if recipe has menu item link
+      const linkedMenuItem = await db.select().from(menuItems)
+        .where(and(eq(menuItems.recipeId, id), eq(menuItems.companyId, companyId)))
+        .limit(1);
+      
+      if (linkedMenuItem.length > 0) {
+        return res.status(400).json({ 
+          error: "Cannot archive recipe that is linked to a menu item",
+          menuItem: linkedMenuItem[0].name
+        });
+      }
+      
+      // Check if recipe is used as sub-recipe
+      const usedAsSubRecipe = await db.select({
+        parentRecipeName: recipes.name
+      }).from(recipeComponents)
+        .innerJoin(recipes, eq(recipes.id, recipeComponents.recipeId))
+        .where(and(
+          eq(recipeComponents.componentType, 'recipe'),
+          eq(recipeComponents.componentId, id),
+          eq(recipes.companyId, companyId)
+        ));
+      
+      if (usedAsSubRecipe.length > 0) {
+        return res.status(400).json({
+          error: "Cannot archive recipe that is used as ingredient in other recipes",
+          usedIn: usedAsSubRecipe.map(r => r.parentRecipeName)
+        });
+      }
+      
+      // Archive the recipe (soft-delete)
+      await storage.updateRecipe(id, { isActive: 0 }, companyId);
+      
+      // Invalidate caches
+      await cacheInvalidator.invalidateRecipes(companyId, id);
+      
+      res.json({ success: true, message: "Recipe archived successfully" });
+    } catch (error: any) {
+      console.error("[Archive Recipe Error]", error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Permanently delete an archived/orphaned recipe
+  app.delete("/api/recipes/:id/permanent", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = req.companyId!;
+      
+      // Verify recipe belongs to company
+      const recipe = await storage.getRecipe(id, companyId);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+      
+      // Check if recipe has menu item link
+      const linkedMenuItem = await db.select().from(menuItems)
+        .where(and(eq(menuItems.recipeId, id), eq(menuItems.companyId, companyId)))
+        .limit(1);
+      
+      if (linkedMenuItem.length > 0) {
+        return res.status(400).json({ 
+          error: "Cannot delete recipe that is linked to a menu item",
+          menuItem: linkedMenuItem[0].name
+        });
+      }
+      
+      // Check if recipe is used as sub-recipe
+      const usedAsSubRecipe = await db.select({
+        parentRecipeName: recipes.name
+      }).from(recipeComponents)
+        .innerJoin(recipes, eq(recipes.id, recipeComponents.recipeId))
+        .where(and(
+          eq(recipeComponents.componentType, 'recipe'),
+          eq(recipeComponents.componentId, id),
+          eq(recipes.companyId, companyId)
+        ));
+      
+      if (usedAsSubRecipe.length > 0) {
+        return res.status(400).json({
+          error: "Cannot delete recipe that is used as ingredient in other recipes",
+          usedIn: usedAsSubRecipe.map(r => r.parentRecipeName)
+        });
+      }
+      
+      // Check for child recipes
+      const childRecipes = await db.select().from(recipes)
+        .where(and(eq(recipes.parentRecipeId, id), eq(recipes.companyId, companyId)));
+      
+      if (childRecipes.length > 0) {
+        return res.status(400).json({
+          error: "Cannot delete recipe that has child variants",
+          children: childRecipes.map(r => r.name)
+        });
+      }
+      
+      // Delete in transaction: components, store assignments, then recipe
+      await db.transaction(async (tx) => {
+        // Delete recipe components
+        await tx.delete(recipeComponents).where(eq(recipeComponents.recipeId, id));
+        
+        // Delete store recipe assignments
+        await tx.delete(storeRecipes).where(eq(storeRecipes.recipeId, id));
+        
+        // Delete the recipe
+        await tx.delete(recipes).where(
+          and(eq(recipes.id, id), eq(recipes.companyId, companyId))
+        );
+      });
+      
+      // Invalidate caches
+      await cacheInvalidator.invalidateRecipes(companyId, id);
+      
+      res.json({ success: true, message: "Recipe permanently deleted" });
+    } catch (error: any) {
+      console.error("[Delete Recipe Error]", error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ STORE RECIPES ============
   // Get store assignments for a recipe
   app.get("/api/store-recipes/:recipeId", requireAuth, async (req, res) => {
