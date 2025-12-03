@@ -5790,7 +5790,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Parent menu item not found" });
       }
       
-      const { size, pluSku, price, recipeId, createRecipeFromParent, scaleRecipe } = req.body;
+      const { size, menuItemSizeId, pluSku, price, recipeId, createRecipeFromParent, scaleRecipe } = req.body;
       
       if (!size) {
         return res.status(400).json({ error: "Size is required for variants" });
@@ -5798,6 +5798,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!pluSku) {
         return res.status(400).json({ error: "PLU/SKU is required" });
+      }
+      
+      // Validate menuItemSizeId belongs to the same company or is a global default
+      if (menuItemSizeId) {
+        const sizeRecord = await storage.getMenuItemSize(menuItemSizeId);
+        if (!sizeRecord) {
+          return res.status(400).json({ error: "Invalid size reference" });
+        }
+        // Allow if: sizeRecord.companyId is null (global default) OR matches req.companyId
+        const isGlobalDefault = sizeRecord.companyId === null;
+        const belongsToCompany = sizeRecord.companyId === companyId;
+        if (!isGlobalDefault && !belongsToCompany) {
+          return res.status(403).json({ error: "Size does not belong to this company" });
+        }
       }
       
       // Check if PLU already exists
@@ -5851,6 +5865,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: parent.name, // Same name as parent
         pluSku,
         size,
+        menuItemSizeId: menuItemSizeId || null,
         price: price || null,
         recipeId: finalRecipeId,
         isRecipeItem: parent.isRecipeItem,

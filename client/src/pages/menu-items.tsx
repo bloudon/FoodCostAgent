@@ -59,6 +59,15 @@ interface Recipe {
   computedCost: number;
 }
 
+interface MenuItemSize {
+  id: string;
+  companyId: string;
+  name: string;
+  sortOrder: number;
+  isDefault: number;
+  active: number;
+}
+
 interface ParsedMenuItem {
   name: string;
   department: string;
@@ -88,6 +97,7 @@ const addMenuItemFormSchema = insertMenuItemSchema
     department: z.string().optional(),
     category: z.string().optional(),
     size: z.string().optional(),
+    menuItemSizeId: z.string().nullable().optional(),
     isRecipeItem: z.number(),
     active: z.number(),
   });
@@ -97,6 +107,7 @@ type AddMenuItemForm = z.infer<typeof addMenuItemFormSchema>;
 // Form schema for adding a size variant
 const addVariantFormSchema = z.object({
   size: z.string().min(1, "Size is required"),
+  menuItemSizeId: z.string().nullable().optional(),
   pluSku: z.string().min(1, "PLU/SKU is required"),
   price: z.number().nullable().optional(),
   createRecipeFromParent: z.boolean().default(false),
@@ -137,6 +148,7 @@ export default function MenuItemsPage() {
       department: "",
       category: "",
       size: "",
+      menuItemSizeId: null,
       pluSku: "",
       isRecipeItem: 1,
       active: 1,
@@ -154,6 +166,7 @@ export default function MenuItemsPage() {
       department: "",
       category: "",
       size: "",
+      menuItemSizeId: null,
       pluSku: "",
       isRecipeItem: 0,
       active: 1,
@@ -191,6 +204,13 @@ export default function MenuItemsPage() {
   const { data: recipes } = useQuery<Recipe[]>({
     queryKey: ["/api/recipes"],
   });
+
+  const { data: menuItemSizes } = useQuery<MenuItemSize[]>({
+    queryKey: ["/api/menu-item-sizes"],
+  });
+
+  // Find the "One Size" default size
+  const oneSizeDefault = menuItemSizes?.find(s => s.isDefault === 1 && s.name === "One Size");
 
   const isLoading = viewMode === "hierarchy" ? isLoadingHierarchy : isLoadingFlat;
 
@@ -294,6 +314,80 @@ export default function MenuItemsPage() {
       toast({
         title: "Menu Item Created",
         description: "Successfully created menu item",
+      });
+      sessionStorage.removeItem('menu-item-draft');
+      setAddDialogOpen(false);
+      setSelectedStoresForAdd([]);
+      form.reset();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Mutation to create a variant group (parent + first size variant)
+  const createVariantGroupMutation = useMutation({
+    mutationFn: async ({ data, sizeId, sizeName }: { data: AddMenuItemForm; sizeId: string; sizeName: string }) => {
+      // Step 1: Create parent menu item (group header) - no size, no price, no PLU
+      const parentResponse = await apiRequest("POST", "/api/menu-items", {
+        name: data.name,
+        department: data.department,
+        category: data.category,
+        isRecipeItem: data.isRecipeItem,
+        active: data.active,
+        // Parent has no size, price, PLU, or recipe
+        size: null,
+        menuItemSizeId: null,
+        pluSku: `${data.pluSku}-GROUP`,
+        price: null,
+        recipeId: null,
+      });
+      const parentItem = await parentResponse.json();
+      
+      // Create store assignments for parent
+      await Promise.all(
+        selectedStoresForAdd.map(storeId =>
+          apiRequest("POST", `/api/store-menu-items/${parentItem.id}/${storeId}`, {})
+        )
+      );
+      
+      // Step 2: Create child variant with the selected size
+      const variantResponse = await apiRequest("POST", `/api/menu-items/${parentItem.id}/variants`, {
+        size: sizeName,
+        menuItemSizeId: sizeId,
+        pluSku: data.pluSku,
+        price: data.price,
+        createRecipeFromParent: false,
+        scaleRecipe: 1,
+      });
+      const variant = await variantResponse.json();
+      
+      // Step 3: Create store assignments for child variant (same as parent)
+      await Promise.all(
+        selectedStoresForAdd.map(storeId =>
+          apiRequest("POST", `/api/store-menu-items/${variant.id}/${storeId}`, {})
+        )
+      );
+      
+      // Update variant with recipe if specified
+      if (data.recipeId) {
+        await apiRequest("POST", `/api/menu-items/${variant.id}/link-recipe`, {
+          recipeId: data.recipeId,
+        });
+      }
+      
+      return { parent: parentItem, variant };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items/hierarchy"] });
+      toast({
+        title: "Menu Item Group Created",
+        description: "Successfully created menu item with size variant",
       });
       sessionStorage.removeItem('menu-item-draft');
       setAddDialogOpen(false);
@@ -413,7 +507,22 @@ export default function MenuItemsPage() {
       });
       return;
     }
-    createItemMutation.mutate(data);
+    
+    // Check if a non-"One Size" size is selected - need to create variant group
+    const selectedSize = menuItemSizes?.find(s => s.id === data.menuItemSizeId);
+    const isOneSize = !data.menuItemSizeId || (selectedSize && selectedSize.name === "One Size");
+    
+    if (!isOneSize && data.menuItemSizeId) {
+      // Create variant group: parent item + first variant
+      createVariantGroupMutation.mutate({
+        data,
+        sizeId: data.menuItemSizeId,
+        sizeName: selectedSize?.name || "Unknown",
+      });
+    } else {
+      // Standard standalone item creation
+      createItemMutation.mutate(data);
+    }
   };
 
   const handleToggleActive = (item: MenuItem) => {
@@ -470,6 +579,7 @@ export default function MenuItemsPage() {
     setSelectedParentForVariant(parentItem);
     variantForm.reset({
       size: "",
+      menuItemSizeId: null,
       pluSku: `${parentItem.pluSku}-`,
       price: null,
       createRecipeFromParent: parentItem.recipeId ? true : false,
@@ -480,9 +590,16 @@ export default function MenuItemsPage() {
 
   const handleCreateVariant = (data: AddVariantForm) => {
     if (!selectedParentForVariant) return;
+    
+    // Find the menuItemSizeId from the size name
+    const selectedSize = menuItemSizes?.find(s => s.name === data.size);
+    
     createVariantMutation.mutate({
       parentId: selectedParentForVariant.id,
-      data,
+      data: {
+        ...data,
+        menuItemSizeId: selectedSize?.id || null,
+      },
     });
   };
 
@@ -805,6 +922,36 @@ export default function MenuItemsPage() {
                   </div>
                   <FormField
                     control={form.control}
+                    name="menuItemSizeId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Size</FormLabel>
+                        <Select
+                          value={field.value || (oneSizeDefault?.id || "one-size")}
+                          onValueChange={(value) => field.onChange(value === "one-size" ? null : value)}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-new-item-size">
+                              <SelectValue placeholder="Select a size..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {menuItemSizes?.filter(s => s.active === 1).map((size) => (
+                              <SelectItem key={size.id} value={size.id}>
+                                {size.name}
+                              </SelectItem>
+                            )) || <SelectItem value="one-size">One Size</SelectItem>}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          Choose "One Size" for standalone items. Other sizes create variant groups.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
                     name="recipeId"
                     render={({ field }) => (
                       <FormItem>
@@ -898,10 +1045,10 @@ export default function MenuItemsPage() {
                     </Button>
                     <Button
                       type="submit"
-                      disabled={createItemMutation.isPending}
+                      disabled={createItemMutation.isPending || createVariantGroupMutation.isPending}
                       data-testid="button-confirm-add-item"
                     >
-                      {createItemMutation.isPending ? "Creating..." : "Add Item"}
+                      {(createItemMutation.isPending || createVariantGroupMutation.isPending) ? "Creating..." : "Add Item"}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -925,14 +1072,24 @@ export default function MenuItemsPage() {
                     name="size"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Size Name *</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="e.g., Small, Medium, Large"
-                            data-testid="input-variant-size"
-                          />
-                        </FormControl>
+                        <FormLabel>Size *</FormLabel>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-variant-size">
+                              <SelectValue placeholder="Select a size..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {menuItemSizes?.filter(s => s.active === 1 && s.name !== "One Size").map((size) => (
+                              <SelectItem key={size.id} value={size.name}>
+                                {size.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1108,6 +1265,38 @@ export default function MenuItemsPage() {
                       )}
                     />
                   </div>
+                  {editingItem?.parentMenuItemId && (
+                    <FormField
+                      control={editForm.control}
+                      name="menuItemSizeId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Size</FormLabel>
+                          <Select
+                            value={field.value || "one-size"}
+                            onValueChange={(value) => field.onChange(value === "one-size" ? null : value)}
+                          >
+                            <FormControl>
+                              <SelectTrigger data-testid="select-edit-size">
+                                <SelectValue placeholder="Select a size..." />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {menuItemSizes?.filter(s => s.active === 1 && s.name !== "One Size").map((size) => (
+                                <SelectItem key={size.id} value={size.id}>
+                                  {size.name}
+                                </SelectItem>
+                              )) || <SelectItem value="one-size">One Size</SelectItem>}
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Size for this variant
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                   <FormField
                     control={editForm.control}
                     name="recipeId"
