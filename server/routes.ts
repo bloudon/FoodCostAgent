@@ -16,7 +16,7 @@ import { getAccessibleStores } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -5504,8 +5504,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const parentRecipe = await storage.getRecipe(parent.recipeId);
         if (parentRecipe) {
           // Get stores the parent recipe is assigned to
-          const parentStores = await db.select().from(recipeStores)
-            .where(eq(recipeStores.recipeId, parent.recipeId));
+          const parentStores = await db.select().from(storeRecipes)
+            .where(eq(storeRecipes.recipeId, parent.recipeId));
           const storeIds = parentStores.map(s => s.storeId);
           
           // Clone recipe with scale factor
@@ -5522,11 +5522,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const components = await storage.getRecipeComponents(clonedRecipe.id);
             for (const component of components) {
               await db.update(recipeComponents)
-                .set({ quantity: component.quantity * scaleFactor })
+                .set({ qty: component.qty * scaleFactor })
                 .where(eq(recipeComponents.id, component.id));
             }
             // Recalculate cost
-            await storage.recalculateRecipeCost(clonedRecipe.id);
+            const newCost = await calculateRecipeCost(clonedRecipe.id);
+            await storage.updateRecipe(clonedRecipe.id, { computedCost: newCost });
           }
           
           finalRecipeId = clonedRecipe.id;

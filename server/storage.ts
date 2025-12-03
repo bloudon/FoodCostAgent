@@ -179,6 +179,7 @@ export interface IStorage {
   getRecipes(companyId?: string): Promise<Recipe[]>;
   getRecipe(id: string, companyId?: string): Promise<Recipe | undefined>;
   createRecipe(recipe: InsertRecipe): Promise<Recipe>;
+  cloneRecipe(sourceRecipeId: string, companyId: string, newName: string, storeIds: string[]): Promise<Recipe>;
   updateRecipe(id: string, recipe: Partial<Recipe>, companyId?: string): Promise<Recipe | undefined>;
   deleteRecipe(id: string, companyId: string): Promise<void>;
   checkRecipeHasSales(recipeId: string, companyId: string): Promise<boolean>;
@@ -1458,6 +1459,53 @@ export class DatabaseStorage implements IStorage {
   async createRecipe(insertRecipe: InsertRecipe): Promise<Recipe> {
     const [recipe] = await db.insert(recipes).values(insertRecipe).returning();
     return recipe;
+  }
+
+  async cloneRecipe(sourceRecipeId: string, companyId: string, newName: string, storeIds: string[]): Promise<Recipe> {
+    // Get the source recipe
+    const sourceRecipe = await this.getRecipe(sourceRecipeId, companyId);
+    if (!sourceRecipe) {
+      throw new Error("Source recipe not found");
+    }
+
+    // Get source recipe components
+    const sourceComponents = await this.getRecipeComponents(sourceRecipeId);
+
+    // Create the cloned recipe
+    const clonedRecipe = await this.createRecipe({
+      name: newName,
+      companyId,
+      yieldQty: sourceRecipe.yieldQty,
+      yieldUnitId: sourceRecipe.yieldUnitId,
+      computedCost: sourceRecipe.computedCost,
+      canBeIngredient: sourceRecipe.canBeIngredient,
+      isPlaceholder: 0,
+      parentRecipeId: sourceRecipe.parentRecipeId || sourceRecipeId,
+      sizeName: null,
+    });
+
+    // Clone all components
+    for (const comp of sourceComponents) {
+      await this.createRecipeComponent({
+        recipeId: clonedRecipe.id,
+        componentType: comp.componentType,
+        componentId: comp.componentId,
+        qty: comp.qty,
+        unitId: comp.unitId,
+        sortOrder: comp.sortOrder,
+      });
+    }
+
+    // Create store assignments
+    for (const storeId of storeIds) {
+      await db.insert(storeRecipes).values({
+        recipeId: clonedRecipe.id,
+        storeId,
+        companyId,
+      }).onConflictDoNothing();
+    }
+
+    return clonedRecipe;
   }
 
   async updateRecipe(id: string, updates: Partial<Recipe>, companyId?: string): Promise<Recipe | undefined> {
