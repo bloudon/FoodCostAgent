@@ -1,13 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, ChefHat, ChevronRight } from "lucide-react";
+import { Plus, Search, ChefHat, ChevronRight, MoreHorizontal, Trash2, EyeOff, Eye, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRecipeName } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   Table,
   TableBody,
@@ -21,6 +23,23 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Recipe = {
   id: string;
@@ -31,6 +50,14 @@ type Recipe = {
   canBeIngredient: number;
   parentRecipeId: string | null;
   sizeName: string | null;
+  isActive: number;
+};
+
+type CanDeleteResponse = {
+  canDelete: boolean;
+  hasSales: boolean;
+  isSubRecipe: boolean;
+  isActive: boolean;
 };
 
 type RecipeGroup = {
@@ -41,19 +68,106 @@ type RecipeGroup = {
 export default function Recipes() {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
+  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [canDeleteInfo, setCanDeleteInfo] = useState<CanDeleteResponse | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
+  const { toast } = useToast();
 
   const { data: recipes, isLoading } = useQuery<Recipe[]>({
     queryKey: ["/api/recipes"],
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (recipeId: string) => {
+      await apiRequest("DELETE", `/api/recipes/${recipeId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      toast({ title: "Recipe deleted", description: "The recipe has been permanently deleted." });
+      setDeleteDialogOpen(false);
+      setSelectedRecipe(null);
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Delete failed", 
+        description: error.message || "Could not delete the recipe",
+        variant: "destructive"
+      });
+    },
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: async (recipeId: string) => {
+      await apiRequest("POST", `/api/recipes/${recipeId}/deactivate`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      toast({ title: "Recipe deactivated", description: "The recipe has been deactivated and hidden from views." });
+      setDeactivateDialogOpen(false);
+      setSelectedRecipe(null);
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Deactivation failed", 
+        description: error.message || "Could not deactivate the recipe",
+        variant: "destructive"
+      });
+    },
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: async (recipeId: string) => {
+      await apiRequest("POST", `/api/recipes/${recipeId}/reactivate`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      toast({ title: "Recipe reactivated", description: "The recipe is now active again." });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Reactivation failed", 
+        description: error.message || "Could not reactivate the recipe",
+        variant: "destructive"
+      });
+    },
+  });
+
+  const checkCanDelete = async (recipe: Recipe) => {
+    try {
+      const response = await fetch(`/api/recipes/${recipe.id}/can-delete`, {
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to check recipe status');
+      const info: CanDeleteResponse = await response.json();
+      setCanDeleteInfo(info);
+      setSelectedRecipe(recipe);
+      
+      if (info.canDelete) {
+        setDeleteDialogOpen(true);
+      } else {
+        setDeactivateDialogOpen(true);
+      }
+    } catch (error) {
+      toast({ 
+        title: "Error", 
+        description: "Could not check recipe status",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Group recipes by parent-child relationship
   const groupedRecipes = useMemo(() => {
     if (!recipes) return [];
 
-    // Filter recipes by search
-    const filtered = recipes.filter(r => 
-      r.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Filter recipes by search and active status
+    const filtered = recipes.filter(r => {
+      const matchesSearch = r.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesActive = showInactive || r.isActive === 1;
+      return matchesSearch && matchesActive;
+    });
 
     // Separate parent recipes (no parentRecipeId) and child recipes
     const parentRecipes = filtered.filter(r => !r.parentRecipeId);
@@ -108,7 +222,7 @@ export default function Recipes() {
     });
 
     return groups;
-  }, [recipes, searchQuery]);
+  }, [recipes, searchQuery, showInactive]);
 
   const toggleGroup = (parentId: string) => {
     setExpandedGroups(prev => {
@@ -144,8 +258,8 @@ export default function Recipes() {
         </Button>
       </div>
 
-      <div className="mb-6">
-        <div className="relative max-w-md">
+      <div className="mb-6 flex items-center gap-4">
+        <div className="relative max-w-md flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search recipes..."
@@ -155,6 +269,15 @@ export default function Recipes() {
             data-testid="input-search-recipe"
           />
         </div>
+        <Button
+          variant={showInactive ? "secondary" : "outline"}
+          size="sm"
+          onClick={() => setShowInactive(!showInactive)}
+          data-testid="button-toggle-inactive"
+        >
+          {showInactive ? <Eye className="h-4 w-4 mr-2" /> : <EyeOff className="h-4 w-4 mr-2" />}
+          {showInactive ? "Showing All" : "Show Inactive"}
+        </Button>
       </div>
 
       {isLoading ? (
@@ -212,9 +335,14 @@ export default function Recipes() {
                             )}
                             <Link href={`/recipes/${group.parent.id}`} className="flex-1">
                               <div className="flex items-center gap-2">
-                                <span className="font-medium" data-testid={`text-recipe-name-${group.parent.id}`}>
+                                <span className={`font-medium ${group.parent.isActive === 0 ? 'text-muted-foreground' : ''}`} data-testid={`text-recipe-name-${group.parent.id}`}>
                                   {formatRecipeName(group.parent.name)}
                                 </span>
+                                {group.parent.isActive === 0 && (
+                                  <Badge variant="outline" className="text-xs text-muted-foreground">
+                                    Inactive
+                                  </Badge>
+                                )}
                                 {group.parent.canBeIngredient === 1 && (
                                   <Badge variant="secondary" className="text-xs gap-1" data-testid={`badge-recipe-base-${group.parent.id}`}>
                                     <ChefHat className="h-3 w-3" />
@@ -245,11 +373,47 @@ export default function Recipes() {
                           </Link>
                         </TableCell>
                         <TableCell>
-                          <Link href={`/recipes/${group.parent.id}`}>
-                            <Button variant="ghost" size="sm" data-testid={`button-view-recipe-${group.parent.id}`}>
-                              View
-                            </Button>
-                          </Link>
+                          <div className="flex items-center gap-1">
+                            <Link href={`/recipes/${group.parent.id}`}>
+                              <Button variant="ghost" size="sm" data-testid={`button-view-recipe-${group.parent.id}`}>
+                                View
+                              </Button>
+                            </Link>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-actions-recipe-${group.parent.id}`}>
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/recipes/${group.parent.id}`}>
+                                    <Eye className="h-4 w-4 mr-2" />
+                                    View Recipe
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                {group.parent.isActive === 0 ? (
+                                  <DropdownMenuItem 
+                                    onClick={() => reactivateMutation.mutate(group.parent.id)}
+                                    data-testid={`button-reactivate-recipe-${group.parent.id}`}
+                                  >
+                                    <Eye className="h-4 w-4 mr-2" />
+                                    Reactivate
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem 
+                                    onClick={() => checkCanDelete(group.parent)}
+                                    className="text-destructive focus:text-destructive"
+                                    data-testid={`button-delete-recipe-${group.parent.id}`}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete / Deactivate
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </TableCell>
                       </TableRow>
 
@@ -266,9 +430,14 @@ export default function Recipes() {
                                 <Link href={`/recipes/${child.id}`} className="flex-1">
                                   <div className="flex items-center gap-2 pl-8">
                                     <span className="text-muted-foreground">└</span>
-                                    <span className="font-medium" data-testid={`text-recipe-name-${child.id}`}>
+                                    <span className={`font-medium ${child.isActive === 0 ? 'text-muted-foreground' : ''}`} data-testid={`text-recipe-name-${child.id}`}>
                                       {formatRecipeName(child.name)}
                                     </span>
+                                    {child.isActive === 0 && (
+                                      <Badge variant="outline" className="text-xs text-muted-foreground">
+                                        Inactive
+                                      </Badge>
+                                    )}
                                     {child.sizeName && (
                                       <Badge variant="outline" className="text-xs">
                                         {child.sizeName}
@@ -292,11 +461,47 @@ export default function Recipes() {
                                 </Link>
                               </TableCell>
                               <TableCell>
-                                <Link href={`/recipes/${child.id}`}>
-                                  <Button variant="ghost" size="sm" data-testid={`button-view-recipe-${child.id}`}>
-                                    View
-                                  </Button>
-                                </Link>
+                                <div className="flex items-center gap-1">
+                                  <Link href={`/recipes/${child.id}`}>
+                                    <Button variant="ghost" size="sm" data-testid={`button-view-recipe-${child.id}`}>
+                                      View
+                                    </Button>
+                                  </Link>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-actions-recipe-${child.id}`}>
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem asChild>
+                                        <Link href={`/recipes/${child.id}`}>
+                                          <Eye className="h-4 w-4 mr-2" />
+                                          View Recipe
+                                        </Link>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      {child.isActive === 0 ? (
+                                        <DropdownMenuItem 
+                                          onClick={() => reactivateMutation.mutate(child.id)}
+                                          data-testid={`button-reactivate-recipe-${child.id}`}
+                                        >
+                                          <Eye className="h-4 w-4 mr-2" />
+                                          Reactivate
+                                        </DropdownMenuItem>
+                                      ) : (
+                                        <DropdownMenuItem 
+                                          onClick={() => checkCanDelete(child)}
+                                          className="text-destructive focus:text-destructive"
+                                          data-testid={`button-delete-recipe-${child.id}`}
+                                        >
+                                          <Trash2 className="h-4 w-4 mr-2" />
+                                          Delete / Deactivate
+                                        </DropdownMenuItem>
+                                      )}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -316,6 +521,70 @@ export default function Recipes() {
           </CardContent>
         </Card>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Recipe</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete "{selectedRecipe?.name}"? 
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => selectedRecipe && deleteMutation.mutate(selectedRecipe.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete"
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Deactivate Dialog (when recipe cannot be deleted) */}
+      <AlertDialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Cannot Delete Recipe
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  The recipe "{selectedRecipe?.name}" cannot be permanently deleted because:
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  {canDeleteInfo?.hasSales && (
+                    <li>It has recorded sales history</li>
+                  )}
+                  {canDeleteInfo?.isSubRecipe && (
+                    <li>It is used as an ingredient in other recipes</li>
+                  )}
+                </ul>
+                <p>
+                  You can <strong>deactivate</strong> this recipe instead, which will hide it from 
+                  normal views while preserving historical data.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-deactivate">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => selectedRecipe && deactivateMutation.mutate(selectedRecipe.id)}
+              className="bg-amber-600 text-white hover:bg-amber-700"
+              data-testid="button-confirm-deactivate"
+            >
+              {deactivateMutation.isPending ? "Deactivating..." : "Deactivate Recipe"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
