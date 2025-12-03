@@ -180,6 +180,9 @@ export interface IStorage {
   getRecipe(id: string, companyId?: string): Promise<Recipe | undefined>;
   createRecipe(recipe: InsertRecipe): Promise<Recipe>;
   updateRecipe(id: string, recipe: Partial<Recipe>, companyId?: string): Promise<Recipe | undefined>;
+  deleteRecipe(id: string, companyId: string): Promise<void>;
+  checkRecipeHasSales(recipeId: string, companyId: string): Promise<boolean>;
+  checkRecipeIsSubRecipe(recipeId: string, companyId: string): Promise<boolean>;
 
   // Recipe Components
   getRecipeComponents(recipeId: string): Promise<RecipeComponent[]>;
@@ -1460,6 +1463,37 @@ export class DatabaseStorage implements IStorage {
       .where(and(...conditions))
       .returning();
     return recipe || undefined;
+  }
+
+  async deleteRecipe(id: string, companyId: string): Promise<void> {
+    await db.delete(storeRecipes).where(eq(storeRecipes.recipeId, id));
+    await db.delete(recipeComponents).where(eq(recipeComponents.recipeId, id));
+    await db.delete(recipes).where(and(eq(recipes.id, id), eq(recipes.companyId, companyId)));
+  }
+
+  async checkRecipeHasSales(recipeId: string, companyId: string): Promise<boolean> {
+    const result = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(dailyMenuItemSales)
+      .innerJoin(menuItems, eq(dailyMenuItemSales.menuItemId, menuItems.id))
+      .where(and(
+        eq(menuItems.recipeId, recipeId),
+        eq(menuItems.companyId, companyId)
+      ));
+    return (result[0]?.count || 0) > 0;
+  }
+
+  async checkRecipeIsSubRecipe(recipeId: string, companyId: string): Promise<boolean> {
+    const result = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(recipeComponents)
+      .innerJoin(recipes, eq(recipeComponents.recipeId, recipes.id))
+      .where(and(
+        eq(recipeComponents.componentType, "recipe"),
+        eq(recipeComponents.componentId, recipeId),
+        eq(recipes.companyId, companyId)
+      ));
+    return (result[0]?.count || 0) > 0;
   }
 
   // Recipe Components
