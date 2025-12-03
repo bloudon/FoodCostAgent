@@ -2916,6 +2916,131 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Clone recipe as size variant
+  app.post("/api/recipes/:id/clone", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId!;
+      const sourceRecipeId = req.params.id;
+      
+      // Validate request body
+      const { sizeName, scaleFactor, createMenuItem } = req.body;
+      if (!sizeName || typeof sizeName !== 'string' || sizeName.trim() === '') {
+        return res.status(400).json({ error: "Size name is required" });
+      }
+      if (!scaleFactor || typeof scaleFactor !== 'number' || scaleFactor <= 0) {
+        return res.status(400).json({ error: "Scale factor must be a positive number" });
+      }
+
+      // Get the source recipe
+      const sourceRecipe = await storage.getRecipe(sourceRecipeId, companyId);
+      if (!sourceRecipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+
+      // Get source recipe components
+      const sourceComponents = await storage.getRecipeComponents(sourceRecipeId);
+
+      // Determine the parent recipe (use source's parent if it has one, otherwise use source)
+      const parentId = sourceRecipe.parentRecipeId || sourceRecipeId;
+
+      // Create new recipe name with size
+      const baseName = sourceRecipe.name.replace(/\s*\([^)]*\)\s*$/, '').trim(); // Remove existing size suffix if any
+      const newName = `${baseName} (${sizeName.trim()})`;
+
+      // Create the cloned recipe
+      const clonedRecipe = await storage.createRecipe({
+        name: newName,
+        companyId,
+        yieldQty: sourceRecipe.yieldQty * scaleFactor,
+        yieldUnitId: sourceRecipe.yieldUnitId,
+        computedCost: 0, // Will be recalculated
+        canBeIngredient: sourceRecipe.canBeIngredient,
+        isPlaceholder: 0,
+        parentRecipeId: parentId,
+        sizeName: sizeName.trim(),
+      });
+
+      // Clone all components with scaled quantities
+      for (const comp of sourceComponents) {
+        await storage.createRecipeComponent({
+          recipeId: clonedRecipe.id,
+          componentType: comp.componentType,
+          componentId: comp.componentId,
+          qty: comp.qty * scaleFactor,
+          unitId: comp.unitId,
+          sortOrder: comp.sortOrder,
+        });
+      }
+
+      // Calculate and update the cost
+      const computedCost = await calculateRecipeCost(clonedRecipe.id);
+      await storage.updateRecipe(clonedRecipe.id, { computedCost });
+
+      // Copy store assignments from source recipe
+      const sourceStoreAssignments = await storage.getStoreRecipes(sourceRecipeId);
+      for (const assignment of sourceStoreAssignments) {
+        await storage.createStoreRecipe({
+          recipeId: clonedRecipe.id,
+          storeId: assignment.storeId,
+          companyId,
+        });
+      }
+
+      // Optionally create a menu item
+      let menuItem = null;
+      if (createMenuItem) {
+        // Get source menu item if exists
+        const sourceMenuItem = await storage.getMenuItemByRecipeId(sourceRecipeId, companyId);
+        if (sourceMenuItem) {
+          // Create new menu item based on source
+          const basePluSku = sourceMenuItem.pluSku.replace(/-[A-Z]+$/, ''); // Remove size suffix
+          const sizeSuffix = sizeName.trim().toUpperCase().substring(0, 3);
+          
+          menuItem = await storage.createMenuItem({
+            companyId,
+            name: sourceMenuItem.name,
+            department: sourceMenuItem.department,
+            category: sourceMenuItem.category,
+            size: sizeName.trim(),
+            pluSku: `${basePluSku}-${sizeSuffix}`,
+            recipeId: clonedRecipe.id,
+            servingSizeQty: sourceMenuItem.servingSizeQty,
+            servingUnitId: sourceMenuItem.servingUnitId,
+            isRecipeItem: 1,
+            active: 1,
+            price: sourceMenuItem.price ? sourceMenuItem.price * scaleFactor : null,
+          });
+
+          // Copy store assignments
+          const sourceStoreMenuItems = await storage.getStoreMenuItems(sourceMenuItem.id);
+          for (const smi of sourceStoreMenuItems) {
+            await storage.createStoreMenuItem({
+              menuItemId: menuItem.id,
+              storeId: smi.storeId,
+              companyId,
+              active: 1,
+            });
+          }
+        }
+      }
+
+      // Invalidate caches
+      await cacheInvalidator.invalidateRecipes(companyId);
+
+      // Get the final recipe with updated cost
+      const finalRecipe = await storage.getRecipe(clonedRecipe.id, companyId);
+
+      res.status(201).json({
+        recipe: finalRecipe,
+        menuItem,
+        message: `Created size variant "${newName}" with ${scaleFactor}x scaling`,
+      });
+    } catch (error: any) {
+      console.error("Error cloning recipe:", error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   app.post("/api/recipes/:id/components", requireAuth, async (req, res) => {
     try {
       // Verify recipe belongs to user's company

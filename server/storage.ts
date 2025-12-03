@@ -30,6 +30,7 @@ import {
   posSalesLines, type POSSalesLine, type InsertPOSSalesLine,
   menuItems, type MenuItem, type InsertMenuItem,
   storeMenuItems, type StoreMenuItem, type InsertStoreMenuItem,
+  storeRecipes, type StoreRecipe, type InsertStoreRecipe,
   recipeVersions, type RecipeVersion, type InsertRecipeVersion,
   transferLogs, type TransferLog, type InsertTransferLog,
   transferOrders, type TransferOrder, type InsertTransferOrder,
@@ -187,6 +188,10 @@ export interface IStorage {
   updateRecipeComponent(id: string, component: Partial<RecipeComponent>): Promise<RecipeComponent | undefined>;
   deleteRecipeComponent(id: string): Promise<void>;
 
+  // Store Recipes
+  getStoreRecipes(recipeId: string): Promise<StoreRecipe[]>;
+  createStoreRecipe(storeRecipe: InsertStoreRecipe): Promise<StoreRecipe>;
+
 
   // Inventory Counts
   getInventoryCounts(companyId?: string, storeId?: string, storageLocationId?: string): Promise<InventoryCount[]>;
@@ -317,7 +322,12 @@ export interface IStorage {
   getMenuItems(): Promise<MenuItem[]>;
   getMenuItem(id: string): Promise<MenuItem | undefined>;
   getMenuItemByPLU(pluSku: string): Promise<MenuItem | undefined>;
+  getMenuItemByRecipeId(recipeId: string, companyId: string): Promise<MenuItem | undefined>;
   createMenuItem(item: InsertMenuItem): Promise<MenuItem>;
+
+  // Store Menu Items
+  getStoreMenuItems(menuItemId: string): Promise<StoreMenuItem[]>;
+  createStoreMenuItem(item: InsertStoreMenuItem): Promise<StoreMenuItem>;
 
   // Recipe Versions
   getRecipeVersions(recipeId: string): Promise<RecipeVersion[]>;
@@ -1480,6 +1490,16 @@ export class DatabaseStorage implements IStorage {
     await db.delete(recipeComponents).where(eq(recipeComponents.id, id));
   }
 
+  // Store Recipes
+  async getStoreRecipes(recipeId: string): Promise<StoreRecipe[]> {
+    return db.select().from(storeRecipes).where(eq(storeRecipes.recipeId, recipeId));
+  }
+
+  async createStoreRecipe(storeRecipe: InsertStoreRecipe): Promise<StoreRecipe> {
+    const [result] = await db.insert(storeRecipes).values(storeRecipe).returning();
+    return result;
+  }
+
   // Inventory Counts
   async getInventoryCounts(companyId?: string, storeId?: string, storageLocationId?: string): Promise<InventoryCount[]> {
     const conditions = [];
@@ -2472,6 +2492,22 @@ export class DatabaseStorage implements IStorage {
 
   async createMenuItem(insertItem: InsertMenuItem): Promise<MenuItem> {
     const [item] = await db.insert(menuItems).values(insertItem).returning();
+    return item;
+  }
+
+  async getMenuItemByRecipeId(recipeId: string, companyId: string): Promise<MenuItem | undefined> {
+    const [item] = await db.select().from(menuItems)
+      .where(and(eq(menuItems.recipeId, recipeId), eq(menuItems.companyId, companyId)));
+    return item || undefined;
+  }
+
+  // Store Menu Items
+  async getStoreMenuItems(menuItemId: string): Promise<StoreMenuItem[]> {
+    return db.select().from(storeMenuItems).where(eq(storeMenuItems.menuItemId, menuItemId));
+  }
+
+  async createStoreMenuItem(insertItem: InsertStoreMenuItem): Promise<StoreMenuItem> {
+    const [item] = await db.insert(storeMenuItems).values(insertItem).returning();
     return item;
   }
 

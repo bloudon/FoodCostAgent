@@ -66,6 +66,7 @@ import {
   ChefHat,
   Package,
   Plus,
+  Copy,
 } from "lucide-react";
 import type { Recipe, RecipeComponent, Category, InventoryItem as BaseInventoryItem, Unit as BaseUnit } from "@shared/schema";
 
@@ -281,6 +282,12 @@ export default function RecipeBuilder() {
     pricePerUnit: "",
     caseSize: "",
   });
+
+  // Clone as Size Variant dialog state
+  const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
+  const [cloneSizeName, setCloneSizeName] = useState("");
+  const [cloneScaleFactor, setCloneScaleFactor] = useState("1.0");
+  const [cloneCreateMenuItem, setCloneCreateMenuItem] = useState(false);
 
   // Queries
   const { data: recipe, isLoading: recipeLoading } = useQuery<Recipe>({
@@ -753,6 +760,44 @@ export default function RecipeBuilder() {
     },
   });
 
+  // Clone recipe as size variant mutation
+  const cloneRecipeMutation = useMutation({
+    mutationFn: async () => {
+      const scaleFactor = parseFloat(cloneScaleFactor);
+      if (isNaN(scaleFactor) || scaleFactor <= 0) {
+        throw new Error("Invalid scale factor");
+      }
+
+      const response = await apiRequest("POST", `/api/recipes/${id}/clone`, {
+        sizeName: cloneSizeName.trim(),
+        scaleFactor,
+        createMenuItem: cloneCreateMenuItem,
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      toast({ 
+        title: "Size variant created",
+        description: `Created "${data.recipe.name}" with scaled ingredients`,
+      });
+      setCloneDialogOpen(false);
+      setCloneSizeName("");
+      setCloneScaleFactor("1.0");
+      setCloneCreateMenuItem(false);
+      // Navigate to the new recipe
+      setLocation(`/recipes/${data.recipe.id}`);
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Failed to create size variant", 
+        description: error.message || "An error occurred",
+        variant: "destructive" 
+      });
+    },
+  });
+
   // Filter source items
   const filteredInventoryItems = inventoryItems?.filter((item) => {
     // Search filter
@@ -931,32 +976,46 @@ export default function RecipeBuilder() {
                   </p>
                 </div>
               </div>
-              <Button
-                onClick={() => {
-                  // Validate at least one store is selected
-                  if (selectedStores.length === 0) {
-                    toast({
-                      title: "Store Required",
-                      description: "Please select at least one store location",
-                      variant: "destructive",
-                    });
-                    return;
+              <div className="flex items-center gap-2">
+                {/* Clone as Size Variant button - only show for existing recipes */}
+                {!isNew && id && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setCloneDialogOpen(true)}
+                    disabled={cloneRecipeMutation.isPending}
+                    data-testid="button-clone-recipe"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Clone as Size
+                  </Button>
+                )}
+                <Button
+                  onClick={() => {
+                    // Validate at least one store is selected
+                    if (selectedStores.length === 0) {
+                      toast({
+                        title: "Store Required",
+                        description: "Please select at least one store location",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    saveRecipeMutation.mutate();
+                  }}
+                  disabled={
+                    saveRecipeMutation.isPending ||
+                    !recipeName ||
+                    !yieldQty ||
+                    !yieldUnitId ||
+                    components.length === 0 ||
+                    selectedStores.length === 0
                   }
-                  saveRecipeMutation.mutate();
-                }}
-                disabled={
-                  saveRecipeMutation.isPending ||
-                  !recipeName ||
-                  !yieldQty ||
-                  !yieldUnitId ||
-                  components.length === 0 ||
-                  selectedStores.length === 0
-                }
-                data-testid="button-save-recipe"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                {saveRecipeMutation.isPending ? "Saving..." : "Save Recipe"}
-              </Button>
+                  data-testid="button-save-recipe"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {saveRecipeMutation.isPending ? "Saving..." : "Save Recipe"}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -1379,6 +1438,69 @@ export default function RecipeBuilder() {
               data-testid="button-save-inventory-item"
             >
               {updateInventoryItemMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clone as Size Variant dialog */}
+      <Dialog open={cloneDialogOpen} onOpenChange={setCloneDialogOpen}>
+        <DialogContent data-testid="dialog-clone-recipe">
+          <DialogHeader>
+            <DialogTitle>Clone as Size Variant</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Create a new size variant of this recipe. All ingredients will be copied and scaled by the factor you specify.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="clone-size-name">Size Name *</Label>
+              <Input
+                id="clone-size-name"
+                value={cloneSizeName}
+                onChange={(e) => setCloneSizeName(e.target.value)}
+                placeholder="e.g., Small, Large, Family"
+                data-testid="input-clone-size-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="clone-scale-factor">Scale Factor *</Label>
+              <Input
+                id="clone-scale-factor"
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={cloneScaleFactor}
+                onChange={(e) => setCloneScaleFactor(e.target.value)}
+                placeholder="e.g., 0.75 for smaller, 1.5 for larger"
+                data-testid="input-clone-scale-factor"
+              />
+              <p className="text-xs text-muted-foreground">
+                Use 0.75 for 75% smaller, 1.5 for 50% larger, etc.
+              </p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="clone-create-menu-item"
+                checked={cloneCreateMenuItem}
+                onCheckedChange={(checked) => setCloneCreateMenuItem(checked === true)}
+                data-testid="checkbox-clone-menu-item"
+              />
+              <Label htmlFor="clone-create-menu-item" className="text-sm font-normal">
+                Also create a menu item for this size
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCloneDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => cloneRecipeMutation.mutate()}
+              disabled={cloneRecipeMutation.isPending || !cloneSizeName.trim() || !cloneScaleFactor}
+              data-testid="button-confirm-clone"
+            >
+              {cloneRecipeMutation.isPending ? "Creating..." : "Create Size Variant"}
             </Button>
           </DialogFooter>
         </DialogContent>

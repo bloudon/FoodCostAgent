@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, ChefHat } from "lucide-react";
+import { Plus, Search, ChefHat, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRecipeName } from "@/lib/utils";
@@ -16,22 +16,114 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+
+type Recipe = {
+  id: string;
+  name: string;
+  yieldQty: number;
+  yieldUnitId: string;
+  computedCost: number;
+  canBeIngredient: number;
+  parentRecipeId: string | null;
+  sizeName: string | null;
+};
+
+type RecipeGroup = {
+  parent: Recipe;
+  children: Recipe[];
+};
 
 export default function Recipes() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  const { data: recipes, isLoading } = useQuery<any[]>({
+  const { data: recipes, isLoading } = useQuery<Recipe[]>({
     queryKey: ["/api/recipes"],
   });
 
-  const { data: recipeComponents } = useQuery<any[]>({
-    queryKey: ["/api/recipe-components"],
-    enabled: false,
-  });
+  // Group recipes by parent-child relationship
+  const groupedRecipes = useMemo(() => {
+    if (!recipes) return [];
 
-  const filteredRecipes = recipes?.filter(r => 
-    r.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+    // Filter recipes by search
+    const filtered = recipes.filter(r => 
+      r.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    // Separate parent recipes (no parentRecipeId) and child recipes
+    const parentRecipes = filtered.filter(r => !r.parentRecipeId);
+    const childRecipes = filtered.filter(r => r.parentRecipeId);
+
+    // Create a map of parent ID to children
+    const childrenByParent = new Map<string, Recipe[]>();
+    childRecipes.forEach(child => {
+      const parentId = child.parentRecipeId!;
+      if (!childrenByParent.has(parentId)) {
+        childrenByParent.set(parentId, []);
+      }
+      childrenByParent.get(parentId)!.push(child);
+    });
+
+    // Build grouped structure
+    const groups: RecipeGroup[] = [];
+    
+    // Add parent recipes with their children
+    parentRecipes.forEach(parent => {
+      groups.push({
+        parent,
+        children: childrenByParent.get(parent.id) || [],
+      });
+      // Remove from map so we don't add orphaned children again
+      childrenByParent.delete(parent.id);
+    });
+
+    // Handle orphaned children (parent not in filtered list)
+    // Find their parent and add them
+    childRecipes.forEach(child => {
+      if (childrenByParent.has(child.parentRecipeId!)) {
+        // Parent wasn't in filtered results, but child matches search
+        // Find the parent in the full list
+        const parent = recipes.find(r => r.id === child.parentRecipeId);
+        if (parent) {
+          // Check if we already have this parent
+          const existingGroup = groups.find(g => g.parent.id === parent.id);
+          if (existingGroup) {
+            if (!existingGroup.children.some(c => c.id === child.id)) {
+              existingGroup.children.push(child);
+            }
+          } else {
+            groups.push({
+              parent,
+              children: childrenByParent.get(parent.id) || [],
+            });
+            childrenByParent.delete(parent.id);
+          }
+        }
+      }
+    });
+
+    return groups;
+  }, [recipes, searchQuery]);
+
+  const toggleGroup = (parentId: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(parentId)) {
+        next.delete(parentId);
+      } else {
+        next.add(parentId);
+      }
+      return next;
+    });
+  };
+
+  // Count total recipes including children
+  const totalRecipes = groupedRecipes.reduce((sum, group) => sum + 1 + group.children.length, 0);
 
   return (
     <div className="p-8">
@@ -75,7 +167,7 @@ export default function Recipes() {
             </div>
           </CardContent>
         </Card>
-      ) : filteredRecipes && filteredRecipes.length > 0 ? (
+      ) : groupedRecipes.length > 0 ? (
         <Card>
           <CardContent className="p-0">
             <Table>
@@ -88,49 +180,130 @@ export default function Recipes() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRecipes.map((recipe) => (
-                  <TableRow 
-                    key={recipe.id} 
-                    className="cursor-pointer hover-elevate" 
-                    data-testid={`row-recipe-${recipe.id}`}
-                  >
-                    <TableCell>
-                      <Link href={`/recipes/${recipe.id}`} className="block w-full">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium" data-testid={`text-recipe-name-${recipe.id}`}>
-                            {formatRecipeName(recipe.name)}
-                          </span>
-                          {recipe.canBeIngredient === 1 && (
-                            <Badge variant="secondary" className="text-xs gap-1" data-testid={`badge-recipe-base-${recipe.id}`}>
-                              <ChefHat className="h-3 w-3" />
-                              Base Recipe
-                            </Badge>
-                          )}
-                        </div>
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Link href={`/recipes/${recipe.id}`} className="block w-full">
-                        <span className="font-mono text-sm" data-testid={`text-recipe-yield-${recipe.id}`}>
-                          {recipe.yieldQty} unit
-                        </span>
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Link href={`/recipes/${recipe.id}`} className="block w-full">
-                        <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${recipe.id}`}>
-                          ${recipe.computedCost?.toFixed(2) || "0.00"}
-                        </span>
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Link href={`/recipes/${recipe.id}`}>
-                        <Button variant="ghost" size="sm" data-testid={`button-view-recipe-${recipe.id}`}>
-                          View
-                        </Button>
-                      </Link>
-                    </TableCell>
-                  </TableRow>
+                {groupedRecipes.map((group) => (
+                  <Collapsible key={group.parent.id} asChild open={expandedGroups.has(group.parent.id)}>
+                    <>
+                      {/* Parent recipe row */}
+                      <TableRow 
+                        className="cursor-pointer hover-elevate" 
+                        data-testid={`row-recipe-${group.parent.id}`}
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {group.children.length > 0 && (
+                              <CollapsibleTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    toggleGroup(group.parent.id);
+                                  }}
+                                  data-testid={`button-expand-${group.parent.id}`}
+                                >
+                                  <ChevronRight 
+                                    className={`h-4 w-4 transition-transform ${
+                                      expandedGroups.has(group.parent.id) ? 'rotate-90' : ''
+                                    }`} 
+                                  />
+                                </Button>
+                              </CollapsibleTrigger>
+                            )}
+                            <Link href={`/recipes/${group.parent.id}`} className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium" data-testid={`text-recipe-name-${group.parent.id}`}>
+                                  {formatRecipeName(group.parent.name)}
+                                </span>
+                                {group.parent.canBeIngredient === 1 && (
+                                  <Badge variant="secondary" className="text-xs gap-1" data-testid={`badge-recipe-base-${group.parent.id}`}>
+                                    <ChefHat className="h-3 w-3" />
+                                    Base Recipe
+                                  </Badge>
+                                )}
+                                {group.children.length > 0 && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {group.children.length} size{group.children.length > 1 ? 's' : ''}
+                                  </Badge>
+                                )}
+                              </div>
+                            </Link>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Link href={`/recipes/${group.parent.id}`} className="block w-full">
+                            <span className="font-mono text-sm" data-testid={`text-recipe-yield-${group.parent.id}`}>
+                              {group.parent.yieldQty} unit
+                            </span>
+                          </Link>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Link href={`/recipes/${group.parent.id}`} className="block w-full">
+                            <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${group.parent.id}`}>
+                              ${group.parent.computedCost?.toFixed(2) || "0.00"}
+                            </span>
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          <Link href={`/recipes/${group.parent.id}`}>
+                            <Button variant="ghost" size="sm" data-testid={`button-view-recipe-${group.parent.id}`}>
+                              View
+                            </Button>
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+
+                      {/* Child recipe rows (size variants) */}
+                      <CollapsibleContent asChild>
+                        <>
+                          {group.children.map((child) => (
+                            <TableRow 
+                              key={child.id}
+                              className="cursor-pointer hover-elevate bg-muted/30" 
+                              data-testid={`row-recipe-${child.id}`}
+                            >
+                              <TableCell>
+                                <Link href={`/recipes/${child.id}`} className="flex-1">
+                                  <div className="flex items-center gap-2 pl-8">
+                                    <span className="text-muted-foreground">└</span>
+                                    <span className="font-medium" data-testid={`text-recipe-name-${child.id}`}>
+                                      {formatRecipeName(child.name)}
+                                    </span>
+                                    {child.sizeName && (
+                                      <Badge variant="outline" className="text-xs">
+                                        {child.sizeName}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </Link>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Link href={`/recipes/${child.id}`} className="block w-full">
+                                  <span className="font-mono text-sm" data-testid={`text-recipe-yield-${child.id}`}>
+                                    {child.yieldQty} unit
+                                  </span>
+                                </Link>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Link href={`/recipes/${child.id}`} className="block w-full">
+                                  <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${child.id}`}>
+                                    ${child.computedCost?.toFixed(2) || "0.00"}
+                                  </span>
+                                </Link>
+                              </TableCell>
+                              <TableCell>
+                                <Link href={`/recipes/${child.id}`}>
+                                  <Button variant="ghost" size="sm" data-testid={`button-view-recipe-${child.id}`}>
+                                    View
+                                  </Button>
+                                </Link>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </>
+                      </CollapsibleContent>
+                    </>
+                  </Collapsible>
                 ))}
               </TableBody>
             </Table>

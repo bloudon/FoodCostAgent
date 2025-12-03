@@ -417,6 +417,8 @@ export const recipes = pgTable("recipes", {
   computedCost: real("computed_cost").notNull().default(0), // cached cost
   canBeIngredient: integer("can_be_ingredient").notNull().default(0), // 1 if recipe can be used as ingredient in other recipes
   isPlaceholder: integer("is_placeholder").notNull().default(0), // 1 if this is a placeholder/seed recipe that needs to be properly built
+  parentRecipeId: varchar("parent_recipe_id"), // For size variants - links to the parent/base recipe
+  sizeName: text("size_name"), // Size variant name (e.g., "Small", "Large")
 });
 
 export const insertRecipeSchema = createInsertSchema(recipes).omit({ id: true, companyId: true });
