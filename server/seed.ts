@@ -2,7 +2,7 @@ import { storage } from "./storage";
 import { hashPassword } from "./auth";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, recipes, recipeComponents, categories, units, dayparts, users } from "@shared/schema";
+import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, recipes, recipeComponents, categories, units, dayparts, users, menuItemSizes } from "@shared/schema";
 
 // Comprehensive kitchen units seed data
 async function seedKitchenUnits() {
@@ -176,6 +176,39 @@ async function createDefaultDayparts(companyId: string) {
   return false;
 }
 
+// Seed default menu item sizes for a company
+async function seedMenuItemSizesForCompany(companyId: string) {
+  // Check if sizes already exist for this company
+  const existingSizes = await db.select().from(menuItemSizes)
+    .where(eq(menuItemSizes.companyId, companyId));
+  
+  if (existingSizes.length > 0) {
+    return false; // Already seeded
+  }
+
+  // Default sizes with sort order
+  const defaultSizes = [
+    { name: "One Size", sortOrder: 0, isDefault: 1 }, // Default = no variants needed
+    { name: "Large", sortOrder: 1, isDefault: 0 },
+    { name: "Medium", sortOrder: 2, isDefault: 0 },
+    { name: "Small", sortOrder: 3, isDefault: 0 },
+    { name: "Lunch", sortOrder: 4, isDefault: 0 },
+    { name: "Kids", sortOrder: 5, isDefault: 0 },
+  ];
+
+  await db.insert(menuItemSizes).values(
+    defaultSizes.map(size => ({
+      companyId,
+      name: size.name,
+      sortOrder: size.sortOrder,
+      isDefault: size.isDefault,
+      active: 1,
+    }))
+  );
+
+  return true;
+}
+
 // Seed Brian's Pizza company, stores, ingredients, and recipes
 async function seedBriansPizza() {
   console.log("🏢 Creating Brian's Pizza company and stores...");
@@ -219,6 +252,12 @@ async function seedBriansPizza() {
   const daypartsCreated = await createDefaultDayparts(briansPizza.id);
   if (daypartsCreated) {
     console.log("✅ Created default dayparts for Brian's Pizza");
+  }
+
+  // Create default menu item sizes for Brian's Pizza
+  const sizesCreated = await seedMenuItemSizesForCompany(briansPizza.id);
+  if (sizesCreated) {
+    console.log("✅ Created default menu item sizes for Brian's Pizza");
   }
 
   // Create stores for Brian's Pizza
@@ -503,6 +542,15 @@ export async function seedDatabase() {
   const existingUnits = await storage.getUnits();
   const alreadySeeded = existingUnits.length > 0;
   
+  // Seed menu item sizes for all existing companies
+  const allCompanies = await db.select().from(companies);
+  for (const company of allCompanies) {
+    const seeded = await seedMenuItemSizesForCompany(company.id);
+    if (seeded) {
+      console.log(`📏 Created default menu item sizes for ${company.name}`);
+    }
+  }
+
   if (alreadySeeded) {
     console.log("✅ Database already seeded");
     // ============ BRIAN'S PIZZA SETUP (Always runs) ============
@@ -638,6 +686,12 @@ export async function seedDatabase() {
   const daypartsCreated = await createDefaultDayparts(briansPizza.id);
   if (daypartsCreated) {
     console.log("✅ Created default dayparts for Brian's Pizza");
+  }
+
+  // Create default menu item sizes for Brian's Pizza
+  const sizesCreated = await seedMenuItemSizesForCompany(briansPizza.id);
+  if (sizesCreated) {
+    console.log("✅ Created default menu item sizes for Brian's Pizza");
   }
 
   // Create stores for Brian's Pizza

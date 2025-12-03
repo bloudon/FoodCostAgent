@@ -5450,6 +5450,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ MENU ITEM SIZES ============
+  app.get("/api/menu-item-sizes", requireAuth, async (req, res) => {
+    try {
+      const companyId = req.companyId!;
+      const sizes = await storage.getMenuItemSizes(companyId);
+      res.json(sizes);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/menu-item-sizes", requireAuth, async (req, res) => {
+    try {
+      const companyId = req.companyId!;
+      const { name, sortOrder } = req.body;
+      
+      // Get max sortOrder for this company
+      const existingSizes = await storage.getMenuItemSizes(companyId);
+      const maxSortOrder = existingSizes.length > 0 
+        ? Math.max(...existingSizes.map(s => s.sortOrder)) 
+        : 0;
+      
+      const size = await storage.createMenuItemSize({
+        companyId,
+        name,
+        sortOrder: sortOrder ?? maxSortOrder + 1,
+        isDefault: 0,
+        active: 1,
+      });
+      res.status(201).json(size);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/menu-item-sizes/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = req.companyId!;
+      
+      // Verify size belongs to company
+      const existingSize = await storage.getMenuItemSize(id);
+      if (!existingSize || existingSize.companyId !== companyId) {
+        return res.status(404).json({ error: "Size not found" });
+      }
+      
+      const updated = await storage.updateMenuItemSize(id, req.body);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/menu-item-sizes/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = req.companyId!;
+      
+      // Verify size belongs to company
+      const existingSize = await storage.getMenuItemSize(id);
+      if (!existingSize || existingSize.companyId !== companyId) {
+        return res.status(404).json({ error: "Size not found" });
+      }
+      
+      // Don't allow deleting the "One Size" default
+      if (existingSize.isDefault === 1) {
+        return res.status(400).json({ error: "Cannot delete the default size" });
+      }
+      
+      await storage.deleteMenuItemSize(id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ MENU ITEMS ============
   app.get("/api/menu-items", requireAuth, async (req, res) => {
     const companyId = req.companyId;

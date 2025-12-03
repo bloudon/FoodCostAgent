@@ -55,6 +55,7 @@ import {
   quickbooksSyncLogs, type QuickBooksSyncLog, type InsertQuickBooksSyncLog,
   quickbooksTokenLogs, type QuickBooksTokenLog, type InsertQuickBooksTokenLog,
   onboardingProgress, type OnboardingProgress, type InsertOnboardingProgress,
+  menuItemSizes, type MenuItemSize, type InsertMenuItemSize,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -340,6 +341,13 @@ export interface IStorage {
   // Store Menu Items
   getStoreMenuItems(menuItemId: string): Promise<StoreMenuItem[]>;
   createStoreMenuItem(item: InsertStoreMenuItem): Promise<StoreMenuItem>;
+
+  // Menu Item Sizes
+  getMenuItemSizes(companyId: string): Promise<MenuItemSize[]>;
+  getMenuItemSize(id: string): Promise<MenuItemSize | undefined>;
+  createMenuItemSize(size: InsertMenuItemSize): Promise<MenuItemSize>;
+  updateMenuItemSize(id: string, size: Partial<MenuItemSize>): Promise<MenuItemSize | undefined>;
+  deleteMenuItemSize(id: string): Promise<void>;
 
   // Recipe Versions
   getRecipeVersions(recipeId: string): Promise<RecipeVersion[]>;
@@ -2688,6 +2696,35 @@ export class DatabaseStorage implements IStorage {
   async createStoreMenuItem(insertItem: InsertStoreMenuItem): Promise<StoreMenuItem> {
     const [item] = await db.insert(storeMenuItems).values(insertItem).returning();
     return item;
+  }
+
+  // Menu Item Sizes
+  async getMenuItemSizes(companyId: string): Promise<MenuItemSize[]> {
+    return db.select().from(menuItemSizes)
+      .where(eq(menuItemSizes.companyId, companyId))
+      .orderBy(asc(menuItemSizes.sortOrder));
+  }
+
+  async getMenuItemSize(id: string): Promise<MenuItemSize | undefined> {
+    const [size] = await db.select().from(menuItemSizes).where(eq(menuItemSizes.id, id));
+    return size;
+  }
+
+  async createMenuItemSize(insertSize: InsertMenuItemSize): Promise<MenuItemSize> {
+    const [size] = await db.insert(menuItemSizes).values(insertSize).returning();
+    return size;
+  }
+
+  async updateMenuItemSize(id: string, data: Partial<MenuItemSize>): Promise<MenuItemSize | undefined> {
+    const [updated] = await db.update(menuItemSizes)
+      .set(data)
+      .where(eq(menuItemSizes.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMenuItemSize(id: string): Promise<void> {
+    await db.delete(menuItemSizes).where(eq(menuItemSizes.id, id));
   }
 
   // Recipe Versions

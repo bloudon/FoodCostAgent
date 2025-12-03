@@ -615,6 +615,23 @@ export const insertPOSSalesLineSchema = createInsertSchema(posSalesLines).omit({
 export type InsertPOSSalesLine = z.infer<typeof insertPOSSalesLineSchema>;
 export type POSSalesLine = typeof posSalesLines.$inferSelect;
 
+// Menu Item Sizes - Managed size options for menu items
+// Global defaults seeded for all companies, plus company-specific custom sizes
+export const menuItemSizes = pgTable("menu_item_sizes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id"), // Null for global defaults that apply to all companies
+  name: text("name").notNull(), // "One Size", "Large", "Medium", "Small", "Lunch", "Kids"
+  sortOrder: integer("sort_order").notNull().default(0),
+  isDefault: integer("is_default").notNull().default(0), // 1 = "One Size" (no variants needed)
+  active: integer("active").notNull().default(1),
+}, (table) => ({
+  uniqueCompanyName: unique().on(table.companyId, table.name),
+}));
+
+export const insertMenuItemSizeSchema = createInsertSchema(menuItemSizes).omit({ id: true });
+export type InsertMenuItemSize = z.infer<typeof insertMenuItemSizeSchema>;
+export type MenuItemSize = typeof menuItemSizes.$inferSelect;
+
 // Menu Items - Hierarchical structure: Parent menu items can have size variants (children)
 // Single-sized items: parentMenuItemId = null, size = null (or a default size)
 // Multi-sized items: Parent has parentMenuItemId = null, children have parentMenuItemId pointing to parent
@@ -624,7 +641,8 @@ export const menuItems = pgTable("menu_items", {
   name: text("name").notNull(),
   department: text("department"), // e.g., "Pizza", "Appetizers", "Beverages"
   category: text("category"), // e.g., "Specialty Pizza*", "Chicken Fingers"
-  size: text("size"), // e.g., "Lg", "Sm", blank/null for parent items or single-sized items
+  size: text("size"), // Legacy field - e.g., "Lg", "Sm", kept for backwards compatibility
+  menuItemSizeId: varchar("menu_item_size_id"), // Links to managed size (null for variant group parents)
   pluSku: text("plu_sku").notNull(), // Unique identifier: "{Item}|{Size}" or actual PLU code
   parentMenuItemId: varchar("parent_menu_item_id"), // For size variants - links to parent menu item (null for parent/single items)
   recipeId: varchar("recipe_id"), // Nullable - menu items can exist without recipes initially
@@ -637,6 +655,7 @@ export const menuItems = pgTable("menu_items", {
 }, (table) => ({
   uniqueCompanyPlu: unique().on(table.companyId, table.pluSku),
   parentMenuItemIdx: index("menu_items_parent_idx").on(table.parentMenuItemId),
+  menuItemSizeIdx: index("menu_items_size_idx").on(table.menuItemSizeId),
 }));
 
 export const insertMenuItemSchema = createInsertSchema(menuItems).omit({ id: true });
