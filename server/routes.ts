@@ -5398,6 +5398,225 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ MENU ITEM HIERARCHY ============
+  
+  // Get menu items with their size variants (hierarchical view)
+  app.get("/api/menu-items/hierarchy", requireAuth, async (req, res) => {
+    try {
+      const companyId = req.companyId!;
+      const hierarchy = await storage.getMenuItemsWithVariants(companyId);
+      
+      // Also fetch store assignments for each item
+      const allStoreAssignments = await db.select().from(storeMenuItems)
+        .where(eq(storeMenuItems.companyId, companyId));
+      
+      const storeAssignmentMap = new Map<string, string[]>();
+      for (const assignment of allStoreAssignments) {
+        const existing = storeAssignmentMap.get(assignment.menuItemId) || [];
+        existing.push(assignment.storeId);
+        storeAssignmentMap.set(assignment.menuItemId, existing);
+      }
+      
+      // Fetch recipes for cost info
+      const allRecipes = await db.select({
+        id: recipes.id,
+        name: recipes.name,
+        computedCost: recipes.computedCost,
+        isPlaceholder: recipes.isPlaceholder,
+      }).from(recipes).where(eq(recipes.companyId, companyId));
+      
+      const recipeMap = new Map(allRecipes.map(r => [r.id, r]));
+      
+      // Enrich with store assignments and recipe info
+      const enrichedHierarchy = hierarchy.map(group => ({
+        parent: {
+          ...group.parent,
+          storeIds: storeAssignmentMap.get(group.parent.id) || [],
+          recipe: group.parent.recipeId ? recipeMap.get(group.parent.recipeId) : null,
+        },
+        variants: group.variants.map(v => ({
+          ...v,
+          storeIds: storeAssignmentMap.get(v.id) || [],
+          recipe: v.recipeId ? recipeMap.get(v.recipeId) : null,
+        })),
+      }));
+      
+      res.json(enrichedHierarchy);
+    } catch (error: any) {
+      console.error("[Menu Items Hierarchy Error]", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get variants for a specific menu item
+  app.get("/api/menu-items/:id/variants", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = req.companyId!;
+      
+      // Verify parent exists and belongs to company
+      const parent = await storage.getMenuItem(id);
+      if (!parent || parent.companyId !== companyId) {
+        return res.status(404).json({ error: "Menu item not found" });
+      }
+      
+      const variants = await storage.getMenuItemVariants(id);
+      res.json(variants);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create a new size variant for a menu item
+  app.post("/api/menu-items/:id/variants", requireAuth, async (req, res) => {
+    try {
+      const { id: parentId } = req.params;
+      const companyId = req.companyId!;
+      
+      // Verify parent exists and belongs to company
+      const parent = await storage.getMenuItem(parentId);
+      if (!parent || parent.companyId !== companyId) {
+        return res.status(404).json({ error: "Parent menu item not found" });
+      }
+      
+      const { size, pluSku, price, recipeId, createRecipeFromParent, scaleRecipe } = req.body;
+      
+      if (!size) {
+        return res.status(400).json({ error: "Size is required for variants" });
+      }
+      
+      if (!pluSku) {
+        return res.status(400).json({ error: "PLU/SKU is required" });
+      }
+      
+      // Check if PLU already exists
+      const existingPlu = await db.select().from(menuItems)
+        .where(and(eq(menuItems.companyId, companyId), eq(menuItems.pluSku, pluSku)));
+      if (existingPlu.length > 0) {
+        return res.status(400).json({ error: "PLU/SKU already exists" });
+      }
+      
+      let finalRecipeId = recipeId || null;
+      
+      // If creating recipe from parent's recipe
+      if (createRecipeFromParent && parent.recipeId) {
+        // Clone the parent's recipe for this variant
+        const parentRecipe = await storage.getRecipe(parent.recipeId);
+        if (parentRecipe) {
+          // Get stores the parent recipe is assigned to
+          const parentStores = await db.select().from(recipeStores)
+            .where(eq(recipeStores.recipeId, parent.recipeId));
+          const storeIds = parentStores.map(s => s.storeId);
+          
+          // Clone recipe with scale factor
+          const scaleFactor = scaleRecipe || 1;
+          const clonedRecipe = await storage.cloneRecipe(
+            parent.recipeId, 
+            companyId, 
+            `${parentRecipe.name} (${size})`,
+            storeIds
+          );
+          
+          // If scaling, update ingredient quantities
+          if (scaleFactor !== 1) {
+            const components = await storage.getRecipeComponents(clonedRecipe.id);
+            for (const component of components) {
+              await db.update(recipeComponents)
+                .set({ quantity: component.quantity * scaleFactor })
+                .where(eq(recipeComponents.id, component.id));
+            }
+            // Recalculate cost
+            await storage.recalculateRecipeCost(clonedRecipe.id);
+          }
+          
+          finalRecipeId = clonedRecipe.id;
+        }
+      }
+      
+      // Create the variant
+      const variant = await storage.createMenuItemVariant(parentId, {
+        name: parent.name, // Same name as parent
+        pluSku,
+        size,
+        price: price || null,
+        recipeId: finalRecipeId,
+        isRecipeItem: parent.isRecipeItem,
+        companyId, // Will be overwritten by createMenuItemVariant
+        active: 1,
+      });
+      
+      // Assign to same stores as parent
+      const parentStoreAssignments = await storage.getStoreMenuItems(parentId);
+      for (const assignment of parentStoreAssignments) {
+        await storage.createStoreMenuItem({
+          companyId,
+          storeId: assignment.storeId,
+          menuItemId: variant.id,
+          active: 1,
+        });
+      }
+      
+      res.status(201).json(variant);
+    } catch (error: any) {
+      console.error("[Create Menu Item Variant Error]", error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Link a menu item to a recipe
+  app.post("/api/menu-items/:id/link-recipe", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { recipeId } = req.body;
+      const companyId = req.companyId!;
+      
+      // Verify menu item belongs to company
+      const menuItem = await storage.getMenuItem(id);
+      if (!menuItem || menuItem.companyId !== companyId) {
+        return res.status(404).json({ error: "Menu item not found" });
+      }
+      
+      // Verify recipe belongs to company if provided
+      if (recipeId) {
+        const recipe = await storage.getRecipe(recipeId);
+        if (!recipe || recipe.companyId !== companyId) {
+          return res.status(404).json({ error: "Recipe not found" });
+        }
+      }
+      
+      const updated = await storage.linkMenuItemToRecipe(id, recipeId || null);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Convert single-sized menu item to parent (for adding size variants)
+  app.post("/api/menu-items/:id/convert-to-parent", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = req.companyId!;
+      
+      // Verify menu item belongs to company
+      const menuItem = await storage.getMenuItem(id);
+      if (!menuItem || menuItem.companyId !== companyId) {
+        return res.status(404).json({ error: "Menu item not found" });
+      }
+      
+      // Check if already a parent (has children)
+      const existingVariants = await storage.getMenuItemVariants(id);
+      if (existingVariants.length > 0) {
+        return res.status(400).json({ error: "Menu item already has size variants" });
+      }
+      
+      // Convert to parent by clearing size
+      const updated = await storage.convertToParentMenuItem(id);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ STORE MENU ITEMS ============
   // Get store assignments for a menu item
   app.get("/api/store-menu-items/:menuItemId", requireAuth, async (req, res) => {
