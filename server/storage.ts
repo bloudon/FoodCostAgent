@@ -327,6 +327,14 @@ export interface IStorage {
   getMenuItemByPLU(pluSku: string): Promise<MenuItem | undefined>;
   getMenuItemByRecipeId(recipeId: string, companyId: string): Promise<MenuItem | undefined>;
   createMenuItem(item: InsertMenuItem): Promise<MenuItem>;
+  updateMenuItem(id: string, item: Partial<MenuItem>): Promise<MenuItem | undefined>;
+  // Menu Item Hierarchy
+  getMenuItemsByCompany(companyId: string): Promise<MenuItem[]>;
+  getMenuItemVariants(parentMenuItemId: string): Promise<MenuItem[]>;
+  getMenuItemsWithVariants(companyId: string): Promise<{ parent: MenuItem; variants: MenuItem[] }[]>;
+  createMenuItemVariant(parentId: string, variant: InsertMenuItem): Promise<MenuItem>;
+  linkMenuItemToRecipe(menuItemId: string, recipeId: string): Promise<MenuItem | undefined>;
+  convertToParentMenuItem(menuItemId: string): Promise<MenuItem | undefined>;
 
   // Store Menu Items
   getStoreMenuItems(menuItemId: string): Promise<StoreMenuItem[]>;
@@ -2533,6 +2541,87 @@ export class DatabaseStorage implements IStorage {
     const [item] = await db.select().from(menuItems)
       .where(and(eq(menuItems.recipeId, recipeId), eq(menuItems.companyId, companyId)));
     return item || undefined;
+  }
+
+  async updateMenuItem(id: string, item: Partial<MenuItem>): Promise<MenuItem | undefined> {
+    const [updated] = await db.update(menuItems).set(item).where(eq(menuItems.id, id)).returning();
+    return updated || undefined;
+  }
+
+  // Menu Item Hierarchy
+  async getMenuItemsByCompany(companyId: string): Promise<MenuItem[]> {
+    return db.select().from(menuItems)
+      .where(eq(menuItems.companyId, companyId))
+      .orderBy(menuItems.name, menuItems.sortOrder);
+  }
+
+  async getMenuItemVariants(parentMenuItemId: string): Promise<MenuItem[]> {
+    return db.select().from(menuItems)
+      .where(eq(menuItems.parentMenuItemId, parentMenuItemId))
+      .orderBy(menuItems.sortOrder);
+  }
+
+  async getMenuItemsWithVariants(companyId: string): Promise<{ parent: MenuItem; variants: MenuItem[] }[]> {
+    // Get all menu items for the company
+    const allItems = await db.select().from(menuItems)
+      .where(eq(menuItems.companyId, companyId))
+      .orderBy(menuItems.name, menuItems.sortOrder);
+    
+    // Group parent items (those without parentMenuItemId) with their variants
+    const parentItems = allItems.filter(item => !item.parentMenuItemId);
+    const childItems = allItems.filter(item => item.parentMenuItemId);
+    
+    // Create the grouped result
+    return parentItems.map(parent => ({
+      parent,
+      variants: childItems.filter(child => child.parentMenuItemId === parent.id)
+        .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+    }));
+  }
+
+  async createMenuItemVariant(parentId: string, variant: InsertMenuItem): Promise<MenuItem> {
+    // Get the parent to ensure it exists and get company context
+    const parent = await this.getMenuItem(parentId);
+    if (!parent) {
+      throw new Error('Parent menu item not found');
+    }
+    
+    // Get the count of existing variants for sortOrder
+    const existingVariants = await this.getMenuItemVariants(parentId);
+    const sortOrder = existingVariants.length;
+    
+    // Create the variant with parent reference
+    const [item] = await db.insert(menuItems).values({
+      ...variant,
+      companyId: parent.companyId,
+      parentMenuItemId: parentId,
+      department: variant.department || parent.department,
+      category: variant.category || parent.category,
+      sortOrder,
+    }).returning();
+    
+    return item;
+  }
+
+  async linkMenuItemToRecipe(menuItemId: string, recipeId: string): Promise<MenuItem | undefined> {
+    const [updated] = await db.update(menuItems)
+      .set({ recipeId })
+      .where(eq(menuItems.id, menuItemId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async convertToParentMenuItem(menuItemId: string): Promise<MenuItem | undefined> {
+    // This converts a single-sized menu item to a parent item
+    // by setting size to null and ensuring it can have children
+    const [updated] = await db.update(menuItems)
+      .set({ 
+        size: null,
+        parentMenuItemId: null // Ensure it's not a child of anything
+      })
+      .where(eq(menuItems.id, menuItemId))
+      .returning();
+    return updated || undefined;
   }
 
   // Store Menu Items
