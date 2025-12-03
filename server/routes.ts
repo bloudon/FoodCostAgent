@@ -2916,6 +2916,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Check if recipe can be deleted (no sales history, not used as sub-recipe)
+  app.get("/api/recipes/:id/can-delete", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId!;
+      const recipeId = req.params.id;
+
+      const recipe = await storage.getRecipe(recipeId, companyId);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+
+      const hasSales = await storage.checkRecipeHasSales(recipeId, companyId);
+      const isSubRecipe = await storage.checkRecipeIsSubRecipe(recipeId, companyId);
+
+      res.json({
+        canDelete: !hasSales && !isSubRecipe,
+        hasSales,
+        isSubRecipe,
+        isActive: recipe.isActive === 1,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete recipe (only if no sales history and not used as sub-recipe)
+  app.delete("/api/recipes/:id", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId!;
+      const recipeId = req.params.id;
+
+      const recipe = await storage.getRecipe(recipeId, companyId);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+
+      // Check if recipe has sales history
+      const hasSales = await storage.checkRecipeHasSales(recipeId, companyId);
+      if (hasSales) {
+        return res.status(400).json({ 
+          error: "Cannot delete recipe with sales history. Please deactivate instead.",
+          code: "HAS_SALES"
+        });
+      }
+
+      // Check if recipe is used as a sub-recipe in other recipes
+      const isSubRecipe = await storage.checkRecipeIsSubRecipe(recipeId, companyId);
+      if (isSubRecipe) {
+        return res.status(400).json({ 
+          error: "Cannot delete recipe that is used as an ingredient in other recipes. Please remove it from those recipes first or deactivate instead.",
+          code: "IS_SUB_RECIPE"
+        });
+      }
+
+      // Also delete any child size variants
+      const allRecipes = await storage.getRecipes(companyId);
+      const childRecipes = allRecipes.filter(r => r.parentRecipeId === recipeId);
+      for (const child of childRecipes) {
+        await storage.deleteRecipe(child.id, companyId);
+      }
+
+      await storage.deleteRecipe(recipeId, companyId);
+      
+      // Invalidate recipe caches
+      await cacheInvalidator.invalidateRecipes(companyId);
+
+      res.json({ success: true, message: "Recipe deleted successfully" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Deactivate recipe (soft delete - for recipes with sales history)
+  app.post("/api/recipes/:id/deactivate", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId!;
+      const recipeId = req.params.id;
+
+      const recipe = await storage.getRecipe(recipeId, companyId);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+
+      await storage.updateRecipe(recipeId, { isActive: 0 }, companyId);
+      
+      // Invalidate recipe caches
+      await cacheInvalidator.invalidateRecipes(companyId, recipeId);
+
+      const updated = await storage.getRecipe(recipeId, companyId);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Reactivate recipe
+  app.post("/api/recipes/:id/reactivate", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId!;
+      const recipeId = req.params.id;
+
+      const recipe = await storage.getRecipe(recipeId, companyId);
+      if (!recipe) {
+        return res.status(404).json({ error: "Recipe not found" });
+      }
+
+      await storage.updateRecipe(recipeId, { isActive: 1 }, companyId);
+      
+      // Invalidate recipe caches
+      await cacheInvalidator.invalidateRecipes(companyId, recipeId);
+
+      const updated = await storage.getRecipe(recipeId, companyId);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Clone recipe as size variant
   app.post("/api/recipes/:id/clone", requireAuth, async (req, res) => {
     try {
