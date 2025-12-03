@@ -3453,9 +3453,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const companyId = req.companyId!;
       
-      // Verify recipe belongs to company
+      // SECURITY: Verify recipe belongs to company using companyId filter
       const recipe = await storage.getRecipe(id, companyId);
-      if (!recipe) {
+      if (!recipe || recipe.companyId !== companyId) {
         return res.status(404).json({ error: "Recipe not found" });
       }
       
@@ -3508,9 +3508,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const companyId = req.companyId!;
       
-      // Verify recipe belongs to company
+      // SECURITY: Verify recipe belongs to company using companyId filter
       const recipe = await storage.getRecipe(id, companyId);
-      if (!recipe) {
+      if (!recipe || recipe.companyId !== companyId) {
         return res.status(404).json({ error: "Recipe not found" });
       }
       
@@ -3563,7 +3563,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Delete store recipe assignments
         await tx.delete(storeRecipes).where(eq(storeRecipes.recipeId, id));
         
-        // Delete the recipe
+        // Delete the recipe with BOTH id AND companyId for security
         await tx.delete(recipes).where(
           and(eq(recipes.id, id), eq(recipes.companyId, companyId))
         );
@@ -5731,13 +5731,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .where(eq(storeRecipes.recipeId, parent.recipeId));
           const storeIds = parentStores.map(s => s.storeId);
           
-          // Clone recipe with scale factor
+          // Clone recipe with scale factor and size name
           const scaleFactor = scaleRecipe || 1;
           const clonedRecipe = await storage.cloneRecipe(
             parent.recipeId, 
             companyId, 
             `${parentRecipe.name} (${size})`,
-            storeIds
+            storeIds,
+            size // Pass the size name to the cloned recipe
           );
           
           // If scaling, update ingredient quantities

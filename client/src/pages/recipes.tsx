@@ -1,15 +1,17 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, ChefHat, ChevronRight, MoreHorizontal, Trash2, EyeOff, Eye, AlertTriangle } from "lucide-react";
+import { Plus, Search, ChefHat, ChevronRight, MoreHorizontal, Trash2, EyeOff, Eye, AlertTriangle, Wrench, Archive, X, LinkIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRecipeName } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -65,6 +67,29 @@ type RecipeGroup = {
   children: Recipe[];
 };
 
+type OrphanedRecipe = {
+  id: string;
+  name: string;
+  sizeName: string | null;
+  parentRecipeId: string | null;
+  isActive: number;
+  isPlaceholder: number;
+  computedCost: number;
+  hasMenuItemLink: boolean;
+  usedAsSubRecipeIn: string[];
+  childCount: number;
+  isParentTemplate: boolean;
+  isOrphaned: boolean;
+  canSafelyDelete: boolean;
+  status: string;
+};
+
+type OrphanedRecipesResponse = {
+  orphaned: OrphanedRecipe[];
+  parentTemplates: OrphanedRecipe[];
+  total: number;
+};
+
 export default function Recipes() {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -73,6 +98,7 @@ export default function Recipes() {
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [canDeleteInfo, setCanDeleteInfo] = useState<CanDeleteResponse | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const { data: recipes, isLoading } = useQuery<Recipe[]>({
@@ -129,6 +155,48 @@ export default function Recipes() {
       toast({ 
         title: "Reactivation failed", 
         description: error.message || "Could not reactivate the recipe",
+        variant: "destructive"
+      });
+    },
+  });
+
+  // Orphaned recipes query - only fetches when dialog is open
+  const { data: orphanedData, isLoading: isLoadingOrphaned, refetch: refetchOrphaned } = useQuery<OrphanedRecipesResponse>({
+    queryKey: ["/api/recipes/orphaned"],
+    enabled: cleanupDialogOpen,
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: async (recipeId: string) => {
+      await apiRequest("POST", `/api/recipes/${recipeId}/archive`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes/orphaned"] });
+      toast({ title: "Recipe archived", description: "The recipe has been archived (deactivated)." });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Archive failed", 
+        description: error.message || "Could not archive the recipe",
+        variant: "destructive"
+      });
+    },
+  });
+
+  const permanentDeleteMutation = useMutation({
+    mutationFn: async (recipeId: string) => {
+      await apiRequest("DELETE", `/api/recipes/${recipeId}/permanent`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes/orphaned"] });
+      toast({ title: "Recipe deleted", description: "The recipe has been permanently deleted." });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Delete failed", 
+        description: error.message || "Could not delete the recipe",
         variant: "destructive"
       });
     },
@@ -250,12 +318,22 @@ export default function Recipes() {
             Manage recipe BOMs with nested components and cost tracking
           </p>
         </div>
-        <Button asChild data-testid="button-create-recipe">
-          <Link href="/recipes/new">
-            <Plus className="h-4 w-4 mr-2" />
-            New Recipe
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => setCleanupDialogOpen(true)}
+            data-testid="button-cleanup-recipes"
+          >
+            <Wrench className="h-4 w-4 mr-2" />
+            Cleanup
+          </Button>
+          <Button asChild data-testid="button-create-recipe">
+            <Link href="/recipes/new">
+              <Plus className="h-4 w-4 mr-2" />
+              New Recipe
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="mb-6 flex items-center gap-4">
@@ -585,6 +663,162 @@ export default function Recipes() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Recipe Cleanup Dialog */}
+      <Dialog open={cleanupDialogOpen} onOpenChange={setCleanupDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wrench className="h-5 w-5" />
+              Recipe Cleanup
+            </DialogTitle>
+            <DialogDescription>
+              Review and clean up orphaned or duplicate recipes that are not linked to any menu items.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <ScrollArea className="max-h-[60vh] pr-4">
+            {isLoadingOrphaned ? (
+              <div className="space-y-3 py-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : orphanedData ? (
+              <div className="space-y-6 py-4">
+                {/* Orphaned Recipes Section */}
+                {orphanedData.orphaned.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-500" />
+                      Orphaned Recipes ({orphanedData.orphaned.length})
+                    </h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      These recipes are not linked to any menu item and are not used as sub-recipes.
+                    </p>
+                    <div className="space-y-2">
+                      {orphanedData.orphaned.map((recipe) => (
+                        <Card key={recipe.id} className="p-4">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium truncate">
+                                  {formatRecipeName(recipe.name)}
+                                </span>
+                                {recipe.sizeName && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {recipe.sizeName}
+                                  </Badge>
+                                )}
+                                {recipe.isPlaceholder === 1 && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    Placeholder
+                                  </Badge>
+                                )}
+                                {recipe.isActive === 0 && (
+                                  <Badge variant="outline" className="text-xs text-muted-foreground">
+                                    Inactive
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                Cost: ${recipe.computedCost?.toFixed(2) || "0.00"}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {recipe.isActive === 1 && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => archiveMutation.mutate(recipe.id)}
+                                  disabled={archiveMutation.isPending}
+                                  data-testid={`button-archive-recipe-${recipe.id}`}
+                                >
+                                  <Archive className="h-4 w-4 mr-1" />
+                                  Archive
+                                </Button>
+                              )}
+                              {recipe.canSafelyDelete && (
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => permanentDeleteMutation.mutate(recipe.id)}
+                                  disabled={permanentDeleteMutation.isPending}
+                                  data-testid={`button-delete-orphaned-${recipe.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-1" />
+                                  Delete
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Parent Templates Section */}
+                {orphanedData.parentTemplates.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                      <LinkIcon className="h-4 w-4 text-blue-500" />
+                      Parent Template Recipes ({orphanedData.parentTemplates.length})
+                    </h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      These are parent/base recipes used as templates for size variants. They have child recipes but no direct menu item link (this is normal).
+                    </p>
+                    <div className="space-y-2">
+                      {orphanedData.parentTemplates.map((recipe) => (
+                        <Card key={recipe.id} className="p-4 bg-muted/30">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium truncate">
+                                  {formatRecipeName(recipe.name)}
+                                </span>
+                                <Badge variant="secondary" className="text-xs">
+                                  {recipe.childCount} variant{recipe.childCount > 1 ? "s" : ""}
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                Cost: ${recipe.computedCost?.toFixed(2) || "0.00"} (base recipe)
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <Badge variant="outline" className="text-xs text-green-600">
+                                Protected
+                              </Badge>
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* No orphans message */}
+                {orphanedData.orphaned.length === 0 && orphanedData.parentTemplates.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <ChefHat className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p className="font-medium">All recipes are properly linked!</p>
+                    <p className="text-sm mt-1">No orphaned recipes found.</p>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </ScrollArea>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setCleanupDialogOpen(false)}>
+              Close
+            </Button>
+            <Button variant="secondary" onClick={() => refetchOrphaned()}>
+              Refresh
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
