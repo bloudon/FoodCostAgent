@@ -332,9 +332,30 @@ export default function MenuItemsPage() {
   });
 
   const updateItemMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<AddMenuItemForm> }) => {
+    mutationFn: async ({ id, data, storeIds }: { id: string; data: Partial<AddMenuItemForm>; storeIds: string[] }) => {
       const response = await apiRequest("PATCH", `/api/menu-items/${id}`, data);
-      return await response.json();
+      const menuItem = await response.json();
+      
+      // Update store assignments - first get current assignments
+      const currentStoreIds = editingItem?.storeIds || [];
+      
+      // Remove store assignments that are no longer selected
+      const toRemove = currentStoreIds.filter(storeId => !storeIds.includes(storeId));
+      await Promise.all(
+        toRemove.map(storeId =>
+          apiRequest("DELETE", `/api/store-menu-items/${id}/${storeId}`, {})
+        )
+      );
+      
+      // Add new store assignments
+      const toAdd = storeIds.filter(storeId => !currentStoreIds.includes(storeId));
+      await Promise.all(
+        toAdd.map(storeId =>
+          apiRequest("POST", `/api/store-menu-items/${id}/${storeId}`, {})
+        )
+      );
+      
+      return menuItem;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
@@ -422,6 +443,15 @@ export default function MenuItemsPage() {
   const handleUpdateMenuItem = (data: AddMenuItemForm) => {
     if (!editingItem) return;
     
+    if (selectedStoresForEdit.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please select at least one store",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     const payload: Partial<AddMenuItemForm> = {
       name: data.name,
       pluSku: data.pluSku,
@@ -433,7 +463,7 @@ export default function MenuItemsPage() {
       size: data.size || undefined,
       price: data.price ?? undefined,
     };
-    updateItemMutation.mutate({ id: editingItem.id, data: payload });
+    updateItemMutation.mutate({ id: editingItem.id, data: payload, storeIds: selectedStoresForEdit });
   };
 
   const handleAddVariant = (parentItem: MenuItem) => {
@@ -1106,6 +1136,33 @@ export default function MenuItemsPage() {
                       </FormItem>
                     )}
                   />
+                  <div className="space-y-3">
+                    <FormLabel>Store Locations *</FormLabel>
+                    <div className="space-y-2">
+                      {stores?.map((store) => (
+                        <div key={store.id} className="flex items-center gap-2">
+                          <Checkbox
+                            id={`edit-store-${store.id}`}
+                            checked={selectedStoresForEdit.includes(store.id)}
+                            onCheckedChange={() => {
+                              setSelectedStoresForEdit(prev =>
+                                prev.includes(store.id)
+                                  ? prev.filter(id => id !== store.id)
+                                  : [...prev, store.id]
+                              );
+                            }}
+                            data-testid={`checkbox-edit-store-${store.id}`}
+                          />
+                          <label htmlFor={`edit-store-${store.id}`} className="text-sm font-normal cursor-pointer flex-1">
+                            {store.name}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedStoresForEdit.length === 0 && (
+                      <p className="text-sm text-destructive">At least one store must be selected</p>
+                    )}
+                  </div>
                   <DialogFooter>
                     <Button
                       type="button"
