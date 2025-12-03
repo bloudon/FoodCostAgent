@@ -2,7 +2,7 @@ import { storage } from "./storage";
 import { hashPassword } from "./auth";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, recipes, recipeComponents, categories, units, dayparts } from "@shared/schema";
+import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, recipes, recipeComponents, categories, units, dayparts, users } from "@shared/schema";
 
 // Comprehensive kitchen units seed data
 async function seedKitchenUnits() {
@@ -482,18 +482,21 @@ export async function seedDatabase() {
   // Seed comprehensive kitchen units first (imperial + metric)
   await seedKitchenUnits();
 
-  // Ensure global admin user exists
+  // Ensure global admin user exists with correct password
   let adminUser = await storage.getUserByEmail("admin@pizza.com");
+  const adminPasswordHash = await hashPassword("admin123");
   if (!adminUser) {
     console.log("👤 Creating global admin user...");
-    const passwordHash = await hashPassword("admin123");
     adminUser = await storage.createUser({
       email: "admin@pizza.com",
-      passwordHash,
+      passwordHash: adminPasswordHash,
       role: "global_admin",
       companyId: null,
     });
     console.log("✅ Global admin user created (email: admin@pizza.com, password: admin123)");
+  } else {
+    // Reset password to known value for testing consistency
+    await db.update(users).set({ passwordHash: adminPasswordHash }).where(eq(users.email, "admin@pizza.com"));
   }
 
   // Check if database is already seeded
