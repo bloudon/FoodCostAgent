@@ -3053,8 +3053,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Verify component reference belongs to same company
       if (data.componentType === "inventory_item") {
-        const item = await storage.getInventoryItem(data.componentId, (req as any).companyId);
-        if (!item) {
+        const item = await storage.getInventoryItem(data.componentId);
+        if (!item || item.companyId !== (req as any).companyId) {
           return res.status(404).json({ error: "Inventory item not found" });
         }
       } else if (data.componentType === "recipe") {
@@ -3134,8 +3134,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Verify component reference belongs to same company
       if (data.componentType === "inventory_item") {
-        const item = await storage.getInventoryItem(data.componentId, (req as any).companyId);
-        if (!item) {
+        const item = await storage.getInventoryItem(data.componentId);
+        if (!item || item.companyId !== (req as any).companyId) {
           return res.status(404).json({ error: "Inventory item not found" });
         }
       } else if (data.componentType === "recipe") {
@@ -3177,8 +3177,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // If componentId is being updated, verify new component belongs to same company
       if (req.body.componentId && req.body.componentId !== component.componentId) {
         if (component.componentType === "inventory_item") {
-          const item = await storage.getInventoryItem(req.body.componentId, (req as any).companyId);
-          if (!item) {
+          const item = await storage.getInventoryItem(req.body.componentId);
+          if (!item || item.companyId !== (req as any).companyId) {
             return res.status(404).json({ error: "Inventory item not found" });
           }
         } else if (component.componentType === "recipe") {
