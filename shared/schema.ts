@@ -615,23 +615,28 @@ export const insertPOSSalesLineSchema = createInsertSchema(posSalesLines).omit({
 export type InsertPOSSalesLine = z.infer<typeof insertPOSSalesLineSchema>;
 export type POSSalesLine = typeof posSalesLines.$inferSelect;
 
-// Menu Items
+// Menu Items - Hierarchical structure: Parent menu items can have size variants (children)
+// Single-sized items: parentMenuItemId = null, size = null (or a default size)
+// Multi-sized items: Parent has parentMenuItemId = null, children have parentMenuItemId pointing to parent
 export const menuItems = pgTable("menu_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
   department: text("department"), // e.g., "Pizza", "Appetizers", "Beverages"
   category: text("category"), // e.g., "Specialty Pizza*", "Chicken Fingers"
-  size: text("size"), // e.g., "Lg", "Sm", blank for no size
+  size: text("size"), // e.g., "Lg", "Sm", blank/null for parent items or single-sized items
   pluSku: text("plu_sku").notNull(), // Unique identifier: "{Item}|{Size}" or actual PLU code
+  parentMenuItemId: varchar("parent_menu_item_id"), // For size variants - links to parent menu item (null for parent/single items)
   recipeId: varchar("recipe_id"), // Nullable - menu items can exist without recipes initially
   servingSizeQty: real("serving_size_qty").default(1),
   servingUnitId: varchar("serving_unit_id"), // Nullable until recipe is linked
   isRecipeItem: integer("is_recipe_item").notNull().default(1), // 0 for non-recipe items (napkins, plates)
   active: integer("active").notNull().default(1), // 0 = inactive, 1 = active
   price: real("price"), // Menu item price (nullable until set)
+  sortOrder: integer("sort_order").notNull().default(0), // For ordering size variants
 }, (table) => ({
   uniqueCompanyPlu: unique().on(table.companyId, table.pluSku),
+  parentMenuItemIdx: index("menu_items_parent_idx").on(table.parentMenuItemId),
 }));
 
 export const insertMenuItemSchema = createInsertSchema(menuItems).omit({ id: true });
