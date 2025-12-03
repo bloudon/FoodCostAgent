@@ -419,6 +419,7 @@ export const recipes = pgTable("recipes", {
   isPlaceholder: integer("is_placeholder").notNull().default(0), // 1 if this is a placeholder/seed recipe that needs to be properly built
   parentRecipeId: varchar("parent_recipe_id"), // For size variants - links to the parent/base recipe
   sizeName: text("size_name"), // Size variant name (e.g., "Small", "Large")
+  isActive: integer("is_active").notNull().default(1), // 1 = active, 0 = inactive (deactivated recipes hidden from normal views)
 });
 
 export const insertRecipeSchema = createInsertSchema(recipes).omit({ id: true, companyId: true });
