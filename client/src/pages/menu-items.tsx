@@ -440,7 +440,7 @@ export default function MenuItemsPage() {
     setSelectedParentForVariant(parentItem);
     variantForm.reset({
       size: "",
-      pluSku: "",
+      pluSku: `${parentItem.pluSku}-`,
       price: null,
       createRecipeFromParent: parentItem.recipeId ? true : false,
       scaleRecipe: 1,
