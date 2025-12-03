@@ -5453,7 +5453,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ MENU ITEMS ============
   app.get("/api/menu-items", requireAuth, async (req, res) => {
     const companyId = req.companyId;
-    const items = await db.select().from(menuItems).where(eq(menuItems.companyId, companyId!));
+    const storeId = req.query.storeId as string | undefined;
+    
+    let items = await db.select().from(menuItems).where(eq(menuItems.companyId, companyId!));
     
     // Fetch all store-menu-item assignments for this company
     const allStoreAssignments = await db.select().from(storeMenuItems)
@@ -5465,6 +5467,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = storeAssignmentMap.get(assignment.menuItemId) || [];
       existing.push(assignment.storeId);
       storeAssignmentMap.set(assignment.menuItemId, existing);
+    }
+    
+    // If storeId is provided, filter to only menu items assigned to that store
+    if (storeId && storeId !== 'all') {
+      const menuItemIdsForStore = new Set(
+        allStoreAssignments
+          .filter(a => a.storeId === storeId)
+          .map(a => a.menuItemId)
+      );
+      items = items.filter(item => menuItemIdsForStore.has(item.id));
     }
     
     // Enrich items with their store assignments
