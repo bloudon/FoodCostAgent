@@ -55,6 +55,7 @@ type InventoryItem = {
   imageUrl: string | null;
   parLevel: number | null;
   reorderLevel: number | null;
+  isPowerItem: number;
 };
 
 type Unit = {
@@ -838,6 +839,26 @@ export default function InventoryItemDetail() {
                   disabled={updateMutation.isPending}
                   data-testid="input-reorder-level"
                 />
+              </div>
+
+              <div className="flex items-center gap-3 pt-4 border-t">
+                <Checkbox
+                  id="isPowerItem"
+                  checked={item.isPowerItem === 1}
+                  onCheckedChange={(checked) => {
+                    updateMutation.mutate({ isPowerItem: checked ? 1 : 0 });
+                  }}
+                  disabled={updateMutation.isPending}
+                  data-testid="checkbox-power-item"
+                />
+                <div className="space-y-0.5">
+                  <Label htmlFor="isPowerItem" className="cursor-pointer font-medium">
+                    Power Item
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    High-cost item tracked more frequently in power inventory counts
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>

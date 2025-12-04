@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -759,11 +759,20 @@ export default function CountSession() {
         
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight" data-testid="text-session-title">
-              Count Session <span className="hidden sm:inline">Details</span> {company && store && <span className="text-lg sm:text-2xl">({company.name} - {store.name})</span>}
-            </h1>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight" data-testid="text-session-title">
+                Count Session <span className="hidden sm:inline">Details</span> {company && store && <span className="text-lg sm:text-2xl">({company.name} - {store.name})</span>}
+              </h1>
+              {count?.isPowerSession === 1 && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 text-sm font-medium" data-testid="badge-power-session">
+                  <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+                  Power Count
+                </span>
+              )}
+            </div>
             <p className="text-sm sm:text-base text-muted-foreground mt-2">
               {countDate?.toLocaleDateString()} {countDate?.toLocaleTimeString()}
+              {count?.isPowerSession === 1 && " • Only power items included"}
             </p>
             {!isReadOnly ? (
               <p className="text-sm text-muted-foreground mt-1">

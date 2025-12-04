@@ -4049,6 +4049,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Auto-populate count lines for GLOBALLY ACTIVE inventory items associated with THIS STORE
       // Query database directly to get items where BOTH global active AND store-active = 1
+      // For power sessions, only include power items
+      const whereConditions = [
+        eq(inventoryItems.companyId, count.companyId),
+        eq(inventoryItems.active, 1), // GLOBAL active
+        eq(storeInventoryItems.active, 1) // STORE active
+      ];
+      
+      // If this is a power session, only include power items
+      if (count.isPowerSession === 1) {
+        whereConditions.push(eq(inventoryItems.isPowerItem, 1));
+      }
+      
       const activeItemsQuery = await db
         .select({
           inventoryItem: inventoryItems,
@@ -4061,13 +4073,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             eq(storeInventoryItems.storeId, count.storeId)
           )
         )
-        .where(
-          and(
-            eq(inventoryItems.companyId, count.companyId),
-            eq(inventoryItems.active, 1), // GLOBAL active
-            eq(storeInventoryItems.active, 1) // STORE active
-          )
-        );
+        .where(and(...whereConditions));
       
       const activeItems = activeItemsQuery.map(row => row.inventoryItem);
 

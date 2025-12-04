@@ -58,6 +58,7 @@ export default function InventoryItemCreate() {
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [primaryLocationId, setPrimaryLocationId] = useState("");
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
+  const [isPowerItem, setIsPowerItem] = useState(false);
 
   const { data: units } = useQuery<Unit[]>({
     queryKey: ["/api/units"],
@@ -117,6 +118,7 @@ export default function InventoryItemCreate() {
         yieldPercent: parseFloat(yieldPercent) || 95,
         parLevel: parLevel.trim() !== "" ? parseFloat(parLevel.trim()) : null,
         reorderLevel: reorderLevel.trim() !== "" ? parseFloat(reorderLevel.trim()) : null,
+        isPowerItem: isPowerItem ? 1 : 0,
         locationIds: selectedLocations,
         storeIds: selectedStores,
       };
@@ -463,6 +465,23 @@ export default function InventoryItemCreate() {
                   placeholder="Level to trigger reorder"
                   data-testid="input-reorder-level"
                 />
+              </div>
+
+              <div className="flex items-center gap-3 pt-4 border-t">
+                <Checkbox
+                  id="isPowerItem"
+                  checked={isPowerItem}
+                  onCheckedChange={(checked) => setIsPowerItem(checked === true)}
+                  data-testid="checkbox-power-item"
+                />
+                <div className="space-y-0.5">
+                  <Label htmlFor="isPowerItem" className="cursor-pointer font-medium">
+                    Power Item
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    High-cost item tracked more frequently in power inventory counts
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Calendar as CalendarIcon, Trash2 } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Trash2, Star } from "lucide-react";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
   Table,
@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
@@ -89,9 +90,15 @@ function SessionRow({ count, inventoryItems, stores, index }: any) {
   return (
     <TableRow data-testid={`row-session-${count.id}`} className={rowClass}>
       <TableCell>
-        <div className="font-medium">{format(countDate, "PPP")}</div>
+        <div className="font-medium flex items-center gap-2">
+          {count.isPowerSession === 1 && (
+            <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" data-testid={`icon-power-${count.id}`} />
+          )}
+          {format(countDate, "PPP")}
+        </div>
         <div className="text-xs text-muted-foreground">
           Created {format(createdAt, "p")}
+          {count.isPowerSession === 1 && " • Power Count"}
         </div>
       </TableCell>
       <TableCell data-testid={`text-store-${count.id}`}>{storeName}</TableCell>
@@ -137,6 +144,7 @@ export default function InventorySessions() {
   const [dialogStoreId, setDialogStoreId] = useState<string>("");
   const [countDate, setCountDate] = useState<Date>(new Date());
   const [note, setNote] = useState("");
+  const [isPowerSession, setIsPowerSession] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   // Get authenticated user to determine company ID
@@ -185,6 +193,7 @@ export default function InventorySessions() {
         storeId: dialogStoreId,
         countDate: countDateStr,
         note: note || undefined,
+        isPowerSession: isPowerSession ? 1 : 0,
       });
       return response.json();
     },
@@ -192,11 +201,14 @@ export default function InventorySessions() {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
       toast({
         title: "Session Created",
-        description: "New inventory count session has been created",
+        description: isPowerSession 
+          ? "New power inventory count session has been created" 
+          : "New inventory count session has been created",
       });
       setDialogOpen(false);
       setDialogStoreId("");
       setNote("");
+      setIsPowerSession(false);
       setCountDate(new Date());
       setLocation(`/count/${data.id}`);
     },
@@ -369,6 +381,24 @@ export default function InventorySessions() {
                 onChange={(e) => setNote(e.target.value)}
                 data-testid="input-count-note"
               />
+            </div>
+
+            <div className="flex items-center gap-3 pt-4 border-t">
+              <Checkbox
+                id="isPowerSession"
+                checked={isPowerSession}
+                onCheckedChange={(checked) => setIsPowerSession(checked === true)}
+                data-testid="checkbox-power-session"
+              />
+              <div className="space-y-0.5">
+                <Label htmlFor="isPowerSession" className="cursor-pointer font-medium flex items-center gap-2">
+                  <Star className="h-4 w-4 text-yellow-500" />
+                  Power Inventory Count
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Only count high-cost power items for faster, focused inventory tracking
+                </p>
+              </div>
             </div>
           </div>
           <DialogFooter>
