@@ -175,7 +175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create user, company, and store in a transaction using db.transaction directly
       const result = await db.transaction(async (tx) => {
         // Import necessary tables
-        const { companies, users, companyStores, vendors, storageLocations, categories } = await import("@shared/schema");
+        const { companies, users, companyStores, userStores, vendors, storageLocations, categories } = await import("@shared/schema");
         
         // Whitelist only allowed company fields to prevent field injection attacks
         // Normalize empty strings to undefined for nullable fields
@@ -219,6 +219,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Create store
         const [newStore] = await tx.insert(companyStores).values(safeStoreData).returning();
+
+        // Assign user to the store they just created
+        await tx.insert(userStores).values({
+          userId: newUser.id,
+          storeId: newStore.id,
+        });
 
         // Create default "Misc Grocery" vendor
         await tx.insert(vendors).values({
