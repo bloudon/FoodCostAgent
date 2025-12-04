@@ -1896,13 +1896,14 @@ export class DatabaseStorage implements IStorage {
     transferredInQty: number;
     estimatedOnHand: number;
   }>> {
-    // Get the most recent inventory count for this store
+    // Get all inventory counts for this store, ordered by date descending
     const counts = await db
       .select()
       .from(inventoryCounts)
       .where(and(
         eq(inventoryCounts.companyId, companyId),
-        eq(inventoryCounts.storeId, storeId)
+        eq(inventoryCounts.storeId, storeId),
+        eq(inventoryCounts.applied, 1) // Only consider applied counts
       ))
       .orderBy(desc(inventoryCounts.countDate));
     
@@ -1910,28 +1911,81 @@ export class DatabaseStorage implements IStorage {
       return [];
     }
     
-    const lastCount = counts[0];
-    const lastCountDate = lastCount.countDate; // Keep as Date object for WHERE clause comparisons
+    const mostRecentCount = counts[0];
+    const isPowerCount = mostRecentCount.isPowerSession === 1;
     
-    // Convert to YYYY-MM-DD string for API response (use UTC methods)
-    const year = lastCountDate.getUTCFullYear();
-    const month = String(lastCountDate.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(lastCountDate.getUTCDate()).padStart(2, '0');
-    const lastCountDateString = `${year}-${month}-${day}`;
+    // Find the most recent regular (non-power) count for non-power items
+    const mostRecentRegularCount = counts.find(c => c.isPowerSession !== 1);
     
-    // Get all items from the last count, aggregated by inventoryItemId
-    const countLines = await db
-      .select({
-        inventoryItemId: inventoryCountLines.inventoryItemId,
-        totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
-      })
-      .from(inventoryCountLines)
-      .where(eq(inventoryCountLines.inventoryCountId, lastCount.id))
-      .groupBy(inventoryCountLines.inventoryItemId);
+    // Get power item IDs to determine which baseline to use for each item
+    const powerItems = await db
+      .select({ id: inventoryItems.id })
+      .from(inventoryItems)
+      .where(and(
+        eq(inventoryItems.companyId, companyId),
+        eq(inventoryItems.isPowerItem, 1)
+      ));
+    const powerItemIds = new Set(powerItems.map(p => p.id));
     
-    const lastCountMap = new Map(countLines.map(l => [l.inventoryItemId, l.totalQty]));
+    // Helper function to format date as YYYY-MM-DD string
+    const formatDateString = (date: Date): string => {
+      const year = date.getUTCFullYear();
+      const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(date.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
     
-    // Get all receipts since the last count
+    // Determine baseline counts and dates for power vs non-power items
+    // Power items: use most recent power count if available, otherwise most recent regular count
+    // Non-power items: always use most recent regular count
+    const powerItemBaselineCount = isPowerCount ? mostRecentCount : mostRecentRegularCount;
+    const regularItemBaselineCount = mostRecentRegularCount;
+    
+    // If there's no regular count at all, non-power items have no baseline
+    const powerCountDate = powerItemBaselineCount?.countDate;
+    const regularCountDate = regularItemBaselineCount?.countDate;
+    
+    const powerCountDateString = powerCountDate ? formatDateString(powerCountDate) : null;
+    const regularCountDateString = regularCountDate ? formatDateString(regularCountDate) : null;
+    
+    // Get count lines for power item baseline
+    let powerCountMap = new Map<string, number>();
+    if (powerItemBaselineCount) {
+      const powerCountLines = await db
+        .select({
+          inventoryItemId: inventoryCountLines.inventoryItemId,
+          totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+        })
+        .from(inventoryCountLines)
+        .where(eq(inventoryCountLines.inventoryCountId, powerItemBaselineCount.id))
+        .groupBy(inventoryCountLines.inventoryItemId);
+      powerCountMap = new Map(powerCountLines.map(l => [l.inventoryItemId, l.totalQty]));
+    }
+    
+    // Get count lines for regular item baseline (if different from power)
+    let regularCountMap = new Map<string, number>();
+    if (regularItemBaselineCount && regularItemBaselineCount.id !== powerItemBaselineCount?.id) {
+      const regularCountLines = await db
+        .select({
+          inventoryItemId: inventoryCountLines.inventoryItemId,
+          totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+        })
+        .from(inventoryCountLines)
+        .where(eq(inventoryCountLines.inventoryCountId, regularItemBaselineCount.id))
+        .groupBy(inventoryCountLines.inventoryItemId);
+      regularCountMap = new Map(regularCountLines.map(l => [l.inventoryItemId, l.totalQty]));
+    } else if (regularItemBaselineCount) {
+      // Same count as power items
+      regularCountMap = powerCountMap;
+    }
+    
+    // Determine the earliest baseline date we need to query from
+    // This ensures we get all activity that might be relevant
+    const earliestBaselineDate = regularCountDate && powerCountDate 
+      ? (regularCountDate < powerCountDate ? regularCountDate : powerCountDate)
+      : (regularCountDate || powerCountDate || new Date());
+    
+    // Get all receipts since the earliest baseline date
     const allReceipts = await db
       .select({
         inventoryItemId: vendorItems.inventoryItemId,
@@ -1951,24 +2005,12 @@ export class DatabaseStorage implements IStorage {
         )
       );
     
-    // Filter receipts by delivery date after last count
-    const receivedItems = allReceipts.filter(item => {
-      const deliveryDate = item.expectedDate || item.receivedAt;
-      if (!deliveryDate) return false;
-      return new Date(deliveryDate) > new Date(lastCountDate);
-    });
-    
-    // Aggregate received quantities by item
-    const receivedMap = new Map<string, number>();
-    for (const item of receivedItems) {
-      receivedMap.set(item.inventoryItemId, (receivedMap.get(item.inventoryItemId) || 0) + item.receivedQty);
-    }
-    
-    // Get waste logs since last count
+    // Get waste logs since earliest baseline
     const wasteLogsData = await db
       .select({
         inventoryItemId: wasteLogs.inventoryItemId,
         qty: wasteLogs.qty,
+        wastedAt: wasteLogs.wastedAt,
       })
       .from(wasteLogs)
       .where(
@@ -1976,20 +2018,11 @@ export class DatabaseStorage implements IStorage {
           eq(wasteLogs.companyId, companyId),
           eq(wasteLogs.storeId, storeId),
           eq(wasteLogs.wasteType, 'inventory'),
-          gte(wasteLogs.wastedAt, lastCountDate)
+          gte(wasteLogs.wastedAt, earliestBaselineDate)
         )
       );
     
-    // Aggregate waste by item
-    const wasteMap = new Map<string, number>();
-    for (const waste of wasteLogsData) {
-      if (waste.inventoryItemId) {
-        wasteMap.set(waste.inventoryItemId, (wasteMap.get(waste.inventoryItemId) || 0) + waste.qty);
-      }
-    }
-    
-    // Get theoretical usage since last count
-    // Use gt() not gte() - sales on the same day as count are excluded
+    // Get theoretical usage runs since earliest baseline
     const theoreticalUsageRunsData = await db
       .select()
       .from(theoreticalUsageRuns)
@@ -1997,35 +2030,40 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(theoreticalUsageRuns.companyId, companyId),
           eq(theoreticalUsageRuns.storeId, storeId),
-          gt(theoreticalUsageRuns.salesDate, lastCountDate),
+          gt(theoreticalUsageRuns.salesDate, earliestBaselineDate),
           eq(theoreticalUsageRuns.status, 'completed')
         )
       );
     
     const runIds = theoreticalUsageRunsData.map(r => r.id);
     
-    let theoreticalUsageLinesData: any[] = [];
+    // Get all theoretical usage lines with their run's sales date
+    let theoreticalUsageLinesWithDate: Array<{ inventoryItemId: string; requiredQtyBaseUnit: number; salesDate: Date }> = [];
     if (runIds.length > 0) {
-      theoreticalUsageLinesData = await db
+      const lines = await db
         .select({
           inventoryItemId: theoreticalUsageLines.inventoryItemId,
           requiredQtyBaseUnit: theoreticalUsageLines.requiredQtyBaseUnit,
+          runId: theoreticalUsageLines.runId,
         })
         .from(theoreticalUsageLines)
         .where(inArray(theoreticalUsageLines.runId, runIds));
+      
+      // Map run IDs to their sales dates
+      const runDateMap = new Map(theoreticalUsageRunsData.map(r => [r.id, r.salesDate]));
+      theoreticalUsageLinesWithDate = lines.map(l => ({
+        inventoryItemId: l.inventoryItemId,
+        requiredQtyBaseUnit: l.requiredQtyBaseUnit,
+        salesDate: runDateMap.get(l.runId)!,
+      }));
     }
     
-    // Aggregate theoretical usage by item
-    const theoreticalMap = new Map<string, number>();
-    for (const line of theoreticalUsageLinesData) {
-      theoreticalMap.set(line.inventoryItemId, (theoreticalMap.get(line.inventoryItemId) || 0) + line.requiredQtyBaseUnit);
-    }
-    
-    // Get outbound transfers since last count
+    // Get outbound transfers since earliest baseline
     const transferredItems = await db
       .select({
         inventoryItemId: transferOrderLines.inventoryItemId,
         shippedQty: transferOrderLines.shippedQty,
+        completedAt: transferOrders.completedAt,
       })
       .from(transferOrderLines)
       .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
@@ -2033,22 +2071,17 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(transferOrders.companyId, companyId),
           eq(transferOrders.fromStoreId, storeId),
-          gte(transferOrders.completedAt, lastCountDate),
+          gte(transferOrders.completedAt, earliestBaselineDate),
           eq(transferOrders.status, 'completed')
         )
       );
     
-    // Aggregate transferred quantities by item
-    const transferredMap = new Map<string, number>();
-    for (const item of transferredItems) {
-      transferredMap.set(item.inventoryItemId, (transferredMap.get(item.inventoryItemId) || 0) + (item.shippedQty || 0));
-    }
-    
-    // Get inbound transfers since last count (where this store is the destination)
+    // Get inbound transfers since earliest baseline
     const transferredInItems = await db
       .select({
         inventoryItemId: transferOrderLines.inventoryItemId,
         shippedQty: transferOrderLines.shippedQty,
+        completedAt: transferOrders.completedAt,
       })
       .from(transferOrderLines)
       .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
@@ -2056,35 +2089,67 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(transferOrders.companyId, companyId),
           eq(transferOrders.toStoreId, storeId),
-          gte(transferOrders.completedAt, lastCountDate),
+          gte(transferOrders.completedAt, earliestBaselineDate),
           eq(transferOrders.status, 'completed')
         )
       );
     
-    // Aggregate transferred in quantities by item
-    const transferredInMap = new Map<string, number>();
-    for (const item of transferredInItems) {
-      transferredInMap.set(item.inventoryItemId, (transferredInMap.get(item.inventoryItemId) || 0) + (item.shippedQty || 0));
-    }
-    
-    // Get all unique inventory item IDs
+    // Get all unique inventory item IDs from all sources
     const allItemIds = new Set([
-      ...Array.from(lastCountMap.keys()),
-      ...Array.from(receivedMap.keys()),
-      ...Array.from(wasteMap.keys()),
-      ...Array.from(theoreticalMap.keys()),
-      ...Array.from(transferredMap.keys()),
-      ...Array.from(transferredInMap.keys()),
+      ...Array.from(powerCountMap.keys()),
+      ...Array.from(regularCountMap.keys()),
+      ...allReceipts.map(r => r.inventoryItemId),
+      ...wasteLogsData.filter(w => w.inventoryItemId).map(w => w.inventoryItemId!),
+      ...theoreticalUsageLinesWithDate.map(t => t.inventoryItemId),
+      ...transferredItems.map(t => t.inventoryItemId),
+      ...transferredInItems.map(t => t.inventoryItemId),
     ]);
     
-    // Calculate estimated on-hand for each item
+    // Calculate estimated on-hand for each item using the appropriate baseline
     const estimatedOnHandData = Array.from(allItemIds).map(itemId => {
-      const lastCountQty = lastCountMap.get(itemId) || 0;
-      const receivedQty = receivedMap.get(itemId) || 0;
-      const wasteQty = wasteMap.get(itemId) || 0;
-      const theoreticalUsageQty = theoreticalMap.get(itemId) || 0;
-      const transferredOutQty = transferredMap.get(itemId) || 0;
-      const transferredInQty = transferredInMap.get(itemId) || 0;
+      const isPowerItem = powerItemIds.has(itemId);
+      
+      // Use appropriate baseline count and date based on item type
+      const baselineCountMap = isPowerItem ? powerCountMap : regularCountMap;
+      const baselineDate = isPowerItem ? powerCountDate : regularCountDate;
+      const baselineDateString = isPowerItem ? powerCountDateString : regularCountDateString;
+      
+      // If no baseline date exists for this item type, skip it
+      if (!baselineDate) {
+        return null;
+      }
+      
+      const lastCountQty = baselineCountMap.get(itemId) || 0;
+      
+      // Filter receipts by delivery date after this item's baseline
+      const receivedQty = allReceipts
+        .filter(r => {
+          if (r.inventoryItemId !== itemId) return false;
+          const deliveryDate = r.expectedDate || r.receivedAt;
+          if (!deliveryDate) return false;
+          return new Date(deliveryDate) > new Date(baselineDate);
+        })
+        .reduce((sum, r) => sum + r.receivedQty, 0);
+      
+      // Filter waste by date after baseline
+      const wasteQty = wasteLogsData
+        .filter(w => w.inventoryItemId === itemId && new Date(w.wastedAt) >= new Date(baselineDate))
+        .reduce((sum, w) => sum + w.qty, 0);
+      
+      // Filter theoretical usage by sales date after baseline
+      const theoreticalUsageQty = theoreticalUsageLinesWithDate
+        .filter(t => t.inventoryItemId === itemId && new Date(t.salesDate) > new Date(baselineDate))
+        .reduce((sum, t) => sum + t.requiredQtyBaseUnit, 0);
+      
+      // Filter outbound transfers by completion date after baseline
+      const transferredOutQty = transferredItems
+        .filter(t => t.inventoryItemId === itemId && t.completedAt && new Date(t.completedAt) >= new Date(baselineDate))
+        .reduce((sum, t) => sum + (t.shippedQty || 0), 0);
+      
+      // Filter inbound transfers by completion date after baseline
+      const transferredInQty = transferredInItems
+        .filter(t => t.inventoryItemId === itemId && t.completedAt && new Date(t.completedAt) >= new Date(baselineDate))
+        .reduce((sum, t) => sum + (t.shippedQty || 0), 0);
       
       // Formula: On-Hand = Last Count + Received + Transferred In - Waste - Theoretical Usage - Transferred Out
       const estimatedOnHand = lastCountQty + receivedQty + transferredInQty - wasteQty - theoreticalUsageQty - transferredOutQty;
@@ -2092,15 +2157,15 @@ export class DatabaseStorage implements IStorage {
       return {
         inventoryItemId: itemId,
         lastCountQty,
-        lastCountDate: lastCountDateString, // YYYY-MM-DD string extracted from timestamp using UTC methods
+        lastCountDate: baselineDateString,
         receivedQty,
         wasteQty,
         theoreticalUsageQty,
         transferredOutQty,
         transferredInQty,
-        estimatedOnHand: Math.max(0, estimatedOnHand), // Don't show negative on-hand
+        estimatedOnHand: Math.max(0, estimatedOnHand),
       };
-    });
+    }).filter((item): item is NonNullable<typeof item> => item !== null);
     
     return estimatedOnHandData;
   }
