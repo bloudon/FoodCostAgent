@@ -135,6 +135,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/onboarding/signup", async (req, res) => {
     try {
       const signupSchema = z.object({
+        firstName: z.string().min(1, "First name is required"),
+        lastName: z.string().min(1, "Last name is required"),
         email: z.string().email(),
         password: z.string().min(6, "Password must be at least 6 characters"),
         company: insertCompanySchema.omit({ id: true, tccAccountId: true }).extend({
@@ -161,7 +163,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         store: insertCompanyStoreSchema.omit({ id: true, companyId: true }),
       });
 
-      const { email, password, company, store } = signupSchema.parse(req.body);
+      const { firstName, lastName, email, password, company, store } = signupSchema.parse(req.body);
 
       // Check if user already exists
       const existingUser = await storage.getUserByEmail(email);
@@ -198,6 +200,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Create user with company association
         const [newUser] = await tx.insert(users).values({
+          firstName,
+          lastName,
           email,
           passwordHash,
           role: "company_admin", // Company admin role - matches permission checks

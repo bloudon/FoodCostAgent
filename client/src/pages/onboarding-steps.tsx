@@ -33,6 +33,8 @@ import { insertVendorSchema, type Vendor } from "@shared/schema";
 
 // Company Setup Form Schema (includes user credentials for signup)
 const companyFormSchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   name: z.string().min(1, "Company name is required"),
@@ -74,6 +76,8 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
   const form = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
     defaultValues: wizardData.company || {
+      firstName: "",
+      lastName: "",
       email: "",
       password: "",
       name: "",
@@ -132,6 +136,34 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Create Your Account</h3>
             <div className="grid gap-6 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="firstName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>First Name *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="John" {...field} data-testid="input-first-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="lastName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Last Name *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Smith" {...field} data-testid="input-last-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 control={form.control}
                 name="email"
@@ -406,6 +438,8 @@ export function StoreSetupStep({ onComplete }: { onComplete: () => void }) {
 
       // Call the combined signup endpoint
       const response = await apiRequest("POST", "/api/onboarding/signup", {
+        firstName: companyData.firstName,
+        lastName: companyData.lastName,
         email: companyData.email,
         password: companyData.password,
         company: {
