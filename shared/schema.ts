@@ -283,6 +283,7 @@ export const inventoryItems = pgTable("inventory_items", {
   parLevel: real("par_level"), // default target inventory level (can be overridden at store level)
   reorderLevel: real("reorder_level"), // default reorder level (can be overridden at store level)
   imageUrl: text("image_url"),
+  isPowerItem: integer("is_power_item").notNull().default(0), // 1 = high-cost power item for frequent tracking
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
   // Optimize company-scoped inventory queries
@@ -474,6 +475,7 @@ export const inventoryCounts = pgTable("inventory_counts", {
   applied: integer("applied").notNull().default(0), // 0 = not applied, 1 = applied to on-hand quantities
   appliedAt: timestamp("applied_at"), // When the count was applied (local time)
   appliedBy: varchar("applied_by"), // User who applied the count
+  isPowerSession: integer("is_power_session").notNull().default(0), // 1 = power inventory session (only power items)
 });
 
 export const insertInventoryCountSchema = createInsertSchema(inventoryCounts).omit({ id: true, countedAt: true }).extend({
