@@ -31,6 +31,7 @@ interface MenuItem {
   department: string | null;
   category: string | null;
   size: string | null;
+  menuItemSizeId: string | null;
   pluSku: string;
   recipeId: string | null;
   parentMenuItemId: string | null;
@@ -222,6 +223,18 @@ export default function MenuItemsPage() {
       selectedStores: selectedStoresForAdd,
     };
     sessionStorage.setItem('menu-item-draft', JSON.stringify(draft));
+  };
+  
+  // Save edit form data before navigating to recipe builder
+  const saveEditFormDraft = () => {
+    if (!editingItem) return;
+    const formData = editForm.getValues();
+    const draft = {
+      formData,
+      selectedStores: selectedStoresForEdit,
+      menuItemId: editingItem.id,
+    };
+    sessionStorage.setItem('menu-item-edit-draft', JSON.stringify(draft));
   };
 
   // Restore form data from sessionStorage when dialog opens
@@ -539,6 +552,7 @@ export default function MenuItemsPage() {
       department: item.department || "",
       category: item.category || "",
       size: item.size || "",
+      menuItemSizeId: item.menuItemSizeId || null,
       pluSku: item.pluSku,
       isRecipeItem: item.isRecipeItem,
       active: item.active,
@@ -561,6 +575,9 @@ export default function MenuItemsPage() {
       return;
     }
     
+    // Get the size name from menuItemSizeId for the legacy size field
+    const selectedSize = menuItemSizes?.find(s => s.id === data.menuItemSizeId);
+    
     const payload: Partial<AddMenuItemForm> = {
       name: data.name,
       pluSku: data.pluSku,
@@ -569,7 +586,8 @@ export default function MenuItemsPage() {
       recipeId: data.recipeId || null,
       department: data.department || undefined,
       category: data.category || undefined,
-      size: data.size || undefined,
+      size: selectedSize?.name || data.size || undefined,
+      menuItemSizeId: data.menuItemSizeId || undefined,
       price: data.price ?? undefined,
     };
     updateItemMutation.mutate({ id: editingItem.id, data: payload, storeIds: selectedStoresForEdit });
@@ -1265,6 +1283,7 @@ export default function MenuItemsPage() {
                       )}
                     />
                   </div>
+                  {/* Size field - shown for variant children */}
                   {editingItem?.parentMenuItemId && (
                     <FormField
                       control={editForm.control}
@@ -1273,8 +1292,8 @@ export default function MenuItemsPage() {
                         <FormItem>
                           <FormLabel>Size</FormLabel>
                           <Select
-                            value={field.value || "one-size"}
-                            onValueChange={(value) => field.onChange(value === "one-size" ? null : value)}
+                            value={field.value || ""}
+                            onValueChange={(value) => field.onChange(value)}
                           >
                             <FormControl>
                               <SelectTrigger data-testid="select-edit-size">
@@ -1286,7 +1305,7 @@ export default function MenuItemsPage() {
                                 <SelectItem key={size.id} value={size.id}>
                                   {size.name}
                                 </SelectItem>
-                              )) || <SelectItem value="one-size">One Size</SelectItem>}
+                              ))}
                             </SelectContent>
                           </Select>
                           <FormDescription>
@@ -1297,6 +1316,60 @@ export default function MenuItemsPage() {
                       )}
                     />
                   )}
+                  
+                  {/* Size info for standalone items (no parent) - show current size and option to add variants */}
+                  {editingItem && !editingItem.parentMenuItemId && (() => {
+                    const isParentWithChildren = hierarchy?.some(g => g.parent.id === editingItem.id && g.variants.length > 0);
+                    const currentSizeName = menuItemSizes?.find(s => s.id === editingItem.menuItemSizeId)?.name || editingItem.size || "One Size";
+                    
+                    if (isParentWithChildren) {
+                      return (
+                        <div className="space-y-2">
+                          <FormLabel>Size</FormLabel>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary">Variant Group</Badge>
+                            <span className="text-sm text-muted-foreground">
+                              Edit individual variants for size changes
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <div className="space-y-2">
+                        <FormLabel>Size</FormLabel>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{currentSizeName}</Badge>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setEditDialogOpen(false);
+                              setSelectedParentForVariant(editingItem);
+                              variantForm.reset({
+                                size: "",
+                                menuItemSizeId: null,
+                                pluSku: `${editingItem.pluSku}-`,
+                                price: editingItem.price,
+                                createRecipeFromParent: editingItem.recipeId ? true : false,
+                                scaleRecipe: 1,
+                              });
+                              setAddVariantDialogOpen(true);
+                            }}
+                            data-testid="button-add-size-variant-edit"
+                          >
+                            <PlusCircle className="h-4 w-4 mr-1" />
+                            Add Size Variant
+                          </Button>
+                        </div>
+                        <FormDescription>
+                          Add size variants to create different sizes for this item
+                        </FormDescription>
+                      </div>
+                    );
+                  })()}
                   <FormField
                     control={editForm.control}
                     name="recipeId"
@@ -1321,6 +1394,16 @@ export default function MenuItemsPage() {
                             ))}
                           </SelectContent>
                         </Select>
+                        <FormDescription>
+                          <Link
+                            href={`/recipes/new?name=${encodeURIComponent(editForm.watch("name") || editingItem?.name || "")}&menuItemId=${editingItem?.id || ""}`}
+                            className="text-primary hover:underline text-sm"
+                            onClick={saveEditFormDraft}
+                            data-testid="link-create-recipe-edit"
+                          >
+                            Create new recipe with this name
+                          </Link>
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

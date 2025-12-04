@@ -67,6 +67,7 @@ import {
   Package,
   Plus,
   Copy,
+  Link as LinkIcon,
 } from "lucide-react";
 import type { Recipe, RecipeComponent, Category, InventoryItem as BaseInventoryItem, Unit as BaseUnit } from "@shared/schema";
 
@@ -245,9 +246,10 @@ export default function RecipeBuilder() {
   const { toast } = useToast();
   const isNew = id === "new";
 
-  // Get pre-populated name from URL query params
+  // Get pre-populated name and menuItemId from URL query params
   const urlParams = new URLSearchParams(window.location.search);
   const initialName = urlParams.get("name") || "";
+  const menuItemIdToLink = urlParams.get("menuItemId") || null;
 
   // Recipe metadata state
   const [recipeName, setRecipeName] = useState(initialName);
@@ -745,15 +747,31 @@ export default function RecipeBuilder() {
         );
       }
 
+      // If we have a menuItemId to link, auto-link the recipe to the menu item
+      if (isNew && menuItemIdToLink) {
+        await apiRequest("POST", `/api/menu-items/${menuItemIdToLink}/link-recipe`, {
+          recipeId,
+        });
+      }
+
       return recipeId;
     },
     onSuccess: (recipeId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/recipe-components"] });
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items/hierarchy"] });
       queryClient.invalidateQueries({ queryKey: ["/api/store-recipes"] });
-      toast({ title: "Recipe saved successfully" });
-      setLocation(`/recipes/${recipeId}`);
+      
+      if (menuItemIdToLink) {
+        toast({ title: "Recipe saved and linked to menu item" });
+        // Clean up the edit draft since we're linking successfully
+        sessionStorage.removeItem('menu-item-edit-draft');
+        setLocation(`/menu-items`);
+      } else {
+        toast({ title: "Recipe saved successfully" });
+        setLocation(`/recipes/${recipeId}`);
+      }
     },
     onError: () => {
       toast({ title: "Failed to save recipe", variant: "destructive" });
@@ -957,6 +975,18 @@ export default function RecipeBuilder() {
                     <h1 className="text-3xl font-bold">
                       {isNew ? "New Recipe" : "Edit Recipe"}
                     </h1>
+                    {isNew && menuItemIdToLink && menuItems && (() => {
+                      const menuItem = menuItems.find((mi: any) => mi.id === menuItemIdToLink);
+                      if (menuItem) {
+                        return (
+                          <Badge variant="default" className="bg-green-600">
+                            <LinkIcon className="h-3 w-3 mr-1" />
+                            Will link to: {menuItem.name}
+                          </Badge>
+                        );
+                      }
+                      return null;
+                    })()}
                     {!isNew && id && menuItems && (() => {
                       const menuItem = menuItems.find((mi: any) => mi.recipeId === id);
                       if (menuItem) {
@@ -972,7 +1002,10 @@ export default function RecipeBuilder() {
                     })()}
                   </div>
                   <p className="text-muted-foreground mt-1">
-                    Drag ingredients from the left to build your recipe
+                    {menuItemIdToLink 
+                      ? "Build your recipe, then save to automatically link it to your menu item"
+                      : "Drag ingredients from the left to build your recipe"
+                    }
                   </p>
                 </div>
               </div>
