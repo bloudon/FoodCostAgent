@@ -200,7 +200,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const [newUser] = await tx.insert(users).values({
           email,
           passwordHash,
-          role: "admin", // Company admin role
+          role: "company_admin", // Company admin role - matches permission checks
           companyId: newCompany.id,
         }).returning();
 

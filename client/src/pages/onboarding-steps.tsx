@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -378,6 +379,7 @@ type StoreFormValues = z.infer<typeof storeFormSchema>;
 
 export function StoreSetupStep({ onComplete }: { onComplete: () => void }) {
   const { wizardData, updateWizardData } = useOnboarding();
+  const { refreshAuth } = useAuth();
   const { toast } = useToast();
 
   const form = useForm<StoreFormValues>({
@@ -428,11 +430,14 @@ export function StoreSetupStep({ onComplete }: { onComplete: () => void }) {
       
       return await response.json();
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       // Save company and store data to wizard context
       updateWizardData("company", result.company);
       updateWizardData("store", result.store);
       updateWizardData("user", result.user);
+      
+      // Refresh auth context to recognize the new session before navigating to protected routes
+      await refreshAuth();
       
       toast({
         title: "Account created successfully!",

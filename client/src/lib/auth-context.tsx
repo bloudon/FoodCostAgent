@@ -12,6 +12,7 @@ type AuthContextType = {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshAuth: () => Promise<void>;
   getEffectiveCompanyId: () => string | null;
 };
 
@@ -61,6 +62,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Refresh auth state - useful after signup when session cookie is set but context is stale
+  async function refreshAuth() {
+    await checkAuth();
+  }
+
   // Helper function to get the effective company ID
   // For global admins, use selectedCompanyId from session
   // For company-bound users, use their companyId
@@ -72,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, getEffectiveCompanyId }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, refreshAuth, getEffectiveCompanyId }}>
       {children}
     </AuthContext.Provider>
   );
