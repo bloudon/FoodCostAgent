@@ -2224,6 +2224,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storageLocationId: item.storageLocationId,
         onHandQty: item.onHandQty,
         active: item.active,
+        isPowerItem: item.isPowerItem,
         locations: itemLocations,
         unit: unit || { id: item.unitId, name: '', abbreviation: '' },
       };

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useStoreContext } from "@/hooks/use-store-context";
-import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,7 +55,7 @@ type InventoryItem = {
   imageUrl: string | null;
   parLevel: number | null;
   reorderLevel: number | null;
-  isPowerItem: number;
+  isPowerItem: number | boolean;
 };
 
 type Unit = {
@@ -525,7 +525,12 @@ export default function InventoryItemDetail() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold">{item.name}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold">{item.name}</h1>
+              {(item.isPowerItem === 1 || item.isPowerItem === true) && (
+                <Star className="h-5 w-5 fill-yellow-500 text-yellow-500" data-testid="icon-power-item" />
+              )}
+            </div>
             <p className="text-sm text-muted-foreground">
               PLU/SKU: {item.pluSku}
             </p>
@@ -547,6 +552,29 @@ export default function InventoryItemDetail() {
       {/* Scrollable Content */}
       <div className="flex-1 overflow-auto">
         <div className="p-6 space-y-6">
+          {/* Power Item Toggle - Above the fold */}
+          <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
+            <div className="flex items-center gap-3">
+              <Star className={`h-5 w-5 ${(item.isPowerItem === 1 || item.isPowerItem === true) ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'}`} />
+              <div className="space-y-0.5">
+                <Label htmlFor="isPowerItem-header" className="cursor-pointer font-medium">
+                  Power Item
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  High-cost item tracked more frequently in power inventory counts
+                </p>
+              </div>
+            </div>
+            <Checkbox
+              id="isPowerItem-header"
+              checked={item.isPowerItem === 1 || item.isPowerItem === true}
+              onCheckedChange={(checked) => {
+                updateMutation.mutate({ isPowerItem: checked ? 1 : 0 });
+              }}
+              disabled={updateMutation.isPending}
+              data-testid="checkbox-power-item"
+            />
+          </div>
           {/* Basic Information Accordion */}
           <Accordion type="single" collapsible value={settingsOpen} onValueChange={setSettingsOpen}>
             <AccordionItem value="settings" className="border rounded-lg px-4">
@@ -839,26 +867,6 @@ export default function InventoryItemDetail() {
                   disabled={updateMutation.isPending}
                   data-testid="input-reorder-level"
                 />
-              </div>
-
-              <div className="flex items-center gap-3 pt-4 border-t">
-                <Checkbox
-                  id="isPowerItem"
-                  checked={item.isPowerItem === 1}
-                  onCheckedChange={(checked) => {
-                    updateMutation.mutate({ isPowerItem: checked ? 1 : 0 });
-                  }}
-                  disabled={updateMutation.isPending}
-                  data-testid="checkbox-power-item"
-                />
-                <div className="space-y-0.5">
-                  <Label htmlFor="isPowerItem" className="cursor-pointer font-medium">
-                    Power Item
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    High-cost item tracked more frequently in power inventory counts
-                  </p>
-                </div>
               </div>
             </CardContent>
           </Card>

@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
@@ -56,6 +56,7 @@ type InventoryItemDisplay = {
   storageLocationId: string;
   onHandQty: number;
   active: number;
+  isPowerItem: number | boolean;
   locations: Array<{
     id: string;
     name: string;
@@ -354,6 +355,9 @@ export default function InventoryItems() {
                           <div>
                             <div className="font-medium flex items-center gap-2">
                               {item.name}
+                              {(item.isPowerItem === 1 || item.isPowerItem === true) && (
+                                <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" data-testid={`icon-power-item-${item.id}`} />
+                              )}
                               {item.active === 0 && (
                                 <Badge variant="outline" className="text-xs">
                                   Inactive
