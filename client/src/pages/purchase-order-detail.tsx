@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format } from "date-fns";
+import { format, parse } from "date-fns";
 import { cn, formatDateString } from "@/lib/utils";
 import {
   Table,
@@ -602,13 +602,13 @@ export default function PurchaseOrderDetail() {
                     data-testid="button-expected-date"
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {expectedDate ? format(new Date(expectedDate), "PPP") : <span>Pick a date</span>}
+                    {expectedDate ? format(parse(expectedDate, 'yyyy-MM-dd', new Date()), "PPP") : <span>Pick a date</span>}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
-                    selected={expectedDate ? new Date(expectedDate) : undefined}
+                    selected={expectedDate ? parse(expectedDate, 'yyyy-MM-dd', new Date()) : undefined}
                     onSelect={(date) => {
                       if (date) {
                         const year = date.getFullYear();
