@@ -72,9 +72,61 @@ const VENDOR_MAPPINGS: Record<VendorKey, CsvColumnMapping> = {
 };
 
 /**
+ * Generic column name patterns for auto-detection
+ * Each pattern is an array of possible column names (case-insensitive)
+ */
+const GENERIC_COLUMN_PATTERNS: Record<keyof CsvColumnMapping, string[]> = {
+  vendorSku: ['item', 'item number', 'item code', 'item #', 'item#', 'sku', 'supc', 'product code', 'product number', 'product #', 'code', 'number'],
+  productName: ['description', 'product description', 'item description', 'name', 'product name', 'product'],
+  description: ['extended description', 'long description', 'full description', 'details'],
+  caseSize: ['pack', 'pack size', 'case pack', 'case size', 'qty', 'quantity'],
+  innerPack: ['inner pack', 'inner pack size', 'inner'],
+  unit: ['size', 'unit', 'uom', 'unit of measure', 'measure'],
+  price: ['price', 'unit price', 'case price', 'cost', 'each'],
+  brand: ['brand', 'brand name', 'manufacturer', 'mfr'],
+  category: ['category', 'category code', 'category id', 'cat', 'class'],
+  upc: ['upc', 'upc code', 'gtin', 'barcode', 'ean'],
+};
+
+/**
  * CSV Order Guide Parser
  */
 export class CsvOrderGuide {
+  /**
+   * Auto-detect column mapping from CSV headers
+   */
+  private static detectColumnMapping(headers: string[]): CsvColumnMapping {
+    const mapping: CsvColumnMapping = {
+      vendorSku: '',
+      productName: '',
+    };
+    
+    const headerLower = headers.map(h => h.toLowerCase().trim());
+    
+    // For each field type, find the best matching column
+    for (const [field, patterns] of Object.entries(GENERIC_COLUMN_PATTERNS)) {
+      for (const pattern of patterns) {
+        const index = headerLower.findIndex(h => h === pattern);
+        if (index !== -1) {
+          (mapping as any)[field] = headers[index];
+          break;
+        }
+      }
+    }
+    
+    console.log('[CsvOrderGuide] Auto-detected column mapping:', mapping);
+    return mapping;
+  }
+
+  /**
+   * Check if vendor-specific mapping matches the CSV headers
+   */
+  private static vendorMappingMatches(headers: string[], mapping: CsvColumnMapping): boolean {
+    const headerSet = new Set(headers.map(h => h.toLowerCase().trim()));
+    // Check if at least the vendorSku column matches
+    return headerSet.has(mapping.vendorSku.toLowerCase());
+  }
+
   /**
    * Parse CSV file to OrderGuide
    */
@@ -83,7 +135,7 @@ export class CsvOrderGuide {
     options: CsvParseOptions
   ): Promise<OrderGuide> {
     const { vendorKey, skipRows = 0, delimiter = ',' } = options;
-    const mapping = VENDOR_MAPPINGS[vendorKey];
+    const vendorMapping = VENDOR_MAPPINGS[vendorKey];
 
     // Parse CSV with robust csv-parse library
     const records = parse(csvContent, {
@@ -94,6 +146,28 @@ export class CsvOrderGuide {
       delimiter,
       from: skipRows + 1, // Skip header rows if needed
     }) as Record<string, string>[];
+
+    if (records.length === 0) {
+      return {
+        vendorKey,
+        products: [],
+        effectiveDate: new Date().toISOString(),
+      };
+    }
+
+    // Get headers from first record
+    const headers = Object.keys(records[0]);
+    console.log('[CsvOrderGuide] CSV headers:', headers);
+    
+    // Decide whether to use vendor-specific or auto-detected mapping
+    let mapping: CsvColumnMapping;
+    if (this.vendorMappingMatches(headers, vendorMapping)) {
+      console.log('[CsvOrderGuide] Using vendor-specific mapping for:', vendorKey);
+      mapping = vendorMapping;
+    } else {
+      console.log('[CsvOrderGuide] Vendor mapping not found, using auto-detection');
+      mapping = this.detectColumnMapping(headers);
+    }
 
     const products: VendorProduct[] = [];
 
