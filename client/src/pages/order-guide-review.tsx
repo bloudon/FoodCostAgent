@@ -433,9 +433,9 @@ function OrderGuideTable({
               </TableCell>
               <TableCell className="font-mono text-sm">{line.vendorSku}</TableCell>
               <TableCell>{line.productName}</TableCell>
-              <TableCell className="text-muted-foreground">{line.packSize || '-'}</TableCell>
+              <TableCell className="text-muted-foreground">{line.uom || '-'}</TableCell>
               <TableCell>
-                {line.caseSize ? `${line.caseSize} ${line.uom || ''}`.trim() : '-'}
+                {line.caseSize ?? '-'}
               </TableCell>
               <TableCell>
                 {line.price ? `$${line.price.toFixed(2)}` : '-'}
