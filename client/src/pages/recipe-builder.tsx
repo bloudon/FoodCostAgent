@@ -123,6 +123,20 @@ function InlineIngredientRow({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // Use local string state for inputs to allow proper decimal entry
+  const [localQty, setLocalQty] = useState(component.qty.toString());
+  const [localYieldOverride, setLocalYieldOverride] = useState(
+    component.yieldOverride != null ? component.yieldOverride.toString() : ""
+  );
+
+  // Sync local state when component changes from outside (e.g., reorder)
+  useEffect(() => {
+    setLocalQty(component.qty.toString());
+    setLocalYieldOverride(
+      component.yieldOverride != null ? component.yieldOverride.toString() : ""
+    );
+  }, [component.id]); // Only reset when component ID changes
+
   // Get the default yield for inventory items
   const getDefaultYield = () => {
     if (component.componentType === "inventory_item") {
@@ -132,11 +146,21 @@ function InlineIngredientRow({
     return 100;
   };
 
-  // Handle quantity change
+  // Handle quantity change - update local state immediately, parse on blur
   const handleQtyChange = (value: string) => {
-    const qty = parseFloat(value) || 0;
-    const updated = { ...component, qty };
-    onUpdate(updated);
+    setLocalQty(value);
+  };
+
+  // Commit quantity change on blur
+  const handleQtyBlur = () => {
+    const qty = parseFloat(localQty);
+    if (!isNaN(qty) && qty > 0) {
+      const updated = { ...component, qty };
+      onUpdate(updated);
+    } else {
+      // Reset to component value if invalid
+      setLocalQty(component.qty.toString());
+    }
   };
 
   // Handle unit change
@@ -146,11 +170,28 @@ function InlineIngredientRow({
     onUpdate(updated);
   };
 
-  // Handle yield override change
+  // Handle yield override change - update local state immediately
   const handleYieldOverrideChange = (value: string) => {
-    const yieldOverride = value ? parseFloat(value) : null;
-    const updated = { ...component, yieldOverride };
-    onUpdate(updated);
+    setLocalYieldOverride(value);
+  };
+
+  // Commit yield override change on blur
+  const handleYieldOverrideBlur = () => {
+    if (localYieldOverride === "") {
+      const updated = { ...component, yieldOverride: null };
+      onUpdate(updated);
+    } else {
+      const yieldOverride = parseFloat(localYieldOverride);
+      if (!isNaN(yieldOverride) && yieldOverride >= 0 && yieldOverride <= 100) {
+        const updated = { ...component, yieldOverride };
+        onUpdate(updated);
+      } else {
+        // Reset to component value if invalid
+        setLocalYieldOverride(
+          component.yieldOverride != null ? component.yieldOverride.toString() : ""
+        );
+      }
+    }
   };
 
   // Get compatible units - for the component's base item
@@ -204,8 +245,9 @@ function InlineIngredientRow({
                 type="number"
                 step="0.01"
                 min="0"
-                value={component.qty}
+                value={localQty}
                 onChange={(e) => handleQtyChange(e.target.value)}
+                onBlur={handleQtyBlur}
                 className="h-9"
                 data-testid={`input-qty-${component.id}`}
               />
@@ -240,8 +282,9 @@ function InlineIngredientRow({
                   min="0"
                   max="100"
                   placeholder={`${getDefaultYield()}`}
-                  value={component.yieldOverride ?? ""}
+                  value={localYieldOverride}
                   onChange={(e) => handleYieldOverrideChange(e.target.value)}
+                  onBlur={handleYieldOverrideBlur}
                   className="h-9"
                   data-testid={`input-yield-${component.id}`}
                 />
