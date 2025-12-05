@@ -96,14 +96,22 @@ type ComponentWithDetails = RecipeComponent & {
   itemYieldPercent?: number | null;
 };
 
-// Sortable ingredient row component
-function SortableIngredientRow({
+// Inline ingredient row component with stacked form fields
+function InlineIngredientRow({
   component,
-  onEdit,
+  units,
+  compatibleUnits,
+  inventoryItems,
+  recipes,
+  onUpdate,
   onDelete,
 }: {
   component: ComponentWithDetails;
-  onEdit: () => void;
+  units: Unit[] | undefined;
+  compatibleUnits: Unit[] | undefined;
+  inventoryItems: InventoryItem[] | undefined;
+  recipes: Recipe[] | undefined;
+  onUpdate: (updated: ComponentWithDetails) => void;
   onDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -115,58 +123,162 @@ function SortableIngredientRow({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // Get the default yield for inventory items
+  const getDefaultYield = () => {
+    if (component.componentType === "inventory_item") {
+      const item = inventoryItems?.find(i => i.id === component.componentId);
+      return item?.yieldPercent ?? 100;
+    }
+    return 100;
+  };
+
+  // Handle quantity change
+  const handleQtyChange = (value: string) => {
+    const qty = parseFloat(value) || 0;
+    const updated = { ...component, qty };
+    onUpdate(updated);
+  };
+
+  // Handle unit change
+  const handleUnitChange = (unitId: string) => {
+    const unitName = units?.find(u => u.id === unitId)?.name || "";
+    const updated = { ...component, unitId, unitName };
+    onUpdate(updated);
+  };
+
+  // Handle yield override change
+  const handleYieldOverrideChange = (value: string) => {
+    const yieldOverride = value ? parseFloat(value) : null;
+    const updated = { ...component, yieldOverride };
+    onUpdate(updated);
+  };
+
+  // Get compatible units - for the component's base item
+  const getCompatibleUnitList = () => {
+    if (compatibleUnits?.length) return compatibleUnits;
+    return units || [];
+  };
+
   return (
-    <TableRow ref={setNodeRef} style={style} data-testid={`row-ingredient-${component.id}`}>
-      <TableCell className="w-8">
-        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
+    <div 
+      ref={setNodeRef} 
+      style={style} 
+      className="border rounded-lg p-4 bg-card"
+      data-testid={`row-ingredient-${component.id}`}
+    >
+      <div className="flex items-start gap-3">
+        {/* Drag handle */}
+        <div 
+          {...attributes} 
+          {...listeners} 
+          className="cursor-grab active:cursor-grabbing pt-1 flex-shrink-0"
+        >
+          <GripVertical className="h-5 w-5 text-muted-foreground" />
         </div>
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          {component.componentType === "recipe" ? (
-            <ChefHat className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <Package className="h-4 w-4 text-muted-foreground" />
+
+        {/* Main content */}
+        <div className="flex-1 min-w-0 space-y-3">
+          {/* Ingredient name and type indicator */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {component.componentType === "recipe" ? (
+              <ChefHat className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            ) : (
+              <Package className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            )}
+            <span className="font-medium" data-testid={`text-ingredient-name-${component.id}`}>
+              {component.name}
+            </span>
+            {component.componentType === "inventory_item" && component.yieldOverride != null && (
+              <Badge variant="secondary" className="text-xs" data-testid={`badge-yield-override-${component.id}`}>
+                {component.yieldOverride}% yield
+              </Badge>
+            )}
+          </div>
+
+          {/* Inline form fields - stacked layout */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Quantity field */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Quantity</label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={component.qty}
+                onChange={(e) => handleQtyChange(e.target.value)}
+                className="h-9"
+                data-testid={`input-qty-${component.id}`}
+              />
+            </div>
+
+            {/* Unit selector */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Unit</label>
+              <Select value={component.unitId} onValueChange={handleUnitChange}>
+                <SelectTrigger className="h-9" data-testid={`select-unit-${component.id}`}>
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {getCompatibleUnitList().map((unit) => (
+                    <SelectItem key={unit.id} value={unit.id}>
+                      {formatUnitName(unit.name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Yield override - only for inventory items */}
+            {component.componentType === "inventory_item" ? (
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">
+                  Yield % <span className="opacity-60">(default: {getDefaultYield()}%)</span>
+                </label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  placeholder={`${getDefaultYield()}`}
+                  value={component.yieldOverride ?? ""}
+                  onChange={(e) => handleYieldOverrideChange(e.target.value)}
+                  className="h-9"
+                  data-testid={`input-yield-${component.id}`}
+                />
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Cost</label>
+                <div className="h-9 flex items-center font-mono text-sm" data-testid={`text-ingredient-cost-${component.id}`}>
+                  ${component.cost.toFixed(2)}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Cost display for inventory items */}
+          {component.componentType === "inventory_item" && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Calculated cost:</span>
+              <span className="font-mono font-medium" data-testid={`text-ingredient-cost-${component.id}`}>
+                ${component.cost.toFixed(2)}
+              </span>
+            </div>
           )}
-          <span data-testid={`text-ingredient-name-${component.id}`}>{component.name}</span>
-          {component.componentType === "inventory_item" && component.yieldOverride != null && (
-            <Badge variant="secondary" className="text-xs" data-testid={`badge-yield-override-${component.id}`}>
-              {component.yieldOverride}% yield
-            </Badge>
-          )}
         </div>
-      </TableCell>
-      <TableCell className="text-right font-mono" data-testid={`text-ingredient-qty-${component.id}`}>
-        {component.qty.toFixed(2)}
-      </TableCell>
-      <TableCell data-testid={`text-ingredient-unit-${component.id}`}>
-        {formatUnitName(component.unitName)}
-      </TableCell>
-      <TableCell className="text-right font-mono" data-testid={`text-ingredient-cost-${component.id}`}>
-        ${component.cost.toFixed(2)}
-      </TableCell>
-      <TableCell className="text-right">
-        <div className="flex gap-2 justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onEdit}
-            data-testid={`button-edit-ingredient-${component.id}`}
-          >
-            Edit
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onDelete}
-            data-testid={`button-delete-ingredient-${component.id}`}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      </TableCell>
-    </TableRow>
+
+        {/* Delete button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onDelete}
+          className="flex-shrink-0"
+          data-testid={`button-delete-ingredient-${component.id}`}
+        >
+          <Trash2 className="h-4 w-4 text-muted-foreground" />
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -182,6 +294,7 @@ function DraggableSourceItem({
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `source-${item.id}`,
+    data: { item }, // Pass item data so handleDragEnd can access it
   });
 
   return (
@@ -443,6 +556,64 @@ export default function RecipeBuilder() {
     }
   };
 
+  // Directly add ingredient (for drag-drop and click-to-add)
+  const addIngredientDirectly = (item: DraggableItem) => {
+    // Check if already added
+    const existingIndex = components.findIndex(c => c.componentId === item.id);
+    if (existingIndex !== -1) {
+      toast({
+        title: "Already added",
+        description: `${item.name} is already in this recipe. Update the quantity instead.`,
+      });
+      return;
+    }
+
+    // Get default unit for the item
+    let unitId = item.unitId;
+    let unitName = item.unitName || "";
+    
+    if (item.type === "recipe") {
+      const recipeItem = recipes?.find(r => r.id === item.id);
+      if (recipeItem) {
+        unitId = recipeItem.yieldUnitId;
+        unitName = units?.find(u => u.id === recipeItem.yieldUnitId)?.name || "";
+      }
+    }
+
+    if (!unitId) {
+      toast({
+        title: "Missing unit",
+        description: "Could not determine unit for this item",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newComponent: ComponentWithDetails = {
+      id: `temp-${Date.now()}`,
+      recipeId: id || "",
+      componentType: item.type,
+      componentId: item.id,
+      qty: 1, // Default quantity of 1
+      unitId: unitId,
+      sortOrder: components.length,
+      name: item.name,
+      unitName: unitName || units?.find(u => u.id === unitId)?.name || "",
+      cost: 0,
+      yieldOverride: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    newComponent.cost = calculateComponentCost(newComponent);
+    setComponents([...components, newComponent]);
+    
+    toast({
+      title: "Ingredient added",
+      description: `${item.name} added to recipe. Adjust quantity below.`,
+    });
+  };
+
   // Handle drag end
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -458,31 +629,36 @@ export default function RecipeBuilder() {
     // Handle dropping from source list to canvas
     // Accept drops on the canvas OR on any existing ingredient (user doesn't need to aim for empty space)
     if (activeId.startsWith("source-") && (overId === "recipe-canvas" || !overId.startsWith("source-"))) {
-      const itemId = activeId.replace("source-", "");
-      const inventoryItem = inventoryItems?.find((i) => i.id === itemId);
-      const recipeItem = recipes?.find((r) => r.id === itemId);
+      // Try to get item from drag data first, fall back to lookup
+      const dragData = active.data?.current as { item?: DraggableItem } | undefined;
+      let itemToAdd: DraggableItem | null = dragData?.item || null;
+      
+      if (!itemToAdd) {
+        // Fall back to lookup by ID
+        const itemId = activeId.replace("source-", "");
+        const inventoryItem = inventoryItems?.find((i) => i.id === itemId);
+        const recipeItem = recipes?.find((r) => r.id === itemId);
 
-      if (inventoryItem) {
-        setPendingItem({
-          id: inventoryItem.id,
-          name: inventoryItem.name,
-          type: "inventory_item",
-          unitId: inventoryItem.unitId,
-          unitName: inventoryItem.unitName,
-          pricePerUnit: inventoryItem.pricePerUnit,
-        });
-        setDialogUnitId(inventoryItem.unitId);
-        setBaseUnitIdForAdd(inventoryItem.unitId);
-        setShowAddDialog(true);
-      } else if (recipeItem) {
-        setPendingItem({
-          id: recipeItem.id,
-          name: recipeItem.name,
-          type: "recipe",
-        });
-        setDialogUnitId(recipeItem.yieldUnitId);
-        setBaseUnitIdForAdd(recipeItem.yieldUnitId);
-        setShowAddDialog(true);
+        if (inventoryItem) {
+          itemToAdd = {
+            id: inventoryItem.id,
+            name: inventoryItem.name,
+            type: "inventory_item",
+            unitId: inventoryItem.unitId,
+            unitName: inventoryItem.unitName,
+            pricePerUnit: inventoryItem.pricePerUnit,
+          };
+        } else if (recipeItem) {
+          itemToAdd = {
+            id: recipeItem.id,
+            name: recipeItem.name,
+            type: "recipe",
+          };
+        }
+      }
+      
+      if (itemToAdd) {
+        addIngredientDirectly(itemToAdd);
       }
     }
     // Handle reordering within canvas (only if both source and target are existing components)
@@ -500,31 +676,7 @@ export default function RecipeBuilder() {
 
   // Click to add item (keyboard/accessibility alternative to drag-and-drop)
   const handleClickToAdd = (item: DraggableItem) => {
-    if (item.type === "inventory_item" && item.unitId) {
-      setPendingItem({
-        id: item.id,
-        name: item.name,
-        type: "inventory_item",
-        unitId: item.unitId,
-        unitName: item.unitName || "",
-        pricePerUnit: item.pricePerUnit || 0,
-      });
-      setDialogUnitId(item.unitId);
-      setBaseUnitIdForAdd(item.unitId);
-      setShowAddDialog(true);
-    } else if (item.type === "recipe") {
-      const recipe = recipes?.find((r) => r.id === item.id);
-      if (recipe) {
-        setPendingItem({
-          id: item.id,
-          name: item.name,
-          type: "recipe",
-        });
-        setDialogUnitId(recipe.yieldUnitId);
-        setBaseUnitIdForAdd(recipe.yieldUnitId);
-        setShowAddDialog(true);
-      }
-    }
+    addIngredientDirectly(item);
   };
 
   // Add ingredient from dialog
@@ -549,6 +701,7 @@ export default function RecipeBuilder() {
       name: pendingItem.name,
       unitName: units?.find((u) => u.id === dialogUnitId)?.name || "",
       cost: 0,
+      yieldOverride: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -619,6 +772,42 @@ export default function RecipeBuilder() {
   // Delete ingredient
   const handleDeleteIngredient = (componentId: string) => {
     setComponents(components.filter((c) => c.id !== componentId));
+  };
+
+  // Handle inline component update
+  const handleInlineComponentUpdate = (updated: ComponentWithDetails) => {
+    const updatedComponents = components.map((comp) => {
+      if (comp.id === updated.id) {
+        // Recalculate cost with updated values
+        const withCost = { ...updated };
+        withCost.cost = calculateComponentCost(withCost);
+        return withCost;
+      }
+      return comp;
+    });
+    setComponents(updatedComponents);
+  };
+
+  // Get compatible units for a specific component (for inline editing)
+  const getCompatibleUnitsForComponent = (component: ComponentWithDetails): Unit[] => {
+    let baseUnitId: string | undefined;
+    
+    if (component.componentType === "inventory_item") {
+      const item = inventoryItems?.find(i => i.id === component.componentId);
+      baseUnitId = item?.unitId;
+    } else if (component.componentType === "recipe") {
+      const recipe = recipes?.find(r => r.id === component.componentId);
+      baseUnitId = recipe?.yieldUnitId;
+    }
+
+    if (!baseUnitId || !units) return units || [];
+
+    // Get the base unit to determine its kind (mass, volume, count)
+    const baseUnit = units.find(u => u.id === baseUnitId);
+    if (!baseUnit) return units;
+
+    // Filter to units of the same kind
+    return units.filter(u => u.kind === baseUnit.kind);
   };
 
   // Edit inventory item handlers
@@ -1284,52 +1473,52 @@ export default function RecipeBuilder() {
                 </CardContent>
               </Card>
 
-              {/* Ingredients list */}
+              {/* Ingredients list with inline editing */}
               <Card
                 ref={setCanvasRef}
                 id="recipe-canvas"
                 className="flex-1 overflow-hidden flex flex-col min-h-0"
               >
-                <CardHeader className="pb-3">
-                  <h3 className="text-sm font-medium">Ingredients</h3>
+                <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                  <h3 className="text-sm font-medium">Ingredients ({components.length})</h3>
+                  {components.length > 0 && (
+                    <span className="text-sm text-muted-foreground">
+                      Drag to reorder
+                    </span>
+                  )}
                 </CardHeader>
                 <CardContent className="flex-1 overflow-auto">
                   {components.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed rounded-lg">
+                    <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed rounded-lg bg-muted/20">
                       <ChefHat className="h-12 w-12 text-muted-foreground mb-4" />
                       <h3 className="text-lg font-semibold mb-1">No ingredients yet</h3>
-                      <p className="text-muted-foreground">
-                        Drag items from the left panel to add ingredients
+                      <p className="text-muted-foreground mb-2">
+                        Drag items from the left panel or click the + button to add
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Drop items here to get started
                       </p>
                     </div>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-8"></TableHead>
-                          <TableHead>Ingredient</TableHead>
-                          <TableHead className="text-right">Quantity</TableHead>
-                          <TableHead>Unit</TableHead>
-                          <TableHead className="text-right">Cost</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        <SortableContext
-                          items={components.map((c) => c.id)}
-                          strategy={verticalListSortingStrategy}
-                        >
-                          {components.map((component) => (
-                            <SortableIngredientRow
-                              key={component.id}
-                              component={component}
-                              onEdit={() => handleEditIngredient(component)}
-                              onDelete={() => handleDeleteIngredient(component.id)}
-                            />
-                          ))}
-                        </SortableContext>
-                      </TableBody>
-                    </Table>
+                    <SortableContext
+                      items={components.map((c) => c.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-3">
+                        {components.map((component) => (
+                          <InlineIngredientRow
+                            key={component.id}
+                            component={component}
+                            units={units}
+                            compatibleUnits={getCompatibleUnitsForComponent(component)}
+                            inventoryItems={inventoryItems}
+                            recipes={recipes}
+                            onUpdate={handleInlineComponentUpdate}
+                            onDelete={() => handleDeleteIngredient(component.id)}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
                   )}
                 </CardContent>
               </Card>
