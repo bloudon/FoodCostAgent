@@ -6563,8 +6563,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { insertTransferOrderLineSchema } = await import("@shared/schema");
       const lineData = insertTransferOrderLineSchema.parse(req.body);
-      const line = await storage.createTransferOrderLine(lineData);
-      res.status(201).json(line);
+      
+      // Check if a line already exists for this transfer order + inventory item
+      const existingLines = await storage.getTransferOrderLines(lineData.transferOrderId);
+      const existingLine = existingLines.find(l => l.inventoryItemId === lineData.inventoryItemId);
+      
+      if (existingLine) {
+        // Update existing line instead of creating duplicate
+        const updatedLine = await storage.updateTransferOrderLine(existingLine.id, {
+          requestedQty: lineData.requestedQty,
+          unitId: lineData.unitId,
+        });
+        res.json(updatedLine);
+      } else {
+        // Create new line
+        const line = await storage.createTransferOrderLine(lineData);
+        res.status(201).json(line);
+      }
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
