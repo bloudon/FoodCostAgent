@@ -92,6 +92,8 @@ type ComponentWithDetails = RecipeComponent & {
   name: string;
   unitName: string;
   cost: number;
+  yieldOverride?: number | null;
+  itemYieldPercent?: number | null;
 };
 
 // Sortable ingredient row component
@@ -128,6 +130,11 @@ function SortableIngredientRow({
             <Package className="h-4 w-4 text-muted-foreground" />
           )}
           <span data-testid={`text-ingredient-name-${component.id}`}>{component.name}</span>
+          {component.componentType === "inventory_item" && component.yieldOverride != null && (
+            <Badge variant="secondary" className="text-xs" data-testid={`badge-yield-override-${component.id}`}>
+              {component.yieldOverride}% yield
+            </Badge>
+          )}
         </div>
       </TableCell>
       <TableCell className="text-right font-mono" data-testid={`text-ingredient-qty-${component.id}`}>
@@ -274,6 +281,7 @@ export default function RecipeBuilder() {
   const [editingComponent, setEditingComponent] = useState<ComponentWithDetails | null>(null);
   const [editQty, setEditQty] = useState("");
   const [editUnitId, setEditUnitId] = useState("");
+  const [editYieldOverride, setEditYieldOverride] = useState("");
   const [baseUnitIdForEdit, setBaseUnitIdForEdit] = useState<string | null>(null);
 
   // Edit inventory item dialog state
@@ -369,7 +377,9 @@ export default function RecipeBuilder() {
           ? item.pricePerUnit / itemUnit.toBaseRatio 
           : item.pricePerUnit;
         // Adjust for yield percentage to get effective cost (e.g., $3/lb at 70% yield = $4.29/lb effective)
-        const yieldFactor = item.yieldPercent / 100;
+        // Use component's yieldOverride if set, otherwise item's default yieldPercent
+        const yieldPercent = comp.yieldOverride != null ? comp.yieldOverride : item.yieldPercent;
+        const yieldFactor = yieldPercent / 100;
         const effectiveCost = yieldFactor > 0 ? itemPricePerBaseUnit / yieldFactor : itemPricePerBaseUnit;
         return qtyInBaseUnits * effectiveCost;
       }
@@ -557,17 +567,20 @@ export default function RecipeBuilder() {
     setEditQty(component.qty.toString());
     setEditUnitId(component.unitId);
     
-    // Set base unit ID based on component type
+    // Set yield override and base unit ID based on component type
     if (component.componentType === "inventory_item") {
       const item = inventoryItems?.find(i => i.id === component.componentId);
       if (item) {
         setBaseUnitIdForEdit(item.unitId);
+        // Set yield override to component's value or empty string
+        setEditYieldOverride(component.yieldOverride != null ? component.yieldOverride.toString() : "");
       }
     } else if (component.componentType === "recipe") {
       const recipe = recipes?.find(r => r.id === component.componentId);
       if (recipe) {
         setBaseUnitIdForEdit(recipe.yieldUnitId);
       }
+      setEditYieldOverride(""); // Sub-recipes don't have yield override
     }
     
     setEditDialogOpen(true);
@@ -579,11 +592,17 @@ export default function RecipeBuilder() {
 
     const updatedComponents = components.map((comp) => {
       if (comp.id === editingComponent.id) {
+        // Only apply yield override for inventory items, not sub-recipes
+        const yieldOverrideValue = editingComponent.componentType === "inventory_item" && editYieldOverride 
+          ? parseFloat(editYieldOverride) 
+          : null;
+        
         const updated = {
           ...comp,
           qty: parseFloat(editQty),
           unitId: editUnitId,
           unitName: units?.find((u) => u.id === editUnitId)?.name || "",
+          yieldOverride: yieldOverrideValue,
         };
         updated.cost = calculateComponentCost(updated);
         return updated;
@@ -594,6 +613,7 @@ export default function RecipeBuilder() {
     setComponents(updatedComponents);
     setEditDialogOpen(false);
     setEditingComponent(null);
+    setEditYieldOverride("");
   };
 
   // Delete ingredient
@@ -705,7 +725,7 @@ export default function RecipeBuilder() {
 
       // Create all components fresh
       const componentPromises = components.map((comp, index) => {
-        const compData = {
+        const compData: Record<string, any> = {
           recipeId,
           componentType: comp.componentType,
           componentId: comp.componentId,
@@ -713,6 +733,11 @@ export default function RecipeBuilder() {
           unitId: comp.unitId,
           sortOrder: index,
         };
+        
+        // Only include yieldOverride for inventory items when it has a value
+        if (comp.componentType === "inventory_item" && comp.yieldOverride != null) {
+          compData.yieldOverride = comp.yieldOverride;
+        }
 
         return apiRequest("POST", "/api/recipe-components", compData);
       });
@@ -1398,6 +1423,33 @@ export default function RecipeBuilder() {
                 </SelectContent>
               </Select>
             </div>
+            {/* Yield override - only for inventory items */}
+            {editingComponent?.componentType === "inventory_item" && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Yield Override (%)</label>
+                <div className="text-xs text-muted-foreground mb-1">
+                  {(() => {
+                    const item = inventoryItems?.find(i => i.id === editingComponent?.componentId);
+                    return item?.yieldPercent != null 
+                      ? `Default yield: ${item.yieldPercent}%` 
+                      : "No default yield set";
+                  })()}
+                </div>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  placeholder="Leave empty to use default"
+                  value={editYieldOverride}
+                  onChange={(e) => setEditYieldOverride(e.target.value)}
+                  data-testid="input-edit-yield-override"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Override the yield percentage for this ingredient in this recipe only.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
