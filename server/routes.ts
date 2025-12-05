@@ -1831,25 +1831,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   app.post("/api/order-guides/upload", requireAuth, async (req, res) => {
     try {
-      const { csvContent, vendorKey, vendorId, fileName, skipRows } = req.body;
+      const { fileContent, csvContent, vendorKey, vendorId, fileName, skipRows, isExcel } = req.body;
       const companyId = (req as any).companyId;
       const storeId = (req as any).storeId;
 
-      if (!csvContent || !vendorKey || !vendorId) {
-        return res.status(400).json({ error: 'csvContent, vendorKey, and vendorId are required' });
+      // Support both old 'csvContent' and new 'fileContent' parameter names
+      const content = fileContent || csvContent;
+      
+      if (!content || !vendorKey || !vendorId) {
+        return res.status(400).json({ error: 'fileContent, vendorKey, and vendorId are required' });
       }
+
+      // Auto-detect Excel files by filename if isExcel not provided
+      const fileNameLower = (fileName || '').toLowerCase();
+      const isExcelFile = isExcel ?? (fileNameLower.endsWith('.xlsx') || fileNameLower.endsWith('.xls'));
 
       const { OrderGuideProcessor } = await import('./services/orderGuideProcessor');
       const processor = new OrderGuideProcessor(storage);
 
       const result = await processor.processUpload({
-        csvContent,
+        fileContent: content,
         vendorKey: vendorKey as 'sysco' | 'gfs' | 'usfoods',
         vendorId,
         companyId,
         storeId,
         fileName: fileName || 'order_guide.csv',
         skipRows: skipRows || 0,
+        isExcel: isExcelFile,
       });
 
       res.json(result);

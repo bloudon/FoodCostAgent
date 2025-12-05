@@ -2,6 +2,7 @@ import { IStorage } from '../storage';
 import { CsvOrderGuide, CsvParseOptions } from '../integrations/csv/CsvOrderGuide';
 import { ItemMatcher } from './itemMatcher';
 import { VendorKey } from '../integrations/types';
+import * as XLSX from 'xlsx';
 import type {
   InsertOrderGuide,
   InsertOrderGuideLine,
@@ -28,20 +29,50 @@ export class OrderGuideProcessor {
   }
 
   /**
-   * Process uploaded order guide CSV
+   * Convert Excel file (base64) to CSV content
+   */
+  private convertExcelToCsv(base64Content: string): string {
+    // Decode base64 to binary
+    const binaryString = Buffer.from(base64Content, 'base64');
+    
+    // Parse Excel workbook
+    const workbook = XLSX.read(binaryString, { type: 'buffer' });
+    
+    // Get first sheet
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    
+    // Convert to CSV
+    const csvContent = XLSX.utils.sheet_to_csv(worksheet);
+    
+    return csvContent;
+  }
+
+  /**
+   * Process uploaded order guide (CSV or Excel)
    */
   async processUpload(params: {
-    csvContent: string;
+    fileContent: string;
     vendorKey: VendorKey;
     vendorId: string;
     companyId: string;
     storeId: string;
     fileName: string;
     skipRows?: number;
+    isExcel?: boolean;
   }): Promise<OrderGuideUploadResult> {
-    const { csvContent, vendorKey, vendorId, companyId, storeId, fileName, skipRows = 0 } = params;
+    const { fileContent, vendorKey, vendorId, companyId, storeId, fileName, skipRows = 0, isExcel = false } = params;
 
-    // Step 1: Parse CSV
+    // Step 1: Parse file content (convert Excel to CSV if needed)
+    let csvContent: string;
+    if (isExcel) {
+      console.log('[OrderGuideProcessor] Converting Excel file to CSV');
+      csvContent = this.convertExcelToCsv(fileContent);
+    } else {
+      csvContent = fileContent;
+    }
+
+    // Step 2: Parse CSV
     const parseOptions: CsvParseOptions = {
       vendorKey,
       skipRows,
@@ -50,7 +81,7 @@ export class OrderGuideProcessor {
     const orderGuide = await CsvOrderGuide.parse(csvContent, parseOptions);
 
     if (orderGuide.products.length === 0) {
-      throw new Error('No products found in CSV file');
+      throw new Error('No products found in file');
     }
 
     // Step 2: Create order guide record

@@ -159,7 +159,7 @@ export default function Vendors() {
   });
 
   const uploadOrderGuideMutation = useMutation({
-    mutationFn: async ({ csvContent, vendorId, fileName }: { csvContent: string; vendorId: string; fileName: string }) => {
+    mutationFn: async ({ fileContent, vendorId, fileName, isExcel }: { fileContent: string; vendorId: string; fileName: string; isExcel: boolean }) => {
       // Determine vendor key based on vendor name
       const vendor = vendors?.find(v => v.id === vendorId);
       let vendorKey = 'sysco'; // default
@@ -172,10 +172,11 @@ export default function Vendors() {
       }
 
       return apiRequest('POST', '/api/order-guides/upload', {
-        csvContent,
+        fileContent,
         vendorKey,
         vendorId,
         fileName,
+        isExcel,
       });
     },
     onSuccess: (data: any) => {
@@ -210,22 +211,45 @@ export default function Vendors() {
     if (!selectedFile || !selectedVendorForImport) {
       toast({
         title: 'Missing Information',
-        description: 'Please select both a vendor and a CSV file',
+        description: 'Please select both a vendor and a file (CSV or Excel)',
         variant: 'destructive',
       });
       return;
     }
 
+    const fileName = selectedFile.name.toLowerCase();
+    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
     const reader = new FileReader();
     reader.onload = (e) => {
-      const csvContent = e.target?.result as string;
-      uploadOrderGuideMutation.mutate({
-        csvContent,
-        vendorId: selectedVendorForImport,
-        fileName: selectedFile.name,
-      });
+      if (isExcel) {
+        // For Excel files, use readAsDataURL which properly encodes binary as base64
+        const dataUrl = e.target?.result as string;
+        // Extract base64 content after the data URL prefix (e.g., "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,")
+        const base64Content = dataUrl.split(',')[1];
+        uploadOrderGuideMutation.mutate({
+          fileContent: base64Content,
+          vendorId: selectedVendorForImport,
+          fileName: selectedFile.name,
+          isExcel: true,
+        });
+      } else {
+        // For CSV files, send as text
+        const textContent = e.target?.result as string;
+        uploadOrderGuideMutation.mutate({
+          fileContent: textContent,
+          vendorId: selectedVendorForImport,
+          fileName: selectedFile.name,
+          isExcel: false,
+        });
+      }
     };
-    reader.readAsText(selectedFile);
+    
+    if (isExcel) {
+      reader.readAsDataURL(selectedFile);
+    } else {
+      reader.readAsText(selectedFile);
+    }
   };
 
   const getProductCount = (vendorId: string) => {
@@ -809,7 +833,7 @@ export default function Vendors() {
           <DialogHeader>
             <DialogTitle>Import Order Guide</DialogTitle>
             <DialogDescription>
-              Upload a CSV order guide from Sysco, US Foods, or GFS. The system will automatically match products to your inventory.
+              Upload an order guide (CSV or Excel) from Sysco, US Foods, or GFS. The system will automatically match products to your inventory.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -830,10 +854,10 @@ export default function Vendors() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Upload CSV File</label>
+              <label className="text-sm font-medium">Upload Order Guide File</label>
               <Input
                 type="file"
-                accept=".csv"
+                accept=".csv,.xlsx,.xls"
                 onChange={handleFileChange}
                 data-testid="input-file-import"
               />
