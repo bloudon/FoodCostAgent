@@ -217,16 +217,27 @@ export default function Vendors() {
       return;
     }
 
-    const fileName = selectedFile.name.toLowerCase();
-    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
-
+    // Always read as ArrayBuffer first to check magic bytes for Excel detection
+    // This handles cases where files have wrong extensions (e.g., .csv file that's actually Excel)
     const reader = new FileReader();
     reader.onload = (e) => {
-      if (isExcel) {
-        // For Excel files, use readAsDataURL which properly encodes binary as base64
-        const dataUrl = e.target?.result as string;
-        // Extract base64 content after the data URL prefix (e.g., "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,")
-        const base64Content = dataUrl.split(',')[1];
+      const arrayBuffer = e.target?.result as ArrayBuffer;
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Check for Excel magic bytes:
+      // XLSX (ZIP): starts with PK (0x50 0x4B)
+      // XLS (OLE): starts with 0xD0 0xCF 0x11 0xE0
+      const isExcelContent = 
+        (uint8Array[0] === 0x50 && uint8Array[1] === 0x4B) || // XLSX/ZIP
+        (uint8Array[0] === 0xD0 && uint8Array[1] === 0xCF);   // XLS/OLE
+      
+      if (isExcelContent) {
+        // Convert to base64 for Excel files
+        let binary = '';
+        for (let i = 0; i < uint8Array.length; i++) {
+          binary += String.fromCharCode(uint8Array[i]);
+        }
+        const base64Content = btoa(binary);
         uploadOrderGuideMutation.mutate({
           fileContent: base64Content,
           vendorId: selectedVendorForImport,
@@ -234,8 +245,9 @@ export default function Vendors() {
           isExcel: true,
         });
       } else {
-        // For CSV files, send as text
-        const textContent = e.target?.result as string;
+        // For CSV files, decode as text
+        const decoder = new TextDecoder('utf-8');
+        const textContent = decoder.decode(arrayBuffer);
         uploadOrderGuideMutation.mutate({
           fileContent: textContent,
           vendorId: selectedVendorForImport,
@@ -245,11 +257,7 @@ export default function Vendors() {
       }
     };
     
-    if (isExcel) {
-      reader.readAsDataURL(selectedFile);
-    } else {
-      reader.readAsText(selectedFile);
-    }
+    reader.readAsArrayBuffer(selectedFile);
   };
 
   const getProductCount = (vendorId: string) => {

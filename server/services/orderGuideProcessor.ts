@@ -29,14 +29,45 @@ export class OrderGuideProcessor {
   }
 
   /**
-   * Convert Excel file (base64) to CSV content
+   * Detect if content is an Excel file by checking for ZIP/XLSX signatures or OLE/XLS signatures
    */
-  private convertExcelToCsv(base64Content: string): string {
-    // Decode base64 to binary
-    const binaryString = Buffer.from(base64Content, 'base64');
+  private isExcelContent(content: string): boolean {
+    // Check if it looks like base64-encoded Excel
+    // XLSX files start with "PK" (ZIP signature) which is "UE" in base64
+    // XLS files start with 0xD0CF11E0 (OLE signature) which is "0M8R" in base64
+    if (content.startsWith('UE') || content.startsWith('0M8R')) {
+      return true;
+    }
+    
+    // Also check raw content for binary signatures
+    // XLSX/ZIP: starts with "PK" (0x50 0x4B)
+    // XLS/OLE: starts with 0xD0 0xCF 0x11 0xE0
+    if (content.charCodeAt(0) === 0x50 && content.charCodeAt(1) === 0x4B) {
+      return true;
+    }
+    if (content.charCodeAt(0) === 0xD0 && content.charCodeAt(1) === 0xCF) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Convert Excel file (base64 or raw binary) to CSV content
+   */
+  private convertExcelToCsv(content: string, isBase64: boolean = true): string {
+    let buffer: Buffer;
+    
+    if (isBase64) {
+      // Decode base64 to binary
+      buffer = Buffer.from(content, 'base64');
+    } else {
+      // Content is raw binary string, convert to buffer
+      buffer = Buffer.from(content, 'binary');
+    }
     
     // Parse Excel workbook
-    const workbook = XLSX.read(binaryString, { type: 'buffer' });
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
     
     // Get first sheet
     const firstSheetName = workbook.SheetNames[0];
@@ -44,6 +75,8 @@ export class OrderGuideProcessor {
     
     // Convert to CSV
     const csvContent = XLSX.utils.sheet_to_csv(worksheet);
+    
+    console.log('[OrderGuideProcessor] Converted Excel to CSV, first 500 chars:', csvContent.substring(0, 500));
     
     return csvContent;
   }
@@ -64,10 +97,16 @@ export class OrderGuideProcessor {
     const { fileContent, vendorKey, vendorId, companyId, storeId, fileName, skipRows = 0, isExcel = false } = params;
 
     // Step 1: Parse file content (convert Excel to CSV if needed)
+    // Auto-detect Excel content even if isExcel flag wasn't set (handles misnamed files like .csv that are actually Excel)
+    const isActuallyExcel = isExcel || this.isExcelContent(fileContent);
+    
     let csvContent: string;
-    if (isExcel) {
-      console.log('[OrderGuideProcessor] Converting Excel file to CSV');
-      csvContent = this.convertExcelToCsv(fileContent);
+    if (isActuallyExcel) {
+      console.log('[OrderGuideProcessor] Detected Excel file, converting to CSV');
+      // If isExcel was explicitly set, assume base64 encoding from frontend
+      // If auto-detected, the content might be raw binary (read as text)
+      const isBase64 = isExcel || fileContent.startsWith('UE') || fileContent.startsWith('0M8R');
+      csvContent = this.convertExcelToCsv(fileContent, isBase64);
     } else {
       csvContent = fileContent;
     }
