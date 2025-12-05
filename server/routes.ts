@@ -8861,7 +8861,14 @@ async function calculateComponentCost(comp: any): Promise<number> {
       }
     }
 
-    return convertedQty * item.pricePerUnit;
+    // Apply yield factor: use component's yieldOverride if set, otherwise item's default yieldPercent
+    const yieldPercent = comp.yieldOverride !== null && comp.yieldOverride !== undefined 
+      ? comp.yieldOverride 
+      : item.yieldPercent;
+    const yieldFactor = yieldPercent / 100;
+    const effectiveCost = yieldFactor > 0 ? item.pricePerUnit / yieldFactor : item.pricePerUnit;
+
+    return convertedQty * effectiveCost;
     
   } else if (comp.componentType === "recipe") {
     const subRecipe = await storage.getRecipe(comp.componentId);
@@ -9013,7 +9020,11 @@ async function calculateRecipeCost(
         const itemUnit = units.find((u) => u.id === item.unitId);
         const itemPricePerBaseUnit = itemUnit ? item.pricePerUnit / itemUnit.toBaseRatio : item.pricePerUnit;
         // Adjust for yield percentage to get effective cost (e.g., $3/lb at 70% yield = $4.29/lb effective)
-        const yieldFactor = item.yieldPercent / 100;
+        // Use component's yieldOverride if set, otherwise item's default yieldPercent
+        const yieldPercent = comp.yieldOverride !== null && comp.yieldOverride !== undefined 
+          ? comp.yieldOverride 
+          : item.yieldPercent;
+        const yieldFactor = yieldPercent / 100;
         const effectiveCost = yieldFactor > 0 ? itemPricePerBaseUnit / yieldFactor : itemPricePerBaseUnit;
         totalCost += qty * effectiveCost;
       }
@@ -9058,7 +9069,11 @@ async function calculateInventoryItemImpactInRecipe(recipeId: string, targetItem
         const itemUnit = units.find((u) => u.id === item.unitId);
         const itemPricePerBaseUnit = itemUnit ? item.pricePerUnit / itemUnit.toBaseRatio : item.pricePerUnit;
         // Adjust for yield percentage to get effective cost
-        const yieldFactor = item.yieldPercent / 100;
+        // Use component's yieldOverride if set, otherwise item's default yieldPercent
+        const yieldPercent = comp.yieldOverride !== null && comp.yieldOverride !== undefined 
+          ? comp.yieldOverride 
+          : item.yieldPercent;
+        const yieldFactor = yieldPercent / 100;
         const effectiveCost = yieldFactor > 0 ? itemPricePerBaseUnit / yieldFactor : itemPricePerBaseUnit;
         totalCostContribution += qty * effectiveCost;
       }
