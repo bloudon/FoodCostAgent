@@ -1934,8 +1934,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const companyId = (req as any).companyId;
-      const storeId = (req as any).storeId;
+      let storeId = (req as any).storeId;
       const userId = (req as any).userId;
+
+      // If no storeId from session, get the first store for the company
+      if (!storeId) {
+        const companyStores = await storage.getStores(companyId);
+        if (companyStores.length > 0) {
+          storeId = companyStores[0].id;
+        } else {
+          return res.status(400).json({ 
+            error: 'No stores found for company. Please create a store first.' 
+          });
+        }
+      }
 
       // Validate request body schema
       const approvalSchema = z.object({
