@@ -6440,14 +6440,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ error: "Transfer order not found" });
     }
     
-    // Verify tenant access:
-    // - Regular users: order.companyId must match their user.companyId
-    // - Global admins: order.companyId must match their selectedCompanyId
-    const user = (req as any).user;
-    const isGlobalAdmin = user?.role === "global_admin";
-    const userCompanyId = isGlobalAdmin ? (req as any).selectedCompanyId : user?.companyId;
-    
-    if (!userCompanyId || order.companyId !== userCompanyId) {
+    // Verify tenant access: use req.companyId which is set by requireAuth middleware
+    // This handles both regular users and global admins consistently
+    if (!req.companyId || order.companyId !== req.companyId) {
       return res.status(403).json({ error: "Access denied" });
     }
     

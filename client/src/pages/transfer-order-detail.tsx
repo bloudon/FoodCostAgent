@@ -50,9 +50,9 @@ export default function TransferOrderDetail() {
   });
 
   // Fetch existing transfer order if editing
-  const { data: transferOrder } = useQuery<TransferOrderWithUserNames>({
-    queryKey: ["/api/transfer-orders", id],
-    enabled: !isNewOrder,
+  const { data: transferOrder, isLoading: isLoadingOrder } = useQuery<TransferOrderWithUserNames>({
+    queryKey: [`/api/transfer-orders/${id}`],
+    enabled: Boolean(id) && !isNewOrder,
   });
 
   // Fetch estimated on-hand for the "from" store
@@ -287,9 +287,11 @@ export default function TransferOrderDetail() {
     return sum + (qty * (item.pricePerUnit || 0));
   }, 0);
 
-  const canEdit = !transferOrder || transferOrder.status === "pending";
-  const canExecute = !isNewOrder && transferOrder?.status === "pending";
-  const canReceive = !isNewOrder && transferOrder?.status === "in_transit";
+  // For existing orders, wait for transferOrder to load before determining button visibility
+  // For new orders, canEdit is always true
+  const canEdit = isNewOrder || (transferOrder && transferOrder.status === "pending");
+  const canExecute = !isNewOrder && transferOrder && transferOrder.status === "pending";
+  const canReceive = !isNewOrder && transferOrder && transferOrder.status === "in_transit";
 
   const fromStore = stores?.find(s => s.id === fromStoreId);
   const toStore = stores?.find(s => s.id === toStoreId);
@@ -312,6 +314,12 @@ export default function TransferOrderDetail() {
           </h1>
         </div>
         <div className="flex items-center gap-3">
+          {/* Show loading indicator while fetching existing order */}
+          {!isNewOrder && isLoadingOrder && (
+            <div className="text-sm text-muted-foreground" data-testid="text-loading">
+              Loading...
+            </div>
+          )}
           {transferOrder && (
             <div className="flex items-center gap-2">
               <div 
