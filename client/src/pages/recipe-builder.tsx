@@ -128,14 +128,25 @@ function InlineIngredientRow({
   const [localYieldOverride, setLocalYieldOverride] = useState(
     component.yieldOverride != null ? component.yieldOverride.toString() : ""
   );
+  // Track if inputs are focused to avoid overwriting while user is typing
+  const [qtyFocused, setQtyFocused] = useState(false);
+  const [yieldFocused, setYieldFocused] = useState(false);
 
-  // Sync local state when component changes from outside (e.g., reorder)
+  // Sync local state when component changes from outside (e.g., reorder, reload, save)
+  // Only sync when the input is not focused to avoid overwriting user input
   useEffect(() => {
-    setLocalQty(component.qty.toString());
-    setLocalYieldOverride(
-      component.yieldOverride != null ? component.yieldOverride.toString() : ""
-    );
-  }, [component.id]); // Only reset when component ID changes
+    if (!qtyFocused) {
+      setLocalQty(component.qty.toString());
+    }
+  }, [component.qty, qtyFocused]);
+
+  useEffect(() => {
+    if (!yieldFocused) {
+      setLocalYieldOverride(
+        component.yieldOverride != null ? component.yieldOverride.toString() : ""
+      );
+    }
+  }, [component.yieldOverride, yieldFocused]);
 
   // Get the default yield for inventory items
   const getDefaultYield = () => {
@@ -151,8 +162,12 @@ function InlineIngredientRow({
     setLocalQty(value);
   };
 
+  // Track quantity focus
+  const handleQtyFocus = () => setQtyFocused(true);
+
   // Commit quantity change on blur
   const handleQtyBlur = () => {
+    setQtyFocused(false);
     const qty = parseFloat(localQty);
     if (!isNaN(qty) && qty > 0) {
       const updated = { ...component, qty };
@@ -175,8 +190,12 @@ function InlineIngredientRow({
     setLocalYieldOverride(value);
   };
 
+  // Track yield focus
+  const handleYieldFocus = () => setYieldFocused(true);
+
   // Commit yield override change on blur
   const handleYieldOverrideBlur = () => {
+    setYieldFocused(false);
     if (localYieldOverride === "") {
       const updated = { ...component, yieldOverride: null };
       onUpdate(updated);
@@ -247,6 +266,7 @@ function InlineIngredientRow({
                 min="0"
                 value={localQty}
                 onChange={(e) => handleQtyChange(e.target.value)}
+                onFocus={handleQtyFocus}
                 onBlur={handleQtyBlur}
                 className="h-9"
                 data-testid={`input-qty-${component.id}`}
@@ -284,6 +304,7 @@ function InlineIngredientRow({
                   placeholder={`${getDefaultYield()}`}
                   value={localYieldOverride}
                   onChange={(e) => handleYieldOverrideChange(e.target.value)}
+                  onFocus={handleYieldFocus}
                   onBlur={handleYieldOverrideBlur}
                   className="h-9"
                   data-testid={`input-yield-${component.id}`}
