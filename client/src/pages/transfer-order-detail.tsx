@@ -50,8 +50,8 @@ export default function TransferOrderDetail() {
   });
 
   // Fetch existing transfer order if editing
-  const { data: transferOrder, isLoading: isLoadingOrder } = useQuery<TransferOrderWithUserNames>({
-    queryKey: [`/api/transfer-orders/${id}`],
+  const { data: transferOrder, isLoading: isLoadingOrder, refetch: refetchOrder } = useQuery<TransferOrderWithUserNames>({
+    queryKey: ["/api/transfer-orders", id],
     enabled: Boolean(id) && !isNewOrder,
   });
 
@@ -153,6 +153,7 @@ export default function TransferOrderDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items/estimated-on-hand"] });
+      refetchOrder();
       toast({ title: "Transfer executed", description: "Items have been shipped from source store" });
     },
     onError: (error: Error) => {
@@ -184,6 +185,7 @@ export default function TransferOrderDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items/estimated-on-hand"] });
+      refetchOrder();
       toast({ title: "Transfer completed", description: "Items have been received at destination store" });
     },
     onError: (error: Error) => {
