@@ -171,13 +171,14 @@ export default function Vendors() {
         else if (vendorName.includes('us foods') || vendorName.includes('usfoods')) vendorKey = 'usfoods';
       }
 
-      return apiRequest('POST', '/api/order-guides/upload', {
+      const response = await apiRequest('POST', '/api/order-guides/upload', {
         fileContent,
         vendorKey,
         vendorId,
         fileName,
         isExcel,
       });
+      return response.json();
     },
     onSuccess: (data: any) => {
       toast({
