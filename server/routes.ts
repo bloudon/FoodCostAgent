@@ -1545,7 +1545,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { storeId } = req.params;
       
       // Verify store belongs to company
-      const stores = await storage.getStores(companyId);
+      const stores = await storage.getCompanyStores(companyId);
       const store = stores.find(s => s.id === storeId);
       if (!store) {
         return res.status(404).json({ error: "Store not found" });
@@ -1584,7 +1584,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const vendorStores = await storage.getVendorStores(vendorId);
       
       // Get full store details for each assignment
-      const allStores = await storage.getStores(companyId);
+      const allStores = await storage.getCompanyStores(companyId);
       const result = vendorStores.map(sv => {
         const store = allStores.find(s => s.id === sv.storeId);
         return {
@@ -1607,7 +1607,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { isPrimary } = req.body;
       
       // Verify store belongs to company
-      const stores = await storage.getStores(companyId);
+      const stores = await storage.getCompanyStores(companyId);
       const store = stores.find(s => s.id === storeId);
       if (!store) {
         return res.status(404).json({ error: "Store not found" });
@@ -1651,7 +1651,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { isPrimary, active } = req.body;
       
       // Verify store belongs to company
-      const stores = await storage.getStores(companyId);
+      const stores = await storage.getCompanyStores(companyId);
       const store = stores.find(s => s.id === storeId);
       if (!store) {
         return res.status(404).json({ error: "Store not found" });
@@ -1690,7 +1690,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { storeId, vendorId } = req.params;
       
       // Verify store belongs to company
-      const stores = await storage.getStores(companyId);
+      const stores = await storage.getCompanyStores(companyId);
       const store = stores.find(s => s.id === storeId);
       if (!store) {
         return res.status(404).json({ error: "Store not found" });
@@ -1726,7 +1726,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Verify all stores belong to company
-      const allStores = await storage.getStores(companyId);
+      const allStores = await storage.getCompanyStores(companyId);
       const companyStoreIds = allStores.map(s => s.id);
       for (const storeId of storeIds) {
         if (!companyStoreIds.includes(storeId)) {
@@ -2192,7 +2192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let storeIdsToAssign: string[] = [];
       if (targetStoreIds && targetStoreIds.length > 0) {
         // Validate that all target stores belong to this company
-        const companyStores = await storage.getStores(companyId);
+        const companyStores = await storage.getCompanyStores(companyId);
         const validStoreIds = new Set(companyStores.map(s => s.id));
         for (const storeId of targetStoreIds) {
           if (!validStoreIds.has(storeId)) {
@@ -2206,7 +2206,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storeIdsToAssign = [sessionStoreId];
       } else {
         // Default to all company stores
-        const companyStores = await storage.getStores(companyId);
+        const companyStores = await storage.getCompanyStores(companyId);
         if (companyStores.length > 0) {
           storeIdsToAssign = companyStores.map(s => s.id);
         } else {
