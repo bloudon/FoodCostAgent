@@ -86,9 +86,9 @@ export default function Vendors() {
 
   // Fetch store assignments for each vendor
   const { data: vendorStoreAssignments } = useQuery<Record<string, VendorStoreAssignment[]>>({
-    queryKey: ["/api/vendor-store-assignments"],
+    queryKey: ["/api/vendor-store-assignments", vendors?.map(v => v.id).join(",")],
     queryFn: async () => {
-      if (!vendors) return {};
+      if (!vendors || vendors.length === 0) return {};
       const assignments: Record<string, VendorStoreAssignment[]> = {};
       for (const vendor of vendors) {
         try {

@@ -33,6 +33,7 @@ This project is an inventory management and recipe costing system for food servi
 - **UI/UX Decisions**: Mobile-first design; intuitive recipe creation; dynamic dashboards with filterable tables; consistent, color-coded status badges; conditional UI rendering based on data availability; smooth scrolling; and optimized inventory count layouts.
 - **Technical Implementations**: Micro-unit precision for all inventory calculations, comprehensive unit conversion system, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), robust multi-tenant QuickBooks integration, intelligent vendor order guide import, real-time recipe cost calculation with caching, dynamic estimated on-hand inventory with automated cache invalidation, detailed TFC (Theoretical Food Cost) variance reporting, and single-timezone date handling for data consistency.
 - **System Design Choices**: Adherence to strict multi-tenancy principles, secure OAuth using HMAC-SHA256, extensive server-side validation, and robust vendor relationship management features.
+- **Vendor-Store Assignment Model**: Vendors are company-level entities with shared credentials, but store_vendors join table controls which stores can access each vendor. Order guides can be assigned to multiple stores via order_guide_stores join table. Order guide approval accepts targetStoreIds array to create inventory items for all selected stores simultaneously.
 
 # External Dependencies
 
