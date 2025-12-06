@@ -2,7 +2,7 @@ import { storage } from "./storage";
 import { hashPassword } from "./auth";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, recipes, recipeComponents, categories, units, dayparts, users, menuItemSizes } from "@shared/schema";
+import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, storeVendors, recipes, recipeComponents, categories, units, dayparts, users, menuItemSizes } from "@shared/schema";
 
 // Comprehensive kitchen units seed data
 async function seedKitchenUnits() {
@@ -207,6 +207,64 @@ async function seedMenuItemSizesForCompany(companyId: string) {
   );
 
   return true;
+}
+
+/**
+ * Migrate existing vendors to the store_vendors join table.
+ * This assigns all vendors to all stores within their company.
+ * Required for the vendor-store assignment feature to work with existing data.
+ */
+async function migrateVendorsToStores() {
+  console.log("🔗 Migrating vendors to store assignments...");
+  
+  // Get all vendors
+  const allVendors = await db.select().from(vendors);
+  
+  if (allVendors.length === 0) {
+    console.log("   No vendors to migrate");
+    return;
+  }
+  
+  // Get all existing store-vendor assignments
+  const existingAssignments = await db.select().from(storeVendors);
+  const existingSet = new Set(
+    existingAssignments.map(a => `${a.vendorId}-${a.storeId}`)
+  );
+  
+  let created = 0;
+  
+  // For each vendor, assign to all stores in their company
+  for (const vendor of allVendors) {
+    // Get all stores for this vendor's company
+    const companyStoresData = await db.select()
+      .from(companyStores)
+      .where(eq(companyStores.companyId, vendor.companyId));
+    
+    for (const store of companyStoresData) {
+      const key = `${vendor.id}-${store.id}`;
+      
+      if (!existingSet.has(key)) {
+        try {
+          await db.insert(storeVendors).values({
+            vendorId: vendor.id,
+            storeId: store.id,
+            isPrimary: 0,
+            active: 1,
+          });
+          created++;
+          existingSet.add(key);
+        } catch (e) {
+          // Silently ignore duplicates
+        }
+      }
+    }
+  }
+  
+  if (created > 0) {
+    console.log(`   Created ${created} store-vendor assignments`);
+  } else {
+    console.log("   All vendors already assigned to stores");
+  }
 }
 
 // Seed Brian's Pizza company, stores, ingredients, and recipes
@@ -555,6 +613,8 @@ export async function seedDatabase() {
     console.log("✅ Database already seeded");
     // ============ BRIAN'S PIZZA SETUP (Always runs) ============
     await seedBriansPizza();
+    // Migrate existing vendors to store_vendors join table
+    await migrateVendorsToStores();
     return;
   }
 
