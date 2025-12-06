@@ -1,8 +1,10 @@
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Box } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ArrowLeft, Box, Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -44,6 +46,7 @@ export default function VendorDetail() {
   const [, params] = useRoute("/vendors/:id");
   const [, navigate] = useLocation();
   const vendorId = params?.id;
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: vendor, isLoading: vendorLoading } = useQuery<Vendor>({
     queryKey: [`/api/vendors/${vendorId}`],
@@ -56,6 +59,18 @@ export default function VendorDetail() {
   });
 
   const isLoading = vendorLoading || itemsLoading;
+
+  const filteredItems = useMemo(() => {
+    if (!vendorItems) return [];
+    if (!searchQuery.trim()) return vendorItems;
+    
+    const query = searchQuery.toLowerCase().trim();
+    return vendorItems.filter(item => {
+      const itemName = item.inventoryItem?.name?.toLowerCase() || "";
+      const sku = item.vendorSku?.toLowerCase() || "";
+      return itemName.includes(query) || sku.includes(query);
+    });
+  }, [vendorItems, searchQuery]);
 
   if (!vendorId) {
     return (
@@ -126,56 +141,85 @@ export default function VendorDetail() {
           </div>
 
           <div>
-            <h2 className="text-xl font-semibold mb-4">Inventory Items</h2>
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+              <h2 className="text-xl font-semibold">Inventory Items</h2>
+              {vendorItems && vendorItems.length > 0 && (
+                <div className="relative w-full sm:w-72">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by name or SKU..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                    data-testid="input-search-items"
+                  />
+                </div>
+              )}
+            </div>
             {vendorItems && vendorItems.length > 0 ? (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[40%]">Item Name</TableHead>
-                      <TableHead>SKU</TableHead>
-                      <TableHead className="text-right">Price</TableHead>
-                      <TableHead className="text-right">Case Size</TableHead>
-                      <TableHead className="text-center">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {vendorItems.map((item) => (
-                      <TableRow 
-                        key={item.id} 
-                        className="hover-elevate cursor-pointer"
-                        data-testid={`row-item-${item.id}`}
-                        onClick={() => navigate(`/inventory-items/${item.inventoryItemId}`)}
-                      >
-                        <TableCell className="font-medium" data-testid={`text-item-name-${item.id}`}>
-                          {item.inventoryItem?.name || "Unknown Item"}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm text-muted-foreground" data-testid={`text-item-sku-${item.id}`}>
-                          {item.vendorSku || "-"}
-                        </TableCell>
-                        <TableCell className="text-right" data-testid={`text-item-price-${item.id}`}>
-                          <span className="font-medium">
-                            ${(item.inventoryItem?.pricePerUnit ?? item.lastPrice ?? 0).toFixed(2)}
-                          </span>
-                          {item.unit && (
-                            <span className="text-muted-foreground text-sm ml-1">
-                              / {formatUnitName(item.unit.name)}
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right" data-testid={`text-item-case-${item.id}`}>
-                          {(item.inventoryItem?.caseSize ?? item.caseSize) ?? "-"}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant={item.active ? "outline" : "secondary"} className="text-xs">
-                            {item.active ? "Active" : "Inactive"}
-                          </Badge>
-                        </TableCell>
+              <>
+                {searchQuery && (
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Showing {filteredItems.length} of {vendorItems.length} items
+                  </p>
+                )}
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[40%]">Item Name</TableHead>
+                        <TableHead>SKU</TableHead>
+                        <TableHead className="text-right">Price</TableHead>
+                        <TableHead className="text-right">Case Size</TableHead>
+                        <TableHead className="text-center">Status</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredItems.length > 0 ? (
+                        filteredItems.map((item) => (
+                          <TableRow 
+                            key={item.id} 
+                            className="hover-elevate cursor-pointer"
+                            data-testid={`row-item-${item.id}`}
+                            onClick={() => navigate(`/inventory-items/${item.inventoryItemId}`)}
+                          >
+                            <TableCell className="font-medium" data-testid={`text-item-name-${item.id}`}>
+                              {item.inventoryItem?.name || "Unknown Item"}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm text-muted-foreground" data-testid={`text-item-sku-${item.id}`}>
+                              {item.vendorSku || "-"}
+                            </TableCell>
+                            <TableCell className="text-right" data-testid={`text-item-price-${item.id}`}>
+                              <span className="font-medium">
+                                ${(item.inventoryItem?.pricePerUnit ?? item.lastPrice ?? 0).toFixed(2)}
+                              </span>
+                              {item.unit && (
+                                <span className="text-muted-foreground text-sm ml-1">
+                                  / {formatUnitName(item.unit.name)}
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right" data-testid={`text-item-case-${item.id}`}>
+                              {(item.inventoryItem?.caseSize ?? item.caseSize) ?? "-"}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant={item.active ? "outline" : "secondary"} className="text-xs">
+                                {item.active ? "Active" : "Inactive"}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                            No items match "{searchQuery}"
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             ) : (
               <Card>
                 <CardContent className="pt-6 text-center text-muted-foreground">
