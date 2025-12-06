@@ -101,9 +101,10 @@ export default function VendorDetail() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[40%]">Item Name</TableHead>
+                  <TableHead className="w-[35%]">Item Name</TableHead>
                   <TableHead>SKU</TableHead>
                   <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="text-right">Pack Size</TableHead>
                   <TableHead className="text-right">Case Size</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                 </TableRow>
@@ -114,6 +115,7 @@ export default function VendorDetail() {
                     <TableCell><Skeleton className="h-4 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-5 w-16 mx-auto" /></TableCell>
                   </TableRow>
@@ -167,9 +169,10 @@ export default function VendorDetail() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[40%]">Item Name</TableHead>
+                        <TableHead className="w-[35%]">Item Name</TableHead>
                         <TableHead>SKU</TableHead>
                         <TableHead className="text-right">Price</TableHead>
+                        <TableHead className="text-right">Pack Size</TableHead>
                         <TableHead className="text-right">Case Size</TableHead>
                         <TableHead className="text-center">Status</TableHead>
                       </TableRow>
@@ -199,8 +202,20 @@ export default function VendorDetail() {
                                 </span>
                               )}
                             </TableCell>
+                            <TableCell className="text-right" data-testid={`text-item-pack-${item.id}`}>
+                              {item.innerPackSize != null ? (
+                                <>
+                                  {item.innerPackSize}
+                                  {item.unit && (
+                                    <span className="text-muted-foreground text-sm ml-1">
+                                      {formatUnitName(item.unit.name)}
+                                    </span>
+                                  )}
+                                </>
+                              ) : "-"}
+                            </TableCell>
                             <TableCell className="text-right" data-testid={`text-item-case-${item.id}`}>
-                              {(item.inventoryItem?.caseSize ?? item.caseSize) ?? "-"}
+                              {item.caseSize ?? item.inventoryItem?.caseSize ?? "-"}
                             </TableCell>
                             <TableCell className="text-center">
                               <Badge variant={item.active ? "outline" : "secondary"} className="text-xs">
@@ -211,7 +226,7 @@ export default function VendorDetail() {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                             No items match "{searchQuery}"
                           </TableCell>
                         </TableRow>
