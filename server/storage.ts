@@ -1,4 +1,4 @@
-import { eq, and, or, gt, gte, lte, isNull, inArray, sql, desc, asc } from "drizzle-orm";
+import { eq, and, or, gt, gte, lte, ne, isNull, inArray, sql, desc, asc } from "drizzle-orm";
 import { db } from "./db";
 import { cache, CacheKeys } from "./cache";
 import {
@@ -428,6 +428,7 @@ export interface IStorage {
   getOrderGuides(vendorKey?: string, limit?: number): Promise<OrderGuide[]>;
   getOrderGuide(id: string): Promise<OrderGuide | undefined>;
   createOrderGuide(guide: InsertOrderGuide): Promise<OrderGuide>;
+  supersedePreviousOrderGuides(vendorId: string, excludeGuideId?: string): Promise<number>;
 
   // Order Guide Lines
   getOrderGuideLines(orderGuideId: string): Promise<OrderGuideLine[]>;
@@ -3242,6 +3243,25 @@ export class DatabaseStorage implements IStorage {
   async createOrderGuide(guide: InsertOrderGuide): Promise<OrderGuide> {
     const results = await db.insert(orderGuides).values(guide).returning();
     return results[0];
+  }
+
+  async supersedePreviousOrderGuides(vendorId: string, excludeGuideId?: string): Promise<number> {
+    const conditions = [
+      eq(orderGuides.vendorId, vendorId),
+      ne(orderGuides.status, 'superseded'),
+    ];
+    
+    if (excludeGuideId) {
+      conditions.push(ne(orderGuides.id, excludeGuideId));
+    }
+    
+    const result = await db
+      .update(orderGuides)
+      .set({ status: 'superseded' })
+      .where(and(...conditions))
+      .returning();
+    
+    return result.length;
   }
 
   // Order Guide Lines

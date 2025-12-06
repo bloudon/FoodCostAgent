@@ -136,6 +136,12 @@ export class OrderGuideProcessor {
 
     const createdGuide = await this.storage.createOrderGuide(guideInsert);
 
+    // Step 2b: Supersede any previous order guides for this vendor
+    const supersededCount = await this.storage.supersedePreviousOrderGuides(vendorId, createdGuide.id);
+    if (supersededCount > 0) {
+      console.log(`[OrderGuideProcessor] Superseded ${supersededCount} previous order guide(s) for vendor ${vendorId}`);
+    }
+
     // Step 3: Match products and create order guide lines
     const lines: InsertOrderGuideLine[] = [];
     const stats = {
