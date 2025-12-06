@@ -2165,25 +2165,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const companyId = (req as any).companyId;
-      let storeId = (req as any).storeId;
+      const sessionStoreId = (req as any).storeId;
       const userId = (req as any).userId;
 
-      // If no storeId from session, get the first store for the company
-      if (!storeId) {
-        const companyStores = await storage.getStores(companyId);
-        if (companyStores.length > 0) {
-          storeId = companyStores[0].id;
-        } else {
-          return res.status(400).json({ 
-            error: 'No stores found for company. Please create a store first.' 
-          });
-        }
-      }
-
-      // Validate request body schema
+      // Validate request body schema - now supports targetStoreIds for multi-store assignment
       const approvalSchema = z.object({
         importAll: z.boolean().optional(),
         selectedLineIds: z.array(z.string()).optional(),
+        targetStoreIds: z.array(z.string()).optional(),
       }).refine(
         (data) => data.importAll === true || (data.selectedLineIds && data.selectedLineIds.length > 0),
         { message: 'Either importAll must be true or selectedLineIds must be a non-empty array' }
@@ -2197,7 +2186,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const { importAll, selectedLineIds } = validation.data;
+      const { importAll, selectedLineIds, targetStoreIds } = validation.data;
+
+      // Determine target stores - use provided array, session store, or all company stores
+      let storeIdsToAssign: string[] = [];
+      if (targetStoreIds && targetStoreIds.length > 0) {
+        // Validate that all target stores belong to this company
+        const companyStores = await storage.getStores(companyId);
+        const validStoreIds = new Set(companyStores.map(s => s.id));
+        for (const storeId of targetStoreIds) {
+          if (!validStoreIds.has(storeId)) {
+            return res.status(400).json({ 
+              error: `Store ${storeId} does not belong to your company` 
+            });
+          }
+        }
+        storeIdsToAssign = targetStoreIds;
+      } else if (sessionStoreId) {
+        storeIdsToAssign = [sessionStoreId];
+      } else {
+        // Default to all company stores
+        const companyStores = await storage.getStores(companyId);
+        if (companyStores.length > 0) {
+          storeIdsToAssign = companyStores.map(s => s.id);
+        } else {
+          return res.status(400).json({ 
+            error: 'No stores found for company. Please create a store first.' 
+          });
+        }
+      }
 
       const { OrderGuideProcessor } = await import('./services/orderGuideProcessor');
       const processor = new OrderGuideProcessor(storage);
@@ -2205,7 +2222,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await processor.approve({
         orderGuideId: id,
         companyId,
-        storeId,
+        targetStoreIds: storeIdsToAssign,
         approvedBy: userId,
         importAll: importAll || false,
         selectedLineIds: selectedLineIds || [],

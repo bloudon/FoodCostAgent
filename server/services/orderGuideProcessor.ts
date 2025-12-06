@@ -236,19 +236,21 @@ export class OrderGuideProcessor {
 
   /**
    * Approve and process order guide with selective import
+   * Now supports multi-store assignment via targetStoreIds array
    */
   async approve(params: {
     orderGuideId: string;
     companyId: string;
-    storeId: string;
+    targetStoreIds: string[];
     approvedBy: string;
     importAll?: boolean;
     selectedLineIds?: string[];
   }): Promise<{
     vendorItemsCreated: number;
     inventoryItemsCreated: number;
+    storeAssignmentsCreated: number;
   }> {
-    const { orderGuideId, companyId, storeId, importAll = false, selectedLineIds = [] } = params;
+    const { orderGuideId, companyId, targetStoreIds, importAll = false, selectedLineIds = [] } = params;
 
     // Get order guide and lines
     const guide = await this.storage.getOrderGuide(orderGuideId);
@@ -264,6 +266,13 @@ export class OrderGuideProcessor {
     // SECURITY: Validate order guide status
     if (guide.status !== 'pending_review') {
       throw new Error('Order guide has already been processed');
+    }
+
+    // Validate at least one target store
+    if (!targetStoreIds || targetStoreIds.length === 0) {
+      const error: any = new Error('At least one target store must be selected');
+      error.statusCode = 400;
+      throw error;
     }
 
     // Get all lines belonging to this order guide
@@ -295,28 +304,81 @@ export class OrderGuideProcessor {
 
     let vendorItemsCreated = 0;
     let inventoryItemsCreated = 0;
+    let storeAssignmentsCreated = 0;
 
-    // Get smart defaults
-    const defaults = await this.getSmartDefaults(companyId, storeId);
+    // Use first target store for smart defaults (category detection, units, etc.)
+    const primaryStoreId = targetStoreIds[0];
+    const defaults = await this.getSmartDefaults(companyId, primaryStoreId);
 
     // Process items by match status
     for (const line of linesToProcess) {
       if (line.matchStatus === 'new') {
-        // Create new inventory item + vendor item
-        const result = await this.createNewInventoryAndVendorItem(line, guide.vendorId!, companyId, storeId, defaults);
+        // Create new inventory item + vendor item, assigning to all target stores
+        const result = await this.createNewInventoryAndVendorItem(
+          line, 
+          guide.vendorId!, 
+          companyId, 
+          targetStoreIds, 
+          defaults
+        );
         if (result.inventoryCreated) inventoryItemsCreated++;
         if (result.vendorItemCreated) vendorItemsCreated++;
+        storeAssignmentsCreated += result.storeAssignmentsCreated;
       } else if (line.matchedInventoryItemId) {
         // Create vendor item linking to existing inventory
         const created = await this.createVendorItemForExisting(line, guide.vendorId!, companyId);
         if (created) vendorItemsCreated++;
+        
+        // Also assign existing inventory item to all target stores
+        const assignmentsCreated = await this.assignInventoryItemToStores(
+          line.matchedInventoryItemId, 
+          companyId, 
+          targetStoreIds
+        );
+        storeAssignmentsCreated += assignmentsCreated;
       }
     }
 
     return {
       vendorItemsCreated,
       inventoryItemsCreated,
+      storeAssignmentsCreated,
     };
+  }
+
+  /**
+   * Assign an existing inventory item to multiple stores
+   */
+  private async assignInventoryItemToStores(
+    inventoryItemId: string,
+    companyId: string,
+    targetStoreIds: string[]
+  ): Promise<number> {
+    let assignmentsCreated = 0;
+    
+    for (const storeId of targetStoreIds) {
+      try {
+        // Check if already assigned
+        const existing = await this.storage.getStoreInventoryItems(storeId);
+        const alreadyAssigned = existing.find(item => item.inventoryItemId === inventoryItemId);
+        
+        if (!alreadyAssigned) {
+          await this.storage.createStoreInventoryItem({
+            companyId,
+            inventoryItemId,
+            storeId,
+            active: 1,
+            onHandQty: 0,
+          });
+          assignmentsCreated++;
+        }
+      } catch (error) {
+        // Log but continue - don't fail the whole import for one store assignment
+        console.error(`[OrderGuide] Error assigning inventory ${inventoryItemId} to store ${storeId}:`, error);
+      }
+    }
+    
+    return assignmentsCreated;
   }
 
   /**
@@ -436,14 +498,15 @@ export class OrderGuideProcessor {
 
   /**
    * Create new inventory item and vendor item for unmatched product
+   * Now supports multi-store assignment via targetStoreIds array
    */
   private async createNewInventoryAndVendorItem(
     line: any,
     vendorId: string,
     companyId: string,
-    storeId: string,
+    targetStoreIds: string[],
     defaults: any
-  ): Promise<{ inventoryCreated: boolean; vendorItemCreated: boolean }> {
+  ): Promise<{ inventoryCreated: boolean; vendorItemCreated: boolean; storeAssignmentsCreated: number }> {
     try {
       // Detect category
       const categoryId = await this.detectCategory(line.category, defaults);
@@ -454,7 +517,7 @@ export class OrderGuideProcessor {
       // Ensure we have required fields
       if (!unitId) {
         console.error('[OrderGuide] Cannot create inventory item without unit');
-        return { inventoryCreated: false, vendorItemCreated: false };
+        return { inventoryCreated: false, vendorItemCreated: false, storeAssignmentsCreated: 0 };
       }
 
       // Create inventory item with smart defaults
@@ -480,14 +543,23 @@ export class OrderGuideProcessor {
         );
       }
 
-      // Assign to store
-      await this.storage.createStoreInventoryItem({
-        companyId,
-        inventoryItemId: inventoryItem.id,
-        storeId,
-        active: 1,
-        onHandQty: 0,
-      });
+      // Assign to ALL target stores
+      let storeAssignmentsCreated = 0;
+      for (const storeId of targetStoreIds) {
+        try {
+          await this.storage.createStoreInventoryItem({
+            companyId,
+            inventoryItemId: inventoryItem.id,
+            storeId,
+            active: 1,
+            onHandQty: 0,
+          });
+          storeAssignmentsCreated++;
+        } catch (error) {
+          // Log but continue - don't fail for one store assignment
+          console.error(`[OrderGuide] Error assigning to store ${storeId}:`, error);
+        }
+      }
 
       // Create vendor item
       const vendorItem = await this.storage.createVendorItem({
@@ -500,10 +572,10 @@ export class OrderGuideProcessor {
         lastPrice: line.price ?? undefined,
       });
 
-      return { inventoryCreated: true, vendorItemCreated: true };
+      return { inventoryCreated: true, vendorItemCreated: true, storeAssignmentsCreated };
     } catch (error) {
       console.error('[OrderGuide] Error creating new inventory item:', error);
-      return { inventoryCreated: false, vendorItemCreated: false };
+      return { inventoryCreated: false, vendorItemCreated: false, storeAssignmentsCreated: 0 };
     }
   }
 

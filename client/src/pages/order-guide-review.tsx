@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useRoute } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,9 +14,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, AlertCircle, PlusCircle, ArrowLeft, Check, CheckCheck } from 'lucide-react';
+import { CheckCircle2, AlertCircle, PlusCircle, ArrowLeft, Check, CheckCheck, Store, ChevronDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
+import { useStoreContext } from '@/hooks/use-store-context';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 interface OrderGuideLine {
   id: string;
@@ -55,9 +61,21 @@ export default function OrderGuideReview() {
   const [, params] = useRoute('/order-guides/:id/review');
   const { toast } = useToast();
   const orderGuideId = params?.id;
+  const { stores, selectedStoreId } = useStoreContext();
 
   // Track selected line IDs
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set());
+  
+  // Track target stores for import - default to all stores
+  const [targetStoreIds, setTargetStoreIds] = useState<Set<string>>(new Set());
+  const [isStoreSelectionOpen, setIsStoreSelectionOpen] = useState(false);
+  
+  // Initialize target stores when stores are loaded
+  useEffect(() => {
+    if (stores.length > 0 && targetStoreIds.size === 0) {
+      setTargetStoreIds(new Set(stores.map(s => s.id)));
+    }
+  }, [stores]);
 
   const { data: reviewData, isLoading } = useQuery<ReviewData>({
     queryKey: ['/api/order-guides', orderGuideId, 'review'],
@@ -82,9 +100,10 @@ export default function OrderGuideReview() {
 
   const approveMutation = useMutation({
     mutationFn: async ({ importAll }: { importAll: boolean }) => {
-      const payload = importAll
-        ? { importAll: true }
-        : { selectedLineIds: Array.from(selectedLineIds) };
+      const payload = {
+        ...(importAll ? { importAll: true } : { selectedLineIds: Array.from(selectedLineIds) }),
+        targetStoreIds: Array.from(targetStoreIds),
+      };
       
       return apiRequest('POST', `/api/order-guides/${orderGuideId}/approve`, payload);
     },
@@ -92,13 +111,17 @@ export default function OrderGuideReview() {
       const inventoryMsg = data.inventoryItemsCreated > 0 
         ? `, ${data.inventoryItemsCreated} inventory items` 
         : '';
+      const storeMsg = data.storeAssignmentsCreated > 0
+        ? ` across ${targetStoreIds.size} store${targetStoreIds.size > 1 ? 's' : ''}`
+        : '';
       toast({
         title: 'Order Guide Approved',
-        description: `Created ${data.vendorItemsCreated} vendor items${inventoryMsg}`,
+        description: `Created ${data.vendorItemsCreated} vendor items${inventoryMsg}${storeMsg}`,
       });
       queryClient.invalidateQueries({ queryKey: ['/api/vendors'] });
       queryClient.invalidateQueries({ queryKey: ['/api/vendor-items'] });
       queryClient.invalidateQueries({ queryKey: ['/api/inventory-items'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/store-inventory-items'] });
       window.history.back();
     },
     onError: (error: Error) => {
@@ -109,6 +132,31 @@ export default function OrderGuideReview() {
       });
     },
   });
+
+  const toggleTargetStore = (storeId: string) => {
+    setTargetStoreIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(storeId)) {
+        // Don't allow removing if it's the last store
+        if (newSet.size > 1) {
+          newSet.delete(storeId);
+        }
+      } else {
+        newSet.add(storeId);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllTargetStores = () => {
+    setTargetStoreIds(new Set(stores.map(s => s.id)));
+  };
+
+  const selectCurrentStoreOnly = () => {
+    if (selectedStoreId) {
+      setTargetStoreIds(new Set([selectedStoreId]));
+    }
+  };
 
   const toggleLineSelection = (lineId: string) => {
     setSelectedLineIds(prev => {
@@ -188,24 +236,92 @@ export default function OrderGuideReview() {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => approveMutation.mutate({ importAll: true })}
-            disabled={approveMutation.isPending}
-            data-testid="button-import-all"
-          >
-            <CheckCheck className="h-4 w-4 mr-2" />
-            {approveMutation.isPending ? 'Importing...' : `Import All (${reviewData.summary.total})`}
-          </Button>
-          <Button
-            onClick={() => approveMutation.mutate({ importAll: false })}
-            disabled={approveMutation.isPending || selectedCount === 0}
-            data-testid="button-import-selected"
-          >
-            <Check className="h-4 w-4 mr-2" />
-            {approveMutation.isPending ? 'Importing...' : `Import Selected (${selectedCount})`}
-          </Button>
+        <div className="flex flex-col gap-3 items-end">
+          {/* Store Selection */}
+          {stores.length > 1 && (
+            <Collapsible open={isStoreSelectionOpen} onOpenChange={setIsStoreSelectionOpen}>
+              <CollapsibleTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2" data-testid="button-select-stores">
+                  <Store className="h-4 w-4" />
+                  Import to {targetStoreIds.size} of {stores.length} stores
+                  <ChevronDown className={`h-4 w-4 transition-transform ${isStoreSelectionOpen ? 'rotate-180' : ''}`} />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2">
+                <Card>
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">Target Stores</span>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={selectAllTargetStores}
+                          data-testid="button-select-all-stores"
+                        >
+                          All
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={selectCurrentStoreOnly}
+                          data-testid="button-select-current-store"
+                        >
+                          Current Only
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {stores.map(store => (
+                        <div 
+                          key={store.id} 
+                          className="flex items-center gap-2"
+                          data-testid={`store-checkbox-${store.id}`}
+                        >
+                          <Checkbox 
+                            id={`target-store-${store.id}`}
+                            checked={targetStoreIds.has(store.id)}
+                            onCheckedChange={() => toggleTargetStore(store.id)}
+                            disabled={targetStoreIds.size === 1 && targetStoreIds.has(store.id)}
+                          />
+                          <label 
+                            htmlFor={`target-store-${store.id}`}
+                            className="text-sm cursor-pointer flex-1"
+                          >
+                            {store.name}
+                            {store.id === selectedStoreId && (
+                              <Badge variant="secondary" className="ml-2 text-xs">Current</Badge>
+                            )}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+          
+          {/* Import Buttons */}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => approveMutation.mutate({ importAll: true })}
+              disabled={approveMutation.isPending || targetStoreIds.size === 0}
+              data-testid="button-import-all"
+            >
+              <CheckCheck className="h-4 w-4 mr-2" />
+              {approveMutation.isPending ? 'Importing...' : `Import All (${reviewData.summary.total})`}
+            </Button>
+            <Button
+              onClick={() => approveMutation.mutate({ importAll: false })}
+              disabled={approveMutation.isPending || selectedCount === 0 || targetStoreIds.size === 0}
+              data-testid="button-import-selected"
+            >
+              <Check className="h-4 w-4 mr-2" />
+              {approveMutation.isPending ? 'Importing...' : `Import Selected (${selectedCount})`}
+            </Button>
+          </div>
         </div>
       </div>
 
