@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Pencil, Trash2, ExternalLink, Zap, Upload } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, ExternalLink, Zap, Upload, Store, Star, MapPin } from "lucide-react";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -44,14 +44,22 @@ import {
 } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertVendorSchema, type InsertVendor, type Vendor, type VendorItem } from "@shared/schema";
+import { insertVendorSchema, type InsertVendor, type Vendor, type VendorItem, type CompanyStore, type StoreVendor } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
+import { useStoreContext } from "@/hooks/use-store-context";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Form schema that omits companyId (added by backend from authenticated user)
 const vendorFormSchema = insertVendorSchema.omit({ companyId: true });
 type VendorFormData = z.infer<typeof vendorFormSchema>;
+
+type VendorStoreAssignment = StoreVendor & { store?: CompanyStore };
 
 export default function Vendors() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -62,7 +70,11 @@ export default function Vendors() {
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [selectedVendorForImport, setSelectedVendorForImport] = useState<string>("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isStoreAssignDialogOpen, setIsStoreAssignDialogOpen] = useState(false);
+  const [vendorToAssign, setVendorToAssign] = useState<Vendor | null>(null);
+  const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>([]);
   const { toast } = useToast();
+  const { selectedStoreId, stores } = useStoreContext();
 
   const { data: vendors, isLoading } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors"],
@@ -70,6 +82,29 @@ export default function Vendors() {
 
   const { data: vendorItems, isLoading: vendorItemsLoading } = useQuery<VendorItem[]>({
     queryKey: ["/api/vendor-items"],
+  });
+
+  // Fetch store assignments for each vendor
+  const { data: vendorStoreAssignments } = useQuery<Record<string, VendorStoreAssignment[]>>({
+    queryKey: ["/api/vendor-store-assignments"],
+    queryFn: async () => {
+      if (!vendors) return {};
+      const assignments: Record<string, VendorStoreAssignment[]> = {};
+      for (const vendor of vendors) {
+        try {
+          const response = await fetch(`/api/vendors/${vendor.id}/stores`, { credentials: 'include' });
+          if (response.ok) {
+            assignments[vendor.id] = await response.json();
+          } else {
+            assignments[vendor.id] = [];
+          }
+        } catch {
+          assignments[vendor.id] = [];
+        }
+      }
+      return assignments;
+    },
+    enabled: !!vendors && vendors.length > 0,
   });
 
   const form = useForm<VendorFormData>({
@@ -148,6 +183,29 @@ export default function Vendors() {
       });
       setDeleteDialogOpen(false);
       setVendorToDelete(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const storeAssignMutation = useMutation({
+    mutationFn: async ({ vendorId, storeIds }: { vendorId: string; storeIds: string[] }) => {
+      return await apiRequest("POST", `/api/vendors/${vendorId}/stores/bulk`, { storeIds });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-store-assignments"] });
+      toast({
+        title: "Success",
+        description: "Store assignments updated successfully",
+      });
+      setIsStoreAssignDialogOpen(false);
+      setVendorToAssign(null);
+      setSelectedStoreIds([]);
     },
     onError: (error: Error) => {
       toast({
@@ -341,6 +399,39 @@ export default function Vendors() {
     setDeleteDialogOpen(true);
   };
 
+  const handleStoreAssignClick = (vendor: Vendor) => {
+    setVendorToAssign(vendor);
+    const currentAssignments = vendorStoreAssignments?.[vendor.id] || [];
+    setSelectedStoreIds(currentAssignments.map(a => a.storeId));
+    setIsStoreAssignDialogOpen(true);
+  };
+
+  const handleStoreToggle = (storeId: string) => {
+    setSelectedStoreIds(prev => 
+      prev.includes(storeId) 
+        ? prev.filter(id => id !== storeId)
+        : [...prev, storeId]
+    );
+  };
+
+  const handleSaveStoreAssignments = () => {
+    if (vendorToAssign) {
+      storeAssignMutation.mutate({ 
+        vendorId: vendorToAssign.id, 
+        storeIds: selectedStoreIds 
+      });
+    }
+  };
+
+  const getVendorStoreCount = (vendorId: string) => {
+    return vendorStoreAssignments?.[vendorId]?.length || 0;
+  };
+
+  const isVendorAssignedToCurrentStore = (vendorId: string) => {
+    const assignments = vendorStoreAssignments?.[vendorId] || [];
+    return assignments.some(a => a.storeId === selectedStoreId);
+  };
+
   const onSubmit = (data: VendorFormData) => {
     if (editingVendor) {
       updateMutation.mutate({ id: editingVendor.id, data });
@@ -412,8 +503,33 @@ export default function Vendors() {
               return (
               <Card key={vendor.id} className="hover-elevate transition-all" data-testid={`card-vendor-${vendor.id}`}>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-lg" data-testid={`text-vendor-name-${vendor.id}`}>{vendor.name}</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-lg" data-testid={`text-vendor-name-${vendor.id}`}>{vendor.name}</CardTitle>
+                    {isVendorAssignedToCurrentStore(vendor.id) ? (
+                      <Badge variant="default" className="text-xs" data-testid={`badge-assigned-${vendor.id}`}>
+                        <MapPin className="h-3 w-3 mr-1" />
+                        Assigned
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-not-assigned-${vendor.id}`}>
+                        Not Assigned
+                      </Badge>
+                    )}
+                  </div>
                   <div className="flex gap-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button 
+                          size="icon" 
+                          variant="ghost"
+                          onClick={() => handleStoreAssignClick(vendor)}
+                          data-testid={`button-store-assign-${vendor.id}`}
+                        >
+                          <Store className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Manage Store Assignments</TooltipContent>
+                    </Tooltip>
                     <Button 
                       size="icon" 
                       variant="ghost"
@@ -448,6 +564,15 @@ export default function Vendors() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Account #:</span>
                       <span className="font-mono" data-testid={`text-vendor-account-${vendor.id}`}>{vendor.accountNumber || "-"}</span>
+                    </div>
+                    <div 
+                      className="flex justify-between items-center hover-elevate rounded-md p-2 -m-2 cursor-pointer transition-all"
+                      onClick={() => handleStoreAssignClick(vendor)}
+                    >
+                      <span className="text-muted-foreground">Stores:</span>
+                      <Badge variant="outline" className="font-mono" data-testid={`text-vendor-stores-${vendor.id}`}>
+                        {getVendorStoreCount(vendor.id)} / {stores.length}
+                      </Badge>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">Order Guide:</span>
@@ -900,6 +1025,67 @@ export default function Vendors() {
               data-testid="button-submit-import"
             >
               {uploadOrderGuideMutation.isPending ? 'Uploading...' : 'Upload & Review'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isStoreAssignDialogOpen} onOpenChange={setIsStoreAssignDialogOpen}>
+        <DialogContent data-testid="dialog-store-assign">
+          <DialogHeader>
+            <DialogTitle>Assign Vendor to Stores</DialogTitle>
+            <DialogDescription>
+              Select which stores this vendor should be available for. Only assigned vendors will appear in store-specific vendor lists.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm font-medium mb-4">
+              {vendorToAssign?.name} - Select Stores:
+            </p>
+            <div className="space-y-3 max-h-64 overflow-y-auto">
+              {stores.map((store) => (
+                <div 
+                  key={store.id} 
+                  className="flex items-center space-x-3 p-2 rounded-md hover-elevate"
+                  data-testid={`store-option-${store.id}`}
+                >
+                  <Checkbox 
+                    id={`store-${store.id}`}
+                    checked={selectedStoreIds.includes(store.id)}
+                    onCheckedChange={() => handleStoreToggle(store.id)}
+                  />
+                  <label 
+                    htmlFor={`store-${store.id}`}
+                    className="flex-1 text-sm font-medium cursor-pointer"
+                  >
+                    {store.name}
+                  </label>
+                  {store.id === selectedStoreId && (
+                    <Badge variant="secondary" className="text-xs">Current</Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+            {stores.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No stores available.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsStoreAssignDialogOpen(false)}
+              data-testid="button-cancel-store-assign"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSaveStoreAssignments}
+              disabled={storeAssignMutation.isPending}
+              data-testid="button-save-store-assign"
+            >
+              {storeAssignMutation.isPending ? 'Saving...' : 'Save Assignments'}
             </Button>
           </DialogFooter>
         </DialogContent>
