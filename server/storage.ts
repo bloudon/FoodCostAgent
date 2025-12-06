@@ -17,6 +17,7 @@ import {
   inventoryItemPriceHistory, type InventoryItemPriceHistory, type InsertInventoryItemPriceHistory,
   storeInventoryItems, type StoreInventoryItem, type InsertStoreInventoryItem,
   vendors, type Vendor, type InsertVendor,
+  storeVendors, type StoreVendor, type InsertStoreVendor,
   vendorItems, type VendorItem, type InsertVendorItem,
   recipes, type Recipe, type InsertRecipe,
   recipeComponents, type RecipeComponent, type InsertRecipeComponent,
@@ -42,6 +43,7 @@ import {
   ediMessages, type EdiMessage, type InsertEdiMessage,
   orderGuides, type OrderGuide, type InsertOrderGuide,
   orderGuideLines, type OrderGuideLine, type InsertOrderGuideLine,
+  orderGuideStores, type OrderGuideStore, type InsertOrderGuideStore,
   userStores, type UserStore, type InsertUserStore,
   invitations, type Invitation, type InsertInvitation,
   salesUploadBatches, type SalesUploadBatch, type InsertSalesUploadBatch,
@@ -175,6 +177,19 @@ export interface IStorage {
   createVendorItem(vendorItem: InsertVendorItem): Promise<VendorItem>;
   updateVendorItem(id: string, vendorItem: Partial<InsertVendorItem>): Promise<VendorItem | undefined>;
   deleteVendorItem(id: string): Promise<void>;
+
+  // Store-Vendor Assignments
+  getStoreVendors(storeId: string): Promise<StoreVendor[]>;
+  getVendorStores(vendorId: string): Promise<StoreVendor[]>;
+  getStoreVendor(storeId: string, vendorId: string): Promise<StoreVendor | undefined>;
+  createStoreVendor(storeVendor: InsertStoreVendor): Promise<StoreVendor>;
+  updateStoreVendor(storeId: string, vendorId: string, updates: Partial<StoreVendor>): Promise<StoreVendor | undefined>;
+  deleteStoreVendor(storeId: string, vendorId: string): Promise<void>;
+  setStoreVendorPrimary(storeId: string, vendorId: string): Promise<void>;
+
+  // Order Guide Store Assignments
+  getOrderGuideStores(orderGuideId: string): Promise<OrderGuideStore[]>;
+  setOrderGuideStores(orderGuideId: string, storeIds: string[]): Promise<void>;
 
   // Recipes
   getRecipes(companyId?: string): Promise<Recipe[]>;
@@ -1445,6 +1460,73 @@ export class DatabaseStorage implements IStorage {
 
   async deleteVendorItem(id: string): Promise<void> {
     await db.delete(vendorItems).where(eq(vendorItems.id, id));
+  }
+
+  // Store-Vendor Assignments
+  async getStoreVendors(storeId: string): Promise<StoreVendor[]> {
+    return db.select().from(storeVendors).where(eq(storeVendors.storeId, storeId));
+  }
+
+  async getVendorStores(vendorId: string): Promise<StoreVendor[]> {
+    return db.select().from(storeVendors).where(eq(storeVendors.vendorId, vendorId));
+  }
+
+  async getStoreVendor(storeId: string, vendorId: string): Promise<StoreVendor | undefined> {
+    const rows = await db.select().from(storeVendors)
+      .where(and(
+        eq(storeVendors.storeId, storeId),
+        eq(storeVendors.vendorId, vendorId)
+      ));
+    return rows[0];
+  }
+
+  async createStoreVendor(storeVendor: InsertStoreVendor): Promise<StoreVendor> {
+    const rows = await db.insert(storeVendors).values(storeVendor).returning();
+    return rows[0];
+  }
+
+  async updateStoreVendor(storeId: string, vendorId: string, updates: Partial<StoreVendor>): Promise<StoreVendor | undefined> {
+    const rows = await db.update(storeVendors)
+      .set(updates)
+      .where(and(
+        eq(storeVendors.storeId, storeId),
+        eq(storeVendors.vendorId, vendorId)
+      ))
+      .returning();
+    return rows[0];
+  }
+
+  async deleteStoreVendor(storeId: string, vendorId: string): Promise<void> {
+    await db.delete(storeVendors)
+      .where(and(
+        eq(storeVendors.storeId, storeId),
+        eq(storeVendors.vendorId, vendorId)
+      ));
+  }
+
+  async setStoreVendorPrimary(storeId: string, vendorId: string): Promise<void> {
+    await db.update(storeVendors)
+      .set({ isPrimary: 0 })
+      .where(eq(storeVendors.storeId, storeId));
+    await db.update(storeVendors)
+      .set({ isPrimary: 1 })
+      .where(and(
+        eq(storeVendors.storeId, storeId),
+        eq(storeVendors.vendorId, vendorId)
+      ));
+  }
+
+  // Order Guide Store Assignments
+  async getOrderGuideStores(orderGuideId: string): Promise<OrderGuideStore[]> {
+    return db.select().from(orderGuideStores).where(eq(orderGuideStores.orderGuideId, orderGuideId));
+  }
+
+  async setOrderGuideStores(orderGuideId: string, storeIds: string[]): Promise<void> {
+    await db.delete(orderGuideStores).where(eq(orderGuideStores.orderGuideId, orderGuideId));
+    if (storeIds.length > 0) {
+      const values = storeIds.map(storeId => ({ orderGuideId, storeId }));
+      await db.insert(orderGuideStores).values(values);
+    }
   }
 
   // Recipes
