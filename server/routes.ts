@@ -3010,6 +3010,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           categoryId: item.categoryId,
           storageLocationId: item.storageLocationId,
           caseSize: item.caseSize,
+          innerPackSize: item.innerPackSize,
           pricePerUnit: item.pricePerUnit,
         } : undefined,
         unit,

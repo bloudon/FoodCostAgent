@@ -35,6 +35,7 @@ interface VendorItemWithDetails {
     storageLocationId: string;
     pricePerUnit: number;
     caseSize: number | null;
+    innerPackSize: number | null;
   };
   unit?: {
     id: string;
@@ -203,9 +204,9 @@ export default function VendorDetail() {
                               )}
                             </TableCell>
                             <TableCell className="text-right" data-testid={`text-item-pack-${item.id}`}>
-                              {item.innerPackSize != null ? (
+                              {(item.innerPackSize ?? item.inventoryItem?.innerPackSize) != null ? (
                                 <>
-                                  {item.innerPackSize}
+                                  {item.innerPackSize ?? item.inventoryItem?.innerPackSize}
                                   {item.unit && (
                                     <span className="text-muted-foreground text-sm ml-1">
                                       {formatUnitName(item.unit.name)}
