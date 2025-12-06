@@ -1536,6 +1536,237 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ STORE-VENDOR ASSIGNMENTS ============
+
+  // Get vendors assigned to a specific store
+  app.get("/api/stores/:storeId/vendors", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { storeId } = req.params;
+      
+      // Verify store belongs to company
+      const stores = await storage.getStores(companyId);
+      const store = stores.find(s => s.id === storeId);
+      if (!store) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+      
+      const storeVendors = await storage.getStoreVendors(storeId);
+      
+      // Get full vendor details for each assignment
+      const allVendors = await storage.getVendors(companyId);
+      const result = storeVendors.map(sv => {
+        const vendor = allVendors.find(v => v.id === sv.vendorId);
+        return {
+          ...sv,
+          vendor,
+        };
+      });
+      
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get stores assigned to a specific vendor
+  app.get("/api/vendors/:vendorId/stores", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { vendorId } = req.params;
+      
+      // Verify vendor belongs to company
+      const vendor = await storage.getVendor(vendorId, companyId);
+      if (!vendor) {
+        return res.status(404).json({ error: "Vendor not found" });
+      }
+      
+      const vendorStores = await storage.getVendorStores(vendorId);
+      
+      // Get full store details for each assignment
+      const allStores = await storage.getStores(companyId);
+      const result = vendorStores.map(sv => {
+        const store = allStores.find(s => s.id === sv.storeId);
+        return {
+          ...sv,
+          store,
+        };
+      });
+      
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Assign vendor to store
+  app.post("/api/stores/:storeId/vendors/:vendorId", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { storeId, vendorId } = req.params;
+      const { isPrimary } = req.body;
+      
+      // Verify store belongs to company
+      const stores = await storage.getStores(companyId);
+      const store = stores.find(s => s.id === storeId);
+      if (!store) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+      
+      // Verify vendor belongs to company
+      const vendor = await storage.getVendor(vendorId, companyId);
+      if (!vendor) {
+        return res.status(404).json({ error: "Vendor not found" });
+      }
+      
+      // Check if already assigned
+      const existing = await storage.getStoreVendor(storeId, vendorId);
+      if (existing) {
+        return res.status(409).json({ error: "Vendor already assigned to this store" });
+      }
+      
+      const storeVendor = await storage.createStoreVendor({
+        storeId,
+        vendorId,
+        isPrimary: isPrimary ? 1 : 0,
+        active: 1,
+      });
+      
+      // If marked as primary, update other vendors
+      if (isPrimary) {
+        await storage.setStoreVendorPrimary(storeId, vendorId);
+      }
+      
+      res.status(201).json(storeVendor);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Update store-vendor assignment (e.g., set as primary)
+  app.patch("/api/stores/:storeId/vendors/:vendorId", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { storeId, vendorId } = req.params;
+      const { isPrimary, active } = req.body;
+      
+      // Verify store belongs to company
+      const stores = await storage.getStores(companyId);
+      const store = stores.find(s => s.id === storeId);
+      if (!store) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+      
+      const existing = await storage.getStoreVendor(storeId, vendorId);
+      if (!existing) {
+        return res.status(404).json({ error: "Vendor not assigned to this store" });
+      }
+      
+      // Update primary status
+      if (isPrimary !== undefined) {
+        if (isPrimary) {
+          await storage.setStoreVendorPrimary(storeId, vendorId);
+        } else {
+          await storage.updateStoreVendor(storeId, vendorId, { isPrimary: 0 });
+        }
+      }
+      
+      // Update active status
+      if (active !== undefined) {
+        await storage.updateStoreVendor(storeId, vendorId, { active: active ? 1 : 0 });
+      }
+      
+      const updated = await storage.getStoreVendor(storeId, vendorId);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Remove vendor from store
+  app.delete("/api/stores/:storeId/vendors/:vendorId", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { storeId, vendorId } = req.params;
+      
+      // Verify store belongs to company
+      const stores = await storage.getStores(companyId);
+      const store = stores.find(s => s.id === storeId);
+      if (!store) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+      
+      const existing = await storage.getStoreVendor(storeId, vendorId);
+      if (!existing) {
+        return res.status(404).json({ error: "Vendor not assigned to this store" });
+      }
+      
+      await storage.deleteStoreVendor(storeId, vendorId);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Bulk assign vendor to multiple stores
+  app.post("/api/vendors/:vendorId/stores/bulk", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { vendorId } = req.params;
+      const { storeIds } = req.body;
+      
+      if (!Array.isArray(storeIds)) {
+        return res.status(400).json({ error: "storeIds must be an array" });
+      }
+      
+      // Verify vendor belongs to company
+      const vendor = await storage.getVendor(vendorId, companyId);
+      if (!vendor) {
+        return res.status(404).json({ error: "Vendor not found" });
+      }
+      
+      // Verify all stores belong to company
+      const allStores = await storage.getStores(companyId);
+      const companyStoreIds = allStores.map(s => s.id);
+      for (const storeId of storeIds) {
+        if (!companyStoreIds.includes(storeId)) {
+          return res.status(400).json({ error: `Store ${storeId} not found or doesn't belong to company` });
+        }
+      }
+      
+      // Get existing assignments
+      const existingAssignments = await storage.getVendorStores(vendorId);
+      const existingStoreIds = existingAssignments.map(a => a.storeId);
+      
+      // Add new assignments
+      const newStoreIds = storeIds.filter(id => !existingStoreIds.includes(id));
+      const created = [];
+      for (const storeId of newStoreIds) {
+        const sv = await storage.createStoreVendor({
+          storeId,
+          vendorId,
+          isPrimary: 0,
+          active: 1,
+        });
+        created.push(sv);
+      }
+      
+      // Remove assignments not in the new list
+      const toRemove = existingStoreIds.filter(id => !storeIds.includes(id));
+      for (const storeId of toRemove) {
+        await storage.deleteStoreVendor(storeId, vendorId);
+      }
+      
+      res.json({ 
+        added: created.length, 
+        removed: toRemove.length,
+        total: storeIds.length 
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // ============ VENDOR INTEGRATIONS ============
 
   /**
