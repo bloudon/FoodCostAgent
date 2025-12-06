@@ -1,10 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
-import { useRoute, Link } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useRoute, Link, useLocation } from "wouter";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Package, DollarSign, Clock, Box } from "lucide-react";
+import { ArrowLeft, Box } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { Vendor } from "@shared/schema";
 import { formatUnitName } from "@/lib/utils";
 
@@ -34,6 +42,7 @@ interface VendorItemWithDetails {
 
 export default function VendorDetail() {
   const [, params] = useRoute("/vendors/:id");
+  const [, navigate] = useLocation();
   const vendorId = params?.id;
 
   const { data: vendor, isLoading: vendorLoading } = useQuery<Vendor>({
@@ -73,18 +82,29 @@ export default function VendorDetail() {
             <Skeleton className="h-8 w-64 mb-2" />
             <Skeleton className="h-4 w-48" />
           </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i}>
-                <CardHeader>
-                  <Skeleton className="h-5 w-32" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-4 w-full mb-2" />
-                  <Skeleton className="h-4 w-3/4" />
-                </CardContent>
-              </Card>
-            ))}
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[40%]">Item Name</TableHead>
+                  <TableHead>SKU</TableHead>
+                  <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="text-right">Case Size</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+                    <TableCell className="text-center"><Skeleton className="h-5 w-16 mx-auto" /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </div>
       ) : vendor ? (
@@ -108,55 +128,53 @@ export default function VendorDetail() {
           <div>
             <h2 className="text-xl font-semibold mb-4">Inventory Items</h2>
             {vendorItems && vendorItems.length > 0 ? (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {vendorItems.map((item) => (
-                  <Link 
-                    key={item.id} 
-                    href={`/inventory-items/${item.inventoryItemId}`}
-                    data-testid={`link-item-${item.id}`}
-                  >
-                    <Card className="hover-elevate transition-all h-full">
-                      <CardHeader className="space-y-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <CardTitle className="text-base line-clamp-2" data-testid={`text-item-name-${item.id}`}>
-                            {item.inventoryItem?.name || "Unknown Item"}
-                          </CardTitle>
-                          <Badge variant={item.active ? "outline" : "secondary"} className="shrink-0">
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[40%]">Item Name</TableHead>
+                      <TableHead>SKU</TableHead>
+                      <TableHead className="text-right">Price</TableHead>
+                      <TableHead className="text-right">Case Size</TableHead>
+                      <TableHead className="text-center">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {vendorItems.map((item) => (
+                      <TableRow 
+                        key={item.id} 
+                        className="hover-elevate cursor-pointer"
+                        data-testid={`row-item-${item.id}`}
+                        onClick={() => navigate(`/inventory-items/${item.inventoryItemId}`)}
+                      >
+                        <TableCell className="font-medium" data-testid={`text-item-name-${item.id}`}>
+                          {item.inventoryItem?.name || "Unknown Item"}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm text-muted-foreground" data-testid={`text-item-sku-${item.id}`}>
+                          {item.vendorSku || "-"}
+                        </TableCell>
+                        <TableCell className="text-right" data-testid={`text-item-price-${item.id}`}>
+                          <span className="font-medium">
+                            ${(item.inventoryItem?.pricePerUnit ?? item.lastPrice ?? 0).toFixed(2)}
+                          </span>
+                          {item.unit && (
+                            <span className="text-muted-foreground text-sm ml-1">
+                              / {formatUnitName(item.unit.name)}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right" data-testid={`text-item-case-${item.id}`}>
+                          {(item.inventoryItem?.caseSize ?? item.caseSize) ?? "-"}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={item.active ? "outline" : "secondary"} className="text-xs">
                             {item.active ? "Active" : "Inactive"}
                           </Badge>
-                        </div>
-                        {item.vendorSku && (
-                          <CardDescription className="font-mono text-xs" data-testid={`text-item-sku-${item.id}`}>
-                            SKU: {item.vendorSku}
-                          </CardDescription>
-                        )}
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex items-center gap-2">
-                            <DollarSign className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-muted-foreground">Price:</span>
-                            <span className="font-medium" data-testid={`text-item-price-${item.id}`}>
-                              ${(item.inventoryItem?.pricePerUnit ?? item.lastPrice ?? 0).toFixed(2)}
-                            </span>
-                            {item.unit && (
-                              <span className="text-muted-foreground">/ {formatUnitName(item.unit.name)}</span>
-                            )}
-                          </div>
-                          {(item.inventoryItem?.caseSize ?? item.caseSize) != null && (
-                            <div className="flex items-center gap-2">
-                              <Package className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-muted-foreground">Case Size:</span>
-                              <span className="font-medium" data-testid={`text-item-case-${item.id}`}>
-                                {item.inventoryItem?.caseSize ?? item.caseSize}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                ))}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             ) : (
               <Card>
