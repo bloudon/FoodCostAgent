@@ -391,6 +391,23 @@ export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true })
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type Vendor = typeof vendors.$inferSelect;
 
+// Store-Vendor Assignments (many-to-many linking vendors to stores)
+export const storeVendors = pgTable("store_vendors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  storeId: varchar("store_id").notNull(),
+  vendorId: varchar("vendor_id").notNull(),
+  isPrimary: integer("is_primary").notNull().default(0), // 1 = primary vendor for this store
+  active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
+}, (table) => ({
+  storeIdx: index("store_vendors_store_idx").on(table.storeId),
+  vendorIdx: index("store_vendors_vendor_idx").on(table.vendorId),
+  uniqueStoreVendor: index("store_vendors_unique_idx").on(table.storeId, table.vendorId),
+}));
+
+export const insertStoreVendorSchema = createInsertSchema(storeVendors).omit({ id: true });
+export type InsertStoreVendor = z.infer<typeof insertStoreVendorSchema>;
+export type StoreVendor = typeof storeVendors.$inferSelect;
+
 // Vendor Items (cross-reference)
 export const vendorItems = pgTable("vendor_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1067,6 +1084,21 @@ export const orderGuideLines = pgTable("order_guide_lines", {
 export const insertOrderGuideLineSchema = createInsertSchema(orderGuideLines).omit({ id: true });
 export type InsertOrderGuideLine = z.infer<typeof insertOrderGuideLineSchema>;
 export type OrderGuideLine = typeof orderGuideLines.$inferSelect;
+
+// Order Guide Store Assignments (many-to-many linking order guides to stores)
+export const orderGuideStores = pgTable("order_guide_stores", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderGuideId: varchar("order_guide_id").notNull(),
+  storeId: varchar("store_id").notNull(),
+}, (table) => ({
+  orderGuideIdx: index("order_guide_stores_guide_idx").on(table.orderGuideId),
+  storeIdx: index("order_guide_stores_store_idx").on(table.storeId),
+  uniqueGuideStore: index("order_guide_stores_unique_idx").on(table.orderGuideId, table.storeId),
+}));
+
+export const insertOrderGuideStoreSchema = createInsertSchema(orderGuideStores).omit({ id: true });
+export type InsertOrderGuideStore = z.infer<typeof insertOrderGuideStoreSchema>;
+export type OrderGuideStore = typeof orderGuideStores.$inferSelect;
 
 // QuickBooks Connections (company or store level - company overrides store)
 export const quickbooksConnections = pgTable("quickbooks_connections", {
