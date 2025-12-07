@@ -311,7 +311,7 @@ export default function Dashboard() {
       value: itemsLoading ? "..." : totalItems.toString(),
       icon: Package,
       description: "Inventory items at this store",
-      link: "/inventory",
+      link: "/inventory-items",
     },
     {
       title: "Recent Variance",
