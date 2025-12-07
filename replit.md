@@ -24,6 +24,17 @@ This project is an inventory management and recipe costing system for food servi
 - Recipe Name Capitalization: Recipe names are automatically displayed with the first letter capitalized in all UI presentations while preserving the original database values.
 - User Accountability Tracking: All key actions (receipts completion, transfer creation/execution/receiving, waste logging) track the user who performed them. Dates display tooltips showing "Action by Username" on hover.
 
+# UI Layout Requirements
+
+## Vendors Page Layout (LOCKED - DO NOT CHANGE)
+- **Format**: Table/grid layout with ONE ROW per vendor (NOT cards)
+- **Search**: Search input at top filters vendor list by name
+- **Columns**: Vendor name (clickable link to detail), Products count, Account #, Stores assigned, Order Guide type, Delivery Days, Order By days, Actions
+- **Vendor Name**: Clickable link that navigates to `/vendors/{id}` detail page
+- **Action Buttons**: Store assignment, Edit, Delete (hidden for Misc Grocery vendors) - displayed in Actions column
+- **Misc Grocery Protection**: Delete button hidden for any vendor with "Misc Grocery" in name (protected system vendor)
+- **Store Badge**: Shows "Assigned" or "Not Assigned" based on current store context
+
 # System Architecture
 
 - **Frontend**: Mobile-first React 18 SPA with TypeScript, Vite, `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
