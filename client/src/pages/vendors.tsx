@@ -1,11 +1,18 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Pencil, Trash2, ExternalLink, Zap, Upload, Store, Star, MapPin } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin } from "lucide-react";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -480,102 +487,78 @@ export default function Vendors() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {isLoading ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-6 w-32" />
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-3/4" />
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        ) : filteredVendors && filteredVendors.length > 0 ? (
-          <>
-            {filteredVendors.map((vendor) => {
-              const isMiscGrocery = vendor.name?.toLowerCase().includes('misc grocery') || false;
-              
-              return (
-              <Card key={vendor.id} className="hover-elevate transition-all" data-testid={`card-vendor-${vendor.id}`}>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-lg" data-testid={`text-vendor-name-${vendor.id}`}>{vendor.name}</CardTitle>
-                    {isVendorAssignedToCurrentStore(vendor.id) ? (
-                      <Badge variant="default" className="text-xs" data-testid={`badge-assigned-${vendor.id}`}>
-                        <MapPin className="h-3 w-3 mr-1" />
-                        Assigned
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-not-assigned-${vendor.id}`}>
-                        Not Assigned
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex gap-1">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button 
-                          size="icon" 
-                          variant="ghost"
-                          onClick={() => handleStoreAssignClick(vendor)}
-                          data-testid={`button-store-assign-${vendor.id}`}
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Vendor Name</TableHead>
+              <TableHead className="text-right">Products</TableHead>
+              <TableHead>Account #</TableHead>
+              <TableHead>Stores</TableHead>
+              <TableHead>Order Guide</TableHead>
+              <TableHead>Delivery Days</TableHead>
+              <TableHead>Order By</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-12" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                </TableRow>
+              ))
+            ) : filteredVendors && filteredVendors.length > 0 ? (
+              filteredVendors.map((vendor) => {
+                const isMiscGrocery = vendor.name?.toLowerCase().includes('misc grocery') || false;
+                
+                return (
+                  <TableRow key={vendor.id} data-testid={`row-vendor-${vendor.id}`}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Link 
+                          href={`/vendors/${vendor.id}`} 
+                          className="font-medium hover:underline"
+                          data-testid={`link-vendor-detail-${vendor.id}`}
                         >
-                          <Store className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Manage Store Assignments</TooltipContent>
-                    </Tooltip>
-                    <Button 
-                      size="icon" 
-                      variant="ghost"
-                      onClick={() => handleEditClick(vendor)}
-                      data-testid={`button-edit-vendor-${vendor.id}`}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    {!isMiscGrocery && (
-                      <Button 
-                        size="icon" 
-                        variant="ghost"
-                        onClick={() => handleDeleteClick(vendor)}
-                        data-testid={`button-delete-vendor-${vendor.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 text-sm">
-                    <Link href={`/vendors/${vendor.id}`} data-testid={`link-vendor-detail-${vendor.id}`}>
-                      <div className="flex justify-between items-center hover-elevate rounded-md p-2 -m-2 transition-all group">
-                        <span className="text-muted-foreground">Products:</span>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono" data-testid={`text-vendor-products-${vendor.id}`}>{getProductCount(vendor.id)}</span>
-                          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
+                          <span data-testid={`text-vendor-name-${vendor.id}`}>{vendor.name}</span>
+                        </Link>
+                        {isVendorAssignedToCurrentStore(vendor.id) ? (
+                          <Badge variant="default" className="text-xs" data-testid={`badge-assigned-${vendor.id}`}>
+                            <MapPin className="h-3 w-3 mr-1" />
+                            Assigned
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-not-assigned-${vendor.id}`}>
+                            Not Assigned
+                          </Badge>
+                        )}
                       </div>
-                    </Link>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Account #:</span>
-                      <span className="font-mono" data-testid={`text-vendor-account-${vendor.id}`}>{vendor.accountNumber || "-"}</span>
-                    </div>
-                    <div 
-                      className="flex justify-between items-center hover-elevate rounded-md p-2 -m-2 cursor-pointer transition-all"
-                      onClick={() => handleStoreAssignClick(vendor)}
-                    >
-                      <span className="text-muted-foreground">Stores:</span>
-                      <Badge variant="outline" className="font-mono" data-testid={`text-vendor-stores-${vendor.id}`}>
+                    </TableCell>
+                    <TableCell className="text-right font-mono" data-testid={`text-vendor-products-${vendor.id}`}>
+                      {getProductCount(vendor.id)}
+                    </TableCell>
+                    <TableCell className="font-mono" data-testid={`text-vendor-account-${vendor.id}`}>
+                      {vendor.accountNumber || "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge 
+                        variant="outline" 
+                        className="font-mono cursor-pointer hover:bg-muted"
+                        onClick={() => handleStoreAssignClick(vendor)}
+                        data-testid={`text-vendor-stores-${vendor.id}`}
+                      >
                         {getVendorStoreCount(vendor.id)} / {stores.length}
                       </Badge>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">Order Guide:</span>
+                    </TableCell>
+                    <TableCell>
                       {vendor.orderGuideType === "electronic" ? (
                         <Badge variant="outline" className="gap-1" data-testid={`badge-order-guide-${vendor.id}`}>
                           <Zap className="h-3 w-3" />
@@ -586,50 +569,66 @@ export default function Vendors() {
                           Manual
                         </Badge>
                       )}
-                    </div>
-                    {vendor.deliveryDays && vendor.deliveryDays.length > 0 && (
-                      <>
-                        <div className="flex justify-between items-start">
-                          <span className="text-muted-foreground">Delivery Days:</span>
-                          <span className="text-right font-medium" data-testid={`text-delivery-days-${vendor.id}`}>
-                            {vendor.deliveryDays.map(abbreviateDay).join(", ")}
-                          </span>
-                        </div>
-                        {vendor.leadDaysAhead && vendor.leadDaysAhead > 0 && (
-                          <div className="flex justify-between items-start">
-                            <span className="text-muted-foreground">Order By:</span>
-                            <span className="text-right font-medium" data-testid={`text-order-days-${vendor.id}`}>
-                              {calculateOrderDays(vendor.deliveryDays, vendor.leadDaysAhead).map(abbreviateDay).join(", ")}
-                            </span>
-                          </div>
+                    </TableCell>
+                    <TableCell data-testid={`text-delivery-days-${vendor.id}`}>
+                      {vendor.deliveryDays && vendor.deliveryDays.length > 0 
+                        ? vendor.deliveryDays.map(abbreviateDay).join(", ")
+                        : "-"
+                      }
+                    </TableCell>
+                    <TableCell data-testid={`text-order-days-${vendor.id}`}>
+                      {vendor.deliveryDays && vendor.deliveryDays.length > 0 && vendor.leadDaysAhead && vendor.leadDaysAhead > 0
+                        ? calculateOrderDays(vendor.deliveryDays, vendor.leadDaysAhead).map(abbreviateDay).join(", ")
+                        : "-"
+                      }
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button 
+                              size="icon" 
+                              variant="ghost"
+                              onClick={() => handleStoreAssignClick(vendor)}
+                              data-testid={`button-store-assign-${vendor.id}`}
+                            >
+                              <Store className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Manage Store Assignments</TooltipContent>
+                        </Tooltip>
+                        <Button 
+                          size="icon" 
+                          variant="ghost"
+                          onClick={() => handleEditClick(vendor)}
+                          data-testid={`button-edit-vendor-${vendor.id}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        {!isMiscGrocery && (
+                          <Button 
+                            size="icon" 
+                            variant="ghost"
+                            onClick={() => handleDeleteClick(vendor)}
+                            data-testid={`button-delete-vendor-${vendor.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         )}
-                      </>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-              );
-            })}
-            <Card 
-              className="border-dashed border-2 hover-elevate cursor-pointer transition-all" 
-              onClick={handleCreateClick}
-              data-testid="button-add-new-vendor"
-            >
-              <CardContent className="flex items-center justify-center h-full min-h-[140px]">
-                <div className="text-center">
-                  <Plus className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Add New Vendor</p>
-                </div>
-              </CardContent>
-            </Card>
-          </>
-        ) : (
-          <Card className="col-span-full">
-            <CardContent className="pt-6 text-center text-muted-foreground">
-              {searchQuery ? "No vendors match your search" : "No vendors found. Create your first vendor to get started."}
-            </CardContent>
-          </Card>
-        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            ) : (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  {searchQuery ? "No vendors match your search" : "No vendors found. Create your first vendor to get started."}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
