@@ -1713,7 +1713,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const companyId = (req as any).companyId;
       const { vendorId } = req.params;
-      const { storeIds } = req.body;
+      const { storeIds, accountNumbers } = req.body;
       
       if (!Array.isArray(storeIds)) {
         return res.status(400).json({ error: "storeIds must be an array" });
@@ -1739,7 +1739,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existingStoreIds = existingAssignments.map(a => a.storeId);
       
       // Add new assignments
-      const newStoreIds = storeIds.filter(id => !existingStoreIds.includes(id));
+      const newStoreIds = storeIds.filter((id: string) => !existingStoreIds.includes(id));
       const created = [];
       for (const storeId of newStoreIds) {
         const sv = await storage.createStoreVendor({
@@ -1747,12 +1747,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           vendorId,
           isPrimary: 0,
           active: 1,
+          accountNumber: accountNumbers?.[storeId] || null,
         });
         created.push(sv);
       }
       
+      // Update existing assignments with account numbers
+      const toUpdate = storeIds.filter((id: string) => existingStoreIds.includes(id));
+      for (const storeId of toUpdate) {
+        const newAccountNumber = accountNumbers?.[storeId] || null;
+        await storage.updateStoreVendor(storeId, vendorId, { accountNumber: newAccountNumber });
+      }
+      
       // Remove assignments not in the new list
-      const toRemove = existingStoreIds.filter(id => !storeIds.includes(id));
+      const toRemove = existingStoreIds.filter((id: string) => !storeIds.includes(id));
       for (const storeId of toRemove) {
         await storage.deleteStoreVendor(storeId, vendorId);
       }
@@ -1760,6 +1768,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ 
         added: created.length, 
         removed: toRemove.length,
+        updated: toUpdate.length,
         total: storeIds.length 
       });
     } catch (error: any) {

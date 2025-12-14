@@ -398,13 +398,16 @@ export const storeVendors = pgTable("store_vendors", {
   vendorId: varchar("vendor_id").notNull(),
   isPrimary: integer("is_primary").notNull().default(0), // 1 = primary vendor for this store
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
+  accountNumber: text("account_number"), // Store-specific vendor account number (optional)
 }, (table) => ({
   storeIdx: index("store_vendors_store_idx").on(table.storeId),
   vendorIdx: index("store_vendors_vendor_idx").on(table.vendorId),
   uniqueStoreVendor: index("store_vendors_unique_idx").on(table.storeId, table.vendorId),
 }));
 
-export const insertStoreVendorSchema = createInsertSchema(storeVendors).omit({ id: true });
+export const insertStoreVendorSchema = createInsertSchema(storeVendors).omit({ id: true }).extend({
+  accountNumber: z.string().optional(),
+});
 export type InsertStoreVendor = z.infer<typeof insertStoreVendorSchema>;
 export type StoreVendor = typeof storeVendors.$inferSelect;
 

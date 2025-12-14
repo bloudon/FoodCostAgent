@@ -80,6 +80,7 @@ export default function Vendors() {
   const [isStoreAssignDialogOpen, setIsStoreAssignDialogOpen] = useState(false);
   const [vendorToAssign, setVendorToAssign] = useState<Vendor | null>(null);
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>([]);
+  const [storeAccountNumbers, setStoreAccountNumbers] = useState<Record<string, string>>({});
   const { toast } = useToast();
   const { selectedStoreId, stores } = useStoreContext();
 
@@ -201,8 +202,8 @@ export default function Vendors() {
   });
 
   const storeAssignMutation = useMutation({
-    mutationFn: async ({ vendorId, storeIds }: { vendorId: string; storeIds: string[] }) => {
-      return await apiRequest("POST", `/api/vendors/${vendorId}/stores/bulk`, { storeIds });
+    mutationFn: async ({ vendorId, storeIds, accountNumbers }: { vendorId: string; storeIds: string[]; accountNumbers: Record<string, string> }) => {
+      return await apiRequest("POST", `/api/vendors/${vendorId}/stores/bulk`, { storeIds, accountNumbers });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendor-store-assignments"] });
@@ -213,6 +214,7 @@ export default function Vendors() {
       setIsStoreAssignDialogOpen(false);
       setVendorToAssign(null);
       setSelectedStoreIds([]);
+      setStoreAccountNumbers({});
     },
     onError: (error: Error) => {
       toast({
@@ -410,6 +412,11 @@ export default function Vendors() {
     setVendorToAssign(vendor);
     const currentAssignments = vendorStoreAssignments?.[vendor.id] || [];
     setSelectedStoreIds(currentAssignments.map(a => a.storeId));
+    const accountNums: Record<string, string> = {};
+    currentAssignments.forEach(a => {
+      if (a.accountNumber) accountNums[a.storeId] = a.accountNumber;
+    });
+    setStoreAccountNumbers(accountNums);
     setIsStoreAssignDialogOpen(true);
   };
 
@@ -425,7 +432,8 @@ export default function Vendors() {
     if (vendorToAssign) {
       storeAssignMutation.mutate({ 
         vendorId: vendorToAssign.id, 
-        storeIds: selectedStoreIds 
+        storeIds: selectedStoreIds,
+        accountNumbers: storeAccountNumbers
       });
     }
   };
@@ -1041,26 +1049,42 @@ export default function Vendors() {
             <p className="text-sm font-medium mb-4">
               {vendorToAssign?.name} - Select Stores:
             </p>
-            <div className="space-y-3 max-h-64 overflow-y-auto">
+            <div className="space-y-3 max-h-80 overflow-y-auto">
               {stores.map((store) => (
                 <div 
                   key={store.id} 
-                  className="flex items-center space-x-3 p-2 rounded-md hover-elevate"
+                  className="p-3 rounded-md border"
                   data-testid={`store-option-${store.id}`}
                 >
-                  <Checkbox 
-                    id={`store-${store.id}`}
-                    checked={selectedStoreIds.includes(store.id)}
-                    onCheckedChange={() => handleStoreToggle(store.id)}
-                  />
-                  <label 
-                    htmlFor={`store-${store.id}`}
-                    className="flex-1 text-sm font-medium cursor-pointer"
-                  >
-                    {store.name}
-                  </label>
-                  {store.id === selectedStoreId && (
-                    <Badge variant="secondary" className="text-xs">Current</Badge>
+                  <div className="flex items-center space-x-3">
+                    <Checkbox 
+                      id={`store-${store.id}`}
+                      checked={selectedStoreIds.includes(store.id)}
+                      onCheckedChange={() => handleStoreToggle(store.id)}
+                    />
+                    <label 
+                      htmlFor={`store-${store.id}`}
+                      className="flex-1 text-sm font-medium cursor-pointer"
+                    >
+                      {store.name}
+                    </label>
+                    {store.id === selectedStoreId && (
+                      <Badge variant="secondary" className="text-xs">Current</Badge>
+                    )}
+                  </div>
+                  {selectedStoreIds.includes(store.id) && (
+                    <div className="mt-2 ml-7">
+                      <Input
+                        placeholder="Account number (optional)"
+                        value={storeAccountNumbers[store.id] || ""}
+                        onChange={(e) => setStoreAccountNumbers(prev => ({
+                          ...prev,
+                          [store.id]: e.target.value
+                        }))}
+                        className="text-sm"
+                        data-testid={`input-account-${store.id}`}
+                      />
+                    </div>
                   )}
                 </div>
               ))}
