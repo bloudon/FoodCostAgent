@@ -174,6 +174,23 @@ export class CsvOrderGuide {
     for (const row of records) {
       const caseSizeRaw = this.getValue(row, mapping.caseSize);
       const innerPackRaw = this.getValue(row, mapping.innerPack);
+      const unitRaw = this.getValue(row, mapping.unit);
+      
+      // Try to parse combined size+unit values like "1 LB", "6 LB", "48 OZ"
+      // This handles cases where the Size column contains both pack weight and unit
+      const parsedSizeUnit = this.parseSizeWithUnit(unitRaw);
+      
+      // Determine innerPack: use explicit innerPack column first, then parsed from unit column
+      let innerPack = this.parseNumber(innerPackRaw);
+      let unit = unitRaw;
+      
+      if (parsedSizeUnit && !innerPack) {
+        // If unit column contains combined value like "1 LB" and no explicit innerPack,
+        // extract the numeric part as innerPack and the unit abbreviation
+        innerPack = parsedSizeUnit.size;
+        unit = parsedSizeUnit.unit;
+        console.log(`[CsvOrderGuide] Parsed size+unit: "${unitRaw}" → innerPack: ${innerPack}, unit: ${unit}`);
+      }
       
       const product: VendorProduct = {
         vendorSku: this.getValue(row, mapping.vendorSku),
@@ -181,9 +198,9 @@ export class CsvOrderGuide {
         description: this.getValue(row, mapping.description),
         caseSize: this.parseNumber(caseSizeRaw),
         caseSizeRaw: caseSizeRaw || undefined,      // Preserve raw pack string (e.g., "6/5 LB")
-        innerPack: this.parseNumber(innerPackRaw),
-        innerPackRaw: innerPackRaw || undefined,    // Preserve raw inner pack string
-        unit: this.getValue(row, mapping.unit),
+        innerPack: innerPack,
+        innerPackRaw: innerPackRaw || unitRaw || undefined,    // Preserve raw inner pack string
+        unit: unit,
         price: this.parsePrice(this.getValue(row, mapping.price)),
         brandName: this.getValue(row, mapping.brand),
         categoryCode: this.getValue(row, mapping.category),
@@ -227,6 +244,25 @@ export class CsvOrderGuide {
     if (!value) return undefined;
     const price = parseFloat(value.replace(/[$,]/g, ''));
     return isNaN(price) ? undefined : price;
+  }
+
+  /**
+   * Parse combined size+unit string like "1 LB", "6 LB", "48 OZ"
+   * Returns {size: number, unit: string} or null if not parseable
+   */
+  private static parseSizeWithUnit(value: string): { size: number; unit: string } | null {
+    if (!value) return null;
+    
+    // Match patterns like "1 LB", "6 LB", "48 OZ", "5 LB", "1.5 LB", etc.
+    const match = value.trim().match(/^([\d.]+)\s*([A-Za-z]+)$/);
+    if (match) {
+      const size = parseFloat(match[1]);
+      const unit = match[2].toUpperCase();
+      if (!isNaN(size) && unit) {
+        return { size, unit };
+      }
+    }
+    return null;
   }
 
   /**
