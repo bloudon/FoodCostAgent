@@ -490,9 +490,9 @@ export class OrderGuideProcessor {
       'each': ['ea', 'each', 'unit', 'piece', 'count', 'ct'],
     };
 
-    // Try semantic mapping
+    // Try semantic mapping - use exact matching to avoid false positives (e.g., "ct" matching "c" for cup)
     for (const [unitName, variants] of Object.entries(uomMappings)) {
-      if (variants.some(variant => uom.includes(variant))) {
+      if (variants.some(variant => uom === variant)) {
         const unit = defaults.units.find((u: any) => u.name.toLowerCase() === unitName);
         if (unit) return unit.id;
       }

@@ -102,12 +102,14 @@ export default function VendorDetail() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[35%]">Item Name</TableHead>
+                  <TableHead className="w-[30%]">Item Name</TableHead>
                   <TableHead>SKU</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-right">Pack Size</TableHead>
                   <TableHead className="text-right">Case Size</TableHead>
                   <TableHead className="text-center">Status</TableHead>
+                  <TableHead className="text-right">Unit</TableHead>
+                  <TableHead className="text-right">Case Price</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -119,6 +121,8 @@ export default function VendorDetail() {
                     <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-5 w-16 mx-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -170,12 +174,14 @@ export default function VendorDetail() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[35%]">Item Name</TableHead>
+                        <TableHead className="w-[30%]">Item Name</TableHead>
                         <TableHead>SKU</TableHead>
                         <TableHead className="text-right">Price</TableHead>
                         <TableHead className="text-right">Pack Size</TableHead>
                         <TableHead className="text-right">Case Size</TableHead>
                         <TableHead className="text-center">Status</TableHead>
+                        <TableHead className="text-right">Unit</TableHead>
+                        <TableHead className="text-right">Case Price</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -223,11 +229,23 @@ export default function VendorDetail() {
                                 {item.active ? "Active" : "Inactive"}
                               </Badge>
                             </TableCell>
+                            <TableCell className="text-right" data-testid={`text-item-unit-${item.id}`}>
+                              {item.unit ? formatUnitName(item.unit.name) : "-"}
+                            </TableCell>
+                            <TableCell className="text-right font-medium" data-testid={`text-item-case-price-${item.id}`}>
+                              {(() => {
+                                const unitPrice = item.inventoryItem?.pricePerUnit ?? item.lastPrice ?? 0;
+                                const caseSize = item.caseSize ?? item.inventoryItem?.caseSize ?? 1;
+                                const innerPack = item.innerPackSize ?? item.inventoryItem?.innerPackSize ?? 1;
+                                const casePrice = unitPrice * caseSize * innerPack;
+                                return `$${casePrice.toFixed(2)}`;
+                              })()}
+                            </TableCell>
                           </TableRow>
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                             No items match "{searchQuery}"
                           </TableCell>
                         </TableRow>
