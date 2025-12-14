@@ -549,7 +549,9 @@ function OrderGuideTable({
               </TableCell>
               <TableCell className="font-mono text-sm">{line.vendorSku}</TableCell>
               <TableCell>{line.productName}</TableCell>
-              <TableCell className="text-muted-foreground">{line.uom || '-'}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {line.innerPack ? `${line.innerPack} ${line.uom || ''}`.trim() : (line.uom || '-')}
+              </TableCell>
               <TableCell>
                 {line.caseSize ?? '-'}
               </TableCell>
