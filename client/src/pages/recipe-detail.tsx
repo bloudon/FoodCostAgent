@@ -1,11 +1,10 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Edit, Trash2, TrendingUp, Package } from "lucide-react";
+import { ArrowLeft, Edit, TrendingUp, Package } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -14,49 +13,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { filterUnitsBySystem, formatUnitName, formatRecipeName } from "@/lib/utils";
+import { formatRecipeName } from "@/lib/utils";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import type { SystemPreferences } from "@shared/schema";
 
 export default function RecipeDetail() {
   const [, params] = useRoute("/recipes/:id");
   const recipeId = params?.id;
-  const { toast } = useToast();
-
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [selectedComponent, setSelectedComponent] = useState<any>(null);
-  const [editQty, setEditQty] = useState("");
-  const [editUnitId, setEditUnitId] = useState("");
 
   const { data: recipe, isLoading: recipeLoading } = useQuery<any>({
     queryKey: ["/api/recipes", recipeId],
@@ -77,10 +39,6 @@ export default function RecipeDetail() {
     queryKey: ["/api/units"],
   });
 
-  const { data: systemPrefs } = useQuery<SystemPreferences>({
-    queryKey: ["/api/system-preferences"],
-  });
-
   const { data: inventoryItems } = useQuery<any[]>({
     queryKey: ["/api/inventory-items"],
   });
@@ -89,64 +47,6 @@ export default function RecipeDetail() {
     queryKey: ["/api/recipes"],
   });
 
-  const updateComponentMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return apiRequest(`/api/recipe-components/${selectedComponent.id}`, "PATCH", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/recipe-components", recipeId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/recipes", recipeId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
-      toast({ title: "Component updated successfully" });
-      setEditDialogOpen(false);
-    },
-    onError: () => {
-      toast({ title: "Failed to update component", variant: "destructive" });
-    },
-  });
-
-  const deleteComponentMutation = useMutation({
-    mutationFn: async (componentId: string) => {
-      return apiRequest(`/api/recipe-components/${componentId}`, "DELETE");
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/recipe-components", recipeId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/recipes", recipeId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
-      toast({ title: "Component deleted successfully" });
-      setDeleteDialogOpen(false);
-    },
-    onError: () => {
-      toast({ title: "Failed to delete component", variant: "destructive" });
-    },
-  });
-
-  const handleEditClick = (component: any) => {
-    setSelectedComponent(component);
-    setEditQty(component.qty.toString());
-    setEditUnitId(component.unitId);
-    setEditDialogOpen(true);
-  };
-
-  const handleDeleteClick = (component: any) => {
-    setSelectedComponent(component);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleUpdateComponent = () => {
-    if (!editQty || !editUnitId) return;
-    updateComponentMutation.mutate({
-      qty: parseFloat(editQty),
-      unitId: editUnitId,
-    });
-  };
-
-  const handleDeleteComponent = () => {
-    if (!selectedComponent) return;
-    deleteComponentMutation.mutate(selectedComponent.id);
-  };
-
-  // Prepare historical cost data for chart
   const costHistoryData = versions
     ?.map((v) => ({
       date: new Date(v.createdAt).toLocaleDateString(),
@@ -192,11 +92,19 @@ export default function RecipeDetail() {
               Recipe details and cost history
             </p>
           </div>
-          {recipe.name.includes("Dough") || recipe.name.includes("Sauce") ? (
-            <Badge variant="secondary" data-testid="badge-base-recipe">
-              Base Recipe
-            </Badge>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {recipe.name.includes("Dough") || recipe.name.includes("Sauce") ? (
+              <Badge variant="secondary" data-testid="badge-base-recipe">
+                Base Recipe
+              </Badge>
+            ) : null}
+            <Link href={`/recipes/${recipeId}/edit`}>
+              <Button data-testid="button-edit-recipe">
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Recipe
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -256,7 +164,6 @@ export default function RecipeDetail() {
                     <TableHead>Quantity</TableHead>
                     <TableHead>Unit</TableHead>
                     <TableHead className="text-right">Cost</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -289,26 +196,6 @@ export default function RecipeDetail() {
                         </TableCell>
                         <TableCell className="text-right font-mono" data-testid={`text-component-cost-${component.id}`}>
                           ${cost.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex gap-1 justify-end">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEditClick(component)}
-                              data-testid={`button-edit-component-${component.id}`}
-                            >
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteClick(component)}
-                              data-testid={`button-delete-component-${component.id}`}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -363,84 +250,6 @@ export default function RecipeDetail() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Edit Component Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent data-testid="dialog-edit-component">
-          <DialogHeader>
-            <DialogTitle>Edit Component</DialogTitle>
-            <DialogDescription>
-              Update the quantity and unit for this ingredient
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-qty">Quantity</Label>
-              <Input
-                id="edit-qty"
-                type="number"
-                step="0.01"
-                value={editQty}
-                onChange={(e) => setEditQty(e.target.value)}
-                data-testid="input-edit-qty"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-unit">Unit</Label>
-              <Select value={editUnitId} onValueChange={setEditUnitId}>
-                <SelectTrigger id="edit-unit" data-testid="select-edit-unit">
-                  <SelectValue placeholder="Select unit" />
-                </SelectTrigger>
-                <SelectContent>
-                  {filterUnitsBySystem(units, systemPrefs?.unitSystem).map((unit) => (
-                    <SelectItem key={unit.id} value={unit.id} data-testid={`option-unit-${unit.id}`}>
-                      {formatUnitName(unit.name)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setEditDialogOpen(false)}
-              data-testid="button-cancel-edit"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleUpdateComponent}
-              disabled={updateComponentMutation.isPending}
-              data-testid="button-save-edit"
-            >
-              {updateComponentMutation.isPending ? "Saving..." : "Save Changes"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Component Confirmation */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent data-testid="dialog-delete-component">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Component</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove this ingredient from the recipe? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteComponent}
-              disabled={deleteComponentMutation.isPending}
-              data-testid="button-confirm-delete"
-            >
-              {deleteComponentMutation.isPending ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
