@@ -428,7 +428,8 @@ export default function RecipeBuilder() {
   const { id } = useParams<{ id?: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const isNew = id === "new";
+  // isNew is true when id is undefined (from /recipes/new route) or equals "new"
+  const isNew = !id || id === "new";
 
   // Get pre-populated name and menuItemId from URL query params
   const urlParams = new URLSearchParams(window.location.search);
