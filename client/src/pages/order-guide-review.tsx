@@ -31,6 +31,7 @@ interface OrderGuideLine {
   packSize: string | null;
   uom: string | null;
   caseSize: number | null;
+  innerPack: number | null;
   price: number | null;
   matchStatus: string;
   matchedInventoryItemId: string | null;
