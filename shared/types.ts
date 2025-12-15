@@ -28,6 +28,8 @@ export interface EnrichedInventoryItem {
     name: string;
     abbreviation: string;
   };
+  vendorSkus: string[];
+  isPowerItem: number;
 }
 
 export interface EnrichedRecipe {

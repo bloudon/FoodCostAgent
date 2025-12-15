@@ -174,6 +174,7 @@ export interface IStorage {
   // Vendor Items
   getVendorItems(vendorId?: string, companyId?: string, storeId?: string): Promise<VendorItem[]>;
   getVendorItem(id: string): Promise<VendorItem | undefined>;
+  getVendorSkusBatch(inventoryItemIds: string[]): Promise<Map<string, string[]>>;
   createVendorItem(vendorItem: InsertVendorItem): Promise<VendorItem>;
   updateVendorItem(id: string, vendorItem: Partial<InsertVendorItem>): Promise<VendorItem | undefined>;
   deleteVendorItem(id: string): Promise<void>;
@@ -1443,6 +1444,31 @@ export class DatabaseStorage implements IStorage {
   async getVendorItem(id: string): Promise<VendorItem | undefined> {
     const [vendorItem] = await db.select().from(vendorItems).where(eq(vendorItems.id, id));
     return vendorItem || undefined;
+  }
+
+  async getVendorSkusBatch(inventoryItemIds: string[]): Promise<Map<string, string[]>> {
+    if (inventoryItemIds.length === 0) {
+      return new Map();
+    }
+
+    const items = await db
+      .select({
+        inventoryItemId: vendorItems.inventoryItemId,
+        vendorSku: vendorItems.vendorSku,
+      })
+      .from(vendorItems)
+      .where(inArray(vendorItems.inventoryItemId, inventoryItemIds));
+
+    const grouped = new Map<string, string[]>();
+    for (const item of items) {
+      if (item.vendorSku) {
+        const existing = grouped.get(item.inventoryItemId) || [];
+        existing.push(item.vendorSku);
+        grouped.set(item.inventoryItemId, existing);
+      }
+    }
+
+    return grouped;
   }
 
   async createVendorItem(insertVI: InsertVendorItem): Promise<VendorItem> {

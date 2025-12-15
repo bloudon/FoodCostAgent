@@ -2457,9 +2457,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       CacheTTL.CATEGORIES
     );
     
-    // Fetch all item locations in one batched query
+    // Fetch all item locations and vendor SKUs in batched queries
     const itemIds = items.map(item => item.id);
     const itemLocationsMap = await storage.getInventoryItemLocationsBatch(itemIds);
+    const vendorSkusMap = await storage.getVendorSkusBatch(itemIds);
     
     const enriched: EnrichedInventoryItem[] = items.map((item) => {
       const unit = units.find((u) => u.id === item.unitId);
@@ -2504,6 +2505,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isPowerItem: item.isPowerItem,
         locations: itemLocations,
         unit: unit || { id: item.unitId, name: '', abbreviation: '' },
+        vendorSkus: vendorSkusMap.get(item.id) || [],
       };
     });
     

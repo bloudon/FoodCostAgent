@@ -57,6 +57,7 @@ type InventoryItemDisplay = {
   onHandQty: number;
   active: number;
   isPowerItem: number | boolean;
+  vendorSkus: string[];
   locations: Array<{
     id: string;
     name: string;
@@ -199,8 +200,10 @@ export default function InventoryItems() {
   });
 
   const filteredItems = inventoryItems?.filter((item) => {
-    const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase()) ||
-      item.pluSku?.toLowerCase().includes(search.toLowerCase());
+    const searchLower = search.toLowerCase();
+    const matchesSearch = item.name?.toLowerCase().includes(searchLower) ||
+      item.pluSku?.toLowerCase().includes(searchLower) ||
+      item.vendorSkus?.some(sku => sku.toLowerCase().includes(searchLower));
     const matchesLocation = selectedLocation === "all" || 
       item.locations.some(loc => loc.id === selectedLocation);
     const matchesCategory = selectedCategory === "all" || item.categoryId === selectedCategory;
