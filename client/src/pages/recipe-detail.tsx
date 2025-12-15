@@ -54,6 +54,11 @@ export default function RecipeDetail() {
     }))
     .reverse() || [];
 
+  const getYieldUnitName = () => {
+    const unit = units?.find((u: any) => u.id === recipe?.yieldUnitId);
+    return unit?.abbreviation || unit?.name || "unit";
+  };
+
   if (recipeLoading) {
     return (
       <div className="p-8">
@@ -121,7 +126,7 @@ export default function RecipeDetail() {
               ${recipe.computedCost?.toFixed(2) || "0.00"}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Per {recipe.yieldQty} unit yield
+              Per {recipe.yieldQty} {getYieldUnitName()} yield
             </p>
           </CardContent>
         </Card>

@@ -105,6 +105,15 @@ export default function Recipes() {
     queryKey: ["/api/recipes"],
   });
 
+  const { data: units } = useQuery<{ id: string; name: string; abbreviation: string }[]>({
+    queryKey: ["/api/units"],
+  });
+
+  const getUnitName = (unitId: string) => {
+    const unit = units?.find(u => u.id === unitId);
+    return unit?.abbreviation || unit?.name || "unit";
+  };
+
   const deleteMutation = useMutation({
     mutationFn: async (recipeId: string) => {
       await apiRequest("DELETE", `/api/recipes/${recipeId}`);
@@ -439,7 +448,7 @@ export default function Recipes() {
                         <TableCell className="text-right">
                           <Link href={`/recipes/${group.parent.id}`} className="block w-full">
                             <span className="font-mono text-sm" data-testid={`text-recipe-yield-${group.parent.id}`}>
-                              {group.parent.yieldQty} unit
+                              {group.parent.yieldQty} {getUnitName(group.parent.yieldUnitId)}
                             </span>
                           </Link>
                         </TableCell>
@@ -527,7 +536,7 @@ export default function Recipes() {
                               <TableCell className="text-right">
                                 <Link href={`/recipes/${child.id}`} className="block w-full">
                                   <span className="font-mono text-sm" data-testid={`text-recipe-yield-${child.id}`}>
-                                    {child.yieldQty} unit
+                                    {child.yieldQty} {getUnitName(child.yieldUnitId)}
                                   </span>
                                 </Link>
                               </TableCell>
