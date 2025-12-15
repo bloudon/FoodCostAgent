@@ -589,53 +589,6 @@ export default function InventoryItemDetail() {
       {/* Scrollable Content */}
       <div className="flex-1 overflow-auto">
         <div className="p-6 space-y-6">
-          {/* Power Item Toggle - Above the fold */}
-          <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
-            <div className="flex items-center gap-3">
-              <Star className={`h-5 w-5 ${(item.isPowerItem === 1 || item.isPowerItem === true) ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'}`} />
-              <div className="space-y-0.5">
-                <Label htmlFor="isPowerItem-header" className="cursor-pointer font-medium">
-                  Power Item
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  High-cost item tracked more frequently in power inventory counts
-                </p>
-              </div>
-            </div>
-            <Checkbox
-              id="isPowerItem-header"
-              checked={item.isPowerItem === 1 || item.isPowerItem === true}
-              onCheckedChange={(checked) => {
-                updateMutation.mutate({ isPowerItem: checked ? 1 : 0 });
-              }}
-              disabled={updateMutation.isPending}
-              data-testid="checkbox-power-item"
-            />
-          </div>
-
-          {/* Variable Weight Toggle */}
-          <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
-            <div className="flex items-center gap-3">
-              <Scale className={`h-5 w-5 ${(item.isVariableWeight === 1 || item.isVariableWeight === true) ? 'text-blue-500' : 'text-muted-foreground'}`} />
-              <div className="space-y-0.5">
-                <Label htmlFor="isVariableWeight-header" className="cursor-pointer font-medium">
-                  Variable Weight (Catch Weight)
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Actual weight differs from ordered quantity (meats, cheeses)
-                </p>
-              </div>
-            </div>
-            <Checkbox
-              id="isVariableWeight-header"
-              checked={item.isVariableWeight === 1 || item.isVariableWeight === true}
-              onCheckedChange={(checked) => {
-                updateMutation.mutate({ isVariableWeight: checked ? 1 : 0 });
-              }}
-              disabled={updateMutation.isPending}
-              data-testid="checkbox-variable-weight"
-            />
-          </div>
           {/* Basic Information Accordion */}
           <Accordion type="single" collapsible value={settingsOpen} onValueChange={setSettingsOpen}>
             <AccordionItem value="settings" className="border rounded-lg px-4">
@@ -805,6 +758,55 @@ export default function InventoryItemDetail() {
                   <div className="flex items-center px-3 text-muted-foreground">%</div>
                 </div>
                 <p className="text-xs text-muted-foreground">Usable percentage after trimming/waste. Default is 95%.</p>
+              </div>
+
+              {/* Item Flags */}
+              <div className="pt-4 border-t space-y-3">
+                <Label className="text-sm font-medium">Item Flags</Label>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Star className={`h-4 w-4 ${(item.isPowerItem === 1 || item.isPowerItem === true) ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'}`} />
+                    <div className="space-y-0.5">
+                      <Label htmlFor="isPowerItem" className="cursor-pointer text-sm font-normal">
+                        Power Item
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        High-cost item for power counts
+                      </p>
+                    </div>
+                  </div>
+                  <Checkbox
+                    id="isPowerItem"
+                    checked={item.isPowerItem === 1 || item.isPowerItem === true}
+                    onCheckedChange={(checked) => {
+                      updateMutation.mutate({ isPowerItem: checked ? 1 : 0 });
+                    }}
+                    disabled={updateMutation.isPending}
+                    data-testid="checkbox-power-item"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Scale className={`h-4 w-4 ${(item.isVariableWeight === 1 || item.isVariableWeight === true) ? 'text-blue-500' : 'text-muted-foreground'}`} />
+                    <div className="space-y-0.5">
+                      <Label htmlFor="isVariableWeight" className="cursor-pointer text-sm font-normal">
+                        Variable Weight
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Catch weight items (meats, cheese)
+                      </p>
+                    </div>
+                  </div>
+                  <Checkbox
+                    id="isVariableWeight"
+                    checked={item.isVariableWeight === 1 || item.isVariableWeight === true}
+                    onCheckedChange={(checked) => {
+                      updateMutation.mutate({ isVariableWeight: checked ? 1 : 0 });
+                    }}
+                    disabled={updateMutation.isPending}
+                    data-testid="checkbox-variable-weight"
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
