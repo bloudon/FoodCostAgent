@@ -418,6 +418,7 @@ export const vendorItems = pgTable("vendor_items", {
   vendorId: varchar("vendor_id").notNull(),
   inventoryItemId: varchar("inventory_item_id").notNull(),
   vendorSku: text("vendor_sku"),
+  brandName: text("brand_name"), // Brand name from vendor order guide
   purchaseUnitId: varchar("purchase_unit_id").notNull(),
   caseSize: real("case_size").notNull().default(1), // number of purchase units per case
   innerPackSize: real("inner_pack_size"),

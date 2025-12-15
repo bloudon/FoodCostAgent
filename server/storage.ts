@@ -1,4 +1,4 @@
-import { eq, and, or, gt, gte, lte, ne, isNull, inArray, sql, desc, asc } from "drizzle-orm";
+import { eq, and, or, gt, gte, lte, ne, isNull, inArray, sql, desc, asc, ilike } from "drizzle-orm";
 import { db } from "./db";
 import { cache, CacheKeys } from "./cache";
 import {
@@ -439,8 +439,8 @@ export interface IStorage {
   getInventoryItemPriceHistory(inventoryItemId: string): Promise<InventoryItemPriceHistory[]>;
   createInventoryItemPriceHistory(history: InsertInventoryItemPriceHistory): Promise<InventoryItemPriceHistory>;
 
-  // Inventory item search for count entry
-  searchInventoryItems(term: string): Promise<InventoryItem[]>;
+  // Inventory item search for count entry - with multi-tenant filtering
+  searchInventoryItems(term: string, companyId: string, storeId?: string): Promise<InventoryItem[]>;
 
   // Inventory count aggregations
   getInventoryCountAggregations(countId: string): Promise<Array<{
@@ -3296,17 +3296,73 @@ export class DatabaseStorage implements IStorage {
     return history;
   }
 
-  // Inventory item search for count entry
-  async searchInventoryItems(term: string): Promise<InventoryItem[]> {
+  // Inventory item search for count entry - searches by name, PLU/SKU, barcode, and vendor SKU
+  // Multi-tenant safe: filters by companyId, optionally by storeId
+  async searchInventoryItems(term: string, companyId: string, storeId?: string): Promise<InventoryItem[]> {
     const searchTerm = `%${term.toLowerCase()}%`;
-    return db
+    
+    // Build base conditions for company and active filtering
+    const baseConditions = [
+      eq(inventoryItems.companyId, companyId),
+      eq(inventoryItems.active, 1),
+    ];
+    
+    // First get inventory items matching name, plu, or barcode
+    const directMatches = await db
       .select()
       .from(inventoryItems)
       .where(
         and(
-          eq(inventoryItems.active, 1)
+          ...baseConditions,
+          or(
+            ilike(inventoryItems.name, searchTerm),
+            ilike(inventoryItems.pluSku, searchTerm),
+            ilike(inventoryItems.barcode, searchTerm)
+          )
         )
       );
+    
+    // Then get inventory items matching vendor SKU (scoped to same company)
+    const vendorSkuMatches = await db
+      .select({
+        inventoryItem: inventoryItems
+      })
+      .from(vendorItems)
+      .innerJoin(inventoryItems, eq(vendorItems.inventoryItemId, inventoryItems.id))
+      .where(
+        and(
+          eq(inventoryItems.companyId, companyId),
+          eq(inventoryItems.active, 1),
+          ilike(vendorItems.vendorSku, searchTerm)
+        )
+      );
+    
+    // Combine and dedupe results
+    let allItems = [...directMatches];
+    const seenIds = new Set(directMatches.map(i => i.id));
+    for (const match of vendorSkuMatches) {
+      if (!seenIds.has(match.inventoryItem.id)) {
+        allItems.push(match.inventoryItem);
+        seenIds.add(match.inventoryItem.id);
+      }
+    }
+    
+    // If storeId provided, filter to items assigned to that store
+    if (storeId) {
+      const storeItemIds = await db
+        .select({ inventoryItemId: storeInventoryItems.inventoryItemId })
+        .from(storeInventoryItems)
+        .where(
+          and(
+            eq(storeInventoryItems.storeId, storeId),
+            eq(storeInventoryItems.active, 1)
+          )
+        );
+      const validIds = new Set(storeItemIds.map(si => si.inventoryItemId));
+      allItems = allItems.filter(item => validIds.has(item.id));
+    }
+    
+    return allItems;
   }
 
   // Inventory count aggregations

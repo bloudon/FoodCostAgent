@@ -91,6 +91,7 @@ type VendorItem = {
   vendorId: string;
   inventoryItemId: string;
   vendorSku: string | null;
+  brandName: string | null;
   purchaseUnitId: string;
   caseSize: number;
   innerPackSize: number | null;
@@ -943,8 +944,11 @@ export default function InventoryItemDetail() {
                           </Button>
                         </div>
                       </div>
-                      {vi.vendorSku && (
-                        <p className="text-sm text-muted-foreground">SKU: {vi.vendorSku}</p>
+                      {(vi.vendorSku || vi.brandName) && (
+                        <div className="flex flex-wrap gap-x-4 text-sm text-muted-foreground">
+                          {vi.vendorSku && <span>SKU: {vi.vendorSku}</span>}
+                          {vi.brandName && <span>Brand: {vi.brandName}</span>}
+                        </div>
                       )}
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
