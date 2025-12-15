@@ -2910,6 +2910,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const vendors = await storage.getVendors(companyId);
     const units = await storage.getUnits();
     
+    // Get last order dates from receipt lines for each vendor item
+    const lastOrderDates = await storage.getVendorItemsLastOrderDates(vendorItems.map(vi => vi.id));
+    
     const enriched = vendorItems.map((vi) => {
       const vendor = vendors.find((v) => v.id === vi.vendorId);
       const unit = units.find((u) => u.id === vi.purchaseUnitId);
@@ -2917,6 +2920,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...vi,
         vendor,
         unit,
+        lastOrderDate: lastOrderDates[vi.id] || null,
       };
     });
     

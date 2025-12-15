@@ -98,6 +98,7 @@ type VendorItem = {
   innerPackSize: number | null;
   lastPrice: number;
   active: number;
+  lastOrderDate: string | null;
   vendor: {
     id: string;
     name: string;
@@ -122,6 +123,7 @@ export default function InventoryItemDetail() {
   const [settingsOpen, setSettingsOpen] = useState<string | undefined>(undefined);
   const [showAddVendorRow, setShowAddVendorRow] = useState(false);
   const [editingVendorItemId, setEditingVendorItemId] = useState<string | null>(null);
+  const [showInactiveVendors, setShowInactiveVendors] = useState(false);
   
   // Vendor item inline edit state (keyed by vendor item id, or "new" for add row)
   const [vendorRowEdits, setVendorRowEdits] = useState<Record<string, {
@@ -590,6 +592,13 @@ export default function InventoryItemDetail() {
       <div className="flex-1 overflow-auto">
         <div className="p-6 space-y-6">
           {/* Vendors Card - At top for visibility */}
+          {(() => {
+            const activeVendorItems = vendorItems?.filter(vi => vi.active === 1) || [];
+            const inactiveVendorItems = vendorItems?.filter(vi => vi.active === 0) || [];
+            const displayedVendorItems = showInactiveVendors ? vendorItems : activeVendorItems;
+            const hasInactiveVendors = inactiveVendorItems.length > 0;
+            
+            return (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-4">
               <div>
@@ -599,15 +608,27 @@ export default function InventoryItemDetail() {
                 </CardTitle>
                 <CardDescription>Suppliers for this item</CardDescription>
               </div>
-              <Button
-                onClick={startAddingVendorRow}
-                size="sm"
-                disabled={showAddVendorRow || editingVendorItemId !== null}
-                data-testid="button-add-vendor"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Vendor
-              </Button>
+              <div className="flex items-center gap-2">
+                {hasInactiveVendors && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowInactiveVendors(!showInactiveVendors)}
+                    data-testid="button-toggle-inactive-vendors"
+                  >
+                    {showInactiveVendors ? "Hide Inactive" : `Show Inactive (${inactiveVendorItems.length})`}
+                  </Button>
+                )}
+                <Button
+                  onClick={startAddingVendorRow}
+                  size="sm"
+                  disabled={showAddVendorRow || editingVendorItemId !== null}
+                  data-testid="button-add-vendor"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Vendor
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -620,13 +641,14 @@ export default function InventoryItemDetail() {
                       <TableHead>Price</TableHead>
                       <TableHead>Case</TableHead>
                       <TableHead>Inner</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>Case Price</TableHead>
+                      <TableHead>Last Order</TableHead>
                       <TableHead className="w-[100px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {vendorItems && vendorItems.length > 0 ? (
-                      vendorItems.map((vi) => {
+                    {displayedVendorItems && displayedVendorItems.length > 0 ? (
+                      displayedVendorItems.map((vi) => {
                         const isEditing = editingVendorItemId === vi.id;
                         const rowData = vendorRowEdits[vi.id];
 
@@ -707,22 +729,26 @@ export default function InventoryItemDetail() {
                                   data-testid={`input-inner-${vi.id}`}
                                 />
                               </TableCell>
-                              <TableCell>
-                                <Select
-                                  value={rowData.active.toString()}
-                                  onValueChange={(value) => updateVendorRowField(vi.id, "active", parseInt(value))}
-                                >
-                                  <SelectTrigger className="w-[90px]" data-testid={`select-status-${vi.id}`}>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="1">Active</SelectItem>
-                                    <SelectItem value="0">Inactive</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                              <TableCell className="text-muted-foreground">
+                                ${(parseFloat(rowData.lastPrice || "0") * parseFloat(rowData.caseSize || "1")).toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {vi.lastOrderDate ? new Date(vi.lastOrderDate).toLocaleDateString() : "-"}
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-1">
+                                  <Select
+                                    value={rowData.active.toString()}
+                                    onValueChange={(value) => updateVendorRowField(vi.id, "active", parseInt(value))}
+                                  >
+                                    <SelectTrigger className="w-[80px]" data-testid={`select-status-${vi.id}`}>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="1">Active</SelectItem>
+                                      <SelectItem value="0">Inactive</SelectItem>
+                                    </SelectContent>
+                                  </Select>
                                   <Button
                                     variant="ghost"
                                     size="icon"
@@ -754,10 +780,9 @@ export default function InventoryItemDetail() {
                             <TableCell>${vi.lastPrice.toFixed(2)}</TableCell>
                             <TableCell>{vi.caseSize}</TableCell>
                             <TableCell className="text-muted-foreground">{vi.innerPackSize || "-"}</TableCell>
-                            <TableCell>
-                              <Badge variant={vi.active ? "outline" : "secondary"} data-testid={`badge-vendor-status-${vi.id}`}>
-                                {vi.active ? "Active" : "Inactive"}
-                              </Badge>
+                            <TableCell>${(vi.lastPrice * vi.caseSize).toFixed(2)}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {vi.lastOrderDate ? new Date(vi.lastOrderDate).toLocaleDateString() : "-"}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">
@@ -785,8 +810,10 @@ export default function InventoryItemDetail() {
                       })
                     ) : !showAddVendorRow && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                          No vendors configured for this item
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                          {inactiveVendorItems.length > 0 
+                            ? "No active vendors. Use toggle above to show inactive vendors."
+                            : "No vendors configured for this item"}
                         </TableCell>
                       </TableRow>
                     )}
@@ -867,20 +894,10 @@ export default function InventoryItemDetail() {
                             data-testid="input-inner-new"
                           />
                         </TableCell>
-                        <TableCell>
-                          <Select
-                            value={vendorRowEdits.new.active.toString()}
-                            onValueChange={(value) => updateVendorRowField("new", "active", parseInt(value))}
-                          >
-                            <SelectTrigger className="w-[90px]" data-testid="select-status-new">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">Active</SelectItem>
-                              <SelectItem value="0">Inactive</SelectItem>
-                            </SelectContent>
-                          </Select>
+                        <TableCell className="text-muted-foreground">
+                          ${(parseFloat(vendorRowEdits.new.lastPrice || "0") * parseFloat(vendorRowEdits.new.caseSize || "1")).toFixed(2)}
                         </TableCell>
+                        <TableCell className="text-muted-foreground">-</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <Button
@@ -909,6 +926,8 @@ export default function InventoryItemDetail() {
               </div>
             </CardContent>
           </Card>
+            );
+          })()}
 
           {/* Basic Information Accordion */}
           <Accordion type="single" collapsible value={settingsOpen} onValueChange={setSettingsOpen}>

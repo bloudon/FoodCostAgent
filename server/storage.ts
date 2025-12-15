@@ -1441,6 +1441,34 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(vendorItems).where(eq(vendorItems.inventoryItemId, inventoryItemId));
   }
 
+  async getVendorItemsLastOrderDates(vendorItemIds: string[]): Promise<Record<string, Date>> {
+    if (vendorItemIds.length === 0) {
+      return {};
+    }
+    
+    // Get the most recent receipt date for each vendor item from receipt lines
+    const results = await db
+      .select({
+        vendorItemId: receiptLines.vendorItemId,
+        receivedAt: sql<Date>`MAX(${receipts.receivedAt})`.as("max_received_at"),
+      })
+      .from(receiptLines)
+      .innerJoin(receipts, eq(receiptLines.receiptId, receipts.id))
+      .where(and(
+        inArray(receiptLines.vendorItemId, vendorItemIds),
+        eq(receipts.status, "completed")
+      ))
+      .groupBy(receiptLines.vendorItemId);
+    
+    const dateMap: Record<string, Date> = {};
+    for (const row of results) {
+      if (row.receivedAt) {
+        dateMap[row.vendorItemId] = row.receivedAt;
+      }
+    }
+    return dateMap;
+  }
+
   async getVendorItem(id: string): Promise<VendorItem | undefined> {
     const [vendorItem] = await db.select().from(vendorItems).where(eq(vendorItems.id, id));
     return vendorItem || undefined;
