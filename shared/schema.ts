@@ -1080,6 +1080,7 @@ export const orderGuideLines = pgTable("order_guide_lines", {
   matchConfidence: real("match_confidence"), // 0-100 confidence score
   userDecision: text("user_decision"), // approved, rejected, create_new, null=pending
   createdInventoryItemId: varchar("created_inventory_item_id"), // If new inventory item was created from this line
+  isVariableWeight: integer("is_variable_weight").notNull().default(0), // 1 = catch weight item from vendor
 }, (table) => ({
   orderGuideIdx: index("order_guide_lines_guide_idx").on(table.orderGuideId),
   matchedItemIdx: index("order_guide_lines_matched_idx").on(table.matchedInventoryItemId),

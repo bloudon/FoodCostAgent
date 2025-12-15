@@ -190,6 +190,7 @@ export class OrderGuideProcessor {
         matchStatus,
         matchedInventoryItemId: match.inventoryItemId,
         matchConfidence: matchConfidenceScore,
+        isVariableWeight: product.isVariableWeight ? 1 : 0,
       };
 
       lines.push(line);
@@ -538,6 +539,7 @@ export class OrderGuideProcessor {
         parLevel: 0,
         reorderLevel: 0,
         active: 1,
+        isVariableWeight: line.isVariableWeight || 0,
       });
 
       // Assign to store location
@@ -587,6 +589,7 @@ export class OrderGuideProcessor {
 
   /**
    * Create vendor item for existing inventory item
+   * Also syncs case size and pricing from vendor data to the linked inventory item
    */
   private async createVendorItemForExisting(
     line: any,
@@ -626,10 +629,50 @@ export class OrderGuideProcessor {
         lastPrice: line.price ?? undefined,
       });
 
+      // Sync vendor data to linked inventory item
+      await this.syncVendorDataToInventoryItem(line, inventoryItem);
+
       return true;
     } catch (error) {
       console.error('[OrderGuide] Error creating vendor item:', error);
       return false;
+    }
+  }
+
+  /**
+   * Sync vendor data (price, case size, variable weight) to linked inventory item
+   */
+  private async syncVendorDataToInventoryItem(
+    line: any,
+    inventoryItem: any
+  ): Promise<void> {
+    try {
+      const updates: any = {};
+      
+      // Sync price if vendor has pricing data
+      if (line.price && line.price > 0) {
+        updates.pricePerUnit = line.price;
+        console.log(`[OrderGuide] Syncing price ${line.price} to inventory item ${inventoryItem.id}`);
+      }
+      
+      // Sync case size if vendor has case size data
+      if (line.caseSize && line.caseSize > 0) {
+        updates.caseSize = line.caseSize;
+        console.log(`[OrderGuide] Syncing case size ${line.caseSize} to inventory item ${inventoryItem.id}`);
+      }
+      
+      // Sync variable weight flag if vendor marks item as variable weight
+      if (line.isVariableWeight === 1 && inventoryItem.isVariableWeight !== 1) {
+        updates.isVariableWeight = 1;
+        console.log(`[OrderGuide] Setting variable weight flag on inventory item ${inventoryItem.id}`);
+      }
+      
+      // Only update if there are changes
+      if (Object.keys(updates).length > 0) {
+        await this.storage.updateInventoryItem(inventoryItem.id, updates);
+      }
+    } catch (error) {
+      console.error('[OrderGuide] Error syncing vendor data to inventory item:', error);
     }
   }
 }

@@ -18,6 +18,7 @@ export interface VendorProduct {
   categoryCode?: string;
   upc?: string;
   lastUpdated?: string;
+  isVariableWeight?: boolean;  // True if vendor marks item as variable/catch weight
 }
 
 export interface OrderGuide {

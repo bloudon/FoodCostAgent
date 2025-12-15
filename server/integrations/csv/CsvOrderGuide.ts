@@ -27,6 +27,7 @@ export interface CsvColumnMapping {
   brand?: string;
   category?: string;
   upc?: string;
+  variableWeight?: string;
 }
 
 /**
@@ -44,6 +45,7 @@ const VENDOR_MAPPINGS: Record<VendorKey, CsvColumnMapping> = {
     brand: 'Brand',
     category: 'Category Code',
     upc: 'UPC',
+    variableWeight: 'Variable Weight',
   },
   gfs: {
     vendorSku: 'Item Number',
@@ -56,6 +58,7 @@ const VENDOR_MAPPINGS: Record<VendorKey, CsvColumnMapping> = {
     brand: 'Brand Name',
     category: 'Category',
     upc: 'GTIN',
+    variableWeight: 'Variable Weight',
   },
   usfoods: {
     vendorSku: 'Item Code',
@@ -68,6 +71,7 @@ const VENDOR_MAPPINGS: Record<VendorKey, CsvColumnMapping> = {
     brand: 'Brand',
     category: 'Category ID',
     upc: 'UPC Code',
+    variableWeight: 'Catch Weight',
   },
 };
 
@@ -86,6 +90,7 @@ const GENERIC_COLUMN_PATTERNS: Record<keyof CsvColumnMapping, string[]> = {
   brand: ['brand', 'brand name', 'manufacturer', 'mfr'],
   category: ['category', 'category code', 'category id', 'cat', 'class'],
   upc: ['upc', 'upc code', 'gtin', 'barcode', 'ean'],
+  variableWeight: ['variable weight', 'variable', 'catch weight', 'catch', 'vw', 'cw', 'weight type'],
 };
 
 /**
@@ -192,10 +197,16 @@ export class CsvOrderGuide {
         console.log(`[CsvOrderGuide] Parsed size+unit: "${unitRaw}" → innerPack: ${innerPack}, unit: ${unit}`);
       }
       
+      // Detect variable weight from column or description text
+      const variableWeightValue = this.getValue(row, mapping.variableWeight);
+      const productName = this.getValue(row, mapping.productName);
+      const descriptionValue = this.getValue(row, mapping.description);
+      const isVariableWeight = this.detectVariableWeight(variableWeightValue, productName, descriptionValue);
+      
       const product: VendorProduct = {
         vendorSku: this.getValue(row, mapping.vendorSku),
-        vendorProductName: this.getValue(row, mapping.productName),
-        description: this.getValue(row, mapping.description),
+        vendorProductName: productName,
+        description: descriptionValue,
         caseSize: this.parseNumber(caseSizeRaw),
         caseSizeRaw: caseSizeRaw || undefined,      // Preserve raw pack string (e.g., "6/5 LB")
         innerPack: innerPack,
@@ -206,6 +217,7 @@ export class CsvOrderGuide {
         categoryCode: this.getValue(row, mapping.category),
         upc: this.getValue(row, mapping.upc),
         lastUpdated: new Date().toISOString(),
+        isVariableWeight,
       };
 
       if (product.vendorSku) {
@@ -263,6 +275,41 @@ export class CsvOrderGuide {
       }
     }
     return null;
+  }
+
+  /**
+   * Detect if an item is variable/catch weight from column value or text indicators
+   */
+  private static detectVariableWeight(columnValue: string, productName: string, description: string): boolean {
+    // Check explicit column value first
+    if (columnValue) {
+      const val = columnValue.toLowerCase().trim();
+      // Positive indicators
+      if (val === 'y' || val === 'yes' || val === '1' || val === 'true' || val === 'variable' || val === 'vw' || val === 'cw') {
+        return true;
+      }
+    }
+    
+    // Check for variable weight indicators in product name or description
+    const textToSearch = `${productName} ${description}`.toLowerCase();
+    const variableWeightPatterns = [
+      'variable weight',
+      'catch weight',
+      'random weight',
+      'sold by weight',
+      'priced by weight',
+      'weight varies',
+      'approx weight',
+      'approximate weight',
+    ];
+    
+    for (const pattern of variableWeightPatterns) {
+      if (textToSearch.includes(pattern)) {
+        return true;
+      }
+    }
+    
+    return false;
   }
 
   /**
