@@ -1,7 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useStoreContext } from "@/hooks/use-store-context";
-import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,14 +24,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -117,21 +117,21 @@ export default function InventoryItemDetail() {
   const [editedFields, setEditedFields] = useState<Record<string, any>>({});
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
-  const [vendorItemDialogOpen, setVendorItemDialogOpen] = useState(false);
-  const [editingVendorItem, setEditingVendorItem] = useState<VendorItem | null>(null);
   const [deleteVendorItemId, setDeleteVendorItemId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState<string | undefined>(undefined);
+  const [showAddVendorRow, setShowAddVendorRow] = useState(false);
+  const [editingVendorItemId, setEditingVendorItemId] = useState<string | null>(null);
   
-  // Vendor item form state
-  const [vendorItemForm, setVendorItemForm] = useState({
-    vendorId: "",
-    vendorSku: "",
-    purchaseUnitId: "",
-    caseSize: "1",
-    innerPackSize: "",
-    lastPrice: "0",
-    active: 1,
-  });
+  // Vendor item inline edit state (keyed by vendor item id, or "new" for add row)
+  const [vendorRowEdits, setVendorRowEdits] = useState<Record<string, {
+    vendorId: string;
+    vendorSku: string;
+    purchaseUnitId: string;
+    caseSize: string;
+    innerPackSize: string;
+    lastPrice: string;
+    active: number;
+  }>>({});
 
   const { data: item, isLoading: itemLoading } = useQuery<InventoryItem>({
     queryKey: ["/api/inventory-items", id, "detail", selectedStoreId],
@@ -377,8 +377,12 @@ export default function InventoryItemDetail() {
         title: "Vendor added",
         description: "The vendor has been successfully added to this item.",
       });
-      setVendorItemDialogOpen(false);
-      resetVendorItemForm();
+      setShowAddVendorRow(false);
+      setVendorRowEdits(prev => {
+        const newEdits = { ...prev };
+        delete newEdits.new;
+        return newEdits;
+      });
     },
     onError: (error: Error) => {
       toast({
@@ -394,15 +398,18 @@ export default function InventoryItemDetail() {
       const response = await apiRequest("PATCH", `/api/vendor-items/${vendorItemId}`, data);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "vendor-items"] });
       toast({
         title: "Vendor updated",
         description: "The vendor information has been successfully updated.",
       });
-      setVendorItemDialogOpen(false);
-      setEditingVendorItem(null);
-      resetVendorItemForm();
+      setEditingVendorItemId(null);
+      setVendorRowEdits(prev => {
+        const newEdits = { ...prev };
+        delete newEdits[variables.id];
+        return newEdits;
+      });
     },
     onError: (error: Error) => {
       toast({
@@ -434,54 +441,82 @@ export default function InventoryItemDetail() {
     },
   });
 
-  const resetVendorItemForm = () => {
-    setVendorItemForm({
-      vendorId: "",
-      vendorSku: "",
-      purchaseUnitId: "",
-      caseSize: "1",
-      innerPackSize: "",
-      lastPrice: "0",
-      active: 1,
+  // Initialize edit state for a vendor item row
+  const startEditingVendorRow = (vendorItem: VendorItem) => {
+    setEditingVendorItemId(vendorItem.id);
+    setVendorRowEdits(prev => ({
+      ...prev,
+      [vendorItem.id]: {
+        vendorId: vendorItem.vendorId,
+        vendorSku: vendorItem.vendorSku || "",
+        purchaseUnitId: vendorItem.purchaseUnitId,
+        caseSize: vendorItem.caseSize.toString(),
+        innerPackSize: vendorItem.innerPackSize?.toString() || "",
+        lastPrice: vendorItem.lastPrice.toString(),
+        active: vendorItem.active,
+      }
+    }));
+  };
+
+  // Initialize new vendor row
+  const startAddingVendorRow = () => {
+    setShowAddVendorRow(true);
+    setVendorRowEdits(prev => ({
+      ...prev,
+      new: {
+        vendorId: "",
+        vendorSku: "",
+        purchaseUnitId: item?.unitId || "",
+        caseSize: "1",
+        innerPackSize: "",
+        lastPrice: "0",
+        active: 1,
+      }
+    }));
+  };
+
+  const cancelEditingVendorRow = (rowId: string) => {
+    if (rowId === "new") {
+      setShowAddVendorRow(false);
+    } else {
+      setEditingVendorItemId(null);
+    }
+    setVendorRowEdits(prev => {
+      const newEdits = { ...prev };
+      delete newEdits[rowId];
+      return newEdits;
     });
   };
 
-  const handleOpenAddVendorDialog = () => {
-    resetVendorItemForm();
-    setEditingVendorItem(null);
-    setVendorItemDialogOpen(true);
+  const updateVendorRowField = (rowId: string, field: string, value: any) => {
+    setVendorRowEdits(prev => ({
+      ...prev,
+      [rowId]: {
+        ...prev[rowId],
+        [field]: value,
+      }
+    }));
   };
 
-  const handleOpenEditVendorDialog = (vendorItem: VendorItem) => {
-    setEditingVendorItem(vendorItem);
-    setVendorItemForm({
-      vendorId: vendorItem.vendorId,
-      vendorSku: vendorItem.vendorSku || "",
-      purchaseUnitId: vendorItem.purchaseUnitId,
-      caseSize: vendorItem.caseSize.toString(),
-      innerPackSize: vendorItem.innerPackSize?.toString() || "",
-      lastPrice: vendorItem.lastPrice.toString(),
-      active: vendorItem.active,
-    });
-    setVendorItemDialogOpen(true);
-  };
+  const saveVendorRow = (rowId: string) => {
+    const rowData = vendorRowEdits[rowId];
+    if (!rowData) return;
 
-  const handleSaveVendorItem = () => {
     const data = {
       inventoryItemId: id,
-      vendorId: vendorItemForm.vendorId,
-      vendorSku: vendorItemForm.vendorSku.trim() || null,
-      purchaseUnitId: vendorItemForm.purchaseUnitId,
-      caseSize: parseFloat(vendorItemForm.caseSize) || 1,
-      innerPackSize: vendorItemForm.innerPackSize.trim() !== "" ? parseFloat(vendorItemForm.innerPackSize) : null,
-      lastPrice: parseFloat(vendorItemForm.lastPrice) || 0,
-      active: vendorItemForm.active,
+      vendorId: rowData.vendorId,
+      vendorSku: rowData.vendorSku.trim() || null,
+      purchaseUnitId: rowData.purchaseUnitId,
+      caseSize: parseFloat(rowData.caseSize) || 1,
+      innerPackSize: rowData.innerPackSize.trim() !== "" ? parseFloat(rowData.innerPackSize) : null,
+      lastPrice: parseFloat(rowData.lastPrice) || 0,
+      active: rowData.active,
     };
 
-    if (editingVendorItem) {
-      updateVendorItemMutation.mutate({ id: editingVendorItem.id, data });
-    } else {
+    if (rowId === "new") {
       createVendorItemMutation.mutate(data);
+    } else {
+      updateVendorItemMutation.mutate({ id: rowId, data });
     }
   };
 
@@ -898,7 +933,7 @@ export default function InventoryItemDetail() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-4">
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <Users className="h-5 w-5" />
@@ -907,8 +942,9 @@ export default function InventoryItemDetail() {
                 <CardDescription>Suppliers for this item</CardDescription>
               </div>
               <Button
-                onClick={handleOpenAddVendorDialog}
+                onClick={startAddingVendorRow}
                 size="sm"
+                disabled={showAddVendorRow || editingVendorItemId !== null}
                 data-testid="button-add-vendor"
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -916,210 +952,308 @@ export default function InventoryItemDetail() {
               </Button>
             </CardHeader>
             <CardContent>
-              {vendorItems && vendorItems.length > 0 ? (
-                <div className="space-y-3">
-                  {vendorItems.map((vi) => (
-                    <div key={vi.id} className="border rounded-lg p-4 space-y-2" data-testid={`vendor-item-${vi.id}`}>
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-medium">{vi.vendor?.name || "Unknown Vendor"}</h4>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={vi.active ? "outline" : "secondary"} data-testid={`badge-vendor-status-${vi.id}`}>
-                            {vi.active ? "Active" : "Inactive"}
-                          </Badge>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleOpenEditVendorDialog(vi)}
-                            data-testid={`button-edit-vendor-${vi.id}`}
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead>SKU</TableHead>
+                      <TableHead>Unit</TableHead>
+                      <TableHead>Price</TableHead>
+                      <TableHead>Case</TableHead>
+                      <TableHead>Inner</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-[100px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {vendorItems && vendorItems.length > 0 ? (
+                      vendorItems.map((vi) => {
+                        const isEditing = editingVendorItemId === vi.id;
+                        const rowData = vendorRowEdits[vi.id];
+
+                        if (isEditing && rowData) {
+                          return (
+                            <TableRow key={vi.id} data-testid={`vendor-item-row-${vi.id}`}>
+                              <TableCell>
+                                <Select
+                                  value={rowData.vendorId}
+                                  onValueChange={(value) => updateVendorRowField(vi.id, "vendorId", value)}
+                                >
+                                  <SelectTrigger className="w-[140px]" data-testid={`select-vendor-${vi.id}`}>
+                                    <SelectValue placeholder="Select vendor" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {vendors?.map((vendor) => (
+                                      <SelectItem key={vendor.id} value={vendor.id}>
+                                        {vendor.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  value={rowData.vendorSku}
+                                  onChange={(e) => updateVendorRowField(vi.id, "vendorSku", e.target.value)}
+                                  placeholder="SKU"
+                                  className="w-[100px]"
+                                  data-testid={`input-sku-${vi.id}`}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Select
+                                  value={rowData.purchaseUnitId}
+                                  onValueChange={(value) => updateVendorRowField(vi.id, "purchaseUnitId", value)}
+                                >
+                                  <SelectTrigger className="w-[100px]" data-testid={`select-unit-${vi.id}`}>
+                                    <SelectValue placeholder="Unit" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {filteredUnits?.map((unit) => (
+                                      <SelectItem key={unit.id} value={unit.id}>
+                                        {formatUnitName(unit.name)}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={rowData.lastPrice}
+                                  onChange={(e) => updateVendorRowField(vi.id, "lastPrice", e.target.value)}
+                                  className="w-[80px]"
+                                  data-testid={`input-price-${vi.id}`}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={rowData.caseSize}
+                                  onChange={(e) => updateVendorRowField(vi.id, "caseSize", e.target.value)}
+                                  className="w-[70px]"
+                                  data-testid={`input-case-${vi.id}`}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  step="1"
+                                  value={rowData.innerPackSize}
+                                  onChange={(e) => updateVendorRowField(vi.id, "innerPackSize", e.target.value)}
+                                  placeholder="-"
+                                  className="w-[60px]"
+                                  data-testid={`input-inner-${vi.id}`}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Select
+                                  value={rowData.active.toString()}
+                                  onValueChange={(value) => updateVendorRowField(vi.id, "active", parseInt(value))}
+                                >
+                                  <SelectTrigger className="w-[90px]" data-testid={`select-status-${vi.id}`}>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="1">Active</SelectItem>
+                                    <SelectItem value="0">Inactive</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => saveVendorRow(vi.id)}
+                                    disabled={!rowData.vendorId || !rowData.purchaseUnitId || updateVendorItemMutation.isPending}
+                                    data-testid={`button-save-vendor-${vi.id}`}
+                                  >
+                                    <Check className="h-4 w-4 text-green-600" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => cancelEditingVendorRow(vi.id)}
+                                    data-testid={`button-cancel-vendor-${vi.id}`}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
+
+                        return (
+                          <TableRow key={vi.id} data-testid={`vendor-item-row-${vi.id}`}>
+                            <TableCell className="font-medium">{vi.vendor?.name || "Unknown"}</TableCell>
+                            <TableCell className="text-muted-foreground">{vi.vendorSku || "-"}</TableCell>
+                            <TableCell>{formatUnitName(vi.unit?.name)}</TableCell>
+                            <TableCell>${vi.lastPrice.toFixed(2)}</TableCell>
+                            <TableCell>{vi.caseSize}</TableCell>
+                            <TableCell className="text-muted-foreground">{vi.innerPackSize || "-"}</TableCell>
+                            <TableCell>
+                              <Badge variant={vi.active ? "outline" : "secondary"} data-testid={`badge-vendor-status-${vi.id}`}>
+                                {vi.active ? "Active" : "Inactive"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => startEditingVendorRow(vi)}
+                                  disabled={editingVendorItemId !== null || showAddVendorRow}
+                                  data-testid={`button-edit-vendor-${vi.id}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setDeleteVendorItemId(vi.id)}
+                                  data-testid={`button-delete-vendor-${vi.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    ) : !showAddVendorRow && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                          No vendors configured for this item
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {showAddVendorRow && vendorRowEdits.new && (
+                      <TableRow data-testid="vendor-item-row-new">
+                        <TableCell>
+                          <Select
+                            value={vendorRowEdits.new.vendorId}
+                            onValueChange={(value) => updateVendorRowField("new", "vendorId", value)}
                           >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setDeleteVendorItemId(vi.id)}
-                            data-testid={`button-delete-vendor-${vi.id}`}
+                            <SelectTrigger className="w-[140px]" data-testid="select-vendor-new">
+                              <SelectValue placeholder="Select vendor" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {vendors?.map((vendor) => (
+                                <SelectItem key={vendor.id} value={vendor.id}>
+                                  {vendor.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={vendorRowEdits.new.vendorSku}
+                            onChange={(e) => updateVendorRowField("new", "vendorSku", e.target.value)}
+                            placeholder="SKU"
+                            className="w-[100px]"
+                            data-testid="input-sku-new"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={vendorRowEdits.new.purchaseUnitId}
+                            onValueChange={(value) => updateVendorRowField("new", "purchaseUnitId", value)}
                           >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </div>
-                      {(vi.vendorSku || vi.brandName) && (
-                        <div className="flex flex-wrap gap-x-4 text-sm text-muted-foreground">
-                          {vi.vendorSku && <span>SKU: {vi.vendorSku}</span>}
-                          {vi.brandName && <span>Brand: {vi.brandName}</span>}
-                        </div>
-                      )}
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <span className="text-muted-foreground">Price: </span>
-                          <span className="font-medium">${vi.lastPrice.toFixed(2)}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Unit: </span>
-                          <span className="font-medium">{formatUnitName(vi.unit?.name)}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Case Size: </span>
-                          <span className="font-medium">{vi.caseSize}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground mb-4">No vendors configured for this item</p>
-                  <Button
-                    variant="outline"
-                    onClick={handleOpenAddVendorDialog}
-                    data-testid="button-add-first-vendor"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add First Vendor
-                  </Button>
-                </div>
-              )}
+                            <SelectTrigger className="w-[100px]" data-testid="select-unit-new">
+                              <SelectValue placeholder="Unit" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {filteredUnits?.map((unit) => (
+                                <SelectItem key={unit.id} value={unit.id}>
+                                  {formatUnitName(unit.name)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={vendorRowEdits.new.lastPrice}
+                            onChange={(e) => updateVendorRowField("new", "lastPrice", e.target.value)}
+                            className="w-[80px]"
+                            data-testid="input-price-new"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={vendorRowEdits.new.caseSize}
+                            onChange={(e) => updateVendorRowField("new", "caseSize", e.target.value)}
+                            className="w-[70px]"
+                            data-testid="input-case-new"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            step="1"
+                            value={vendorRowEdits.new.innerPackSize}
+                            onChange={(e) => updateVendorRowField("new", "innerPackSize", e.target.value)}
+                            placeholder="-"
+                            className="w-[60px]"
+                            data-testid="input-inner-new"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={vendorRowEdits.new.active.toString()}
+                            onValueChange={(value) => updateVendorRowField("new", "active", parseInt(value))}
+                          >
+                            <SelectTrigger className="w-[90px]" data-testid="select-status-new">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1">Active</SelectItem>
+                              <SelectItem value="0">Inactive</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => saveVendorRow("new")}
+                              disabled={!vendorRowEdits.new.vendorId || !vendorRowEdits.new.purchaseUnitId || createVendorItemMutation.isPending}
+                              data-testid="button-save-vendor-new"
+                            >
+                              <Check className="h-4 w-4 text-green-600" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => cancelEditingVendorRow("new")}
+                              data-testid="button-cancel-vendor-new"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </div>
         </div>
       </div>
-
-      {/* Vendor Item Dialog */}
-      <Dialog open={vendorItemDialogOpen} onOpenChange={setVendorItemDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editingVendorItem ? "Edit Vendor" : "Add Vendor"}</DialogTitle>
-            <DialogDescription>
-              {editingVendorItem ? "Update vendor information for this item" : "Add a new vendor for this item"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="vendorId">Vendor *</Label>
-                <Select
-                  value={vendorItemForm.vendorId}
-                  onValueChange={(value) => setVendorItemForm({ ...vendorItemForm, vendorId: value })}
-                >
-                  <SelectTrigger id="vendorId" data-testid="select-vendor">
-                    <SelectValue placeholder="Select vendor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {vendors?.map((vendor) => (
-                      <SelectItem key={vendor.id} value={vendor.id}>
-                        {vendor.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="vendorSku">Vendor SKU</Label>
-                <Input
-                  id="vendorSku"
-                  value={vendorItemForm.vendorSku}
-                  onChange={(e) => setVendorItemForm({ ...vendorItemForm, vendorSku: e.target.value })}
-                  placeholder="Vendor's SKU"
-                  data-testid="input-vendor-sku"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="purchaseUnitId">Purchase Unit *</Label>
-                <Select
-                  value={vendorItemForm.purchaseUnitId}
-                  onValueChange={(value) => setVendorItemForm({ ...vendorItemForm, purchaseUnitId: value })}
-                >
-                  <SelectTrigger id="purchaseUnitId" data-testid="select-purchase-unit">
-                    <SelectValue placeholder="Select unit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredUnits?.map((unit) => (
-                      <SelectItem key={unit.id} value={unit.id}>
-                        {formatUnitName(unit.name)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lastPrice">Unit Price ($) *</Label>
-                <Input
-                  id="lastPrice"
-                  type="number"
-                  step="0.01"
-                  value={vendorItemForm.lastPrice}
-                  onChange={(e) => setVendorItemForm({ ...vendorItemForm, lastPrice: e.target.value })}
-                  data-testid="input-last-price"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="caseSize">Case Size *</Label>
-                <Input
-                  id="caseSize"
-                  type="number"
-                  step="0.01"
-                  value={vendorItemForm.caseSize}
-                  onChange={(e) => setVendorItemForm({ ...vendorItemForm, caseSize: e.target.value })}
-                  data-testid="input-case-size"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="innerPackSize">Inner Pack Size</Label>
-                <Input
-                  id="innerPackSize"
-                  type="number"
-                  step="0.01"
-                  value={vendorItemForm.innerPackSize}
-                  onChange={(e) => setVendorItemForm({ ...vendorItemForm, innerPackSize: e.target.value })}
-                  placeholder="Optional"
-                  data-testid="input-inner-pack-size"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="active">Status</Label>
-              <Select
-                value={vendorItemForm.active.toString()}
-                onValueChange={(value) => setVendorItemForm({ ...vendorItemForm, active: parseInt(value) })}
-              >
-                <SelectTrigger id="active" data-testid="select-active">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Active</SelectItem>
-                  <SelectItem value="0">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setVendorItemDialogOpen(false);
-                setEditingVendorItem(null);
-                resetVendorItemForm();
-              }}
-              data-testid="button-cancel-vendor"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSaveVendorItem}
-              disabled={!vendorItemForm.vendorId || !vendorItemForm.purchaseUnitId || createVendorItemMutation.isPending || updateVendorItemMutation.isPending}
-              data-testid="button-save-vendor"
-            >
-              {createVendorItemMutation.isPending || updateVendorItemMutation.isPending ? "Saving..." : editingVendorItem ? "Update" : "Add"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteVendorItemId} onOpenChange={() => setDeleteVendorItemId(null)}>
