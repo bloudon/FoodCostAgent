@@ -284,6 +284,7 @@ export const inventoryItems = pgTable("inventory_items", {
   reorderLevel: real("reorder_level"), // default reorder level (can be overridden at store level)
   imageUrl: text("image_url"),
   isPowerItem: integer("is_power_item").notNull().default(0), // 1 = high-cost power item for frequent tracking
+  isVariableWeight: integer("is_variable_weight").notNull().default(0), // 1 = catch weight item (actual weight differs from ordered)
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
   // Optimize company-scoped inventory queries

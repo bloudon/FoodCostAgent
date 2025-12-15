@@ -17,6 +17,7 @@ import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 type Unit = {
   id: string;
   name: string;
+  abbreviation: string;
   kind: string;
   toBaseRatio: number;
   system: string;
@@ -59,6 +60,7 @@ export default function InventoryItemCreate() {
   const [primaryLocationId, setPrimaryLocationId] = useState("");
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
   const [isPowerItem, setIsPowerItem] = useState(false);
+  const [isVariableWeight, setIsVariableWeight] = useState(false);
 
   const { data: units } = useQuery<Unit[]>({
     queryKey: ["/api/units"],
@@ -119,6 +121,7 @@ export default function InventoryItemCreate() {
         parLevel: parLevel.trim() !== "" ? parseFloat(parLevel.trim()) : null,
         reorderLevel: reorderLevel.trim() !== "" ? parseFloat(reorderLevel.trim()) : null,
         isPowerItem: isPowerItem ? 1 : 0,
+        isVariableWeight: isVariableWeight ? 1 : 0,
         locationIds: selectedLocations,
         storeIds: selectedStores,
       };
@@ -480,6 +483,23 @@ export default function InventoryItemCreate() {
                   </Label>
                   <p className="text-xs text-muted-foreground">
                     High-cost item tracked more frequently in power inventory counts
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-4 border-t">
+                <Checkbox
+                  id="isVariableWeight"
+                  checked={isVariableWeight}
+                  onCheckedChange={(checked) => setIsVariableWeight(checked === true)}
+                  data-testid="checkbox-variable-weight"
+                />
+                <div className="space-y-0.5">
+                  <Label htmlFor="isVariableWeight" className="cursor-pointer font-medium">
+                    Variable Weight (Catch Weight)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Actual weight differs from ordered quantity (meats, cheeses)
                   </p>
                 </div>
               </div>

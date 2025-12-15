@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useStoreContext } from "@/hooks/use-store-context";
-import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,6 +56,7 @@ type InventoryItem = {
   parLevel: number | null;
   reorderLevel: number | null;
   isPowerItem: number | boolean;
+  isVariableWeight: number | boolean;
 };
 
 type Unit = {
@@ -573,6 +574,30 @@ export default function InventoryItemDetail() {
               }}
               disabled={updateMutation.isPending}
               data-testid="checkbox-power-item"
+            />
+          </div>
+
+          {/* Variable Weight Toggle */}
+          <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
+            <div className="flex items-center gap-3">
+              <Scale className={`h-5 w-5 ${(item.isVariableWeight === 1 || item.isVariableWeight === true) ? 'text-blue-500' : 'text-muted-foreground'}`} />
+              <div className="space-y-0.5">
+                <Label htmlFor="isVariableWeight-header" className="cursor-pointer font-medium">
+                  Variable Weight (Catch Weight)
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Actual weight differs from ordered quantity (meats, cheeses)
+                </p>
+              </div>
+            </div>
+            <Checkbox
+              id="isVariableWeight-header"
+              checked={item.isVariableWeight === 1 || item.isVariableWeight === true}
+              onCheckedChange={(checked) => {
+                updateMutation.mutate({ isVariableWeight: checked ? 1 : 0 });
+              }}
+              disabled={updateMutation.isPending}
+              data-testid="checkbox-variable-weight"
             />
           </div>
           {/* Basic Information Accordion */}
