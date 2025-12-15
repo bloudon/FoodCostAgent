@@ -931,6 +931,7 @@ export default function InventoryItemDetail() {
               </div>
             </CardContent>
           </Card>
+          </div>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-4">
@@ -1251,7 +1252,6 @@ export default function InventoryItemDetail() {
               </div>
             </CardContent>
           </Card>
-        </div>
         </div>
       </div>
 
