@@ -49,6 +49,7 @@ type InventoryItem = {
   barcode: string | null;
   active: number;
   pricePerUnit: number;
+  avgCostPerUnit: number;
   caseSize: number;
   storageLocationId: string;
   yieldPercent: number;
@@ -540,7 +541,6 @@ export default function InventoryItemDetail() {
   const location = locations?.find((l) => l.id === item.storageLocationId);
   
   const filteredUnits = filterUnitsBySystem(units, systemPrefs?.unitSystem);
-  const caseCost = item.pricePerUnit * item.caseSize;
 
   return (
     <div className="h-full flex flex-col">
@@ -735,38 +735,23 @@ export default function InventoryItemDetail() {
               <CardDescription>Cost and pricing information</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="pricePerUnit">Price Per Unit</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="pricePerUnit"
-                    type="number"
-                    step="0.01"
-                    value={getFieldValue("pricePerUnit", item.pricePerUnit)}
-                    onChange={(e) => handleFieldChange("pricePerUnit", e.target.value)}
-                    onBlur={() => handleFieldBlur("pricePerUnit")}
-                    disabled={updateMutation.isPending}
-                    data-testid="input-price-per-unit"
-                  />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Last Cost (per {unit?.abbreviation || 'unit'})</Label>
+                  <div className="text-2xl font-semibold" data-testid="text-last-cost">
+                    ${item.pricePerUnit?.toFixed(2) || '0.00'}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Avg Cost / WAC (per {unit?.abbreviation || 'unit'})</Label>
+                  <div className="text-2xl font-semibold" data-testid="text-avg-cost">
+                    ${item.avgCostPerUnit?.toFixed(2) || '0.00'}
+                  </div>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="caseSize">Case Size ({unit?.abbreviation || 'units'})</Label>
-                <Input
-                  id="caseSize"
-                  type="number"
-                  step="0.1"
-                  value={getFieldValue("caseSize", item.caseSize)}
-                  onChange={(e) => handleFieldChange("caseSize", e.target.value)}
-                  onBlur={() => handleFieldBlur("caseSize")}
-                  disabled={updateMutation.isPending}
-                  data-testid="input-case-size"
-                />
-              </div>
-              <div className="text-sm text-muted-foreground">
-                <p>Price per unit: ${item.pricePerUnit.toFixed(2)}</p>
-                <p>Case cost: ${caseCost.toFixed(2)} (${item.pricePerUnit.toFixed(2)} × {item.caseSize})</p>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Pricing is automatically derived from receiving history. Case sizes are managed per vendor.
+              </p>
             </CardContent>
           </Card>
 
