@@ -3074,7 +3074,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/maintenance/fix-inventory-pricing", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
-      const vendorItems = await storage.getVendorItems(companyId);
+      // getVendorItems(vendorId, companyId, storeId) - pass undefined for vendorId to get all vendor items
+      const vendorItems = await storage.getVendorItems(undefined, companyId);
       const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
       const vendors = await storage.getVendors(companyId);
       const units = await storage.getUnits();
@@ -3149,7 +3150,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/maintenance/fix-inventory-pricing", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
-      const vendorItems = await storage.getVendorItems(companyId);
+      // getVendorItems(vendorId, companyId, storeId) - pass undefined for vendorId to get all vendor items
+      const vendorItems = await storage.getVendorItems(undefined, companyId);
       const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
       
       let fixedCount = 0;
@@ -3190,8 +3192,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Clear recipe cost cache since prices changed
-      await cache.clear();
+      // Invalidate recipe and inventory caches since prices changed
+      await cacheInvalidator.invalidateRecipes(companyId);
+      await cacheInvalidator.invalidateInventory(companyId);
       
       res.json({
         message: `Fixed pricing for ${fixedCount} inventory items`,
