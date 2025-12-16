@@ -74,6 +74,8 @@ type VendorItem = {
   purchaseUnitName: string;
   categoryId: string | null;
   categoryName: string | null;
+  caseSize: number | null;
+  innerPackSize: number | null;
   inventoryItem?: {
     caseSize: number;
     pricePerUnit: number;
@@ -822,7 +824,8 @@ export default function PurchaseOrderDetail() {
                         inventoryItemId = item.inventoryItemId;
                         categoryName = item.categoryName || '-';
                         vendorSku = item.vendorSku || '-';
-                        caseSize = item.inventoryItem?.caseSize || 1;
+                        // Use vendor item's caseSize first, fall back to inventory item's caseSize
+                        caseSize = item.caseSize ?? item.inventoryItem?.caseSize ?? 1;
                         unitPrice = item.lastPrice ?? item.inventoryItem?.pricePerUnit ?? 0;
                         casePrice = unitPrice * caseSize;
                         lineTotal = caseQty * casePrice;
