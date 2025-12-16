@@ -3093,6 +3093,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         priceDifference: number;
       }> = [];
       
+      // Track processed inventory items to avoid duplicates (when item has multiple vendors)
+      const processedItems = new Set<string>();
+      
       for (const vi of vendorItems) {
         // Only process if vendor item has pricing data
         // vendor_items.lastPrice is already the per-unit price (NOT case price)
@@ -3100,6 +3103,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         const inventoryItem = inventoryItems.find(ii => ii.id === vi.inventoryItemId);
         if (!inventoryItem) continue;
+        
+        // Skip if we've already processed this inventory item (use first vendor's price)
+        if (processedItems.has(inventoryItem.id)) continue;
         
         // The vendor's lastPrice IS the correct unit price - no division needed
         const correctUnitPrice = vi.lastPrice;
@@ -3125,6 +3131,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             newUnitPrice: correctUnitPrice,
             priceDifference: priceDiff,
           });
+          processedItems.add(inventoryItem.id);
         }
       }
       
@@ -3148,6 +3155,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let fixedCount = 0;
       const fixes: Array<{itemName: string, oldPrice: number, newPrice: number, vendor: string}> = [];
       
+      // Track processed inventory items to avoid duplicates (when item has multiple vendors)
+      const processedItems = new Set<string>();
+      
       for (const vi of vendorItems) {
         // Only process if vendor item has pricing data
         // vendor_items.lastPrice is already the per-unit price (NOT case price)
@@ -3155,6 +3165,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         const inventoryItem = inventoryItems.find(ii => ii.id === vi.inventoryItemId);
         if (!inventoryItem) continue;
+        
+        // Skip if we've already processed this inventory item (use first vendor's price)
+        if (processedItems.has(inventoryItem.id)) continue;
         
         // The vendor's lastPrice IS the correct unit price - no division needed
         const correctUnitPrice = vi.lastPrice;
@@ -3173,6 +3186,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             pricePerUnit: correctUnitPrice
           });
           fixedCount++;
+          processedItems.add(inventoryItem.id);
         }
       }
       
