@@ -1,10 +1,10 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Package, Search, Plus, Trash2, Store } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Package, Search, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useAccessibleStores } from "@/hooks/use-accessible-stores";
+import { useStoreContext } from "@/hooks/use-store-context";
 import {
   Table,
   TableBody,
@@ -97,10 +97,12 @@ export default function Orders() {
   const [selectedVendor, setSelectedVendor] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
-  const [selectedStore, setSelectedStore] = useState<string>("");
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  
+  // Use the global store context from the header filter
+  const { selectedStoreId } = useStoreContext();
 
   const { data: orders, isLoading } = useQuery<UnifiedOrder[]>({
     queryKey: ["/api/orders/unified"],
@@ -109,18 +111,6 @@ export default function Orders() {
   const { data: vendors } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors"],
   });
-
-  const { data: stores = [], isLoading: storesLoading } = useAccessibleStores();
-
-  // Auto-select first active store when stores load
-  useEffect(() => {
-    if (stores && stores.length > 0 && !selectedStore) {
-      const activeStores = stores.filter(s => s.status === 'active');
-      if (activeStores.length > 0) {
-        setSelectedStore(activeStores[0].id);
-      }
-    }
-  }, [stores, selectedStore]);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -160,10 +150,10 @@ export default function Orders() {
     
     const matchesStatus = selectedStatus === "all" || order.status === selectedStatus;
     
-    // For store filter, compare by store ID
-    const matchesStore = !selectedStore || 
-      (order.type === "purchase" && order.storeId === selectedStore) ||
-      (order.type === "transfer" && (order.fromStoreId === selectedStore || order.toStoreId === selectedStore));
+    // For store filter, compare by store ID from header context
+    const matchesStore = !selectedStoreId || 
+      (order.type === "purchase" && order.storeId === selectedStoreId) ||
+      (order.type === "transfer" && (order.fromStoreId === selectedStoreId || order.toStoreId === selectedStoreId));
       
     return matchesSearch && matchesType && matchesVendor && matchesStatus && matchesStore;
   }) || [];
@@ -178,29 +168,12 @@ export default function Orders() {
               Create, manage, and receive purchase orders from vendors
             </p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3">
-              <Store className="h-5 w-5 text-muted-foreground" />
-              <Select value={selectedStore} onValueChange={setSelectedStore}>
-                <SelectTrigger className="w-[200px]" data-testid="select-store">
-                  <SelectValue placeholder="Select store" />
-                </SelectTrigger>
-                <SelectContent>
-                  {stores?.filter(s => s.status === 'active').map((store) => (
-                    <SelectItem key={store.id} value={store.id}>
-                      {store.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button asChild data-testid="button-create-order">
-              <Link href="/purchase-orders/new">
-                <Plus className="h-4 w-4 mr-2" />
-                New Order
-              </Link>
-            </Button>
-          </div>
+          <Button asChild data-testid="button-create-order">
+            <Link href="/purchase-orders/new">
+              <Plus className="h-4 w-4 mr-2" />
+              New Order
+            </Link>
+          </Button>
         </div>
 
         <div className="flex gap-4 flex-wrap">
