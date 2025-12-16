@@ -5138,7 +5138,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Use the original PO price (priceEach) - this is the price per unit when ordered
       const pricePerUnit = line.priceEach;
-      const caseSize = item?.caseSize || 1;
+      // Use vendor item's caseSize (not inventory item's) for accurate order display
+      const caseSize = vi?.caseSize || 1;
       
       return {
         ...line,
