@@ -3068,7 +3068,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ MAINTENANCE: Fix inventory pricing from vendor data ============
-  // Recalculate pricePerUnit for inventory items based on vendor item case pricing
+  // vendor_items.lastPrice already stores the per-unit price (e.g., $10.06/gallon)
+  // This fixes inventory_items.pricePerUnit to match the vendor's unit price
   // GET for preview, POST to apply fixes
   app.get("/api/maintenance/fix-inventory-pricing", requireAuth, async (req, res) => {
     try {
@@ -3083,9 +3084,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         itemName: string;
         unitName: string;
         vendorName: string;
-        casePrice: number;
+        vendorUnitPrice: number;
         caseSize: number;
         innerPack: number;
+        calculatedCasePrice: number;
         oldUnitPrice: number;
         newUnitPrice: number;
         priceDifference: number;
@@ -3093,17 +3095,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       for (const vi of vendorItems) {
         // Only process if vendor item has pricing data
+        // vendor_items.lastPrice is already the per-unit price (NOT case price)
         if (!vi.lastPrice || vi.lastPrice <= 0) continue;
         
         const inventoryItem = inventoryItems.find(ii => ii.id === vi.inventoryItemId);
         if (!inventoryItem) continue;
         
-        // Calculate correct unit price from case price
-        // Guard against zero/negative values that would cause Infinity
-        const caseSize = Math.max(vi.caseSize ?? 1, 1);
-        const innerPack = Math.max(vi.innerPackSize ?? 1, 1);
-        const totalUnitsPerCase = caseSize * innerPack;
-        const correctUnitPrice = vi.lastPrice / totalUnitsPerCase;
+        // The vendor's lastPrice IS the correct unit price - no division needed
+        const correctUnitPrice = vi.lastPrice;
+        const caseSize = vi.caseSize ?? 1;
+        const innerPack = vi.innerPackSize ?? 1;
+        const calculatedCasePrice = correctUnitPrice * caseSize; // For display purposes
         
         // Only include if significantly different (more than 1 cent difference)
         const priceDiff = inventoryItem.pricePerUnit - correctUnitPrice;
@@ -3115,9 +3117,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             itemName: inventoryItem.name,
             unitName: unit?.name || 'unit',
             vendorName: vendor?.name || 'Unknown',
-            casePrice: vi.lastPrice,
+            vendorUnitPrice: vi.lastPrice,
             caseSize,
             innerPack,
+            calculatedCasePrice,
             oldUnitPrice: inventoryItem.pricePerUnit,
             newUnitPrice: correctUnitPrice,
             priceDifference: priceDiff,
@@ -3147,17 +3150,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       for (const vi of vendorItems) {
         // Only process if vendor item has pricing data
+        // vendor_items.lastPrice is already the per-unit price (NOT case price)
         if (!vi.lastPrice || vi.lastPrice <= 0) continue;
         
         const inventoryItem = inventoryItems.find(ii => ii.id === vi.inventoryItemId);
         if (!inventoryItem) continue;
         
-        // Calculate correct unit price from case price
-        // Guard against zero/negative values that would cause Infinity
-        const caseSize = Math.max(vi.caseSize ?? 1, 1);
-        const innerPack = Math.max(vi.innerPackSize ?? 1, 1);
-        const totalUnitsPerCase = caseSize * innerPack;
-        const correctUnitPrice = vi.lastPrice / totalUnitsPerCase;
+        // The vendor's lastPrice IS the correct unit price - no division needed
+        const correctUnitPrice = vi.lastPrice;
         
         // Only fix if significantly different (more than 1 cent difference)
         if (Math.abs(inventoryItem.pricePerUnit - correctUnitPrice) > 0.01) {

@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw } from "lucide-react";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw, Wrench, AlertTriangle } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -399,7 +399,7 @@ export default function Settings() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6 max-w-5xl">
+        <TabsList className="grid w-full grid-cols-7 max-w-6xl">
           <TabsTrigger value="company" data-testid="tab-company">
             <Building2 className="h-4 w-4 mr-2" />
             Company
@@ -423,6 +423,10 @@ export default function Settings() {
           <TabsTrigger value="preferences" data-testid="tab-preferences">
             <SettingsIcon className="h-4 w-4 mr-2" />
             Preferences
+          </TabsTrigger>
+          <TabsTrigger value="maintenance" data-testid="tab-maintenance">
+            <Wrench className="h-4 w-4 mr-2" />
+            Maintenance
           </TabsTrigger>
         </TabsList>
 
@@ -1386,7 +1390,203 @@ export default function Settings() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="maintenance" className="space-y-6">
+          <MaintenanceTab />
+        </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// Maintenance Tab Component
+function MaintenanceTab() {
+  const { toast } = useToast();
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Preview pricing fixes
+  const { data: pricingPreview, isLoading: previewLoading, refetch: refetchPreview } = useQuery<{
+    message: string;
+    proposedFixCount: number;
+    proposedFixes: Array<{
+      inventoryItemId: string;
+      itemName: string;
+      unitName: string;
+      vendorName: string;
+      vendorUnitPrice: number;
+      caseSize: number;
+      innerPack: number;
+      calculatedCasePrice: number;
+      oldUnitPrice: number;
+      newUnitPrice: number;
+      priceDifference: number;
+    }>;
+  }>({
+    queryKey: ["/api/maintenance/fix-inventory-pricing"],
+    enabled: showPreview,
+  });
+
+  // Apply pricing fixes mutation
+  const applyPricingFixMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", "/api/maintenance/fix-inventory-pricing", {});
+    },
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      setShowPreview(false);
+      toast({
+        title: "Success",
+        description: `Fixed pricing for ${result.fixedCount} inventory items. Recipe costs will be recalculated.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to apply pricing fixes",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handlePreview = () => {
+    setShowPreview(true);
+    refetchPreview();
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Wrench className="h-5 w-5" />
+          Data Maintenance Tools
+        </CardTitle>
+        <CardDescription>
+          Tools to fix data issues and recalculate values
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="border rounded-lg p-4 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-medium flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Fix Inventory Pricing
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Sync inventory item prices with vendor order guide prices. This will update 
+                the price per unit for inventory items to match the current vendor pricing.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={handlePreview}
+              disabled={previewLoading}
+              data-testid="button-preview-pricing-fix"
+            >
+              {previewLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Preview Changes
+                </>
+              )}
+            </Button>
+          </div>
+
+          {showPreview && pricingPreview && (
+            <div className="border-t pt-4 space-y-4">
+              {pricingPreview.proposedFixCount === 0 ? (
+                <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span>All inventory prices are correct! No fixes needed.</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                    <AlertTriangle className="h-5 w-5" />
+                    <span>Found {pricingPreview.proposedFixCount} items with incorrect pricing</span>
+                  </div>
+                  
+                  <div className="max-h-[400px] overflow-auto border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Item</TableHead>
+                          <TableHead>Vendor</TableHead>
+                          <TableHead className="text-right">Current Price</TableHead>
+                          <TableHead className="text-right">Correct Price</TableHead>
+                          <TableHead className="text-right">Difference</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pricingPreview.proposedFixes.map((fix) => (
+                          <TableRow key={fix.inventoryItemId}>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium">{fix.itemName}</div>
+                                <div className="text-xs text-muted-foreground">per {fix.unitName}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {fix.vendorName}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-red-600 dark:text-red-400">
+                              ${fix.oldUnitPrice.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-green-600 dark:text-green-400">
+                              ${fix.newUnitPrice.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {fix.priceDifference > 0 ? "-" : "+"}${Math.abs(fix.priceDifference).toFixed(2)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <p className="text-sm text-muted-foreground">
+                      This will update {pricingPreview.proposedFixCount} inventory items and recalculate all affected recipe costs.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowPreview(false)}
+                        data-testid="button-cancel-pricing-fix"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => applyPricingFixMutation.mutate()}
+                        disabled={applyPricingFixMutation.isPending}
+                        data-testid="button-apply-pricing-fix"
+                      >
+                        {applyPricingFixMutation.isPending ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Applying...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            Apply {pricingPreview.proposedFixCount} Fixes
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
