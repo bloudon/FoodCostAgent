@@ -527,14 +527,22 @@ export class OrderGuideProcessor {
         return { inventoryCreated: false, vendorItemCreated: false, storeAssignmentsCreated: 0 };
       }
 
+      // Calculate unit price from case price
+      // line.price is the CASE price, we need to divide by total units per case
+      // Guard against zero/negative values that would cause Infinity
+      const caseSize = Math.max(line.caseSize ?? 1, 1);
+      const innerPack = Math.max(line.innerPack ?? 1, 1);
+      const totalUnitsPerCase = caseSize * innerPack;
+      const unitPrice = line.price ? line.price / totalUnitsPerCase : 0;
+
       // Create inventory item with smart defaults
       const inventoryItem = await this.storage.createInventoryItem({
         companyId,
         name: line.productName,
         categoryId: categoryId || undefined,
         unitId: unitId,
-        pricePerUnit: line.price || 0,
-        avgCostPerUnit: line.price || 0, // Initialize WAC with first price
+        pricePerUnit: unitPrice,
+        avgCostPerUnit: unitPrice, // Initialize WAC with first price
         yieldPercent: 100,
         parLevel: 0,
         reorderLevel: 0,
@@ -652,9 +660,15 @@ export class OrderGuideProcessor {
       const updates: any = {};
       
       // Sync price if vendor has pricing data
+      // line.price is the CASE price, we need to divide by total units per case
+      // Guard against zero/negative values that would cause Infinity
       if (line.price && line.price > 0) {
-        updates.pricePerUnit = line.price;
-        console.log(`[OrderGuide] Syncing price ${line.price} to inventory item ${inventoryItem.id}`);
+        const caseSize = Math.max(line.caseSize ?? 1, 1);
+        const innerPack = Math.max(line.innerPack ?? 1, 1);
+        const totalUnitsPerCase = caseSize * innerPack;
+        const unitPrice = line.price / totalUnitsPerCase;
+        updates.pricePerUnit = unitPrice;
+        console.log(`[OrderGuide] Syncing unit price ${unitPrice.toFixed(4)} (case price ${line.price} ÷ ${totalUnitsPerCase} units) to inventory item ${inventoryItem.id}`);
       }
       
       // Sync case size if vendor has case size data

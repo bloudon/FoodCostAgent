@@ -3067,6 +3067,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ MAINTENANCE: Fix inventory pricing from vendor data ============
+  // Recalculate pricePerUnit for inventory items based on vendor item case pricing
+  app.post("/api/maintenance/fix-inventory-pricing", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const vendorItems = await storage.getVendorItems(companyId);
+      const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
+      
+      let fixedCount = 0;
+      const fixes: Array<{itemName: string, oldPrice: number, newPrice: number, vendor: string}> = [];
+      
+      for (const vi of vendorItems) {
+        // Only process if vendor item has pricing data
+        if (!vi.lastPrice || vi.lastPrice <= 0) continue;
+        
+        const inventoryItem = inventoryItems.find(ii => ii.id === vi.inventoryItemId);
+        if (!inventoryItem) continue;
+        
+        // Calculate correct unit price from case price
+        // Guard against zero/negative values that would cause Infinity
+        const caseSize = Math.max(vi.caseSize ?? 1, 1);
+        const innerPack = Math.max(vi.innerPackSize ?? 1, 1);
+        const totalUnitsPerCase = caseSize * innerPack;
+        const correctUnitPrice = vi.lastPrice / totalUnitsPerCase;
+        
+        // Only fix if significantly different (more than 1 cent difference)
+        if (Math.abs(inventoryItem.pricePerUnit - correctUnitPrice) > 0.01) {
+          const vendor = await storage.getVendor(vi.vendorId);
+          fixes.push({
+            itemName: inventoryItem.name,
+            oldPrice: inventoryItem.pricePerUnit,
+            newPrice: correctUnitPrice,
+            vendor: vendor?.name || 'Unknown'
+          });
+          
+          await storage.updateInventoryItem(inventoryItem.id, {
+            pricePerUnit: correctUnitPrice
+          });
+          fixedCount++;
+        }
+      }
+      
+      // Clear recipe cost cache since prices changed
+      await cache.clear();
+      
+      res.json({
+        message: `Fixed pricing for ${fixedCount} inventory items`,
+        fixedCount,
+        fixes
+      });
+    } catch (error: any) {
+      console.error('[Maintenance] Error fixing inventory pricing:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ============ RECIPES ============
   app.get("/api/recipes", requireAuth, async (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
