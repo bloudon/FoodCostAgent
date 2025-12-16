@@ -3069,6 +3069,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ MAINTENANCE: Fix inventory pricing from vendor data ============
   // Recalculate pricePerUnit for inventory items based on vendor item case pricing
+  // GET for preview, POST to apply fixes
+  app.get("/api/maintenance/fix-inventory-pricing", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const vendorItems = await storage.getVendorItems(companyId);
+      const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
+      const vendors = await storage.getVendors(companyId);
+      const units = await storage.getUnits();
+      
+      const proposedFixes: Array<{
+        inventoryItemId: string;
+        itemName: string;
+        unitName: string;
+        vendorName: string;
+        casePrice: number;
+        caseSize: number;
+        innerPack: number;
+        oldUnitPrice: number;
+        newUnitPrice: number;
+        priceDifference: number;
+      }> = [];
+      
+      for (const vi of vendorItems) {
+        // Only process if vendor item has pricing data
+        if (!vi.lastPrice || vi.lastPrice <= 0) continue;
+        
+        const inventoryItem = inventoryItems.find(ii => ii.id === vi.inventoryItemId);
+        if (!inventoryItem) continue;
+        
+        // Calculate correct unit price from case price
+        // Guard against zero/negative values that would cause Infinity
+        const caseSize = Math.max(vi.caseSize ?? 1, 1);
+        const innerPack = Math.max(vi.innerPackSize ?? 1, 1);
+        const totalUnitsPerCase = caseSize * innerPack;
+        const correctUnitPrice = vi.lastPrice / totalUnitsPerCase;
+        
+        // Only include if significantly different (more than 1 cent difference)
+        const priceDiff = inventoryItem.pricePerUnit - correctUnitPrice;
+        if (Math.abs(priceDiff) > 0.01) {
+          const vendor = vendors.find(v => v.id === vi.vendorId);
+          const unit = units.find(u => u.id === inventoryItem.unitId);
+          proposedFixes.push({
+            inventoryItemId: inventoryItem.id,
+            itemName: inventoryItem.name,
+            unitName: unit?.name || 'unit',
+            vendorName: vendor?.name || 'Unknown',
+            casePrice: vi.lastPrice,
+            caseSize,
+            innerPack,
+            oldUnitPrice: inventoryItem.pricePerUnit,
+            newUnitPrice: correctUnitPrice,
+            priceDifference: priceDiff,
+          });
+        }
+      }
+      
+      res.json({
+        message: `Found ${proposedFixes.length} inventory items with incorrect pricing`,
+        proposedFixCount: proposedFixes.length,
+        proposedFixes
+      });
+    } catch (error: any) {
+      console.error('[Maintenance] Error previewing inventory pricing fixes:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/maintenance/fix-inventory-pricing", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
