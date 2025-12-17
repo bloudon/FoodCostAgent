@@ -1552,7 +1552,18 @@ export default function RecipeBuilder() {
                       items={components.map((c) => c.id)}
                       strategy={verticalListSortingStrategy}
                     >
-                      <div className="space-y-3">
+                      {/* Column headers */}
+                      <div className="grid grid-cols-[24px_20px_1fr_80px_100px_70px_70px_32px] gap-2 items-center px-3 py-1 mb-2 text-xs text-muted-foreground font-medium">
+                        <div></div>
+                        <div></div>
+                        <div>Item</div>
+                        <div>Qty</div>
+                        <div>Unit</div>
+                        <div>Yield</div>
+                        <div className="text-right">Cost</div>
+                        <div></div>
+                      </div>
+                      <div className="space-y-2">
                         {components.map((component) => (
                           <InlineIngredientRow
                             key={component.id}
