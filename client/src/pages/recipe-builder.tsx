@@ -223,120 +223,103 @@ function InlineIngredientRow({
     <div 
       ref={setNodeRef} 
       style={style} 
-      className="border rounded-lg p-4 bg-card"
+      className="border rounded-lg px-3 py-2 bg-card"
       data-testid={`row-ingredient-${component.id}`}
     >
-      <div className="flex items-start gap-3">
+      {/* Compact single-row layout */}
+      <div className="flex items-center gap-2">
         {/* Drag handle */}
         <div 
           {...attributes} 
           {...listeners} 
-          className="cursor-grab active:cursor-grabbing pt-1 flex-shrink-0"
+          className="cursor-grab active:cursor-grabbing flex-shrink-0"
         >
-          <GripVertical className="h-5 w-5 text-muted-foreground" />
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
 
-        {/* Main content */}
-        <div className="flex-1 min-w-0 space-y-3">
-          {/* Ingredient name and type indicator */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {component.componentType === "recipe" ? (
-              <ChefHat className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            ) : (
-              <Package className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            )}
-            <span className="font-medium" data-testid={`text-ingredient-name-${component.id}`}>
-              {component.name}
-            </span>
-            {component.componentType === "inventory_item" && component.yieldOverride != null && (
-              <Badge variant="secondary" className="text-xs" data-testid={`badge-yield-override-${component.id}`}>
-                {component.yieldOverride}% yield
-              </Badge>
-            )}
-          </div>
+        {/* Type icon */}
+        {component.componentType === "recipe" ? (
+          <ChefHat className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+        ) : (
+          <Package className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        )}
 
-          {/* Inline form fields - stacked layout */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Quantity field */}
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Quantity</label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={localQty}
-                onChange={(e) => handleQtyChange(e.target.value)}
-                onFocus={handleQtyFocus}
-                onBlur={handleQtyBlur}
-                className="h-9"
-                data-testid={`input-qty-${component.id}`}
-              />
-            </div>
+        {/* Ingredient name - truncate if needed */}
+        <span 
+          className="font-medium text-sm truncate min-w-[100px] max-w-[180px]" 
+          title={component.name}
+          data-testid={`text-ingredient-name-${component.id}`}
+        >
+          {component.name}
+        </span>
 
-            {/* Unit selector */}
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Unit</label>
-              <Select value={component.unitId} onValueChange={handleUnitChange}>
-                <SelectTrigger className="h-9" data-testid={`select-unit-${component.id}`}>
-                  <SelectValue placeholder="Select unit" />
-                </SelectTrigger>
-                <SelectContent>
-                  {getCompatibleUnitList().map((unit) => (
-                    <SelectItem key={unit.id} value={unit.id}>
-                      {formatUnitName(unit.name)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Yield override - only for inventory items */}
-            {component.componentType === "inventory_item" ? (
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">
-                  Yield % <span className="opacity-60">(default: {getDefaultYield()}%)</span>
-                </label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="100"
-                  placeholder={`${getDefaultYield()}`}
-                  value={localYieldOverride}
-                  onChange={(e) => handleYieldOverrideChange(e.target.value)}
-                  onFocus={handleYieldFocus}
-                  onBlur={handleYieldOverrideBlur}
-                  className="h-9"
-                  data-testid={`input-yield-${component.id}`}
-                />
-              </div>
-            ) : (
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Cost</label>
-                <div className="h-9 flex items-center font-mono text-sm" data-testid={`text-ingredient-cost-${component.id}`}>
-                  ${component.cost.toFixed(2)}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Cost display for inventory items */}
-          {component.componentType === "inventory_item" && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Calculated cost:</span>
-              <span className="font-mono font-medium" data-testid={`text-ingredient-cost-${component.id}`}>
-                ${component.cost.toFixed(2)}
-              </span>
-            </div>
-          )}
+        {/* Quantity input - compact */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            value={localQty}
+            onChange={(e) => handleQtyChange(e.target.value)}
+            onFocus={handleQtyFocus}
+            onBlur={handleQtyBlur}
+            className="h-8 w-20 text-sm"
+            data-testid={`input-qty-${component.id}`}
+          />
         </div>
+
+        {/* Unit selector - compact */}
+        <Select value={component.unitId} onValueChange={handleUnitChange}>
+          <SelectTrigger className="h-8 w-28 text-sm" data-testid={`select-unit-${component.id}`}>
+            <SelectValue placeholder="Unit" />
+          </SelectTrigger>
+          <SelectContent>
+            {getCompatibleUnitList().map((unit) => (
+              <SelectItem key={unit.id} value={unit.id}>
+                {formatUnitName(unit.name)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Yield override - only for inventory items, compact */}
+        {component.componentType === "inventory_item" && (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <Input
+              type="number"
+              step="0.1"
+              min="0"
+              max="100"
+              placeholder={`${getDefaultYield()}%`}
+              value={localYieldOverride}
+              onChange={(e) => handleYieldOverrideChange(e.target.value)}
+              onFocus={handleYieldFocus}
+              onBlur={handleYieldOverrideBlur}
+              className="h-8 w-16 text-sm"
+              title={`Yield % (default: ${getDefaultYield()}%)`}
+              data-testid={`input-yield-${component.id}`}
+            />
+            <span className="text-xs text-muted-foreground">%</span>
+          </div>
+        )}
+
+        {/* Spacer to push cost and delete to the right */}
+        <div className="flex-1" />
+
+        {/* Cost - right aligned */}
+        <span 
+          className="font-mono text-sm font-medium text-right min-w-[60px]" 
+          data-testid={`text-ingredient-cost-${component.id}`}
+        >
+          ${component.cost.toFixed(2)}
+        </span>
 
         {/* Delete button */}
         <Button
           variant="ghost"
           size="icon"
           onClick={onDelete}
-          className="flex-shrink-0"
+          className="flex-shrink-0 h-8 w-8"
           data-testid={`button-delete-ingredient-${component.id}`}
         >
           <Trash2 className="h-4 w-4 text-muted-foreground" />
