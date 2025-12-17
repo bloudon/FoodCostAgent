@@ -226,51 +226,49 @@ function InlineIngredientRow({
       className="border rounded-lg px-3 py-2 bg-card"
       data-testid={`row-ingredient-${component.id}`}
     >
-      {/* Compact single-row layout */}
-      <div className="flex items-center gap-2">
+      {/* Grid layout for aligned columns */}
+      <div className="grid grid-cols-[24px_20px_1fr_80px_100px_70px_70px_32px] gap-2 items-center">
         {/* Drag handle */}
         <div 
           {...attributes} 
           {...listeners} 
-          className="cursor-grab active:cursor-grabbing flex-shrink-0"
+          className="cursor-grab active:cursor-grabbing"
         >
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
 
         {/* Type icon */}
         {component.componentType === "recipe" ? (
-          <ChefHat className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+          <ChefHat className="h-4 w-4 text-amber-600 dark:text-amber-400" />
         ) : (
-          <Package className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          <Package className="h-4 w-4 text-muted-foreground" />
         )}
 
-        {/* Ingredient name - truncate if needed */}
+        {/* Ingredient name - truncate */}
         <span 
-          className="font-medium text-sm truncate min-w-[100px] max-w-[180px]" 
+          className="font-medium text-sm truncate" 
           title={component.name}
           data-testid={`text-ingredient-name-${component.id}`}
         >
           {component.name}
         </span>
 
-        {/* Quantity input - compact */}
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <Input
-            type="number"
-            step="0.01"
-            min="0"
-            value={localQty}
-            onChange={(e) => handleQtyChange(e.target.value)}
-            onFocus={handleQtyFocus}
-            onBlur={handleQtyBlur}
-            className="h-8 w-20 text-sm"
-            data-testid={`input-qty-${component.id}`}
-          />
-        </div>
+        {/* Quantity input */}
+        <Input
+          type="number"
+          step="0.01"
+          min="0"
+          value={localQty}
+          onChange={(e) => handleQtyChange(e.target.value)}
+          onFocus={handleQtyFocus}
+          onBlur={handleQtyBlur}
+          className="h-8 text-sm"
+          data-testid={`input-qty-${component.id}`}
+        />
 
-        {/* Unit selector - compact */}
+        {/* Unit selector */}
         <Select value={component.unitId} onValueChange={handleUnitChange}>
-          <SelectTrigger className="h-8 w-28 text-sm" data-testid={`select-unit-${component.id}`}>
+          <SelectTrigger className="h-8 text-sm" data-testid={`select-unit-${component.id}`}>
             <SelectValue placeholder="Unit" />
           </SelectTrigger>
           <SelectContent>
@@ -282,33 +280,32 @@ function InlineIngredientRow({
           </SelectContent>
         </Select>
 
-        {/* Yield override - only for inventory items, compact */}
-        {component.componentType === "inventory_item" && (
-          <div className="flex items-center gap-1 flex-shrink-0">
+        {/* Yield override - only for inventory items */}
+        {component.componentType === "inventory_item" ? (
+          <div className="flex items-center gap-1">
             <Input
               type="number"
               step="0.1"
               min="0"
               max="100"
-              placeholder={`${getDefaultYield()}%`}
+              placeholder={`${getDefaultYield()}`}
               value={localYieldOverride}
               onChange={(e) => handleYieldOverrideChange(e.target.value)}
               onFocus={handleYieldFocus}
               onBlur={handleYieldOverrideBlur}
-              className="h-8 w-16 text-sm"
+              className="h-8 text-sm w-12"
               title={`Yield % (default: ${getDefaultYield()}%)`}
               data-testid={`input-yield-${component.id}`}
             />
             <span className="text-xs text-muted-foreground">%</span>
           </div>
+        ) : (
+          <div />
         )}
-
-        {/* Spacer to push cost and delete to the right */}
-        <div className="flex-1" />
 
         {/* Cost - right aligned */}
         <span 
-          className="font-mono text-sm font-medium text-right min-w-[60px]" 
+          className="font-mono text-sm font-medium text-right" 
           data-testid={`text-ingredient-cost-${component.id}`}
         >
           ${component.cost.toFixed(2)}
@@ -319,7 +316,7 @@ function InlineIngredientRow({
           variant="ghost"
           size="icon"
           onClick={onDelete}
-          className="flex-shrink-0 h-8 w-8"
+          className="h-8 w-8"
           data-testid={`button-delete-ingredient-${component.id}`}
         >
           <Trash2 className="h-4 w-4 text-muted-foreground" />
