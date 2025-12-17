@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Calendar as CalendarIcon, Trash2, Star } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Trash2, Star, RotateCcw } from "lucide-react";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
   Table,
@@ -245,6 +245,37 @@ export default function InventorySessions() {
     createSessionMutation.mutate();
   };
 
+  // Initialize zero baseline mutation
+  const initializeBaselineMutation = useMutation({
+    mutationFn: async (storeId: string) => {
+      const response = await apiRequest("POST", "/api/inventory-counts/initialize-baseline", {
+        storeId,
+      });
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/store-inventory-items"] });
+      toast({
+        title: "Baseline Initialized",
+        description: data.message || `Zero baseline set for ${data.itemCount} inventory items`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to initialize baseline",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleInitializeBaseline = (storeId: string, storeName: string) => {
+    if (confirm(`Initialize zero baseline for ${storeName}? This will set all inventory items to 0 and create a completed count session. This action cannot be undone.`)) {
+      initializeBaselineMutation.mutate(storeId);
+    }
+  };
+
   // Get accessible store IDs
   const accessibleStoreIds = new Set(stores.map(s => s.id));
   
@@ -262,6 +293,13 @@ export default function InventorySessions() {
   const sortedCounts = filteredCounts ? [...filteredCounts].sort((a, b) => 
     new Date(b.countDate || b.countedAt).getTime() - new Date(a.countDate || a.countedAt).getTime()
   ) : [];
+
+  // Check which stores need baseline initialization (no applied counts)
+  const storesNeedingBaseline = stores.filter(store => {
+    const storeCounts = inventoryCounts?.filter(c => c.storeId === store.id) || [];
+    const appliedCounts = storeCounts.filter((c: any) => c.applied === 1);
+    return appliedCounts.length === 0;
+  });
 
   return (
     <div className="p-8">
@@ -310,6 +348,40 @@ export default function InventorySessions() {
           </div>
         </div>
       </div>
+
+      {/* Zero Baseline Initialization Card - shows for stores without any completed counts */}
+      {storesNeedingBaseline.length > 0 && (
+        <Card className="mb-6 border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20" data-testid="card-baseline-needed">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-amber-600" />
+              New Store Setup
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              The following stores have no completed inventory counts. Initialize a zero baseline to establish 
+              a starting point for inventory tracking. This is recommended for new stores that haven't performed 
+              a physical count yet.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {storesNeedingBaseline.map(store => (
+                <Button
+                  key={store.id}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleInitializeBaseline(store.id, store.name)}
+                  disabled={initializeBaselineMutation.isPending}
+                  data-testid={`button-init-baseline-${store.id}`}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Initialize {store.name}
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent data-testid="dialog-new-session">

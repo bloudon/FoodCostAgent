@@ -4787,6 +4787,178 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Initialize zero baseline - creates a completed inventory count session with all items at zero
+  // This establishes a starting point for new stores that haven't done a physical count yet
+  app.post("/api/inventory-counts/initialize-baseline", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const user = (req as any).user;
+      const { storeId } = req.body;
+
+      if (!storeId) {
+        return res.status(400).json({ error: "Store ID is required" });
+      }
+
+      // Verify store belongs to company
+      const store = await storage.getCompanyStore(storeId);
+      if (!store || store.companyId !== companyId) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+
+      // Check if any applied inventory count already exists for this store
+      const existingCounts = await storage.getInventoryCounts(companyId, storeId);
+      const appliedCounts = existingCounts.filter((c: any) => c.applied === 1);
+      if (appliedCounts.length > 0) {
+        return res.status(400).json({ 
+          error: "This store already has completed inventory counts. Zero baseline is only for new stores." 
+        });
+      }
+
+      // Get all active inventory items for this store
+      const activeItemsQuery = await db
+        .select({ inventoryItem: inventoryItems })
+        .from(inventoryItems)
+        .innerJoin(
+          storeInventoryItems,
+          and(
+            eq(storeInventoryItems.inventoryItemId, inventoryItems.id),
+            eq(storeInventoryItems.storeId, storeId)
+          )
+        )
+        .where(
+          and(
+            eq(inventoryItems.companyId, companyId),
+            eq(inventoryItems.active, 1),
+            eq(storeInventoryItems.active, 1)
+          )
+        );
+
+      const activeItems = activeItemsQuery.map(row => row.inventoryItem);
+
+      if (activeItems.length === 0) {
+        return res.status(400).json({ error: "No active inventory items found for this store" });
+      }
+
+      // Get storage locations for items
+      const itemIds = activeItems.map(item => item.id);
+      const itemLocationsQuery = await db
+        .select({
+          inventoryItemId: inventoryItemLocations.inventoryItemId,
+          storageLocationId: inventoryItemLocations.storageLocationId,
+        })
+        .from(inventoryItemLocations)
+        .innerJoin(
+          storageLocations,
+          eq(inventoryItemLocations.storageLocationId, storageLocations.id)
+        )
+        .where(
+          and(
+            inArray(inventoryItemLocations.inventoryItemId, itemIds),
+            eq(storageLocations.companyId, companyId)
+          )
+        );
+
+      const itemLocationsMap = new Map<string, string[]>();
+      for (const location of itemLocationsQuery) {
+        const existing = itemLocationsMap.get(location.inventoryItemId) || [];
+        existing.push(location.storageLocationId);
+        itemLocationsMap.set(location.inventoryItemId, existing);
+      }
+
+      // Create the baseline inventory count session
+      const today = new Date();
+      const countDate = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+      
+      const baselineCount = await storage.createInventoryCount({
+        companyId,
+        storeId,
+        countDate,
+        notes: "System-generated zero baseline for new store initialization",
+        userId: user.id,
+        isPowerSession: 0,
+      });
+
+      // Create count lines with qty = 0 for all items
+      let linesCreated = 0;
+      for (const item of activeItems) {
+        const locations = itemLocationsMap.get(item.id) || [];
+        
+        if (locations.length === 0) continue;
+
+        for (const storageLocationId of locations) {
+          await storage.createInventoryCountLine({
+            inventoryCountId: baselineCount.id,
+            inventoryItemId: item.id,
+            storageLocationId,
+            qty: 0,
+            unitId: item.unitId,
+            unitCost: item.pricePerUnit,
+            userId: user.id,
+          });
+          linesCreated++;
+        }
+      }
+
+      // Apply the count immediately (set all on-hand quantities to 0)
+      await withTransaction(async (tx) => {
+        for (const item of activeItems) {
+          const [existingStoreItem] = await tx
+            .select()
+            .from(storeInventoryItems)
+            .where(
+              and(
+                eq(storeInventoryItems.companyId, companyId),
+                eq(storeInventoryItems.storeId, storeId),
+                eq(storeInventoryItems.inventoryItemId, item.id)
+              )
+            )
+            .limit(1);
+          
+          if (existingStoreItem) {
+            await tx
+              .update(storeInventoryItems)
+              .set({ 
+                onHandQty: 0,
+                updatedAt: new Date()
+              })
+              .where(
+                and(
+                  eq(storeInventoryItems.companyId, companyId),
+                  eq(storeInventoryItems.storeId, storeId),
+                  eq(storeInventoryItems.inventoryItemId, item.id)
+                )
+              );
+          }
+        }
+
+        // Mark count as applied
+        await tx
+          .update(inventoryCounts)
+          .set({ 
+            applied: 1,
+            appliedAt: new Date(),
+            appliedBy: user.id
+          })
+          .where(
+            and(
+              eq(inventoryCounts.id, baselineCount.id),
+              eq(inventoryCounts.companyId, companyId)
+            )
+          );
+      });
+
+      res.status(201).json({
+        message: `Zero baseline initialized for ${activeItems.length} inventory items`,
+        countId: baselineCount.id,
+        itemCount: activeItems.length,
+        linesCreated
+      });
+    } catch (error: any) {
+      console.error("Initialize baseline error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get previous inventory count session (for comparison)
   app.get("/api/inventory-counts/:id/previous-lines", async (req, res) => {
     try {
