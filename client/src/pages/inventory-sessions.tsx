@@ -31,6 +31,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -146,6 +156,8 @@ export default function InventorySessions() {
   const [note, setNote] = useState("");
   const [isPowerSession, setIsPowerSession] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [baselineConfirmOpen, setBaselineConfirmOpen] = useState(false);
+  const [baselineStore, setBaselineStore] = useState<{ id: string; name: string } | null>(null);
 
   // Get authenticated user to determine company ID
   const { data: user } = useQuery<any>({
@@ -271,9 +283,16 @@ export default function InventorySessions() {
   });
 
   const handleInitializeBaseline = (storeId: string, storeName: string) => {
-    if (confirm(`Initialize zero baseline for ${storeName}? This will set all inventory items to 0 and create a completed count session. This action cannot be undone.`)) {
-      initializeBaselineMutation.mutate(storeId);
+    setBaselineStore({ id: storeId, name: storeName });
+    setBaselineConfirmOpen(true);
+  };
+
+  const confirmInitializeBaseline = () => {
+    if (baselineStore) {
+      initializeBaselineMutation.mutate(baselineStore.id);
     }
+    setBaselineConfirmOpen(false);
+    setBaselineStore(null);
   };
 
   // Get accessible store IDs
@@ -546,6 +565,37 @@ export default function InventorySessions() {
           )}
         </CardContent>
       </Card>
+
+      {/* Baseline Initialization Confirmation Dialog */}
+      <AlertDialog open={baselineConfirmOpen} onOpenChange={setBaselineConfirmOpen}>
+        <AlertDialogContent data-testid="dialog-baseline-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Initialize Zero Baseline</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to initialize a zero baseline for <strong>{baselineStore?.name}</strong>?
+              <br /><br />
+              This will:
+              <ul className="list-disc pl-6 mt-2 space-y-1">
+                <li>Set all inventory item quantities to 0</li>
+                <li>Create a completed count session with today's date</li>
+                <li>Establish a starting point for inventory tracking</li>
+              </ul>
+              <br />
+              <strong>This action cannot be undone.</strong>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-baseline-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmInitializeBaseline}
+              disabled={initializeBaselineMutation.isPending}
+              data-testid="button-baseline-confirm"
+            >
+              {initializeBaselineMutation.isPending ? "Initializing..." : "Initialize Baseline"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
