@@ -1375,10 +1375,10 @@ export default function RecipeBuilder() {
               </div>
 
               <div className="flex-1 overflow-auto space-y-4">
-                {/* Base Recipes Section */}
+                {/* Base Recipes Section - Warm amber tones */}
                 {baseRecipesSource.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
+                  <div className="bg-amber-50/50 dark:bg-amber-950/20 rounded-lg p-3 border border-amber-200/50 dark:border-amber-800/30">
+                    <h3 className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-2 flex items-center gap-2">
                       <ChefHat className="h-4 w-4" />
                       Base Recipes
                     </h3>
@@ -1394,10 +1394,10 @@ export default function RecipeBuilder() {
                   </div>
                 )}
 
-                {/* Inventory Items Section */}
+                {/* Inventory Items Section - Cool blue/slate tones */}
                 {inventoryItemsSource.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
+                  <div className="bg-slate-50/50 dark:bg-slate-900/30 rounded-lg p-3 border border-slate-200/50 dark:border-slate-700/30">
+                    <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400 mb-2 flex items-center gap-2">
                       <Package className="h-4 w-4" />
                       Inventory Items
                     </h3>
