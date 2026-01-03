@@ -641,7 +641,7 @@ export default function RecipeBuilder() {
       componentId: item.id,
       qty: 1, // Default quantity of 1
       unitId: unitId,
-      sortOrder: components.length,
+      sortOrder: 0, // New items go to top
       name: item.name,
       unitName: unitName || units?.find(u => u.id === unitId)?.name || "",
       cost: 0,
@@ -651,7 +651,7 @@ export default function RecipeBuilder() {
     };
 
     newComponent.cost = calculateComponentCost(newComponent);
-    setComponents([...components, newComponent]);
+    setComponents([newComponent, ...components]); // Prepend to top
     
     toast({
       title: "Ingredient added",
@@ -742,7 +742,7 @@ export default function RecipeBuilder() {
       componentId: pendingItem.id,
       qty: parseFloat(dialogQty),
       unitId: dialogUnitId,
-      sortOrder: components.length,
+      sortOrder: 0, // New items go to top
       name: pendingItem.name,
       unitName: units?.find((u) => u.id === dialogUnitId)?.name || "",
       cost: 0,
@@ -752,7 +752,7 @@ export default function RecipeBuilder() {
     };
 
     newComponent.cost = calculateComponentCost(newComponent);
-    setComponents([...components, newComponent]);
+    setComponents([newComponent, ...components]); // Prepend to top
     setShowAddDialog(false);
     setPendingItem(null);
     setDialogQty("");
@@ -1405,12 +1405,12 @@ export default function RecipeBuilder() {
 
             {/* Right panel - Recipe canvas */}
             <div className="col-span-8 flex flex-col gap-4 overflow-hidden">
-              {/* Recipe metadata */}
-              <Card>
-                <CardContent className="pt-6 space-y-4">
+              {/* Recipe metadata - compact */}
+              <Card className="flex-shrink-0">
+                <CardContent className="pt-4 pb-3 space-y-3">
                   {/* Recipe name and cost on same line */}
                   <div className="flex items-center gap-4">
-                    <div className="flex-1 space-y-2">
+                    <div className="flex-1 space-y-1">
                       <label className="text-sm font-medium">Recipe Name</label>
                       <Input
                         value={recipeName}
@@ -1419,10 +1419,10 @@ export default function RecipeBuilder() {
                         data-testid="input-recipe-name"
                       />
                     </div>
-                    <div className="w-48 space-y-2">
-                      <label className="text-sm font-medium">Cost:</label>
+                    <div className="w-32 text-right">
+                      <label className="text-sm font-medium text-muted-foreground">Cost:</label>
                       <div
-                        className="text-2xl font-bold text-primary text-right"
+                        className="text-2xl font-bold text-primary"
                         data-testid="text-total-cost"
                       >
                         ${totalCost.toFixed(2)}
@@ -1431,7 +1431,7 @@ export default function RecipeBuilder() {
                   </div>
 
                   {/* Yield and canBeIngredient in closed accordion */}
-                  <Accordion type="single" collapsible>
+                  <Accordion type="single" collapsible className="-mb-2">
                     <AccordionItem value="yield-details" className="border-0">
                       <AccordionTrigger className="text-sm font-medium py-2">
                         Recipe Yield & Options
@@ -1527,7 +1527,7 @@ export default function RecipeBuilder() {
                 id="recipe-canvas"
                 className="flex-1 overflow-hidden flex flex-col min-h-0"
               >
-                <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                <CardHeader className="py-3 flex flex-row items-center justify-between gap-2">
                   <h3 className="text-sm font-medium">Ingredients ({components.length})</h3>
                   {components.length > 0 && (
                     <span className="text-sm text-muted-foreground">
