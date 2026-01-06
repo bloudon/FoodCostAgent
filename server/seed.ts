@@ -91,7 +91,7 @@ async function seedKitchenUnits() {
     { name: "bottle", abbreviation: "btl", kind: "count", toBaseRatio: 1, system: "both" },
     { name: "jar", abbreviation: "jar", kind: "count", toBaseRatio: 1, system: "both" },
     { name: "can", abbreviation: "can", kind: "count", toBaseRatio: 1, system: "both" },
-    { name: "#10 can", abbreviation: "#10", kind: "count", toBaseRatio: 1, system: "us" },
+    { name: "#10 can", abbreviation: "#10", kind: "count", toBaseRatio: 1, system: "imperial" },
   ];
   
   // Filter to only insert missing units (upsert strategy)
