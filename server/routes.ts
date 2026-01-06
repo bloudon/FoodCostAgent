@@ -2488,6 +2488,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return {
         id: item.id,
         name: item.name,
+        manufacturer: item.manufacturer,
         categoryId: item.categoryId,
         category: category?.name || null,
         pluSku: item.pluSku,

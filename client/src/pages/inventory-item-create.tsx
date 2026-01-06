@@ -47,6 +47,7 @@ export default function InventoryItemCreate() {
   const { toast } = useToast();
   
   const [name, setName] = useState("");
+  const [manufacturer, setManufacturer] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [pluSku, setPluSku] = useState("");
   const [unitId, setUnitId] = useState("");
@@ -110,6 +111,7 @@ export default function InventoryItemCreate() {
     mutationFn: async () => {
       const data = {
         name: name.trim(),
+        manufacturer: manufacturer.trim() || null,
         categoryId: categoryId || null,
         pluSku: pluSku.trim() || null,
         unitId,
@@ -286,6 +288,17 @@ export default function InventoryItemCreate() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="manufacturer">Manufacturer</Label>
+                <Input
+                  id="manufacturer"
+                  value={manufacturer}
+                  onChange={(e) => setManufacturer(e.target.value)}
+                  placeholder="e.g., Grande Cheese"
+                  data-testid="input-manufacturer"
+                />
               </div>
 
               <div className="space-y-2">

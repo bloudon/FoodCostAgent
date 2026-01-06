@@ -43,6 +43,7 @@ import type { SystemPreferences } from "@shared/schema";
 type InventoryItem = {
   id: string;
   name: string;
+  manufacturer: string | null;
   categoryId: string | null;
   pluSku: string;
   unitId: string;
@@ -571,7 +572,7 @@ export default function InventoryItemDetail() {
               )}
             </div>
             <p className="text-sm text-muted-foreground">
-              PLU/SKU: {item.pluSku}
+              {item.manufacturer && <span>{item.manufacturer} | </span>}PLU/SKU: {item.pluSku}
             </p>
           </div>
           <Button
@@ -948,6 +949,18 @@ export default function InventoryItemDetail() {
                 onBlur={() => handleFieldBlur("name")}
                 disabled={updateMutation.isPending}
                 data-testid="input-item-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="manufacturer">Manufacturer</Label>
+              <Input
+                id="manufacturer"
+                value={getFieldValue("manufacturer", item.manufacturer || "")}
+                onChange={(e) => handleFieldChange("manufacturer", e.target.value)}
+                onBlur={() => handleFieldBlur("manufacturer")}
+                disabled={updateMutation.isPending}
+                placeholder="e.g., Grande Cheese"
+                data-testid="input-manufacturer"
               />
             </div>
             <div className="space-y-2">

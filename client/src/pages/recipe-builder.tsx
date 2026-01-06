@@ -1077,11 +1077,12 @@ export default function RecipeBuilder() {
 
   // Filter source items
   const filteredInventoryItems = inventoryItems?.filter((item) => {
-    // Search filter - match by name OR pluSku
+    // Search filter - match by name, manufacturer, OR pluSku
     const searchLower = searchTerm.toLowerCase();
     const nameMatch = item.name.toLowerCase().includes(searchLower);
+    const manufacturerMatch = item.manufacturer?.toLowerCase().includes(searchLower);
     const skuMatch = item.pluSku?.toLowerCase().includes(searchLower);
-    if (!nameMatch && !skuMatch) {
+    if (!nameMatch && !manufacturerMatch && !skuMatch) {
       return false;
     }
     

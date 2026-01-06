@@ -43,6 +43,7 @@ import { formatUnitName, formatDateString } from "@/lib/utils";
 type InventoryItemDisplay = {
   id: string;
   name: string;
+  manufacturer: string | null;
   categoryId: string | null;
   category: string | null;
   pluSku: string;
@@ -202,6 +203,7 @@ export default function InventoryItems() {
   const filteredItems = inventoryItems?.filter((item) => {
     const searchLower = search.toLowerCase();
     const matchesSearch = item.name?.toLowerCase().includes(searchLower) ||
+      item.manufacturer?.toLowerCase().includes(searchLower) ||
       item.pluSku?.toLowerCase().includes(searchLower) ||
       item.vendorSkus?.some(sku => sku.toLowerCase().includes(searchLower));
     const matchesLocation = selectedLocation === "all" || 

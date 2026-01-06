@@ -4,6 +4,7 @@
 export interface EnrichedInventoryItem {
   id: string;
   name: string;
+  manufacturer: string | null;
   categoryId: string | null;
   category: string | null;
   pluSku: string | null;
