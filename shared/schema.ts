@@ -423,7 +423,8 @@ export const vendorItems = pgTable("vendor_items", {
   purchaseUnitId: varchar("purchase_unit_id").notNull(),
   caseSize: real("case_size").notNull().default(1), // number of purchase units per case
   innerPackSize: real("inner_pack_size"),
-  lastPrice: real("last_price").notNull().default(0),
+  lastPrice: real("last_price").notNull().default(0), // derived unit price (casePrice / (caseSize * innerPackSize))
+  lastCasePrice: real("last_case_price").notNull().default(0), // entered case price (primary entry field)
   active: integer("active").notNull().default(1),
 });
 
