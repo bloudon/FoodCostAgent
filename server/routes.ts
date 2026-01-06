@@ -3050,6 +3050,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const vendorItem = await storage.createVendorItem(data);
+      
+      // Sync vendor item unit price to inventory item pricePerUnit
+      if (vendorItem.inventoryItemId && vendorItem.lastPrice !== undefined && vendorItem.lastPrice > 0) {
+        await storage.updateInventoryItem(vendorItem.inventoryItemId, {
+          pricePerUnit: vendorItem.lastPrice
+        });
+      }
+      
       res.status(201).json(vendorItem);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -3060,18 +3068,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const updates = insertVendorItemSchema.partial().parse(req.body);
       
+      // Get current vendor item first
+      const currentItem = await storage.getVendorItem(req.params.id);
+      if (!currentItem) {
+        return res.status(404).json({ error: "Vendor item not found" });
+      }
+      
       // If case price is being updated, recalculate unit price
       if (updates.lastCasePrice !== undefined) {
-        // Get current vendor item to get case/inner values if not in updates
-        const currentItem = await storage.getVendorItem(req.params.id);
-        if (currentItem) {
-          const caseSize = updates.caseSize ?? currentItem.caseSize ?? 1;
-          const innerPackSize = updates.innerPackSize ?? currentItem.innerPackSize ?? 1;
-          const totalUnits = caseSize * innerPackSize;
-          
-          if (updates.lastCasePrice > 0 && totalUnits > 0) {
-            updates.lastPrice = updates.lastCasePrice / totalUnits;
-          }
+        const caseSize = updates.caseSize ?? currentItem.caseSize ?? 1;
+        const innerPackSize = updates.innerPackSize ?? currentItem.innerPackSize ?? 1;
+        const totalUnits = caseSize * innerPackSize;
+        
+        if (updates.lastCasePrice > 0 && totalUnits > 0) {
+          updates.lastPrice = updates.lastCasePrice / totalUnits;
         }
       }
       
@@ -3079,6 +3089,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!vendorItem) {
         return res.status(404).json({ error: "Vendor item not found" });
       }
+      
+      // Sync vendor item unit price to inventory item pricePerUnit
+      if (vendorItem.inventoryItemId && vendorItem.lastPrice !== undefined && vendorItem.lastPrice > 0) {
+        await storage.updateInventoryItem(vendorItem.inventoryItemId, {
+          pricePerUnit: vendorItem.lastPrice
+        });
+      }
+      
       res.json(vendorItem);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
