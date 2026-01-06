@@ -1,12 +1,18 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
@@ -62,6 +68,7 @@ export default function InventoryItemCreate() {
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
   const [isPowerItem, setIsPowerItem] = useState(false);
   const [isVariableWeight, setIsVariableWeight] = useState(false);
+  const [extraDetailsOpen, setExtraDetailsOpen] = useState<string | undefined>("extra-details");
 
   const { data: units } = useQuery<Unit[]>({
     queryKey: ["/api/units"],
@@ -290,38 +297,50 @@ export default function InventoryItemCreate() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="manufacturer">Manufacturer</Label>
-                <Input
-                  id="manufacturer"
-                  value={manufacturer}
-                  onChange={(e) => setManufacturer(e.target.value)}
-                  placeholder="e.g., Grande Cheese"
-                  data-testid="input-manufacturer"
-                />
-              </div>
+              <Accordion type="single" collapsible value={extraDetailsOpen} onValueChange={setExtraDetailsOpen}>
+                <AccordionItem value="extra-details" className="border rounded-lg px-4">
+                  <AccordionTrigger className="hover:no-underline" data-testid="accordion-extra-details">
+                    <div className="flex items-center gap-2">
+                      <Settings className="h-4 w-4" />
+                      <span className="font-semibold">Extra Details</span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pt-4 space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="manufacturer">Manufacturer</Label>
+                      <Input
+                        id="manufacturer"
+                        value={manufacturer}
+                        onChange={(e) => setManufacturer(e.target.value)}
+                        placeholder="e.g., Grande Cheese"
+                        data-testid="input-manufacturer"
+                      />
+                    </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="pluSku">PLU/SKU</Label>
-                <Input
-                  id="pluSku"
-                  value={pluSku}
-                  onChange={(e) => setPluSku(e.target.value)}
-                  placeholder="e.g., MOZZ-001"
-                  data-testid="input-plu-sku"
-                />
-              </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="pluSku">PLU/SKU</Label>
+                      <Input
+                        id="pluSku"
+                        value={pluSku}
+                        onChange={(e) => setPluSku(e.target.value)}
+                        placeholder="e.g., MOZZ-001"
+                        data-testid="input-plu-sku"
+                      />
+                    </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="barcode">Barcode</Label>
-                <Input
-                  id="barcode"
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                  placeholder="Barcode"
-                  data-testid="input-barcode"
-                />
-              </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="barcode">Barcode</Label>
+                      <Input
+                        id="barcode"
+                        value={barcode}
+                        onChange={(e) => setBarcode(e.target.value)}
+                        placeholder="Barcode"
+                        data-testid="input-barcode"
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             </CardContent>
           </Card>
 
