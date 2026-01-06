@@ -10,7 +10,7 @@ async function seedKitchenUnits() {
   
   const existingUnits = await db.select().from(units);
   
-  // Define all 40 comprehensive kitchen units
+  // Define all 41 comprehensive kitchen units
   const expectedUnitNames = new Set([
     // Weight (11)
     "gram", "kilogram", "metric ton", "ounce (weight)", "half-ounce", "quarter-ounce",
@@ -20,9 +20,9 @@ async function seedKitchenUnits() {
     "drop", "dash", "pinch", "teaspoon", "half-teaspoon",
     "tablespoon", "half-tablespoon", "fluid ounce", "cup", "half-cup",
     "quarter-cup", "pint", "quart", "gallon",
-    // Count (10)
+    // Count (11)
     "each", "half-dozen", "dozen", "roll", "case",
-    "box", "bag", "bottle", "jar", "can",
+    "box", "bag", "bottle", "jar", "can", "#10 can",
   ]);
   
   const existingUnitNames = new Set(existingUnits.map(u => u.name));
@@ -31,7 +31,7 @@ async function seedKitchenUnits() {
   const missingUnits = [...expectedUnitNames].filter(name => !existingUnitNames.has(name));
   
   if (missingUnits.length === 0) {
-    console.log("✅ All 40 comprehensive kitchen units already seeded");
+    console.log("✅ All 41 comprehensive kitchen units already seeded");
     return;
   }
   
@@ -91,6 +91,7 @@ async function seedKitchenUnits() {
     { name: "bottle", abbreviation: "btl", kind: "count", toBaseRatio: 1, system: "both" },
     { name: "jar", abbreviation: "jar", kind: "count", toBaseRatio: 1, system: "both" },
     { name: "can", abbreviation: "can", kind: "count", toBaseRatio: 1, system: "both" },
+    { name: "#10 can", abbreviation: "#10", kind: "count", toBaseRatio: 1, system: "us" },
   ];
   
   // Filter to only insert missing units (upsert strategy)
@@ -101,7 +102,7 @@ async function seedKitchenUnits() {
     console.log(`✅ Added ${unitsToInsert.length} missing kitchen units`);
   }
   
-  console.log(`✅ Complete: ${kitchenUnits.length} total kitchen units (imperial + metric)`);
+  console.log(`✅ Complete: ${kitchenUnits.length} total kitchen units (imperial + metric + us)`);
 }
 
 // Helper function to create default categories for a company
@@ -640,6 +641,8 @@ export async function seedDatabase() {
   const pint = findUnit("pint");
   const quart = findUnit("quart");
   const gallon = findUnit("gallon");
+  const fluidOunce = findUnit("fluid ounce");
+  const numberTenCan = findUnit("#10 can");
   
   // Only create conversions if units exist
   if (pound && ounce) {
@@ -711,6 +714,25 @@ export async function seedDatabase() {
       fromUnitId: gallon.id,
       toUnitId: cup.id,
       conversionFactor: 16,
+    });
+  }
+
+  // #10 Can conversions (standard #10 can = 109 fl oz = 13.5 cups)
+  if (numberTenCan && fluidOunce) {
+    // 1 #10 can = 109 fluid ounces
+    await storage.createUnitConversion({
+      fromUnitId: numberTenCan.id,
+      toUnitId: fluidOunce.id,
+      conversionFactor: 109,
+    });
+  }
+
+  if (numberTenCan && cup) {
+    // 1 #10 can = 13.625 cups (109 fl oz / 8 fl oz per cup)
+    await storage.createUnitConversion({
+      fromUnitId: numberTenCan.id,
+      toUnitId: cup.id,
+      conversionFactor: 13.625,
     });
   }
 
