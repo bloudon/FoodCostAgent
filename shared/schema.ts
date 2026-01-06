@@ -271,6 +271,7 @@ export const inventoryItems = pgTable("inventory_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
+  manufacturer: text("manufacturer"), // optional product manufacturer/brand
   categoryId: varchar("category_id"), // Reference to categories table
   pluSku: text("plu_sku"),
   unitId: varchar("unit_id").notNull(), // unit reference (pounds by default)
