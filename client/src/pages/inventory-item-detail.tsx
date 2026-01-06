@@ -98,6 +98,7 @@ type VendorItem = {
   caseSize: number;
   innerPackSize: number | null;
   lastPrice: number;
+  lastCasePrice: number;
   active: number;
   lastOrderDate: string | null;
   vendor: {
@@ -133,7 +134,7 @@ export default function InventoryItemDetail() {
     purchaseUnitId: string;
     caseSize: string;
     innerPackSize: string;
-    lastPrice: string;
+    lastCasePrice: string;
     active: number;
   }>>({});
 
@@ -456,7 +457,7 @@ export default function InventoryItemDetail() {
         purchaseUnitId: vendorItem.purchaseUnitId,
         caseSize: vendorItem.caseSize.toString(),
         innerPackSize: vendorItem.innerPackSize?.toString() || "",
-        lastPrice: vendorItem.lastPrice.toString(),
+        lastCasePrice: vendorItem.lastCasePrice.toString(),
         active: vendorItem.active,
       }
     }));
@@ -473,7 +474,7 @@ export default function InventoryItemDetail() {
         purchaseUnitId: item?.unitId || "",
         caseSize: "1",
         innerPackSize: "",
-        lastPrice: "0",
+        lastCasePrice: "0",
         active: 1,
       }
     }));
@@ -513,7 +514,7 @@ export default function InventoryItemDetail() {
       purchaseUnitId: rowData.purchaseUnitId,
       caseSize: parseFloat(rowData.caseSize) || 1,
       innerPackSize: rowData.innerPackSize.trim() !== "" ? parseFloat(rowData.innerPackSize) : null,
-      lastPrice: parseFloat(rowData.lastPrice) || 0,
+      lastCasePrice: parseFloat(rowData.lastCasePrice) || 0,
       active: rowData.active,
     };
 
@@ -639,10 +640,10 @@ export default function InventoryItemDetail() {
                       <TableHead>Vendor</TableHead>
                       <TableHead>SKU</TableHead>
                       <TableHead>Unit</TableHead>
-                      <TableHead>Price</TableHead>
+                      <TableHead>Case Price</TableHead>
                       <TableHead>Case</TableHead>
                       <TableHead>Inner</TableHead>
-                      <TableHead>Case Price</TableHead>
+                      <TableHead>Price</TableHead>
                       <TableHead>Last Order</TableHead>
                       <TableHead className="w-[100px]">Actions</TableHead>
                     </TableRow>
@@ -703,10 +704,10 @@ export default function InventoryItemDetail() {
                                 <Input
                                   type="number"
                                   step="0.01"
-                                  value={rowData.lastPrice}
-                                  onChange={(e) => updateVendorRowField(vi.id, "lastPrice", e.target.value)}
-                                  className="w-[80px]"
-                                  data-testid={`input-price-${vi.id}`}
+                                  value={rowData.lastCasePrice}
+                                  onChange={(e) => updateVendorRowField(vi.id, "lastCasePrice", e.target.value)}
+                                  className="w-[90px]"
+                                  data-testid={`input-case-price-${vi.id}`}
                                 />
                               </TableCell>
                               <TableCell>
@@ -731,7 +732,13 @@ export default function InventoryItemDetail() {
                                 />
                               </TableCell>
                               <TableCell className="text-muted-foreground">
-                                ${(parseFloat(rowData.lastPrice || "0") * parseFloat(rowData.caseSize || "1")).toFixed(2)}
+                                ${(() => {
+                                  const casePrice = parseFloat(rowData.lastCasePrice || "0");
+                                  const caseSize = parseFloat(rowData.caseSize || "1");
+                                  const innerPack = parseFloat(rowData.innerPackSize || "1") || 1;
+                                  const totalUnits = caseSize * innerPack;
+                                  return totalUnits > 0 ? (casePrice / totalUnits).toFixed(4) : "0.0000";
+                                })()}
                               </TableCell>
                               <TableCell className="text-muted-foreground">
                                 {vi.lastOrderDate ? new Date(vi.lastOrderDate).toLocaleDateString() : "-"}
@@ -778,10 +785,10 @@ export default function InventoryItemDetail() {
                             <TableCell className="font-medium">{vi.vendor?.name || "Unknown"}</TableCell>
                             <TableCell className="text-muted-foreground">{vi.vendorSku || "-"}</TableCell>
                             <TableCell>{formatUnitName(vi.unit?.name)}</TableCell>
-                            <TableCell>${vi.lastPrice.toFixed(2)}</TableCell>
+                            <TableCell>${vi.lastCasePrice.toFixed(2)}</TableCell>
                             <TableCell>{vi.caseSize}</TableCell>
                             <TableCell className="text-muted-foreground">{vi.innerPackSize || "-"}</TableCell>
-                            <TableCell>${(vi.lastPrice * vi.caseSize).toFixed(2)}</TableCell>
+                            <TableCell className="text-muted-foreground">${vi.lastPrice.toFixed(4)}</TableCell>
                             <TableCell className="text-muted-foreground">
                               {vi.lastOrderDate ? new Date(vi.lastOrderDate).toLocaleDateString() : "-"}
                             </TableCell>
@@ -868,10 +875,10 @@ export default function InventoryItemDetail() {
                           <Input
                             type="number"
                             step="0.01"
-                            value={vendorRowEdits.new.lastPrice}
-                            onChange={(e) => updateVendorRowField("new", "lastPrice", e.target.value)}
-                            className="w-[80px]"
-                            data-testid="input-price-new"
+                            value={vendorRowEdits.new.lastCasePrice}
+                            onChange={(e) => updateVendorRowField("new", "lastCasePrice", e.target.value)}
+                            className="w-[90px]"
+                            data-testid="input-case-price-new"
                           />
                         </TableCell>
                         <TableCell>
@@ -896,7 +903,13 @@ export default function InventoryItemDetail() {
                           />
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          ${(parseFloat(vendorRowEdits.new.lastPrice || "0") * parseFloat(vendorRowEdits.new.caseSize || "1")).toFixed(2)}
+                          ${(() => {
+                            const casePrice = parseFloat(vendorRowEdits.new.lastCasePrice || "0");
+                            const caseSize = parseFloat(vendorRowEdits.new.caseSize || "1");
+                            const innerPack = parseFloat(vendorRowEdits.new.innerPackSize || "1") || 1;
+                            const totalUnits = caseSize * innerPack;
+                            return totalUnits > 0 ? (casePrice / totalUnits).toFixed(4) : "0.0000";
+                          })()}
                         </TableCell>
                         <TableCell className="text-muted-foreground">-</TableCell>
                         <TableCell>
