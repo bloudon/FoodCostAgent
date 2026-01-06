@@ -3039,6 +3039,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vendor-items", async (req, res) => {
     try {
       const data = insertVendorItemSchema.parse(req.body);
+      
+      // Derive unit price from case price if case price is provided
+      const caseSize = data.caseSize || 1;
+      const innerPackSize = data.innerPackSize || 1;
+      const totalUnits = caseSize * innerPackSize;
+      
+      if (data.lastCasePrice && data.lastCasePrice > 0 && totalUnits > 0) {
+        data.lastPrice = data.lastCasePrice / totalUnits;
+      }
+      
       const vendorItem = await storage.createVendorItem(data);
       res.status(201).json(vendorItem);
     } catch (error: any) {
@@ -3049,6 +3059,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/vendor-items/:id", async (req, res) => {
     try {
       const updates = insertVendorItemSchema.partial().parse(req.body);
+      
+      // If case price is being updated, recalculate unit price
+      if (updates.lastCasePrice !== undefined) {
+        // Get current vendor item to get case/inner values if not in updates
+        const currentItem = await storage.getVendorItem(req.params.id);
+        if (currentItem) {
+          const caseSize = updates.caseSize ?? currentItem.caseSize ?? 1;
+          const innerPackSize = updates.innerPackSize ?? currentItem.innerPackSize ?? 1;
+          const totalUnits = caseSize * innerPackSize;
+          
+          if (updates.lastCasePrice > 0 && totalUnits > 0) {
+            updates.lastPrice = updates.lastCasePrice / totalUnits;
+          }
+        }
+      }
+      
       const vendorItem = await storage.updateVendorItem(req.params.id, updates);
       if (!vendorItem) {
         return res.status(404).json({ error: "Vendor item not found" });
