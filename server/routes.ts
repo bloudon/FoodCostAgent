@@ -1032,104 +1032,169 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ OBJECT STORAGE (IMAGE UPLOADS) ============
-  // Integration with blueprint:javascript_object_storage for image uploads
-  const { ObjectStorageService, ObjectNotFoundError } = await import("./objectStorage");
-  const { ObjectPermission } = await import("./objectAcl");
+  // Dual-mode: Replit object storage (when sidecar available) or local filesystem (VPS)
+  const { LocalObjectStorageService, ObjectNotFoundError: LocalObjectNotFoundError, detectEnvironment } = await import("./localObjectStorage");
   const sharp = await import("sharp");
 
-  // Diagnostic endpoint to verify object storage configuration
+  const storageEnv = await detectEnvironment();
+  let replitObjectStorage: any = null;
+  let replitObjectAcl: any = null;
+
+  if (storageEnv === "replit") {
+    try {
+      const replitStorage = await import("./objectStorage");
+      const replitAcl = await import("./objectAcl");
+      replitObjectStorage = replitStorage;
+      replitObjectAcl = replitAcl;
+      console.log("[Storage] Using Replit object storage");
+    } catch (e) {
+      console.warn("[Storage] Failed to load Replit object storage, falling back to local");
+    }
+  }
+
+  const localStorageService = new LocalObjectStorageService();
+  const useLocalStorage = !replitObjectStorage;
+
+  if (useLocalStorage) {
+    console.log("[Storage] Using local filesystem storage with company isolation");
+  }
+
+  const imageUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith("image/")) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only image files are allowed"));
+      }
+    },
+  });
+
   app.get("/api/objects/status", requireAuth, async (req, res) => {
     try {
-      const objectStorageService = new ObjectStorageService();
-      const privateDir = objectStorageService.getPrivateObjectDir();
-      const publicPaths = objectStorageService.getPublicObjectSearchPaths();
-      
-      // Test sidecar connectivity
-      const sidecarUrl = "http://127.0.0.1:1106/credential";
-      let sidecarStatus = "unknown";
-      try {
-        const sidecarResponse = await fetch(sidecarUrl);
-        sidecarStatus = sidecarResponse.ok ? "connected" : `error: ${sidecarResponse.status}`;
-      } catch (e: any) {
-        sidecarStatus = `unreachable: ${e.message}`;
-      }
-      
-      res.json({
-        configured: true,
-        privateDir,
-        publicPaths,
-        sidecarStatus,
-        sidecarUrl,
-      });
-    } catch (error: any) {
-      res.status(500).json({ 
-        configured: false,
-        error: error.message 
-      });
-    }
-  });
-
-  // Get upload URL for inventory item images
-  app.post("/api/objects/upload", requireAuth, async (req, res) => {
-    try {
-      const objectStorageService = new ObjectStorageService();
-      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-      res.json({ uploadUrl: uploadURL }); // Use camelCase to match frontend expectation
-    } catch (error: any) {
-      console.error("Error getting upload URL:", error);
-      res.status(500).json({ error: "Failed to generate upload URL", details: error.message });
-    }
-  });
-
-  // Serve uploaded images with thumbnail support
-  app.get("/objects/:objectPath(*)", async (req, res) => {
-    const objectStorageService = new ObjectStorageService();
-    const thumbnail = req.query.thumbnail === "true";
-    
-    try {
-      const objectFile = await objectStorageService.getObjectEntityFile(req.path);
-      
-      // Check ACL policy to enforce access control
-      const user = (req as any).user; // May be undefined if not authenticated
-      const userId = user?.id;
-      
-      const canAccess = await objectStorageService.canAccessObjectEntity({
-        objectFile,
-        userId,
-        requestedPermission: ObjectPermission.READ,
-      });
-      
-      if (!canAccess) {
-        return res.sendStatus(userId ? 403 : 401);
-      }
-      
-      if (thumbnail) {
-        // Stream through sharp for thumbnail generation
-        const stream = objectFile.createReadStream();
-        const [metadata] = await objectFile.getMetadata();
-        
-        res.set({
-          "Content-Type": "image/jpeg",
-          "Cache-Control": "public, max-age=31536000",
+      if (useLocalStorage) {
+        res.json({
+          configured: true,
+          mode: "local",
+          uploadDir: process.env.UPLOAD_DIR || "./uploads",
         });
-
-        stream
-          .pipe(sharp.default().resize(200, 200, { fit: 'cover' }).jpeg({ quality: 80 }))
-          .pipe(res);
       } else {
-        // Serve original image
-        objectStorageService.downloadObject(objectFile, res);
+        const objectStorageService = new replitObjectStorage.ObjectStorageService();
+        const privateDir = objectStorageService.getPrivateObjectDir();
+        const publicPaths = objectStorageService.getPublicObjectSearchPaths();
+        res.json({
+          configured: true,
+          mode: "replit",
+          privateDir,
+          publicPaths,
+        });
+      }
+    } catch (error: any) {
+      res.status(500).json({ configured: false, error: error.message });
+    }
+  });
+
+  app.post("/api/objects/upload", requireAuth, imageUpload.single("file"), async (req, res) => {
+    try {
+      if (useLocalStorage) {
+        if (!req.file) {
+          return res.status(400).json({ error: "No file uploaded" });
+        }
+        const companyId = (req as any).companyId;
+        if (!companyId) {
+          return res.status(400).json({ error: "Company context required for file uploads" });
+        }
+        const userId = (req as any).user?.id;
+        const objectPath = await localStorageService.uploadFile(
+          companyId,
+          req.file.buffer,
+          req.file.mimetype,
+          "private",
+          userId
+        );
+        res.json({ uploadUrl: null, objectPath });
+      } else {
+        const objectStorageService = new replitObjectStorage.ObjectStorageService();
+        const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+        res.json({ uploadUrl: uploadURL });
+      }
+    } catch (error: any) {
+      console.error("Error handling upload:", error);
+      res.status(500).json({ error: "Failed to handle upload", details: error.message });
+    }
+  });
+
+  app.get("/objects/:objectPath(*)", async (req, res) => {
+    const thumbnail = req.query.thumbnail === "true";
+
+    try {
+      if (useLocalStorage) {
+        const user = (req as any).user;
+        const userId = user?.id;
+        let result;
+        try {
+          result = await localStorageService.getFilePublic(req.path);
+        } catch {
+          const companyId = (req as any).companyId;
+          if (!companyId) {
+            return res.sendStatus(userId ? 403 : 401);
+          }
+          result = await localStorageService.getFile(req.path, companyId);
+        }
+
+        const { filePath, metadata } = result;
+        if (!localStorageService.canAccessObject(metadata, userId)) {
+          return res.sendStatus(userId ? 403 : 401);
+        }
+
+        if (thumbnail) {
+          const fs = await import("fs");
+          res.set({
+            "Content-Type": "image/jpeg",
+            "Cache-Control": "public, max-age=31536000",
+          });
+          fs.createReadStream(filePath)
+            .pipe(sharp.default().resize(200, 200, { fit: "cover" }).jpeg({ quality: 80 }))
+            .pipe(res);
+        } else {
+          await localStorageService.downloadObject(filePath, metadata, res);
+        }
+      } else {
+        const objectStorageService = new replitObjectStorage.ObjectStorageService();
+        const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+        const user = (req as any).user;
+        const userId = user?.id;
+        const canAccess = await objectStorageService.canAccessObjectEntity({
+          objectFile,
+          userId,
+          requestedPermission: replitObjectAcl.ObjectPermission.READ,
+        });
+        if (!canAccess) {
+          return res.sendStatus(userId ? 403 : 401);
+        }
+        if (thumbnail) {
+          const stream = objectFile.createReadStream();
+          res.set({
+            "Content-Type": "image/jpeg",
+            "Cache-Control": "public, max-age=31536000",
+          });
+          stream
+            .pipe(sharp.default().resize(200, 200, { fit: "cover" }).jpeg({ quality: 80 }))
+            .pipe(res);
+        } else {
+          objectStorageService.downloadObject(objectFile, res);
+        }
       }
     } catch (error) {
       console.error("Error serving image:", error);
-      if (error instanceof ObjectNotFoundError) {
+      if (error instanceof LocalObjectNotFoundError || (replitObjectStorage && error instanceof replitObjectStorage.ObjectNotFoundError)) {
         return res.sendStatus(404);
       }
       return res.sendStatus(500);
     }
   });
 
-  // Update inventory item with uploaded image
   app.put("/api/inventory-items/:id/image", requireAuth, async (req, res) => {
     try {
       const { imageUrl } = z.object({
@@ -1137,18 +1202,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).parse(req.body);
 
       const user = (req as any).user;
-      const objectStorageService = new ObjectStorageService();
-      
-      // Set ACL policy for the uploaded image (public visibility for inventory items)
-      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
-        imageUrl,
-        {
+      const companyId = (req as any).companyId;
+      let objectPath: string;
+
+      if (useLocalStorage) {
+        if (!companyId) {
+          return res.status(400).json({ error: "Company context required" });
+        }
+        objectPath = await localStorageService.setAclPolicy(imageUrl, companyId, {
           owner: user.id,
           visibility: "public",
-        }
-      );
+        });
+      } else {
+        const objectStorageService = new replitObjectStorage.ObjectStorageService();
+        objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+          imageUrl,
+          { owner: user.id, visibility: "public" }
+        );
+      }
 
-      // Update inventory item with the normalized object path
       const item = await storage.updateInventoryItem(req.params.id, {
         imageUrl: objectPath,
       });
@@ -7768,18 +7840,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).parse(req.body);
 
       const user = (req as any).user;
-      const objectStorageService = new ObjectStorageService();
-      
-      // Set ACL policy for the uploaded logo (public visibility)
-      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
-        imageUrl,
-        {
+      const companyId = (req as any).companyId;
+      let objectPath: string;
+
+      if (useLocalStorage) {
+        if (!companyId) {
+          return res.status(400).json({ error: "Company context required" });
+        }
+        objectPath = await localStorageService.setAclPolicy(imageUrl, companyId, {
           owner: user.id,
           visibility: "public",
-        }
-      );
+        });
+      } else {
+        const objectStorageService = new replitObjectStorage.ObjectStorageService();
+        objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+          imageUrl,
+          { owner: user.id, visibility: "public" }
+        );
+      }
 
-      // Update company with the normalized object path
       const company = await storage.updateCompany(req.params.id, {
         logoImagePath: objectPath,
       });
