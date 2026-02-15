@@ -1,9 +1,7 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
+import { Pool as NeonPool, neonConfig } from '@neondatabase/serverless';
+import { drizzle as drizzleNeon } from 'drizzle-orm/neon-serverless';
 import ws from "ws";
 import * as schema from "@shared/schema";
-
-neonConfig.webSocketConstructor = ws;
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -11,13 +9,34 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-// Configure connection pool for multi-tenant production use
-// Limits prevent overwhelming Neon's serverless connection limit (~80)
-export const pool = new Pool({ 
-  connectionString: process.env.DATABASE_URL,
-  max: 10, // Max connections per server instance (Autoscale will add more instances as needed)
-  idleTimeoutMillis: 30000, // Close idle connections after 30s
-  connectionTimeoutMillis: 5000, // Fail fast if pool is exhausted
-});
+const isLocalDb = process.env.STORAGE_MODE === 'local' || process.env.AUTH_MODE === 'local';
 
-export const db = drizzle({ client: pool, schema });
+let pool: any;
+let db: any;
+
+if (isLocalDb) {
+  const pgModule = await import('pg');
+  const { drizzle: drizzleNode } = await import('drizzle-orm/node-postgres');
+  const PgPool = pgModule.default.Pool;
+  pool = new PgPool({
+    connectionString: process.env.DATABASE_URL,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+    ssl: false,
+  });
+  db = drizzleNode({ client: pool, schema });
+  console.log('[DB] Using standard PostgreSQL driver (local/VPS mode)');
+} else {
+  neonConfig.webSocketConstructor = ws;
+  pool = new NeonPool({
+    connectionString: process.env.DATABASE_URL,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  });
+  db = drizzleNeon({ client: pool, schema });
+  console.log('[DB] Using Neon serverless PostgreSQL driver');
+}
+
+export { pool, db };
