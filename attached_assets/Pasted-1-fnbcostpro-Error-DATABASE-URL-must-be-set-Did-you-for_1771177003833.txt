@@ -1,0 +1,55 @@
+1|fnbcostpro  | Error: DATABASE_URL must be set. Did you forget to provision a database?
+1|fnbcostpro  |     at server/db.ts (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:1317:13)
+1|fnbcostpro  |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:4:56)
+1|fnbcostpro  |     at server/storage.ts (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:1547:5)
+1|fnbcostpro  |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:4:56)
+1|fnbcostpro  |     at file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:6740:1
+1|fnbcostpro  |     at ModuleJob.run (node:internal/modules/esm/module_job:325:25)
+1|fnbcostpro  |     at async ModuleLoader.import (node:internal/modules/esm/loader:606:24)
+1|fnbcostpro  |     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+1|fnbcostpro  | Node.js v20.20.0
+1|fnbcostpro  | > rest-express@1.0.0 start
+1|fnbcostpro  | > NODE_ENV=production node dist/index.js
+^X1|fnbcostpro  | file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:1317
+1|fnbcostpro  |       throw new Error(
+1|fnbcostpro  |             ^
+1|fnbcostpro  | Error: DATABASE_URL must be set. Did you forget to provision a database?
+1|fnbcostpro  |     at server/db.ts (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:1317:13)
+1|fnbcostpro  |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:4:56)
+1|fnbcostpro  |     at server/storage.ts (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:1547:5)
+1|fnbcostpro  |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:4:56)
+1|fnbcostpro  |     at file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:6740:1
+1|fnbcostpro  |     at ModuleJob.run (node:internal/modules/esm/module_job:325:25)
+1|fnbcostpro  |     at async ModuleLoader.import (node:internal/modules/esm/loader:606:24)
+1|fnbcostpro  |     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+1|fnbcostpro  | Node.js v20.20.0
+1|fnbcostpro  | > rest-express@1.0.0 start
+1|fnbcostpro  | > NODE_ENV=production node dist/index.js
+1|fnbcostpro  | file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:1317
+1|fnbcostpro  |       throw new Error(
+1|fnbcostpro  |             ^
+1|fnbcostpro  | Error: DATABASE_URL must be set. Did you forget to provision a database?
+1|fnbcostpro  |     at server/db.ts (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:1317:13)
+1|fnbcostpro  |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:4:56)
+1|fnbcostpro  |     at server/storage.ts (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:1547:5)
+1|fnbcostpro  |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:4:56)
+1|fnbcostpro  |     at file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:6740:1
+1|fnbcostpro  |     at ModuleJob.run (node:internal/modules/esm/module_job:325:25)
+1|fnbcostpro  |     at async ModuleLoader.import (node:internal/modules/esm/loader:606:24)
+1|fnbcostpro  |     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+1|fnbcostpro  | Node.js v20.20.0
+1|fnbcostpro  | > rest-express@1.0.0 start
+1|fnbcostpro  | > NODE_ENV=production node dist/index.js
+1|fnbcostpro  | file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:1317
+1|fnbcostpro  |       throw new Error(
+1|fnbcostpro  |             ^
+1|fnbcostpro  | Error: DATABASE_URL must be set. Did you forget to provision a database?
+1|fnbcostpro  |     at server/db.ts (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:1317:13)
+1|fnbcostpro  |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:4:56)
+1|fnbcostpro  |     at server/storage.ts (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:1547:5)
+1|fnbcostpro  |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:4:56)
+1|fnbcostpro  |     at file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:6740:1
+1|fnbcostpro  |     at ModuleJob.run (node:internal/modules/esm/module_job:325:25)
+1|fnbcostpro  |     at async ModuleLoader.import (node:internal/modules/esm/loader:606:24)
+1|fnbcostpro  |     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+1|fnbcostpro  | Node.js v20.20.0
