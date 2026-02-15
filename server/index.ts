@@ -69,8 +69,10 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Setup SSO authentication (must be before registerRoutes)
-  await setupSsoAuth(app);
+  // Setup SSO authentication (must be before registerRoutes) - skip on VPS with local auth
+  if (process.env.AUTH_MODE !== 'local') {
+    await setupSsoAuth(app);
+  }
   
   const server = await registerRoutes(app);
   
