@@ -1144,7 +1144,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const { filePath, metadata } = result;
-        if (!localStorageService.canAccessObject(metadata, userId)) {
+        const companyIdForAccess = (req as any).companyId;
+        if (!localStorageService.canAccessObject(metadata, userId, companyIdForAccess)) {
           return res.sendStatus(userId ? 403 : 401);
         }
 
@@ -7991,18 +7992,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).parse(req.body);
 
       const user = (req as any).user;
-      const objectStorageService = new ObjectStorageService();
-      
-      // Set ACL policy for the uploaded logo (public visibility)
-      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
-        imageUrl,
-        {
+      const companyId = (req as any).companyId;
+      let objectPath: string;
+
+      if (useLocalStorage) {
+        if (!companyId) {
+          return res.status(400).json({ error: "Company context required" });
+        }
+        objectPath = await localStorageService.setAclPolicy(imageUrl, companyId, {
           owner: user.id,
           visibility: "public",
-        }
-      );
+        });
+      } else {
+        const objectStorageService = new replitObjectStorage.ObjectStorageService();
+        objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+          imageUrl,
+          { owner: user.id, visibility: "public" }
+        );
+      }
 
-      // Update company settings with the normalized object path
       const settings = await storage.updateCompanySettings({
         logoImagePath: objectPath,
       });

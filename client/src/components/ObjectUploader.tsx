@@ -1,8 +1,6 @@
-import { useState } from "react";
-import Uppy from "@uppy/core";
-import { DashboardModal } from "@uppy/react";
-import AwsS3 from "@uppy/aws-s3";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Upload, Loader2 } from "lucide-react";
 
 interface SimpleObjectUploaderProps {
   onUploadComplete: (url: string) => void;
@@ -12,82 +10,98 @@ interface SimpleObjectUploaderProps {
   buttonVariant?: "default" | "outline" | "secondary" | "ghost" | "destructive";
 }
 
-/**
- * Simplified object uploader component for single-file image uploads.
- * Automatically fetches presigned URL from backend and uploads to object storage.
- */
 export function ObjectUploader({
   onUploadComplete,
   buttonText = "Upload Image",
   dataTestId = "button-upload-image",
-  maxFileSize = 10485760, // 10MB default
+  maxFileSize = 10485760,
   buttonVariant = "outline",
 }: SimpleObjectUploaderProps) {
-  const [showModal, setShowModal] = useState(false);
-  const [uppy] = useState(() =>
-    new Uppy({
-      restrictions: {
-        maxNumberOfFiles: 1,
-        maxFileSize,
-        allowedFileTypes: ['image/*'],
-      },
-      autoProceed: false,
-    })
-      .use(AwsS3, {
-        shouldUseMultipart: false,
-        getUploadParameters: async () => {
-          // Fetch presigned URL from backend
-          const response = await fetch("/api/objects/upload", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-          });
-          
-          if (!response.ok) {
-            throw new Error("Failed to get upload URL");
-          }
-          
-          const data = await response.json();
-          return {
-            method: "PUT" as const,
-            url: data.uploadUrl,
-          };
-        },
-      })
-      .on("complete", (result) => {
-        // Extract uploaded file URL and call completion handler
-        if (result.successful && result.successful[0]) {
-          const uploadedFile = result.successful[0];
-          const uploadUrl = uploadedFile.uploadURL;
-          
-          if (uploadUrl) {
-            // Extract object path from the full URL
-            const url = new URL(uploadUrl);
-            const objectPath = url.pathname;
-            onUploadComplete(objectPath);
-          }
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > maxFileSize) {
+      alert(`File too large. Maximum size is ${Math.round(maxFileSize / 1024 / 1024)}MB.`);
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      alert("Only image files are allowed.");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/objects/upload", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+
+      const data = await response.json();
+
+      if (data.objectPath) {
+        onUploadComplete(data.objectPath);
+      } else if (data.uploadUrl) {
+        const putResponse = await fetch(data.uploadUrl, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type },
+        });
+
+        if (!putResponse.ok) {
+          throw new Error("Failed to upload to storage");
         }
-        setShowModal(false);
-      })
-  );
+
+        const url = new URL(data.uploadUrl);
+        onUploadComplete(url.pathname);
+      }
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert("Failed to upload image. Please try again.");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   return (
     <div>
-      <Button 
-        onClick={() => setShowModal(true)} 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileSelect}
+        className="hidden"
+        data-testid={`${dataTestId}-input`}
+      />
+      <Button
+        onClick={() => fileInputRef.current?.click()}
         variant={buttonVariant}
         type="button"
+        disabled={isUploading}
         data-testid={dataTestId}
       >
-        {buttonText}
+        {isUploading ? (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
+          <Upload className="mr-2 h-4 w-4" />
+        )}
+        {isUploading ? "Uploading..." : buttonText}
       </Button>
-
-      <DashboardModal
-        uppy={uppy}
-        open={showModal}
-        onRequestClose={() => setShowModal(false)}
-        proudlyDisplayPoweredByUppy={false}
-      />
     </div>
   );
 }

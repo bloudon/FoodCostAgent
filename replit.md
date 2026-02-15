@@ -52,6 +52,6 @@ This project is an inventory management and recipe costing system for food servi
 - **Database Services**: Neon serverless PostgreSQL.
 - **Real-time Communication**: `ws` library (WebSockets).
 - **Image Processing**: Sharp library.
-- **Object Storage**: Replit's native object storage solution.
+- **Object Storage**: Dual-mode — Replit native object storage (when sidecar available) or local filesystem (`server/localObjectStorage.ts`) with company-isolated directories (`uploads/{companyId}/public` and `uploads/{companyId}/private`). Auto-detected at startup. Path traversal protection and company-level ACL enforcement included.
 - **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods order guides.
 - **QuickBooks Online Integration**: `intuit-oauth` package for OAuth 2.0.

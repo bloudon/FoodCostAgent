@@ -28,6 +28,7 @@ export interface ObjectAclPolicy {
 interface LocalFileMetadata {
   contentType: string;
   size: number;
+  companyId?: string;
   aclPolicy?: ObjectAclPolicy;
 }
 
@@ -103,6 +104,7 @@ export class LocalObjectStorageService {
     const metadata: LocalFileMetadata = {
       contentType,
       size: fileBuffer.length,
+      companyId: sanitizedCompanyId,
       aclPolicy: ownerId ? { owner: ownerId, visibility } : undefined,
     };
     writeMetadata(filePath, metadata);
@@ -110,7 +112,7 @@ export class LocalObjectStorageService {
     return `/objects/${sanitizedCompanyId}/${subDir}/${fileName}`;
   }
 
-  async getFile(objectPath: string, companyId: string): Promise<{ filePath: string; metadata: LocalFileMetadata }> {
+  private resolveAndValidatePath(objectPath: string, expectedCompanyId: string): { filePath: string; parts: string[] } {
     const normalized = this.normalizeObjectPath(objectPath);
     const parts = normalized.split("/").filter(Boolean);
 
@@ -118,18 +120,30 @@ export class LocalObjectStorageService {
       throw new ObjectNotFoundError();
     }
 
+    if (parts.some(p => p === ".." || p === ".")) {
+      throw new ObjectNotFoundError();
+    }
+
     const pathCompanyId = parts[1];
-    if (sanitizeCompanyId(companyId) !== pathCompanyId) {
+    if (sanitizeCompanyId(expectedCompanyId) !== pathCompanyId) {
       throw new ObjectNotFoundError();
     }
 
     const subPath = parts.slice(2).join("/");
-    const filePath = path.join(getCompanyDir(companyId), subPath);
+    const companyDir = getCompanyDir(expectedCompanyId);
+    const filePath = path.join(companyDir, subPath);
     const resolvedPath = path.resolve(filePath);
-    const resolvedBase = path.resolve(UPLOAD_BASE_DIR);
-    if (!resolvedPath.startsWith(resolvedBase)) {
+    const resolvedCompany = path.resolve(companyDir);
+
+    if (!resolvedPath.startsWith(resolvedCompany + path.sep) && resolvedPath !== resolvedCompany) {
       throw new ObjectNotFoundError();
     }
+
+    return { filePath: resolvedPath, parts };
+  }
+
+  async getFile(objectPath: string, companyId: string): Promise<{ filePath: string; metadata: LocalFileMetadata }> {
+    const { filePath } = this.resolveAndValidatePath(objectPath, companyId);
 
     if (!fs.existsSync(filePath)) {
       throw new ObjectNotFoundError();
@@ -151,6 +165,10 @@ export class LocalObjectStorageService {
       throw new ObjectNotFoundError();
     }
 
+    if (parts.some(p => p === ".." || p === ".")) {
+      throw new ObjectNotFoundError();
+    }
+
     const pathCompanyId = parts[1];
     const subDir = parts[2];
 
@@ -158,24 +176,26 @@ export class LocalObjectStorageService {
       throw new ObjectNotFoundError();
     }
 
+    const companyDir = getCompanyDir(pathCompanyId);
     const subPath = parts.slice(2).join("/");
-    const filePath = path.join(getCompanyDir(pathCompanyId), subPath);
+    const filePath = path.join(companyDir, subPath);
     const resolvedPath = path.resolve(filePath);
-    const resolvedBase = path.resolve(UPLOAD_BASE_DIR);
-    if (!resolvedPath.startsWith(resolvedBase)) {
+    const resolvedCompany = path.resolve(companyDir);
+
+    if (!resolvedPath.startsWith(resolvedCompany + path.sep) && resolvedPath !== resolvedCompany) {
       throw new ObjectNotFoundError();
     }
 
-    if (!fs.existsSync(filePath)) {
+    if (!fs.existsSync(resolvedPath)) {
       throw new ObjectNotFoundError();
     }
 
-    const metadata = readMetadata(filePath) || {
-      contentType: this.getMimeFromPath(filePath),
-      size: fs.statSync(filePath).size,
+    const metadata = readMetadata(resolvedPath) || {
+      contentType: this.getMimeFromPath(resolvedPath),
+      size: fs.statSync(resolvedPath).size,
     };
 
-    return { filePath, metadata };
+    return { filePath: resolvedPath, metadata };
   }
 
   async downloadObject(filePath: string, metadata: LocalFileMetadata, res: Response, cacheTtlSec: number = 3600) {
@@ -206,6 +226,7 @@ export class LocalObjectStorageService {
   async setAclPolicy(objectPath: string, companyId: string, aclPolicy: ObjectAclPolicy): Promise<string> {
     const { filePath, metadata } = await this.getFile(objectPath, companyId);
     metadata.aclPolicy = aclPolicy;
+    metadata.companyId = sanitizeCompanyId(companyId);
     writeMetadata(filePath, metadata);
 
     if (aclPolicy.visibility === "public" && objectPath.includes("/private/")) {
@@ -226,11 +247,12 @@ export class LocalObjectStorageService {
     return objectPath;
   }
 
-  canAccessObject(metadata: LocalFileMetadata, userId?: string): boolean {
+  canAccessObject(metadata: LocalFileMetadata, userId?: string, requestingCompanyId?: string): boolean {
     if (!metadata.aclPolicy) return true;
     if (metadata.aclPolicy.visibility === "public") return true;
     if (!userId) return false;
     if (metadata.aclPolicy.owner === userId) return true;
+    if (requestingCompanyId && metadata.companyId && sanitizeCompanyId(requestingCompanyId) === metadata.companyId) return true;
     return false;
   }
 
