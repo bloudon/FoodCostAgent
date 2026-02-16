@@ -6,7 +6,7 @@ This project is an inventory management and recipe costing system for food servi
 
 - Preferred communication style: Simple, everyday language.
 - Branding: FNB Cost Pro logo (white "FNB" text with green "cost pro" and bottle icon on black background) integrated across all pages.
-- Color Scheme: Header/menu uses slate blue grey (`--primary: 215 16% 47%`), buttons use periwinkle blue accent (`--accent-button: 217 91% 60%`). Defined in `client/src/index.css` with dark mode variants.
+- Color Scheme: Header/menu uses slate blue grey (`--primary: 215 16% 47%`), buttons use orange accent (`--accent-button: 24 93% 50%`, hex `#f2690d`). Defined in `client/src/index.css` with dark mode variants.
 - Default Unit of Measure for Inventory Items: Pound should be the default unit when creating new inventory items.
 - Unit Abbreviation: "Pound" displays as "lb." throughout the UI.
 - Yield Field: Yield is stored as a percentage value (0-100).
