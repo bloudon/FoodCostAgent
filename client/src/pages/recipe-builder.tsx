@@ -493,6 +493,12 @@ export default function RecipeBuilder() {
     queryKey: ["/api/stores/accessible"],
   });
 
+  useEffect(() => {
+    if (isNew && stores && stores.length === 1 && selectedStores.length === 0) {
+      setSelectedStores([stores[0].id]);
+    }
+  }, [stores, isNew]);
+
   const { data: recipeStores } = useQuery<any[]>({
     queryKey: ["/api/store-recipes", id],
     enabled: !isNew && !!id,
@@ -1858,7 +1864,7 @@ export default function RecipeBuilder() {
           </Card>
         ) : null}
       </DragOverlay>
-      <SetupProgressBanner currentMilestoneId="recipes" hasEntries={true} />
+      <SetupProgressBanner currentMilestoneId="recipes" hasEntries={(recipes?.length ?? 0) > 0} />
     </DndContext>
   );
 }

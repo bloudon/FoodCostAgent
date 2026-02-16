@@ -87,6 +87,10 @@ export default function InventoryItemCreate() {
     queryKey: ["/api/categories"],
   });
 
+  const { data: existingInventoryItems } = useQuery<any[]>({
+    queryKey: ["/api/inventory-items"],
+  });
+
   const { data: stores } = useAccessibleStores();
 
   // Set default unit to Pound when units are loaded
@@ -564,7 +568,7 @@ export default function InventoryItemCreate() {
           </Button>
         </div>
       </form>
-      <SetupProgressBanner currentMilestoneId="inventory" hasEntries={true} />
+      <SetupProgressBanner currentMilestoneId="inventory" hasEntries={(existingInventoryItems?.length ?? 0) > 0} />
     </div>
   );
 }
