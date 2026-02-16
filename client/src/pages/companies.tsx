@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Company, InsertCompany, insertCompanySchema } from "@shared/schema";
-import { Building2, MapPin, Store, Plus, Settings2, UserCircle, Trash2, AlertTriangle } from "lucide-react";
+import { Building2, MapPin, Store, Plus, Settings2, UserCircle, Trash2, AlertTriangle, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,11 @@ export default function Companies() {
 
   const { data: companies, isLoading } = useQuery<Company[]>({
     queryKey: ["/api/companies"],
+  });
+
+  const { data: sessionData } = useQuery<{ activeSessionCount: number }>({
+    queryKey: ["/api/admin/active-sessions"],
+    refetchInterval: 30000,
   });
 
   const form = useForm<InsertCompany>({
@@ -151,7 +156,15 @@ export default function Companies() {
     <div className="container mx-auto p-6 max-w-7xl">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold mb-2" data-testid="text-page-title">Companies</h1>
+          <div className="flex items-center gap-3 mb-2 flex-wrap">
+            <h1 className="text-3xl font-bold" data-testid="text-page-title">Companies</h1>
+            {sessionData && (
+              <Badge variant="secondary" data-testid="badge-active-sessions">
+                <Users className="h-3 w-3 mr-1" />
+                {sessionData.activeSessionCount} active {sessionData.activeSessionCount === 1 ? "session" : "sessions"}
+              </Badge>
+            )}
+          </div>
           <p className="text-muted-foreground">
             Select a company to view and manage its data
           </p>

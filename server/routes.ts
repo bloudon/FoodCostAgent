@@ -15,7 +15,7 @@ import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth
 import { getAccessibleStores } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
-import { eq, and, inArray, gte, lte, like, not } from "drizzle-orm";
+import { eq, and, inArray, gte, lte, like, not, gt, isNull } from "drizzle-orm";
 import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
@@ -7972,6 +7972,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ COMPANIES ============
+  app.get("/api/admin/active-sessions", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.user!.id);
+    if (user?.role !== "global_admin") {
+      return res.status(403).json({ error: "Only global admins can access this" });
+    }
+    try {
+      const { authSessions } = await import("@shared/schema");
+      const now = new Date();
+      const result = await db.select({ count: sql<number>`count(*)` })
+        .from(authSessions)
+        .where(and(
+          gt(authSessions.expiresAt, now),
+          isNull(authSessions.revokedAt)
+        ));
+      res.json({ activeSessionCount: Number(result[0]?.count || 0) });
+    } catch (error) {
+      console.error("Active sessions count error:", error);
+      res.status(500).json({ error: "Failed to fetch active sessions" });
+    }
+  });
+
   app.get("/api/companies", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.user!.id);
     
