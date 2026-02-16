@@ -88,7 +88,7 @@
   --font-sans: 'Poppins', sans-serif;
   --font-serif: 'Poppins', sans-serif;
   --font-mono: 'Poppins', sans-serif;
-  --radius: .5rem; /* 8px */
+  --radius: 0.5rem; /* 8px */
   --shadow-2xs: 0px 1px 2px 0px hsl(240 10% 4% / 0.05);
   --shadow-xs: 0px 1px 3px 0px hsl(240 10% 4% / 0.1);
   --shadow-sm: 0px 2px 4px -1px hsl(240 10% 4% / 0.06), 0px 1px 2px -1px hsl(240 10% 4% / 0.06);
