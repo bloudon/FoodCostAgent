@@ -512,10 +512,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
-        await tx.update(onboardingProgress)
-          .set({ isCompleted: 1 })
-          .where(eq(onboardingProgress.companyId, companyId));
-
         return { store: newStore };
       });
 
