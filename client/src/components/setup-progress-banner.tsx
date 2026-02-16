@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   CheckCircle2,
   ArrowRight,
+  ArrowLeft,
   ChevronRight,
 } from "lucide-react";
 
@@ -78,6 +79,7 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
   const currentMilestone = data.milestones.find((m) => m.id === currentMilestoneId);
   const currentIndex = data.milestones.findIndex((m) => m.id === currentMilestoneId);
   if (currentIndex < 0) return null;
+  const prevMilestone = currentIndex > 0 ? data.milestones[currentIndex - 1] : null;
   const nextMilestone = data.milestones.find((m, i) => i > currentIndex && !m.completed);
   const currentCompleted = currentMilestone?.completed;
   const isLastStep = !nextMilestone;
@@ -92,6 +94,14 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
     >
       <div className="flex items-center justify-between gap-3 px-4 py-3 max-w-screen-xl mx-auto">
         <div className="flex items-center gap-2 min-w-0 flex-1">
+          {prevMilestone && (
+            <Link href={prevMilestone.path}>
+              <Button variant="outline" size="sm" data-testid="button-prev-milestone">
+                <ArrowLeft className="h-3.5 w-3.5 mr-1" />
+                <span className="hidden sm:inline">Back</span>
+              </Button>
+            </Link>
+          )}
           {currentCompleted ? (
             <div className="flex items-center gap-1.5 shrink-0">
               <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
