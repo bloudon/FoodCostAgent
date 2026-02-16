@@ -39,6 +39,7 @@ import type { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
+import { useLocation } from "wouter";
 import {
   DndContext,
   closestCenter,
@@ -128,14 +129,49 @@ function SortableCategory({ category, onEdit, onDelete }: SortableCategoryProps)
   );
 }
 
+interface MilestonesResponse {
+  milestones: { id: string; label: string; completed: boolean; path: string }[];
+  completedCount: number;
+  totalCount: number;
+  dismissed: boolean;
+}
+
 export default function Categories() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<any | null>(null);
   const [deletingCategory, setDeletingCategory] = useState<any | null>(null);
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+
+  const { data: milestonesData } = useQuery<MilestonesResponse>({
+    queryKey: ["/api/onboarding/milestones"],
+    retry: false,
+    staleTime: 0,
+  });
+
+  const categoriesMilestone = milestonesData?.milestones.find(m => m.id === "categories");
+  const showReviewButton = milestonesData && !milestonesData.dismissed && categoriesMilestone && !categoriesMilestone.completed;
+
+  const reviewCategoriesMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/onboarding/milestones/review-step", { stepId: "categories" });
+      if (!response.ok) throw new Error("Failed to confirm categories review");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+      const nextMilestone = milestonesData?.milestones.find((m, i) => {
+        const catIdx = milestonesData.milestones.findIndex(ms => ms.id === "categories");
+        return i > catIdx && !m.completed;
+      });
+      if (nextMilestone) {
+        navigate(nextMilestone.path);
+      }
+    },
+  });
 
   const { data: categories, isLoading } = useQuery<any[]>({
     queryKey: ["/api/categories"],
@@ -502,6 +538,28 @@ export default function Categories() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {showReviewButton && (
+        <Card className="mt-4 border-primary/30 bg-primary/5" data-testid="card-review-categories">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Ready to move on?</p>
+                <p className="text-xs text-muted-foreground">
+                  Review your categories above. Add, edit, or remove any, then continue to the next step.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => reviewCategoriesMutation.mutate()}
+                disabled={reviewCategoriesMutation.isPending}
+                data-testid="button-confirm-categories"
+              >
+                {reviewCategoriesMutation.isPending ? "Saving..." : "Looks Good, Continue"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <SetupProgressBanner currentMilestoneId="categories" />
     </div>
   );

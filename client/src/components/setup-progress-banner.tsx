@@ -24,7 +24,7 @@ interface MilestonesResponse {
 
 const milestoneLabels: Record<string, string> = {
   store: "Store",
-  categories: "Categories",
+  categories: "Review Categories",
   vendors: "Vendor",
   inventory: "Inventory",
   recipes: "Recipe",

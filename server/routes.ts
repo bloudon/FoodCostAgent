@@ -549,9 +549,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1),
       ]);
 
+      let reviewedSteps: string[] = [];
+      if (progressRows.length > 0 && progressRows[0].stepData) {
+        try {
+          const parsed = JSON.parse(progressRows[0].stepData);
+          reviewedSteps = parsed.reviewedSteps || [];
+        } catch {}
+      }
+
+      const categoriesReviewed = reviewedSteps.includes("categories");
+
       const milestonesList = [
         { id: "store", label: "Create Your First Store", completed: storeRows.length > 0, path: "/stores" },
-        { id: "categories", label: "Set Up Categories", completed: categoryRows.length > 0, path: "/categories" },
+        { id: "categories", label: "Review Categories", completed: categoriesReviewed, path: "/categories" },
         { id: "vendors", label: "Add a Vendor", completed: vendorRows.length > 0, path: "/vendors" },
         { id: "inventory", label: "Add Inventory Items", completed: inventoryRows.length > 0, path: "/inventory-items" },
         { id: "recipes", label: "Create a Recipe", completed: recipeRows.length > 0, path: "/recipes" },
@@ -623,6 +633,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Undismiss error:", error);
       res.status(500).json({ error: "Failed to restore setup guide" });
+    }
+  });
+
+  app.post("/api/onboarding/milestones/review-step", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const companyId = user.companyId;
+      if (!companyId) {
+        return res.status(400).json({ error: "User is not associated with a company" });
+      }
+
+      const { stepId } = z.object({ stepId: z.string() }).parse(req.body);
+
+      const existing = await db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1);
+
+      let reviewedSteps: string[] = [];
+      if (existing.length > 0 && existing[0].stepData) {
+        try {
+          const parsed = JSON.parse(existing[0].stepData);
+          reviewedSteps = parsed.reviewedSteps || [];
+        } catch {}
+      }
+
+      if (!reviewedSteps.includes(stepId)) {
+        reviewedSteps.push(stepId);
+      }
+
+      const stepData = JSON.stringify({ reviewedSteps });
+
+      if (existing.length > 0) {
+        await db.update(onboardingProgress)
+          .set({ stepData, updatedAt: new Date() })
+          .where(eq(onboardingProgress.companyId, companyId));
+      } else {
+        await db.insert(onboardingProgress).values({
+          companyId,
+          stepData,
+        });
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Review step error:", error);
+      res.status(500).json({ error: "Failed to mark step as reviewed" });
     }
   });
 

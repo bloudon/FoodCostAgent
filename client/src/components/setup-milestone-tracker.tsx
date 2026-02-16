@@ -18,7 +18,7 @@ import {
   Store,
   Loader2,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 interface Milestone {
   id: string;
@@ -36,6 +36,7 @@ interface MilestonesResponse {
 
 export function SetupMilestoneTracker() {
   const { refreshAuth, user } = useAuth();
+  const [, navigate] = useLocation();
   const defaultStoreName = user?.firstName ? `${user.firstName}'s Store` : "";
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showStoreForm, setShowStoreForm] = useState(false);
@@ -90,9 +91,13 @@ export function SetupMilestoneTracker() {
       setShowStoreForm(false);
       setStoreName(defaultStoreName);
       setStoreCode("S001");
-      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stores"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
+      const nextStep = data?.milestones.find((m) => m.id !== "store" && !m.completed);
+      if (nextStep) {
+        navigate(nextStep.path);
+      }
     },
   });
 
