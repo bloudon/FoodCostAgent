@@ -1729,7 +1729,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ STORAGE LOCATIONS ============
   app.get("/api/storage-locations", requireAuth, async (req: AuthRequest, res) => {
-    const locations = await storage.getStorageLocations(req.companyId!);
+    let locations = await storage.getStorageLocations(req.companyId!);
+    if (locations.length === 0) {
+      const categories = await storage.getCategories(req.companyId!);
+      if (categories.length > 0) {
+        for (let i = 0; i < categories.length; i++) {
+          await storage.createStorageLocation({
+            name: categories[i].name,
+            companyId: req.companyId!,
+            sortOrder: i,
+          });
+        }
+      } else {
+        const defaults = ["Walk-In", "Frozen", "Dry/Pantry"];
+        for (let i = 0; i < defaults.length; i++) {
+          await storage.createStorageLocation({
+            name: defaults[i],
+            companyId: req.companyId!,
+            sortOrder: i,
+          });
+        }
+      }
+      locations = await storage.getStorageLocations(req.companyId!);
+    }
     res.json(locations);
   });
 

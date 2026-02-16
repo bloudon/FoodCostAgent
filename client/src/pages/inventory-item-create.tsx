@@ -105,6 +105,12 @@ export default function InventoryItemCreate() {
     }
   }, [stores, selectedStores.length]);
 
+  useEffect(() => {
+    if (locations && locations.length > 0 && selectedLocations.length === 0) {
+      setSelectedLocations(locations.map(l => l.id));
+    }
+  }, [locations, selectedLocations.length]);
+
   // Set first selected location as primary
   useEffect(() => {
     if (selectedLocations.length > 0 && !primaryLocationId) {
