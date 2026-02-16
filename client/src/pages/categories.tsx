@@ -64,9 +64,10 @@ interface SortableCategoryProps {
   category: any;
   onEdit: (category: any) => void;
   onDelete: (category: any) => void;
+  hideDragHandle?: boolean;
 }
 
-function SortableCategory({ category, onEdit, onDelete }: SortableCategoryProps) {
+function SortableCategory({ category, onEdit, onDelete, hideDragHandle }: SortableCategoryProps) {
   const {
     attributes,
     listeners,
@@ -74,7 +75,7 @@ function SortableCategory({ category, onEdit, onDelete }: SortableCategoryProps)
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: category.id });
+  } = useSortable({ id: category.id, disabled: hideDragHandle });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -87,20 +88,22 @@ function SortableCategory({ category, onEdit, onDelete }: SortableCategoryProps)
       <Card className="mb-3" data-testid={`card-category-${category.id}`}>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-3">
-            <button
-              className="cursor-grab active:cursor-grabbing touch-none p-1 hover-elevate rounded"
-              {...attributes}
-              {...listeners}
-              data-testid={`drag-handle-${category.id}`}
-            >
-              <GripVertical className="h-5 w-5 text-muted-foreground" />
-            </button>
+            {!hideDragHandle && (
+              <button
+                className="cursor-grab active:cursor-grabbing touch-none p-1 hover-elevate rounded"
+                {...attributes}
+                {...listeners}
+                data-testid={`drag-handle-${category.id}`}
+              >
+                <GripVertical className="h-5 w-5 text-muted-foreground" />
+              </button>
+            )}
             <div className="flex items-center gap-2 flex-1">
               <Tag className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg" data-testid={`text-category-name-${category.id}`}>
                 {category.name}
               </CardTitle>
-              {!!category.isTareWeightCategory && (
+              {!!category.isTareWeightCategory && !hideDragHandle && (
                 <Scale className="h-4 w-4 text-muted-foreground" data-testid={`icon-tare-weight-${category.id}`} />
               )}
             </div>
@@ -335,27 +338,48 @@ export default function Categories() {
 
   return (
     <div className="p-8 pb-16">
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-8 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-categories-title">
             Categories
           </h1>
-          <p className="text-muted-foreground mt-2">
-            Drag and drop to reorder categories
-          </p>
+          {!showReviewButton && (
+            <p className="text-muted-foreground mt-2">
+              Drag and drop to reorder categories
+            </p>
+          )}
+          {showReviewButton && (
+            <p className="text-muted-foreground mt-2">
+              Review your default categories. Add or remove any, then continue.
+            </p>
+          )}
         </div>
-        <Button onClick={handleAdd} data-testid="button-add-category">
-          <Plus className="h-4 w-4 mr-2" />
-          New Category
-        </Button>
+        <div className="flex flex-col gap-2 items-end">
+          <Button onClick={handleAdd} data-testid="button-add-category">
+            <Plus className="h-4 w-4 mr-2" />
+            New Category
+          </Button>
+          {showReviewButton && (
+            <Button
+              variant="default"
+              onClick={() => reviewCategoriesMutation.mutate()}
+              disabled={reviewCategoriesMutation.isPending}
+              data-testid="button-confirm-categories"
+            >
+              {reviewCategoriesMutation.isPending ? "Saving..." : "Continue"}
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="mb-6 flex items-center gap-6 text-sm text-muted-foreground" data-testid="legend-categories">
-        <div className="flex items-center gap-2">
-          <Scale className="h-4 w-4" />
-          <span data-testid="text-tare-weight-legend">Tare weight category (case counting enabled)</span>
+      {!showReviewButton && (
+        <div className="mb-6 flex items-center gap-6 text-sm text-muted-foreground" data-testid="legend-categories">
+          <div className="flex items-center gap-2">
+            <Scale className="h-4 w-4" />
+            <span data-testid="text-tare-weight-legend">Tare weight category (case counting enabled)</span>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="mb-6">
         <div className="relative max-w-md">
@@ -397,6 +421,7 @@ export default function Categories() {
                   category={category}
                   onEdit={handleEdit}
                   onDelete={setDeletingCategory}
+                  hideDragHandle={!!showReviewButton}
                 />
               ))}
             </SortableContext>
@@ -450,48 +475,52 @@ export default function Categories() {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="showAsIngredient"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value === 1}
-                        onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
-                        data-testid="checkbox-show-as-ingredient"
-                      />
-                    </FormControl>
-                    <div className="space-y-1 leading-none">
-                      <FormLabel>Show as Ingredient</FormLabel>
-                      <p className="text-sm text-muted-foreground">
-                        Items in this category can be used as ingredients in recipes
-                      </p>
-                    </div>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="isTareWeightCategory"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value === 1}
-                        onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
-                        data-testid="checkbox-tare-weight-category"
-                      />
-                    </FormControl>
-                    <div className="space-y-1 leading-none">
-                      <FormLabel>Tare Weight Category</FormLabel>
-                      <p className="text-sm text-muted-foreground">
-                        Enable case counting for items in this category
-                      </p>
-                    </div>
-                  </FormItem>
-                )}
-              />
+              {editingCategory && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="showAsIngredient"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value === 1}
+                            onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
+                            data-testid="checkbox-show-as-ingredient"
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel>Show as Ingredient</FormLabel>
+                          <p className="text-sm text-muted-foreground">
+                            Items in this category can be used as ingredients in recipes
+                          </p>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="isTareWeightCategory"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value === 1}
+                            onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
+                            data-testid="checkbox-tare-weight-category"
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel>Tare Weight Category</FormLabel>
+                          <p className="text-sm text-muted-foreground">
+                            Enable case counting for items in this category
+                          </p>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
               <DialogFooter>
                 <Button
                   type="button"
@@ -538,28 +567,6 @@ export default function Categories() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {showReviewButton && (
-        <Card className="mt-4 border-primary/30 bg-primary/5" data-testid="card-review-categories">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium">Ready to move on?</p>
-                <p className="text-xs text-muted-foreground">
-                  Review your categories above. Add, edit, or remove any, then continue to the next step.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                onClick={() => reviewCategoriesMutation.mutate()}
-                disabled={reviewCategoriesMutation.isPending}
-                data-testid="button-confirm-categories"
-              >
-                {reviewCategoriesMutation.isPending ? "Saving..." : "Looks Good, Continue"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
       <SetupProgressBanner currentMilestoneId="categories" />
     </div>
   );
