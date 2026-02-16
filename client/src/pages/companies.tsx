@@ -281,7 +281,7 @@ export default function Companies() {
                   {sessionData.activeSessionCount}
                 </p>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  Active user {sessionData.activeSessionCount === 1 ? "session" : "sessions"}
+                  Active {sessionData.activeSessionCount === 1 ? "user" : "users"}
                 </p>
               </div>
             </div>

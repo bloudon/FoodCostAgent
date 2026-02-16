@@ -1,4 +1,4 @@
-import { eq, and, or, gt, gte, lte, ne, isNull, inArray, sql, desc, asc, ilike } from "drizzle-orm";
+import { eq, and, or, gt, gte, lte, ne, isNull, isNotNull, inArray, sql, desc, asc, ilike } from "drizzle-orm";
 import { db } from "./db";
 import { cache, CacheKeys } from "./cache";
 import {
@@ -759,9 +759,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async cleanExpiredSessions(): Promise<void> {
+    const now = new Date();
     await db
       .delete(authSessions)
-      .where(lte(authSessions.expiresAt, new Date()));
+      .where(or(
+        lte(authSessions.expiresAt, now),
+        isNotNull(authSessions.revokedAt)
+      ));
   }
 
   // API Credentials

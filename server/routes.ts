@@ -8062,7 +8062,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { authSessions } = await import("@shared/schema");
       const now = new Date();
-      const result = await db.select({ count: sql<number>`count(*)` })
+      const result = await db.select({ count: sql<number>`count(distinct ${authSessions.userId})` })
         .from(authSessions)
         .where(and(
           gt(authSessions.expiresAt, now),
