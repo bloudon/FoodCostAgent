@@ -1036,7 +1036,7 @@ export default function RecipeBuilder() {
         setLocation(`/menu-items`);
       } else {
         toast({ title: "Recipe saved successfully" });
-        setLocation(`/recipes/${recipeId}`);
+        setLocation(`/recipes`);
       }
     },
     onError: () => {

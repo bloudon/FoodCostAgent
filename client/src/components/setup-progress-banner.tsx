@@ -2,6 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   CheckCircle2,
   ArrowRight,
@@ -38,6 +39,7 @@ interface SetupProgressBannerProps {
 
 export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: SetupProgressBannerProps) {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
 
   const { data, isLoading } = useQuery<MilestonesResponse>({
     queryKey: ["/api/onboarding/milestones"],
@@ -65,18 +67,23 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
         navigate(next.path);
       } else {
         queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+        toast({ title: "Setup complete!", description: "Your account is ready to go." });
+        navigate("/");
       }
     },
   });
 
   if (isLoading || !data || data.dismissed) return null;
-  if (data.completedCount === data.totalCount) return null;
 
   const currentMilestone = data.milestones.find((m) => m.id === currentMilestoneId);
   const currentIndex = data.milestones.findIndex((m) => m.id === currentMilestoneId);
   if (currentIndex < 0) return null;
   const nextMilestone = data.milestones.find((m, i) => i > currentIndex && !m.completed);
   const currentCompleted = currentMilestone?.completed;
+  const isLastStep = !nextMilestone;
+  const allComplete = data.completedCount === data.totalCount;
+
+  if (allComplete && !currentCompleted) return null;
 
   return (
     <div
@@ -118,6 +125,19 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
               </Button>
             </Link>
           )}
+          {currentCompleted && isLastStep && (
+            <Button
+              size="sm"
+              onClick={() => {
+                toast({ title: "Setup complete!", description: "Your account is ready to go." });
+                navigate("/");
+              }}
+              data-testid="button-done-view-dashboard"
+            >
+              Done, View Dashboard
+              <ArrowRight className="h-3.5 w-3.5 ml-1" />
+            </Button>
+          )}
           {!currentCompleted && hasEntries && (
             <Button
               size="sm"
@@ -125,8 +145,8 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
               disabled={reviewStepMutation.isPending}
               data-testid="button-done-next-step"
             >
-              {reviewStepMutation.isPending ? "Saving..." : nextMilestone ? "Done, Next Step" : "Done"}
-              {!reviewStepMutation.isPending && nextMilestone && <ArrowRight className="h-3.5 w-3.5 ml-1" />}
+              {reviewStepMutation.isPending ? "Saving..." : isLastStep ? "Done, View Dashboard" : "Done, Next Step"}
+              {!reviewStepMutation.isPending && <ArrowRight className="h-3.5 w-3.5 ml-1" />}
             </Button>
           )}
           {nextMilestone && !currentCompleted && (

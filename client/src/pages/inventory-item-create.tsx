@@ -148,13 +148,13 @@ export default function InventoryItemCreate() {
       const response = await apiRequest("POST", "/api/inventory-items", data);
       return response.json();
     },
-    onSuccess: (newItem: any) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
       toast({
         title: "Item created",
         description: "The inventory item has been successfully created.",
       });
-      navigate(`/inventory-items/${newItem.id}`);
+      navigate("/inventory-items");
     },
     onError: (error: Error) => {
       toast({
