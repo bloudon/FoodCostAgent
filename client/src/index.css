@@ -17,11 +17,11 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
 
-  --background: 194.63deg 100% 16.08%;
+  --background: 0deg 33.33% 98.82%;
 
   --foreground: 0deg 0% 32.94%;
 
-  --border: 181.15deg 48.15% 78.82%;
+  --border: 194.63deg 100% 16.08%;
 
   --card: 0 0% 98%;
 
@@ -54,7 +54,7 @@
   /* Header/Menu: Slate Blue Grey */
   --primary: 194.63deg 100% 16.08%;
 
-  --primary-foreground: 0deg 0% 32.94%;
+  --primary-foreground: 0deg 0% 100%;
 
   /* Button Accent: Periwinkle Blue */
   --accent-button: 217 91% 60%;
@@ -65,7 +65,7 @@
 
   --secondary-foreground: 0deg 0% 32.94%;
 
-  --muted: 181.15deg 48.15% 78.82%;
+  --muted: 208deg 27.27% 89.22%;
 
   --muted-foreground: 240deg 4.9% 40%;
 
