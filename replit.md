@@ -24,6 +24,10 @@ This project is an inventory management and recipe costing system for food servi
 - Recipe Name Capitalization: Recipe names are automatically displayed with the first letter capitalized in all UI presentations while preserving the original database values.
 - User Accountability Tracking: All key actions (receipts completion, transfer creation/execution/receiving, waste logging) track the user who performed them. Dates display tooltips showing "Action by Username" on hover.
 - Case Price Entry: Vendor items use case price as the primary entry field (matches vendor invoices). Unit price is automatically calculated: `unitPrice = casePrice ÷ (caseSize × innerPackSize)`. The `lastCasePrice` field stores the entered case price, while `lastPrice` stores the derived unit price. Unit prices display with 4 decimal precision.
+- Password Show/Hide Toggle: All password input fields have Eye/EyeOff toggle buttons for visibility control.
+- Two-Stage Signup Flow: Lead capture (/signup) → Account activation (/activate) → Onboarding wizard (/onboarding, 3 steps: Welcome → Store Setup → Complete). No duplicate data entry between stages.
+- Setup Milestone Tracker: Dashboard shows a "Getting Started" checklist (Store, Categories, Vendors, Inventory, Recipes, Menu) with dismiss/undismiss capability. Auto-hides when all milestones complete.
+- Onboarding API Endpoints: POST /api/leads/signup (creates inactive account), POST /api/leads/activate (sets password, activates), POST /api/onboarding/store (creates first store), GET /api/onboarding/milestones (milestone status), POST /api/onboarding/milestones/dismiss, POST /api/onboarding/milestones/undismiss.
 
 # UI Layout Requirements
 
