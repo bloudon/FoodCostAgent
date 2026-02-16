@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatPhoneNumber, phoneValidation } from "@/lib/phone";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,7 @@ const companyFormSchema = z.object({
   name: z.string().min(1, "Company name is required"),
   legalName: z.string().optional(),
   contactEmail: z.string().email("Invalid email").optional().or(z.literal("")),
-  phone: z.string().optional(),
+  phone: z.string().optional().refine((val) => phoneValidation(val) === true, { message: "Phone number must be 10 digits" }),
   addressLine1: z.string().optional(),
   addressLine2: z.string().optional(),
   city: z.string().optional(),
@@ -305,7 +306,7 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
                 <FormItem>
                   <FormLabel>Phone</FormLabel>
                   <FormControl>
-                    <Input placeholder="(555) 123-4567" {...field} data-testid="input-phone" />
+                    <Input placeholder="(555) 123-4567" {...field} onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))} data-testid="input-phone" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -399,7 +400,7 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
 const storeFormSchema = z.object({
   code: z.string().min(1, "Store code is required"),
   name: z.string().min(1, "Store name is required"),
-  phone: z.string().optional(),
+  phone: z.string().optional().refine((val) => phoneValidation(val) === true, { message: "Phone number must be 10 digits" }),
   addressLine1: z.string().optional(),
   addressLine2: z.string().optional(),
   city: z.string().optional(),
@@ -511,7 +512,7 @@ export function StoreSetupStep({ onComplete }: { onComplete: () => void }) {
                 <FormItem className="md:col-span-2">
                   <FormLabel>Phone</FormLabel>
                   <FormControl>
-                    <Input placeholder="(555) 123-4567" {...field} data-testid="input-store-phone" />
+                    <Input placeholder="(555) 123-4567" {...field} onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))} data-testid="input-store-phone" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -660,6 +661,13 @@ const onboardingVendorFormSchema = insertVendorSchema.omit({ companyId: true }).
   accountNumber: true,
   phone: true,
   orderGuideType: true,
+}).superRefine((data, ctx) => {
+  if (data.phone) {
+    const digits = data.phone.replace(/\D/g, "");
+    if (digits.length > 0 && digits.length !== 10) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Phone number must be 10 digits", path: ["phone"] });
+    }
+  }
 });
 type OnboardingVendorFormData = z.infer<typeof onboardingVendorFormSchema>;
 
@@ -947,6 +955,7 @@ export function VendorsOrderGuidesStep({ onComplete }: { onComplete: () => void 
                         placeholder="(555) 123-4567" 
                         {...field}
                         value={field.value || ""}
+                        onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))}
                         data-testid="input-vendor-phone"
                       />
                     </FormControl>

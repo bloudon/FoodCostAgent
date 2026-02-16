@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { formatPhoneNumber, isValidPhone } from "@/lib/phone";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -278,13 +279,19 @@ export default function Settings() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
+    const phoneValue = formData.get("company-phone") as string || "";
+    if (!isValidPhone(phoneValue)) {
+      toast({ variant: "destructive", title: "Invalid phone number", description: "Phone number must be 10 digits" });
+      return;
+    }
+
     const companyData = {
       name: formData.get("company-name") as string,
       addressLine1: formData.get("company-address") as string,
       city: formData.get("company-city") as string,
       state: formData.get("company-state") as string,
       postalCode: formData.get("company-zip") as string,
-      phone: formData.get("company-phone") as string,
+      phone: phoneValue,
       contactEmail: formData.get("company-email") as string,
     };
     
@@ -485,6 +492,7 @@ export default function Settings() {
                       type="tel"
                       placeholder="(555) 123-4567"
                       defaultValue={company?.phone || ""}
+                      onChange={(e) => { e.target.value = formatPhoneNumber(e.target.value); }}
                       data-testid="input-company-phone"
                     />
                   </div>

@@ -34,6 +34,7 @@ import { Store, Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { CompanyStore } from "@shared/schema";
+import { formatPhoneNumber, isValidPhone } from "@/lib/phone";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -133,11 +134,16 @@ export default function Stores() {
   const handleCreateStore = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const phoneValue = formData.get("phone") as string || "";
+    if (!isValidPhone(phoneValue)) {
+      toast({ variant: "destructive", title: "Invalid phone number", description: "Phone number must be 10 digits" });
+      return;
+    }
     
     const data: any = {
       name: formData.get("name") as string,
       code: formData.get("code") as string,
-      phone: formData.get("phone") as string || null,
+      phone: phoneValue || null,
       addressLine1: formData.get("address1") as string || null,
       addressLine2: formData.get("address2") as string || null,
       city: formData.get("city") as string || null,
@@ -157,11 +163,16 @@ export default function Stores() {
     if (!selectedStore) return;
     
     const formData = new FormData(e.currentTarget);
+    const phoneValue = formData.get("phone") as string || "";
+    if (!isValidPhone(phoneValue)) {
+      toast({ variant: "destructive", title: "Invalid phone number", description: "Phone number must be 10 digits" });
+      return;
+    }
     
     const data: any = {
       name: formData.get("name") as string,
       code: formData.get("code") as string,
-      phone: formData.get("phone") as string || null,
+      phone: phoneValue || null,
       addressLine1: formData.get("address1") as string || null,
       addressLine2: formData.get("address2") as string || null,
       city: formData.get("city") as string || null,
@@ -218,6 +229,7 @@ export default function Stores() {
           name="phone"
           type="tel"
           defaultValue={store?.phone || ""}
+          onChange={(e) => { e.target.value = formatPhoneNumber(e.target.value); }}
           data-testid="input-store-phone"
         />
       </div>

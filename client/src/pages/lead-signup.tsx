@@ -16,13 +16,14 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { formatPhoneNumber, phoneValidation } from "@/lib/phone";
 import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
 
 const leadSignupSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Invalid email address"),
-  phone: z.string().optional(),
+  phone: z.string().optional().refine((val) => phoneValidation(val) === true, { message: "Phone number must be 10 digits" }),
   companyName: z.string().min(1, "Company name is required"),
   postalCode: z.string().min(1, "Zip code is required"),
 });
@@ -127,7 +128,7 @@ export default function LeadSignup() {
                   <FormItem>
                     <FormLabel>Phone</FormLabel>
                     <FormControl>
-                      <Input placeholder="(555) 123-4567" {...field} data-testid="input-phone" />
+                      <Input placeholder="(555) 123-4567" {...field} onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))} data-testid="input-phone" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

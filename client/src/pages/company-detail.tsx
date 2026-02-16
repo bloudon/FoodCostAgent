@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { Company, CompanyStore, InsertCompany, InsertCompanyStore, insertCompanySchema, insertCompanyStoreSchema } from "@shared/schema";
+import { z } from "zod";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,7 @@ import { ChevronLeft, Building2, Store, Plus, Edit, Save, X, Pencil } from "luci
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
+import { formatPhoneNumber } from "@/lib/phone";
 import {
   Dialog,
   DialogContent,
@@ -40,8 +42,17 @@ export default function CompanyDetail() {
     queryKey: [`/api/companies/${id}/stores`],
   });
 
+  const companyFormSchema = insertCompanySchema.superRefine((data, ctx) => {
+    if (data.phone) {
+      const digits = data.phone.replace(/\D/g, "");
+      if (digits.length > 0 && digits.length !== 10) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Phone number must be 10 digits", path: ["phone"] });
+      }
+    }
+  });
+
   const companyForm = useForm<InsertCompany>({
-    resolver: zodResolver(insertCompanySchema),
+    resolver: zodResolver(companyFormSchema),
     defaultValues: {
       name: "",
       status: "active",
@@ -57,8 +68,17 @@ export default function CompanyDetail() {
     }
   }, [company, isEditingCompany]);
 
+  const storeFormSchema = insertCompanyStoreSchema.superRefine((data, ctx) => {
+    if (data.phone) {
+      const digits = data.phone.replace(/\D/g, "");
+      if (digits.length > 0 && digits.length !== 10) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Phone number must be 10 digits", path: ["phone"] });
+      }
+    }
+  });
+
   const storeForm = useForm<InsertCompanyStore>({
-    resolver: zodResolver(insertCompanyStoreSchema),
+    resolver: zodResolver(storeFormSchema),
     defaultValues: {
       companyId: id || "",
       code: "",
@@ -366,7 +386,7 @@ export default function CompanyDetail() {
                         <FormItem>
                           <FormLabel>Phone</FormLabel>
                           <FormControl>
-                            <Input {...field} value={field.value || ""} data-testid="input-phone" />
+                            <Input {...field} value={field.value || ""} onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))} data-testid="input-phone" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -475,7 +495,7 @@ export default function CompanyDetail() {
                           <FormItem>
                             <FormLabel>Phone</FormLabel>
                             <FormControl>
-                              <Input {...field} value={field.value ?? ""} data-testid="input-store-phone" />
+                              <Input {...field} value={field.value ?? ""} onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))} data-testid="input-store-phone" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -702,7 +722,7 @@ export default function CompanyDetail() {
                     <FormItem>
                       <FormLabel>Phone</FormLabel>
                       <FormControl>
-                        <Input {...field} value={field.value ?? ""} data-testid="input-edit-store-phone" />
+                        <Input {...field} value={field.value ?? ""} onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))} data-testid="input-edit-store-phone" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

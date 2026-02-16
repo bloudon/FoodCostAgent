@@ -56,6 +56,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { useStoreContext } from "@/hooks/use-store-context";
+import { formatPhoneNumber } from "@/lib/phone";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import {
   Tooltip,
@@ -63,8 +64,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Form schema that omits companyId (added by backend from authenticated user)
-const vendorFormSchema = insertVendorSchema.omit({ companyId: true });
+const vendorFormSchema = insertVendorSchema.omit({ companyId: true }).superRefine((data, ctx) => {
+  if (data.phone) {
+    const digits = data.phone.replace(/\D/g, "");
+    if (digits.length > 0 && digits.length !== 10) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Phone number must be 10 digits", path: ["phone"] });
+    }
+  }
+});
 type VendorFormData = z.infer<typeof vendorFormSchema>;
 
 type VendorStoreAssignment = StoreVendor & { store?: CompanyStore };
@@ -736,6 +743,7 @@ export default function Vendors() {
                         placeholder="(555) 123-4567" 
                         {...field}
                         value={field.value || ""}
+                        onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))}
                         data-testid="input-vendor-phone"
                       />
                     </FormControl>
