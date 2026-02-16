@@ -388,6 +388,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
 
+      if (user.companyId) {
+        const { menuItemSizes } = await import("@shared/schema");
+        const existingSizes = await db.select().from(menuItemSizes)
+          .where(eq(menuItemSizes.companyId, user.companyId));
+        if (existingSizes.length === 0) {
+          const defaultSizes = [
+            { name: "One Size", sortOrder: 0, isDefault: 1 },
+            { name: "Large", sortOrder: 1, isDefault: 0 },
+            { name: "Medium", sortOrder: 2, isDefault: 0 },
+            { name: "Small", sortOrder: 3, isDefault: 0 },
+            { name: "Lunch", sortOrder: 4, isDefault: 0 },
+            { name: "Kids", sortOrder: 5, isDefault: 0 },
+          ];
+          await db.insert(menuItemSizes).values(
+            defaultSizes.map(size => ({
+              companyId: user.companyId!,
+              name: size.name,
+              sortOrder: size.sortOrder,
+              isDefault: size.isDefault,
+              active: 1,
+            }))
+          );
+        }
+      }
+
       const token = await createSession(
         user.id,
         req.headers["user-agent"],

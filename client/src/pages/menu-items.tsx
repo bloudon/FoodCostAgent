@@ -209,6 +209,12 @@ export default function MenuItemsPage() {
 
   const { data: stores } = useAccessibleStores();
 
+  useEffect(() => {
+    if (stores && stores.length === 1 && selectedStoresForAdd.length === 0) {
+      setSelectedStoresForAdd([stores[0].id]);
+    }
+  }, [stores]);
+
   // Fetch hierarchical menu items
   const { data: hierarchy, isLoading: isLoadingHierarchy } = useQuery<MenuItemHierarchy[]>({
     queryKey: ["/api/menu-items/hierarchy"],
@@ -979,11 +985,13 @@ export default function MenuItemsPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {menuItemSizes?.filter(s => s.active === 1).map((size) => (
-                              <SelectItem key={size.id} value={size.id}>
-                                {size.name}
-                              </SelectItem>
-                            )) || <SelectItem value="one-size">One Size</SelectItem>}
+                            {menuItemSizes && menuItemSizes.filter(s => s.active === 1).length > 0
+                              ? menuItemSizes.filter(s => s.active === 1).map((size) => (
+                                <SelectItem key={size.id} value={size.id}>
+                                  {size.name}
+                                </SelectItem>
+                              ))
+                              : <SelectItem value="one-size">One Size</SelectItem>}
                           </SelectContent>
                         </Select>
                         <FormDescription>
