@@ -156,15 +156,7 @@ export default function Companies() {
     <div className="container mx-auto p-6 max-w-7xl">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-3 mb-2 flex-wrap">
-            <h1 className="text-3xl font-bold" data-testid="text-page-title">Companies</h1>
-            {sessionData && (
-              <Badge variant="secondary" data-testid="badge-active-sessions">
-                <Users className="h-3 w-3 mr-1" />
-                {sessionData.activeSessionCount} active {sessionData.activeSessionCount === 1 ? "session" : "sessions"}
-              </Badge>
-            )}
-          </div>
+          <h1 className="text-3xl font-bold mb-2" data-testid="text-page-title">Companies</h1>
           <p className="text-muted-foreground">
             Select a company to view and manage its data
           </p>
@@ -276,6 +268,26 @@ export default function Companies() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {sessionData && (
+        <Card className="mb-4" data-testid="card-active-sessions">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center h-9 w-9 rounded-md bg-primary/10">
+                <Users className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold leading-none" data-testid="text-active-session-count">
+                  {sessionData.activeSessionCount}
+                </p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Active user {sessionData.activeSessionCount === 1 ? "session" : "sessions"}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="space-y-2">
         {companies?.map((company) => (
