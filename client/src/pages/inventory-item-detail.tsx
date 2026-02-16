@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ObjectUploader } from "@/components/ObjectUploader";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -547,7 +548,7 @@ export default function InventoryItemDetail() {
   const filteredUnits = filterUnitsBySystem(units, systemPrefs?.unitSystem);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col pb-16">
       {/* Fixed Header */}
       <div className="sticky top-0 z-10 bg-background border-b">
         <div className="flex items-center gap-4 px-6 py-4">
@@ -1313,6 +1314,7 @@ export default function InventoryItemDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <SetupProgressBanner currentMilestoneId="inventory" hasEntries={true} />
     </div>
   );
 }

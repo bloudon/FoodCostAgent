@@ -21,6 +21,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1213,7 +1214,7 @@ export default function RecipeBuilder() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="h-full flex flex-col">
+      <div className="h-full flex flex-col pb-16">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-background border-b">
           <div className="p-6 pb-4">
@@ -1857,6 +1858,7 @@ export default function RecipeBuilder() {
           </Card>
         ) : null}
       </DragOverlay>
+      <SetupProgressBanner currentMilestoneId="recipes" hasEntries={true} />
     </DndContext>
   );
 }

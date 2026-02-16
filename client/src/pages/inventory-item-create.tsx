@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { ArrowLeft, Settings } from "lucide-react";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -248,7 +249,7 @@ export default function InventoryItemCreate() {
   const filteredUnits = filterUnitsBySystem(units || [], systemPrefs?.unitSystem || "imperial");
 
   return (
-    <div className="p-8">
+    <div className="p-8 pb-16">
       <div className="mb-8">
         <Button
           variant="ghost"
@@ -563,6 +564,7 @@ export default function InventoryItemCreate() {
           </Button>
         </div>
       </form>
+      <SetupProgressBanner currentMilestoneId="inventory" hasEntries={true} />
     </div>
   );
 }

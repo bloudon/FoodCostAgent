@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Box, Search } from "lucide-react";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -82,7 +83,7 @@ export default function VendorDetail() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-8 pb-16">
       <div className="mb-6">
         <Link href="/vendors">
           <Button variant="ghost" size="sm" data-testid="button-back-to-vendors">
@@ -270,6 +271,7 @@ export default function VendorDetail() {
           <p>Vendor not found</p>
         </div>
       )}
+      <SetupProgressBanner currentMilestoneId="vendors" hasEntries={true} />
     </div>
   );
 }
