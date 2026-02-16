@@ -57,11 +57,14 @@ export default function ActivateAccount() {
   async function onSubmit(data: ActivateValues) {
     setIsLoading(true);
     try {
-      await apiRequest("POST", "/api/leads/activate", {
+      const response = await apiRequest("POST", "/api/leads/activate", {
         email: data.email,
         password: data.password,
       });
-      await refreshAuth();
+      const result = await response.json();
+      if (result.user) {
+        await refreshAuth();
+      }
       setLocation("/");
     } catch (error: any) {
       toast({

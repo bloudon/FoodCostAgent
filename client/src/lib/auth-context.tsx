@@ -62,8 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Refresh auth state - useful after signup when session cookie is set but context is stale
   async function refreshAuth() {
+    setIsLoading(true);
     await checkAuth();
   }
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
@@ -35,11 +35,18 @@ interface MilestonesResponse {
 }
 
 export function SetupMilestoneTracker() {
-  const { refreshAuth } = useAuth();
+  const { refreshAuth, user } = useAuth();
+  const defaultStoreName = user?.firstName ? `${user.firstName}'s Store` : "";
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showStoreForm, setShowStoreForm] = useState(false);
-  const [storeName, setStoreName] = useState("");
+  const [storeName, setStoreName] = useState(defaultStoreName);
   const [storeCode, setStoreCode] = useState("S001");
+
+  useEffect(() => {
+    if (user?.firstName && !storeName) {
+      setStoreName(`${user.firstName}'s Store`);
+    }
+  }, [user?.firstName]);
 
   const { data, isLoading, isError } = useQuery<MilestonesResponse>({
     queryKey: ["/api/onboarding/milestones"],
@@ -79,7 +86,7 @@ export function SetupMilestoneTracker() {
     onSuccess: async () => {
       await refreshAuth();
       setShowStoreForm(false);
-      setStoreName("");
+      setStoreName(defaultStoreName);
       setStoreCode("S001");
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stores"] });
