@@ -8295,9 +8295,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/companies/:id/stores", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.user!.id);
     
-    // Only global admins can create stores
-    if (user?.role !== "global_admin") {
-      return res.status(403).json({ error: "Only global admins can create stores" });
+    // Global admins can create stores for any company; company admins can only create stores for their own company
+    if (user?.role === "company_admin" && user.companyId !== req.params.id) {
+      return res.status(403).json({ error: "You can only create stores for your own company" });
+    } else if (user?.role !== "global_admin" && user?.role !== "company_admin") {
+      return res.status(403).json({ error: "Only admins can create stores" });
     }
 
     try {
@@ -8315,19 +8317,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/companies/:companyId/stores/:storeId", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.user!.id);
     
-    // Only global admins can update stores
-    if (user?.role !== "global_admin") {
-      return res.status(403).json({ error: "Only global admins can update stores" });
+    // Global admins can update any store; company admins can only update stores for their own company
+    if (user?.role === "company_admin" && user.companyId !== req.params.companyId) {
+      return res.status(403).json({ error: "You can only update stores for your own company" });
+    } else if (user?.role !== "global_admin" && user?.role !== "company_admin") {
+      return res.status(403).json({ error: "Only admins can update stores" });
     }
 
     try {
-      const data = insertCompanyStoreSchema.partial().parse(req.body);
-      const store = await storage.updateCompanyStore(req.params.storeId, data);
-      
-      if (!store) {
+      const existingStore = await storage.getCompanyStore(req.params.storeId);
+      if (!existingStore) {
         return res.status(404).json({ error: "Store not found" });
       }
-      
+      if (user?.role === "company_admin" && existingStore.companyId !== user.companyId) {
+        return res.status(403).json({ error: "You can only update stores for your own company" });
+      }
+
+      const data = insertCompanyStoreSchema.partial().parse(req.body);
+      const store = await storage.updateCompanyStore(req.params.storeId, data);
       res.json(store);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
