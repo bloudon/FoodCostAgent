@@ -56,8 +56,8 @@
 
   --primary-foreground: 0deg 0% 100%;
 
-  /* Button Accent: Periwinkle Blue */
-  --accent-button: 217 91% 60%;
+  /* Button Accent: Orange */
+  --accent-button: 24 93% 50%;
 
   --accent-button-foreground: 0 0% 100%;
 
@@ -184,8 +184,8 @@
 
   --primary-foreground: 0 0% 100%;
 
-  /* Button Accent: Periwinkle Blue (Dark Mode) */
-  --accent-button: 217 91% 65%;
+  /* Button Accent: Orange (Dark Mode) */
+  --accent-button: 24 93% 55%;
 
   --accent-button-foreground: 0 0% 100%;
 
