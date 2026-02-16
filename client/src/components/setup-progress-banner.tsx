@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
@@ -37,6 +37,8 @@ interface SetupProgressBannerProps {
 }
 
 export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: SetupProgressBannerProps) {
+  const [, navigate] = useLocation();
+
   const { data, isLoading } = useQuery<MilestonesResponse>({
     queryKey: ["/api/onboarding/milestones"],
     retry: false,
@@ -50,8 +52,20 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
       if (!response.ok) throw new Error("Failed to complete step");
       return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+    onSuccess: async () => {
+      const freshData = await queryClient.fetchQuery<MilestonesResponse>({
+        queryKey: ["/api/onboarding/milestones"],
+        staleTime: 0,
+      });
+      const milestones = freshData?.milestones || [];
+      const currentIdx = milestones.findIndex((m) => m.id === currentMilestoneId);
+      if (currentIdx < 0) return;
+      const next = milestones.find((m, i) => i > currentIdx && !m.completed);
+      if (next) {
+        navigate(next.path);
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+      }
     },
   });
 
@@ -63,10 +77,6 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
   if (currentIndex < 0) return null;
   const nextMilestone = data.milestones.find((m, i) => i > currentIndex && !m.completed);
   const currentCompleted = currentMilestone?.completed;
-
-  const handleDoneNextStep = () => {
-    reviewStepMutation.mutate();
-  };
 
   return (
     <div
@@ -108,15 +118,15 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
               </Button>
             </Link>
           )}
-          {nextMilestone && !currentCompleted && hasEntries && (
+          {!currentCompleted && hasEntries && (
             <Button
               size="sm"
-              onClick={handleDoneNextStep}
+              onClick={() => reviewStepMutation.mutate()}
               disabled={reviewStepMutation.isPending}
               data-testid="button-done-next-step"
             >
-              {reviewStepMutation.isPending ? "Saving..." : "Done, Next Step"}
-              {!reviewStepMutation.isPending && <ArrowRight className="h-3.5 w-3.5 ml-1" />}
+              {reviewStepMutation.isPending ? "Saving..." : nextMilestone ? "Done, Next Step" : "Done"}
+              {!reviewStepMutation.isPending && nextMilestone && <ArrowRight className="h-3.5 w-3.5 ml-1" />}
             </Button>
           )}
           {nextMilestone && !currentCompleted && (

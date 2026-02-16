@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star } from "lucide-react";
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -126,7 +126,6 @@ export default function InventoryItems() {
   const [breakdownItemId, setBreakdownItemId] = useState<string | null>(null);
   const [breakdownItemName, setBreakdownItemName] = useState<string>("");
   const { toast } = useToast();
-  const [, navigate] = useLocation();
 
   const { data: milestonesData } = useQuery<MilestonesResponse>({
     queryKey: ["/api/onboarding/milestones"],
@@ -137,25 +136,6 @@ export default function InventoryItems() {
   const MILESTONE_ID = "inventory";
   const currentMilestone = milestonesData?.milestones.find(m => m.id === MILESTONE_ID);
   const showOnboardingButtons = milestonesData && !milestonesData.dismissed && currentMilestone && !currentMilestone.completed;
-
-  const getNextMilestonePath = () => {
-    if (!milestonesData) return "/";
-    const currentIdx = milestonesData.milestones.findIndex(m => m.id === MILESTONE_ID);
-    const next = milestonesData.milestones.find((m, i) => i > currentIdx && !m.completed);
-    return next ? next.path : "/";
-  };
-
-  const reviewStepMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/onboarding/milestones/review-step", { stepId: MILESTONE_ID });
-      if (!response.ok) throw new Error("Failed to complete step");
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
-      navigate(getNextMilestonePath());
-    },
-  });
 
   // Use global store context instead of local state
   const { selectedStoreId: selectedStore } = useStoreContext();
@@ -293,13 +273,6 @@ export default function InventoryItems() {
                 Add Item
               </Link>
             </Button>
-            {showOnboardingButtons && (inventoryItems?.length ?? 0) > 0 && (
-              <div className="flex gap-2">
-                <Button onClick={() => reviewStepMutation.mutate()} disabled={reviewStepMutation.isPending} data-testid="button-continue-step">
-                  {reviewStepMutation.isPending ? "Saving..." : "Done, Next Step"}
-                </Button>
-              </div>
-            )}
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -149,7 +149,6 @@ export default function MenuItemsPage() {
   const [addVariantDialogOpen, setAddVariantDialogOpen] = useState(false);
   const [selectedParentForVariant, setSelectedParentForVariant] = useState<MenuItem | null>(null);
   const { toast } = useToast();
-  const [, navigate] = useLocation();
 
   const { data: milestonesData } = useQuery<MilestonesResponse>({
     queryKey: ["/api/onboarding/milestones"],
@@ -160,25 +159,6 @@ export default function MenuItemsPage() {
   const MILESTONE_ID = "menu";
   const currentMilestone = milestonesData?.milestones.find(m => m.id === MILESTONE_ID);
   const showOnboardingButtons = milestonesData && !milestonesData.dismissed && currentMilestone && !currentMilestone.completed;
-
-  const getNextMilestonePath = () => {
-    if (!milestonesData) return "/";
-    const currentIdx = milestonesData.milestones.findIndex(m => m.id === MILESTONE_ID);
-    const next = milestonesData.milestones.find((m, i) => i > currentIdx && !m.completed);
-    return next ? next.path : "/";
-  };
-
-  const reviewStepMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/onboarding/milestones/review-step", { stepId: MILESTONE_ID });
-      if (!response.ok) throw new Error("Failed to complete step");
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
-      navigate(getNextMilestonePath());
-    },
-  });
 
   const form = useForm<AddMenuItemForm>({
     resolver: zodResolver(addMenuItemFormSchema),
@@ -1648,13 +1628,6 @@ export default function MenuItemsPage() {
             </DialogContent>
           </Dialog>
           </div>
-          {showOnboardingButtons && (menuItems?.length ?? 0) > 0 && (
-            <div className="flex gap-2">
-              <Button onClick={() => reviewStepMutation.mutate()} disabled={reviewStepMutation.isPending} data-testid="button-continue-step">
-                {reviewStepMutation.isPending ? "Saving..." : "Done, Next Step"}
-              </Button>
-            </div>
-          )}
         </div>
       </div>
 

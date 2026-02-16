@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -91,7 +91,6 @@ export default function Vendors() {
   const [storeAccountNumbers, setStoreAccountNumbers] = useState<Record<string, string>>({});
   const { toast } = useToast();
   const { selectedStoreId, stores } = useStoreContext();
-  const [, navigate] = useLocation();
 
   const { data: milestonesData } = useQuery<MilestonesResponse>({
     queryKey: ["/api/onboarding/milestones"],
@@ -102,25 +101,6 @@ export default function Vendors() {
   const MILESTONE_ID = "vendors";
   const currentMilestone = milestonesData?.milestones.find(m => m.id === MILESTONE_ID);
   const showOnboardingButtons = milestonesData && !milestonesData.dismissed && currentMilestone && !currentMilestone.completed;
-
-  const getNextMilestonePath = () => {
-    if (!milestonesData) return "/";
-    const currentIdx = milestonesData.milestones.findIndex(m => m.id === MILESTONE_ID);
-    const next = milestonesData.milestones.find((m, i) => i > currentIdx && !m.completed);
-    return next ? next.path : "/";
-  };
-
-  const reviewStepMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/onboarding/milestones/review-step", { stepId: MILESTONE_ID });
-      if (!response.ok) throw new Error("Failed to complete step");
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
-      navigate(getNextMilestonePath());
-    },
-  });
 
   const { data: vendors, isLoading } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors"],
@@ -533,13 +513,6 @@ export default function Vendors() {
               New Vendor
             </Button>
           </div>
-          {showOnboardingButtons && (vendors?.length ?? 0) > 0 && (
-            <div className="flex gap-2">
-              <Button onClick={() => reviewStepMutation.mutate()} disabled={reviewStepMutation.isPending} data-testid="button-continue-step">
-                {reviewStepMutation.isPending ? "Saving..." : "Done, Next Step"}
-              </Button>
-            </div>
-          )}
         </div>
       </div>
 
