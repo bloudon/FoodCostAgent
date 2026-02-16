@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
 import {
-  Home,
+  LayoutDashboard,
   UtensilsCrossed,
   ChefHat,
   Warehouse,
@@ -210,20 +210,6 @@ export function AppHeader() {
 
         <div className="flex-1" />
 
-        <Link href="/" data-testid="link-dashboard">
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "text-primary-foreground",
-              location === "/" && "bg-primary-foreground/20"
-            )}
-          >
-            <Home className="h-5 w-5" />
-            <span className="sr-only">Dashboard</span>
-          </Button>
-        </Link>
-
         <div className="hidden md:block">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -313,7 +299,7 @@ export function AppHeader() {
                     className="w-full justify-start mb-1"
                     data-testid="link-dashboard-mobile"
                   >
-                    <Home className="h-4 w-4 mr-2" />
+                    <LayoutDashboard className="h-4 w-4 mr-2" />
                     Dashboard
                   </Button>
                 </Link>

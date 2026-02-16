@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
+import { useCompany } from "@/hooks/use-company";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,18 +37,20 @@ interface MilestonesResponse {
 
 export function SetupMilestoneTracker() {
   const { refreshAuth, user } = useAuth();
+  const { company } = useCompany();
   const [, navigate] = useLocation();
-  const defaultStoreName = user?.firstName ? `${user.firstName}'s Store` : "";
+  const defaultStoreName = company?.name ? `${company.name}'s Store` : "";
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showStoreForm, setShowStoreForm] = useState(false);
   const [storeName, setStoreName] = useState(defaultStoreName);
   const [storeCode, setStoreCode] = useState("S001");
+  const hasAutoExpandedStore = useRef(false);
 
   useEffect(() => {
-    if (user?.firstName && !storeName) {
-      setStoreName(`${user.firstName}'s Store`);
+    if (company?.name && !storeName) {
+      setStoreName(`${company.name}'s Store`);
     }
-  }, [user?.firstName]);
+  }, [company?.name]);
 
   const { data, isLoading, isError } = useQuery<MilestonesResponse>({
     queryKey: ["/api/onboarding/milestones"],
@@ -55,6 +58,16 @@ export function SetupMilestoneTracker() {
     staleTime: 0,
     refetchOnMount: "always",
   });
+
+  useEffect(() => {
+    if (data && !data.dismissed && !hasAutoExpandedStore.current) {
+      const storeMilestone = data.milestones.find((m) => m.id === "store");
+      if (storeMilestone && !storeMilestone.completed) {
+        setShowStoreForm(true);
+        hasAutoExpandedStore.current = true;
+      }
+    }
+  }, [data]);
 
   const dismissMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/onboarding/milestones/dismiss"),

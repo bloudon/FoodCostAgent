@@ -295,9 +295,6 @@ export default function InventoryItems() {
             </Button>
             {showOnboardingButtons && (
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => navigate(getNextMilestonePath())} data-testid="button-skip-step">
-                  Skip
-                </Button>
                 <Button onClick={() => reviewStepMutation.mutate()} disabled={reviewStepMutation.isPending} data-testid="button-continue-step">
                   {reviewStepMutation.isPending ? "Saving..." : "Continue"}
                 </Button>

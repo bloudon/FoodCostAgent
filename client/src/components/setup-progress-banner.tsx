@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   ArrowRight,
   ChevronRight,
-  Home,
 } from "lucide-react";
 
 interface Milestone {
@@ -100,12 +99,6 @@ export function SetupProgressBanner({ currentMilestoneId }: SetupProgressBannerP
               </Button>
             </Link>
           )}
-          <Link href="/">
-            <Button variant="ghost" size="sm" data-testid="button-back-dashboard">
-              <Home className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline ml-1">Dashboard</span>
-            </Button>
-          </Link>
         </div>
       </div>
     </div>
