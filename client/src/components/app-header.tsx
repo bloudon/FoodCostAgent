@@ -18,8 +18,8 @@ import {
   Settings,
   Key,
   Menu,
-  X,
   LogOut,
+  Ruler,
 } from "lucide-react";
 import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
 import {
@@ -27,6 +27,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuGroup,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   Sheet,
@@ -65,12 +71,14 @@ interface NavItem {
 
 interface NavSection {
   title: string;
+  icon: any;
   items: NavItem[];
 }
 
-const navigationSections: NavSection[] = [
+const mainNavSections: NavSection[] = [
   {
     title: "Menu",
+    icon: UtensilsCrossed,
     items: [
       { title: "Menu Items", url: "/menu-items", icon: UtensilsCrossed },
       { title: "Recipes", url: "/recipes", icon: ChefHat },
@@ -78,6 +86,7 @@ const navigationSections: NavSection[] = [
   },
   {
     title: "Inventory",
+    icon: Warehouse,
     items: [
       { title: "Inventory Items", url: "/inventory-items", icon: Warehouse },
       { title: "Inventory Sessions", url: "/inventory-sessions", icon: ClipboardList },
@@ -86,6 +95,7 @@ const navigationSections: NavSection[] = [
   },
   {
     title: "Purchasing",
+    icon: ShoppingCart,
     items: [
       { title: "Orders", url: "/orders", icon: ShoppingCart },
       { title: "Vendors", url: "/vendors", icon: Users },
@@ -94,211 +104,200 @@ const navigationSections: NavSection[] = [
   },
   {
     title: "Reports",
+    icon: BarChart3,
     items: [
       { title: "Sales Import", url: "/tfc/sales-import", icon: Upload },
       { title: "Variance Report", url: "/tfc/variance", icon: BarChart3 },
     ],
   },
+];
+
+interface SettingsSection {
+  title: string;
+  icon: any;
+  url?: string;
+  children?: { title: string; url: string; icon: any }[];
+}
+
+const settingsSections: SettingsSection[] = [
   {
-    title: "Settings",
-    items: [
+    title: "Locations",
+    icon: MapPin,
+    children: [
       { title: "Store Locations", url: "/stores", icon: Store },
       { title: "Storage Locations", url: "/storage-locations", icon: MapPin },
-      { title: "Categories", url: "/categories", icon: Tag },
-      { title: "Unit Conversions", url: "/unit-conversions", icon: ArrowLeftRight },
-      { title: "API Credentials", url: "/api-credentials", icon: Key },
-      { title: "System", url: "/settings", icon: Settings },
     ],
   },
+  { title: "Categories", icon: Tag, url: "/categories" },
+  { title: "Unit Conversions", icon: Ruler, url: "/unit-conversions" },
+  { title: "API Credentials", icon: Key, url: "/api-credentials" },
+  { title: "System", icon: Settings, url: "/settings" },
 ];
 
 export function AppHeader() {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout } = useAuth();
   const { company } = useCompany();
   const { selectedStoreId, setSelectedStoreId, stores } = useStoreContext();
   const { data: accessibleStores, isLoading: storesLoading } = useAccessibleStores();
 
-  // Store level users should only see Dashboard, Inventory Sessions and Orders
   const isStoreUser = user?.role === 'store_user';
-  
-  // Hide transfer-related items for companies with less than 2 stores
   const hasMultipleStores = storesLoading ? true : (accessibleStores?.length ?? 0) >= 2;
 
-  // Filter sections based on user role and store count
-  const getVisibleSections = () => {
+  const getVisibleMainSections = () => {
     if (isStoreUser) {
-      // Store users only see Dashboard (separate), Inventory Sessions, and Orders
-      return navigationSections
+      return mainNavSections
         .map(section => ({
           ...section,
-          items: section.items.filter(item => 
+          items: section.items.filter(item =>
             item.title === 'Inventory Sessions' || item.title === 'Orders'
           )
         }))
         .filter(section => section.items.length > 0);
     }
-    
-    return navigationSections.map(section => ({
+
+    return mainNavSections.map(section => ({
       ...section,
-      items: section.items.filter(item => 
+      items: section.items.filter(item =>
         !item.requiresMultipleStores || hasMultipleStores
       )
     }));
   };
 
-  const visibleSections = getVisibleSections();
+  const visibleMainSections = getVisibleMainSections();
+
+  const userInitials = user?.firstName && user?.lastName
+    ? `${user.firstName[0]}${user.lastName[0]}`.toUpperCase()
+    : user?.email?.[0]?.toUpperCase() || "U";
+
+  const userName = user?.firstName && user?.lastName
+    ? `${user.firstName} ${user.lastName}`
+    : user?.email || "User";
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-primary text-primary-foreground shadow-sm">
-      <div className="flex h-[56px] items-center justify-between pr-4 sm:pr-6 gap-4">
-        {/* Logo - full height on left side, no padding */}
-        <div className="flex items-center shrink-0 h-full">
-          <img 
-            src={logoImage} 
-            alt="FNB Cost Pro" 
-            className="h-full w-auto"
-            data-testid="logo"
-          />
-        </div>
-
-        {/* Desktop: Company/Store + Navigation (Centered) */}
-        <div className="hidden md:flex items-center gap-4 flex-1 justify-center">
-          {/* Company Name and Store Selector */}
-          <div className="flex items-center gap-3">
-            {company && (
-              <h2 className="text-base font-semibold whitespace-nowrap" data-testid="text-company-name">
-                {company.name}
-              </h2>
-            )}
-            {stores.length > 0 && (
-              <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-                <SelectTrigger className="w-[150px] h-10 bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/20" data-testid="select-store">
-                  <Store className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Select store" />
-                </SelectTrigger>
-                <SelectContent>
-                  {stores.map((store) => (
-                    <SelectItem key={store.id} value={store.id} data-testid={`select-store-${store.id}`}>
-                      {store.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+      <div className="flex h-[56px] items-center gap-3 px-2 sm:px-4">
+        <Link href="/" data-testid="link-dashboard-logo">
+          <div className="flex items-center shrink-0 h-[56px] cursor-pointer">
+            <img
+              src={logoImage}
+              alt="FNB Cost Pro"
+              className="h-full w-auto"
+              data-testid="logo"
+            />
           </div>
+        </Link>
 
-          {/* Navigation */}
-          <nav className="flex items-center gap-1">
-            {/* Dashboard - no submenu */}
-            <Link href="/" data-testid="link-dashboard">
-              <Button
-                variant="ghost"
-                className={cn(
-                  "h-10 px-4 py-2 text-base bg-primary-foreground/10 hover:bg-primary-foreground/20 text-primary-foreground",
-                  location === "/" && "bg-primary-foreground/30"
-                )}
-              >
-                <Home className="h-5 w-5 mr-2" />
-                Dashboard
-              </Button>
-            </Link>
+        {stores.length > 0 && (
+          <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+            <SelectTrigger
+              className="w-[140px] sm:w-[160px] bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground"
+              data-testid="select-store"
+            >
+              <Store className="h-4 w-4 mr-1.5 shrink-0" />
+              <SelectValue placeholder="Select store" />
+            </SelectTrigger>
+            <SelectContent>
+              {stores.map((store) => (
+                <SelectItem key={store.id} value={store.id} data-testid={`select-store-${store.id}`}>
+                  {store.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
-            {/* Dropdown menu sections */}
-            {visibleSections.map((section) => {
-              const sectionIcons = {
-                'Menu': UtensilsCrossed,
-                'Inventory': Warehouse,
-                'Purchasing': ShoppingCart,
-                'Reports': BarChart3,
-                'Settings': Settings,
-              };
-              const SectionIcon = sectionIcons[section.title as keyof typeof sectionIcons];
-              
-              return (
-                <DropdownMenu key={section.title}>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      className="inline-flex h-10 items-center justify-center rounded-md bg-primary-foreground/10 hover:bg-primary-foreground/20 px-4 py-2 text-base font-medium transition-colors focus:bg-primary-foreground/20 focus:outline-none disabled:pointer-events-none disabled:opacity-50 text-primary-foreground"
-                      data-testid={`menu-${section.title.toLowerCase()}`}
-                    >
-                      {SectionIcon && <SectionIcon className="h-5 w-5 mr-2" />}
-                      {section.title}
-                      <svg className="ml-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-64" align="start">
-                    {section.items.map((item) => (
-                      <DropdownMenuItem key={item.url} asChild>
-                        <Link
-                          href={item.url}
-                          className="flex items-center gap-3 cursor-pointer"
-                          data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
-                        >
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.title}</span>
-                        </Link>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              );
-            })}
-          </nav>
-        </div>
+        <div className="flex-1" />
 
-        {/* User Controls - Desktop (Right aligned) */}
-        <div className="hidden md:flex items-center gap-3">
-          <span className="text-sm text-primary-foreground/80" data-testid="text-user-email">
-            {user?.email}
-          </span>
+        <Link href="/" data-testid="link-dashboard">
           <Button
             variant="ghost"
             size="icon"
-            className="h-10 w-10 bg-primary-foreground/10 hover:bg-primary-foreground/20 text-primary-foreground"
-            onClick={logout}
-            data-testid="button-logout"
+            className={cn(
+              "text-primary-foreground",
+              location === "/" && "bg-primary-foreground/20"
+            )}
           >
-            <LogOut className="h-5 w-5" />
+            <Home className="h-5 w-5" />
+            <span className="sr-only">Dashboard</span>
           </Button>
-          <div className="bg-primary-foreground/10 hover:bg-primary-foreground/20 rounded-md">
-            <ThemeToggle />
-          </div>
+        </Link>
+
+        <div className="hidden md:block">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-primary-foreground"
+                data-testid="button-main-menu"
+              >
+                <Menu className="h-5 w-5" />
+                <span className="sr-only">Main menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="end">
+              {visibleMainSections.map((section, sIdx) => (
+                <DropdownMenuGroup key={section.title}>
+                  {sIdx > 0 && <DropdownMenuSeparator />}
+                  <DropdownMenuLabel className="flex items-center gap-2">
+                    <section.icon className="h-4 w-4 text-muted-foreground" />
+                    {section.title}
+                  </DropdownMenuLabel>
+                  {section.items.map((item) => (
+                    <DropdownMenuItem
+                      key={item.url}
+                      className={cn(
+                        "cursor-pointer pl-8",
+                        location === item.url && "bg-accent"
+                      )}
+                      onClick={() => navigate(item.url)}
+                      data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      <item.icon className="h-4 w-4 mr-2" />
+                      {item.title}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
-        {/* Mobile Menu - Right aligned */}
-        <div className="flex md:hidden">
+        <div className="md:hidden">
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-10 w-10 bg-primary-foreground/10 hover:bg-primary-foreground/20 text-primary-foreground" data-testid="button-mobile-menu">
-                <Menu className="h-6 w-6" />
-                <span className="sr-only">Toggle menu</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-primary-foreground"
+                data-testid="button-mobile-menu"
+              >
+                <Menu className="h-5 w-5" />
+                <span className="sr-only">Main menu</span>
               </Button>
             </SheetTrigger>
             <SheetContent side="right" className="w-72 overflow-y-auto">
               <SheetHeader>
                 <SheetTitle>Navigation</SheetTitle>
               </SheetHeader>
-              
-              {/* Company/Store Info in Mobile */}
+
               <div className="mt-4 pb-4 border-b">
                 {company && (
-                  <div className="font-semibold mb-2" data-testid="text-company-name">
+                  <div className="font-semibold mb-2" data-testid="text-company-name-mobile">
                     {company.name}
                   </div>
                 )}
                 {stores.length > 0 && (
                   <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-                    <SelectTrigger className="w-full" data-testid="select-store">
+                    <SelectTrigger className="w-full" data-testid="select-store-mobile">
                       <Store className="h-4 w-4 mr-2" />
                       <SelectValue placeholder="Select store" />
                     </SelectTrigger>
                     <SelectContent>
                       {stores.map((store) => (
-                        <SelectItem key={store.id} value={store.id} data-testid={`select-store-${store.id}`}>
+                        <SelectItem key={store.id} value={store.id}>
                           {store.name}
                         </SelectItem>
                       ))}
@@ -306,29 +305,30 @@ export function AppHeader() {
                   </Select>
                 )}
               </div>
-              
-              <div className="mt-6">
-                {/* Dashboard - always visible */}
+
+              <div className="mt-4">
                 <Link href="/" onClick={() => setMobileMenuOpen(false)}>
                   <Button
-                    variant={location === "/" ? "default" : "ghost"}
-                    className="w-full justify-start mb-2"
-                    data-testid="link-dashboard"
+                    variant={location === "/" ? "secondary" : "ghost"}
+                    className="w-full justify-start mb-1"
+                    data-testid="link-dashboard-mobile"
                   >
                     <Home className="h-4 w-4 mr-2" />
                     Dashboard
                   </Button>
                 </Link>
 
-                {/* Accordion for sections */}
                 <Accordion type="multiple" className="w-full">
-                  {visibleSections.map((section) => (
+                  {visibleMainSections.map((section) => (
                     <AccordionItem key={section.title} value={section.title}>
-                      <AccordionTrigger className="text-sm font-semibold uppercase tracking-wider">
-                        {section.title}
+                      <AccordionTrigger className="text-sm font-semibold">
+                        <span className="flex items-center gap-2">
+                          <section.icon className="h-4 w-4" />
+                          {section.title}
+                        </span>
                       </AccordionTrigger>
                       <AccordionContent>
-                        <div className="flex flex-col space-y-1">
+                        <div className="flex flex-col space-y-1 pl-2">
                           {section.items.map((item) => (
                             <Link
                               key={item.url}
@@ -336,9 +336,9 @@ export function AppHeader() {
                               onClick={() => setMobileMenuOpen(false)}
                             >
                               <Button
-                                variant={location === item.url ? "default" : "ghost"}
+                                variant={location === item.url ? "secondary" : "ghost"}
                                 className="w-full justify-start"
-                                data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                                data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}-mobile`}
                               >
                                 <item.icon className="h-4 w-4 mr-2" />
                                 {item.title}
@@ -350,21 +350,73 @@ export function AppHeader() {
                     </AccordionItem>
                   ))}
                 </Accordion>
-                
-                {/* User Controls in Mobile */}
-                <div className="mt-6 pt-4 border-t space-y-2">
-                  <div className="text-sm text-muted-foreground mb-2" data-testid="text-user-email">
-                    {user?.email}
+
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">Settings</p>
+                  {settingsSections.map((section) => {
+                    if (isStoreUser) return null;
+                    if (section.children) {
+                      return (
+                        <Accordion key={section.title} type="multiple" className="w-full">
+                          <AccordionItem value={section.title}>
+                            <AccordionTrigger className="text-sm font-medium py-2">
+                              <span className="flex items-center gap-2">
+                                <section.icon className="h-4 w-4" />
+                                {section.title}
+                              </span>
+                            </AccordionTrigger>
+                            <AccordionContent>
+                              <div className="flex flex-col space-y-1 pl-2">
+                                {section.children.map((child) => (
+                                  <Link key={child.url} href={child.url} onClick={() => setMobileMenuOpen(false)}>
+                                    <Button
+                                      variant={location === child.url ? "secondary" : "ghost"}
+                                      className="w-full justify-start"
+                                    >
+                                      <child.icon className="h-4 w-4 mr-2" />
+                                      {child.title}
+                                    </Button>
+                                  </Link>
+                                ))}
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
+                      );
+                    }
+                    return (
+                      <Link key={section.title} href={section.url!} onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === section.url ? "secondary" : "ghost"}
+                          className="w-full justify-start mb-1"
+                        >
+                          <section.icon className="h-4 w-4 mr-2" />
+                          {section.title}
+                        </Button>
+                      </Link>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 pt-4 border-t space-y-2">
+                  <div className="flex items-center gap-3 px-2 mb-2">
+                    <div className="h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-semibold shrink-0">
+                      {userInitials}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{userName}</p>
+                      <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Theme</span>
+                  <div className="flex items-center justify-between gap-2 px-2 mb-2">
+                    <span className="text-sm">Theme</span>
                     <ThemeToggle />
                   </div>
                   <Button
                     variant="ghost"
                     className="w-full justify-start"
                     onClick={logout}
-                    data-testid="button-logout"
+                    data-testid="button-logout-mobile"
                   >
                     <LogOut className="h-4 w-4 mr-2" />
                     Logout
@@ -374,6 +426,95 @@ export function AppHeader() {
             </SheetContent>
           </Sheet>
         </div>
+
+        {!isStoreUser && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-primary-foreground"
+                data-testid="button-settings-menu"
+              >
+                <Settings className="h-5 w-5" />
+                <span className="sr-only">Settings</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-52" align="end">
+              <DropdownMenuLabel>Settings</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {settingsSections.map((section) => {
+                if (section.children) {
+                  return (
+                    <DropdownMenuSub key={section.title}>
+                      <DropdownMenuSubTrigger data-testid={`menu-settings-${section.title.toLowerCase()}`}>
+                        <section.icon className="h-4 w-4 mr-2" />
+                        {section.title}
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        {section.children.map((child) => (
+                          <DropdownMenuItem
+                            key={child.url}
+                            className={cn("cursor-pointer", location === child.url && "bg-accent")}
+                            onClick={() => navigate(child.url)}
+                            data-testid={`link-${child.title.toLowerCase().replace(/\s+/g, "-")}`}
+                          >
+                            <child.icon className="h-4 w-4 mr-2" />
+                            {child.title}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  );
+                }
+                return (
+                  <DropdownMenuItem
+                    key={section.title}
+                    className={cn("cursor-pointer", location === section.url && "bg-accent")}
+                    onClick={() => navigate(section.url!)}
+                    data-testid={`link-${section.title.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    <section.icon className="h-4 w-4 mr-2" />
+                    {section.title}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="h-9 w-9 rounded-full bg-primary-foreground/15 text-primary-foreground flex items-center justify-center text-sm font-semibold shrink-0 hover:bg-primary-foreground/25 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid="button-avatar-menu"
+            >
+              {userInitials}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-56" align="end">
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium">{userName}</p>
+                <p className="text-xs text-muted-foreground">{user?.email}</p>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+              <span className="text-sm">Theme</span>
+              <ThemeToggle />
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onClick={logout}
+              data-testid="button-logout"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );
