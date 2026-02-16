@@ -85,7 +85,7 @@ export default function LeadSignup() {
             </p>
             <Button
               className="w-full"
-              onClick={() => setLocation("/activate")}
+              onClick={() => setLocation(`/activate?email=${encodeURIComponent(form.getValues("email"))}`)}
               data-testid="button-go-activate"
             >
               Activate My Account

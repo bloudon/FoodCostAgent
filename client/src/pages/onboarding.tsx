@@ -1,190 +1,141 @@
-import { useState, createContext, useContext } from "react";
 import { useLocation } from "wouter";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Stepper, Step } from "@/components/ui/stepper";
-import { ArrowLeft, ArrowRight, Check } from "lucide-react";
-import { StoreSetupStep } from "@/pages/onboarding-steps";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormDescription,
+} from "@/components/ui/form";
+import { Store } from "lucide-react";
 import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
 
-const ONBOARDING_STEPS: Step[] = [
-  { id: "welcome", label: "Welcome", description: "Get started" },
-  { id: "stores", label: "Store Setup", description: "First location" },
-  { id: "complete", label: "Complete", description: "Finish setup" },
-];
+const storeSchema = z.object({
+  code: z.string().min(1, "Store code is required"),
+  name: z.string().min(1, "Store name is required"),
+});
 
-interface OnboardingContextType {
-  wizardData: Record<string, any>;
-  updateWizardData: (stepId: string, data: any) => void;
-}
-
-const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
-
-export function useOnboarding() {
-  const context = useContext(OnboardingContext);
-  if (!context) {
-    throw new Error("useOnboarding must be used within OnboardingProvider");
-  }
-  return context;
-}
-
-function isStepComplete(stepId: string, wizardData: Record<string, any>): boolean {
-  switch (stepId) {
-    case "welcome":
-      return true;
-    case "stores":
-      return !!wizardData.store?.name;
-    default:
-      return false;
-  }
-}
+type StoreFormValues = z.infer<typeof storeSchema>;
 
 export default function Onboarding() {
   const [, navigate] = useLocation();
-  const [currentStep, setCurrentStep] = useState(0);
-  const [wizardData, setWizardData] = useState<Record<string, any>>({});
+  const { refreshAuth } = useAuth();
+  const { toast } = useToast();
 
-  const updateWizardData = (stepId: string, data: any) => {
-    setWizardData((prev) => ({
-      ...prev,
-      [stepId]: data,
-    }));
-  };
+  const form = useForm<StoreFormValues>({
+    resolver: zodResolver(storeSchema),
+    defaultValues: {
+      code: "S001",
+      name: "",
+    },
+  });
 
-  const handleNext = () => {
-    if (currentStep < ONBOARDING_STEPS.length - 1) {
-      setCurrentStep((prev) => prev + 1);
-    } else {
+  const createStoreMutation = useMutation({
+    mutationFn: async (data: StoreFormValues) => {
+      const response = await apiRequest("POST", "/api/onboarding/store", data);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "Failed to create store" }));
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      }
+      return await response.json();
+    },
+    onSuccess: async () => {
+      await refreshAuth();
+      toast({
+        title: "You're all set!",
+        description: "Your store has been created. Welcome to FNB Cost Pro.",
+      });
       navigate("/");
-    }
-  };
-
-  const handleBack = () => {
-    if (currentStep > 0) {
-      setCurrentStep((prev) => prev - 1);
-    }
-  };
-
-  const canGoBack = currentStep > 0;
-  const isLastStep = currentStep === ONBOARDING_STEPS.length - 1;
-
-  const currentStepId = ONBOARDING_STEPS[currentStep]?.id;
-  const isCurrentStepComplete = isStepComplete(currentStepId, wizardData);
-
-  const REQUIRED_STEPS = ["stores"];
-  const isRequiredStep = REQUIRED_STEPS.includes(currentStepId);
-
-  const canProceed = isCurrentStepComplete || !isRequiredStep;
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Error creating store",
+        description: error.message || "Failed to create your store. Please try again.",
+      });
+    },
+  });
 
   return (
-    <OnboardingContext.Provider value={{ wizardData, updateWizardData }}>
-      <div className="min-h-screen bg-background flex flex-col p-4 md:p-8">
-        <div className="max-w-5xl w-full mx-auto mb-8">
-          <div className="flex items-center justify-center mb-6">
-            <img
-              src={logoImage}
-              alt="FNB Cost Pro"
-              className="h-16 w-auto"
-            />
-          </div>
-          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-2xl md:text-3xl font-bold">Setup Wizard</h1>
-            <div className="text-sm text-muted-foreground">
-              Step {currentStep + 1} of {ONBOARDING_STEPS.length}
-            </div>
-          </div>
-
-          <Stepper
-            steps={ONBOARDING_STEPS.map((step, index) => ({
-              ...step,
-              isComplete: index < currentStep || (index === currentStep && isStepComplete(step.id, wizardData))
-            }))}
-            currentStep={currentStep}
-            className="mt-6"
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <div className="flex items-center justify-center mb-8">
+          <img
+            src={logoImage}
+            alt="FNB Cost Pro"
+            className="h-16 w-auto"
           />
         </div>
 
-        <div className="flex-1 max-w-5xl w-full mx-auto">
-          <Card className="h-full">
-            <CardContent className="p-6 md:p-8">
-              {renderStepContent(currentStep, handleNext, navigate)}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="max-w-5xl w-full mx-auto mt-6">
-          <div className="flex items-center justify-between gap-4">
-            <Button
-              variant="outline"
-              onClick={handleBack}
-              disabled={!canGoBack}
-              data-testid="button-back"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-
-            <div className="flex gap-2">
-              {!isLastStep && (
-                <Button
-                  onClick={handleNext}
-                  disabled={!canProceed}
-                  data-testid="button-next"
-                >
-                  Next
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              )}
+        <Card>
+          <CardContent className="p-6 md:p-8">
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-2">
+                <Store className="w-5 h-5 text-primary" />
+                <h2 className="text-xl font-bold" data-testid="text-onboarding-title">Name Your First Store</h2>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Give your first location a name and code. You can add more stores and details later.
+              </p>
             </div>
-          </div>
-        </div>
+
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit((data) => createStoreMutation.mutate(data))} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Store Name *</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g. Downtown Location" {...field} autoFocus data-testid="input-store-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="code"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Store Code *</FormLabel>
+                      <FormControl>
+                        <Input placeholder="S001" {...field} data-testid="input-store-code" />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        A short identifier for this store
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={createStoreMutation.isPending}
+                  data-testid="button-save-store"
+                >
+                  {createStoreMutation.isPending ? "Setting up..." : "Get Started"}
+                </Button>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
       </div>
-    </OnboardingContext.Provider>
-  );
-}
-
-function renderStepContent(step: number, onStepComplete: () => void, navigate: (path: string) => void): JSX.Element {
-  switch (step) {
-    case 0:
-      return <WelcomeStep />;
-    case 1:
-      return <StoreSetupStep onComplete={onStepComplete} />;
-    case 2:
-      return <CompleteStep onNavigate={() => navigate("/")} />;
-    default:
-      return <div>Unknown step</div>;
-  }
-}
-
-function WelcomeStep() {
-  return (
-    <div className="text-center py-12" data-testid="step-welcome">
-      <h2 className="text-3xl font-bold mb-4">Welcome to FnBcostpro!</h2>
-      <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-        Let's get your first store location set up. This quick wizard will have you ready
-        to start managing your inventory, recipes, and costs in just a moment.
-      </p>
-      <p className="text-sm text-muted-foreground">
-        Click "Next" to get started.
-      </p>
-    </div>
-  );
-}
-
-function CompleteStep({ onNavigate }: { onNavigate: () => void }) {
-  return (
-    <div className="text-center py-12" data-testid="step-complete">
-      <div className="w-16 h-16 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
-        <Check className="w-8 h-8 text-green-600 dark:text-green-400" />
-      </div>
-      <h2 className="text-3xl font-bold mb-4">Setup Complete!</h2>
-      <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-        Your FnBcostpro account is ready to use. You can now start managing your inventory,
-        creating recipes, and tracking your food costs.
-      </p>
-      <Button onClick={onNavigate} data-testid="button-go-to-dashboard">
-        Go to Dashboard
-      </Button>
     </div>
   );
 }

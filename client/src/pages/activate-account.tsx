@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
+import { useState, useMemo } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -33,16 +33,22 @@ type ActivateValues = z.infer<typeof activateSchema>;
 
 export default function ActivateAccount() {
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const { refreshAuth } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  const emailFromUrl = useMemo(() => {
+    const params = new URLSearchParams(searchString);
+    return params.get("email") || "";
+  }, [searchString]);
+
   const form = useForm<ActivateValues>({
     resolver: zodResolver(activateSchema),
     defaultValues: {
-      email: "",
+      email: emailFromUrl,
       password: "",
       confirmPassword: "",
     },
