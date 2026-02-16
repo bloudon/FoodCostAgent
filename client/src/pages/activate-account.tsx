@@ -62,7 +62,7 @@ export default function ActivateAccount() {
         password: data.password,
       });
       await refreshAuth();
-      setLocation("/onboarding");
+      setLocation("/");
     } catch (error: any) {
       toast({
         variant: "destructive",

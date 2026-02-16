@@ -1,10 +1,23 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle2, Circle, ArrowRight, X, Lightbulb } from "lucide-react";
+import {
+  CheckCircle2,
+  Circle,
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  X,
+  Lightbulb,
+  Store,
+  Loader2,
+} from "lucide-react";
 import { Link } from "wouter";
 
 interface Milestone {
@@ -22,6 +35,12 @@ interface MilestonesResponse {
 }
 
 export function SetupMilestoneTracker() {
+  const { refreshAuth } = useAuth();
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [showStoreForm, setShowStoreForm] = useState(false);
+  const [storeName, setStoreName] = useState("");
+  const [storeCode, setStoreCode] = useState("S001");
+
   const { data, isLoading, isError } = useQuery<MilestonesResponse>({
     queryKey: ["/api/onboarding/milestones"],
     retry: false,
@@ -42,6 +61,28 @@ export function SetupMilestoneTracker() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+    },
+  });
+
+  const createStoreMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/onboarding/store", {
+        name: storeName,
+        code: storeCode,
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "Failed to create store" }));
+        throw new Error(errorData.error || errorData.message || "Failed to create store");
+      }
+      return response.json();
+    },
+    onSuccess: async () => {
+      await refreshAuth();
+      setShowStoreForm(false);
+      setStoreName("");
+      setStoreCode("S001");
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stores"] });
     },
   });
 
@@ -94,18 +135,34 @@ export function SetupMilestoneTracker() {
   }
 
   const progressPercent = (data.completedCount / data.totalCount) * 100;
+  const storeMilestone = data.milestones.find((m) => m.id === "store");
+  const storeNotCreated = storeMilestone && !storeMilestone.completed;
 
   return (
     <div className="mb-6" data-testid="milestone-tracker">
       <Card className="border-accent/30 bg-gradient-to-r from-accent/5 to-transparent">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <CardTitle className="text-base" data-testid="milestone-tracker-title">Getting Started</CardTitle>
-              <span className="text-sm text-muted-foreground" data-testid="milestone-tracker-progress-text">
-                {data.completedCount} of {data.totalCount} complete
+            <button
+              className="flex items-center gap-3 cursor-pointer bg-transparent border-0 p-0"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              data-testid="button-toggle-tracker"
+            >
+              <CardTitle className="text-base" data-testid="milestone-tracker-title">
+                Getting Started
+              </CardTitle>
+              <span
+                className="text-sm font-medium text-muted-foreground"
+                data-testid="milestone-tracker-progress-text"
+              >
+                {data.completedCount}/{data.totalCount} Complete
               </span>
-            </div>
+              {isCollapsed ? (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              )}
+            </button>
             <Button
               variant="ghost"
               size="icon"
@@ -117,41 +174,137 @@ export function SetupMilestoneTracker() {
               <X className="h-4 w-4" />
             </Button>
           </div>
-          <Progress value={progressPercent} className="mt-2 h-1.5" data-testid="milestone-tracker-progress-bar" />
+          <Progress
+            value={progressPercent}
+            className="mt-2 h-1.5"
+            data-testid="milestone-tracker-progress-bar"
+          />
+          {!isCollapsed && data.completedCount > 0 && data.completedCount < data.totalCount && (
+            <p className="text-xs text-muted-foreground mt-2" data-testid="milestone-encouragement">
+              Great progress! Keep going to get the most out of FNB Cost Pro.
+            </p>
+          )}
         </CardHeader>
-        <CardContent className="pt-0 pb-4">
-          <div className="space-y-1" data-testid="milestone-list">
-            {data.milestones.map((milestone) => (
-              <div
-                key={milestone.id}
-                className="flex items-center justify-between gap-3 py-1.5 px-1 rounded-md"
-                data-testid={`milestone-row-${milestone.id}`}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  {milestone.completed ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" data-testid={`milestone-check-${milestone.id}`} />
-                  ) : (
-                    <Circle className="h-4 w-4 text-muted-foreground/50 shrink-0" data-testid={`milestone-circle-${milestone.id}`} />
-                  )}
-                  <span
-                    className={`text-sm truncate ${milestone.completed ? "line-through text-muted-foreground" : ""}`}
-                    data-testid={`milestone-label-${milestone.id}`}
+
+        {!isCollapsed && (
+          <CardContent className="pt-0 pb-4">
+            <div className="space-y-1" data-testid="milestone-list">
+              {data.milestones.map((milestone) => (
+                <div key={milestone.id}>
+                  <div
+                    className="flex items-center justify-between gap-3 py-1.5 px-1 rounded-md"
+                    data-testid={`milestone-row-${milestone.id}`}
                   >
-                    {milestone.label}
-                  </span>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {milestone.completed ? (
+                        <CheckCircle2
+                          className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0"
+                          data-testid={`milestone-check-${milestone.id}`}
+                        />
+                      ) : (
+                        <Circle
+                          className="h-4 w-4 text-muted-foreground/50 shrink-0"
+                          data-testid={`milestone-circle-${milestone.id}`}
+                        />
+                      )}
+                      <span
+                        className={`text-sm truncate ${
+                          milestone.completed ? "line-through text-muted-foreground" : ""
+                        }`}
+                        data-testid={`milestone-label-${milestone.id}`}
+                      >
+                        {milestone.label}
+                      </span>
+                    </div>
+                    {!milestone.completed && (
+                      <>
+                        {milestone.id === "store" ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowStoreForm(!showStoreForm)}
+                            data-testid="button-go-store"
+                          >
+                            {showStoreForm ? "Cancel" : "Set Up"}
+                            {!showStoreForm && <ArrowRight className="h-3 w-3 ml-1" />}
+                          </Button>
+                        ) : (
+                          <Link href={milestone.path}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`button-go-${milestone.id}`}
+                            >
+                              Go
+                              <ArrowRight className="h-3 w-3 ml-1" />
+                            </Button>
+                          </Link>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {milestone.id === "store" && showStoreForm && storeNotCreated && (
+                    <div
+                      className="ml-7 mt-1 mb-2 p-3 rounded-md bg-muted/50 space-y-3"
+                      data-testid="inline-store-form"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Store className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">Name Your First Store</span>
+                      </div>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">
+                            Store Name *
+                          </label>
+                          <Input
+                            placeholder="e.g. Downtown Location"
+                            value={storeName}
+                            onChange={(e) => setStoreName(e.target.value)}
+                            autoFocus
+                            data-testid="input-store-name"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">
+                            Store Code *
+                          </label>
+                          <Input
+                            placeholder="S001"
+                            value={storeCode}
+                            onChange={(e) => setStoreCode(e.target.value)}
+                            data-testid="input-store-code"
+                          />
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        disabled={
+                          !storeName.trim() ||
+                          !storeCode.trim() ||
+                          createStoreMutation.isPending
+                        }
+                        onClick={() => createStoreMutation.mutate()}
+                        data-testid="button-save-store"
+                      >
+                        {createStoreMutation.isPending ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          "Create Store"
+                        )}
+                      </Button>
+                    </div>
+                  )}
                 </div>
-                {!milestone.completed && (
-                  <Link href={milestone.path}>
-                    <Button variant="ghost" size="sm" data-testid={`button-go-${milestone.id}`}>
-                      Go
-                      <ArrowRight className="h-3 w-3 ml-1" />
-                    </Button>
-                  </Link>
-                )}
-              </div>
-            ))}
-          </div>
-        </CardContent>
+              ))}
+            </div>
+          </CardContent>
+        )}
       </Card>
     </div>
   );

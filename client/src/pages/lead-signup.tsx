@@ -16,7 +16,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { CheckCircle } from "lucide-react";
 import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
 
 const leadSignupSchema = z.object({
@@ -33,7 +32,6 @@ type LeadSignupValues = z.infer<typeof leadSignupSchema>;
 export default function LeadSignup() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [isSuccess, setIsSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<LeadSignupValues>({
@@ -52,7 +50,7 @@ export default function LeadSignup() {
     setIsLoading(true);
     try {
       await apiRequest("POST", "/api/leads/signup", data);
-      setIsSuccess(true);
+      setLocation(`/activate?email=${encodeURIComponent(data.email)}`);
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -62,38 +60,6 @@ export default function LeadSignup() {
     } finally {
       setIsLoading(false);
     }
-  }
-
-  if (isSuccess) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="space-y-4">
-            <div className="flex justify-center">
-              <img src={logoImage} alt="FNB Cost Pro" className="h-20 w-auto" />
-            </div>
-          </CardHeader>
-          <CardContent className="text-center space-y-4">
-            <div className="flex justify-center">
-              <div className="w-16 h-16 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center">
-                <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
-              </div>
-            </div>
-            <h2 className="text-2xl font-bold" data-testid="text-success-title">Account Created!</h2>
-            <p className="text-muted-foreground" data-testid="text-success-message">
-              Your account has been created. Activate it to get started.
-            </p>
-            <Button
-              className="w-full"
-              onClick={() => setLocation(`/activate?email=${encodeURIComponent(form.getValues("email"))}`)}
-              data-testid="button-go-activate"
-            >
-              Activate My Account
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
   }
 
   return (

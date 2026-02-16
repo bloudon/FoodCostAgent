@@ -364,27 +364,23 @@ export default function Dashboard() {
     );
   }
 
-  // Empty state for users with no accessible stores
-  if (stores.length === 0) {
+  // Empty state for users with no accessible stores - show milestone tracker so they can create first store
+  if (stores.length === 0 || !selectedStoreId) {
     return (
       <div className="p-8">
+        <SetupMilestoneTracker />
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle>No Accessible Stores</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground">
-              You don't have access to any stores yet. Please contact your administrator to request store access.
+              Create your first store using the setup guide above to get started.
             </p>
           </CardContent>
         </Card>
       </div>
     );
-  }
-
-  // Ensure we have a valid selectedStoreId before rendering dashboard
-  if (!selectedStoreId) {
-    return null;
   }
 
   // Full dashboard for admins and managers
