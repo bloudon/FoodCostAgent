@@ -366,7 +366,7 @@ export default function Categories() {
               disabled={reviewCategoriesMutation.isPending}
               data-testid="button-confirm-categories"
             >
-              {reviewCategoriesMutation.isPending ? "Saving..." : "Continue"}
+              {reviewCategoriesMutation.isPending ? "Saving..." : "Done, Next Step"}
             </Button>
           )}
         </div>
@@ -567,7 +567,7 @@ export default function Categories() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <SetupProgressBanner currentMilestoneId="categories" />
+      <SetupProgressBanner currentMilestoneId="categories" hasEntries={(categories?.length ?? 0) > 0} />
     </div>
   );
 }

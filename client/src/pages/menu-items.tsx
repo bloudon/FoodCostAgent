@@ -1648,10 +1648,10 @@ export default function MenuItemsPage() {
             </DialogContent>
           </Dialog>
           </div>
-          {showOnboardingButtons && (
+          {showOnboardingButtons && (menuItems?.length ?? 0) > 0 && (
             <div className="flex gap-2">
               <Button onClick={() => reviewStepMutation.mutate()} disabled={reviewStepMutation.isPending} data-testid="button-continue-step">
-                {reviewStepMutation.isPending ? "Saving..." : "Continue"}
+                {reviewStepMutation.isPending ? "Saving..." : "Done, Next Step"}
               </Button>
             </div>
           )}
@@ -2139,7 +2139,7 @@ export default function MenuItemsPage() {
           )}
         </CardContent>
       </Card>
-      <SetupProgressBanner currentMilestoneId="menu" />
+      <SetupProgressBanner currentMilestoneId="menu" hasEntries={(menuItems?.length ?? 0) > 0} />
     </div>
   );
 }

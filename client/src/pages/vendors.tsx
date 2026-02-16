@@ -174,9 +174,10 @@ export default function Vendors() {
 
   const createMutation = useMutation({
     mutationFn: async (data: VendorFormData) => {
-      return await apiRequest("POST", "/api/vendors", data);
+      const res = await apiRequest("POST", "/api/vendors", data);
+      return await res.json() as Vendor;
     },
-    onSuccess: () => {
+    onSuccess: (createdVendor: Vendor) => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       toast({
         title: "Success",
@@ -184,6 +185,12 @@ export default function Vendors() {
       });
       setIsDialogOpen(false);
       form.reset();
+      if (stores.length > 0) {
+        setVendorToAssign(createdVendor);
+        setSelectedStoreIds(selectedStoreId ? [selectedStoreId] : []);
+        setStoreAccountNumbers({});
+        setIsStoreAssignDialogOpen(true);
+      }
     },
     onError: (error: Error) => {
       toast({
@@ -526,10 +533,10 @@ export default function Vendors() {
               New Vendor
             </Button>
           </div>
-          {showOnboardingButtons && (
+          {showOnboardingButtons && (vendors?.length ?? 0) > 0 && (
             <div className="flex gap-2">
               <Button onClick={() => reviewStepMutation.mutate()} disabled={reviewStepMutation.isPending} data-testid="button-continue-step">
-                {reviewStepMutation.isPending ? "Saving..." : "Continue"}
+                {reviewStepMutation.isPending ? "Saving..." : "Done, Next Step"}
               </Button>
             </div>
           )}
@@ -598,8 +605,13 @@ export default function Vendors() {
                             Assigned
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-not-assigned-${vendor.id}`}>
-                            Not Assigned
+                          <Badge 
+                            variant="destructive" 
+                            className="text-xs cursor-pointer" 
+                            onClick={() => handleStoreAssignClick(vendor)}
+                            data-testid={`badge-not-assigned-${vendor.id}`}
+                          >
+                            Assign Your Store
                           </Badge>
                         )}
                       </div>
@@ -1167,7 +1179,7 @@ export default function Vendors() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <SetupProgressBanner currentMilestoneId="vendors" />
+      <SetupProgressBanner currentMilestoneId="vendors" hasEntries={(vendors?.length ?? 0) > 0} />
     </div>
   );
 }

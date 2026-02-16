@@ -230,13 +230,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           storeId: newStore.id,
         });
 
-        // Create default "Misc Grocery" vendor
-        await tx.insert(vendors).values({
-          companyId: newCompany.id,
-          name: "Misc Grocery",
-          orderGuideType: "manual",
-        });
-
         // Create default storage locations
         const defaultLocations = [
           { name: "Walk-In Cooler", sortOrder: 1 },
@@ -475,12 +468,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await tx.insert(userStores).values({
           userId: user.id,
           storeId: newStore.id,
-        });
-
-        await tx.insert(vendors).values({
-          companyId,
-          name: "Misc Grocery",
-          orderGuideType: "manual",
         });
 
         const defaultLocations = [
@@ -8128,13 +8115,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertCompanySchema.parse(req.body);
       const company = await storage.createCompany(data);
-      
-      // Create default "Misc Grocery" vendor for unit-based ordering
-      await storage.createVendor({
-        companyId: company.id,
-        name: "Misc Grocery",
-        orderGuideType: "manual",
-      });
       
       // Create default storage locations for new company
       const defaultLocations = [

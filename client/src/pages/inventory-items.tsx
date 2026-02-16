@@ -293,10 +293,10 @@ export default function InventoryItems() {
                 Add Item
               </Link>
             </Button>
-            {showOnboardingButtons && (
+            {showOnboardingButtons && (inventoryItems?.length ?? 0) > 0 && (
               <div className="flex gap-2">
                 <Button onClick={() => reviewStepMutation.mutate()} disabled={reviewStepMutation.isPending} data-testid="button-continue-step">
-                  {reviewStepMutation.isPending ? "Saving..." : "Continue"}
+                  {reviewStepMutation.isPending ? "Saving..." : "Done, Next Step"}
                 </Button>
               </div>
             )}
@@ -622,7 +622,7 @@ export default function InventoryItems() {
         open={!!breakdownItemId}
         onClose={() => setBreakdownItemId(null)}
       />
-      <SetupProgressBanner currentMilestoneId="inventory" />
+      <SetupProgressBanner currentMilestoneId="inventory" hasEntries={(inventoryItems?.length ?? 0) > 0} />
     </div>
   );
 }

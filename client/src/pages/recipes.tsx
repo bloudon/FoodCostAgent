@@ -389,10 +389,10 @@ export default function Recipes() {
               </Link>
             </Button>
           </div>
-          {showOnboardingButtons && (
+          {showOnboardingButtons && (recipes?.length ?? 0) > 0 && (
             <div className="flex gap-2">
               <Button onClick={() => reviewStepMutation.mutate()} disabled={reviewStepMutation.isPending} data-testid="button-continue-step">
-                {reviewStepMutation.isPending ? "Saving..." : "Continue"}
+                {reviewStepMutation.isPending ? "Saving..." : "Done, Next Step"}
               </Button>
             </div>
           )}
@@ -882,7 +882,7 @@ export default function Recipes() {
           </div>
         </DialogContent>
       </Dialog>
-      <SetupProgressBanner currentMilestoneId="recipes" />
+      <SetupProgressBanner currentMilestoneId="recipes" hasEntries={(recipes?.length ?? 0) > 0} />
     </div>
   );
 }
