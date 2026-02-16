@@ -430,62 +430,26 @@ export function StoreSetupStep({ onComplete }: { onComplete: () => void }) {
 
   const createStoreMutation = useMutation({
     mutationFn: async (data: StoreFormValues) => {
-      // Get company data (including email/password) from wizard
-      const companyData = wizardData.company;
-      if (!companyData?.email || !companyData?.password) {
-        throw new Error("Company information is incomplete. Please go back and complete the company setup.");
-      }
-
-      // Call the combined signup endpoint
-      const response = await apiRequest("POST", "/api/onboarding/signup", {
-        firstName: companyData.firstName,
-        lastName: companyData.lastName,
-        email: companyData.email,
-        password: companyData.password,
-        company: {
-          name: companyData.name,
-          legalName: companyData.legalName,
-          contactEmail: companyData.contactEmail,
-          phone: companyData.phone,
-          addressLine1: companyData.addressLine1,
-          addressLine2: companyData.addressLine2,
-          city: companyData.city,
-          state: companyData.state,
-          postalCode: companyData.postalCode,
-        },
-        store: data,
-      });
-      
-      // Check for HTTP errors
+      const response = await apiRequest("POST", "/api/onboarding/store", data);
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: "Failed to create account" }));
+        const errorData = await response.json().catch(() => ({ message: "Failed to create store" }));
         throw new Error(errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`);
       }
-      
       return await response.json();
     },
     onSuccess: async (result) => {
-      // Save company and store data to wizard context
-      updateWizardData("company", result.company);
-      updateWizardData("store", result.store);
-      updateWizardData("user", result.user);
-      
-      // Refresh auth context to recognize the new session before navigating to protected routes
       await refreshAuth();
-      
       toast({
-        title: "Account created successfully!",
-        description: "Welcome to FnBcostpro! Your account has been created and you're now logged in.",
+        title: "Store created successfully!",
+        description: "Your first store location has been set up.",
       });
-      
-      // Move to next step
       onComplete();
     },
     onError: (error: any) => {
       toast({
         variant: "destructive",
-        title: "Error creating account",
-        description: error.message || "Failed to create your account. Please try again.",
+        title: "Error creating store",
+        description: error.message || "Failed to create your store. Please try again.",
       });
     },
   });

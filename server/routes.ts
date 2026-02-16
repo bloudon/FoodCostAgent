@@ -15,8 +15,8 @@ import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth
 import { getAccessibleStores } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
-import { eq, and, inArray, gte, lte } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents } from "@shared/schema";
+import { eq, and, inArray, gte, lte, like, not } from "drizzle-orm";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -302,6 +302,327 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       // Generic error message to avoid leaking SQL/stack traces
       res.status(500).json({ error: "Failed to create account. Please try again." });
+    }
+  });
+
+  // ============ LEAD CAPTURE SIGNUP ============
+  app.post("/api/leads/signup", async (req, res) => {
+    try {
+      const leadSchema = z.object({
+        firstName: z.string().min(1, "First name is required"),
+        lastName: z.string().min(1, "Last name is required"),
+        email: z.string().email(),
+        phone: z.string().optional(),
+        companyName: z.string().min(1, "Company name is required"),
+        postalCode: z.string().min(1, "Zip code is required"),
+      });
+
+      const { firstName, lastName, email, phone, companyName, postalCode } = leadSchema.parse(req.body);
+
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(409).json({ error: "Email already registered" });
+      }
+
+      const tempPassword = crypto.randomBytes(32).toString("hex");
+      const passwordHash = await hashPassword(tempPassword);
+
+      await db.transaction(async (tx) => {
+        const { companies, users, onboardingProgress } = await import("@shared/schema");
+
+        const [newCompany] = await tx.insert(companies).values({
+          name: companyName,
+          postalCode,
+          status: "pending",
+        }).returning();
+
+        await tx.insert(users).values({
+          firstName,
+          lastName,
+          email,
+          passwordHash,
+          role: "company_admin",
+          companyId: newCompany.id,
+          active: 0,
+        });
+
+        await tx.insert(onboardingProgress).values({
+          companyId: newCompany.id,
+          isCompleted: 0,
+        });
+      });
+
+      res.status(201).json({
+        success: true,
+        message: "Account created. Check your email to activate.",
+      });
+    } catch (error: any) {
+      console.error("Lead signup error:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid signup data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create account. Please try again." });
+    }
+  });
+
+  // ============ LEAD ACCOUNT ACTIVATION ============
+  app.post("/api/leads/activate", async (req, res) => {
+    try {
+      const activateSchema = z.object({
+        email: z.string().email(),
+        password: z.string().min(6, "Password must be at least 6 characters"),
+      });
+
+      const { email, password } = activateSchema.parse(req.body);
+
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(404).json({ error: "Account not found" });
+      }
+      if (user.active === 1) {
+        return res.status(400).json({ error: "Account is already activated" });
+      }
+
+      const passwordHash = await hashPassword(password);
+
+      const { users, companies } = await import("@shared/schema");
+
+      await db.transaction(async (tx) => {
+        await tx.update(users).set({ active: 1, passwordHash }).where(eq(users.id, user.id));
+
+        if (user.companyId) {
+          await tx.update(companies).set({ status: "active" }).where(eq(companies.id, user.companyId));
+        }
+      });
+
+      const token = await createSession(
+        user.id,
+        req.headers["user-agent"],
+        req.ip
+      );
+
+      res.cookie("session", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+
+      let company = null;
+      if (user.companyId) {
+        company = await storage.getCompany(user.companyId);
+      }
+
+      res.json({
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          companyId: user.companyId,
+          firstName: user.firstName,
+          lastName: user.lastName,
+        },
+        company,
+      });
+    } catch (error: any) {
+      console.error("Lead activation error:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to activate account. Please try again." });
+    }
+  });
+
+  // ============ ONBOARDING STORE SETUP (authenticated) ============
+  app.post("/api/onboarding/store", requireAuth, async (req, res) => {
+    try {
+      const storeSchema = z.object({
+        code: z.string().min(1),
+        name: z.string().min(1),
+        phone: z.string().optional(),
+        addressLine1: z.string().optional(),
+        addressLine2: z.string().optional(),
+        city: z.string().optional(),
+        state: z.string().optional(),
+        postalCode: z.string().optional(),
+      });
+
+      const storeData = storeSchema.parse(req.body);
+      const user = (req as any).user;
+      const companyId = user.companyId;
+
+      if (!companyId) {
+        return res.status(400).json({ error: "User is not associated with a company" });
+      }
+
+      const result = await db.transaction(async (tx) => {
+        const { companyStores, userStores, vendors, storageLocations, categories, onboardingProgress } = await import("@shared/schema");
+
+        const safeStoreData = {
+          code: storeData.code,
+          name: storeData.name,
+          phone: storeData.phone,
+          addressLine1: storeData.addressLine1,
+          addressLine2: storeData.addressLine2,
+          city: storeData.city,
+          state: storeData.state,
+          postalCode: storeData.postalCode,
+          companyId,
+        };
+
+        const [newStore] = await tx.insert(companyStores).values(safeStoreData).returning();
+
+        await tx.insert(userStores).values({
+          userId: user.id,
+          storeId: newStore.id,
+        });
+
+        await tx.insert(vendors).values({
+          companyId,
+          name: "Misc Grocery",
+          orderGuideType: "manual",
+        });
+
+        const defaultLocations = [
+          { name: "Walk-In Cooler", sortOrder: 1 },
+          { name: "Pantry", sortOrder: 2 },
+          { name: "Drink Cooler", sortOrder: 3 },
+          { name: "Walk-In Freezer", sortOrder: 4 },
+          { name: "Prep Table", sortOrder: 5 },
+          { name: "Front Counter", sortOrder: 6 },
+        ];
+
+        for (const location of defaultLocations) {
+          await tx.insert(storageLocations).values({
+            companyId,
+            ...location,
+          });
+        }
+
+        const defaultCategories = [
+          { name: "Frozen", showAsIngredient: 1 },
+          { name: "Walk-In", showAsIngredient: 1 },
+          { name: "Dry/Pantry", showAsIngredient: 1 },
+        ];
+
+        for (const category of defaultCategories) {
+          await tx.insert(categories).values({
+            companyId,
+            ...category,
+          });
+        }
+
+        await tx.update(onboardingProgress)
+          .set({ isCompleted: 1 })
+          .where(eq(onboardingProgress.companyId, companyId));
+
+        return { store: newStore };
+      });
+
+      res.status(201).json(result);
+    } catch (error: any) {
+      console.error("Onboarding store setup error:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid store data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create store. Please try again." });
+    }
+  });
+
+  // ============ SETUP MILESTONE TRACKER ============
+  app.get("/api/onboarding/milestones", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const companyId = user.companyId;
+
+      if (!companyId) {
+        return res.status(400).json({ error: "User is not associated with a company" });
+      }
+
+      const [storeRows, categoryRows, vendorRows, inventoryRows, recipeRows, menuRows, progressRows] = await Promise.all([
+        db.select().from(companyStores).where(eq(companyStores.companyId, companyId)).limit(1),
+        db.select().from(categories).where(eq(categories.companyId, companyId)).limit(1),
+        db.select().from(vendors).where(and(eq(vendors.companyId, companyId), not(like(vendors.name, '%Misc Grocery%')))).limit(1),
+        db.select().from(inventoryItems).where(eq(inventoryItems.companyId, companyId)).limit(1),
+        db.select().from(recipes).where(eq(recipes.companyId, companyId)).limit(1),
+        db.select().from(menuItems).where(eq(menuItems.companyId, companyId)).limit(1),
+        db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1),
+      ]);
+
+      const milestonesList = [
+        { id: "store", label: "Create Your First Store", completed: storeRows.length > 0, path: "/stores" },
+        { id: "categories", label: "Set Up Categories", completed: categoryRows.length > 0, path: "/categories" },
+        { id: "vendors", label: "Add a Vendor", completed: vendorRows.length > 0, path: "/vendors" },
+        { id: "inventory", label: "Add Inventory Items", completed: inventoryRows.length > 0, path: "/inventory-items" },
+        { id: "recipes", label: "Create a Recipe", completed: recipeRows.length > 0, path: "/recipes" },
+        { id: "menu", label: "Add Menu Items", completed: menuRows.length > 0, path: "/menu-items" },
+      ];
+
+      const completedCount = milestonesList.filter(m => m.completed).length;
+      const totalCount = milestonesList.length;
+      const allComplete = completedCount === totalCount;
+
+      let dismissed = progressRows.length > 0 && progressRows[0].isCompleted === 1;
+
+      if (allComplete && !dismissed) {
+        if (progressRows.length > 0) {
+          await db.update(onboardingProgress)
+            .set({ isCompleted: 1, completedAt: new Date(), updatedAt: new Date() })
+            .where(eq(onboardingProgress.companyId, companyId));
+        }
+        dismissed = true;
+      }
+
+      res.json({ milestones: milestonesList, completedCount, totalCount, dismissed });
+    } catch (error: any) {
+      console.error("Milestones fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch milestones" });
+    }
+  });
+
+  app.post("/api/onboarding/milestones/dismiss", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const companyId = user.companyId;
+
+      if (!companyId) {
+        return res.status(400).json({ error: "User is not associated with a company" });
+      }
+
+      const existing = await db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1);
+
+      if (existing.length > 0) {
+        await db.update(onboardingProgress)
+          .set({ isCompleted: 1, updatedAt: new Date() })
+          .where(eq(onboardingProgress.companyId, companyId));
+      } else {
+        await db.insert(onboardingProgress).values({
+          companyId,
+          isCompleted: 1,
+        });
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Milestones dismiss error:", error);
+      res.status(500).json({ error: "Failed to dismiss milestones" });
+    }
+  });
+
+  app.post("/api/onboarding/milestones/undismiss", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const companyId = user.companyId;
+      if (!companyId) {
+        return res.status(400).json({ error: "User is not associated with a company" });
+      }
+      await db.update(onboardingProgress)
+        .set({ isCompleted: 0, updatedAt: new Date() })
+        .where(eq(onboardingProgress.companyId, companyId));
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Undismiss error:", error);
+      res.status(500).json({ error: "Failed to restore setup guide" });
     }
   });
 

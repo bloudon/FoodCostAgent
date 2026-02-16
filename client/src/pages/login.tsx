@@ -7,12 +7,13 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Shield } from "lucide-react";
+import { Shield, Eye, EyeOff } from "lucide-react";
 import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [, setLocation] = useLocation();
   const { login, user } = useAuth();
@@ -91,15 +92,29 @@ export default function Login() {
               <Label htmlFor="password" data-testid="label-password">
                 Password
               </Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-                data-testid="input-password"
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  className="pr-10"
+                  data-testid="input-password"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex={-1}
+                  data-testid="button-toggle-password"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                </Button>
+              </div>
             </div>
             <Button
               type="submit"
@@ -137,15 +152,25 @@ export default function Login() {
             <Separator />
           </div>
 
-          <div className="mt-6 text-center">
+          <div className="mt-6 text-center space-y-2">
             <p className="text-sm text-muted-foreground">
-              New to FnBcostpro?{" "}
+              Don't have an account?{" "}
+              <button
+                className="text-sm font-semibold text-primary hover:underline cursor-pointer"
+                onClick={() => setLocation("/signup")}
+                data-testid="link-sign-up"
+              >
+                Sign up
+              </button>
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Existing user?{" "}
               <button
                 className="text-sm font-semibold text-primary hover:underline cursor-pointer"
                 onClick={() => setLocation("/onboarding")}
-                data-testid="link-sign-up"
+                data-testid="link-onboarding"
               >
-                Sign up for free
+                Complete onboarding
               </button>
             </p>
           </div>

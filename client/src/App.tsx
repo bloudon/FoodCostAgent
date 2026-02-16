@@ -54,6 +54,8 @@ import PendingApproval from "@/pages/pending-approval";
 import SsoAccessDenied from "@/pages/sso-access-denied";
 import AcceptInvitation from "@/pages/accept-invitation";
 import Onboarding from "@/pages/onboarding";
+import LeadSignup from "@/pages/lead-signup";
+import ActivateAccount from "@/pages/activate-account";
 
 function ProtectedLayout() {
   const { user, isLoading } = useAuth();
@@ -165,6 +167,8 @@ function App() {
               <Route path="/sso-access-denied" component={SsoAccessDenied} />
               <Route path="/accept-invitation/:token" component={AcceptInvitation} />
               <Route path="/onboarding" component={Onboarding} />
+              <Route path="/signup" component={LeadSignup} />
+              <Route path="/activate" component={ActivateAccount} />
               <Route>
                 <ProtectedLayout />
               </Route>

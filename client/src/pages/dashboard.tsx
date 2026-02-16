@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed, AlertCircle, Calendar, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SetupMilestoneTracker } from "@/components/setup-milestone-tracker";
 import { useStoreContext } from "@/hooks/use-store-context";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
@@ -394,6 +395,7 @@ export default function Dashboard() {
   
   return (
     <div className="p-8">
+      <SetupMilestoneTracker />
       {/* Alerts Section: Dynamic Layout - Split or Full Width */}
       <div className={`grid grid-cols-1 gap-4 mb-6 ${showBothSections ? 'lg:grid-cols-2' : ''}`}>
         {/* Order Deadlines Card - Only show if has data */}
