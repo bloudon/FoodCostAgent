@@ -1726,15 +1726,15 @@ export default function MenuItemsPage() {
                 </p>
               </div>
             ) : (
-              <div className="border rounded-lg">
+              <div className="border rounded-lg overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead className="w-[40%]">Menu Item</TableHead>
-                      <TableHead>PLU/SKU</TableHead>
+                      <TableHead className="min-w-[180px]">Menu Item</TableHead>
+                      <TableHead className="hidden md:table-cell">PLU/SKU</TableHead>
                       <TableHead className="text-right">Recipe Cost</TableHead>
                       <TableHead className="text-right">Price</TableHead>
-                      <TableHead className="text-right">Food Cost %</TableHead>
+                      <TableHead className="text-right hidden sm:table-cell">Food Cost %</TableHead>
                       <TableHead className="w-12"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1803,12 +1803,12 @@ export default function MenuItemsPage() {
                                 </div>
                               </div>
                             </TableCell>
-                            <TableCell className="font-mono text-sm">{group.parent.pluSku}</TableCell>
+                            <TableCell className="font-mono text-sm hidden md:table-cell">{group.parent.pluSku}</TableCell>
                             <TableCell className="text-right">{renderRecipeCost(group.parent)}</TableCell>
                             <TableCell className="text-right font-mono text-sm">
                               {group.parent.price != null ? `$${group.parent.price.toFixed(2)}` : <span className="text-muted-foreground">-</span>}
                             </TableCell>
-                            <TableCell className="text-right">{renderFoodCostPercent(group.parent)}</TableCell>
+                            <TableCell className="text-right hidden sm:table-cell">{renderFoodCostPercent(group.parent)}</TableCell>
                             <TableCell>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>

@@ -536,17 +536,17 @@ export default function Vendors() {
         </div>
       </div>
 
-      <div className="rounded-md border">
+      <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Vendor Name</TableHead>
-              <TableHead className="text-right">Products</TableHead>
-              <TableHead>Account #</TableHead>
-              <TableHead>Stores</TableHead>
-              <TableHead>Order Guide</TableHead>
-              <TableHead>Delivery Days</TableHead>
-              <TableHead>Order By</TableHead>
+              <TableHead className="min-w-[180px]">Vendor Name</TableHead>
+              <TableHead className="text-right hidden sm:table-cell">Products</TableHead>
+              <TableHead className="hidden md:table-cell">Account #</TableHead>
+              <TableHead className="hidden md:table-cell">Stores</TableHead>
+              <TableHead className="hidden lg:table-cell">Order Guide</TableHead>
+              <TableHead className="hidden lg:table-cell">Delivery Days</TableHead>
+              <TableHead className="hidden xl:table-cell">Order By</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -555,12 +555,12 @@ export default function Vendors() {
               Array.from({ length: 3 }).map((_, i) => (
                 <TableRow key={i}>
                   <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-12" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                  <TableCell className="hidden sm:table-cell"><Skeleton className="h-5 w-12" /></TableCell>
+                  <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-20" /></TableCell>
+                  <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-16" /></TableCell>
+                  <TableCell className="hidden lg:table-cell"><Skeleton className="h-5 w-20" /></TableCell>
+                  <TableCell className="hidden lg:table-cell"><Skeleton className="h-5 w-24" /></TableCell>
+                  <TableCell className="hidden xl:table-cell"><Skeleton className="h-5 w-24" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                 </TableRow>
               ))
@@ -596,13 +596,13 @@ export default function Vendors() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right font-mono" data-testid={`text-vendor-products-${vendor.id}`}>
+                    <TableCell className="text-right font-mono hidden sm:table-cell" data-testid={`text-vendor-products-${vendor.id}`}>
                       {getProductCount(vendor.id)}
                     </TableCell>
-                    <TableCell className="font-mono" data-testid={`text-vendor-account-${vendor.id}`}>
+                    <TableCell className="font-mono hidden md:table-cell" data-testid={`text-vendor-account-${vendor.id}`}>
                       {vendor.accountNumber || "-"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell">
                       <Badge 
                         variant="outline" 
                         className="font-mono cursor-pointer hover:bg-muted"
@@ -612,7 +612,7 @@ export default function Vendors() {
                         {getVendorStoreCount(vendor.id)} / {stores.length}
                       </Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden lg:table-cell">
                       {vendor.orderGuideType === "electronic" ? (
                         <Badge variant="outline" className="gap-1" data-testid={`badge-order-guide-${vendor.id}`}>
                           <Zap className="h-3 w-3" />
@@ -624,13 +624,13 @@ export default function Vendors() {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell data-testid={`text-delivery-days-${vendor.id}`}>
+                    <TableCell className="hidden lg:table-cell" data-testid={`text-delivery-days-${vendor.id}`}>
                       {vendor.deliveryDays && vendor.deliveryDays.length > 0 
                         ? vendor.deliveryDays.map(abbreviateDay).join(", ")
                         : "-"
                       }
                     </TableCell>
-                    <TableCell data-testid={`text-order-days-${vendor.id}`}>
+                    <TableCell className="hidden xl:table-cell" data-testid={`text-order-days-${vendor.id}`}>
                       {vendor.deliveryDays && vendor.deliveryDays.length > 0 && vendor.leadDaysAhead && vendor.leadDaysAhead > 0
                         ? calculateOrderDays(vendor.deliveryDays, vendor.leadDaysAhead).map(abbreviateDay).join(", ")
                         : "-"

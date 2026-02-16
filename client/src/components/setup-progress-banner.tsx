@@ -120,7 +120,7 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
           {nextMilestone && currentCompleted && (
             <Link href={nextMilestone.path}>
               <Button size="sm" data-testid="button-next-milestone">
-                Continue
+                Done, Next Step
                 <ArrowRight className="h-3.5 w-3.5 ml-1" />
               </Button>
             </Link>

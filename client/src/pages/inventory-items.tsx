@@ -277,8 +277,8 @@ export default function InventoryItems() {
         </div>
 
         {/* Filters */}
-        <div className="flex gap-4 flex-wrap">
-          <div className="relative flex-1 min-w-[200px]">
+        <div className="flex gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search items..."
@@ -289,8 +289,8 @@ export default function InventoryItems() {
             />
           </div>
           <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="w-[200px]" data-testid="select-category-filter">
-              <SelectValue placeholder="Filter by category" />
+            <SelectTrigger className="w-[160px]" data-testid="select-category-filter">
+              <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
@@ -302,8 +302,8 @@ export default function InventoryItems() {
             </SelectContent>
           </Select>
           <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-            <SelectTrigger className="w-[200px]" data-testid="select-location-filter">
-              <SelectValue placeholder="Filter by location" />
+            <SelectTrigger className="w-[160px]" data-testid="select-location-filter">
+              <SelectValue placeholder="Location" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Locations</SelectItem>
@@ -318,8 +318,8 @@ export default function InventoryItems() {
             setActiveFilter(val as "active" | "inactive" | "all");
             setCurrentPage(1);
           }}>
-            <SelectTrigger className="w-[200px]" data-testid="select-active-filter">
-              <SelectValue placeholder="Filter by status" />
+            <SelectTrigger className="w-[140px]" data-testid="select-active-filter">
+              <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="active">Active Only</SelectItem>
@@ -344,21 +344,21 @@ export default function InventoryItems() {
             </p>
           </div>
         ) : (
-          <div className="border rounded-lg">
+          <div className="border rounded-lg overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[300px]">Item</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead className="text-right">Par</TableHead>
-                  <TableHead className="text-right">Reorder</TableHead>
+                  <TableHead className="min-w-[180px]">Item</TableHead>
+                  <TableHead className="hidden sm:table-cell">Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Category</TableHead>
+                  <TableHead className="hidden lg:table-cell">Location</TableHead>
+                  <TableHead className="hidden sm:table-cell">Unit</TableHead>
+                  <TableHead className="text-right hidden xl:table-cell">Par</TableHead>
+                  <TableHead className="text-right hidden xl:table-cell">Reorder</TableHead>
                   <TableHead className="text-right">Last Cost</TableHead>
-                  <TableHead className="text-right">Avg Cost (WAC)</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Est. On-Hand</TableHead>
+                  <TableHead className="text-right hidden lg:table-cell">Avg Cost (WAC)</TableHead>
+                  <TableHead className="text-right hidden md:table-cell">Quantity</TableHead>
+                  <TableHead className="text-right hidden md:table-cell">Est. On-Hand</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -401,7 +401,7 @@ export default function InventoryItems() {
                         </div>
                       </TableCell>
                       <TableCell
-                        className="cursor-pointer"
+                        className="cursor-pointer hidden sm:table-cell"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
                         <Badge variant={inventoryStatus.variant} data-testid={`badge-status-${item.id}`}>
@@ -409,7 +409,7 @@ export default function InventoryItems() {
                         </Badge>
                       </TableCell>
                       <TableCell
-                        className="cursor-pointer"
+                        className="cursor-pointer hidden md:table-cell"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
                         {item.category && (
@@ -422,14 +422,14 @@ export default function InventoryItems() {
                         )}
                       </TableCell>
                       <TableCell
-                        className="cursor-pointer"
+                        className="cursor-pointer hidden lg:table-cell"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
                         {item.locations.length > 0 ? (
                           <div className="flex flex-col gap-1">
                             {item.locations.map((location) => (
                               <div key={location.id} className="flex items-center gap-1">
-                                <span className="text-sm">{location.name}</span>
+                                <span className="text-sm whitespace-nowrap">{location.name}</span>
                                 {location.isPrimary && (
                                   <Badge variant="outline" className="text-xs h-4 px-1">
                                     (p)
@@ -443,19 +443,19 @@ export default function InventoryItems() {
                         )}
                       </TableCell>
                       <TableCell
-                        className="cursor-pointer"
+                        className="cursor-pointer hidden sm:table-cell"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
                         <span className="text-sm text-muted-foreground">{formatUnitName(item.unit?.name)}</span>
                       </TableCell>
                       <TableCell 
-                        className="text-right font-mono text-sm text-muted-foreground cursor-pointer"
+                        className="text-right font-mono text-sm text-muted-foreground cursor-pointer hidden xl:table-cell"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
                         {item.parLevel ? item.parLevel.toFixed(1) : "-"}
                       </TableCell>
                       <TableCell 
-                        className="text-right font-mono text-sm text-muted-foreground cursor-pointer"
+                        className="text-right font-mono text-sm text-muted-foreground cursor-pointer hidden xl:table-cell"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
                         {item.reorderLevel ? item.reorderLevel.toFixed(1) : "-"}
@@ -468,20 +468,20 @@ export default function InventoryItems() {
                         ${item.pricePerUnit ? item.pricePerUnit.toFixed(2) : '0.00'}
                       </TableCell>
                       <TableCell 
-                        className="text-right font-mono cursor-pointer"
+                        className="text-right font-mono cursor-pointer hidden lg:table-cell"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                         data-testid={`cell-avg-cost-${item.id}`}
                       >
                         ${item.avgCostPerUnit ? item.avgCostPerUnit.toFixed(2) : '0.00'}
                       </TableCell>
                       <TableCell 
-                        className="text-right font-mono cursor-pointer"
+                        className="text-right font-mono cursor-pointer hidden md:table-cell"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                       >
                         <span className={inventoryStatus.color}>{quantity.toFixed(2)}</span>
                       </TableCell>
                       <TableCell 
-                        className={`text-right font-mono ${estimatedOnHandMap.has(item.id) && selectedStore !== "all" ? "cursor-pointer hover:underline" : ""}`}
+                        className={`text-right font-mono hidden md:table-cell ${estimatedOnHandMap.has(item.id) && selectedStore !== "all" ? "cursor-pointer hover:underline" : ""}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           if (estimatedOnHandMap.has(item.id) && selectedStore !== "all") {
