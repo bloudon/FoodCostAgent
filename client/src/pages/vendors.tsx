@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -69,6 +69,13 @@ type VendorFormData = z.infer<typeof vendorFormSchema>;
 
 type VendorStoreAssignment = StoreVendor & { store?: CompanyStore };
 
+interface MilestonesResponse {
+  milestones: { id: string; label: string; completed: boolean; path: string }[];
+  completedCount: number;
+  totalCount: number;
+  dismissed: boolean;
+}
+
 export default function Vendors() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -84,6 +91,36 @@ export default function Vendors() {
   const [storeAccountNumbers, setStoreAccountNumbers] = useState<Record<string, string>>({});
   const { toast } = useToast();
   const { selectedStoreId, stores } = useStoreContext();
+  const [, navigate] = useLocation();
+
+  const { data: milestonesData } = useQuery<MilestonesResponse>({
+    queryKey: ["/api/onboarding/milestones"],
+    retry: false,
+    staleTime: 0,
+  });
+
+  const MILESTONE_ID = "vendors";
+  const currentMilestone = milestonesData?.milestones.find(m => m.id === MILESTONE_ID);
+  const showOnboardingButtons = milestonesData && !milestonesData.dismissed && currentMilestone && !currentMilestone.completed;
+
+  const getNextMilestonePath = () => {
+    if (!milestonesData) return "/";
+    const currentIdx = milestonesData.milestones.findIndex(m => m.id === MILESTONE_ID);
+    const next = milestonesData.milestones.find((m, i) => i > currentIdx && !m.completed);
+    return next ? next.path : "/";
+  };
+
+  const reviewStepMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/onboarding/milestones/review-step", { stepId: MILESTONE_ID });
+      if (!response.ok) throw new Error("Failed to complete step");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+      navigate(getNextMilestonePath());
+    },
+  });
 
   const { data: vendors, isLoading } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors"],
@@ -458,28 +495,47 @@ export default function Vendors() {
 
   return (
     <div className="p-8 pb-16">
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-8 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-vendors-title">
             Vendors
           </h1>
-          <p className="text-muted-foreground mt-2">
-            Manage vendor catalogs with product pricing and case specifications
-          </p>
+          {!showOnboardingButtons && (
+            <p className="text-muted-foreground mt-2">
+              Manage vendor catalogs with product pricing and case specifications
+            </p>
+          )}
+          {showOnboardingButtons && (
+            <p className="text-muted-foreground mt-2">
+              Add your vendors, or skip this step for now.
+            </p>
+          )}
         </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={() => setIsImportDialogOpen(true)} 
-            data-testid="button-import-order-guide"
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            Import Order Guide
-          </Button>
-          <Button onClick={handleCreateClick} data-testid="button-create-vendor">
-            <Plus className="h-4 w-4 mr-2" />
-            New Vendor
-          </Button>
+        <div className="flex flex-col gap-2 items-end">
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setIsImportDialogOpen(true)} 
+              data-testid="button-import-order-guide"
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Import Order Guide
+            </Button>
+            <Button onClick={handleCreateClick} data-testid="button-create-vendor">
+              <Plus className="h-4 w-4 mr-2" />
+              New Vendor
+            </Button>
+          </div>
+          {showOnboardingButtons && (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => navigate(getNextMilestonePath())} data-testid="button-skip-step">
+                Skip
+              </Button>
+              <Button onClick={() => reviewStepMutation.mutate()} disabled={reviewStepMutation.isPending} data-testid="button-continue-step">
+                {reviewStepMutation.isPending ? "Saving..." : "Continue"}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 

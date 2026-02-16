@@ -553,15 +553,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch {}
       }
 
-      const categoriesReviewed = reviewedSteps.includes("categories");
-
       const milestonesList = [
         { id: "store", label: "Create Your First Store", completed: storeRows.length > 0, path: "/stores" },
-        { id: "categories", label: "Review Categories", completed: categoriesReviewed, path: "/categories" },
-        { id: "vendors", label: "Add a Vendor", completed: vendorRows.length > 0, path: "/vendors" },
-        { id: "inventory", label: "Add Inventory Items", completed: inventoryRows.length > 0, path: "/inventory-items" },
-        { id: "recipes", label: "Create a Recipe", completed: recipeRows.length > 0, path: "/recipes" },
-        { id: "menu", label: "Add Menu Items", completed: menuRows.length > 0, path: "/menu-items" },
+        { id: "categories", label: "Review Categories", completed: reviewedSteps.includes("categories"), path: "/categories" },
+        { id: "vendors", label: "Add a Vendor", completed: vendorRows.length > 0 || reviewedSteps.includes("vendors"), path: "/vendors" },
+        { id: "inventory", label: "Add Inventory Items", completed: inventoryRows.length > 0 || reviewedSteps.includes("inventory"), path: "/inventory-items" },
+        { id: "recipes", label: "Create a Recipe", completed: recipeRows.length > 0 || reviewedSteps.includes("recipes"), path: "/recipes" },
+        { id: "menu", label: "Add Menu Items", completed: menuRows.length > 0 || reviewedSteps.includes("menu"), path: "/menu-items" },
       ];
 
       const completedCount = milestonesList.filter(m => m.completed).length;

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -118,6 +118,13 @@ const addVariantFormSchema = z.object({
 
 type AddVariantForm = z.infer<typeof addVariantFormSchema>;
 
+interface MilestonesResponse {
+  milestones: { id: string; label: string; completed: boolean; path: string }[];
+  completedCount: number;
+  totalCount: number;
+  dismissed: boolean;
+}
+
 export default function MenuItemsPage() {
   const [search, setSearch] = useState("");
   const { selectedStoreId } = useStoreContext();
@@ -142,6 +149,36 @@ export default function MenuItemsPage() {
   const [addVariantDialogOpen, setAddVariantDialogOpen] = useState(false);
   const [selectedParentForVariant, setSelectedParentForVariant] = useState<MenuItem | null>(null);
   const { toast } = useToast();
+  const [, navigate] = useLocation();
+
+  const { data: milestonesData } = useQuery<MilestonesResponse>({
+    queryKey: ["/api/onboarding/milestones"],
+    retry: false,
+    staleTime: 0,
+  });
+
+  const MILESTONE_ID = "menu";
+  const currentMilestone = milestonesData?.milestones.find(m => m.id === MILESTONE_ID);
+  const showOnboardingButtons = milestonesData && !milestonesData.dismissed && currentMilestone && !currentMilestone.completed;
+
+  const getNextMilestonePath = () => {
+    if (!milestonesData) return "/";
+    const currentIdx = milestonesData.milestones.findIndex(m => m.id === MILESTONE_ID);
+    const next = milestonesData.milestones.find((m, i) => i > currentIdx && !m.completed);
+    return next ? next.path : "/";
+  };
+
+  const reviewStepMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/onboarding/milestones/review-step", { stepId: MILESTONE_ID });
+      if (!response.ok) throw new Error("Failed to complete step");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+      navigate(getNextMilestonePath());
+    },
+  });
 
   const form = useForm<AddMenuItemForm>({
     resolver: zodResolver(addMenuItemFormSchema),
@@ -801,40 +838,47 @@ export default function MenuItemsPage() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold">Menu Items</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your menu items, sizes, and recipe links
-          </p>
+          {!showOnboardingButtons && (
+            <p className="text-muted-foreground mt-1">
+              Manage your menu items, sizes, and recipe links
+            </p>
+          )}
+          {showOnboardingButtons && (
+            <p className="text-muted-foreground mt-1">
+              Set up your menu, or skip this step for now.
+            </p>
+          )}
         </div>
-        <div className="flex gap-2">
-          {/* View Toggle */}
-          <div className="flex gap-1 border rounded-lg p-1">
-            <Button 
-              variant={viewMode === "hierarchy" ? "secondary" : "ghost"} 
-              size="sm"
-              onClick={() => setViewMode("hierarchy")}
-              data-testid="button-view-hierarchy"
-            >
-              <Layers className="h-4 w-4 mr-1" />
-              Hierarchy
-            </Button>
-            <Button 
-              variant={viewMode === "flat" ? "secondary" : "ghost"} 
-              size="sm"
-              onClick={() => setViewMode("flat")}
-              data-testid="button-view-flat"
-            >
-              <Package className="h-4 w-4 mr-1" />
-              Flat
-            </Button>
-          </div>
-
-          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="default" data-testid="button-add-menu-item">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Menu Item
+        <div className="flex flex-col gap-2 items-end">
+          <div className="flex gap-2">
+            <div className="flex gap-1 border rounded-lg p-1">
+              <Button 
+                variant={viewMode === "hierarchy" ? "secondary" : "ghost"} 
+                size="sm"
+                onClick={() => setViewMode("hierarchy")}
+                data-testid="button-view-hierarchy"
+              >
+                <Layers className="h-4 w-4 mr-1" />
+                Hierarchy
               </Button>
-            </DialogTrigger>
+              <Button 
+                variant={viewMode === "flat" ? "secondary" : "ghost"} 
+                size="sm"
+                onClick={() => setViewMode("flat")}
+                data-testid="button-view-flat"
+              >
+                <Package className="h-4 w-4 mr-1" />
+                Flat
+              </Button>
+            </div>
+
+            <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="default" data-testid="button-add-menu-item">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Menu Item
+                </Button>
+              </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>Add Menu Item</DialogTitle>
@@ -1603,6 +1647,17 @@ export default function MenuItemsPage() {
               )}
             </DialogContent>
           </Dialog>
+          </div>
+          {showOnboardingButtons && (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => navigate(getNextMilestonePath())} data-testid="button-skip-step">
+                Skip
+              </Button>
+              <Button onClick={() => reviewStepMutation.mutate()} disabled={reviewStepMutation.isPending} data-testid="button-continue-step">
+                {reviewStepMutation.isPending ? "Saving..." : "Continue"}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 

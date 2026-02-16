@@ -92,6 +92,14 @@ export function SetupProgressBanner({ currentMilestoneId }: SetupProgressBannerP
               </Button>
             </Link>
           )}
+          {nextMilestone && !currentCompleted && (
+            <Link href={nextMilestone.path}>
+              <Button variant="outline" size="sm" data-testid="button-skip-milestone">
+                Skip
+                <ArrowRight className="h-3.5 w-3.5 ml-1" />
+              </Button>
+            </Link>
+          )}
           <Link href="/">
             <Button variant="ghost" size="sm" data-testid="button-back-dashboard">
               <Home className="h-3.5 w-3.5" />

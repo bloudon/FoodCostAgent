@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star } from "lucide-react";
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -40,6 +40,13 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatUnitName, formatDateString } from "@/lib/utils";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
+
+interface MilestonesResponse {
+  milestones: { id: string; label: string; completed: boolean; path: string }[];
+  completedCount: number;
+  totalCount: number;
+  dismissed: boolean;
+}
 
 type InventoryItemDisplay = {
   id: string;
@@ -119,7 +126,37 @@ export default function InventoryItems() {
   const [breakdownItemId, setBreakdownItemId] = useState<string | null>(null);
   const [breakdownItemName, setBreakdownItemName] = useState<string>("");
   const { toast } = useToast();
-  
+  const [, navigate] = useLocation();
+
+  const { data: milestonesData } = useQuery<MilestonesResponse>({
+    queryKey: ["/api/onboarding/milestones"],
+    retry: false,
+    staleTime: 0,
+  });
+
+  const MILESTONE_ID = "inventory";
+  const currentMilestone = milestonesData?.milestones.find(m => m.id === MILESTONE_ID);
+  const showOnboardingButtons = milestonesData && !milestonesData.dismissed && currentMilestone && !currentMilestone.completed;
+
+  const getNextMilestonePath = () => {
+    if (!milestonesData) return "/";
+    const currentIdx = milestonesData.milestones.findIndex(m => m.id === MILESTONE_ID);
+    const next = milestonesData.milestones.find((m, i) => i > currentIdx && !m.completed);
+    return next ? next.path : "/";
+  };
+
+  const reviewStepMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/onboarding/milestones/review-step", { stepId: MILESTONE_ID });
+      if (!response.ok) throw new Error("Failed to complete step");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+      navigate(getNextMilestonePath());
+    },
+  });
+
   // Use global store context instead of local state
   const { selectedStoreId: selectedStore } = useStoreContext();
 
@@ -236,18 +273,37 @@ export default function InventoryItems() {
     <div className="h-full overflow-auto pb-16">
       <div className="p-4 space-y-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
-            <Package className="h-6 w-6 text-muted-foreground" />
-            <h1 className="text-2xl font-bold">
-              Inventory Items ({filteredItems.length})
-            </h1>
+          <div>
+            <div className="flex items-center gap-3">
+              <Package className="h-6 w-6 text-muted-foreground" />
+              <h1 className="text-2xl font-bold">
+                Inventory Items ({filteredItems.length})
+              </h1>
+            </div>
+            {showOnboardingButtons && (
+              <p className="text-muted-foreground mt-2">
+                Add inventory items, or skip this step for now.
+              </p>
+            )}
           </div>
-          <Button asChild data-testid="button-add-item">
-            <Link href="/inventory-items/new">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Item
-            </Link>
-          </Button>
+          <div className="flex flex-col gap-2 items-end">
+            <Button asChild data-testid="button-add-item">
+              <Link href="/inventory-items/new">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Item
+              </Link>
+            </Button>
+            {showOnboardingButtons && (
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => navigate(getNextMilestonePath())} data-testid="button-skip-step">
+                  Skip
+                </Button>
+                <Button onClick={() => reviewStepMutation.mutate()} disabled={reviewStepMutation.isPending} data-testid="button-continue-step">
+                  {reviewStepMutation.isPending ? "Saving..." : "Continue"}
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Filters */}

@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,6 +91,13 @@ type OrphanedRecipesResponse = {
   total: number;
 };
 
+interface MilestonesResponse {
+  milestones: { id: string; label: string; completed: boolean; path: string }[];
+  completedCount: number;
+  totalCount: number;
+  dismissed: boolean;
+}
+
 export default function Recipes() {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -101,6 +108,36 @@ export default function Recipes() {
   const [showInactive, setShowInactive] = useState(false);
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
   const { toast } = useToast();
+  const [, navigate] = useLocation();
+
+  const { data: milestonesData } = useQuery<MilestonesResponse>({
+    queryKey: ["/api/onboarding/milestones"],
+    retry: false,
+    staleTime: 0,
+  });
+
+  const MILESTONE_ID = "recipes";
+  const currentMilestone = milestonesData?.milestones.find(m => m.id === MILESTONE_ID);
+  const showOnboardingButtons = milestonesData && !milestonesData.dismissed && currentMilestone && !currentMilestone.completed;
+
+  const getNextMilestonePath = () => {
+    if (!milestonesData) return "/";
+    const currentIdx = milestonesData.milestones.findIndex(m => m.id === MILESTONE_ID);
+    const next = milestonesData.milestones.find((m, i) => i > currentIdx && !m.completed);
+    return next ? next.path : "/";
+  };
+
+  const reviewStepMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/onboarding/milestones/review-step", { stepId: MILESTONE_ID });
+      if (!response.ok) throw new Error("Failed to complete step");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+      navigate(getNextMilestonePath());
+    },
+  });
 
   const { data: recipes, isLoading } = useQuery<Recipe[]>({
     queryKey: ["/api/recipes"],
@@ -319,30 +356,49 @@ export default function Recipes() {
 
   return (
     <div className="p-8 pb-16">
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-8 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-recipes-title">
             Recipes
           </h1>
-          <p className="text-muted-foreground mt-2">
-            Manage recipe BOMs with nested components and cost tracking
-          </p>
+          {!showOnboardingButtons && (
+            <p className="text-muted-foreground mt-2">
+              Manage recipe BOMs with nested components and cost tracking
+            </p>
+          )}
+          {showOnboardingButtons && (
+            <p className="text-muted-foreground mt-2">
+              Create your first recipe, or skip this step for now.
+            </p>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            onClick={() => setCleanupDialogOpen(true)}
-            data-testid="button-cleanup-recipes"
-          >
-            <Wrench className="h-4 w-4 mr-2" />
-            Cleanup
-          </Button>
-          <Button asChild data-testid="button-create-recipe">
-            <Link href="/recipes/new">
-              <Plus className="h-4 w-4 mr-2" />
-              New Recipe
-            </Link>
-          </Button>
+        <div className="flex flex-col gap-2 items-end">
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setCleanupDialogOpen(true)}
+              data-testid="button-cleanup-recipes"
+            >
+              <Wrench className="h-4 w-4 mr-2" />
+              Cleanup
+            </Button>
+            <Button asChild data-testid="button-create-recipe">
+              <Link href="/recipes/new">
+                <Plus className="h-4 w-4 mr-2" />
+                New Recipe
+              </Link>
+            </Button>
+          </div>
+          {showOnboardingButtons && (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => navigate(getNextMilestonePath())} data-testid="button-skip-step">
+                Skip
+              </Button>
+              <Button onClick={() => reviewStepMutation.mutate()} disabled={reviewStepMutation.isPending} data-testid="button-continue-step">
+                {reviewStepMutation.isPending ? "Saving..." : "Continue"}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
