@@ -51,6 +51,8 @@ export function SetupMilestoneTracker() {
   const { data, isLoading, isError } = useQuery<MilestonesResponse>({
     queryKey: ["/api/onboarding/milestones"],
     retry: false,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const dismissMutation = useMutation({
@@ -90,6 +92,7 @@ export function SetupMilestoneTracker() {
       setStoreCode("S001");
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stores"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
     },
   });
 

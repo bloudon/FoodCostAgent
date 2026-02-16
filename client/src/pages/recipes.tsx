@@ -8,6 +8,7 @@ import { Plus, Search, ChefHat, ChevronRight, MoreHorizontal, Trash2, EyeOff, Ey
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRecipeName } from "@/lib/utils";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -317,7 +318,7 @@ export default function Recipes() {
   const totalRecipes = groupedRecipes.reduce((sum, group) => sum + 1 + group.children.length, 0);
 
   return (
-    <div className="p-8">
+    <div className="p-8 pb-16">
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-recipes-title">
@@ -828,6 +829,7 @@ export default function Recipes() {
           </div>
         </DialogContent>
       </Dialog>
+      <SetupProgressBanner currentMilestoneId="recipes" />
     </div>
   );
 }

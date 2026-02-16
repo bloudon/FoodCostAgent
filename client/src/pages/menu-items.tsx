@@ -21,6 +21,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { insertMenuItemSchema } from "@shared/schema";
 import { z } from "zod";
 import { formatRecipeName } from "@/lib/utils";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -796,7 +797,7 @@ export default function MenuItemsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 pb-16">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold">Menu Items</h1>
@@ -2086,6 +2087,7 @@ export default function MenuItemsPage() {
           )}
         </CardContent>
       </Card>
+      <SetupProgressBanner currentMilestoneId="menu" />
     </div>
   );
 }

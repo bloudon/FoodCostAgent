@@ -28,6 +28,7 @@ This project is an inventory management and recipe costing system for food servi
 - Two-Stage Signup Flow: Lead capture (/signup) → Account activation (/activate) → Dashboard (/). Email auto-fills on activation page. No duplicate data entry between stages. No intermediate success screen.
 - Setup Milestone Tracker: Dashboard shows a "Getting Started" checklist (Store, Categories, Vendors, Inventory, Recipes, Menu) with dismiss/undismiss capability. Auto-hides when all milestones complete. Expanded by default on login, collapsible during session (session-only state), re-expands on next login. Shows X/Y progress count and encouragement message. Store creation is inline within the tracker (no separate onboarding page). Default store name is "%firstName%'s Store".
 - Onboarding API Endpoints: POST /api/leads/signup (creates inactive account), POST /api/leads/activate (sets password, activates), POST /api/onboarding/store (creates first store), GET /api/onboarding/milestones (milestone status), POST /api/onboarding/milestones/dismiss, POST /api/onboarding/milestones/undismiss.
+- Setup Progress Banner: `SetupProgressBanner` component (`client/src/components/setup-progress-banner.tsx`) is a fixed bottom bar shown on milestone-related pages (categories, vendors, inventory-items, recipes, menu-items). Shows "Step X of Y" while working, then "Done! → Next: ..." with a Continue button after completing the current milestone. Also has a Dashboard button. Pages include `pb-16` for content clearance.
 
 # UI Layout Requirements
 

@@ -56,6 +56,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { useStoreContext } from "@/hooks/use-store-context";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import {
   Tooltip,
   TooltipContent,
@@ -456,7 +457,7 @@ export default function Vendors() {
   };
 
   return (
-    <div className="p-8">
+    <div className="p-8 pb-16">
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-vendors-title">
@@ -1113,6 +1114,7 @@ export default function Vendors() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <SetupProgressBanner currentMilestoneId="vendors" />
     </div>
   );
 }

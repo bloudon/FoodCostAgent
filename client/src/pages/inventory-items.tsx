@@ -39,6 +39,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatUnitName, formatDateString } from "@/lib/utils";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
 
 type InventoryItemDisplay = {
   id: string;
@@ -232,7 +233,7 @@ export default function InventoryItems() {
   const paginatedItems = itemsPerPage === 9999 ? filteredItems : filteredItems.slice(startIndex, endIndex);
 
   return (
-    <div className="h-full overflow-auto">
+    <div className="h-full overflow-auto pb-16">
       <div className="p-4 space-y-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
@@ -568,6 +569,7 @@ export default function InventoryItems() {
         open={!!breakdownItemId}
         onClose={() => setBreakdownItemId(null)}
       />
+      <SetupProgressBanner currentMilestoneId="inventory" />
     </div>
   );
 }

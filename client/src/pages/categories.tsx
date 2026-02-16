@@ -38,6 +38,7 @@ import { insertCategorySchema } from "@shared/schema";
 import type { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import {
   DndContext,
   closestCenter,
@@ -297,7 +298,7 @@ export default function Categories() {
   );
 
   return (
-    <div className="p-8">
+    <div className="p-8 pb-16">
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-categories-title">
@@ -501,6 +502,7 @@ export default function Categories() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <SetupProgressBanner currentMilestoneId="categories" />
     </div>
   );
 }
