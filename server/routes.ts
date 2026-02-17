@@ -12,7 +12,7 @@ import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache"
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
 import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth";
-import { getAccessibleStores } from "./permissions";
+import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, sql } from "drizzle-orm";
@@ -8093,6 +8093,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/companies/:id", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.user!.id);
+    if (!user) return res.status(401).json({ error: "User not found" });
+    
+    if (user.role !== "global_admin" && user.companyId !== req.params.id) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    
     const company = await storage.getCompany(req.params.id);
     if (!company) {
       return res.status(404).json({ error: "Company not found" });
@@ -8101,8 +8108,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/companies/:id/stores", requireAuth, async (req, res) => {
-    const stores = await storage.getCompanyStores(req.params.id);
-    res.json(stores);
+    const user = await storage.getUser(req.user!.id);
+    if (!user) return res.status(401).json({ error: "User not found" });
+    
+    if (user.role === "global_admin" || (user.role === "company_admin" && user.companyId === req.params.id)) {
+      const stores = await storage.getCompanyStores(req.params.id);
+      return res.json(stores);
+    }
+    return res.status(403).json({ error: "Access denied" });
   });
 
   // Get accessible stores for current user (filtered by role and assignments)
@@ -8346,13 +8359,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Simplified store routes (used by frontend)
   app.get("/api/stores/:id", requireAuth, async (req, res) => {
     try {
+      const user = await storage.getUser(req.user!.id);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      
       const store = await storage.getCompanyStore(req.params.id);
       if (!store) {
         return res.status(404).json({ error: "Store not found" });
       }
+      
+      const hasAccess = await canAccessStore(user, req.params.id);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
       res.json(store);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -8361,20 +8382,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/stores/:id", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.user!.id);
-    
-    // Only global admins can update stores
-    if (user?.role !== "global_admin") {
-      return res.status(403).json({ error: "Only global admins can update stores" });
-    }
+    if (!user) return res.status(401).json({ error: "User not found" });
 
     try {
-      const data = insertCompanyStoreSchema.partial().parse(req.body);
-      const store = await storage.updateCompanyStore(req.params.id, data);
-      
-      if (!store) {
+      const existingStore = await storage.getCompanyStore(req.params.id);
+      if (!existingStore) {
         return res.status(404).json({ error: "Store not found" });
       }
       
+      if (user.role === "company_admin" && user.companyId !== existingStore.companyId) {
+        return res.status(403).json({ error: "You can only update stores for your own company" });
+      } else if (user.role !== "global_admin" && user.role !== "company_admin") {
+        return res.status(403).json({ error: "Only admins can update stores" });
+      }
+
+      const data = insertCompanyStoreSchema.partial().parse(req.body);
+      const store = await storage.updateCompanyStore(req.params.id, data);
       res.json(store);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -8383,13 +8406,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/stores/:id", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.user!.id);
-    
-    // Only global admins can delete stores
-    if (user?.role !== "global_admin") {
-      return res.status(403).json({ error: "Only global admins can delete stores" });
-    }
+    if (!user) return res.status(401).json({ error: "User not found" });
 
     try {
+      const existingStore = await storage.getCompanyStore(req.params.id);
+      if (!existingStore) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+      
+      if (user.role === "company_admin" && user.companyId !== existingStore.companyId) {
+        return res.status(403).json({ error: "You can only delete stores for your own company" });
+      } else if (user.role !== "global_admin" && user.role !== "company_admin") {
+        return res.status(403).json({ error: "Only admins can delete stores" });
+      }
+
       await storage.deleteCompanyStore(req.params.id);
       res.status(204).send();
     } catch (error: any) {
