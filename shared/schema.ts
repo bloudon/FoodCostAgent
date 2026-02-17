@@ -158,14 +158,15 @@ export const authSessions = pgTable("auth_sessions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
   revokedAt: timestamp("revoked_at"),
+  lastActiveAt: timestamp("last_active_at").defaultNow(),
   userAgent: text("user_agent"),
   ipAddress: text("ip_address"),
-  selectedCompanyId: varchar("selected_company_id"), // For global_admin users to track selected company
+  selectedCompanyId: varchar("selected_company_id"),
 }, (table) => ({
-  // Optimize auth lookups and session cleanup queries
   userIdIdx: index("auth_sessions_user_id_idx").on(table.userId),
   expiresAtIdx: index("auth_sessions_expires_at_idx").on(table.expiresAt),
   tokenHashIdx: index("auth_sessions_token_hash_idx").on(table.tokenHash),
+  lastActiveAtIdx: index("auth_sessions_last_active_at_idx").on(table.lastActiveAt),
 }));
 
 export const insertAuthSessionSchema = createInsertSchema(authSessions).omit({ id: true, createdAt: true });

@@ -7,6 +7,26 @@ import type { AuthSession, User } from "@shared/schema";
 
 const TOKEN_LENGTH = 32;
 const SESSION_DURATION_DAYS = 30;
+const LAST_ACTIVE_THROTTLE_MS = 5 * 60 * 1000;
+const lastActiveUpdates = new Map<string, number>();
+const activeUserTimestamps = new Map<string, number>();
+
+export function getActiveUserCount(windowMs: number = 30 * 60 * 1000): number {
+  const cutoff = Date.now() - windowMs;
+  let count = 0;
+  for (const [userId, ts] of activeUserTimestamps) {
+    if (ts > cutoff) {
+      count++;
+    } else {
+      activeUserTimestamps.delete(userId);
+    }
+  }
+  return count;
+}
+
+function trackUserActivity(userId: string) {
+  activeUserTimestamps.set(userId, Date.now());
+}
 
 /**
  * Generate a random token and its hash
@@ -94,15 +114,20 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       }
       
       if (user) {
-        // Attach user and auth session to request
-        // Note: Using 'authSession' instead of 'session' to avoid conflict with express-session
         (req as any).user = user;
         (req as any).authSession = session;
         (req as any).sessionId = session.id;
         
-        // Resolve company context: use user.companyId for regular users, session.selectedCompanyId for global_admin
         const companyId = user.companyId || session.selectedCompanyId || null;
         (req as any).companyId = companyId;
+        
+        trackUserActivity(user.id);
+        const now = Date.now();
+        const lastUpdate = lastActiveUpdates.get(session.id) || 0;
+        if (now - lastUpdate > LAST_ACTIVE_THROTTLE_MS) {
+          lastActiveUpdates.set(session.id, now);
+          storage.updateAuthSession(session.id, { lastActiveAt: new Date() }).catch(() => {});
+        }
         
         return next();
       }
@@ -125,19 +150,17 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       }
       
       if (user) {
-        // Attach user to request
         (req as any).user = user;
         (req as any).ssoAuth = true;
         
-        // Resolve company context
-        // For global admins, use selectedCompanyId from Passport session if available
-        // For company-bound users, use their companyId
         let companyId = user.companyId || null;
         if (user.role === "global_admin" && (req as any).session?.selectedCompanyId) {
           companyId = (req as any).session.selectedCompanyId;
         }
         (req as any).companyId = companyId;
         (req as any).selectedCompanyId = (req as any).session?.selectedCompanyId || null;
+        
+        trackUserActivity(user.id);
         
         return next();
       }

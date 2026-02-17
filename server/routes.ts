@@ -8062,13 +8062,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { authSessions } = await import("@shared/schema");
       const now = new Date();
-      const result = await db.select({ count: sql<number>`count(distinct ${authSessions.userId})` })
+      const thirtyMinAgo = new Date(now.getTime() - 30 * 60 * 1000);
+      const dbResult = await db.select({ count: sql<number>`count(distinct ${authSessions.userId})` })
         .from(authSessions)
         .where(and(
           gt(authSessions.expiresAt, now),
-          isNull(authSessions.revokedAt)
+          isNull(authSessions.revokedAt),
+          gt(authSessions.lastActiveAt, thirtyMinAgo)
         ));
-      res.json({ activeSessionCount: Number(result[0]?.count || 0) });
+      const { getActiveUserCount } = await import("./auth");
+      const inMemoryCount = getActiveUserCount();
+      const dbCount = Number(dbResult[0]?.count || 0);
+      res.json({ activeSessionCount: Math.max(dbCount, inMemoryCount) });
     } catch (error) {
       console.error("Active sessions count error:", error);
       res.status(500).json({ error: "Failed to fetch active sessions" });
