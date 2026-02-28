@@ -62,7 +62,7 @@ function ProtectedLayout() {
   const { user, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
 
-  const PUBLIC_PATHS = ["/login", "/signup", "/activate", "/onboarding", "/onboarding-wizard"];
+  const PUBLIC_PATHS = ["/login", "/signup", "/activate", "/onboarding", "/onboarding-wizard", "/onboarding-review"];
 
   useEffect(() => {
     if (!isLoading && !user && !PUBLIC_PATHS.some(p => location === p || location.startsWith(p + "/"))) {
@@ -171,6 +171,7 @@ function App() {
               <Route path="/accept-invitation/:token" component={AcceptInvitation} />
               <Route path="/onboarding" component={Onboarding} />
               <Route path="/onboarding-wizard" component={OnboardingWizard} />
+              <Route path="/onboarding-review" component={OnboardingWizard} />
               <Route path="/signup" component={LeadSignup} />
               <Route path="/activate" component={ActivateAccount} />
               <Route>
