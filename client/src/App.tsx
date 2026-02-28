@@ -54,6 +54,7 @@ import PendingApproval from "@/pages/pending-approval";
 import SsoAccessDenied from "@/pages/sso-access-denied";
 import AcceptInvitation from "@/pages/accept-invitation";
 import Onboarding from "@/pages/onboarding";
+import OnboardingWizard from "@/pages/onboarding-wizard";
 import LeadSignup from "@/pages/lead-signup";
 import ActivateAccount from "@/pages/activate-account";
 
@@ -167,6 +168,7 @@ function App() {
               <Route path="/sso-access-denied" component={SsoAccessDenied} />
               <Route path="/accept-invitation/:token" component={AcceptInvitation} />
               <Route path="/onboarding" component={Onboarding} />
+              <Route path="/onboarding-wizard" component={OnboardingWizard} />
               <Route path="/signup" component={LeadSignup} />
               <Route path="/activate" component={ActivateAccount} />
               <Route>

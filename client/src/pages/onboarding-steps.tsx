@@ -28,16 +28,158 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Building2, Store, FolderTree, Check, Plus, Upload, Users, Info, CheckCircle } from "lucide-react";
-import { useOnboarding } from "@/pages/onboarding";
+import { Building2, Store, FolderTree, Check, Plus, Upload, Users, Info, CheckCircle, UserCircle } from "lucide-react";
+import { useOnboarding } from "@/pages/onboarding-wizard";
 import { insertVendorSchema, type Vendor } from "@shared/schema";
 
-// Company Setup Form Schema (includes user credentials for signup)
-const companyFormSchema = z.object({
+const STORE_LOCATION_OPTIONS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10+"];
+
+// Account Setup Form Schema (step 1 - personal info + location count)
+const accountFormSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
+  storeLocationCount: z.string().min(1, "Please select the number of locations"),
+});
+
+type AccountFormValues = z.infer<typeof accountFormSchema>;
+
+export function AccountSetupStep({ onComplete }: { onComplete: () => void }) {
+  const { wizardData, updateWizardData } = useOnboarding();
+  const { toast } = useToast();
+
+  const form = useForm<AccountFormValues>({
+    resolver: zodResolver(accountFormSchema),
+    defaultValues: {
+      firstName: wizardData.company?.firstName || "",
+      lastName: wizardData.company?.lastName || "",
+      email: wizardData.company?.email || "",
+      password: wizardData.company?.password || "",
+      storeLocationCount: wizardData.company?.storeLocationCount || "",
+    },
+  });
+
+  const onSubmit = (data: AccountFormValues) => {
+    updateWizardData("company", { ...wizardData.company, ...data });
+    toast({
+      title: "Account info saved",
+      description: "Now tell us about your company.",
+    });
+    onComplete();
+  };
+
+  return (
+    <div data-testid="step-account">
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-2">
+          <UserCircle className="w-6 h-6 text-primary" />
+          <h2 className="text-2xl font-bold">Create Your Account</h2>
+        </div>
+        <p className="text-muted-foreground">
+          Tell us about yourself to get started with FNB Cost Pro.
+        </p>
+      </div>
+
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="firstName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>First Name *</FormLabel>
+                  <FormControl>
+                    <Input placeholder="John" {...field} data-testid="input-first-name" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="lastName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Last Name *</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Smith" {...field} data-testid="input-last-name" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel>Email Address *</FormLabel>
+                  <FormControl>
+                    <Input type="email" placeholder="your@email.com" {...field} data-testid="input-email" />
+                  </FormControl>
+                  <FormDescription className="text-xs">
+                    This will be your login email
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel>Password *</FormLabel>
+                  <FormControl>
+                    <Input type="password" placeholder="At least 6 characters" {...field} data-testid="input-password" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="storeLocationCount"
+              render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel>How many store locations do you have? *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-store-location-count">
+                        <SelectValue placeholder="Select number of locations" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {STORE_LOCATION_OPTIONS.map((opt) => (
+                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div className="flex justify-end pt-4">
+            <Button type="submit" data-testid="button-save-account">
+              Continue
+            </Button>
+          </div>
+        </form>
+      </Form>
+    </div>
+  );
+}
+
+// Company Setup Form Schema (company info only — no account fields)
+const companyFormSchema = z.object({
   name: z.string().min(1, "Company name is required"),
   legalName: z.string().optional(),
   contactEmail: z.string().email("Invalid email").optional().or(z.literal("")),
@@ -51,12 +193,10 @@ const companyFormSchema = z.object({
   tccAccountId: z.string().optional(),
 }).refine(
   (data) => {
-    // If Thrive POS is selected, TCC ID is required and must be a valid UUID
     if (data.posProvider === 'thrive') {
       if (!data.tccAccountId || data.tccAccountId.trim() === '') {
         return false;
       }
-      // Validate UUID format
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       return uuidRegex.test(data.tccAccountId);
     }
@@ -76,22 +216,18 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
 
   const form = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
-    defaultValues: wizardData.company || {
-      firstName: "",
-      lastName: "",
-      email: "",
-      password: "",
-      name: "",
-      legalName: "",
-      contactEmail: "",
-      phone: "",
-      addressLine1: "",
-      addressLine2: "",
-      city: "",
-      state: "",
-      postalCode: "",
-      posProvider: undefined,
-      tccAccountId: "",
+    defaultValues: {
+      name: wizardData.company?.name || "",
+      legalName: wizardData.company?.legalName || "",
+      contactEmail: wizardData.company?.contactEmail || "",
+      phone: wizardData.company?.phone || "",
+      addressLine1: wizardData.company?.addressLine1 || "",
+      addressLine2: wizardData.company?.addressLine2 || "",
+      city: wizardData.company?.city || "",
+      state: wizardData.company?.state || "",
+      postalCode: wizardData.company?.postalCode || "",
+      posProvider: wizardData.company?.posProvider || undefined,
+      tccAccountId: wizardData.company?.tccAccountId || "",
     },
   });
 
@@ -99,23 +235,19 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
   const posProvider = form.watch("posProvider");
 
   const onSubmit = async (data: CompanyFormValues) => {
-    // Normalize empty strings to undefined for optional fields
     const normalizedData = {
       ...data,
       tccAccountId: data.tccAccountId?.trim() || undefined,
       posProvider: data.posProvider || undefined,
     };
-    
-    // Just save to wizard context - no API call yet
-    // The signup API will be called in the Store Setup step
-    updateWizardData("company", normalizedData);
-    
+
+    updateWizardData("company", { ...wizardData.company, ...normalizedData });
+
     toast({
       title: "Company information saved",
       description: "Proceed to add your first store location.",
     });
-    
-    // Move to next step
+
     onComplete();
   };
 
@@ -133,75 +265,7 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          {/* User Account Section */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Create Your Account</h3>
-            <div className="grid gap-6 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="firstName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>First Name *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="John" {...field} data-testid="input-first-name" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="lastName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Last Name *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Smith" {...field} data-testid="input-last-name" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>Email Address *</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="your@email.com" {...field} data-testid="input-email" />
-                    </FormControl>
-                    <FormDescription className="text-xs">
-                      This will be your login email
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>Password *</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="At least 6 characters" {...field} data-testid="input-password" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-          </div>
-
-          {/* Company Information Section */}
-          <div className="space-y-4 pt-4 border-t">
-            <h3 className="text-lg font-semibold">Company Information</h3>
-            <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-6 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="name"
@@ -382,7 +446,6 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
                 </FormItem>
               )}
             />
-            </div>
           </div>
 
           <div className="flex justify-end pt-4">
