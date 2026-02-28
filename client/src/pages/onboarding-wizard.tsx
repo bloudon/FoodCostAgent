@@ -1,6 +1,5 @@
 import { useState, createContext, useContext } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/lib/auth-context";
 import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
 import { AccountSetupStep, CompanySetupStep, StoreSetupStep, CategoriesReviewStep } from "@/pages/onboarding-steps";
 
@@ -59,7 +58,6 @@ const STEPS = [
 
 export default function OnboardingWizard() {
   const [, navigate] = useLocation();
-  const { refreshAuth } = useAuth();
   const [stepIndex, setStepIndex] = useState(0);
   const [wizardData, setWizardData] = useState<WizardData>({});
 
