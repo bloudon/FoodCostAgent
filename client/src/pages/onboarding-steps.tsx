@@ -28,7 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Building2, Store, FolderTree, Check, Plus, Upload, Users, Info, CheckCircle, UserCircle, MailCheck } from "lucide-react";
+import { Building2, Store, FolderTree, Check, Plus, Upload, Users, Info, CheckCircle, UserCircle, MailCheck, Eye, EyeOff } from "lucide-react";
 import { useOnboarding } from "@/pages/onboarding-wizard";
 import { insertVendorSchema, type Vendor } from "@shared/schema";
 
@@ -40,7 +40,11 @@ const accountFormSchema = z.object({
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
+  confirmPassword: z.string().min(1, "Please confirm your password"),
   storeLocationCount: z.string().min(1, "Please select the number of locations"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
 });
 
 type AccountFormValues = z.infer<typeof accountFormSchema>;
@@ -48,6 +52,8 @@ type AccountFormValues = z.infer<typeof accountFormSchema>;
 export function AccountSetupStep({ onComplete }: { onComplete: () => void }) {
   const { wizardData, updateWizardData } = useOnboarding();
   const { toast } = useToast();
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const form = useForm<AccountFormValues>({
     resolver: zodResolver(accountFormSchema),
@@ -56,13 +62,15 @@ export function AccountSetupStep({ onComplete }: { onComplete: () => void }) {
       lastName: wizardData.company?.lastName || "",
       email: wizardData.company?.email || "",
       password: wizardData.company?.password || "",
+      confirmPassword: "",
       storeLocationCount: wizardData.company?.storeLocationCount || "",
     },
   });
 
   const sendOtpMutation = useMutation({
     mutationFn: async (data: AccountFormValues) => {
-      updateWizardData("company", { ...wizardData.company, ...data });
+      const { confirmPassword: _, ...dataToSave } = data;
+      updateWizardData("company", { ...wizardData.company, ...dataToSave });
       const response = await apiRequest("POST", "/api/auth/send-otp", {
         email: data.email,
         firstName: data.firstName,
@@ -156,7 +164,55 @@ export function AccountSetupStep({ onComplete }: { onComplete: () => void }) {
                 <FormItem className="md:col-span-2">
                   <FormLabel>Password *</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="At least 6 characters" {...field} data-testid="input-password" />
+                    <div className="relative">
+                      <Input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="At least 6 characters"
+                        {...field}
+                        data-testid="input-password"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setShowPassword((v) => !v)}
+                        tabIndex={-1}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="confirmPassword"
+              render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel>Confirm Password *</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Input
+                        type={showConfirmPassword ? "text" : "password"}
+                        placeholder="Re-enter your password"
+                        {...field}
+                        data-testid="input-confirm-password"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setShowConfirmPassword((v) => !v)}
+                        tabIndex={-1}
+                        aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -461,8 +517,18 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
     registerMutation.mutate(data);
   };
 
+  const firstName = wizardData.company?.firstName;
+
   return (
     <div data-testid="step-company">
+      {firstName && (
+        <div className="flex items-center gap-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-md px-4 py-3 mb-6">
+          <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />
+          <p className="text-sm font-medium text-green-800 dark:text-green-300">
+            Welcome, {firstName}! Your email has been verified.
+          </p>
+        </div>
+      )}
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-2">
           <Building2 className="w-6 h-6 text-primary" />
