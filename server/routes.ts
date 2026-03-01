@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import crypto from "crypto";
 import multer from "multer";
+import { createCheckoutSession, stripeWebhook } from "./billing";
 import { storage } from "./storage";
 import { parseCSV } from "./services/tfcCsv";
 import { TheoreticalUsageService } from "./services/theoreticalUsage";
@@ -121,6 +122,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/health', (_req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   });
+
+  // ============ BILLING (Stripe) ============
+  app.post("/api/billing/checkout", requireAuth, createCheckoutSession);
+  app.post("/api/billing/webhook", stripeWebhook);
 
   // Swagger UI Documentation (mounted at /docs to avoid Vite middleware conflict)
   app.use('/docs', swaggerUi.serve);

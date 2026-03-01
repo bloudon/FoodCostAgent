@@ -22,6 +22,13 @@ export const companies = pgTable("companies", {
   tccAccountId: text("tcc_account_id"), // The Chef's Companion (Thrive POS) account ID - only required for Thrive POS users
   preferredUnitSystem: text("preferred_unit_system").notNull().default("imperial"), // imperial, metric, or both
   status: text("status").notNull().default("active"), // active, inactive, suspended
+  // Stripe subscription fields
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  subscriptionStatus: text("subscription_status"), // active, past_due, canceled, trialing, incomplete
+  subscriptionTier: text("subscription_tier"), // basic, pro
+  subscriptionTerm: text("subscription_term"), // monthly, quarterly, annual
+  subscriptionCurrentPeriodEnd: timestamp("subscription_current_period_end"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

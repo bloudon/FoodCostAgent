@@ -31,6 +31,9 @@ app.use('/webhooks/edi', express.raw({
   }
 }));
 
+// Raw body parser for Stripe webhook (must come before JSON parser — Stripe needs raw Buffer for signature verification)
+app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
+
 // JSON parser for all other routes
 app.use(express.json());
 
