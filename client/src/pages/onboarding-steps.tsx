@@ -212,6 +212,7 @@ type CompanyFormValues = z.infer<typeof companyFormSchema>;
 
 export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
   const { wizardData, updateWizardData } = useOnboarding();
+  const { refreshAuth } = useAuth();
   const { toast } = useToast();
 
   const form = useForm<CompanyFormValues>({
@@ -234,21 +235,52 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
   // Watch posProvider field to conditionally show TCC ID
   const posProvider = form.watch("posProvider");
 
-  const onSubmit = async (data: CompanyFormValues) => {
-    const normalizedData = {
-      ...data,
-      tccAccountId: data.tccAccountId?.trim() || undefined,
-      posProvider: data.posProvider || undefined,
-    };
+  const registerMutation = useMutation({
+    mutationFn: async (data: CompanyFormValues) => {
+      const payload = {
+        firstName: wizardData.company?.firstName || "",
+        lastName: wizardData.company?.lastName || "",
+        email: wizardData.company?.email || "",
+        password: wizardData.company?.password || "",
+        companyName: data.name,
+        legalName: data.legalName || undefined,
+        contactEmail: data.contactEmail || undefined,
+        phone: data.phone || undefined,
+        addressLine1: data.addressLine1 || undefined,
+        addressLine2: data.addressLine2 || undefined,
+        city: data.city || undefined,
+        state: data.state || undefined,
+        postalCode: data.postalCode || undefined,
+        posProvider: data.posProvider || undefined,
+        tccAccountId: data.tccAccountId?.trim() || undefined,
+      };
+      const response = await apiRequest("POST", "/api/auth/register", payload);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "Registration failed" }));
+        throw new Error(err.error || "Failed to create account");
+      }
+      return response.json();
+    },
+    onSuccess: async (result) => {
+      updateWizardData("company", { ...wizardData.company, name: result.company?.name });
+      await refreshAuth();
+      toast({
+        title: "Account created!",
+        description: "Your account and company are set up. Now add your first store.",
+      });
+      onComplete();
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Registration failed",
+        description: error.message || "Could not create your account. Please try again.",
+      });
+    },
+  });
 
-    updateWizardData("company", { ...wizardData.company, ...normalizedData });
-
-    toast({
-      title: "Company information saved",
-      description: "Proceed to add your first store location.",
-    });
-
-    onComplete();
+  const onSubmit = (data: CompanyFormValues) => {
+    registerMutation.mutate(data);
   };
 
   return (
@@ -449,8 +481,8 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
           </div>
 
           <div className="flex justify-end pt-4">
-            <Button type="submit" data-testid="button-save-company">
-              Continue
+            <Button type="submit" data-testid="button-save-company" disabled={registerMutation.isPending}>
+              {registerMutation.isPending ? "Creating Account..." : "Create Account & Continue"}
             </Button>
           </div>
         </form>

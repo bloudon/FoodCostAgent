@@ -451,6 +451,133 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ ONBOARDING WIZARD REGISTER (creates account + company, auto-logs in) ============
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const registerSchema = z.object({
+        firstName: z.string().min(1, "First name is required"),
+        lastName: z.string().min(1, "Last name is required"),
+        email: z.string().email("Invalid email"),
+        password: z.string().min(6, "Password must be at least 6 characters"),
+        companyName: z.string().min(1, "Company name is required"),
+        legalName: z.string().optional(),
+        contactEmail: z.string().email().optional().or(z.literal("")),
+        phone: z.string().optional(),
+        addressLine1: z.string().optional(),
+        addressLine2: z.string().optional(),
+        city: z.string().optional(),
+        state: z.string().optional(),
+        postalCode: z.string().optional(),
+        posProvider: z.enum(["thrive", "toast", "hungerrush", "clover", "other", "none"]).optional(),
+        tccAccountId: z.string().optional(),
+      });
+
+      const data = registerSchema.parse(req.body);
+
+      const existingUser = await storage.getUserByEmail(data.email);
+      if (existingUser) {
+        return res.status(409).json({ error: "Email already registered. Please log in or use a different email." });
+      }
+
+      const passwordHash = await hashPassword(data.password);
+
+      const { companies, users, onboardingProgress, menuItemSizes } = await import("@shared/schema");
+
+      const result = await db.transaction(async (tx) => {
+        const [newCompany] = await tx.insert(companies).values({
+          name: data.companyName,
+          legalName: data.legalName || undefined,
+          contactEmail: data.contactEmail || undefined,
+          phone: data.phone || undefined,
+          addressLine1: data.addressLine1 || undefined,
+          addressLine2: data.addressLine2 || undefined,
+          city: data.city || undefined,
+          state: data.state || undefined,
+          postalCode: data.postalCode || undefined,
+          posProvider: data.posProvider || undefined,
+          tccAccountId: data.tccAccountId || undefined,
+          status: "active",
+        }).returning();
+
+        const [newUser] = await tx.insert(users).values({
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          passwordHash,
+          role: "company_admin",
+          companyId: newCompany.id,
+          active: 1,
+        }).returning();
+
+        const defaultSizes = [
+          { name: "One Size", sortOrder: 0, isDefault: 1 },
+          { name: "Large", sortOrder: 1, isDefault: 0 },
+          { name: "Medium", sortOrder: 2, isDefault: 0 },
+          { name: "Small", sortOrder: 3, isDefault: 0 },
+          { name: "Lunch", sortOrder: 4, isDefault: 0 },
+          { name: "Kids", sortOrder: 5, isDefault: 0 },
+        ];
+        await tx.insert(menuItemSizes).values(
+          defaultSizes.map((s) => ({
+            companyId: newCompany.id,
+            name: s.name,
+            sortOrder: s.sortOrder,
+            isDefault: s.isDefault,
+            active: 1,
+          }))
+        );
+
+        await tx.insert(onboardingProgress).values({
+          companyId: newCompany.id,
+          isCompleted: 0,
+        });
+
+        return { newCompany, newUser };
+      });
+
+      // Create a session so the user is auto-logged-in
+      const token = await createSession(
+        result.newUser.id,
+        req.headers["user-agent"],
+        req.ip
+      );
+
+      res.cookie("session", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+
+      // Send welcome email (non-blocking)
+      import("./email").then(({ sendWelcomeEmail }) => {
+        sendWelcomeEmail({
+          to: data.email,
+          firstName: data.firstName,
+          companyName: data.companyName,
+        }).catch((err) => console.error("[Email] Welcome email error:", err));
+      });
+
+      res.status(201).json({
+        user: {
+          id: result.newUser.id,
+          email: result.newUser.email,
+          role: result.newUser.role,
+          companyId: result.newUser.companyId,
+          firstName: result.newUser.firstName,
+          lastName: result.newUser.lastName,
+        },
+        company: result.newCompany,
+      });
+    } catch (error: any) {
+      console.error("Registration error:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid registration data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create account. Please try again." });
+    }
+  });
+
   // ============ ONBOARDING STORE SETUP (authenticated) ============
   app.post("/api/onboarding/store", requireAuth, async (req, res) => {
     try {
