@@ -451,6 +451,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ OTP STORE (in-memory, no DB needed) ============
+  const otpStore = new Map<string, { otp: string; expiresAt: Date }>();
+
+  // ============ SEND OTP ============
+  app.post("/api/auth/send-otp", async (req, res) => {
+    try {
+      const schema = z.object({
+        email: z.string().email(),
+        firstName: z.string().min(1),
+      });
+      const { email, firstName } = schema.parse(req.body);
+      const key = email.toLowerCase();
+
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      otpStore.set(key, { otp, expiresAt: new Date(Date.now() + 15 * 60 * 1000) });
+
+      // Send email non-blocking — still return success so user can resend
+      import("./email").then(({ sendOtpEmail }) => {
+        sendOtpEmail({ to: email, firstName, otp }).catch((err) =>
+          console.error("[OTP] Email send failed:", err)
+        );
+      });
+
+      console.log(`[OTP] Code ${otp} stored for ${key} (expires in 15min)`);
+      res.json({ sent: true });
+    } catch (error: any) {
+      if (error.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid request", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to send verification code" });
+    }
+  });
+
+  // ============ VERIFY OTP ============
+  app.post("/api/auth/verify-otp", async (req, res) => {
+    try {
+      const schema = z.object({
+        email: z.string().email(),
+        otp: z.string().length(6),
+      });
+      const { email, otp } = schema.parse(req.body);
+      const key = email.toLowerCase();
+
+      const entry = otpStore.get(key);
+      if (!entry) {
+        return res.status(401).json({ error: "Invalid or expired code" });
+      }
+      if (entry.expiresAt < new Date()) {
+        otpStore.delete(key);
+        return res.status(401).json({ error: "Invalid or expired code" });
+      }
+      if (entry.otp !== otp) {
+        return res.status(401).json({ error: "Invalid or expired code" });
+      }
+
+      otpStore.delete(key);
+      res.json({ verified: true });
+    } catch (error: any) {
+      if (error.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid request", details: error.errors });
+      }
+      res.status(500).json({ error: "Verification failed" });
+    }
+  });
+
   // ============ ONBOARDING WIZARD REGISTER (creates account + company, auto-logs in) ============
   app.post("/api/auth/register", async (req, res) => {
     try {

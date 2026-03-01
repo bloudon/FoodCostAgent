@@ -1,7 +1,7 @@
 import { useState, createContext, useContext } from "react";
 import { useLocation } from "wouter";
 import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
-import { AccountSetupStep, CompanySetupStep, StoreSetupStep, CategoriesReviewStep } from "@/pages/onboarding-steps";
+import { AccountSetupStep, EmailVerificationStep, CompanySetupStep, StoreSetupStep, CategoriesReviewStep } from "@/pages/onboarding-steps";
 
 export interface WizardCompanyData {
   firstName?: string;
@@ -51,6 +51,7 @@ export function useOnboarding() {
 
 const STEPS = [
   { id: "account", label: "Account" },
+  { id: "verify", label: "Verify Email" },
   { id: "company", label: "Company" },
   { id: "store", label: "Store" },
   { id: "categories", label: "Categories" },
@@ -130,6 +131,9 @@ export default function OnboardingWizard() {
           <div className="bg-card rounded-lg border p-6 md:p-8">
             {currentStep.id === "account" && (
               <AccountSetupStep onComplete={handleStepComplete} />
+            )}
+            {currentStep.id === "verify" && (
+              <EmailVerificationStep onComplete={handleStepComplete} />
             )}
             {currentStep.id === "company" && (
               <CompanySetupStep onComplete={handleStepComplete} />

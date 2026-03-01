@@ -28,7 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Building2, Store, FolderTree, Check, Plus, Upload, Users, Info, CheckCircle, UserCircle } from "lucide-react";
+import { Building2, Store, FolderTree, Check, Plus, Upload, Users, Info, CheckCircle, UserCircle, MailCheck } from "lucide-react";
 import { useOnboarding } from "@/pages/onboarding-wizard";
 import { insertVendorSchema, type Vendor } from "@shared/schema";
 
@@ -60,13 +60,33 @@ export function AccountSetupStep({ onComplete }: { onComplete: () => void }) {
     },
   });
 
+  const sendOtpMutation = useMutation({
+    mutationFn: async (data: AccountFormValues) => {
+      updateWizardData("company", { ...wizardData.company, ...data });
+      const response = await apiRequest("POST", "/api/auth/send-otp", {
+        email: data.email,
+        firstName: data.firstName,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "Failed" }));
+        throw new Error(err.error || "Failed to send verification code");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      onComplete();
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Could not send verification code",
+        description: error.message || "Please try again.",
+      });
+    },
+  });
+
   const onSubmit = (data: AccountFormValues) => {
-    updateWizardData("company", { ...wizardData.company, ...data });
-    toast({
-      title: "Account info saved",
-      description: "Now tell us about your company.",
-    });
-    onComplete();
+    sendOtpMutation.mutate(data);
   };
 
   return (
@@ -168,12 +188,170 @@ export function AccountSetupStep({ onComplete }: { onComplete: () => void }) {
           </div>
 
           <div className="flex justify-end pt-4">
-            <Button type="submit" data-testid="button-save-account">
-              Continue
+            <Button type="submit" data-testid="button-save-account" disabled={sendOtpMutation.isPending}>
+              {sendOtpMutation.isPending ? "Sending Code..." : "Send Verification Code"}
             </Button>
           </div>
         </form>
       </Form>
+    </div>
+  );
+}
+
+// Email Verification Step
+export function EmailVerificationStep({ onComplete }: { onComplete: () => void }) {
+  const { wizardData } = useOnboarding();
+  const { toast } = useToast();
+  const email = wizardData.company?.email || "";
+  const firstName = wizardData.company?.firstName || "";
+
+  const [digits, setDigits] = useState<string[]>(["", "", "", "", "", ""]);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendLabel, setResendLabel] = useState("Resend code");
+  const inputRefs = Array.from({ length: 6 }, () => null as HTMLInputElement | null);
+
+  const setRef = (i: number) => (el: HTMLInputElement | null) => {
+    inputRefs[i] = el;
+  };
+
+  const focusInput = (i: number) => {
+    if (i >= 0 && i < 6) inputRefs[i]?.focus();
+  };
+
+  const handleDigitChange = (i: number, value: string) => {
+    if (value.length > 1) {
+      // Handle paste of full code
+      const cleaned = value.replace(/\D/g, "").slice(0, 6);
+      if (cleaned.length === 6) {
+        const next = cleaned.split("");
+        setDigits(next);
+        inputRefs[5]?.focus();
+        return;
+      }
+      value = value.slice(-1);
+    }
+    if (!/^\d?$/.test(value)) return;
+    const next = [...digits];
+    next[i] = value;
+    setDigits(next);
+    if (value && i < 5) focusInput(i + 1);
+  };
+
+  const handleKeyDown = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace" && !digits[i] && i > 0) {
+      focusInput(i - 1);
+    }
+  };
+
+  const verifyMutation = useMutation({
+    mutationFn: async () => {
+      const otp = digits.join("");
+      const response = await apiRequest("POST", "/api/auth/verify-otp", { email, otp });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "Invalid code" }));
+        throw new Error(err.error || "Invalid or expired code");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      onComplete();
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Incorrect or expired code",
+        description: error.message || "Please check the code and try again.",
+      });
+      setDigits(["", "", "", "", "", ""]);
+      setTimeout(() => focusInput(0), 50);
+    },
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/auth/send-otp", { email, firstName });
+      if (!response.ok) throw new Error("Failed to resend");
+      return response.json();
+    },
+    onSuccess: () => {
+      setResendLabel("Sent!");
+      setResendCooldown(30);
+      const interval = setInterval(() => {
+        setResendCooldown((c) => {
+          if (c <= 1) {
+            clearInterval(interval);
+            setResendLabel("Resend code");
+            return 0;
+          }
+          return c - 1;
+        });
+      }, 1000);
+      setTimeout(() => setResendLabel(resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"), 3000);
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Failed to resend code", description: "Please try again." });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (digits.join("").length === 6) verifyMutation.mutate();
+  };
+
+  return (
+    <div data-testid="step-verify-email">
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-2">
+          <MailCheck className="w-6 h-6 text-primary" />
+          <h2 className="text-2xl font-bold">Check Your Inbox</h2>
+        </div>
+        <p className="text-muted-foreground">
+          We sent a 6-digit code to <strong>{email}</strong>. Enter it below to verify your email address.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="flex gap-3 justify-center">
+          {digits.map((d, i) => (
+            <Input
+              key={i}
+              ref={setRef(i)}
+              value={d}
+              onChange={(e) => handleDigitChange(i, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(i, e)}
+              maxLength={6}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              data-testid={`otp-input-${i}`}
+              className="w-12 h-14 text-center text-2xl font-bold p-0"
+              autoComplete="one-time-code"
+              autoFocus={i === 0}
+            />
+          ))}
+        </div>
+
+        <div className="flex flex-col items-center gap-3 pt-2">
+          <Button
+            type="submit"
+            data-testid="button-verify-otp"
+            disabled={verifyMutation.isPending || digits.join("").length < 6}
+            className="w-full max-w-xs"
+          >
+            {verifyMutation.isPending ? "Verifying..." : "Verify Email"}
+          </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={resendCooldown > 0 || resendMutation.isPending}
+            onClick={() => resendMutation.mutate()}
+            data-testid="button-resend-otp"
+          >
+            {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : resendLabel}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }
