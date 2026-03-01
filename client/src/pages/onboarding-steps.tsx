@@ -57,6 +57,7 @@ export function AccountSetupStep({ onComplete }: { onComplete: () => void }) {
 
   const form = useForm<AccountFormValues>({
     resolver: zodResolver(accountFormSchema),
+    mode: "onTouched",
     defaultValues: {
       firstName: wizardData.company?.firstName || "",
       lastName: wizardData.company?.lastName || "",
