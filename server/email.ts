@@ -82,6 +82,69 @@ export async function sendOtpEmail(opts: {
   }
 }
 
+export async function sendPasswordResetEmail(opts: {
+  to: string;
+  firstName: string;
+  resetUrl: string;
+}) {
+  const transport = createTransport();
+  if (!transport) {
+    console.warn("[Email] Skipping password reset email — no transport configured");
+    return;
+  }
+
+  const { to, firstName, resetUrl } = opts;
+
+  try {
+    await transport.sendMail({
+      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+      to,
+      subject: "Reset your FNB Cost Pro password",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #1e293b; padding: 24px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">
+              <span style="color: #ffffff;">FNB</span>
+              <span style="color: #22c55e; font-size: 16px;"> cost pro</span>
+            </h1>
+          </div>
+          <div style="padding: 32px; background: #ffffff;">
+            <h2 style="color: #1e293b;">Hi ${firstName},</h2>
+            <p style="color: #475569; line-height: 1.6;">
+              We received a request to reset your password. Click the button below to choose a new one.
+              This link expires in <strong>1 hour</strong>.
+            </p>
+            <div style="margin: 32px 0; text-align: center;">
+              <a href="${resetUrl}"
+                 style="background: #f2690d; color: #ffffff; padding: 14px 32px;
+                        border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 16px;">
+                Reset Password
+              </a>
+            </div>
+            <p style="color: #475569; line-height: 1.6;">
+              Or copy this link into your browser:<br/>
+              <a href="${resetUrl}" style="color: #f2690d; word-break: break-all;">${resetUrl}</a>
+            </p>
+            <p style="color: #94a3b8; font-size: 13px;">
+              If you didn't request a password reset, you can safely ignore this email.
+              Your password will not change.
+            </p>
+          </div>
+          <div style="background: #f1f5f9; padding: 16px; text-align: center;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} FNB Cost Pro. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${firstName},\n\nReset your FNB Cost Pro password by visiting:\n${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, ignore this email.`,
+    });
+    console.log(`[Email] Password reset email sent to ${to}`);
+  } catch (err) {
+    console.error("[Email] Failed to send password reset email:", err);
+  }
+}
+
 export async function sendWelcomeEmail(opts: {
   to: string;
   firstName: string;

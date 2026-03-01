@@ -85,10 +85,14 @@ export function AccountSetupStep({ onComplete }: { onComplete: () => void }) {
       onComplete();
     },
     onError: (error: any) => {
+      const isEmailTaken = error.message?.toLowerCase().includes("already exists") ||
+        error.message?.toLowerCase().includes("already registered");
       toast({
         variant: "destructive",
-        title: "Could not send verification code",
-        description: error.message || "Please try again.",
+        title: isEmailTaken ? "Email already registered" : "Could not send verification code",
+        description: isEmailTaken
+          ? "An account with this email already exists. Please log in instead."
+          : (error.message || "Please try again."),
       });
     },
   });

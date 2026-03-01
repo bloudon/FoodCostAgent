@@ -116,6 +116,16 @@ export default function Login() {
                 </Button>
               </div>
             </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:underline cursor-pointer"
+                onClick={() => setLocation("/forgot-password")}
+                data-testid="link-forgot-password"
+              >
+                Forgot your password?
+              </button>
+            </div>
             <Button
               type="submit"
               className="w-full"

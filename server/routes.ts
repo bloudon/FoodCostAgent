@@ -464,6 +464,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { email, firstName } = schema.parse(req.body);
       const key = email.toLowerCase();
 
+      // Block already-registered emails before issuing an OTP
+      const existing = await storage.getUserByEmail(key);
+      if (existing) {
+        return res.status(409).json({ error: "An account with this email already exists. Please log in instead." });
+      }
+
       const otp = String(Math.floor(100000 + Math.random() * 900000));
       otpStore.set(key, { otp, expiresAt: new Date(Date.now() + 15 * 60 * 1000) });
 
@@ -513,6 +519,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid request", details: error.errors });
       }
       res.status(500).json({ error: "Verification failed" });
+    }
+  });
+
+  // ============ PASSWORD RESET (in-memory token store) ============
+  const resetTokenStore = new Map<string, { userId: string; expiresAt: Date }>();
+
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const schema = z.object({ email: z.string().email() });
+      const { email } = schema.parse(req.body);
+
+      // Always return success — don't reveal whether email exists
+      const user = await storage.getUserByEmail(email.toLowerCase());
+      if (user) {
+        const token = crypto.randomBytes(32).toString("hex");
+        resetTokenStore.set(token, {
+          userId: user.id,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        });
+
+        const protocol = req.headers["x-forwarded-proto"] || "https";
+        const host = req.headers["x-forwarded-host"] || req.headers.host || "app.fnbcostpro.com";
+        const resetUrl = `${protocol}://${host}/reset-password?token=${token}`;
+
+        import("./email").then(({ sendPasswordResetEmail }) => {
+          sendPasswordResetEmail({
+            to: email,
+            firstName: user.firstName || "there",
+            resetUrl,
+          }).catch((err) => console.error("[Password Reset] Email send failed:", err));
+        });
+
+        console.log(`[Password Reset] Token issued for user ${user.id}`);
+      }
+
+      res.json({ sent: true });
+    } catch (error: any) {
+      if (error.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid request" });
+      }
+      res.status(500).json({ error: "Failed to process request" });
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const schema = z.object({
+        token: z.string().min(1),
+        password: z.string().min(6, "Password must be at least 6 characters"),
+      });
+      const { token, password } = schema.parse(req.body);
+
+      const entry = resetTokenStore.get(token);
+      if (!entry) {
+        return res.status(401).json({ error: "This reset link is invalid or has expired." });
+      }
+      if (entry.expiresAt < new Date()) {
+        resetTokenStore.delete(token);
+        return res.status(401).json({ error: "This reset link is invalid or has expired." });
+      }
+
+      const passwordHash = await hashPassword(password);
+      await storage.updateUser(entry.userId, { passwordHash });
+      resetTokenStore.delete(token);
+
+      console.log(`[Password Reset] Password updated for user ${entry.userId}`);
+      res.json({ success: true });
+    } catch (error: any) {
+      if (error.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid request", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to reset password" });
     }
   });
 

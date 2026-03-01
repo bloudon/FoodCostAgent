@@ -57,12 +57,14 @@ import Onboarding from "@/pages/onboarding";
 import OnboardingWizard from "@/pages/onboarding-wizard";
 import LeadSignup from "@/pages/lead-signup";
 import ActivateAccount from "@/pages/activate-account";
+import ForgotPassword from "@/pages/forgot-password";
+import ResetPassword from "@/pages/reset-password";
 
 function ProtectedLayout() {
   const { user, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
 
-  const PUBLIC_PATHS = ["/login", "/signup", "/activate", "/onboarding", "/onboarding-wizard", "/onboarding-review"];
+  const PUBLIC_PATHS = ["/login", "/signup", "/activate", "/onboarding", "/onboarding-wizard", "/onboarding-review", "/forgot-password", "/reset-password"];
 
   useEffect(() => {
     if (!isLoading && !user && !PUBLIC_PATHS.some(p => location === p || location.startsWith(p + "/"))) {
@@ -174,6 +176,8 @@ function App() {
               <Route path="/onboarding-review" component={OnboardingWizard} />
               <Route path="/signup" component={LeadSignup} />
               <Route path="/activate" component={ActivateAccount} />
+              <Route path="/forgot-password" component={ForgotPassword} />
+              <Route path="/reset-password" component={ResetPassword} />
               <Route>
                 <ProtectedLayout />
               </Route>
