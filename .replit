@@ -44,3 +44,11 @@ integrations = ["javascript_database:1.0.0"]
 
 [objectStorage]
 defaultBucketID = "replit-objstore-5eb8cab9-4634-4af1-a0ae-423b852781bb"
+
+[userenv]
+
+[userenv.shared]
+SMTP2GO_HOST = "mail.smtp2go.com"
+SMTP2GO_PORT = "587"
+SMTP_FROM_EMAIL = "no-reply@fnbcostpro.com"
+SMTP_FROM_NAME = "FNB Cost Pro"
