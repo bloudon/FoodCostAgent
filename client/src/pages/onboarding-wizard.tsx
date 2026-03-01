@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
+import { RestaurantBackground } from "@/components/restaurant-background";
 import { AccountSetupStep, EmailVerificationStep, CompanySetupStep, StoreSetupStep } from "@/pages/onboarding-steps";
 
 export interface WizardCompanyData {
@@ -116,8 +117,9 @@ export default function OnboardingWizard() {
 
   return (
     <OnboardingContext.Provider value={{ wizardData, updateWizardData }}>
-      <div className="min-h-screen bg-background">
-        <div className="max-w-2xl mx-auto px-4 py-8">
+      <div className="relative min-h-screen bg-background">
+        <RestaurantBackground />
+        <div className="relative z-10 max-w-2xl mx-auto px-4 py-8">
           <div className="flex justify-center mb-8">
             <img src={logoImage} alt="FNB Cost Pro" className="h-14 w-auto" />
           </div>

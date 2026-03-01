@@ -12,6 +12,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, Eye, EyeOff, AlertCircle } from "lucide-react";
 import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
+import { RestaurantBackground } from "@/components/restaurant-background";
 
 const schema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
@@ -71,8 +72,9 @@ export default function ResetPassword() {
   const onSubmit = (values: FormValues) => mutation.mutate(values);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
+      <RestaurantBackground />
+      <Card className="w-full max-w-md relative z-10">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
             <img src={logoImage} alt="FNB Cost Pro" className="h-20 w-auto" />

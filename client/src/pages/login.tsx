@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Eye, EyeOff } from "lucide-react";
 import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
+import { RestaurantBackground } from "@/components/restaurant-background";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -56,8 +57,9 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
+      <RestaurantBackground />
+      <Card className="w-full max-w-md relative z-10">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
             <img 
