@@ -89,7 +89,7 @@ export default function OnboardingWizard() {
         return;
       } else {
         // All stores done — navigate to dashboard
-        navigate("/");
+        navigate("/?welcome=true");
         return;
       }
     }
@@ -98,8 +98,12 @@ export default function OnboardingWizard() {
       setStepIndex((i) => i + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } else {
-      navigate("/");
+      navigate("/?welcome=true");
     }
+  };
+
+  const handleSkipRemainingStores = () => {
+    navigate("/?welcome=true");
   };
 
   const handleStepBack = () => {
@@ -209,6 +213,21 @@ export default function OnboardingWizard() {
                 : `Step ${stepIndex + 1} of ${STEPS.length}`}
             </p>
           </div>
+
+          {/* Skip remaining locations option — only after first store is saved */}
+          {currentStep.id === "store" && storeIndex > 0 && storeIndex < totalStores - 1 && (
+            <div className="mt-4 text-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSkipRemainingStores}
+                data-testid="button-skip-remaining-stores"
+                className="text-muted-foreground text-xs"
+              >
+                I'll set up the remaining {totalStores - storeIndex - 1} location(s) later →
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </OnboardingContext.Provider>

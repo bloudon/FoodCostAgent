@@ -842,7 +842,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const milestonesList = [
-        { id: "store", label: "Create Your First Store", completed: storeRows.length > 0, path: "/stores" },
+        { id: "store", label: "Set Up Your Store Locations", completed: storeRows.length > 0, path: "/stores" },
         { id: "categories", label: "Review Categories", completed: reviewedSteps.includes("categories"), path: "/categories" },
         { id: "vendors", label: "Add a Vendor", completed: vendorRows.length > 0 || reviewedSteps.includes("vendors"), path: "/vendors" },
         { id: "inventory", label: "Add Inventory Items", completed: inventoryRows.length > 0 || reviewedSteps.includes("inventory"), path: "/inventory-items" },

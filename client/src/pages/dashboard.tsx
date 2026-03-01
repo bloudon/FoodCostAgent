@@ -1,14 +1,15 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed, AlertCircle, Calendar, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed, AlertCircle, Calendar, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, PartyPopper } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SetupMilestoneTracker } from "@/components/setup-milestone-tracker";
 import { useStoreContext } from "@/hooks/use-store-context";
+import { useAuth } from "@/lib/auth-context";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 
@@ -37,7 +38,20 @@ const statusConfig: Record<string, { variant: "default" | "secondary" | "destruc
 
 export default function Dashboard() {
   const { selectedStoreId, selectedStore, stores, isLoading: storesLoading } = useStoreContext();
-  
+  const { user } = useAuth();
+  const search = useSearch();
+  const isWelcome = search.includes("welcome=true");
+
+  const [welcomeDismissed, setWelcomeDismissed] = useState(
+    () => sessionStorage.getItem("fnb_welcomed") === "true"
+  );
+
+  const dismissWelcome = () => {
+    sessionStorage.setItem("fnb_welcomed", "true");
+    setWelcomeDismissed(true);
+    window.history.replaceState({}, "", "/");
+  };
+
   // State for pagination in each alert box - MUST be at top before conditional returns
   const [orderIndex, setOrderIndex] = useState(0);
   const [inventoryIndex, setInventoryIndex] = useState(0);
@@ -391,6 +405,45 @@ export default function Dashboard() {
   
   return (
     <div className="p-8">
+      {/* Welcome banner — shown once after completing the onboarding wizard */}
+      {isWelcome && !welcomeDismissed && (
+        <Card className="mb-6 border-accent/30 bg-gradient-to-r from-accent/5 to-transparent" data-testid="welcome-banner">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3 min-w-0">
+                <PartyPopper className="h-5 w-5 text-accent-foreground shrink-0 mt-0.5" style={{ color: "#f2690d" }} />
+                <div className="min-w-0">
+                  <p className="font-semibold text-base mb-1">
+                    Welcome to FNB Cost Pro{user?.firstName ? `, ${user.firstName}` : ""}!
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    You've set up {stores.length} location{stores.length !== 1 ? "s" : ""} — great start. Your dashboard is your command center for tracking food costs, inventory, and recipes. Follow the Getting Started guide below to finish configuring your account.
+                  </p>
+                  <Button
+                    size="sm"
+                    className="mt-3"
+                    onClick={dismissWelcome}
+                    data-testid="button-welcome-got-it"
+                  >
+                    Got it, let's go
+                    <ArrowRight className="h-3 w-3 ml-1" />
+                  </Button>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={dismissWelcome}
+                aria-label="Dismiss welcome"
+                data-testid="button-welcome-dismiss"
+                className="shrink-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <SetupMilestoneTracker />
       {/* Alerts Section: Dynamic Layout - Split or Full Width */}
       <div className={`grid grid-cols-1 gap-4 mb-6 ${showBothSections ? 'lg:grid-cols-2' : ''}`}>
