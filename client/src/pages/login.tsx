@@ -148,6 +148,23 @@ export default function Login() {
             </Button>
           </div>
 
+          <div className="relative mt-6">
+            <Separator />
+          </div>
+
+          <div className="mt-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              Don't have an account?{" "}
+              <button
+                className="text-sm font-semibold text-primary hover:underline cursor-pointer"
+                onClick={() => setLocation("/onboarding-wizard")}
+                data-testid="link-sign-up"
+              >
+                Sign up
+              </button>
+            </p>
+          </div>
+
         </CardContent>
       </Card>
     </div>
