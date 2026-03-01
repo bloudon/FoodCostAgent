@@ -1,7 +1,9 @@
 import { useState, createContext, useContext } from "react";
 import { useLocation } from "wouter";
+import { ChevronLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
-import { AccountSetupStep, EmailVerificationStep, CompanySetupStep, StoreSetupStep, CategoriesReviewStep } from "@/pages/onboarding-steps";
+import { AccountSetupStep, EmailVerificationStep, CompanySetupStep, StoreSetupStep } from "@/pages/onboarding-steps";
 
 export interface WizardCompanyData {
   firstName?: string;
@@ -54,19 +56,43 @@ const STEPS = [
   { id: "verify", label: "Verify Email" },
   { id: "company", label: "Company" },
   { id: "store", label: "Store" },
-  { id: "categories", label: "Categories" },
 ];
+
+function parseTotalStores(count?: string): number {
+  if (!count) return 1;
+  if (count === "10+") return 10;
+  const n = parseInt(count, 10);
+  return isNaN(n) || n < 1 ? 1 : n;
+}
 
 export default function OnboardingWizard() {
   const [, navigate] = useLocation();
   const [stepIndex, setStepIndex] = useState(0);
+  const [storeIndex, setStoreIndex] = useState(0);
   const [wizardData, setWizardData] = useState<WizardData>({});
 
   const updateWizardData = (key: keyof WizardData, data: any) => {
     setWizardData((prev) => ({ ...prev, [key]: data }));
   };
 
+  const totalStores = parseTotalStores(wizardData.company?.storeLocationCount);
+
   const handleStepComplete = () => {
+    const currentStep = STEPS[stepIndex];
+
+    if (currentStep.id === "store") {
+      if (storeIndex + 1 < totalStores) {
+        // More stores to collect — stay on store step, advance storeIndex
+        setStoreIndex((i) => i + 1);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      } else {
+        // All stores done — navigate to dashboard
+        navigate("/");
+        return;
+      }
+    }
+
     if (stepIndex < STEPS.length - 1) {
       setStepIndex((i) => i + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -74,6 +100,17 @@ export default function OnboardingWizard() {
       navigate("/");
     }
   };
+
+  const handleStepBack = () => {
+    if (STEPS[stepIndex]?.id === "store" && storeIndex > 0) {
+      setStoreIndex((i) => i - 1);
+    } else {
+      setStepIndex((i) => Math.max(0, i - 1));
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const canGoBack = stepIndex > 0 || (STEPS[stepIndex]?.id === "store" && storeIndex > 0);
 
   const currentStep = STEPS[stepIndex];
 
@@ -85,6 +122,7 @@ export default function OnboardingWizard() {
             <img src={logoImage} alt="FNB Cost Pro" className="h-14 w-auto" />
           </div>
 
+          {/* Step indicator */}
           <div className="mb-8">
             <div className="flex items-center gap-0">
               {STEPS.map((step, idx) => (
@@ -139,16 +177,36 @@ export default function OnboardingWizard() {
               <CompanySetupStep onComplete={handleStepComplete} />
             )}
             {currentStep.id === "store" && (
-              <StoreSetupStep onComplete={handleStepComplete} />
-            )}
-            {currentStep.id === "categories" && (
-              <CategoriesReviewStep onComplete={handleStepComplete} />
+              <StoreSetupStep
+                onComplete={handleStepComplete}
+                storeIndex={storeIndex}
+                totalStores={totalStores}
+              />
             )}
           </div>
 
-          <p className="text-center text-xs text-muted-foreground mt-6">
-            Step {stepIndex + 1} of {STEPS.length}
-          </p>
+          {/* Back button + step counter */}
+          <div className="flex items-center justify-between mt-4">
+            <div>
+              {canGoBack && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleStepBack}
+                  data-testid="button-wizard-back"
+                  className="text-muted-foreground"
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  Back
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {currentStep.id === "store" && totalStores > 1
+                ? `Location ${storeIndex + 1} of ${totalStores}`
+                : `Step ${stepIndex + 1} of ${STEPS.length}`}
+            </p>
+          </div>
         </div>
       </div>
     </OnboardingContext.Provider>

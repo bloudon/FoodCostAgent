@@ -765,33 +765,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
           storeId: newStore.id,
         });
 
-        const defaultLocations = [
-          { name: "Walk-In Cooler", sortOrder: 1 },
-          { name: "Pantry", sortOrder: 2 },
-          { name: "Drink Cooler", sortOrder: 3 },
-          { name: "Walk-In Freezer", sortOrder: 4 },
-          { name: "Prep Table", sortOrder: 5 },
-          { name: "Front Counter", sortOrder: 6 },
-        ];
+        // Only seed default locations and categories on the FIRST store creation for this company
+        const { eq } = await import("drizzle-orm");
+        const existingCategories = await tx.select({ id: categories.id }).from(categories).where(eq(categories.companyId, companyId));
 
-        for (const location of defaultLocations) {
-          await tx.insert(storageLocations).values({
-            companyId,
-            ...location,
-          });
-        }
+        if (existingCategories.length === 0) {
+          const defaultLocations = [
+            { name: "Walk-In Cooler", sortOrder: 1 },
+            { name: "Pantry", sortOrder: 2 },
+            { name: "Drink Cooler", sortOrder: 3 },
+            { name: "Walk-In Freezer", sortOrder: 4 },
+            { name: "Prep Table", sortOrder: 5 },
+            { name: "Front Counter", sortOrder: 6 },
+          ];
 
-        const defaultCategories = [
-          { name: "Frozen", showAsIngredient: 1 },
-          { name: "Walk-In", showAsIngredient: 1 },
-          { name: "Dry/Pantry", showAsIngredient: 1 },
-        ];
+          for (const location of defaultLocations) {
+            await tx.insert(storageLocations).values({
+              companyId,
+              ...location,
+            });
+          }
 
-        for (const category of defaultCategories) {
-          await tx.insert(categories).values({
-            companyId,
-            ...category,
-          });
+          const defaultCategories = [
+            { name: "Frozen", showAsIngredient: 1 },
+            { name: "Walk-In", showAsIngredient: 1 },
+            { name: "Dry/Pantry", showAsIngredient: 1 },
+          ];
+
+          for (const category of defaultCategories) {
+            await tx.insert(categories).values({
+              companyId,
+              ...category,
+            });
+          }
         }
 
         return { store: newStore };

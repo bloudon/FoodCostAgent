@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -459,7 +459,7 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
     defaultValues: {
       name: wizardData.company?.name || "",
       legalName: wizardData.company?.legalName || "",
-      contactEmail: wizardData.company?.contactEmail || "",
+      contactEmail: wizardData.company?.contactEmail || wizardData.company?.email || "",
       phone: wizardData.company?.phone || "",
       addressLine1: wizardData.company?.addressLine1 || "",
       addressLine2: wizardData.company?.addressLine2 || "",
@@ -523,6 +523,12 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
   };
 
   const firstName = wizardData.company?.firstName;
+  const rawCount = wizardData.company?.storeLocationCount;
+  const locationLabel = !rawCount || rawCount === "1"
+    ? "1 location"
+    : rawCount === "10+"
+    ? "10+ locations"
+    : `${rawCount} locations`;
 
   return (
     <div data-testid="step-company">
@@ -530,7 +536,7 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
         <div className="flex items-center gap-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-md px-4 py-3 mb-6">
           <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />
           <p className="text-sm font-medium text-green-800 dark:text-green-300">
-            Welcome, {firstName}! Your email has been verified.
+            Welcome, {firstName}! Your email is verified. We'll set up your {locationLabel} during this process.
           </p>
         </div>
       )}
@@ -635,10 +641,13 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
               name="contactEmail"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Contact Email</FormLabel>
+                  <FormLabel>Business Contact Email</FormLabel>
                   <FormControl>
                     <Input type="email" placeholder="contact@joespizza.com" {...field} data-testid="input-contact-email" />
                   </FormControl>
+                  <FormDescription className="text-xs">
+                    Your company's general contact email for reports and documents. Pre-filled with your personal login email — change it if you have a separate business address.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -754,24 +763,41 @@ const storeFormSchema = z.object({
 
 type StoreFormValues = z.infer<typeof storeFormSchema>;
 
-export function StoreSetupStep({ onComplete }: { onComplete: () => void }) {
-  const { wizardData, updateWizardData } = useOnboarding();
+export function StoreSetupStep({
+  onComplete,
+  storeIndex = 0,
+  totalStores = 1,
+}: {
+  onComplete: () => void;
+  storeIndex?: number;
+  totalStores?: number;
+}) {
   const { refreshAuth } = useAuth();
   const { toast } = useToast();
 
+  const freshDefaults = (index: number): StoreFormValues => ({
+    code: `S00${index + 1}`,
+    name: "",
+    phone: "",
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+  });
+
   const form = useForm<StoreFormValues>({
     resolver: zodResolver(storeFormSchema),
-    defaultValues: wizardData.store || {
-      code: "S001",
-      name: "",
-      phone: "",
-      addressLine1: "",
-      addressLine2: "",
-      city: "",
-      state: "",
-      postalCode: "",
-    },
+    defaultValues: freshDefaults(storeIndex),
   });
+
+  // Reset form with fresh defaults whenever storeIndex changes
+  useEffect(() => {
+    form.reset(freshDefaults(storeIndex));
+  }, [storeIndex]);
+
+  const isMulti = totalStores > 1;
+  const isLastStore = storeIndex + 1 === totalStores;
 
   const createStoreMutation = useMutation({
     mutationFn: async (data: StoreFormValues) => {
@@ -782,11 +808,15 @@ export function StoreSetupStep({ onComplete }: { onComplete: () => void }) {
       }
       return await response.json();
     },
-    onSuccess: async (result) => {
+    onSuccess: async () => {
       await refreshAuth();
       toast({
-        title: "Store created successfully!",
-        description: "Your first store location has been set up.",
+        title: isMulti
+          ? `Store ${storeIndex + 1} of ${totalStores} created!`
+          : "Store created successfully!",
+        description: isMulti && !isLastStore
+          ? `Now let's set up location ${storeIndex + 2}.`
+          : "Your store location has been set up.",
       });
       onComplete();
     },
@@ -808,10 +838,16 @@ export function StoreSetupStep({ onComplete }: { onComplete: () => void }) {
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-2">
           <Store className="w-6 h-6 text-primary" />
-          <h2 className="text-2xl font-bold">Store Location</h2>
+          <h2 className="text-2xl font-bold">
+            {isMulti ? `Store Location ${storeIndex + 1} of ${totalStores}` : "Store Location"}
+          </h2>
         </div>
         <p className="text-muted-foreground">
-          Add your first store location. You can add more stores later from the Settings page.
+          {isMulti && !isLastStore
+            ? `Add details for location ${storeIndex + 1}. After this we'll set up location ${storeIndex + 2}.`
+            : isMulti && isLastStore
+            ? "Last location — then you're all set!"
+            : "Add your first store location. You can add more stores later from the Settings page."}
         </p>
       </div>
 
