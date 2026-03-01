@@ -2,11 +2,13 @@ import type { Request, Response } from "express";
 import Stripe from "stripe";
 import { db } from "./db";
 import { companies } from "@shared/schema";
-import { eq, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-06-20",
 });
+
+const TRIAL_DAYS = 14;
 
 const LOOKUP_KEY: Record<string, string> = {
   "basic:monthly": "fnb_basic_monthly",
@@ -18,6 +20,41 @@ const LOOKUP_KEY: Record<string, string> = {
 };
 
 /**
+ * GET /api/billing/plans
+ * Returns all active prices from Stripe for plan selection UI.
+ */
+export async function getPlans(_req: Request, res: Response) {
+  try {
+    const prices = await stripe.prices.list({
+      active: true,
+      expand: ["data.product"],
+      limit: 100,
+    });
+
+    const plans = prices.data
+      .filter((p) => {
+        const lookupKey = p.lookup_key || "";
+        return lookupKey.startsWith("fnb_");
+      })
+      .map((p) => ({
+        id: p.id,
+        lookupKey: p.lookup_key,
+        unitAmount: p.unit_amount,
+        currency: p.currency,
+        interval: p.recurring?.interval,
+        intervalCount: p.recurring?.interval_count,
+        productName: typeof p.product === "object" && p.product !== null ? (p.product as Stripe.Product).name : "",
+        productDescription: typeof p.product === "object" && p.product !== null ? (p.product as Stripe.Product).description : "",
+      }));
+
+    return res.json({ plans });
+  } catch (err: any) {
+    console.error("getPlans error:", err);
+    return res.status(500).json({ message: "Failed to fetch plans" });
+  }
+}
+
+/**
  * POST /api/billing/checkout
  * Body: { tier: "basic"|"pro", term: "monthly"|"quarterly"|"annual" }
  * Returns: { url }
@@ -27,7 +64,10 @@ export async function createCheckoutSession(req: Request, res: Response) {
     const companyId = (req as any).companyId as string | undefined;
     if (!companyId) return res.status(401).json({ message: "Not authenticated" });
 
-    const baseUrl = process.env.APP_BASE_URL || "https://app.fnbcostpro.com";
+    // Derive base URL: use APP_BASE_URL env var, or reconstruct from request
+    const baseUrl =
+      process.env.APP_BASE_URL ||
+      `${req.protocol}://${req.get("host")}`;
 
     const { tier, term } = req.body ?? {};
     if (!tier || !term) return res.status(400).json({ message: "tier and term are required" });
@@ -52,8 +92,11 @@ export async function createCheckoutSession(req: Request, res: Response) {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: price.id, quantity: 1 }],
-      success_url: `${baseUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/billing/cancel`,
+      subscription_data: {
+        trial_period_days: TRIAL_DAYS,
+      },
+      success_url: `${baseUrl}/?welcome=true`,
+      cancel_url: `${baseUrl}/choose-plan`,
       customer: company?.stripeCustomerId || undefined,
       customer_email: company?.stripeCustomerId ? undefined : (company?.contactEmail || undefined),
       client_reference_id: companyId,
@@ -107,13 +150,13 @@ export async function stripeWebhook(req: Request, res: Response) {
           .set({
             stripeCustomerId: stripeCustomerId || undefined,
             stripeSubscriptionId: stripeSubscriptionId || undefined,
-            subscriptionStatus: "active",
+            subscriptionStatus: "trialing",
             subscriptionTier: tier || undefined,
             subscriptionTerm: term || undefined,
           })
           .where(eq(companies.id, companyId));
 
-        console.log(`[Billing] checkout.session.completed: company=${companyId} tier=${tier} term=${term}`);
+        console.log(`[Billing] checkout.session.completed: company=${companyId} tier=${tier} term=${term} status=trialing`);
         break;
       }
 

@@ -88,8 +88,8 @@ export default function OnboardingWizard() {
         window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       } else {
-        // All stores done — navigate to dashboard
-        navigate("/?welcome=true");
+        // All stores done — go to plan selection
+        navigate("/choose-plan?welcome=true");
         return;
       }
     }
@@ -98,12 +98,12 @@ export default function OnboardingWizard() {
       setStepIndex((i) => i + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } else {
-      navigate("/?welcome=true");
+      navigate("/choose-plan?welcome=true");
     }
   };
 
   const handleSkipRemainingStores = () => {
-    navigate("/?welcome=true");
+    navigate("/choose-plan?welcome=true");
   };
 
   const handleStepBack = () => {
@@ -128,67 +128,70 @@ export default function OnboardingWizard() {
             <img src={logoImage} alt="FNB Cost Pro" className="h-14 w-auto" />
           </div>
 
-          {/* Step indicator */}
-          <div className="mb-8">
-            <div className="flex items-center gap-0">
-              {STEPS.map((step, idx) => (
-                <div key={step.id} className="flex items-center flex-1">
-                  <div className="flex flex-col items-center flex-1">
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold border-2 transition-colors ${
-                        idx < stepIndex
-                          ? "bg-primary border-primary text-primary-foreground"
-                          : idx === stepIndex
-                          ? "bg-background border-primary text-primary"
-                          : "bg-background border-muted-foreground/30 text-muted-foreground/50"
-                      }`}
-                      data-testid={`step-indicator-${step.id}`}
-                    >
-                      {idx < stepIndex ? (
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : (
-                        idx + 1
-                      )}
+          <div className="bg-card rounded-lg border overflow-hidden">
+            {/* Step indicator header — sits inside the card for a clean contained look */}
+            <div className="px-6 md:px-8 pt-6 pb-5 border-b">
+              <div className="flex items-center gap-0">
+                {STEPS.map((step, idx) => (
+                  <div key={step.id} className="flex items-center flex-1">
+                    <div className="flex flex-col items-center flex-1">
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold border-2 transition-colors ${
+                          idx < stepIndex
+                            ? "bg-primary border-primary text-primary-foreground"
+                            : idx === stepIndex
+                            ? "bg-card border-primary text-primary"
+                            : "bg-card border-muted-foreground/30 text-muted-foreground/50"
+                        }`}
+                        data-testid={`step-indicator-${step.id}`}
+                      >
+                        {idx < stepIndex ? (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          idx + 1
+                        )}
+                      </div>
+                      <span
+                        className={`text-xs mt-1 font-medium ${
+                          idx === stepIndex ? "text-primary" : idx < stepIndex ? "text-primary/70" : "text-muted-foreground/50"
+                        }`}
+                      >
+                        {step.label}
+                      </span>
                     </div>
-                    <span
-                      className={`text-xs mt-1 font-medium ${
-                        idx === stepIndex ? "text-primary" : idx < stepIndex ? "text-primary/70" : "text-muted-foreground/50"
-                      }`}
-                    >
-                      {step.label}
-                    </span>
+                    {idx < STEPS.length - 1 && (
+                      <div
+                        className={`h-0.5 flex-1 mx-1 mb-5 transition-colors ${
+                          idx < stepIndex ? "bg-primary" : "bg-muted-foreground/20"
+                        }`}
+                      />
+                    )}
                   </div>
-                  {idx < STEPS.length - 1 && (
-                    <div
-                      className={`h-0.5 flex-1 mx-1 mb-5 transition-colors ${
-                        idx < stepIndex ? "bg-primary" : "bg-muted-foreground/20"
-                      }`}
-                    />
-                  )}
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="bg-card rounded-lg border p-6 md:p-8">
-            {currentStep.id === "account" && (
-              <AccountSetupStep onComplete={handleStepComplete} />
-            )}
-            {currentStep.id === "verify" && (
-              <EmailVerificationStep onComplete={handleStepComplete} />
-            )}
-            {currentStep.id === "company" && (
-              <CompanySetupStep onComplete={handleStepComplete} />
-            )}
-            {currentStep.id === "store" && (
-              <StoreSetupStep
-                onComplete={handleStepComplete}
-                storeIndex={storeIndex}
-                totalStores={totalStores}
-              />
-            )}
+            {/* Form content */}
+            <div className="p-6 md:p-8">
+              {currentStep.id === "account" && (
+                <AccountSetupStep onComplete={handleStepComplete} />
+              )}
+              {currentStep.id === "verify" && (
+                <EmailVerificationStep onComplete={handleStepComplete} />
+              )}
+              {currentStep.id === "company" && (
+                <CompanySetupStep onComplete={handleStepComplete} />
+              )}
+              {currentStep.id === "store" && (
+                <StoreSetupStep
+                  onComplete={handleStepComplete}
+                  storeIndex={storeIndex}
+                  totalStores={totalStores}
+                />
+              )}
+            </div>
           </div>
 
           {/* Back button + step counter */}

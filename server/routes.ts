@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import crypto from "crypto";
 import multer from "multer";
-import { createCheckoutSession, stripeWebhook } from "./billing";
+import { createCheckoutSession, stripeWebhook, getPlans } from "./billing";
 import { storage } from "./storage";
 import { parseCSV } from "./services/tfcCsv";
 import { TheoreticalUsageService } from "./services/theoreticalUsage";
@@ -124,6 +124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ BILLING (Stripe) ============
+  app.get("/api/billing/plans", getPlans);
   app.post("/api/billing/checkout", requireAuth, createCheckoutSession);
   app.post("/api/billing/webhook", stripeWebhook);
 
