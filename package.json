@@ -98,6 +98,7 @@
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.2",
     "sharp": "^0.34.4",
+    "stripe": "^20.4.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "tailwind-merge": "^2.6.0",
