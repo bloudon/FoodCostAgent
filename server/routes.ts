@@ -16,8 +16,8 @@ import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth
 import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
-import { eq, and, inArray, gte, lte, like, not, gt, isNull, sql } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress } from "@shared/schema";
+import { eq, and, inArray, gte, lte, like, not, gt, isNull, sql, asc } from "drizzle-orm";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -127,6 +127,245 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/billing/plans", getPlans);
   app.post("/api/billing/checkout", requireAuth, createCheckoutSession);
   app.post("/api/billing/webhook", stripeWebhook);
+
+  // ============ BACKGROUND IMAGES ============
+  // Default Unsplash IDs for auto-seeding
+  const DEFAULT_UNSPLASH_IDS = [
+    { id: "1414235077428-338989a2e8c0", label: "Restaurant food" },
+    { id: "1555396273-367ea4eb4db5", label: "Restaurant food" },
+    { id: "1565299624946-b28f40a0ae38", label: "Restaurant food" },
+    { id: "1504674900247-0877df9cc836", label: "Restaurant food" },
+    { id: "1466637574441-749b8f19452f", label: "Restaurant food" },
+    { id: "1476224203421-9ac39bcb3327", label: "Restaurant food" },
+    { id: "1567620905732-2d1ec7ab7445", label: "Restaurant food" },
+    { id: "1490645935967-10de6ba17061", label: "Restaurant food" },
+    { id: "1544025162-d76538084de9", label: "Restaurant food" },
+    { id: "1493770348161-369560ae357d", label: "Commercial kitchen" },
+    { id: "1764099529429-694179333425", label: "Commercial kitchen" },
+    { id: "1760001553414-5634201efc36", label: "Commercial kitchen" },
+    { id: "1663040086477-c8302f1244c6", label: "Commercial kitchen" },
+    { id: "1661883327374-4372312b8bd3", label: "Commercial kitchen" },
+    { id: "1764202466120-400d3d9e1783", label: "Commercial kitchen" },
+    { id: "1671656200343-d2a322492223", label: "Commercial kitchen" },
+    { id: "1557573791-7ab7d3d68932", label: "Commercial kitchen" },
+    { id: "1759547118069-38be3895faa1", label: "Walk-in cooler" },
+    { id: "1771788816650-5f943e63a029", label: "Walk-in cooler" },
+    { id: "1591640375708-6a976b40547b", label: "Walk-in cooler" },
+    { id: "1661780384432-cd62303b1cb1", label: "Walk-in cooler" },
+  ];
+
+  async function seedDefaultBackgroundImages() {
+    const existing = await db.select({ id: backgroundImages.id }).from(backgroundImages).limit(1);
+    if (existing.length > 0) return;
+    const rows = DEFAULT_UNSPLASH_IDS.map((p, i) => ({
+      externalUrl: `https://images.unsplash.com/photo-${p.id}?w=1600&h=900&fit=crop&q=80`,
+      label: p.label,
+      sortOrder: i,
+      isActive: 1,
+    }));
+    await db.insert(backgroundImages).values(rows);
+    console.log(`[BackgroundImages] Seeded ${rows.length} default images`);
+  }
+
+  // Seed on startup (runs once, no-op if already populated)
+  seedDefaultBackgroundImages().catch(console.error);
+
+  // GET /api/background-images — public
+  // Returns active images. If ?companyId= is provided and company has a brand image, returns just that.
+  app.get("/api/background-images", async (req, res) => {
+    try {
+      const { companyId } = req.query as { companyId?: string };
+
+      if (companyId) {
+        const [company] = await db.select({ brandImagePath: companiesTable.brandImagePath })
+          .from(companiesTable)
+          .where(eq(companiesTable.id, companyId));
+        if (company?.brandImagePath) {
+          return res.json({
+            images: [{ url: `/objects/${company.brandImagePath}`, label: "Brand background" }],
+            isBranded: true,
+          });
+        }
+      }
+
+      const images = await db.select()
+        .from(backgroundImages)
+        .where(eq(backgroundImages.isActive, 1))
+        .orderBy(asc(backgroundImages.sortOrder), asc(backgroundImages.createdAt));
+
+      return res.json({
+        images: images.map((img) => ({
+          id: img.id,
+          url: img.objectPath ? `/objects/${img.objectPath}` : img.externalUrl,
+          label: img.label,
+        })),
+        isBranded: false,
+      });
+    } catch (err) {
+      console.error("GET /api/background-images error:", err);
+      return res.status(500).json({ error: "Failed to fetch background images" });
+    }
+  });
+
+  // GET /api/admin/background-images — global admin only
+  app.get("/api/admin/background-images", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+    try {
+      const images = await db.select().from(backgroundImages)
+        .orderBy(asc(backgroundImages.sortOrder), asc(backgroundImages.createdAt));
+      return res.json({ images });
+    } catch (err) {
+      console.error("GET /api/admin/background-images error:", err);
+      return res.status(500).json({ error: "Failed to fetch images" });
+    }
+  });
+
+  // POST /api/admin/background-images — global admin only
+  app.post("/api/admin/background-images", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+    try {
+      const { externalUrl, objectPath, label, sortOrder } = z.object({
+        externalUrl: z.string().optional(),
+        objectPath: z.string().optional(),
+        label: z.string().optional(),
+        sortOrder: z.number().int().optional(),
+      }).parse(req.body);
+
+      if (!externalUrl && !objectPath) {
+        return res.status(400).json({ error: "Either externalUrl or objectPath is required" });
+      }
+
+      // Determine next sortOrder if not provided
+      let order = sortOrder;
+      if (order === undefined) {
+        const [last] = await db.select({ s: backgroundImages.sortOrder })
+          .from(backgroundImages)
+          .orderBy(asc(backgroundImages.sortOrder))
+          .limit(1);
+        order = last ? last.s + 1 : 0;
+      }
+
+      const [created] = await db.insert(backgroundImages).values({
+        externalUrl: externalUrl || null,
+        objectPath: objectPath || null,
+        label: label || null,
+        sortOrder: order,
+        isActive: 1,
+      }).returning();
+
+      return res.status(201).json(created);
+    } catch (err) {
+      console.error("POST /api/admin/background-images error:", err);
+      return res.status(500).json({ error: "Failed to create image" });
+    }
+  });
+
+  // PATCH /api/admin/background-images/:id — global admin only (label, sortOrder, isActive, urls)
+  app.patch("/api/admin/background-images/:id", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+    try {
+      const updates = z.object({
+        label: z.string().optional(),
+        sortOrder: z.number().int().optional(),
+        isActive: z.number().int().min(0).max(1).optional(),
+        externalUrl: z.string().nullable().optional(),
+        objectPath: z.string().nullable().optional(),
+      }).parse(req.body);
+
+      const [updated] = await db.update(backgroundImages)
+        .set(updates)
+        .where(eq(backgroundImages.id, req.params.id))
+        .returning();
+
+      if (!updated) return res.status(404).json({ error: "Image not found" });
+      return res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/admin/background-images/:id error:", err);
+      return res.status(500).json({ error: "Failed to update image" });
+    }
+  });
+
+  // DELETE /api/admin/background-images/:id — global admin only
+  app.delete("/api/admin/background-images/:id", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+    try {
+      const [deleted] = await db.delete(backgroundImages)
+        .where(eq(backgroundImages.id, req.params.id))
+        .returning();
+      if (!deleted) return res.status(404).json({ error: "Image not found" });
+      return res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/admin/background-images/:id error:", err);
+      return res.status(500).json({ error: "Failed to delete image" });
+    }
+  });
+
+  // POST /api/admin/background-images/seed — re-seed defaults (global admin only)
+  app.post("/api/admin/background-images/seed", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+    try {
+      const rows = DEFAULT_UNSPLASH_IDS.map((p, i) => ({
+        externalUrl: `https://images.unsplash.com/photo-${p.id}?w=1600&h=900&fit=crop&q=80`,
+        label: p.label,
+        sortOrder: i,
+        isActive: 1,
+      }));
+      await db.insert(backgroundImages).values(rows);
+      return res.json({ inserted: rows.length });
+    } catch (err) {
+      console.error("POST /api/admin/background-images/seed error:", err);
+      return res.status(500).json({ error: "Failed to seed images" });
+    }
+  });
+
+  // PUT /api/companies/:id/brand-image — set company brand background
+  // imageUrl is the objectPath returned by /api/objects/upload
+  app.put("/api/companies/:id/brand-image", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    if (user?.role !== "global_admin" && user?.role !== "company_admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    if (user?.role === "company_admin" && (user as any).companyId !== req.params.id) {
+      return res.status(403).json({ error: "Can only update your own company" });
+    }
+    try {
+      const { imageUrl } = z.object({ imageUrl: z.string() }).parse(req.body);
+
+      await db.update(companiesTable)
+        .set({ brandImagePath: imageUrl })
+        .where(eq(companiesTable.id, req.params.id));
+
+      return res.json({ objectPath: imageUrl });
+    } catch (err) {
+      console.error("PUT /api/companies/:id/brand-image error:", err);
+      return res.status(500).json({ error: "Failed to set brand image" });
+    }
+  });
+
+  // DELETE /api/companies/:id/brand-image — clear company brand background
+  app.delete("/api/companies/:id/brand-image", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    if (user?.role !== "global_admin" && user?.role !== "company_admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    if (user?.role === "company_admin" && user?.companyId !== req.params.id) {
+      return res.status(403).json({ error: "Can only update your own company" });
+    }
+    try {
+      await db.update(companiesTable)
+        .set({ brandImagePath: null })
+        .where(eq(companiesTable.id, req.params.id));
+      return res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/companies/:id/brand-image error:", err);
+      return res.status(500).json({ error: "Failed to clear brand image" });
+    }
+  });
 
   // Swagger UI Documentation (mounted at /docs to avoid Vite middleware conflict)
   app.use('/docs', swaggerUi.serve);

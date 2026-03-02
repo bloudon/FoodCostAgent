@@ -11,7 +11,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ChevronLeft, Building2, Store, Plus, Edit, Save, X, Pencil } from "lucide-react";
+import { ChevronLeft, Building2, Store, Plus, Edit, Save, X, Pencil, ImageIcon, Trash2 } from "lucide-react";
+import { ObjectUploader } from "@/components/ObjectUploader";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
@@ -441,6 +442,8 @@ export default function CompanyDetail() {
           </CardContent>
         </Card>
 
+        <BrandImageCard companyId={id!} brandImagePath={company.brandImagePath ?? null} />
+
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -857,5 +860,90 @@ export default function CompanyDetail() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function BrandImageCard({ companyId, brandImagePath }: { companyId: string; brandImagePath: string | null }) {
+  const { toast } = useToast();
+
+  const setMutation = useMutation({
+    mutationFn: async (objectPath: string) =>
+      apiRequest("PUT", `/api/companies/${companyId}/brand-image`, { imageUrl: objectPath }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/background-images"] });
+      toast({ title: "Brand background updated" });
+    },
+    onError: () => toast({ title: "Failed to update brand background", variant: "destructive" }),
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: async () => apiRequest("DELETE", `/api/companies/${companyId}/brand-image`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/background-images"] });
+      toast({ title: "Brand background cleared" });
+    },
+    onError: () => toast({ title: "Failed to clear brand background", variant: "destructive" }),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <CardTitle>Brand Background Image</CardTitle>
+            <CardDescription>
+              Upload a custom background image that replaces the global carousel for this company's login and signup screens.
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <ObjectUploader
+              buttonText="Upload Brand Image"
+              buttonVariant="outline"
+              dataTestId="button-upload-brand-image"
+              onUploadComplete={(objectPath) => setMutation.mutate(objectPath)}
+            />
+            {brandImagePath && (
+              <Button
+                variant="ghost"
+                onClick={() => clearMutation.mutate()}
+                disabled={clearMutation.isPending}
+                data-testid="button-clear-brand-image"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      {brandImagePath && (
+        <CardContent>
+          <div className="relative aspect-video max-w-md overflow-hidden rounded-md bg-muted">
+            <img
+              src={`/objects/${brandImagePath}`}
+              alt="Brand background"
+              className="w-full h-full object-cover"
+              data-testid="img-brand-background"
+            />
+            <div className="absolute bottom-2 left-2">
+              <Badge variant="secondary" className="text-xs">
+                <ImageIcon className="h-3 w-3 mr-1" />
+                Active brand image
+              </Badge>
+            </div>
+          </div>
+        </CardContent>
+      )}
+      {!brandImagePath && (
+        <CardContent>
+          <div className="flex items-center gap-3 p-4 rounded-md bg-muted/50 text-muted-foreground text-sm">
+            <ImageIcon className="h-5 w-5 shrink-0" />
+            <span>No brand image set. The global carousel will be shown instead.</span>
+          </div>
+        </CardContent>
+      )}
+    </Card>
   );
 }

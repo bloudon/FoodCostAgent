@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Company } from "@shared/schema";
-import { Building2, ChevronRight } from "lucide-react";
+import { Building2, ChevronRight, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -39,16 +39,28 @@ export function GlobalAdminHeader() {
           </>
         )}
       </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={handleBackToCompanies}
-        className="gap-2"
-        data-testid="button-back-to-companies"
-      >
-        <Building2 className="h-4 w-4" />
-        All Companies
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setLocation("/admin/backgrounds")}
+          className="gap-2"
+          data-testid="button-admin-backgrounds"
+        >
+          <ImageIcon className="h-4 w-4" />
+          Backgrounds
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleBackToCompanies}
+          className="gap-2"
+          data-testid="button-back-to-companies"
+        >
+          <Building2 className="h-4 w-4" />
+          All Companies
+        </Button>
+      </div>
     </div>
   );
 }

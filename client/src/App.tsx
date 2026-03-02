@@ -60,6 +60,7 @@ import ActivateAccount from "@/pages/activate-account";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import ChoosePlan from "@/pages/choose-plan";
+import AdminBackgrounds from "@/pages/admin-backgrounds";
 
 function ProtectedLayout() {
   const { user, isLoading } = useAuth();
@@ -75,7 +76,8 @@ function ProtectedLayout() {
     if (!isLoading && user && user.role === "global_admin") {
       const selectedCompanyId = localStorage.getItem("selectedCompanyId");
       const isOnCompaniesPage = location === "/companies" || location.startsWith("/companies/");
-      if (!selectedCompanyId && !isOnCompaniesPage) {
+      const isOnAdminPage = location.startsWith("/admin/") || location === "/admin";
+      if (!selectedCompanyId && !isOnCompaniesPage && !isOnAdminPage) {
         setLocation("/companies");
       }
     }
@@ -154,6 +156,7 @@ function ProtectedLayoutContent() {
               <Route path="/unit-conversions" component={UnitConversions} />
               <Route path="/api-credentials" component={ApiCredentials} />
               <Route path="/settings" component={Settings} />
+              <Route path="/admin/backgrounds" component={AdminBackgrounds} />
               <Route component={NotFound} />
             </Switch>
           </main>

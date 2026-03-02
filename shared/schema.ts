@@ -22,6 +22,8 @@ export const companies = pgTable("companies", {
   tccAccountId: text("tcc_account_id"), // The Chef's Companion (Thrive POS) account ID - only required for Thrive POS users
   preferredUnitSystem: text("preferred_unit_system").notNull().default("imperial"), // imperial, metric, or both
   status: text("status").notNull().default("active"), // active, inactive, suspended
+  // Branding
+  brandImagePath: text("brand_image_path"), // Company brand background override (replaces global carousel)
   // Stripe subscription fields
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
@@ -1238,4 +1240,20 @@ export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgr
   .omit({ id: true, startedAt: true, updatedAt: true });
 export type InsertOnboardingProgress = z.infer<typeof insertOnboardingProgressSchema>;
 export type OnboardingProgress = typeof onboardingProgress.$inferSelect;
+
+// Background Images (global admin managed carousel images)
+export const backgroundImages = pgTable("background_images", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  objectPath: text("object_path"),      // Path in object storage (for uploaded files)
+  externalUrl: text("external_url"),    // External URL (Unsplash, CDN, etc.)
+  label: text("label"),                 // Descriptive label for admin UI
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: integer("is_active").notNull().default(1), // 1 = active, 0 = inactive
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertBackgroundImageSchema = createInsertSchema(backgroundImages)
+  .omit({ id: true, createdAt: true });
+export type InsertBackgroundImage = z.infer<typeof insertBackgroundImageSchema>;
+export type BackgroundImage = typeof backgroundImages.$inferSelect;
 
