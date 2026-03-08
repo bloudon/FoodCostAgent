@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, Eye, EyeOff, AlertCircle } from "lucide-react";
-import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
+const logoImage = "/logo.png";
 import { RestaurantBackground } from "@/components/restaurant-background";
 
 const schema = z.object({

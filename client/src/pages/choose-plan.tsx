@@ -5,7 +5,7 @@ import { Check, Zap, Building2, Loader2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RestaurantBackground } from "@/components/restaurant-background";
-import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
+const logoImage = "/logo.png";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 

@@ -2,7 +2,7 @@ import { useState, createContext, useContext } from "react";
 import { useLocation } from "wouter";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
+const logoImage = "/logo.png";
 import { RestaurantBackground } from "@/components/restaurant-background";
 import { AccountSetupStep, EmailVerificationStep, CompanySetupStep, StoreSetupStep } from "@/pages/onboarding-steps";
 

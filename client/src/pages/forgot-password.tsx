@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { MailCheck } from "lucide-react";
-import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
+const logoImage = "/logo.png";
 import { RestaurantBackground } from "@/components/restaurant-background";
 
 export default function ForgotPassword() {

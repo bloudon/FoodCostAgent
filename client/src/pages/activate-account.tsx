@@ -18,7 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Eye, EyeOff } from "lucide-react";
-import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
+const logoImage = "/logo.png";
 
 const activateSchema = z.object({
   email: z.string().email("Invalid email address"),

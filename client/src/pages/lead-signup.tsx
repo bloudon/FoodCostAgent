@@ -17,7 +17,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { formatPhoneNumber, phoneValidation } from "@/lib/phone";
-import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
+const logoImage = "/logo.png";
 
 const leadSignupSchema = z.object({
   firstName: z.string().min(1, "First name is required"),

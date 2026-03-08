@@ -19,7 +19,7 @@ import {
   FormDescription,
 } from "@/components/ui/form";
 import { Store } from "lucide-react";
-import logoImage from "@assets/FNB Cost Pro v1 (5)_1764694673097.png";
+const logoImage = "/logo.png";
 
 const storeSchema = z.object({
   code: z.string().min(1, "Store code is required"),
