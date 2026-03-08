@@ -108,8 +108,42 @@ function ProtectedLayoutContent() {
   const { user, logout } = useAuth();
   const { company } = useCompany();
   const { selectedStoreId, setSelectedStoreId, stores } = useStoreContext();
+  const [location] = useLocation();
 
   const isGlobalAdmin = user?.role === "global_admin";
+
+  // These pages have their own full-screen layouts and must render without the nav shell,
+  // even when reached by a logged-in user (e.g. direct URL navigation in production).
+  const FULL_SCREEN_PATHS = [
+    "/onboarding-wizard",
+    "/onboarding-review",
+    "/onboarding",
+    "/choose-plan",
+    "/signup",
+    "/activate",
+    "/login",
+    "/forgot-password",
+    "/reset-password",
+  ];
+  const isFullScreen = FULL_SCREEN_PATHS.some(
+    (p) => location === p || location.startsWith(p + "/") || location.startsWith(p + "?")
+  );
+
+  if (isFullScreen) {
+    return (
+      <Switch>
+        <Route path="/onboarding-wizard" component={OnboardingWizard} />
+        <Route path="/onboarding-review" component={OnboardingWizard} />
+        <Route path="/onboarding" component={Onboarding} />
+        <Route path="/choose-plan" component={ChoosePlan} />
+        <Route path="/signup" component={LeadSignup} />
+        <Route path="/activate" component={ActivateAccount} />
+        <Route path="/login" component={Login} />
+        <Route path="/forgot-password" component={ForgotPassword} />
+        <Route path="/reset-password" component={ResetPassword} />
+      </Switch>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen w-full">
