@@ -145,7 +145,12 @@ export function AppHeader() {
   const isStoreUser = user?.role === 'store_user';
   const hasMultipleStores = storesLoading ? true : (accessibleStores?.length ?? 0) >= 2;
 
+  const isGlobalAdmin = user?.role === 'global_admin';
+
   const getVisibleMainSections = () => {
+    // Global admin without a selected company context: hide all company-level nav
+    if (isGlobalAdmin && !company) return [];
+
     if (isStoreUser) {
       return mainNavSections
         .map(section => ({
@@ -189,7 +194,7 @@ export function AppHeader() {
           </div>
         </Link>
 
-        {stores.length > 0 && (
+        {company && stores.length > 0 && (
           <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
             <SelectTrigger
               className="w-[140px] sm:w-[160px] bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground"
@@ -275,7 +280,7 @@ export function AppHeader() {
                     {company.name}
                   </div>
                 )}
-                {stores.length > 0 && (
+                {company && stores.length > 0 && (
                   <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
                     <SelectTrigger className="w-full" data-testid="select-store-mobile">
                       <Store className="h-4 w-4 mr-2" />
@@ -340,7 +345,7 @@ export function AppHeader() {
                 <div className="mt-4 pt-4 border-t">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">Settings</p>
                   {settingsSections.map((section) => {
-                    if (isStoreUser) return null;
+                    if (isStoreUser || (isGlobalAdmin && !company)) return null;
                     if (section.children) {
                       return (
                         <Accordion key={section.title} type="multiple" className="w-full">
@@ -413,7 +418,7 @@ export function AppHeader() {
           </Sheet>
         </div>
 
-        {!isStoreUser && (
+        {!isStoreUser && (!isGlobalAdmin || !!company) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
