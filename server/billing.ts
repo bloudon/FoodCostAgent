@@ -55,6 +55,10 @@ export async function getPlans(_req: Request, res: Response) {
 
     return res.json({ plans });
   } catch (err: any) {
+    if (err?.message?.includes("not configured")) {
+      // Stripe key not set — return empty list so UI degrades gracefully
+      return res.json({ plans: [] });
+    }
     console.error("getPlans error:", err);
     return res.status(500).json({ message: "Failed to fetch plans" });
   }
