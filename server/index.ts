@@ -7,6 +7,8 @@ import { seedDatabase } from "./seed";
 import { storage } from "./storage";
 import { cache } from "./cache";
 import { setupSsoAuth } from "./ssoAuth";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 
 const app = express();
 app.disable('etag');
@@ -71,7 +73,36 @@ app.use((req, res, next) => {
   next();
 });
 
+async function runStartupMigrations() {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS background_images (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        object_path text,
+        external_url text,
+        label text,
+        sort_order integer NOT NULL DEFAULT 0,
+        is_active integer NOT NULL DEFAULT 1,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS brand_image_path text`);
+    await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS stripe_customer_id text`);
+    await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS stripe_subscription_id text`);
+    await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS subscription_status text`);
+    await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS subscription_tier text`);
+    await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS subscription_term text`);
+    await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS subscription_current_period_end timestamptz`);
+    console.log('✅ Startup migrations applied');
+  } catch (err) {
+    console.error('⚠️ Startup migrations error (non-fatal):', err);
+  }
+}
+
 (async () => {
+  // Apply schema migrations that may be missing on the VPS database
+  await runStartupMigrations();
+
   // Setup SSO authentication (must be before registerRoutes) - skip on VPS with local auth
   if (process.env.AUTH_MODE !== 'local') {
     await setupSsoAuth(app);

@@ -4,9 +4,15 @@ import { db } from "./db";
 import { companies } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-06-20",
-});
+let _stripe: Stripe | null = null;
+function getStripe(): Stripe {
+  if (!_stripe) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) throw new Error("STRIPE_SECRET_KEY is not configured on this server");
+    _stripe = new Stripe(key, { apiVersion: "2024-06-20" });
+  }
+  return _stripe;
+}
 
 const TRIAL_DAYS = 14;
 
@@ -25,7 +31,7 @@ const LOOKUP_KEY: Record<string, string> = {
  */
 export async function getPlans(_req: Request, res: Response) {
   try {
-    const prices = await stripe.prices.list({
+    const prices = await getStripe().prices.list({
       active: true,
       expand: ["data.product"],
       limit: 100,
@@ -77,7 +83,7 @@ export async function createCheckoutSession(req: Request, res: Response) {
     if (!lookupKey) return res.status(400).json({ message: `Invalid tier/term combination: ${key}` });
 
     // Fetch price by lookup_key
-    const prices = await stripe.prices.search({
+    const prices = await getStripe().prices.search({
       query: `lookup_key:'${lookupKey}' AND active:'true'`,
       limit: 1,
     });
@@ -89,7 +95,7 @@ export async function createCheckoutSession(req: Request, res: Response) {
       .from(companies)
       .where(eq(companies.id, companyId));
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: price.id, quantity: 1 }],
       subscription_data: {
@@ -128,7 +134,7 @@ export async function stripeWebhook(req: Request, res: Response) {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    event = getStripe().webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err: any) {
     console.error("Stripe webhook signature verification failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
