@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,7 @@ export default function Stores() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedStore, setSelectedStore] = useState<CompanyStore | null>(null);
+  const pendingManagerEmail = useRef("");
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
 
   const { data: stores = [], isLoading } = useAccessibleStores();
@@ -59,20 +60,45 @@ export default function Stores() {
   const createStoreMutation = useMutation({
     mutationFn: async (data: Partial<CompanyStore>) => {
       if (!selectedCompanyId) throw new Error("No company selected");
-      return await apiRequest("POST", `/api/companies/${selectedCompanyId}/stores`, data);
+      const res = await apiRequest("POST", `/api/companies/${selectedCompanyId}/stores`, data);
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: async (newStore: any) => {
       if (selectedCompanyId) {
         queryClient.invalidateQueries({ queryKey: [`/api/companies/${selectedCompanyId}/stores`] });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
       setIsCreateDialogOpen(false);
-      toast({
-        title: "Success",
-        description: "Store created successfully",
-      });
+
+      const email = pendingManagerEmail.current;
+      pendingManagerEmail.current = "";
+
+      if (email && newStore?.id) {
+        try {
+          await apiRequest("POST", "/api/invitations", {
+            email,
+            role: "store_manager",
+            storeIds: [newStore.id],
+          });
+          toast({
+            title: "Store created",
+            description: `Store created and invitation sent to ${email}`,
+          });
+        } catch {
+          toast({
+            title: "Store created",
+            description: "Store created, but invitation email could not be sent.",
+          });
+        }
+      } else {
+        toast({
+          title: "Success",
+          description: "Store created successfully",
+        });
+      }
     },
     onError: () => {
+      pendingManagerEmail.current = "";
       toast({
         title: "Error",
         description: "Failed to create store",
@@ -154,6 +180,8 @@ export default function Stores() {
 
     const tccLocationId = formData.get("tccLocationId") as string;
     data.tccLocationId = tccLocationId || null;
+
+    pendingManagerEmail.current = (formData.get("managerEmail") as string || "").trim();
     
     createStoreMutation.mutate(data);
   };
@@ -310,6 +338,22 @@ export default function Stores() {
           </SelectContent>
         </Select>
       </div>
+
+      {!store && (
+        <div className="space-y-2 pt-2 border-t">
+          <Label htmlFor="managerEmail">Store Manager Email <span className="text-muted-foreground font-normal">(optional)</span></Label>
+          <Input
+            id="managerEmail"
+            name="managerEmail"
+            type="email"
+            placeholder="manager@example.com"
+            data-testid="input-store-manager-email"
+          />
+          <p className="text-xs text-muted-foreground">
+            We'll send them an invitation to set up their account as a store manager.
+          </p>
+        </div>
+      )}
 
       <DialogFooter>
         <Button type="submit" disabled={isPending} data-testid="button-save-store">

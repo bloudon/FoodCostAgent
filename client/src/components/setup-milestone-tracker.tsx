@@ -44,6 +44,7 @@ export function SetupMilestoneTracker() {
   const [showStoreForm, setShowStoreForm] = useState(false);
   const [storeName, setStoreName] = useState(defaultStoreName);
   const [storeCode, setStoreCode] = useState("S001");
+  const [managerEmail, setManagerEmail] = useState("");
   const hasAutoExpandedStore = useRef(false);
 
   useEffect(() => {
@@ -99,11 +100,23 @@ export function SetupMilestoneTracker() {
       }
       return response.json();
     },
-    onSuccess: async () => {
+    onSuccess: async (result: any) => {
       await refreshAuth();
       setShowStoreForm(false);
       setStoreName(defaultStoreName);
       setStoreCode("S001");
+
+      const emailToInvite = managerEmail.trim();
+      setManagerEmail("");
+
+      if (emailToInvite && result?.store?.id) {
+        apiRequest("POST", "/api/invitations", {
+          email: emailToInvite,
+          role: "store_manager",
+          storeIds: [result.store.id],
+        }).catch(() => {});
+      }
+
       await queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stores"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
@@ -304,6 +317,21 @@ export function SetupMilestoneTracker() {
                             onChange={(e) => setStoreCode(e.target.value)}
                             data-testid="input-store-code"
                           />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">
+                            Store Manager Email <span className="opacity-60">(optional)</span>
+                          </label>
+                          <Input
+                            type="email"
+                            placeholder="manager@example.com"
+                            value={managerEmail}
+                            onChange={(e) => setManagerEmail(e.target.value)}
+                            data-testid="input-store-manager-email"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            We'll send them an invitation to set up their account.
+                          </p>
                         </div>
                       </div>
                       <Button
