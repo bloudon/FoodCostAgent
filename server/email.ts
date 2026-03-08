@@ -145,6 +145,81 @@ export async function sendPasswordResetEmail(opts: {
   }
 }
 
+export async function sendInvitationEmail(opts: {
+  to: string;
+  inviterName: string;
+  companyName: string;
+  role: string;
+  inviteUrl: string;
+}) {
+  const transport = createTransport();
+  if (!transport) {
+    console.warn("[Email] Skipping invitation email — no transport configured");
+    return;
+  }
+
+  const { to, inviterName, companyName, role, inviteUrl } = opts;
+
+  const roleLabel: Record<string, string> = {
+    company_admin: "Company Admin",
+    store_manager: "Store Manager",
+    store_user: "Store Member",
+  };
+  const roleName = roleLabel[role] || role;
+
+  try {
+    await transport.sendMail({
+      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+      to,
+      subject: `You've been invited to join ${companyName} on FNB Cost Pro`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #1e293b; padding: 24px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">
+              <span style="color: #ffffff;">FNB</span>
+              <span style="color: #22c55e; font-size: 16px;"> cost pro</span>
+            </h1>
+          </div>
+          <div style="padding: 32px; background: #ffffff;">
+            <h2 style="color: #1e293b;">You're invited!</h2>
+            <p style="color: #475569; line-height: 1.6;">
+              <strong>${inviterName}</strong> has invited you to join <strong>${companyName}</strong>
+              on FNB Cost Pro as a <strong>${roleName}</strong>.
+            </p>
+            <p style="color: #475569; line-height: 1.6;">
+              Click the button below to create your account and get started.
+              This invitation expires in <strong>7 days</strong>.
+            </p>
+            <div style="margin: 32px 0; text-align: center;">
+              <a href="${inviteUrl}"
+                 style="background: #f2690d; color: #ffffff; padding: 14px 32px;
+                        border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 16px;">
+                Accept Invitation
+              </a>
+            </div>
+            <p style="color: #475569; line-height: 1.6;">
+              Or copy this link into your browser:<br/>
+              <a href="${inviteUrl}" style="color: #f2690d; word-break: break-all;">${inviteUrl}</a>
+            </p>
+            <p style="color: #94a3b8; font-size: 13px;">
+              If you weren't expecting this invitation, you can safely ignore this email.
+            </p>
+          </div>
+          <div style="background: #f1f5f9; padding: 16px; text-align: center;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} FNB Cost Pro. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `You've been invited to join ${companyName} on FNB Cost Pro as a ${roleName}.\n\nAccept your invitation here:\n${inviteUrl}\n\nThis invitation expires in 7 days.\n\nIf you weren't expecting this, ignore this email.`,
+    });
+    console.log(`[Email] Invitation email sent to ${to}`);
+  } catch (err) {
+    console.error("[Email] Failed to send invitation email:", err);
+  }
+}
+
 export async function sendWelcomeEmail(opts: {
   to: string;
   firstName: string;

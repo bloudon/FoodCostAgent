@@ -66,7 +66,7 @@ function ProtectedLayout() {
   const { user, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
 
-  const PUBLIC_PATHS = ["/login", "/signup", "/activate", "/onboarding", "/onboarding-wizard", "/onboarding-review", "/forgot-password", "/reset-password", "/choose-plan"];
+  const PUBLIC_PATHS = ["/login", "/signup", "/activate", "/onboarding", "/onboarding-wizard", "/onboarding-review", "/forgot-password", "/reset-password", "/choose-plan", "/accept-invitation"];
 
   useEffect(() => {
     if (!isLoading && !user && !PUBLIC_PATHS.some(p => location === p || location.startsWith(p + "/"))) {
@@ -124,6 +124,7 @@ function ProtectedLayoutContent() {
     "/login",
     "/forgot-password",
     "/reset-password",
+    "/accept-invitation",
   ];
   const isFullScreen = FULL_SCREEN_PATHS.some(
     (p) => location === p || location.startsWith(p + "/") || location.startsWith(p + "?")
@@ -141,6 +142,7 @@ function ProtectedLayoutContent() {
         <Route path="/login" component={Login} />
         <Route path="/forgot-password" component={ForgotPassword} />
         <Route path="/reset-password" component={ResetPassword} />
+        <Route path="/accept-invitation/:token" component={AcceptInvitation} />
       </Switch>
     );
   }

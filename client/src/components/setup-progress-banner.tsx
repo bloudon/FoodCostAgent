@@ -31,6 +31,7 @@ const milestoneLabels: Record<string, string> = {
   inventory: "Inventory",
   recipes: "Recipe",
   menu: "Menu Items",
+  team: "Invite Your Team",
 };
 
 interface SetupProgressBannerProps {

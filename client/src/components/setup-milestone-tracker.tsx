@@ -124,7 +124,7 @@ export function SetupMilestoneTracker() {
           <CardContent>
             <Skeleton className="h-2 w-full mb-4" />
             <div className="space-y-2">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
+              {[1, 2, 3, 4, 5, 6, 7].map((i) => (
                 <Skeleton key={i} className="h-8 w-full" />
               ))}
             </div>

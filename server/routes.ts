@@ -17,7 +17,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, sql, asc } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -1068,7 +1068,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "User is not associated with a company" });
       }
 
-      const [storeRows, categoryRows, vendorRows, inventoryRows, recipeRows, menuRows, progressRows] = await Promise.all([
+      const [storeRows, categoryRows, vendorRows, inventoryRows, recipeRows, menuRows, progressRows, teamRows] = await Promise.all([
         db.select().from(companyStores).where(eq(companyStores.companyId, companyId)).limit(1),
         db.select().from(categories).where(eq(categories.companyId, companyId)).limit(1),
         db.select().from(vendors).where(and(eq(vendors.companyId, companyId), not(like(vendors.name, '%Misc Grocery%')))).limit(1),
@@ -1076,6 +1076,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         db.select().from(recipes).where(eq(recipes.companyId, companyId)).limit(1),
         db.select().from(menuItems).where(eq(menuItems.companyId, companyId)).limit(1),
         db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1),
+        db.select().from(users).where(and(eq(users.companyId, companyId), not(eq(users.role, "company_admin")))).limit(1),
       ]);
 
       let reviewedSteps: string[] = [];
@@ -1093,6 +1094,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { id: "inventory", label: "Add Inventory Items", completed: inventoryRows.length > 0 || reviewedSteps.includes("inventory"), path: "/inventory-items" },
         { id: "recipes", label: "Create a Recipe", completed: recipeRows.length > 0 || reviewedSteps.includes("recipes"), path: "/recipes" },
         { id: "menu", label: "Add Menu Items", completed: menuRows.length > 0 || reviewedSteps.includes("menu"), path: "/menu-items" },
+        { id: "team", label: "Invite Your Team", completed: teamRows.length > 0 || reviewedSteps.includes("team"), path: "/users" },
       ];
 
       const completedCount = milestonesList.filter(m => m.completed).length;
@@ -1807,6 +1809,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Accept invitation with local auth (username/password flow)
+  app.post("/api/invitations/accept-local", async (req, res) => {
+    try {
+      const { token, firstName, lastName, password } = req.body;
+
+      if (!token || !firstName || !lastName || !password) {
+        return res.status(400).json({ error: "token, firstName, lastName, and password are required" });
+      }
+
+      const invitation = await storage.getInvitationByToken(token);
+      if (!invitation) {
+        return res.status(404).json({ error: "Invitation not found, expired, or already used" });
+      }
+
+      // Prevent duplicate accounts
+      const existingUser = await storage.getUserByEmail(invitation.email);
+      if (existingUser) {
+        return res.status(409).json({ error: "An account with this email already exists. Please sign in instead." });
+      }
+
+      const passwordHash = await hashPassword(password);
+
+      const newUser = await storage.createUser({
+        email: invitation.email,
+        passwordHash,
+        ssoProvider: "password",
+        firstName,
+        lastName,
+        role: invitation.role as any,
+        companyId: invitation.companyId,
+        isActive: 1,
+      });
+
+      // Assign to specific stores from the invitation
+      for (const storeId of invitation.storeIds) {
+        await storage.assignUserToStore(newUser.id, storeId).catch(() => {});
+      }
+
+      // company_admin gets access to all company stores
+      if (invitation.role === "company_admin") {
+        const allStores = await db.select().from(companyStores).where(eq(companyStores.companyId, invitation.companyId));
+        for (const s of allStores) {
+          await storage.assignUserToStore(newUser.id, s.id).catch(() => {});
+        }
+      }
+
+      // Mark invitation as accepted
+      await db.update(invitations).set({ acceptedAt: new Date() }).where(eq(invitations.token, token));
+
+      // Create session (auto-login)
+      const sessionToken = await createSession(newUser.id, req.headers["user-agent"], req.ip);
+      res.cookie("session", sessionToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+
+      console.log(`[Invitation] Accepted by ${newUser.email} (${newUser.role}) for company ${newUser.companyId}`);
+
+      res.json({
+        user: {
+          id: newUser.id,
+          email: newUser.email,
+          role: newUser.role,
+          companyId: newUser.companyId,
+        },
+      });
+    } catch (error: any) {
+      console.error("[Invitation] accept-local error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Create invitation (admin only)
   app.post("/api/invitations", requireAuth, async (req, res) => {
     try {
@@ -1871,6 +1947,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         token,
         invitedBy: currentUser.id,
         expiresAt,
+      });
+
+      // Send invitation email (fire-and-forget)
+      const inviteBaseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
+      const inviteUrl = `${inviteBaseUrl}/accept-invitation/${token}`;
+      const company = await storage.getCompany(companyId);
+      const inviterName = [currentUser.firstName, currentUser.lastName].filter(Boolean).join(" ") || currentUser.email;
+      import("./email").then(({ sendInvitationEmail }) => {
+        sendInvitationEmail({
+          to: email,
+          inviterName,
+          companyName: company?.name || "your company",
+          role,
+          inviteUrl,
+        }).catch((err) => console.error("[Invitation] Email send failed:", err));
       });
 
       res.status(201).json(invitation);
