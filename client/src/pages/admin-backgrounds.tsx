@@ -114,7 +114,7 @@ export default function AdminBackgrounds() {
   }
 
   function getImageUrl(img: BgImage) {
-    if (img.objectPath) return `/objects/${img.objectPath}`;
+    if (img.objectPath) return img.objectPath;
     return img.externalUrl ?? "";
   }
 
@@ -184,6 +184,7 @@ export default function AdminBackgrounds() {
                   buttonText="Upload Image"
                   buttonVariant="outline"
                   dataTestId="button-upload-background"
+                  visibility="public"
                   onUploadComplete={(objectPath) => {
                     addByUploadMutation.mutate({ objectPath, label: newLabel || undefined });
                   }}

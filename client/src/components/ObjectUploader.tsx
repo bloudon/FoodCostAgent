@@ -8,6 +8,7 @@ interface SimpleObjectUploaderProps {
   dataTestId?: string;
   maxFileSize?: number;
   buttonVariant?: "default" | "outline" | "secondary" | "ghost" | "destructive";
+  visibility?: "public" | "private";
 }
 
 export function ObjectUploader({
@@ -16,6 +17,7 @@ export function ObjectUploader({
   dataTestId = "button-upload-image",
   maxFileSize = 10485760,
   buttonVariant = "outline",
+  visibility = "private",
 }: SimpleObjectUploaderProps) {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -38,6 +40,7 @@ export function ObjectUploader({
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("visibility", visibility);
 
       const response = await fetch("/api/objects/upload", {
         method: "POST",

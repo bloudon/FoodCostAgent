@@ -196,7 +196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json({
         images: images.map((img) => ({
           id: img.id,
-          url: img.objectPath ? `/objects/${img.objectPath}` : img.externalUrl,
+          url: img.objectPath ?? img.externalUrl,
           label: img.label,
         })),
         isBranded: false,
@@ -2099,11 +2099,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Company context required for file uploads" });
         }
         const userId = (req as any).user?.id;
+        const visibilityRaw = req.body?.visibility;
+        const visibility: "public" | "private" = visibilityRaw === "public" ? "public" : "private";
         const objectPath = await localStorageService.uploadFile(
           companyId,
           req.file.buffer,
           req.file.mimetype,
-          "private",
+          visibility,
           userId
         );
         res.json({ uploadUrl: null, objectPath });
