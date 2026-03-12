@@ -61,6 +61,29 @@ import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import ChoosePlan from "@/pages/choose-plan";
 import AdminBackgrounds from "@/pages/admin-backgrounds";
+import WebsiteHome from "@/pages/website/home";
+import WebsiteFeatures from "@/pages/website/features";
+import WebsitePricing from "@/pages/website/pricing";
+import WebsiteAbout from "@/pages/website/about";
+import WebsiteContact from "@/pages/website/contact";
+
+const WEBSITE_DOMAINS = ["fnbcostpro.com", "www.fnbcostpro.com"];
+const isWebsiteMode =
+  WEBSITE_DOMAINS.includes(window.location.hostname) ||
+  import.meta.env.VITE_SHOW_WEBSITE === "true";
+
+function WebsiteRouter() {
+  return (
+    <Switch>
+      <Route path="/" component={WebsiteHome} />
+      <Route path="/features" component={WebsiteFeatures} />
+      <Route path="/pricing" component={WebsitePricing} />
+      <Route path="/about" component={WebsiteAbout} />
+      <Route path="/contact" component={WebsiteContact} />
+      <Route component={WebsiteHome} />
+    </Switch>
+  );
+}
 
 function ProtectedLayout() {
   const { user, isLoading } = useAuth();
@@ -201,6 +224,16 @@ function ProtectedLayoutContent() {
 }
 
 function App() {
+  if (isWebsiteMode) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <WebsiteRouter />
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    );
+  }
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="light">

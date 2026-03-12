@@ -543,6 +543,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ WEBSITE CONTACT FORM ============
+  app.post("/api/contact", async (req, res) => {
+    try {
+      const schema = z.object({
+        name: z.string().min(2),
+        email: z.string().email(),
+        company: z.string().optional(),
+        message: z.string().min(10),
+      });
+      const data = schema.parse(req.body);
+      import("./email").then(({ sendContactEmail }) => {
+        sendContactEmail(data).catch((err: unknown) => console.error("[Contact] email error:", err));
+      });
+      return res.json({ ok: true });
+    } catch (err: any) {
+      if (err?.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid form data", errors: err.errors });
+      }
+      console.error("[Contact] route error:", err);
+      return res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
   // ============ LEAD CAPTURE SIGNUP ============
   app.post("/api/leads/signup", async (req, res) => {
     try {

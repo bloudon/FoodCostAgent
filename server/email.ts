@@ -278,3 +278,49 @@ export async function sendWelcomeEmail(opts: {
     console.error("[Email] Failed to send welcome email:", err);
   }
 }
+
+export async function sendContactEmail(opts: {
+  name: string;
+  email: string;
+  company?: string;
+  message: string;
+}) {
+  const { name, email, company, message } = opts;
+  const transport = createTransport();
+  if (!transport) return;
+  const contactTo = process.env.CONTACT_EMAIL || "hello@fnbcostpro.com";
+  try {
+    await transport.sendMail({
+      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+      to: contactTo,
+      replyTo: `"${name}" <${email}>`,
+      subject: `Website Contact: ${name}${company ? ` — ${company}` : ""}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #16a34a; padding: 24px; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 20px;">New Contact Form Submission</h1>
+          </div>
+          <div style="padding: 24px; background: #ffffff;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; width: 120px;">Name</td><td style="padding: 8px 0; color: #111827; font-size: 14px;">${name}</td></tr>
+              <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Email</td><td style="padding: 8px 0; font-size: 14px;"><a href="mailto:${email}" style="color: #16a34a;">${email}</a></td></tr>
+              ${company ? `<tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Company</td><td style="padding: 8px 0; color: #111827; font-size: 14px;">${company}</td></tr>` : ""}
+            </table>
+            <div style="margin-top: 20px; padding: 16px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+              <p style="color: #6b7280; font-size: 12px; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.05em;">Message</p>
+              <p style="color: #111827; font-size: 14px; margin: 0; white-space: pre-wrap;">${message}</p>
+            </div>
+          </div>
+          <div style="background: #f1f5f9; padding: 16px; text-align: center;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} FNB Cost Pro. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `New contact from ${name} (${email})${company ? ` — ${company}` : ""}\n\n${message}`,
+    });
+    console.log(`[Email] Contact form email sent from ${email}`);
+  } catch (err) {
+    console.error("[Email] Failed to send contact email:", err);
+    throw err;
+  }
+}

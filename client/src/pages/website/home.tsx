@@ -1,0 +1,213 @@
+import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
+import { ChevronRight, TrendingDown, BookOpen, Truck, BarChart3, Users, RefreshCw, CheckCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { MarketingLayout, CTAButton, SectionHeading, appLink } from "@/components/website/marketing-layout";
+
+interface BgImage { id?: string; url: string; label?: string; }
+interface BgResponse { images: BgImage[]; isBranded: boolean; }
+
+function HeroBackground() {
+  const { data } = useQuery<BgResponse>({
+    queryKey: ["/api/background-images"],
+    queryFn: async () => {
+      const res = await fetch("/api/background-images");
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const photos = data?.images ?? [];
+  const [slotA, setSlotA] = useState(0);
+  const [slotB, setSlotB] = useState(1);
+  const [active, setActive] = useState<"a" | "b">("a");
+  const idxRef = useRef(1);
+  useEffect(() => {
+    if (photos.length <= 1) return;
+    const iv = setInterval(() => {
+      const next = (idxRef.current + 1) % photos.length;
+      if (active === "a") { setSlotB(next); setTimeout(() => setActive("b"), 50); }
+      else { setSlotA(next); setTimeout(() => setActive("a"), 50); }
+      idxRef.current = next;
+    }, 10000);
+    return () => clearInterval(iv);
+  }, [active, photos.length]);
+  const FADE = "transition-opacity duration-[1500ms] ease-in-out absolute inset-0 w-full h-full object-cover";
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      {photos.length === 0 ? (
+        <div className="absolute inset-0 bg-gray-900" />
+      ) : photos.length === 1 ? (
+        <img src={photos[0].url} alt="" className={FADE} style={{ opacity: 1 }} />
+      ) : (
+        <>
+          <img src={photos[slotA]?.url} alt="" className={FADE} style={{ opacity: active === "a" ? 1 : 0 }} />
+          <img src={photos[slotB]?.url} alt="" className={FADE} style={{ opacity: active === "b" ? 1 : 0 }} />
+        </>
+      )}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/55 to-black/70" />
+    </div>
+  );
+}
+
+const FEATURES = [
+  { icon: TrendingDown, title: "Recipe Costing", desc: "Know the exact cost of every dish, including nested sub-recipes, yield losses, and real-time ingredient pricing." },
+  { icon: BookOpen, title: "Inventory Control", desc: "Track stock across all storage locations, record physical counts, and see theoretical vs. actual variances." },
+  { icon: Truck, title: "Vendor Order Guides", desc: "Import Sysco, GFS, and US Foods catalogs automatically. Build purchase orders in seconds." },
+  { icon: BarChart3, title: "Food Cost Variance", desc: "Compare theoretical food cost against actual sales to spot waste, theft, and pricing issues immediately." },
+  { icon: Users, title: "Multi-Location", desc: "Manage recipes, inventory, and staff across every store from one central account." },
+  { icon: RefreshCw, title: "Live Price Updates", desc: "When vendor prices change, every dependent recipe cost updates automatically — no manual rework." },
+];
+
+const STEPS = [
+  { num: "01", title: "Set Up Your Inventory", body: "Add your ingredients, set par levels, and connect your vendor order guides in minutes." },
+  { num: "02", title: "Build Your Recipes", body: "Create detailed recipes with ingredients, yields, and portion costs. Nest sub-recipes for complex preparations." },
+  { num: "03", title: "Track & Optimize", body: "Run inventory counts, import sales data, and get instant food cost variance reports to protect your margins." },
+];
+
+const STATS = [
+  { value: "14-day", label: "Free trial, no card required" },
+  { value: "< 1 hr", label: "Average setup time" },
+  { value: "3–5%", label: "Typical food cost reduction" },
+  { value: "100%", label: "Cloud-based, access anywhere" },
+];
+
+export default function WebsiteHome() {
+  return (
+    <MarketingLayout>
+      <section className="relative min-h-[88vh] flex items-center" data-testid="hero-section">
+        <HeroBackground />
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
+          <span className="inline-block bg-orange-500/20 text-orange-300 text-xs font-semibold uppercase tracking-widest px-4 py-1 rounded-full mb-6 border border-orange-500/30">
+            Built for Food Service Operators
+          </span>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-tight mb-6">
+            Know Your Numbers.<br />
+            <span className="text-orange-400">Control Your Costs.</span><br />
+            Grow Your Business.
+          </h1>
+          <p className="text-lg sm:text-xl text-gray-200 max-w-2xl mx-auto mb-10 leading-relaxed">
+            FnB Cost Pro gives restaurants and food service operators the recipe costing, inventory tracking, and food cost variance tools they need to run a more profitable operation.
+          </p>
+          <div className="flex flex-wrap gap-4 justify-center">
+            <a href={appLink("/signup")}>
+              <Button
+                size="lg"
+                className="bg-orange-500 text-white border-0 text-base px-8"
+                data-testid="btn-hero-trial"
+              >
+                Start Your Free 14-Day Trial
+                <ChevronRight className="h-5 w-5 ml-1" />
+              </Button>
+            </a>
+            <Link href="/pricing">
+              <Button
+                size="lg"
+                variant="outline"
+                className="text-white border-white/50 bg-white/10 backdrop-blur-sm text-base px-8 hover:bg-white/20"
+                data-testid="btn-hero-pricing"
+              >
+                View Pricing
+              </Button>
+            </Link>
+          </div>
+          <p className="mt-6 text-sm text-gray-400">No credit card required. Cancel anytime.</p>
+        </div>
+      </section>
+
+      <section className="py-12 bg-gray-900">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+            {STATS.map((s) => (
+              <div key={s.value} data-testid={`stat-${s.value}`}>
+                <p className="text-3xl font-extrabold text-orange-400 mb-1">{s.value}</p>
+                <p className="text-sm text-gray-400">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 bg-white" id="features">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <SectionHeading
+            label="What You Get"
+            title="Everything You Need to Control Food Costs"
+            subtitle="A complete platform purpose-built for restaurant and food service operators — not generic inventory software."
+          />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {FEATURES.map((f) => (
+              <div
+                key={f.title}
+                className="p-6 rounded-lg border border-gray-100 bg-gray-50 hover-elevate"
+                data-testid={`feature-card-${f.title.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                <div className="w-11 h-11 rounded-lg bg-green-100 flex items-center justify-center mb-4">
+                  <f.icon className="h-5 w-5 text-green-700" />
+                </div>
+                <h3 className="text-base font-semibold text-gray-900 mb-2">{f.title}</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+          <div className="text-center mt-12">
+            <Link href="/features">
+              <Button variant="outline" className="gap-1" data-testid="btn-all-features">
+                See All Features <ChevronRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 bg-green-900" id="how-it-works">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <SectionHeading
+            label="How It Works"
+            title="Up and Running in Under an Hour"
+            subtitle="FnB Cost Pro is designed to be set up fast so you can start seeing results immediately."
+          />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mt-4">
+            {STEPS.map((s) => (
+              <div key={s.num} className="text-center" data-testid={`step-${s.num}`}>
+                <div className="text-5xl font-black text-orange-400/40 mb-4">{s.num}</div>
+                <h3 className="text-lg font-semibold text-white mb-3">{s.title}</h3>
+                <p className="text-sm text-green-200 leading-relaxed">{s.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 bg-gray-50" id="cta-bottom">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+            Ready to Take Control of Your Food Costs?
+          </h2>
+          <p className="text-lg text-gray-500 mb-8">
+            Join restaurants and food service operations using FnB Cost Pro to protect their margins and grow with confidence.
+          </p>
+          <div className="flex flex-wrap gap-4 justify-center">
+            <CTAButton href={appLink("/signup")} large>
+              Start Free 14-Day Trial
+            </CTAButton>
+            <Link href="/contact">
+              <Button size="lg" variant="outline" className="px-8" data-testid="btn-cta-contact">
+                Talk to Us
+              </Button>
+            </Link>
+          </div>
+          <ul className="mt-8 flex flex-wrap justify-center gap-x-6 gap-y-2">
+            {["No credit card required", "Cancel anytime", "14-day free trial", "Full access from day one"].map((item) => (
+              <li key={item} className="flex items-center gap-1.5 text-sm text-gray-500">
+                <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    </MarketingLayout>
+  );
+}

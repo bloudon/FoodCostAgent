@@ -42,6 +42,20 @@ This project is an inventory management and recipe costing system for food servi
 - **Misc Grocery Protection**: Delete button hidden for any vendor with "Misc Grocery" in name (protected system vendor)
 - **Store Badge**: Shows "Assigned" or "Not Assigned" based on current store context
 
+# Marketing Website
+
+- **Routing**: Hostname-based. `fnbcostpro.com` / `www.fnbcostpro.com` → marketing pages. `app.fnbcostpro.com` → app. Same Express server handles both.
+- **Dev Toggle**: Set `VITE_SHOW_WEBSITE=true` in `.env` (gitignored) to preview the website locally in Replit.
+- **VPS**: No extra config needed — hostname detection is runtime (`window.location.hostname`) so it works automatically when nginx routes the root domain to the same server.
+- **Pages**: Home (`/`), Features (`/features`), Pricing (`/pricing`), About (`/about`), Contact (`/contact`).
+- **Page files**: `client/src/pages/website/` | Layout/nav/footer: `client/src/components/website/marketing-layout.tsx`.
+- **App URL for CTAs**: Set `VITE_APP_URL=https://app.fnbcostpro.com` in the production build env. Defaults to relative (`/signup`, `/login`) for dev.
+- **Pricing page**: Fetches live Stripe plans from `/api/billing/plans` — shows Basic/Pro with monthly/quarterly/annual toggle.
+- **Contact form**: `POST /api/contact` → sends email via SMTP2GO to `CONTACT_EMAIL` env var (default `hello@fnbcostpro.com`). Reply-to is set to the submitter's email.
+- **Background image hero**: Homepage hero reuses the background image gallery from `/api/background-images` (public endpoint, no auth required).
+- **Logo**: `client/public/website-logo.png` (FnB Cost Pro color logo).
+- **Easy migration**: Marketing pages are self-contained in `/pages/website/` and `/components/website/` — straightforward to extract and move to HubSpot or any CMS later.
+
 # System Architecture
 
 - **Frontend**: Mobile-first React 18 SPA with TypeScript, Vite, `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
