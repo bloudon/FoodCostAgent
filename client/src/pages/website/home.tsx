@@ -61,14 +61,14 @@ const FEATURES = [
 ];
 
 const STEPS = [
-  { num: "01", title: "Set Up Your Inventory", body: "Add your ingredients, set par levels, and connect your vendor order guides in minutes." },
-  { num: "02", title: "Build Your Recipes", body: "Create detailed recipes with ingredients, yields, and portion costs. Nest sub-recipes for complex preparations." },
-  { num: "03", title: "Track & Optimize", body: "Run inventory counts, import sales data, and get instant food cost variance reports to protect your margins." },
+  { num: "01", title: "We Walk You Through Setup", body: "Our onboarding guides you step by step — from adding your first inventory item to connecting your vendors. You're never on your own." },
+  { num: "02", title: "Build Your Recipes Your Way", body: "Create detailed recipes with ingredients, yields, and portion costs. Our team is here to help you get them right." },
+  { num: "03", title: "Track, Adjust & Grow", body: "Run inventory counts, import sales data, and use our variance reports to make smarter decisions — with support along the way." },
 ];
 
 const STATS = [
-  { value: "14-day", label: "Free trial, no card required" },
-  { value: "< 1 hr", label: "Average setup time" },
+  { value: "14-day", label: "Free trial with full access" },
+  { value: "Guided", label: "Onboarding included" },
   { value: "3–5%", label: "Typical food cost reduction" },
   { value: "100%", label: "Cloud-based, access anywhere" },
 ];
@@ -112,7 +112,7 @@ export default function WebsiteHome() {
               </Button>
             </Link>
           </div>
-          <p className="mt-6 text-sm text-gray-400">No credit card required. Cancel anytime.</p>
+          <p className="mt-6 text-sm text-gray-400">14-day free trial. Cancel anytime.</p>
         </div>
       </section>
 
@@ -165,8 +165,8 @@ export default function WebsiteHome() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
             label="How It Works"
-            title="Up and Running in Under an Hour"
-            subtitle="FnB Cost Pro is designed to be set up fast so you can start seeing results immediately."
+            title="Guided Onboarding, Every Step of the Way"
+            subtitle="Getting started with FnB Cost Pro is straightforward — and you won't be doing it alone. We guide you through the entire setup process."
           />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mt-4">
             {STEPS.map((s) => (
@@ -199,7 +199,7 @@ export default function WebsiteHome() {
             </Link>
           </div>
           <ul className="mt-8 flex flex-wrap justify-center gap-x-6 gap-y-2">
-            {["No credit card required", "Cancel anytime", "14-day free trial", "Full access from day one"].map((item) => (
+            {["14-day free trial", "Cancel anytime", "Full access from day one", "Guided setup included"].map((item) => (
               <li key={item} className="flex items-center gap-1.5 text-sm text-gray-500">
                 <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
                 {item}

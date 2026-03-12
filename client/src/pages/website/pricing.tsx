@@ -119,7 +119,7 @@ export default function WebsitePricing() {
             Simple Plans for Every Operation
           </h1>
           <p className="text-lg text-gray-300">
-            Start with a 14-day free trial. No credit card required.
+            Start with a 14-day free trial. Cancel anytime.
           </p>
         </div>
       </section>
@@ -217,7 +217,7 @@ export default function WebsitePricing() {
           )}
 
           <p className="text-center text-sm text-gray-400 mt-8">
-            All plans include a 14-day free trial. No credit card required. Cancel anytime.
+            All plans include a 14-day free trial. Cancel anytime.
           </p>
         </div>
       </section>
@@ -229,7 +229,7 @@ export default function WebsitePricing() {
             {[
               {
                 q: "Do I need a credit card to start?",
-                a: "No. Your 14-day free trial starts immediately with no payment information required. You only need to add a card if you decide to continue after the trial.",
+                a: "Yes, a credit card is required to start your 14-day free trial. You won't be charged until the trial period ends. Cancel before then and you owe nothing.",
               },
               {
                 q: "Can I switch plans later?",

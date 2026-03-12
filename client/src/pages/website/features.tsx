@@ -174,7 +174,7 @@ export default function WebsiteFeatures() {
             See It in Action — Free for 14 Days
           </h2>
           <p className="text-green-200 mb-8">
-            No credit card required. Full access. Cancel anytime.
+            Full access during your trial. Cancel anytime before it ends and you owe nothing.
           </p>
           <CTAButton href={appLink("/signup")} large>
             Start Your Free Trial

@@ -10,7 +10,7 @@ const VALUES = [
   {
     icon: Heart,
     title: "Simplicity First",
-    body: "We believe powerful doesn't have to mean complicated. Our goal is for any operator — tech-savvy or not — to get up and running in under an hour and see value on day one.",
+    body: "We believe powerful doesn't have to mean complicated. Our guided onboarding walks any operator through setup — tech-savvy or not — so you see value from day one without the frustration.",
   },
   {
     icon: Lightbulb,
@@ -107,7 +107,7 @@ export default function WebsiteAbout() {
             Ready to See What FnB Cost Pro Can Do?
           </h2>
           <p className="text-green-200 mb-8">
-            Start your 14-day free trial. No credit card. No commitment.
+            Start your 14-day free trial. Cancel anytime before it ends and you owe nothing.
           </p>
           <CTAButton href={appLink("/signup")} large>
             Get Started Free
