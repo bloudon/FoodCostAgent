@@ -116,10 +116,10 @@ export default function WebsitePricing() {
             Transparent Pricing
           </span>
           <h1 className="text-4xl sm:text-5xl font-extrabold text-white mb-4">
-            Simple Plans for Every Operation
+            Simple Plans for Every F&amp;B Operation
           </h1>
           <p className="text-lg text-gray-300">
-            Start with a 14-day free trial. Cancel anytime.
+            For restaurants, bars, catering, and Food &amp; Beverage businesses of all sizes. Start with a 14-day free trial. Cancel anytime.
           </p>
         </div>
       </section>

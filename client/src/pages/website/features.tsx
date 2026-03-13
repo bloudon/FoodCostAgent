@@ -95,7 +95,7 @@ const FEATURE_GROUPS = [
       "Waste logging with user accountability",
     ],
     description:
-      "Whether you run one location or twenty, FnB Cost Pro keeps everything organized and your team accountable.",
+      "Whether you run one F&B location or twenty, FnB Cost Pro keeps everything organized and your team accountable.",
   },
 ];
 
@@ -149,10 +149,10 @@ export default function WebsiteFeatures() {
             Full Feature Set
           </span>
           <h1 className="text-4xl sm:text-5xl font-extrabold mb-4">
-            Everything a Food Service Operator Needs
+            Everything an F&amp;B Operator Needs
           </h1>
           <p className="text-lg text-gray-300 leading-relaxed mb-8">
-            FnB Cost Pro was built from the ground up for restaurant operators — not adapted from generic warehouse or retail software.
+            FnB Cost Pro was built from the ground up for Food &amp; Beverage operators — restaurants, bars, catering, and multi-unit F&amp;B businesses — not adapted from generic warehouse or retail software.
           </p>
           <CTAButton href={appLink("/signup")} large>
             Start Free Trial

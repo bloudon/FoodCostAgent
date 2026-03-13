@@ -5,7 +5,7 @@ const VALUES = [
   {
     icon: Target,
     title: "Built for Operators, by Operators",
-    body: "FnB Cost Pro was designed by people who understand food service — the margins, the vendors, the chaos of a busy kitchen. Every feature exists because real operators needed it.",
+    body: "FnB Cost Pro was designed by people who understand F&B — the margins, the vendors, the chaos of a busy kitchen. Every feature exists because real Food & Beverage operators needed it.",
   },
   {
     icon: Heart,
@@ -15,7 +15,7 @@ const VALUES = [
   {
     icon: Lightbulb,
     title: "Continuous Improvement",
-    body: "The food service industry never stands still. We ship updates regularly based on direct feedback from our customers, so the platform grows as your needs evolve.",
+    body: "The F&B industry never stands still. We ship updates regularly based on direct feedback from our customers, so the platform grows as your needs evolve.",
   },
 ];
 
@@ -40,7 +40,7 @@ export default function WebsiteAbout() {
             We Built the Tool We Wished We Had
           </h1>
           <p className="text-lg text-gray-300 leading-relaxed">
-            FnB Cost Pro was born out of frustration with spreadsheets, expensive enterprise software, and tools that weren't built for the reality of running a food service operation.
+            FnB Cost Pro was born out of frustration with spreadsheets, expensive enterprise software, and tools that weren't built for the reality of running an F&amp;B operation.
           </p>
         </div>
       </section>
@@ -50,13 +50,13 @@ export default function WebsiteAbout() {
           <div className="max-w-3xl">
             <h2 className="text-3xl font-bold text-gray-900 mb-6">Our Mission</h2>
             <p className="text-gray-500 text-lg leading-relaxed mb-6">
-              Food service is one of the most margin-sensitive businesses in the world. A 1–2% shift in food cost can be the difference between a profitable month and a loss. Yet most operators are flying blind — relying on gut feel, end-of-month statements, or a patchwork of spreadsheets to understand where their money is going.
+              Food &amp; Beverage (F&amp;B) is one of the most margin-sensitive industries in the world. A 1–2% shift in food cost can be the difference between a profitable month and a loss. Yet most F&amp;B operators are flying blind — relying on gut feel, end-of-month statements, or a patchwork of spreadsheets to understand where their money is going.
             </p>
             <p className="text-gray-500 text-lg leading-relaxed mb-6">
-              FnB Cost Pro exists to change that. We give operators the tools to know their costs in real time, catch waste before it compounds, and make confident decisions about pricing, purchasing, and staffing.
+              FnB Cost Pro exists to change that. We give F&amp;B operators the tools to know their costs in real time, catch waste before it compounds, and make confident decisions about pricing, purchasing, and staffing.
             </p>
             <p className="text-gray-500 text-lg leading-relaxed">
-              We believe every food service operator — from a single-location restaurant to a multi-unit chain — deserves access to professional-grade food cost management at a price that makes sense for their business.
+              We believe every Food &amp; Beverage operator — from a single-location restaurant to a multi-unit F&amp;B group — deserves access to professional-grade food cost management at a price that makes sense for their business.
             </p>
           </div>
         </div>
@@ -83,8 +83,8 @@ export default function WebsiteAbout() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
             label="Who It's For"
-            title="Built for the Full Spectrum of Food Service"
-            subtitle="Whether you run one location or a dozen, FnB Cost Pro scales with you."
+            title="Built for the Full Spectrum of F&B"
+            subtitle="From independent restaurants to large F&B groups and multi-unit Food & Beverage operations, FnB Cost Pro scales with you."
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {WHO_ITS_FOR.map((item) => (

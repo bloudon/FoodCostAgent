@@ -110,7 +110,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
             <div className="md:col-span-1">
               <img src="/website-logo-dark.png" alt="FnB Cost Pro" className="h-16 w-auto -mt-3" />
               <p className="text-sm text-gray-400 leading-relaxed">
-                Inventory management and recipe costing built for food service operators.
+                F&B inventory management and recipe costing for restaurants and Food & Beverage businesses.
               </p>
             </div>
 

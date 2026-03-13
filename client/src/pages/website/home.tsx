@@ -80,7 +80,7 @@ export default function WebsiteHome() {
         <HeroBackground />
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
           <span className="inline-block bg-orange-500/20 text-orange-300 text-xs font-semibold uppercase tracking-widest px-4 py-1 rounded-full mb-6 border border-orange-500/30">
-            Built for Food Service Operators
+            Built for F&amp;B Operators
           </span>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-tight mb-6">
             Know Your Numbers.<br />
@@ -88,7 +88,7 @@ export default function WebsiteHome() {
             Grow Your Business.
           </h1>
           <p className="text-lg sm:text-xl text-gray-200 max-w-2xl mx-auto mb-10 leading-relaxed">
-            FnB Cost Pro gives restaurants and food service operators the recipe costing, inventory tracking, and food cost variance tools they need to run a more profitable operation.
+            FnB Cost Pro gives F&amp;B operators — restaurants, bars, catering companies, and Food &amp; Beverage businesses of every type — the recipe costing, inventory tracking, and food cost variance tools they need to run a more profitable operation.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <a href={appLink("/signup")}>
@@ -133,8 +133,8 @@ export default function WebsiteHome() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
             label="What You Get"
-            title="Everything You Need to Control Food Costs"
-            subtitle="A complete platform purpose-built for restaurant and food service operators — not generic inventory software."
+            title="Everything F&amp;B Operators Need to Control Food Costs"
+            subtitle="A complete platform purpose-built for restaurants, bars, and Food &amp; Beverage businesses — not adapted from generic inventory or retail software."
           />
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {FEATURES.map((f) => (
@@ -186,7 +186,7 @@ export default function WebsiteHome() {
             Ready to Take Control of Your Food Costs?
           </h2>
           <p className="text-lg text-gray-500 mb-8">
-            Join restaurants and food service operations using FnB Cost Pro to protect their margins and grow with confidence.
+            Join F&amp;B operators — from independent restaurants to multi-unit Food &amp; Beverage groups — using FnB Cost Pro to protect their margins and grow with confidence.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <CTAButton href={appLink("/signup")} large>
