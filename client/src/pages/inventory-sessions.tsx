@@ -1,3 +1,4 @@
+import { useTier } from "@/hooks/use-tier";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -149,6 +150,8 @@ function SessionRow({ count, inventoryItems, stores, index }: any) {
 export default function InventorySessions() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const { hasFeature } = useTier();
+  const canUsePowerInventory = hasFeature("power_inventory");
   const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogStoreId, setDialogStoreId] = useState<string>("");
@@ -474,23 +477,25 @@ export default function InventorySessions() {
               />
             </div>
 
-            <div className="flex items-center gap-3 pt-4 border-t">
-              <Checkbox
-                id="isPowerSession"
-                checked={isPowerSession}
-                onCheckedChange={(checked) => setIsPowerSession(checked === true)}
-                data-testid="checkbox-power-session"
-              />
-              <div className="space-y-0.5">
-                <Label htmlFor="isPowerSession" className="cursor-pointer font-medium flex items-center gap-2">
-                  <Star className="h-4 w-4 text-yellow-500" />
-                  Power Inventory Count
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Only count high-cost power items for faster, focused inventory tracking
-                </p>
+            {canUsePowerInventory && (
+              <div className="flex items-center gap-3 pt-4 border-t">
+                <Checkbox
+                  id="isPowerSession"
+                  checked={isPowerSession}
+                  onCheckedChange={(checked) => setIsPowerSession(checked === true)}
+                  data-testid="checkbox-power-session"
+                />
+                <div className="space-y-0.5">
+                  <Label htmlFor="isPowerSession" className="cursor-pointer font-medium flex items-center gap-2">
+                    <Star className="h-4 w-4 text-yellow-500" />
+                    Power Inventory Count
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Only count high-cost power items for faster, focused inventory tracking
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
           <DialogFooter>
             <Button

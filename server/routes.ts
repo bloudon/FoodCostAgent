@@ -5649,9 +5649,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/inventory-counts", async (req, res) => {
+  app.post("/api/inventory-counts", requireAuth, async (req, res) => {
     try {
       const countInput = insertInventoryCountSchema.parse(req.body);
+
+      if (countInput.isPowerSession === 1) {
+        const { tierMeetsMinimum, featureMinTier } = await import("@shared/tier-config");
+        const user = (req as any).user;
+        if (user?.role !== "global_admin") {
+          const companyId = (req as any).companyId;
+          if (companyId) {
+            const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, companyId));
+            const currentTier = (company?.subscriptionTier as any) || "free";
+            const minTier = featureMinTier("power_inventory");
+            if (minTier && !tierMeetsMinimum(currentTier, minTier)) {
+              return res.status(403).json({ error: "tier_required", currentTier, requiredTier: minTier });
+            }
+          }
+        }
+      }
       const count = await storage.createInventoryCount(countInput);
 
       // Auto-populate count lines for GLOBALLY ACTIVE inventory items associated with THIS STORE
