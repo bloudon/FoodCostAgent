@@ -5660,7 +5660,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const companyId = (req as any).companyId;
           if (companyId) {
             const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, companyId));
-            const currentTier = (company?.subscriptionTier as any) || "free";
+            const currentTier = company?.subscriptionTier ?? "free";
             const minTier = featureMinTier("power_inventory");
             if (minTier && !tierMeetsMinimum(currentTier, minTier)) {
               return res.status(403).json({ error: "tier_required", currentTier, requiredTier: minTier });
