@@ -172,21 +172,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   (async function migrateCompanyTiers() {
     try {
-      const nullTierResult = await db
+      await db
         .update(companiesTable)
         .set({ subscriptionTier: "pro", subscriptionStatus: "active" })
-        .where(isNull(companiesTable.subscriptionTier));
-
-      const nullStatusResult = await db
-        .update(companiesTable)
-        .set({ subscriptionStatus: "active" })
         .where(
-          and(
-            isNotNull(companiesTable.subscriptionTier),
-            isNull(companiesTable.subscriptionStatus)
-          )
+          sql`"subscriptionTier" IS NULL OR "subscriptionStatus" IS NULL`
         );
-      console.log("[TierMigration] Ensured all companies have tier and status set");
+      console.log("[TierMigration] Ensured all companies have tier=pro and status=active");
     } catch (err) {
       console.error("[TierMigration] Error:", err);
     }
@@ -4822,7 +4814,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ RECIPE COMPONENTS ============
-  app.get("/api/recipe-components/:recipeId", requireAuth, async (req, res) => {
+  app.get("/api/recipe-components/:recipeId", requireAuth, requireTier("basic"), async (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     // Verify recipe belongs to user's company
     const recipe = await storage.getRecipe(req.params.recipeId, (req as any).companyId);
@@ -4865,7 +4857,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(enriched);
   });
 
-  app.post("/api/recipe-components", requireAuth, async (req, res) => {
+  app.post("/api/recipe-components", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const data = insertRecipeComponentSchema.parse(req.body);
       
@@ -4904,7 +4896,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/recipe-components/:id", requireAuth, async (req, res) => {
+  app.patch("/api/recipe-components/:id", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const component = await storage.getRecipeComponent(req.params.id);
       if (!component) {
@@ -4953,7 +4945,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/recipe-components/:id", requireAuth, async (req, res) => {
+  app.delete("/api/recipe-components/:id", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const component = await storage.getRecipeComponent(req.params.id);
       if (!component) {
@@ -7940,12 +7932,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ RECIPE VERSIONS ============
-  app.get("/api/recipe-versions/:recipeId", async (req, res) => {
+  app.get("/api/recipe-versions/:recipeId", requireAuth, requireTier("basic"), async (req, res) => {
     const versions = await storage.getRecipeVersions(req.params.recipeId);
     res.json(versions);
   });
 
-  app.post("/api/recipe-versions", async (req, res) => {
+  app.post("/api/recipe-versions", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const data = insertRecipeVersionSchema.parse(req.body);
       const version = await storage.createRecipeVersion(data);
