@@ -5,6 +5,7 @@ import type { User } from "@shared/schema";
 // Extended user type with selectedCompanyId from session
 type AuthUser = User & {
   selectedCompanyId?: string | null;
+  subscriptionTier?: string | null;
 };
 
 type AuthContextType = {

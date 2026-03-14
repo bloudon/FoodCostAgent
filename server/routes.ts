@@ -16,7 +16,7 @@ import { createSession, requireAuth, requireTier, verifyPassword, hashPassword }
 import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
-import { eq, and, inArray, gte, lte, like, not, gt, isNull, sql, asc } from "drizzle-orm";
+import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc } from "drizzle-orm";
 import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
@@ -172,11 +172,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   (async function migrateCompanyTiers() {
     try {
-      const result = await db
+      const nullTierResult = await db
         .update(companiesTable)
         .set({ subscriptionTier: "pro", subscriptionStatus: "active" })
         .where(isNull(companiesTable.subscriptionTier));
-      console.log("[TierMigration] Set null-tier companies to pro/active");
+
+      const nullStatusResult = await db
+        .update(companiesTable)
+        .set({ subscriptionStatus: "active" })
+        .where(
+          and(
+            isNotNull(companiesTable.subscriptionTier),
+            isNull(companiesTable.subscriptionStatus)
+          )
+        );
+      console.log("[TierMigration] Ensured all companies have tier and status set");
     } catch (err) {
       console.error("[TierMigration] Error:", err);
     }
@@ -7946,7 +7956,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ TRANSFER LOGS ============
-  app.get("/api/transfers", async (req, res) => {
+  app.get("/api/transfers", requireAuth, requireTier("pro"), async (req, res) => {
     const productId = req.query.product_id as string | undefined;
     const startDate = req.query.start_date ? new Date(req.query.start_date as string) : undefined;
     const endDate = req.query.end_date ? new Date(req.query.end_date as string) : undefined;
@@ -7954,7 +7964,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(transfers);
   });
 
-  app.post("/api/transfers", async (req, res) => {
+  app.post("/api/transfers", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const data = insertTransferLogSchema.parse(req.body);
       
@@ -8275,7 +8285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/transfer-orders/:id", async (req, res) => {
+  app.patch("/api/transfer-orders/:id", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const order = await storage.getTransferOrder(req.params.id);
       if (!order) {
@@ -8303,7 +8313,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/transfer-orders/:id", async (req, res) => {
+  app.delete("/api/transfer-orders/:id", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const order = await storage.getTransferOrder(req.params.id);
       if (!order) {
@@ -8323,7 +8333,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Transfer Order Lines
-  app.get("/api/transfer-order-lines", async (req, res) => {
+  app.get("/api/transfer-order-lines", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const transferOrderId = req.query.transferOrderId as string;
       if (!transferOrderId) {
@@ -8336,7 +8346,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/transfer-order-lines", async (req, res) => {
+  app.post("/api/transfer-order-lines", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const { insertTransferOrderLineSchema } = await import("@shared/schema");
       const lineData = insertTransferOrderLineSchema.parse(req.body);
@@ -8362,7 +8372,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/transfer-order-lines/:id", async (req, res) => {
+  app.patch("/api/transfer-order-lines/:id", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const line = await storage.updateTransferOrderLine(req.params.id, req.body);
       if (!line) {
@@ -8374,7 +8384,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/transfer-order-lines/:id", async (req, res) => {
+  app.delete("/api/transfer-order-lines/:id", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       await storage.deleteTransferOrderLine(req.params.id);
       res.status(204).send();

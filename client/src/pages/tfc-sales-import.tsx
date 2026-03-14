@@ -50,7 +50,9 @@ interface UsageLineDetail {
   } | null;
 }
 
-export default function TfcSalesImport() {
+import { TierGate } from "@/components/tier-gate";
+
+function TfcSalesImportContent() {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -538,5 +540,13 @@ export default function TfcSalesImport() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function TfcSalesImport() {
+  return (
+    <TierGate feature="pos_import">
+      <TfcSalesImportContent />
+    </TierGate>
   );
 }

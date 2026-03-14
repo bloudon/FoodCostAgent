@@ -16,7 +16,9 @@ import {
 import { formatRecipeName } from "@/lib/utils";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
-export default function RecipeDetail() {
+import { TierGate } from "@/components/tier-gate";
+
+function RecipeDetailContent() {
   const [, params] = useRoute("/recipes/:id");
   const recipeId = params?.id;
 
@@ -256,5 +258,13 @@ export default function RecipeDetail() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function RecipeDetail() {
+  return (
+    <TierGate feature="recipe_costing">
+      <RecipeDetailContent />
+    </TierGate>
   );
 }

@@ -405,7 +405,9 @@ function DraggableSourceItem({
   );
 }
 
-export default function RecipeBuilder() {
+import { TierGate } from "@/components/tier-gate";
+
+function RecipeBuilderContent() {
   const { id } = useParams<{ id?: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -1866,5 +1868,13 @@ export default function RecipeBuilder() {
       </DragOverlay>
       <SetupProgressBanner currentMilestoneId="recipes" hasEntries={(recipes?.length ?? 0) > 0} />
     </DndContext>
+  );
+}
+
+export default function RecipeBuilder() {
+  return (
+    <TierGate feature="recipe_costing">
+      <RecipeBuilderContent />
+    </TierGate>
   );
 }
