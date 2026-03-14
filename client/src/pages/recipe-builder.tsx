@@ -1,3 +1,4 @@
+import { TierGate } from "@/components/tier-gate";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useRef, useEffect } from "react";
 import { useLocation, useParams, Link } from "wouter";
@@ -404,8 +405,6 @@ function DraggableSourceItem({
     </Card>
   );
 }
-
-import { TierGate } from "@/components/tier-gate";
 
 function RecipeBuilderContent() {
   const { id } = useParams<{ id?: string }>();

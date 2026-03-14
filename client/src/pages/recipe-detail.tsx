@@ -1,3 +1,4 @@
+import { TierGate } from "@/components/tier-gate";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,8 +16,6 @@ import {
 } from "@/components/ui/table";
 import { formatRecipeName } from "@/lib/utils";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-
-import { TierGate } from "@/components/tier-gate";
 
 function RecipeDetailContent() {
   const [, params] = useRoute("/recipes/:id");

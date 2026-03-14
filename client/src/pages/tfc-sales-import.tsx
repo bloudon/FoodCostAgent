@@ -1,3 +1,4 @@
+import { TierGate } from "@/components/tier-gate";
 import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
@@ -49,8 +50,6 @@ interface UsageLineDetail {
     avgCostPerUnit: number;
   } | null;
 }
-
-import { TierGate } from "@/components/tier-gate";
 
 function TfcSalesImportContent() {
   const [dragActive, setDragActive] = useState(false);
