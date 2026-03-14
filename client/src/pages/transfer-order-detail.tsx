@@ -21,7 +21,9 @@ interface TransferOrderWithUserNames extends TransferOrder {
   receivedByName?: string | null;
 }
 
-export default function TransferOrderDetail() {
+import { TierGate } from "@/components/tier-gate";
+
+function TransferOrderDetailContent() {
   const { id } = useParams();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -570,5 +572,13 @@ export default function TransferOrderDetail() {
         </Card>
       )}
     </div>
+  );
+}
+
+export default function TransferOrderDetail() {
+  return (
+    <TierGate feature="transfer_orders">
+      <TransferOrderDetailContent />
+    </TierGate>
   );
 }

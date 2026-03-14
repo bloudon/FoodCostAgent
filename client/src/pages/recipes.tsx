@@ -98,7 +98,9 @@ interface MilestonesResponse {
   dismissed: boolean;
 }
 
-export default function Recipes() {
+import { TierGate } from "@/components/tier-gate";
+
+function RecipesContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -857,5 +859,13 @@ export default function Recipes() {
       </Dialog>
       <SetupProgressBanner currentMilestoneId="recipes" hasEntries={(recipes?.length ?? 0) > 0} />
     </div>
+  );
+}
+
+export default function Recipes() {
+  return (
+    <TierGate feature="recipe_costing">
+      <RecipesContent />
+    </TierGate>
   );
 }

@@ -62,7 +62,9 @@ const statusColors: Record<string, string> = {
   "completed": "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
 };
 
-export default function TransferOrders() {
+import { TierGate } from "@/components/tier-gate";
+
+function TransferOrdersContent() {
   const [search, setSearch] = useState("");
   const [selectedStore, setSelectedStore] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
@@ -272,5 +274,13 @@ export default function TransferOrders() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+export default function TransferOrders() {
+  return (
+    <TierGate feature="transfer_orders">
+      <TransferOrdersContent />
+    </TierGate>
   );
 }

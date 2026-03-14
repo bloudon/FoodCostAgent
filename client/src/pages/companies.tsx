@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Company, InsertCompany, insertCompanySchema } from "@shared/schema";
-import { Building2, MapPin, Store, Plus, Settings2, UserCircle, Trash2, AlertTriangle, Users } from "lucide-react";
+import { Building2, MapPin, Store, Plus, Settings2, UserCircle, Trash2, AlertTriangle, Users, CreditCard } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TIER_LABELS, type Tier, TIERS } from "@shared/tier-config";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -108,6 +110,20 @@ export default function Companies() {
         description: error.message,
         variant: "destructive",
       });
+    },
+  });
+
+  const updateTierMutation = useMutation({
+    mutationFn: async ({ companyId, tier }: { companyId: string; tier: string }) => {
+      const response = await apiRequest("PATCH", `/api/admin/companies/${companyId}/subscription`, { tier });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      toast({ title: "Subscription tier updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update tier", description: error.message, variant: "destructive" });
     },
   });
 
@@ -307,7 +323,46 @@ export default function Companies() {
                       <Badge variant={company.status === "active" ? "default" : "secondary"} className="text-xs">
                         {company.status}
                       </Badge>
+                      <TierBadge tier={(company.subscriptionTier as Tier) || "free"} />
                     </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 ml-8 mb-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Tier:</span>
+                      <Select
+                        value={(company.subscriptionTier as Tier) || "free"}
+                        onValueChange={(value) => {
+                          updateTierMutation.mutate({ companyId: company.id, tier: value });
+                        }}
+                      >
+                        <SelectTrigger className="h-7 w-24 text-xs" data-testid={`select-tier-${company.id}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TIERS.map((t) => (
+                            <SelectItem key={t} value={t}>{TIER_LABELS[t]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {(company.subscriptionStatus || company.stripeCustomerId || company.subscriptionCurrentPeriodEnd) && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground cursor-help">
+                            <CreditCard className="h-3 w-3" />
+                            <span>{company.subscriptionStatus || "none"}</span>
+                            {company.subscriptionTerm && <span>({company.subscriptionTerm})</span>}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="text-xs space-y-1">
+                          {company.stripeCustomerId && <div>Stripe: {company.stripeCustomerId}</div>}
+                          {company.subscriptionCurrentPeriodEnd && (
+                            <div>Period ends: {new Date(company.subscriptionCurrentPeriodEnd).toLocaleDateString()}</div>
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                   </div>
                   
                   {company.addressLine1 && (
@@ -434,5 +489,14 @@ export default function Companies() {
         </div>
       )}
     </div>
+  );
+}
+
+function TierBadge({ tier }: { tier: Tier }) {
+  const variant = tier === "pro" ? "destructive" : tier === "basic" ? "default" : "secondary";
+  return (
+    <Badge variant={variant} className="text-xs" data-testid={`badge-tier-${tier}`}>
+      {TIER_LABELS[tier]}
+    </Badge>
   );
 }

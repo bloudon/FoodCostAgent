@@ -12,7 +12,7 @@ import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
-import { createSession, requireAuth, verifyPassword, hashPassword } from "./auth";
+import { createSession, requireAuth, requireTier, verifyPassword, hashPassword } from "./auth";
 import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
@@ -169,6 +169,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Seed on startup (runs once, no-op if already populated)
   seedDefaultBackgroundImages().catch(console.error);
+
+  (async function migrateCompanyTiers() {
+    try {
+      const result = await db
+        .update(companiesTable)
+        .set({ subscriptionTier: "pro", subscriptionStatus: "active" })
+        .where(isNull(companiesTable.subscriptionTier));
+      console.log("[TierMigration] Set null-tier companies to pro/active");
+    } catch (err) {
+      console.error("[TierMigration] Error:", err);
+    }
+  })();
 
   // GET /api/background-images — public
   // Returns active images. If ?companyId= is provided and company has a brand image, returns just that.
@@ -1327,6 +1339,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
+    let subscriptionTier: string | null = null;
+    const effectiveCompanyId = user.role === "global_admin"
+      ? selectedCompanyId
+      : (user.companyId || null);
+    if (effectiveCompanyId) {
+      const company = await storage.getCompany(effectiveCompanyId);
+      subscriptionTier = company?.subscriptionTier || "free";
+    }
+
     res.json({ 
       id: user.id, 
       email: user.email, 
@@ -1337,7 +1358,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ssoProvider: user.ssoProvider,
       ssoId: user.ssoId,
       profileImageUrl: user.profileImageUrl,
-      selectedCompanyId
+      selectedCompanyId,
+      subscriptionTier,
     });
   });
 
@@ -4366,7 +4388,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ RECIPES ============
-  app.get("/api/recipes", requireAuth, async (req, res) => {
+  app.get("/api/recipes", requireAuth, requireTier("basic"), async (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const companyId = (req as any).companyId;
     
@@ -4421,7 +4443,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(recipesWithCosts);
   });
 
-  app.get("/api/recipes/:id", requireAuth, async (req, res) => {
+  app.get("/api/recipes/:id", requireAuth, requireTier("basic"), async (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const recipe = await storage.getRecipe(req.params.id, (req as any).companyId);
     if (!recipe) {
@@ -4463,7 +4485,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  app.post("/api/recipes", requireAuth, async (req, res) => {
+  app.post("/api/recipes", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const data = insertRecipeSchema.parse(req.body);
       const companyId = (req as any).companyId!;
@@ -4478,7 +4500,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/recipes/:id", requireAuth, async (req, res) => {
+  app.patch("/api/recipes/:id", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const recipe = await storage.getRecipe(req.params.id, (req as any).companyId);
       if (!recipe) {
@@ -4510,7 +4532,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Check if recipe can be deleted (no sales history, not used as sub-recipe)
-  app.get("/api/recipes/:id/can-delete", requireAuth, async (req, res) => {
+  app.get("/api/recipes/:id/can-delete", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const companyId = (req as any).companyId!;
       const recipeId = req.params.id;
@@ -4535,7 +4557,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete recipe (only if no sales history and not used as sub-recipe)
-  app.delete("/api/recipes/:id", requireAuth, async (req, res) => {
+  app.delete("/api/recipes/:id", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const companyId = (req as any).companyId!;
       const recipeId = req.params.id;
@@ -4582,7 +4604,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Deactivate recipe (soft delete - for recipes with sales history)
-  app.post("/api/recipes/:id/deactivate", requireAuth, async (req, res) => {
+  app.post("/api/recipes/:id/deactivate", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const companyId = (req as any).companyId!;
       const recipeId = req.params.id;
@@ -4605,7 +4627,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Reactivate recipe
-  app.post("/api/recipes/:id/reactivate", requireAuth, async (req, res) => {
+  app.post("/api/recipes/:id/reactivate", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const companyId = (req as any).companyId!;
       const recipeId = req.params.id;
@@ -4628,7 +4650,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Clone recipe as size variant
-  app.post("/api/recipes/:id/clone", requireAuth, async (req, res) => {
+  app.post("/api/recipes/:id/clone", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const companyId = (req as any).companyId!;
       const sourceRecipeId = req.params.id;
@@ -4752,7 +4774,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/recipes/:id/components", requireAuth, async (req, res) => {
+  app.post("/api/recipes/:id/components", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       // Verify recipe belongs to user's company
       const recipe = await storage.getRecipe(req.params.id, (req as any).companyId);
@@ -4951,7 +4973,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ RECIPE CLEANUP ============
   // Get orphaned recipes (recipes with no menu item link, not used as sub-recipes)
-  app.get("/api/recipes/orphaned", requireAuth, async (req, res) => {
+  app.get("/api/recipes/orphaned", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const companyId = req.companyId!;
       
@@ -5041,7 +5063,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Archive (soft-delete) an orphaned recipe
-  app.post("/api/recipes/:id/archive", requireAuth, async (req, res) => {
+  app.post("/api/recipes/:id/archive", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const { id } = req.params;
       const companyId = req.companyId!;
@@ -5096,7 +5118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Permanently delete an archived/orphaned recipe
-  app.delete("/api/recipes/:id/permanent", requireAuth, async (req, res) => {
+  app.delete("/api/recipes/:id/permanent", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const { id } = req.params;
       const companyId = req.companyId!;
@@ -8140,7 +8162,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ TRANSFER ORDERS ============
-  app.get("/api/transfer-orders", requireAuth, async (req, res) => {
+  app.get("/api/transfer-orders", requireAuth, requireTier("pro"), async (req, res) => {
     const orders = await storage.getTransferOrders(req.companyId!);
     const stores = await storage.getCompanyStores(req.companyId!);
     const inventoryItems = await storage.getInventoryItems(undefined, undefined, req.companyId!);
@@ -8189,7 +8211,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(ordersWithDetails);
   });
 
-  app.get("/api/transfer-orders/:id", requireAuth, async (req, res) => {
+  app.get("/api/transfer-orders/:id", requireAuth, requireTier("pro"), async (req, res) => {
     const order = await storage.getTransferOrder(req.params.id);
     if (!order) {
       return res.status(404).json({ error: "Transfer order not found" });
@@ -8237,7 +8259,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  app.post("/api/transfer-orders", requireAuth, async (req, res) => {
+  app.post("/api/transfer-orders", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const { insertTransferOrderSchema } = await import("@shared/schema");
       const orderData = insertTransferOrderSchema.parse(req.body);
@@ -8362,7 +8384,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Execute transfer (ship from source store)
-  app.post("/api/transfer-orders/:id/execute", requireAuth, async (req, res) => {
+  app.post("/api/transfer-orders/:id/execute", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const order = await storage.getTransferOrder(req.params.id);
       if (!order) {
@@ -8478,7 +8500,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Receive transfer (receive at destination store)
-  app.post("/api/transfer-orders/:id/receive", requireAuth, async (req, res) => {
+  app.post("/api/transfer-orders/:id/receive", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const order = await storage.getTransferOrder(req.params.id);
       if (!order) {
@@ -8905,6 +8927,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/admin/companies/:id/subscription", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.user!.id);
+      if (user?.role !== "global_admin") {
+        return res.status(403).json({ error: "Only global admins can update subscriptions" });
+      }
+
+      const { tier, status } = req.body;
+      const validTiers = ["free", "basic", "pro"];
+      const validStatuses = ["active", "past_due", "canceled", "trialing", "incomplete"];
+
+      if (tier && !validTiers.includes(tier)) {
+        return res.status(400).json({ error: `Invalid tier. Must be one of: ${validTiers.join(", ")}` });
+      }
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+      }
+
+      const updates: Record<string, any> = {};
+      if (tier) updates.subscriptionTier = tier;
+      if (status) updates.subscriptionStatus = status;
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: "At least one of tier or status is required" });
+      }
+
+      const updated = await storage.updateCompany(req.params.id, updates);
+      if (!updated) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating subscription:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Update company logo
   app.put("/api/companies/:id/logo", requireAuth, async (req, res) => {
     try {
@@ -9230,7 +9290,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   });
 
-  app.post("/api/tfc/sales/upload", requireAuth, upload.single('file'), async (req, res) => {
+  app.post("/api/tfc/sales/upload", requireAuth, requireTier("pro"), upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -9371,7 +9431,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get theoretical usage runs (batch history)
-  app.get("/api/tfc/usage-runs", requireAuth, async (req, res) => {
+  app.get("/api/tfc/usage-runs", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const storeId = req.query.store_id as string | undefined;
@@ -9398,7 +9458,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get detailed theoretical usage for a specific run
-  app.get("/api/tfc/usage-runs/:runId/details", requireAuth, async (req, res) => {
+  app.get("/api/tfc/usage-runs/:runId/details", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { runId } = req.params;
@@ -9481,7 +9541,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get variance summaries for all count periods
-  app.get("/api/tfc/variance/summaries", requireAuth, async (req, res) => {
+  app.get("/api/tfc/variance/summaries", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { storeId } = req.query;
@@ -9641,7 +9701,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get variance report between two inventory counts
-  app.get("/api/tfc/variance", requireAuth, async (req, res) => {
+  app.get("/api/tfc/variance", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { previousCountId, currentCountId, storeId, categoryId, search } = req.query;
@@ -9948,7 +10008,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get theoretical usage detail for a specific ingredient
-  app.get("/api/tfc/variance/theoretical-detail", requireAuth, async (req, res) => {
+  app.get("/api/tfc/variance/theoretical-detail", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { previousCountId, currentCountId, storeId, inventoryItemId } = req.query;

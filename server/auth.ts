@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { cache, CacheKeys, CacheTTL } from "./cache";
 import type { Request, Response, NextFunction } from "express";
 import type { AuthSession, User } from "@shared/schema";
+import { type Tier, tierMeetsMinimum, TIER_LABELS } from "@shared/tier-config";
 
 const TOKEN_LENGTH = 32;
 const SESSION_DURATION_DAYS = 30;
@@ -296,4 +297,43 @@ export async function requireStoreAccess(req: Request, res: Response, next: Next
   }
   
   return res.status(403).json({ error: "Store access denied" });
+}
+
+export function requireTier(minTier: Tier) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as any).user;
+    if (!user) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    if (user.role === "global_admin") {
+      return next();
+    }
+
+    const companyId = (req as any).companyId || user.companyId;
+    if (!companyId) {
+      return res.status(403).json({
+        error: "tier_required",
+        requiredTier: minTier,
+        message: `This feature requires a ${TIER_LABELS[minTier]} plan or higher.`,
+      });
+    }
+
+    const company = await storage.getCompany(companyId);
+    if (!company) {
+      return res.status(404).json({ error: "Company not found" });
+    }
+
+    const currentTier = (company.subscriptionTier as Tier) || "free";
+    if (!tierMeetsMinimum(currentTier, minTier)) {
+      return res.status(403).json({
+        error: "tier_required",
+        currentTier,
+        requiredTier: minTier,
+        message: `This feature requires a ${TIER_LABELS[minTier]} plan or higher. You are currently on the ${TIER_LABELS[currentTier]} plan.`,
+      });
+    }
+
+    next();
+  };
 }

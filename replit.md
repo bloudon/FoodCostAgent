@@ -56,6 +56,16 @@ This project is an inventory management and recipe costing system for food servi
 - **Logo**: `client/public/website-logo.png` (FnB Cost Pro color logo).
 - **Easy migration**: Marketing pages are self-contained in `/pages/website/` and `/components/website/` — straightforward to extract and move to HubSpot or any CMS later.
 
+# Subscription Tier System
+
+- **Three-tier model**: Free < Basic < Pro. Stored as `subscriptionTier` on `companies` table (free, basic, pro).
+- **Tier config**: `shared/tier-config.ts` defines tier hierarchy, feature-to-tier mapping, and helper functions (`tierMeetsMinimum`, `hasFeature`, `featureMinTier`).
+- **Backend gating**: `requireTier(minTier)` middleware in `server/auth.ts` — returns 403 with `error: "tier_required"` for insufficient tiers. Global admins bypass all tier checks.
+- **Frontend gating**: `useTier()` hook (`client/src/hooks/use-tier.ts`) reads tier from `/api/auth/me` response. `TierGate` component (`client/src/components/tier-gate.tsx`) wraps gated content and shows upgrade prompt for insufficient tiers.
+- **Admin controls**: `PATCH /api/admin/companies/:id/subscription` (global_admin only) accepts `{ tier, status }`. Companies page shows tier badge + inline tier dropdown per company.
+- **Feature tiers**: recipe_costing = Basic+; tfc_variance, transfer_orders, pos_import, power_inventory, cross_shop_vendor_pricing, smart_dashboard, unlimited_locations = Pro.
+- **Startup migration**: On boot, sets all companies with null `subscriptionTier` to `pro`/`active`.
+
 # System Architecture
 
 - **Frontend**: Mobile-first React 18 SPA with TypeScript, Vite, `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.

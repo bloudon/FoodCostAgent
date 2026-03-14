@@ -93,7 +93,9 @@ type VarianceResponse = {
   };
 };
 
-export default function TfcVariance() {
+import { TierGate } from "@/components/tier-gate";
+
+function TfcVarianceContent() {
   const { getEffectiveCompanyId } = useAuth();
   const { selectedStoreId, stores } = useStoreContext();
   const companyId = getEffectiveCompanyId();
@@ -620,5 +622,13 @@ export default function TfcVariance() {
         </>
       )}
     </div>
+  );
+}
+
+export default function TfcVariance() {
+  return (
+    <TierGate feature="tfc_variance">
+      <TfcVarianceContent />
+    </TierGate>
   );
 }
