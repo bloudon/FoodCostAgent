@@ -1,0 +1,22 @@
+administrator@vps-BLOUD-Soft:~$ sudo tail -30 /var/log/nginx/access.log
+administrator@vps-BLOUD-Soft:~$ sudo tail -20 /var/log/nginx/error.log
+2026/03/14 18:21:33 [warn] 1355894#1355894: "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem"
+2026/03/14 18:21:33 [warn] 1355894#1355894: "ssl_stapling" ignored, issuer certificate not found for certificate "/etc/nginx/ssl-certificates/fhd.com.crt"
+2026/03/14 18:21:33 [warn] 1355894#1355894: "ssl_stapling" ignored, issuer certificate not found for certificate "/etc/nginx/ssl-certificates/fhd.com.crt"
+2026/03/14 18:21:33 [warn] 1355894#1355894: "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/app.fnbcostpro.com/fullchain.pem"
+2026/03/14 18:21:33 [warn] 1355894#1355894: "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/pflow.permitsmanager.com/fullchain.pem"
+2026/03/14 18:21:33 [warn] 1355894#1355894: "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/app.fnbcostpro.com/fullchain.pem"
+2026/03/14 18:21:33 [warn] 1355894#1355894: "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/fnbcostpro.com/fullchain.pem"
+2026/03/14 18:21:33 [warn] 1355894#1355894: conflicting server name "app.fnbcostpro.com" on 0.0.0.0:443, ignored
+2026/03/14 18:21:33 [warn] 1355894#1355894: conflicting server name "app.fnbcostpro.com" on 0.0.0.0:80, ignored
+2026/03/14 18:21:33 [warn] 1355899#1355899: "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem"
+2026/03/14 18:21:33 [warn] 1355899#1355899: "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem"
+2026/03/14 18:21:33 [warn] 1355899#1355899: "ssl_stapling" ignored, issuer certificate not found for certificate "/etc/nginx/ssl-certificates/fhd.com.crt"
+2026/03/14 18:21:33 [warn] 1355899#1355899: "ssl_stapling" ignored, issuer certificate not found for certificate "/etc/nginx/ssl-certificates/fhd.com.crt"
+2026/03/14 18:21:33 [warn] 1355899#1355899: "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/app.fnbcostpro.com/fullchain.pem"
+2026/03/14 18:21:33 [warn] 1355899#1355899: "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/pflow.permitsmanager.com/fullchain.pem"
+2026/03/14 18:21:33 [warn] 1355899#1355899: "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/app.fnbcostpro.com/fullchain.pem"
+2026/03/14 18:21:33 [warn] 1355899#1355899: "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/fnbcostpro.com/fullchain.pem"
+2026/03/14 18:21:33 [warn] 1355899#1355899: conflicting server name "app.fnbcostpro.com" on 0.0.0.0:443, ignored
+2026/03/14 18:21:33 [warn] 1355899#1355899: conflicting server name "app.fnbcostpro.com" on 0.0.0.0:80, ignored
+2026/03/14 18:21:33 [notice] 1355899#1355899: signal process started
