@@ -172,28 +172,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   (async function migrateCompanyTiers() {
     try {
-      const nullTierResult = await db
-        .update(companiesTable)
-        .set({ subscriptionTier: "pro", subscriptionStatus: "active" })
-        .where(isNull(companiesTable.subscriptionTier))
-        .returning({ id: companiesTable.id });
+      const nullTierCompanies = await db
+        .select({ id: companiesTable.id })
+        .from(companiesTable)
+        .where(isNull(companiesTable.subscriptionTier));
 
-      const nullStatusResult = await db
-        .update(companiesTable)
-        .set({ subscriptionStatus: "active" })
-        .where(
-          and(
-            isNotNull(companiesTable.subscriptionTier),
-            isNull(companiesTable.subscriptionStatus)
-          )
-        )
-        .returning({ id: companiesTable.id });
-
-      const total = nullTierResult.length + nullStatusResult.length;
-      if (total > 0) {
-        console.log(`[TierMigration] Backfilled ${total} companies to pro/active`);
+      if (nullTierCompanies.length > 0) {
+        const result = await db
+          .update(companiesTable)
+          .set({ subscriptionTier: "pro", subscriptionStatus: "active" })
+          .returning({ id: companiesTable.id });
+        console.log(`[TierMigration] First deploy: set all ${result.length} companies to pro/active`);
       } else {
-        console.log("[TierMigration] All companies already have tier and status set");
+        console.log("[TierMigration] All companies already have tier set");
       }
     } catch (err) {
       console.error("[TierMigration] Error:", err);
