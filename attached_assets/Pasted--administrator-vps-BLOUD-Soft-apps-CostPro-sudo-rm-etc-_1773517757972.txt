@@ -1,0 +1,48 @@
+}administrator@vps-BLOUD-Soft:~/apps/CostPro$sudo rm /etc/nginx/sites-enabled/fnbcostpro.conff
+rm: cannot remove '/etc/nginx/sites-enabled/fnbcostpro.conf': No such file or directory
+administrator@vps-BLOUD-Soft:~/apps/CostPro$ sudo nano /etc/nginx/sites-available/permitflow
+administrator@vps-BLOUD-Soft:~/apps/CostPro$ sudo nginx -t && sudo systemctl reload nginx
+[sudo] password for administrator:
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, issuer certificate not found for certificate "/etc/nginx/ssl-certificates/fhd.com.crt"
+nginx: [warn] "ssl_stapling" ignored, issuer certificate not found for certificate "/etc/nginx/ssl-certificates/fhd.com.crt"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/pflow.permitsmanager.com/fullchain.pem"
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+administrator@vps-BLOUD-Soft:~/apps/CostPro$ sudo nginx -T 2>/dev/null | grep -B2 -A20 "server_name fnbcostpro.com"
+administrator@vps-BLOUD-Soft:~/apps/CostPro$ curl -sI https://fnbcostpro.com/
+administrator@vps-BLOUD-Soft:~/apps/CostPro$ sudo ls /etc/nginx/sites-enabled/
+default.conf.disabled  erecording-fl.conf  fhd.com.conf  fnbcostpro.com  permitflow.conf
+administrator@vps-BLOUD-Soft:~/apps/CostPro$ sudo cat /etc/nginx/sites-available/fnbcostpro.com
+server {
+    server_name fnbcostpro.com;
+
+    location / {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+    }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/fnbcostpro.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/fnbcostpro.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+}
+
+server {
+    if ($host = fnbcostpro.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+    listen 80;
+    listen [::]:80;
+    server_name fnbcostpro.com;
+    return 404; # managed by Certbot
+}
+administrator@vps-BLOUD-Soft:~/apps/CostPro$
