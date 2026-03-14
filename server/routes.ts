@@ -174,11 +174,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       await db
         .update(companiesTable)
-        .set({ subscriptionTier: "pro", subscriptionStatus: "active" })
-        .where(
-          sql`"subscriptionTier" IS NULL OR "subscriptionStatus" IS NULL`
-        );
-      console.log("[TierMigration] Ensured all companies have tier=pro and status=active");
+        .set({ subscriptionTier: "pro", subscriptionStatus: "active" });
+      console.log("[TierMigration] Set all companies to tier=pro and status=active");
     } catch (err) {
       console.error("[TierMigration] Error:", err);
     }
