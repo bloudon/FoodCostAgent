@@ -172,10 +172,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   (async function migrateCompanyTiers() {
     try {
-      await db
-        .update(companiesTable)
-        .set({ subscriptionTier: "pro", subscriptionStatus: "active" });
-      console.log("[TierMigration] Set all companies to tier=pro and status=active");
+      const [nullTierResult] = await db.execute(
+        sql`UPDATE companies SET "subscriptionTier" = 'pro', "subscriptionStatus" = 'active' WHERE "subscriptionTier" IS NULL RETURNING id`
+      );
+      const [nullStatusResult] = await db.execute(
+        sql`UPDATE companies SET "subscriptionStatus" = 'active' WHERE "subscriptionStatus" IS NULL AND "subscriptionTier" IS NOT NULL RETURNING id`
+      );
+      console.log("[TierMigration] Backfilled null-tier/null-status companies to pro/active");
     } catch (err) {
       console.error("[TierMigration] Error:", err);
     }
