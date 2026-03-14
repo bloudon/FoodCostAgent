@@ -172,23 +172,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   (async function migrateCompanyTiers() {
     try {
-      const nullTierResult = await db
-        .update(companiesTable)
-        .set({ subscriptionTier: "pro", subscriptionStatus: "active" })
-        .where(isNull(companiesTable.subscriptionTier))
-        .returning({ id: companiesTable.id });
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
 
-      const nullStatusResult = await db
-        .update(companiesTable)
-        .set({ subscriptionStatus: "active" })
-        .where(isNull(companiesTable.subscriptionStatus))
-        .returning({ id: companiesTable.id });
-
-      const total = nullTierResult.length + nullStatusResult.length;
-      if (total > 0) {
-        console.log(`[TierMigration] Backfilled ${total} companies (${nullTierResult.length} null-tier, ${nullStatusResult.length} null-status)`);
+      const [existing] = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'tier_system_init'`
+      );
+      if (!existing) {
+        const result = await db
+          .update(companiesTable)
+          .set({ subscriptionTier: "pro", subscriptionStatus: "active" })
+          .returning({ id: companiesTable.id });
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('tier_system_init')`
+        );
+        console.log(`[TierMigration] First deploy: set all ${result.length} companies to pro/active`);
       } else {
-        console.log("[TierMigration] All companies already have tier and status set");
+        console.log("[TierMigration] Already applied (tier_system_init)");
       }
     } catch (err) {
       console.error("[TierMigration] Error:", err);
