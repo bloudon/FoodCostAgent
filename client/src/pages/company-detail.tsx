@@ -919,7 +919,7 @@ function BrandImageCard({ companyId, brandImagePath }: { companyId: string; bran
     mutationFn: async (objectPath: string) =>
       apiRequest("PUT", `/api/companies/${companyId}/brand-image`, { imageUrl: objectPath }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${companyId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/background-images"] });
       toast({ title: "Brand background updated" });
     },
@@ -929,7 +929,7 @@ function BrandImageCard({ companyId, brandImagePath }: { companyId: string; bran
   const clearMutation = useMutation({
     mutationFn: async () => apiRequest("DELETE", `/api/companies/${companyId}/brand-image`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${companyId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/background-images"] });
       toast({ title: "Brand background cleared" });
     },
