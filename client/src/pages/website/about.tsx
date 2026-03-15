@@ -107,7 +107,7 @@ export default function WebsiteAbout() {
             Ready to See What FnB Cost Pro Can Do?
           </h2>
           <p className="text-green-200 mb-8">
-            Start your 14-day free trial. Cancel anytime before it ends and you owe nothing.
+            Start your 30-day free trial. Cancel anytime before it ends and you owe nothing.
           </p>
           <CTAButton href={appLink("/signup")} large>
             Get Started Free

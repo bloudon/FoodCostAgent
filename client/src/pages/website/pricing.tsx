@@ -139,7 +139,7 @@ export default function WebsitePricing() {
       badge: null,
       cta: "Start Free Trial",
       ctaVariant: "outline" as const,
-      note: "14-day free trial",
+      note: "30-day free trial",
     },
     {
       key: "pro",
@@ -152,7 +152,7 @@ export default function WebsitePricing() {
       badge: "Most Popular",
       cta: "Start Free Trial",
       ctaVariant: "default" as const,
-      note: "14-day free trial",
+      note: "30-day free trial",
     },
   ];
 
@@ -291,7 +291,7 @@ export default function WebsitePricing() {
           )}
 
           <p className="text-center text-sm text-gray-400 mt-8">
-            Paid plans include a 14-day free trial. Cancel anytime.
+            Paid plans include a 30-day free trial. Cancel anytime.
           </p>
         </div>
       </section>
@@ -314,7 +314,7 @@ export default function WebsitePricing() {
               },
               {
                 q: "What's included in the free trial for paid plans?",
-                a: "Both Basic and Pro come with a 14-day free trial with full access to all plan features. You won't be charged until the trial period ends.",
+                a: "Both Basic and Pro come with a 30-day free trial with full access to all plan features. You won't be charged until the trial period ends.",
               },
               {
                 q: "When should I upgrade from Free to Basic?",

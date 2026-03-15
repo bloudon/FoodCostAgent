@@ -4,6 +4,10 @@ import { db } from "./db";
 import { companies } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
+interface SubscriptionEventData extends Stripe.Event.Data {
+  previous_attributes?: Partial<Stripe.Subscription>;
+}
+
 let _stripe: Stripe | null = null;
 function getStripe(): Stripe {
   if (!_stripe) {
@@ -14,7 +18,7 @@ function getStripe(): Stripe {
   return _stripe;
 }
 
-const TRIAL_DAYS = 14;
+const TRIAL_DAYS = 30;
 
 const LOOKUP_KEY: Record<string, string> = {
   "basic:monthly": "fnb_basic_monthly",
@@ -202,19 +206,67 @@ export async function stripeWebhook(req: Request, res: Response) {
         break;
       }
 
+      case "customer.subscription.updated": {
+        const subscription = event.data.object as Stripe.Subscription;
+        const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
+        if (!customerId) break;
+
+        const eventData = event.data as SubscriptionEventData;
+        const wasTrialing = eventData.previous_attributes?.status === "trialing";
+        const nowTerminalOrUnpaid =
+          subscription.status === "canceled" ||
+          subscription.status === "incomplete_expired" ||
+          subscription.status === "past_due" ||
+          subscription.status === "unpaid";
+
+        if (wasTrialing && nowTerminalOrUnpaid) {
+          await db.update(companies)
+            .set({
+              subscriptionStatus: "active",
+              subscriptionTier: "free",
+              stripeSubscriptionId: null,
+            })
+            .where(eq(companies.stripeCustomerId, customerId));
+
+          console.log(`[Billing] customer.subscription.updated: trial expired, reverting to free tier customer=${customerId}`);
+        }
+        break;
+      }
+
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
         if (!customerId) break;
 
-        await db.update(companies)
-          .set({
-            subscriptionStatus: "canceled",
-            stripeSubscriptionId: null,
-          })
-          .where(eq(companies.stripeCustomerId, customerId));
+        const trialEnd = subscription.trial_end;
+        const canceledAt = subscription.canceled_at;
+        const deletedEventData = event.data as SubscriptionEventData;
+        const previousStatus = deletedEventData.previous_attributes?.status;
+        const endedDuringTrial =
+          previousStatus === "trialing" ||
+          subscription.status === "trialing" ||
+          (trialEnd && canceledAt && canceledAt <= trialEnd);
 
-        console.log(`[Billing] customer.subscription.deleted: customer=${customerId}`);
+        if (endedDuringTrial) {
+          await db.update(companies)
+            .set({
+              subscriptionStatus: "active",
+              subscriptionTier: "free",
+              stripeSubscriptionId: null,
+            })
+            .where(eq(companies.stripeCustomerId, customerId));
+
+          console.log(`[Billing] customer.subscription.deleted: trial expired without payment, reverting to free tier customer=${customerId}`);
+        } else {
+          await db.update(companies)
+            .set({
+              subscriptionStatus: "canceled",
+              stripeSubscriptionId: null,
+            })
+            .where(eq(companies.stripeCustomerId, customerId));
+
+          console.log(`[Billing] customer.subscription.deleted: customer=${customerId}`);
+        }
         break;
       }
 

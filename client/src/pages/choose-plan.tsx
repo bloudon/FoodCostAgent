@@ -88,7 +88,7 @@ function getPriceForTierTerm(plans: Plan[], tier: Tier, term: Term): Plan | unde
   return plans.find((p) => p.lookupKey === key);
 }
 
-const TRIAL_DAYS = 14;
+const TRIAL_DAYS = 30;
 
 export default function ChoosePlan() {
   const [, navigate] = useLocation();

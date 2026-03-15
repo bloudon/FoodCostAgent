@@ -133,7 +133,7 @@ export default function WebsiteHome() {
               </Button>
             </Link>
           </div>
-          <p className="mt-6 text-sm text-gray-400">Free plan available. Paid plans include a 14-day free trial.</p>
+          <p className="mt-6 text-sm text-gray-400">Free plan available. Paid plans include a 30-day free trial.</p>
         </div>
       </section>
 
@@ -254,7 +254,7 @@ export default function WebsiteHome() {
             </Link>
           </div>
           <ul className="mt-8 flex flex-wrap justify-center gap-x-6 gap-y-2">
-            {["Free plan available", "Paid plans: 14-day free trial", "Full access from day one", "Guided setup included"].map((item) => (
+            {["Free plan available", "Paid plans: 30-day free trial", "Full access from day one", "Guided setup included"].map((item) => (
               <li key={item} className="flex items-center gap-1.5 text-sm text-gray-500">
                 <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
                 {item}
