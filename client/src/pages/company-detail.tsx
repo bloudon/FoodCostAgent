@@ -11,8 +11,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ChevronLeft, Building2, Store, Plus, Edit, Save, X, Pencil, ImageIcon, Trash2, Lock } from "lucide-react";
+import { ChevronLeft, Building2, Store, Plus, Edit, Save, X, Pencil, ImageIcon, Trash2 } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
+import { TierGate } from "@/components/tier-gate";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
@@ -490,7 +491,7 @@ export default function CompanyDetail() {
           </CardContent>
         </Card>
 
-        <BrandImageCard companyId={id!} brandImagePath={company.brandImagePath ?? null} companyTier={(company.subscriptionTier as any) || "free"} />
+        <BrandImageCard companyId={id!} brandImagePath={company.brandImagePath ?? null} />
 
         <Card>
           <CardHeader>
@@ -911,11 +912,8 @@ export default function CompanyDetail() {
   );
 }
 
-function BrandImageCard({ companyId, brandImagePath, companyTier }: { companyId: string; brandImagePath: string | null; companyTier: string }) {
+function BrandImageCard({ companyId, brandImagePath }: { companyId: string; brandImagePath: string | null }) {
   const { toast } = useToast();
-  const { user: authUser } = useAuth();
-  const isAdmin = authUser?.role === "global_admin";
-  const isFree = companyTier === "free";
 
   const setMutation = useMutation({
     mutationFn: async (objectPath: string) =>
@@ -938,8 +936,8 @@ function BrandImageCard({ companyId, brandImagePath, companyTier }: { companyId:
     onError: () => toast({ title: "Failed to clear brand background", variant: "destructive" }),
   });
 
-  if (isFree && !isAdmin) {
-    return (
+  return (
+    <TierGate feature="brand_background" fallback={
       <Card>
         <CardHeader>
           <CardTitle>Brand Background Image</CardTitle>
@@ -949,72 +947,70 @@ function BrandImageCard({ companyId, brandImagePath, companyTier }: { companyId:
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3 p-4 rounded-md bg-muted/50 text-muted-foreground text-sm">
-            <Lock className="h-5 w-5 shrink-0" />
+            <ImageIcon className="h-5 w-5 shrink-0" />
             <span>Custom brand backgrounds are available on the Basic plan and above. Contact your administrator to upgrade.</span>
           </div>
         </CardContent>
       </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div>
-            <CardTitle>Brand Background Image</CardTitle>
-            <CardDescription>
-              Upload a custom background image that replaces the global carousel for this company's login and signup screens.
-            </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <ObjectUploader
-              buttonText="Upload Brand Image"
-              buttonVariant="outline"
-              dataTestId="button-upload-brand-image"
-              visibility="public"
-              onUploadComplete={(objectPath) => setMutation.mutate(objectPath)}
-            />
-            {brandImagePath && (
-              <Button
-                variant="ghost"
-                onClick={() => clearMutation.mutate()}
-                disabled={clearMutation.isPending}
-                data-testid="button-clear-brand-image"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Clear
-              </Button>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      {brandImagePath && (
-        <CardContent>
-          <div className="relative aspect-video max-w-md overflow-hidden rounded-md bg-muted">
-            <img
-              src={`/objects/${brandImagePath}`}
-              alt="Brand background"
-              className="w-full h-full object-cover"
-              data-testid="img-brand-background"
-            />
-            <div className="absolute bottom-2 left-2">
-              <Badge variant="secondary" className="text-xs">
-                <ImageIcon className="h-3 w-3 mr-1" />
-                Active brand image
-              </Badge>
+    }>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <CardTitle>Brand Background Image</CardTitle>
+              <CardDescription>
+                Upload a custom background image that replaces the global carousel for this company's login and signup screens.
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <ObjectUploader
+                buttonText="Upload Brand Image"
+                buttonVariant="outline"
+                dataTestId="button-upload-brand-image"
+                visibility="public"
+                onUploadComplete={(objectPath) => setMutation.mutate(objectPath)}
+              />
+              {brandImagePath && (
+                <Button
+                  variant="ghost"
+                  onClick={() => clearMutation.mutate()}
+                  disabled={clearMutation.isPending}
+                  data-testid="button-clear-brand-image"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Clear
+                </Button>
+              )}
             </div>
           </div>
-        </CardContent>
-      )}
-      {!brandImagePath && (
-        <CardContent>
-          <div className="flex items-center gap-3 p-4 rounded-md bg-muted/50 text-muted-foreground text-sm">
-            <ImageIcon className="h-5 w-5 shrink-0" />
-            <span>No brand image set. The global carousel will be shown instead.</span>
-          </div>
-        </CardContent>
-      )}
-    </Card>
+        </CardHeader>
+        {brandImagePath && (
+          <CardContent>
+            <div className="relative aspect-video max-w-md overflow-hidden rounded-md bg-muted">
+              <img
+                src={`/objects/${brandImagePath}`}
+                alt="Brand background"
+                className="w-full h-full object-cover"
+                data-testid="img-brand-background"
+              />
+              <div className="absolute bottom-2 left-2">
+                <Badge variant="secondary" className="text-xs">
+                  <ImageIcon className="h-3 w-3 mr-1" />
+                  Active brand image
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
+        )}
+        {!brandImagePath && (
+          <CardContent>
+            <div className="flex items-center gap-3 p-4 rounded-md bg-muted/50 text-muted-foreground text-sm">
+              <ImageIcon className="h-5 w-5 shrink-0" />
+              <span>No brand image set. The global carousel will be shown instead.</span>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+    </TierGate>
   );
 }
