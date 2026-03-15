@@ -9,8 +9,11 @@ import { ObjectUploader } from "@/components/ObjectUploader";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Eye, EyeOff, Trash2, Plus, ArrowUp, ArrowDown, Link, Upload, Loader2, ImageIcon
+  Eye, EyeOff, Trash2, Plus, ArrowUp, ArrowDown, Link, Upload, Loader2, ImageIcon, Star
 } from "lucide-react";
+import {
+  Tooltip, TooltipContent, TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -23,6 +26,7 @@ interface BgImage {
   label: string | null;
   sortOrder: number;
   isActive: number;
+  isFreeBackground: number;
   createdAt: string;
 }
 
@@ -95,6 +99,17 @@ export default function AdminBackgrounds() {
     mutationFn: async ({ id, label }: { id: string; label: string }) =>
       apiRequest("PATCH", `/api/admin/background-images/${id}`, { label }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/background-images"] }),
+  });
+
+  const freeBackgroundMutation = useMutation({
+    mutationFn: async ({ id, isFreeBackground }: { id: string; isFreeBackground: number }) =>
+      apiRequest("PATCH", `/api/admin/background-images/${id}/free-background`, { isFreeBackground }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/background-images"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/background-images"] });
+      toast({ title: "Free tier background updated" });
+    },
+    onError: () => toast({ title: "Failed to update free tier background", variant: "destructive" }),
   });
 
   if (!user || user.role !== "global_admin") {
@@ -222,6 +237,12 @@ export default function AdminBackgrounds() {
                   loading="lazy"
                 />
                 <div className="absolute top-2 right-2 flex gap-1">
+                  {img.isFreeBackground === 1 && (
+                    <Badge variant="destructive" className="text-xs">
+                      <Star className="h-3 w-3 mr-1" />
+                      Free bg
+                    </Badge>
+                  )}
                   <Badge variant={img.isActive ? "default" : "secondary"} className="text-xs">
                     {img.isActive ? "Active" : "Hidden"}
                   </Badge>
@@ -269,6 +290,26 @@ export default function AdminBackgrounds() {
                     </Button>
                   </div>
                   <div className="flex gap-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className={`toggle-elevate ${img.isFreeBackground === 1 ? "toggle-elevated" : ""}`}
+                          onClick={() => freeBackgroundMutation.mutate({
+                            id: img.id,
+                            isFreeBackground: img.isFreeBackground === 1 ? 0 : 1,
+                          })}
+                          disabled={freeBackgroundMutation.isPending}
+                          data-testid={`button-free-bg-${img.id}`}
+                        >
+                          <Star className={`h-4 w-4 ${img.isFreeBackground === 1 ? "fill-current text-orange-500" : ""}`} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {img.isFreeBackground === 1 ? "Remove as free tier background" : "Set as background shown to free-tier accounts"}
+                      </TooltipContent>
+                    </Tooltip>
                     <Button
                       size="icon"
                       variant="ghost"
@@ -307,7 +348,8 @@ export default function AdminBackgrounds() {
           <p className="text-sm text-muted-foreground">
             Images are shown in the carousel in the order listed above. Use the up/down arrows to rearrange. 
             Hidden images are excluded from the carousel but kept for easy re-enabling. 
-            Individual companies can override the carousel with a single brand background image set from their company profile.
+            Paid-tier companies can override the carousel with a single brand background image set from their company profile. 
+            Use the star icon to designate one image as the free-tier background -- free accounts will see only that image instead of the full carousel.
           </p>
         </CardContent>
       </Card>

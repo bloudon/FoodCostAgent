@@ -1249,6 +1249,7 @@ export const backgroundImages = pgTable("background_images", {
   label: text("label"),                 // Descriptive label for admin UI
   sortOrder: integer("sort_order").notNull().default(0),
   isActive: integer("is_active").notNull().default(1), // 1 = active, 0 = inactive
+  isFreeBackground: integer("is_free_background").notNull().default(0), // 1 = designated free-tier background
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -1,6 +1,6 @@
 # Overview
 
-This project is an inventory management and recipe costing system for food service businesses (FNB Cost Pro). Its core purpose is to enhance profitability and operational efficiency by providing precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and detailed variance reporting. The system aims to minimize waste, optimize profit margins, offer real-time inventory estimates, streamline vendor interactions, and accurately control food costs, thereby supporting business growth and informed decision-making.
+FNB Cost Pro is an inventory management and recipe costing system designed for food service businesses. Its primary goal is to boost profitability and operational efficiency through precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and detailed variance reporting. The system aims to minimize waste, optimize profit margins, provide real-time inventory estimates, streamline vendor interactions, and accurately control food costs, thereby supporting business growth and informed decision-making.
 
 # User Preferences
 
@@ -31,41 +31,6 @@ This project is an inventory management and recipe costing system for food servi
 - Setup Progress Banner: `SetupProgressBanner` component (`client/src/components/setup-progress-banner.tsx`) is a fixed bottom bar shown on milestone-related pages (categories, vendors, inventory-items, recipes, menu-items). Shows "Step X of Y" while working, then "Done! → Next: ..." with a Continue button after completing the current milestone. Skip button on the bottom right (no Dashboard button). Top-right Skip buttons removed from milestone pages — only Continue remains at top right. Pages include `pb-16` for content clearance.
 - Header Navigation: Compact header with Logo (links to dashboard) | Store Selector | spacer | Hamburger menu (main nav dropdown) | Gear icon (settings dropdown with Locations submenu) | Avatar circle (account dropdown with theme toggle and logout). No separate Home/Dashboard icon in header. Mobile uses Sheet slide-out for main nav.
 
-# UI Layout Requirements
-
-## Vendors Page Layout (LOCKED - DO NOT CHANGE)
-- **Format**: Table/grid layout with ONE ROW per vendor (NOT cards)
-- **Search**: Search input at top filters vendor list by name
-- **Columns**: Vendor name (clickable link to detail), Products count, Account #, Stores assigned, Order Guide type, Delivery Days, Order By days, Actions
-- **Vendor Name**: Clickable link that navigates to `/vendors/{id}` detail page
-- **Action Buttons**: Store assignment, Edit, Delete (hidden for Misc Grocery vendors) - displayed in Actions column
-- **Misc Grocery Protection**: Delete button hidden for any vendor with "Misc Grocery" in name (protected system vendor)
-- **Store Badge**: Shows "Assigned" or "Not Assigned" based on current store context
-
-# Marketing Website
-
-- **Routing**: Hostname-based. `fnbcostpro.com` / `www.fnbcostpro.com` → marketing pages. `app.fnbcostpro.com` → app. Same Express server handles both.
-- **Dev Toggle**: Set `VITE_SHOW_WEBSITE=true` in `.env` (gitignored) to preview the website locally in Replit.
-- **VPS**: No extra config needed — hostname detection is runtime (`window.location.hostname`) so it works automatically when nginx routes the root domain to the same server.
-- **Pages**: Home (`/`), Features (`/features`), Pricing (`/pricing`), About (`/about`), Contact (`/contact`).
-- **Page files**: `client/src/pages/website/` | Layout/nav/footer: `client/src/components/website/marketing-layout.tsx`.
-- **App URL for CTAs**: Set `VITE_APP_URL=https://app.fnbcostpro.com` in the production build env. Defaults to relative (`/signup`, `/login`) for dev.
-- **Pricing page**: Fetches live Stripe plans from `/api/billing/plans` — shows Basic/Pro with monthly/quarterly/annual toggle.
-- **Contact form**: `POST /api/contact` → sends email via SMTP2GO to `CONTACT_EMAIL` env var (default `hello@fnbcostpro.com`). Reply-to is set to the submitter's email.
-- **Background image hero**: Homepage hero reuses the background image gallery from `/api/background-images` (public endpoint, no auth required).
-- **Logo**: `client/public/website-logo.png` (FnB Cost Pro color logo).
-- **Easy migration**: Marketing pages are self-contained in `/pages/website/` and `/components/website/` — straightforward to extract and move to HubSpot or any CMS later.
-
-# Subscription Tier System
-
-- **Three-tier model**: Free < Basic < Pro. Stored as `subscriptionTier` on `companies` table (free, basic, pro).
-- **Tier config**: `shared/tier-config.ts` defines tier hierarchy, feature-to-tier mapping, and helper functions (`tierMeetsMinimum`, `hasFeature`, `featureMinTier`).
-- **Backend gating**: `requireTier(minTier)` middleware in `server/auth.ts` — returns 403 with `error: "tier_required"` for insufficient tiers. Global admins bypass all tier checks.
-- **Frontend gating**: `useTier()` hook (`client/src/hooks/use-tier.ts`) reads tier from `/api/auth/me` response. `TierGate` component (`client/src/components/tier-gate.tsx`) wraps gated content and shows upgrade prompt for insufficient tiers.
-- **Admin controls**: `PATCH /api/admin/companies/:id/subscription` (global_admin only) accepts `{ tier, status }`. Companies page shows tier badge + inline tier dropdown per company.
-- **Feature tiers**: recipe_costing = Basic+; tfc_variance, transfer_orders, pos_import, power_inventory, cross_shop_vendor_pricing, smart_dashboard, unlimited_locations = Pro.
-- **Startup migration**: On boot, sets all companies with null `subscriptionTier` to `pro`/`active`.
-
 # System Architecture
 
 - **Frontend**: Mobile-first React 18 SPA with TypeScript, Vite, `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
@@ -75,15 +40,18 @@ This project is an inventory management and recipe costing system for food servi
 - **UI/UX Decisions**: Mobile-first design; intuitive recipe creation; dynamic dashboards with filterable tables; consistent, color-coded status badges; conditional UI rendering based on data availability; smooth scrolling; and optimized inventory count layouts.
 - **Technical Implementations**: Micro-unit precision for all inventory calculations, comprehensive unit conversion system, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), robust multi-tenant QuickBooks integration, intelligent vendor order guide import, real-time recipe cost calculation with caching, dynamic estimated on-hand inventory with automated cache invalidation, detailed TFC (Theoretical Food Cost) variance reporting, and single-timezone date handling for data consistency.
 - **System Design Choices**: Adherence to strict multi-tenancy principles, secure OAuth using HMAC-SHA256, extensive server-side validation, and robust vendor relationship management features.
-- **Vendor-Store Assignment Model**: Vendors are company-level entities with shared credentials, but store_vendors join table controls which stores can access each vendor. Order guides can be assigned to multiple stores via order_guide_stores join table. Order guide approval accepts targetStoreIds array to create inventory items for all selected stores simultaneously.
+- **Vendor-Store Assignment Model**: Vendors are company-level entities with shared credentials, but a `store_vendors` join table controls which stores can access each vendor. Order guides can be assigned to multiple stores via an `order_guide_stores` join table. Order guide approval accepts a `targetStoreIds` array to create inventory items for all selected stores simultaneously.
+- **Subscription Tier System**: Three-tier model (Free < Basic < Pro) stored as `subscriptionTier` on the `companies` table. Tier configuration in `shared/tier-config.ts` defines hierarchy and feature mapping. Backend gating uses `requireTier(minTier)` middleware, while frontend gating uses `useTier()` hook and `TierGate` component.
+- **Marketing Website**: Hostname-based routing (`fnbcostpro.com` for marketing, `app.fnbcostpro.com` for the app) handled by the same Express server. Marketing pages (`/`, `/features`, `/pricing`, `/about`, `/contact`) are self-contained. Pricing page fetches live Stripe plans. Contact form sends emails via SMTP2GO. Homepage hero uses a background image gallery.
 
 # External Dependencies
 
 - **Database Services**: Neon serverless PostgreSQL.
 - **Real-time Communication**: `ws` library (WebSockets).
 - **Image Processing**: Sharp library.
-- **Object Storage**: Dual-mode — Replit native object storage (when sidecar available) or local filesystem (`server/localObjectStorage.ts`) with company-isolated directories (`uploads/{companyId}/public` and `uploads/{companyId}/private`). Auto-detected at startup. Path traversal protection and company-level ACL enforcement included.
+- **Object Storage**: Dual-mode (Replit native or local filesystem) with company-isolated directories.
 - **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods order guides.
 - **QuickBooks Online Integration**: `intuit-oauth` package for OAuth 2.0.
-- **Stripe Integration**: Subscription billing using Stripe Checkout + Webhooks. Company-scoped (subscription on companies table). DB columns: `stripeCustomerId`, `stripeSubscriptionId`, `subscriptionStatus`, `subscriptionTier`, `subscriptionTerm`, `subscriptionCurrentPeriodEnd`. Routes: `POST /api/billing/checkout` (requireAuth, returns Stripe Checkout URL), `POST /api/billing/webhook` (public, raw body, signature-verified). Billing logic in `server/billing.ts`. Handles events: `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`. Seed script at `scripts/stripe_seed_subscriptions.mjs` creates Basic/Pro products with monthly/quarterly/annual prices. Required secrets: `STRIPE_SECRET_KEY` (sk_test_... for dev, sk_live_... for prod), `STRIPE_WEBHOOK_SECRET`. APP_BASE_URL env var controls redirect URLs (default: https://app.fnbcostpro.com). Credentials managed manually (NOT via Replit OAuth integration — incompatible with VPS).
-- **Background Image System**: API-driven carousel for login/signup/plan screens. DB table `background_images` (id, objectPath, externalUrl, label, sortOrder, isActive, createdAt). Auto-seeded with 21 Unsplash restaurant/kitchen/walk-in cooler photos on startup. Global admin manages images at `/admin/backgrounds` — add by URL or upload, toggle active/hidden, reorder with arrows, delete. `RestaurantBackground` component fetches from `GET /api/background-images` (public), handles crossfade carousel rotation (10s interval, 1.5s transition). Companies can override the carousel with a single brand background image (`brandImagePath` column on companies table); set via `PUT /api/companies/:id/brand-image` from company detail page. Admin header has "Backgrounds" shortcut button. Global admins at `/admin/*` paths are NOT redirected to /companies.
+- **Stripe Integration**: Subscription billing using Stripe Checkout + Webhooks.
+- **Email Service**: SMTP2GO (for contact form).
+- **Background Image System**: Unsplash (images seeded from).

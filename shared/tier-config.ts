@@ -14,6 +14,7 @@ export function tierMeetsMinimum(current: Tier | null | undefined, minimum: Tier
 
 export type Feature =
   | "recipe_costing"
+  | "brand_background"
   | "power_inventory"
   | "transfer_orders"
   | "tfc_variance"
@@ -25,6 +26,7 @@ export type Feature =
 
 const FEATURE_MIN_TIER: Record<Feature, Tier> = {
   recipe_costing: "basic",
+  brand_background: "basic",
   no_ads: "basic",
   power_inventory: "pro",
   transfer_orders: "pro",

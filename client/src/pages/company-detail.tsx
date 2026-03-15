@@ -11,7 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ChevronLeft, Building2, Store, Plus, Edit, Save, X, Pencil, ImageIcon, Trash2 } from "lucide-react";
+import { ChevronLeft, Building2, Store, Plus, Edit, Save, X, Pencil, ImageIcon, Trash2, Lock } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -490,7 +490,7 @@ export default function CompanyDetail() {
           </CardContent>
         </Card>
 
-        <BrandImageCard companyId={id!} brandImagePath={company.brandImagePath ?? null} />
+        <BrandImageCard companyId={id!} brandImagePath={company.brandImagePath ?? null} companyTier={(company.subscriptionTier as any) || "free"} />
 
         <Card>
           <CardHeader>
@@ -911,8 +911,11 @@ export default function CompanyDetail() {
   );
 }
 
-function BrandImageCard({ companyId, brandImagePath }: { companyId: string; brandImagePath: string | null }) {
+function BrandImageCard({ companyId, brandImagePath, companyTier }: { companyId: string; brandImagePath: string | null; companyTier: string }) {
   const { toast } = useToast();
+  const { user: authUser } = useAuth();
+  const isAdmin = authUser?.role === "global_admin";
+  const isFree = companyTier === "free";
 
   const setMutation = useMutation({
     mutationFn: async (objectPath: string) =>
@@ -935,6 +938,25 @@ function BrandImageCard({ companyId, brandImagePath }: { companyId: string; bran
     onError: () => toast({ title: "Failed to clear brand background", variant: "destructive" }),
   });
 
+  if (isFree && !isAdmin) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Brand Background Image</CardTitle>
+          <CardDescription>
+            Upload a custom background image for your login and signup screens.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3 p-4 rounded-md bg-muted/50 text-muted-foreground text-sm">
+            <Lock className="h-5 w-5 shrink-0" />
+            <span>Custom brand backgrounds are available on the Basic plan and above. Contact your administrator to upgrade.</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -950,6 +972,7 @@ function BrandImageCard({ companyId, brandImagePath }: { companyId: string; bran
               buttonText="Upload Brand Image"
               buttonVariant="outline"
               dataTestId="button-upload-brand-image"
+              visibility="public"
               onUploadComplete={(objectPath) => setMutation.mutate(objectPath)}
             />
             {brandImagePath && (

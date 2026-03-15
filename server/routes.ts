@@ -211,15 +211,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // GET /api/background-images — public
   // Returns active images. If ?companyId= is provided and company has a brand image, returns just that.
+  // For free-tier companies without a brand image, returns the designated free-tier background (if any).
   app.get("/api/background-images", async (req, res) => {
     try {
       const { companyId } = req.query as { companyId?: string };
 
       if (companyId) {
-        const [company] = await db.select({ brandImagePath: companiesTable.brandImagePath })
+        const [company] = await db.select({
+          brandImagePath: companiesTable.brandImagePath,
+          subscriptionTier: companiesTable.subscriptionTier,
+        })
           .from(companiesTable)
           .where(eq(companiesTable.id, companyId));
-        if (company?.brandImagePath) {
+
+        const effectiveTier = company?.subscriptionTier || "free";
+
+        if (effectiveTier === "free") {
+          const [freeImg] = await db.select()
+            .from(backgroundImages)
+            .where(and(eq(backgroundImages.isFreeBackground, 1), eq(backgroundImages.isActive, 1)))
+            .limit(1);
+          if (freeImg) {
+            return res.json({
+              images: [{ id: freeImg.id, url: freeImg.objectPath ?? freeImg.externalUrl, label: freeImg.label }],
+              isBranded: false,
+            });
+          }
+        } else if (company?.brandImagePath) {
           return res.json({
             images: [{ url: `/objects/${company.brandImagePath}`, label: "Brand background" }],
             isBranded: true,
@@ -327,6 +345,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // PATCH /api/admin/background-images/:id/free-background — toggle free-tier background designation
+  app.patch("/api/admin/background-images/:id/free-background", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+    try {
+      const { isFreeBackground } = z.object({ isFreeBackground: z.number().int().min(0).max(1) }).parse(req.body);
+
+      if (isFreeBackground === 1) {
+        await db.update(backgroundImages)
+          .set({ isFreeBackground: 0 })
+          .where(eq(backgroundImages.isFreeBackground, 1));
+      }
+
+      const [updated] = await db.update(backgroundImages)
+        .set({ isFreeBackground })
+        .where(eq(backgroundImages.id, req.params.id))
+        .returning();
+
+      if (!updated) return res.status(404).json({ error: "Image not found" });
+      return res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/admin/background-images/:id/free-background error:", err);
+      return res.status(500).json({ error: "Failed to update free background" });
+    }
+  });
+
   // DELETE /api/admin/background-images/:id — global admin only
   app.delete("/api/admin/background-images/:id", requireAuth, async (req, res) => {
     const user = (req as any).user;
@@ -364,7 +408,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // PUT /api/companies/:id/brand-image — set company brand background
   // imageUrl is the objectPath returned by /api/objects/upload
-  app.put("/api/companies/:id/brand-image", requireAuth, async (req, res) => {
+  app.put("/api/companies/:id/brand-image", requireAuth, requireTier("basic"), async (req, res) => {
     const user = (req as any).user;
     if (user?.role !== "global_admin" && user?.role !== "company_admin") {
       return res.status(403).json({ error: "Admin access required" });
@@ -387,7 +431,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // DELETE /api/companies/:id/brand-image — clear company brand background
-  app.delete("/api/companies/:id/brand-image", requireAuth, async (req, res) => {
+  app.delete("/api/companies/:id/brand-image", requireAuth, requireTier("basic"), async (req, res) => {
     const user = (req as any).user;
     if (user?.role !== "global_admin" && user?.role !== "company_admin") {
       return res.status(403).json({ error: "Admin access required" });
