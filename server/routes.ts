@@ -224,8 +224,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(companiesTable)
           .where(eq(companiesTable.id, companyId));
 
-        const effectiveTier = company?.subscriptionTier || "free";
+        if (company?.brandImagePath) {
+          return res.json({
+            images: [{ url: `/objects/${company.brandImagePath}`, label: "Brand background" }],
+            isBranded: true,
+          });
+        }
 
+        const effectiveTier = company?.subscriptionTier || "free";
         if (effectiveTier === "free") {
           const [freeImg] = await db.select()
             .from(backgroundImages)
@@ -237,11 +243,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
               isBranded: false,
             });
           }
-        } else if (company?.brandImagePath) {
-          return res.json({
-            images: [{ url: `/objects/${company.brandImagePath}`, label: "Brand background" }],
-            isBranded: true,
-          });
         }
       }
 
