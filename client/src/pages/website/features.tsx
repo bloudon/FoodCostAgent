@@ -7,6 +7,52 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarketingLayout, CTAButton, SectionHeading, appLink } from "@/components/website/marketing-layout";
 
+function LaptopFrame({ src, alt }: { src: string; alt: string }) {
+  return (
+    <div className="relative mx-auto" style={{ maxWidth: 560 }}>
+      <div className="rounded-xl bg-gray-800 p-2 shadow-2xl">
+        <div className="flex items-center gap-1.5 px-2 pb-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+          <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+          <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
+        </div>
+        <img
+          src={src}
+          alt={alt}
+          className="w-full rounded-md"
+          loading="lazy"
+        />
+      </div>
+      <div className="mx-auto -mt-px h-3 w-[70%] rounded-b-xl bg-gray-700" />
+    </div>
+  );
+}
+
+function PhoneFrame({ src, alt }: { src: string; alt: string }) {
+  return (
+    <div className="relative mx-auto" style={{ maxWidth: 220 }}>
+      <div className="rounded-[2rem] bg-gray-800 p-2.5 shadow-2xl">
+        <div className="mx-auto mb-1.5 h-1.5 w-12 rounded-full bg-gray-600" />
+        <img
+          src={src}
+          alt={alt}
+          className="w-full rounded-[1.25rem]"
+          loading="lazy"
+        />
+      </div>
+    </div>
+  );
+}
+
+const SCREENSHOT_MAP: Record<string, { src: string; frame: "laptop" | "phone" }> = {
+  "Inventory Management": { src: "/screenshots/inventory-management.png", frame: "laptop" },
+  "Recipe Costing": { src: "/screenshots/recipe-costing.png", frame: "laptop" },
+  "Vendor & Order Guides": { src: "/screenshots/vendor-order-guides.png", frame: "laptop" },
+  "Food Cost Variance (TFC)": { src: "/screenshots/food-cost-variance.png", frame: "laptop" },
+  "Inventory Counting": { src: "/screenshots/inventory-counting.png", frame: "phone" },
+  "Multi-Location & Team": { src: "/screenshots/multi-location.png", frame: "laptop" },
+};
+
 type TierLevel = "free" | "basic" | "pro";
 
 const TIER_CONFIG: Record<TierLevel, { label: string; color: string; bg: string; border: string }> = {
@@ -173,13 +219,18 @@ function FeatureGroup({ group, reverse }: { group: typeof FEATURE_GROUPS[0]; rev
           </div>
         )}
       </div>
-      <div className="flex-1 w-full">
-        <div className="rounded-xl bg-gray-100 border border-gray-200 aspect-video flex items-center justify-center">
-          <div className="text-center text-gray-400">
-            <group.icon className="h-16 w-16 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">{group.title}</p>
-          </div>
-        </div>
+      <div className="flex-1 w-full flex items-center justify-center">
+        {SCREENSHOT_MAP[group.title]?.frame === "phone" ? (
+          <PhoneFrame
+            src={SCREENSHOT_MAP[group.title].src}
+            alt={`${group.title} — FnB Cost Pro mobile app screenshot`}
+          />
+        ) : (
+          <LaptopFrame
+            src={SCREENSHOT_MAP[group.title]?.src || ""}
+            alt={`${group.title} — FnB Cost Pro app screenshot`}
+          />
+        )}
       </div>
     </div>
   );

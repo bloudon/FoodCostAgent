@@ -2417,6 +2417,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ STORAGE LOCATIONS ============
   app.get("/api/storage-locations", requireAuth, async (req: AuthRequest, res) => {
+    if (!req.companyId) {
+      return res.status(400).json({ error: "No company context" });
+    }
     let locations = await storage.getStorageLocations(req.companyId!);
     if (locations.length === 0) {
       const categories = await storage.getCategories(req.companyId!);

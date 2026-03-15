@@ -68,9 +68,13 @@ import WebsiteAbout from "@/pages/website/about";
 import WebsiteContact from "@/pages/website/contact";
 
 const WEBSITE_DOMAINS = ["fnbcostpro.com", "www.fnbcostpro.com"];
+if (new URLSearchParams(window.location.search).has("app")) {
+  sessionStorage.setItem("forceAppMode", "1");
+}
 const isWebsiteMode =
-  WEBSITE_DOMAINS.includes(window.location.hostname) ||
-  import.meta.env.VITE_SHOW_WEBSITE === "true";
+  !sessionStorage.getItem("forceAppMode") &&
+  (WEBSITE_DOMAINS.includes(window.location.hostname) ||
+  import.meta.env.VITE_SHOW_WEBSITE === "true");
 
 function WebsiteRouter() {
   return (
