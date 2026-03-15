@@ -56,3 +56,7 @@ SMTP2GO_HOST = "mail.smtp2go.com"
 SMTP2GO_PORT = "587"
 SMTP_FROM_EMAIL = "no-reply@fnbcostpro.com"
 SMTP_FROM_NAME = "FNB Cost Pro"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 60000
