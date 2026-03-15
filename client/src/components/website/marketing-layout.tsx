@@ -3,7 +3,17 @@ import { Link, useLocation } from "wouter";
 import { Menu, X, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const APP_URL = import.meta.env.VITE_APP_URL || "";
+function getAppUrl(): string {
+  if (typeof window !== "undefined") {
+    const h = window.location.hostname;
+    if (h === "fnbcostpro.com" || h === "www.fnbcostpro.com") {
+      return "https://app.fnbcostpro.com";
+    }
+  }
+  return import.meta.env.VITE_APP_URL || "";
+}
+
+const APP_URL = getAppUrl();
 
 export function appLink(path: string) {
   return APP_URL + path;
