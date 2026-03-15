@@ -11,7 +11,7 @@ type TierLevel = "free" | "basic" | "pro";
 
 const TIER_CONFIG: Record<TierLevel, { label: string; color: string; bg: string; border: string }> = {
   free: { label: "Free", color: "text-gray-600", bg: "bg-gray-100", border: "border-gray-300" },
-  basic: { label: "Basic+", color: "text-green-700", bg: "bg-green-50", border: "border-green-300" },
+  basic: { label: "Basic", color: "text-green-700", bg: "bg-green-50", border: "border-green-300" },
   pro: { label: "Pro", color: "text-orange-700", bg: "bg-orange-50", border: "border-orange-300" },
 };
 

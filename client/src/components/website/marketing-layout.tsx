@@ -62,7 +62,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
                   className="bg-orange-500 hover:bg-orange-600 text-white border-0"
                   data-testid="btn-nav-signup"
                 >
-                  Start Free Trial
+                  Get Started Free
                 </Button>
               </a>
             </div>
@@ -94,7 +94,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
                   className="w-full bg-orange-500 text-white border-0"
                   data-testid="btn-mobile-signup"
                 >
-                  Start Free Trial
+                  Get Started Free
                 </Button>
               </a>
             </div>
@@ -132,7 +132,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
               <ul className="space-y-2">
                 <li>
                   <a href={appLink("/signup")} className="text-sm text-gray-400 hover:text-white transition-colors">
-                    Free Trial
+                    Get Started Free
                   </a>
                 </li>
                 <li>
