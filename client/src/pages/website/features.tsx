@@ -22,7 +22,7 @@ const FEATURE_GROUPS = [
     tier: "free" as TierLevel,
     color: "green",
     features: [
-      "Track ingredients across multiple storage locations",
+      "Back of house inventory tracking across all storage locations",
       "Set par levels and reorder points per store",
       "Weighted average cost and last-cost pricing",
       "Drag-and-drop storage location ordering",
@@ -30,7 +30,7 @@ const FEATURE_GROUPS = [
       "Comprehensive unit conversion system (weight, volume, count)",
     ],
     description:
-      "Get a real-time view of what you have on hand, where it's stored, and what it costs \u2014 across every location you operate.",
+      "Get a real-time view of what you have in your back of house — where it's stored, what it costs, and what needs reordering — across every location you operate.",
   },
   {
     icon: BookOpen,
@@ -38,7 +38,8 @@ const FEATURE_GROUPS = [
     tier: "basic" as TierLevel,
     color: "orange",
     features: [
-      "Ingredient-level cost breakdown with yield adjustments",
+      "Food cost calculator with ingredient-level cost breakdown",
+      "Restaurant food cost per portion, calculated automatically",
       "Nested sub-recipe support for complex preparations",
       "Per-recipe yield override for different waste factors",
       "Automatic cost recalculation when ingredient prices change",
@@ -46,7 +47,7 @@ const FEATURE_GROUPS = [
       "Category-based filtering in the recipe builder",
     ],
     description:
-      "Build every recipe with precision \u2014 from simple prep items to multi-layer dishes \u2014 and always know your true cost per portion.",
+      "A built-in food cost calculator for every recipe — from simple prep items to multi-layer dishes. Always know your true restaurant food cost per portion, updated automatically when vendor prices change.",
   },
   {
     icon: Truck,
@@ -54,18 +55,18 @@ const FEATURE_GROUPS = [
     tier: "free" as TierLevel,
     color: "green",
     features: [
-      "Import order guides from any major food purveyor \u2014 Sysco, GFS, US Foods, and more",
+      "Import order guides from any major food purveyor — Sysco, GFS, US Foods, and more",
       "Native adapters for leading distributors with automatic format detection",
       "Case-price entry matching real vendor invoices",
       "Automatic unit price calculation from case and inner pack",
       "Order guide approval creates inventory items and populates prices automatically",
       "Assign vendors and order guides to specific stores",
       "Track account numbers and delivery schedules per vendor",
-      "Prices flow into recipes \u2014 when a vendor price changes, every affected recipe cost updates automatically",
+      "Prices flow into recipes — when a vendor price changes, every affected recipe cost updates automatically",
     ],
     description:
-      "Import your vendor catalogs in minutes. Prices auto-populate your inventory and flow directly into recipe costs \u2014 when a vendor updates pricing, every recipe recalculates. No re-entry, no spreadsheets.",
-    proFeature: "Cross-shop vendor pricing (Pro): Compare the same item across all your vendor order guides to find the best price \u2014 automatically.",
+      "Import your vendor catalogs in minutes. Prices auto-populate your inventory and flow directly into recipe costs — when a vendor updates pricing, every recipe recalculates. No re-entry, no spreadsheets.",
+    proFeature: "Cross-shop vendor pricing (Pro): Compare the same item across all your vendor order guides to find the best price — automatically.",
   },
   {
     icon: BarChart3,
@@ -74,14 +75,15 @@ const FEATURE_GROUPS = [
     color: "orange",
     features: [
       "Theoretical Food Cost calculated from sales and recipes",
-      "Import POS sales data to drive variance reports",
+      "Connect your POS system for restaurant sales data import",
+      "Track average food cost per month with date-range reporting",
       "Compare theoretical vs. actual food cost by category",
       "Spot over-portioning, waste, and theft instantly",
       "Drill down into individual menu items and recipes",
-      "Date-range reporting for period-over-period comparison",
+      "Period-over-period comparison to identify trends",
     ],
     description:
-      "Stop guessing where your food costs are going. TFC variance shows you exactly where the gap is between what you should spend and what you actually spend.",
+      "Stop guessing where your restaurant food cost is going. TFC variance reporting shows your average food cost per month and pinpoints exactly where the gap is between what you should spend and what you actually spend.",
   },
   {
     icon: ClipboardList,
@@ -97,7 +99,7 @@ const FEATURE_GROUPS = [
       "Mobile-first design for counting on the floor",
     ],
     description:
-      "Conduct fast, accurate inventory counts from your phone or tablet. Every count is logged with date and user for full accountability.",
+      "Conduct fast, accurate inventory counts from your phone or tablet — right in the back of house. Every count is logged with date and user for full accountability.",
     proFeature: "Power Inventory counting (Pro): Focus counts on high-cost power items for faster, targeted inventory tracking.",
   },
   {
@@ -114,7 +116,7 @@ const FEATURE_GROUPS = [
       "Waste logging with user accountability",
     ],
     description:
-      "Whether you run one F&B location or twenty, FnB Cost Pro keeps everything organized and your team accountable. Unlimited locations on Pro.",
+      "Restaurant management software built for teams. Whether you're a restaurant manager overseeing one location or an owner managing twenty, FnB Cost Pro gives your team the tools to stay accountable and your operation the visibility to stay profitable.",
   },
 ];
 
@@ -192,10 +194,10 @@ export default function WebsiteFeatures() {
             Full Feature Set
           </span>
           <h1 className="text-4xl sm:text-5xl font-extrabold mb-4">
-            Everything an F&amp;B Operator Needs
+            Restaurant Management Software Built for F&amp;B Operators
           </h1>
           <p className="text-lg text-gray-300 leading-relaxed mb-6">
-            FnB Cost Pro was built from the ground up for Food &amp; Beverage operators — restaurants, bars, catering, and multi-unit F&amp;B businesses — not adapted from generic warehouse or retail software.
+            FnB Cost Pro is restaurant software built from the ground up for Food &amp; Beverage operators — restaurants, bars, catering, and multi-unit F&amp;B businesses. Food cost control, beverage cost control, recipe costing, and vendor ordering in one platform.
           </p>
           <div className="flex flex-wrap gap-2 justify-center mb-8">
             {(["free", "basic", "pro"] as TierLevel[]).map((tier) => (
@@ -228,21 +230,21 @@ export default function WebsiteFeatures() {
               <TierBadge tier="free" />
               <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">Get Organized</h3>
               <p className="text-sm text-gray-500 leading-relaxed">
-                Track your inventory, import vendor order guides, create purchase orders, and run counts. Everything you need to get your operation organized — free forever.
+                Track your back of house inventory, import vendor order guides, create purchase orders, and run counts. Everything you need to get your operation organized — free forever.
               </p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-6" data-testid="upgrade-path-basic">
               <TierBadge tier="basic" />
               <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">Know Your Costs</h3>
               <p className="text-sm text-gray-500 leading-relaxed">
-                When you're ready to know exactly what every dish costs, upgrade to Basic. Build recipes, track food cost per portion, and make pricing decisions with confidence.
+                When you're ready to know your exact restaurant food cost per dish, upgrade to Basic. A built-in food cost calculator with food and beverage cost control for every recipe on your menu.
               </p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-6" data-testid="upgrade-path-pro">
               <TierBadge tier="pro" />
-              <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">Scale & Optimize</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">Scale &amp; Optimize</h3>
               <p className="text-sm text-gray-500 leading-relaxed">
-                Multi-unit operators need TFC variance reporting, POS import, transfer orders, and unlimited locations. Pro gives you full control across your entire operation.
+                Multi-unit operators need TFC variance reporting, POS system import, transfer orders, and unlimited locations. Pro gives restaurant managers full cost control across every location.
               </p>
             </div>
           </div>
@@ -255,7 +257,7 @@ export default function WebsiteFeatures() {
             Start Free — Upgrade When You're Ready
           </h2>
           <p className="text-green-200 mb-8">
-            Get started with inventory and ordering at no cost. Add recipe costing and advanced features when your business needs them.
+            Get started with inventory and ordering at no cost. Add recipe costing, food cost control, and advanced features when your business needs them.
           </p>
           <CTAButton href={appLink("/signup")} large>
             Get Started Free

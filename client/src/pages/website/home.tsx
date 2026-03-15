@@ -52,12 +52,12 @@ function HeroBackground() {
 }
 
 const FEATURES = [
-  { icon: TrendingDown, title: "Recipe Costing", desc: "Know the exact cost of every dish, including nested sub-recipes, yield losses, and real-time ingredient pricing." },
-  { icon: BookOpen, title: "Inventory Control", desc: "Track stock across all storage locations, record physical counts, and see theoretical vs. actual variances." },
-  { icon: Truck, title: "Vendor Order Guides", desc: "Import Sysco, GFS, and US Foods catalogs automatically. Build purchase orders in seconds." },
-  { icon: BarChart3, title: "Food Cost Variance", desc: "Compare theoretical food cost against actual sales to spot waste, theft, and pricing issues immediately." },
-  { icon: Users, title: "Multi-Location", desc: "Manage recipes, inventory, and staff across every store from one central account." },
-  { icon: RefreshCw, title: "Live Price Updates", desc: "When vendor prices change, every dependent recipe cost updates automatically \u2014 no manual rework." },
+  { icon: TrendingDown, title: "Food Cost Calculator", desc: "Know the exact restaurant food cost of every dish — a built-in food cost calculator covering ingredients, nested sub-recipes, yield losses, and live vendor pricing." },
+  { icon: BookOpen, title: "Inventory Control", desc: "Track stock across all storage locations, record physical counts, and see theoretical vs. actual variances across your back of house." },
+  { icon: Truck, title: "Vendor Order Guides", desc: "Import Sysco, GFS, and US Foods catalogs automatically. Build purchase orders in seconds and keep every recipe cost current." },
+  { icon: BarChart3, title: "Food Cost Variance", desc: "Compare your restaurant food cost against actual sales to spot waste, theft, and pricing issues immediately — before they erode your margins." },
+  { icon: Users, title: "Multi-Location", desc: "Manage recipes, inventory, and staff across every store from one central restaurant management software account." },
+  { icon: RefreshCw, title: "Food & Beverage Cost Control", desc: "When vendor prices change, every food and beverage cost updates automatically across all recipes — complete cost control with no manual rework." },
 ];
 
 const RECIPE_STEPS = [
@@ -65,32 +65,32 @@ const RECIPE_STEPS = [
     icon: ClipboardList,
     num: "1",
     title: "Write Your Recipe Like You Always Have",
-    body: "Add ingredients the way you think about them \u2014 \"2 lbs chicken breast,\" \"1 cup heavy cream.\" No formulas, no spreadsheets. Just your recipe, written your way.",
+    body: "Add ingredients the way you think about them — \"2 lbs chicken breast,\" \"1 cup heavy cream.\" No formulas, no spreadsheets. Just your recipe, written your way.",
   },
   {
     icon: Calculator,
     num: "2",
-    title: "Set Portions & Yields",
-    body: "Tell us how many servings, set your yield percentages for trim and waste, and FnB Cost Pro calculates the true cost per portion instantly.",
+    title: "Your Food Cost Calculator Does the Rest",
+    body: "Tell us how many servings, set your yield percentages for trim and waste, and FnB Cost Pro calculates the true restaurant food cost per portion instantly.",
   },
   {
     icon: ListChecks,
     num: "3",
-    title: "Know Your Food Cost \u2014 Always",
+    title: "Know Your Food Cost — Always",
     body: "Every recipe updates automatically when your vendor prices change. Nested sub-recipes recalculate in the right order. Your food cost is always accurate, always current.",
   },
 ];
 
 const STEPS = [
-  { num: "01", title: "We Walk You Through Setup", body: "Our onboarding guides you step by step \u2014 from adding your first inventory item to connecting your vendors. You're never on your own." },
+  { num: "01", title: "We Walk You Through Setup", body: "Our onboarding guides you step by step — from adding your first inventory item to connecting your vendors. You're never on your own." },
   { num: "02", title: "Build Your Recipes Your Way", body: "Create detailed recipes with ingredients, yields, and portion costs. Our team is here to help you get them right." },
-  { num: "03", title: "Track, Adjust & Grow", body: "Run inventory counts, import sales data, and use our variance reports to make smarter decisions \u2014 with support along the way." },
+  { num: "03", title: "Track, Adjust & Grow", body: "Run inventory counts, import sales data, and use our variance reports to make smarter decisions — with support along the way." },
 ];
 
 const STATS = [
-  { value: "Free", label: "Plan available \u2014 no credit card" },
+  { value: "Free", label: "Plan available — no credit card" },
   { value: "Guided", label: "Onboarding included" },
-  { value: "3\u20135%", label: "Typical food cost reduction" },
+  { value: "3–5%", label: "Typical food cost reduction" },
   { value: "100%", label: "Cloud-based, access anywhere" },
 ];
 
@@ -101,7 +101,7 @@ export default function WebsiteHome() {
         <HeroBackground />
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
           <span className="inline-block bg-orange-500/20 text-orange-300 text-xs font-semibold uppercase tracking-widest px-4 py-1 rounded-full mb-6 border border-orange-500/30">
-            Built for F&amp;B Operators
+            Restaurant Management Software
           </span>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-tight mb-6">
             Know Your Numbers.<br />
@@ -109,7 +109,7 @@ export default function WebsiteHome() {
             Grow Your Business.
           </h1>
           <p className="text-lg sm:text-xl text-gray-200 max-w-2xl mx-auto mb-10 leading-relaxed">
-            FnB Cost Pro gives F&amp;B operators — restaurants, bars, catering companies, and Food &amp; Beverage businesses of every type — the recipe costing, inventory tracking, and food cost variance tools they need to run a more profitable operation.
+            FnB Cost Pro is the restaurant management software built for F&amp;B operators — restaurants, bars, catering companies, and Food &amp; Beverage businesses of every type. Get food cost control, beverage cost control, recipe costing, and inventory tracking in one platform.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <a href={appLink("/signup")}>
@@ -154,8 +154,8 @@ export default function WebsiteHome() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
             label="What You Get"
-            title="Everything F&amp;B Operators Need to Control Food Costs"
-            subtitle="A complete platform purpose-built for restaurants, bars, and Food &amp; Beverage businesses \u2014 not adapted from generic inventory or retail software."
+            title="Restaurant Software Built for Food &amp; Beverage Cost Control"
+            subtitle="A complete platform purpose-built for restaurants, bars, and Food &amp; Beverage businesses — not adapted from generic inventory or retail software."
           />
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {FEATURES.map((f) => (
@@ -186,8 +186,8 @@ export default function WebsiteHome() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
             label="Recipe Costing for Chefs"
-            title="Build Recipes the Way You Think \u2014 Know Your Cost Instantly"
-            subtitle="No spreadsheets. No complicated formulas. Just write your recipe like you would on paper, and FnB Cost Pro tells you exactly what it costs."
+            title="Your Food Cost Calculator — Built Into Your Recipe Builder"
+            subtitle="No spreadsheets. No complicated formulas. Write your recipe the way you always have, and FnB Cost Pro gives you the exact restaurant food cost per portion — instantly."
           />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-4">
             {RECIPE_STEPS.map((step) => (
@@ -221,7 +221,7 @@ export default function WebsiteHome() {
           <SectionHeading
             label="How It Works"
             title="Guided Onboarding, Every Step of the Way"
-            subtitle="Getting started with FnB Cost Pro is straightforward \u2014 and you won't be doing it alone. We guide you through the entire setup process."
+            subtitle="Getting started with FnB Cost Pro is straightforward — and you won't be doing it alone. We guide you through the entire setup process."
           />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mt-4">
             {STEPS.map((s) => (
@@ -238,10 +238,10 @@ export default function WebsiteHome() {
       <section className="py-20 bg-gray-50" id="cta-bottom">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-            Ready to Take Control of Your Food Costs?
+            Ready to Take Control of Your Food &amp; Beverage Costs?
           </h2>
           <p className="text-lg text-gray-500 mb-8">
-            Join F&amp;B operators — from independent restaurants to multi-unit Food &amp; Beverage groups — using FnB Cost Pro to protect their margins and grow with confidence.
+            Join F&amp;B operators — from independent restaurants to multi-unit Food &amp; Beverage groups — using FnB Cost Pro for food cost control, beverage cost control, and smarter margin management.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <CTAButton href={appLink("/signup")} large>
