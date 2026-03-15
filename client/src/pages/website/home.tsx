@@ -54,8 +54,8 @@ function HeroBackground() {
 const FEATURES = [
   { icon: TrendingDown, title: "Food Cost Calculator", desc: "Know the exact restaurant food cost of every dish — a built-in food cost calculator covering ingredients, nested sub-recipes, yield losses, and live vendor pricing." },
   { icon: BookOpen, title: "Inventory Control", desc: "Track stock across all storage locations, record physical counts, and see theoretical vs. actual variances across your back of house." },
-  { icon: Truck, title: "Vendor Order Guides", desc: "Import Sysco, GFS, and US Foods catalogs automatically. Build purchase orders in seconds and keep every recipe cost current." },
-  { icon: BarChart3, title: "Food Cost Variance", desc: "Compare your restaurant food cost against actual sales to spot waste, theft, and pricing issues immediately — before they erode your margins." },
+  { icon: Truck, title: "Vendor Order Guides", desc: "Import Sysco, GFS, and US Foods catalogs automatically. Build purchase orders in seconds and receive deliveries. Pro: export received purchase orders to QuickBooks to simplify bookkeeping." },
+  { icon: BarChart3, title: "Food Cost Variance", desc: "Compare your restaurant food cost against actual sales to spot waste, theft, and pricing issues immediately. Works with the POS system you already use — no lock-in." },
   { icon: Users, title: "Multi-Location", desc: "Manage recipes, inventory, and staff across every store from one central restaurant management software account." },
   { icon: RefreshCw, title: "Food & Beverage Cost Control", desc: "When vendor prices change, every food and beverage cost updates automatically across all recipes — complete cost control with no manual rework." },
 ];

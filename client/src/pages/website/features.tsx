@@ -122,7 +122,7 @@ const FEATURE_GROUPS = [
     ],
     description:
       "Import your vendor catalogs in minutes. Prices auto-populate your inventory and flow directly into recipe costs — when a vendor updates pricing, every recipe recalculates. No re-entry, no spreadsheets.",
-    proFeature: "Cross-shop vendor pricing (Pro): Compare the same item across all your vendor order guides to find the best price — automatically.",
+    proFeature: "Cross-shop vendor pricing (Pro): Compare the same item across all your vendor order guides to find the best price — automatically. QuickBooks export (Pro): Export received purchase orders directly to QuickBooks to simplify bookkeeping and eliminate manual re-entry.",
   },
   {
     icon: BarChart3,
@@ -133,7 +133,8 @@ const FEATURE_GROUPS = [
     frameType: "flat" as FrameType,
     features: [
       "Theoretical Food Cost calculated from sales and recipes",
-      "Connect your POS system for restaurant sales data import",
+      "Works with most POS systems — no POS lock-in, no proprietary hardware required",
+      "Import sales data from the POS you already use",
       "Track average food cost per month with date-range reporting",
       "Compare theoretical vs. actual food cost by category",
       "Spot over-portioning, waste, and theft instantly",
@@ -141,7 +142,7 @@ const FEATURE_GROUPS = [
       "Period-over-period comparison to identify trends",
     ],
     description:
-      "Stop guessing where your restaurant food cost is going. TFC variance reporting shows your average food cost per month and pinpoints exactly where the gap is between what you should spend and what you actually spend.",
+      "Stop guessing where your restaurant food cost is going. TFC variance reporting shows your average food cost per month and pinpoints exactly where the gap is between what you should spend and what you actually spend. FnB Cost Pro is not POS-dependent — it works alongside the POS system you already have.",
   },
   {
     icon: ClipboardList,
@@ -305,7 +306,7 @@ export default function WebsiteFeatures() {
               <TierBadge tier="pro" />
               <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">Scale &amp; Optimize</h3>
               <p className="text-sm text-gray-500 leading-relaxed">
-                Multi-unit operators need TFC variance reporting, POS system import, transfer orders, and unlimited locations. Pro gives restaurant managers full cost control across every location.
+                Multi-unit operators need TFC variance reporting, QuickBooks export, transfer orders, and unlimited locations. Pro works with the POS system you already have and gives restaurant managers full cost control across every location.
               </p>
             </div>
           </div>
