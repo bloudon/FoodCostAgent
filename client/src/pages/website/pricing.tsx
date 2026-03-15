@@ -132,7 +132,7 @@ export default function WebsitePricing() {
       key: "basic",
       name: "Basic",
       plan: basicPlan || null,
-      price: basicPlan ? `$${(basicPlan.unitAmount! / 100).toFixed(0)}` : null,
+      price: basicPlan?.unitAmount != null ? `$${(basicPlan.unitAmount / 100).toFixed(0)}` : null,
       priceLabel: basicPlan ? `/${basicPlan.interval}` : "",
       features: BASIC_FEATURES,
       highlighted: false,
@@ -145,7 +145,7 @@ export default function WebsitePricing() {
       key: "pro",
       name: "Pro",
       plan: proPlan || null,
-      price: proPlan ? `$${(proPlan.unitAmount! / 100).toFixed(0)}` : null,
+      price: proPlan?.unitAmount != null ? `$${(proPlan.unitAmount / 100).toFixed(0)}` : null,
       priceLabel: proPlan ? `/${proPlan.interval}` : "",
       features: PRO_FEATURES,
       highlighted: true,
@@ -270,7 +270,7 @@ export default function WebsitePricing() {
                           {f.text}
                           {f.proOnly && (
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-semibold text-orange-600 border-orange-300 bg-orange-50">
-                              Pro
+                              Pro only
                             </Badge>
                           )}
                         </span>
@@ -389,7 +389,7 @@ function ComparisonTable() {
                 {row.label}
                 {row.proOnly && (
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-semibold text-orange-600 border-orange-300 bg-orange-50">
-                    Pro
+                    Pro only
                   </Badge>
                 )}
               </td>
