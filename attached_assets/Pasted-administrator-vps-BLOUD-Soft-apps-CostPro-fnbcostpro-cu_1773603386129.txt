@@ -1,0 +1,82 @@
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ curl -Iv https://app.fnbcostpro.com 2>&1 | grep -E "subject|issuer|location|HTTP|< "
+*  subject: CN=erecording-fl.com
+*  subjectAltName does not match app.fnbcostpro.com
+* SSL: no alternative certificate subject name matches target host name 'app.fnbcostpro.com'
+curl: (60) SSL: no alternative certificate subject name matches target host name 'app.fnbcostpro.com'
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ curl -Iv https://app.fnbcostpro.com 2>&1 | grep -E "subject|issuer|location|HTTP|< "
+*  subject: CN=erecording-fl.com
+*  subjectAltName does not match app.fnbcostpro.com
+* SSL: no alternative certificate subject name matches target host name 'app.fnbcostpro.com'
+curl: (60) SSL: no alternative certificate subject name matches target host name 'app.fnbcostpro.com'
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ sudo cat /etc/nginx/sites-available/erecording-fl
+# Redirect www -> root (non-www)
+server {
+  server_name www.erecording-fl.com;
+  return 301 https://erecording-fl.com$request_uri;
+
+    listen [::]:443 ssl; # managed by Certbot
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/www.erecording-fl.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+
+}
+
+# Primary site (non-www)
+server {
+
+  server_name erecording-fl.com;
+
+  location ~* (\.env|/api/\.env)$ { return 403; }
+
+  location / {
+    proxy_pass http://127.0.0.1:3002;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+
+    listen [::]:443 ssl; # managed by Certbot
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/www.erecording-fl.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+
+server {
+    if ($host = www.erecording-fl.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+  listen 80;
+  listen [::]:80;
+  server_name www.erecording-fl.com;
+    return 404; # managed by Certbot
+
+
+}
+server {
+    if ($host = erecording-fl.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+  listen 80;
+  listen [::]:80;
+
+  server_name erecording-fl.com;
+    return 404; # managed by Certbot
+
+
+}
