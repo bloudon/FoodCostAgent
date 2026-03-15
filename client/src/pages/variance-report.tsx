@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TierGate } from "@/components/tier-gate";
 
 export default function VarianceReport() {
   const now = new Date();
@@ -55,6 +56,7 @@ export default function VarianceReport() {
   ];
 
   return (
+    <TierGate feature="tfc_variance">
     <div className="p-8">
       <div className="mb-8 flex items-center justify-between">
         <div>
@@ -175,5 +177,6 @@ export default function VarianceReport() {
         </CardContent>
       </Card>
     </div>
+    </TierGate>
   );
 }

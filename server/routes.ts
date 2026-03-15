@@ -179,9 +179,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         )
       `);
 
-      const [existing] = await db.execute(
+      const existingRows = await db.execute(
         sql`SELECT name FROM _migrations WHERE name = 'tier_system_init'`
       );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
       if (!existing) {
         const result = await db
           .update(companiesTable)
@@ -193,6 +194,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`[TierMigration] First deploy: set all ${result.length} companies to pro/active`);
       } else {
         console.log("[TierMigration] Already applied (tier_system_init)");
+      }
+
+      const nullTierResult = await db
+        .update(companiesTable)
+        .set({ subscriptionTier: "free", subscriptionStatus: "active" })
+        .where(sql`${companiesTable.subscriptionTier} IS NULL`)
+        .returning({ id: companiesTable.id });
+      if (nullTierResult.length > 0) {
+        console.log(`[TierMigration] Set ${nullTierResult.length} companies with null tier to free/active`);
       }
     } catch (err) {
       console.error("[TierMigration] Error:", err);

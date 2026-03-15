@@ -25,11 +25,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useAuth } from "@/lib/auth-context";
+import { TIER_LABELS, TIERS, type Tier } from "@shared/tier-config";
 
 export default function CompanyDetail() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isGlobalAdmin = user?.role === "global_admin";
   const [isEditingCompany, setIsEditingCompany] = useState(false);
   const [editingStore, setEditingStore] = useState<CompanyStore | null>(null);
   const [isNewStoreDialogOpen, setIsNewStoreDialogOpen] = useState(false);
@@ -172,6 +176,20 @@ export default function CompanyDetail() {
     },
   });
 
+  const updateTierMutation = useMutation({
+    mutationFn: async ({ tier }: { tier: string }) => {
+      const response = await apiRequest("PATCH", `/api/admin/companies/${id}/subscription`, { tier });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${id}`] });
+      toast({ title: "Subscription tier updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update tier", description: error.message, variant: "destructive" });
+    },
+  });
+
   const handleCompanySubmit = (data: InsertCompany) => {
     updateCompanyMutation.mutate(data);
   };
@@ -251,6 +269,35 @@ export default function CompanyDetail() {
               <Badge variant={company.status === "active" ? "default" : "secondary"} data-testid="badge-company-status">
                 {company.status}
               </Badge>
+              {isGlobalAdmin && (
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant={
+                      (company.subscriptionTier as Tier) === "pro" ? "destructive"
+                      : (company.subscriptionTier as Tier) === "basic" ? "default"
+                      : "secondary"
+                    }
+                    data-testid="badge-subscription-tier"
+                  >
+                    {TIER_LABELS[(company.subscriptionTier as Tier) || "free"]}
+                  </Badge>
+                  <Select
+                    value={(company.subscriptionTier as Tier) || "free"}
+                    onValueChange={(value) => updateTierMutation.mutate({ tier: value })}
+                  >
+                    <SelectTrigger className="h-7 w-24 text-xs" data-testid="select-tier">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIERS.map((t) => (
+                        <SelectItem key={t} value={t} data-testid={`select-tier-option-${t}`}>
+                          {TIER_LABELS[t]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">

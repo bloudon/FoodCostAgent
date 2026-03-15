@@ -32,8 +32,18 @@ import {
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/lib/auth-context";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
+import { useTier } from "@/hooks/use-tier";
+import { type Feature } from "@shared/tier-config";
 
-const menuItems = [
+interface MenuItem {
+  title: string;
+  url: string;
+  icon: any;
+  requiresMultipleStores?: boolean;
+  requiredFeature?: Feature;
+}
+
+const menuItems: MenuItem[] = [
   {
     title: "Dashboard",
     url: "/",
@@ -48,16 +58,19 @@ const menuItems = [
     title: "Inventory Sessions",
     url: "/inventory-sessions",
     icon: ClipboardList,
+    requiredFeature: "power_inventory",
   },
   {
     title: "Recipes",
     url: "/recipes",
     icon: ChefHat,
+    requiredFeature: "recipe_costing",
   },
   {
     title: "Menu Items",
     url: "/menu-items",
     icon: UtensilsCrossed,
+    requiredFeature: "recipe_costing",
   },
   {
     title: "Vendors",
@@ -74,6 +87,7 @@ const menuItems = [
     url: "/transfer-orders",
     icon: ArrowLeftRight,
     requiresMultipleStores: true,
+    requiredFeature: "transfer_orders",
   },
   {
     title: "Waste Entry",
@@ -82,16 +96,18 @@ const menuItems = [
   },
 ];
 
-const foodCostItems = [
+const foodCostItems: MenuItem[] = [
   {
     title: "Sales Import",
     url: "/tfc/sales-import",
     icon: Upload,
+    requiredFeature: "pos_import",
   },
   {
     title: "Food Cost Variance",
     url: "/tfc/variance",
     icon: DollarSign,
+    requiredFeature: "tfc_variance",
   },
 ];
 
@@ -132,22 +148,25 @@ export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
   const { data: accessibleStores, isLoading: storesLoading } = useAccessibleStores();
+  const { hasFeature } = useTier();
 
-  // Store level users should only see Dashboard, Inventory Sessions and Orders
   const isStoreUser = user?.role === 'store_user';
   
-  // Hide transfer-related items for companies with less than 2 stores
-  // Show all items while loading to prevent flicker for multi-store users
   const hasMultipleStores = storesLoading ? true : (accessibleStores?.length ?? 0) >= 2;
   
-  // Filter menu items based on user role and store count
   const visibleMenuItems = isStoreUser 
     ? menuItems.filter(item => 
-        item.title === 'Dashboard' || item.title === 'Inventory Sessions' || item.title === 'Orders'
+        (item.title === 'Dashboard' || item.title === 'Inventory Sessions' || item.title === 'Orders') &&
+        (!item.requiredFeature || hasFeature(item.requiredFeature))
       )
     : menuItems.filter(item => 
-        !item.requiresMultipleStores || hasMultipleStores
+        (!item.requiresMultipleStores || hasMultipleStores) &&
+        (!item.requiredFeature || hasFeature(item.requiredFeature))
       );
+
+  const visibleFoodCostItems = foodCostItems.filter(item =>
+    !item.requiredFeature || hasFeature(item.requiredFeature)
+  );
 
   return (
     <Sidebar>
@@ -174,12 +193,12 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {!isStoreUser && (
+        {!isStoreUser && visibleFoodCostItems.length > 0 && (
           <SidebarGroup>
             <SidebarGroupLabel>Food Cost Management</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {foodCostItems.map((item) => (
+                {visibleFoodCostItems.map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
                       asChild

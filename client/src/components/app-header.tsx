@@ -54,6 +54,8 @@ import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import { useCompany } from "@/hooks/use-company";
 import { useStoreContext } from "@/hooks/use-store-context";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useTier } from "@/hooks/use-tier";
+import { type Feature } from "@shared/tier-config";
 import {
   Select,
   SelectContent,
@@ -67,6 +69,7 @@ interface NavItem {
   url: string;
   icon: any;
   requiresMultipleStores?: boolean;
+  requiredFeature?: Feature;
 }
 
 interface NavSection {
@@ -80,8 +83,8 @@ const mainNavSections: NavSection[] = [
     title: "Menu",
     icon: UtensilsCrossed,
     items: [
-      { title: "Menu Items", url: "/menu-items", icon: UtensilsCrossed },
-      { title: "Recipes", url: "/recipes", icon: ChefHat },
+      { title: "Menu Items", url: "/menu-items", icon: UtensilsCrossed, requiredFeature: "recipe_costing" },
+      { title: "Recipes", url: "/recipes", icon: ChefHat, requiredFeature: "recipe_costing" },
     ],
   },
   {
@@ -89,7 +92,7 @@ const mainNavSections: NavSection[] = [
     icon: Warehouse,
     items: [
       { title: "Inventory Items", url: "/inventory-items", icon: Warehouse },
-      { title: "Inventory Sessions", url: "/inventory-sessions", icon: ClipboardList },
+      { title: "Inventory Sessions", url: "/inventory-sessions", icon: ClipboardList, requiredFeature: "power_inventory" },
       { title: "Waste Entry", url: "/waste", icon: Trash2 },
     ],
   },
@@ -99,15 +102,15 @@ const mainNavSections: NavSection[] = [
     items: [
       { title: "Orders", url: "/orders", icon: ShoppingCart },
       { title: "Vendors", url: "/vendors", icon: Users },
-      { title: "Transfer Orders", url: "/transfer-orders", icon: ArrowLeftRight, requiresMultipleStores: true },
+      { title: "Transfer Orders", url: "/transfer-orders", icon: ArrowLeftRight, requiresMultipleStores: true, requiredFeature: "transfer_orders" },
     ],
   },
   {
     title: "Reports",
     icon: BarChart3,
     items: [
-      { title: "Sales Import", url: "/tfc/sales-import", icon: Upload },
-      { title: "Variance Report", url: "/tfc/variance", icon: BarChart3 },
+      { title: "Sales Import", url: "/tfc/sales-import", icon: Upload, requiredFeature: "pos_import" },
+      { title: "Variance Report", url: "/tfc/variance", icon: BarChart3, requiredFeature: "tfc_variance" },
     ],
   },
 ];
@@ -146,9 +149,9 @@ export function AppHeader() {
   const hasMultipleStores = storesLoading ? true : (accessibleStores?.length ?? 0) >= 2;
 
   const isGlobalAdmin = user?.role === 'global_admin';
+  const { hasFeature } = useTier();
 
   const getVisibleMainSections = () => {
-    // Global admin without a selected company context: hide all company-level nav
     if (isGlobalAdmin && !company) return [];
 
     if (isStoreUser) {
@@ -156,7 +159,8 @@ export function AppHeader() {
         .map(section => ({
           ...section,
           items: section.items.filter(item =>
-            item.title === 'Inventory Sessions' || item.title === 'Orders'
+            (item.title === 'Inventory Sessions' || item.title === 'Orders') &&
+            (!item.requiredFeature || hasFeature(item.requiredFeature))
           )
         }))
         .filter(section => section.items.length > 0);
@@ -165,9 +169,10 @@ export function AppHeader() {
     return mainNavSections.map(section => ({
       ...section,
       items: section.items.filter(item =>
-        !item.requiresMultipleStores || hasMultipleStores
+        (!item.requiresMultipleStores || hasMultipleStores) &&
+        (!item.requiredFeature || hasFeature(item.requiredFeature))
       )
-    }));
+    })).filter(section => section.items.length > 0);
   };
 
   const visibleMainSections = getVisibleMainSections();

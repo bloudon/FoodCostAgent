@@ -1,4 +1,5 @@
 import { useTier } from "@/hooks/use-tier";
+import { TierGate } from "@/components/tier-gate";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -324,6 +325,7 @@ export default function InventorySessions() {
   });
 
   return (
+    <TierGate feature="power_inventory">
     <div className="p-8">
       <div className="mb-8">
         <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -602,5 +604,6 @@ export default function InventorySessions() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </TierGate>
   );
 }
