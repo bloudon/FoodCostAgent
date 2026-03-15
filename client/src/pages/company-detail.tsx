@@ -183,6 +183,7 @@ export default function CompanyDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/companies/${id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
       toast({ title: "Subscription tier updated" });
     },
     onError: (error: Error) => {
