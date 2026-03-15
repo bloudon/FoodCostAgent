@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle, HelpCircle } from "lucide-react";
+import { CheckCircle, HelpCircle, X, Star } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarketingLayout, SectionHeading, appLink } from "@/components/website/marketing-layout";
 
@@ -21,46 +22,62 @@ const TERM_LABELS: Record<string, string> = {
   annual: "Annual",
 };
 
-const TERM_KEYS: Record<string, string> = {
-  monthly: "month",
-  quarterly: "month",
-  annual: "year",
+const TERMS = ["monthly", "quarterly", "annual"];
+const SAVINGS: Record<string, string> = {
+  quarterly: "Save ~8%",
+  annual: "Save ~17%",
 };
 
-const PLAN_FEATURES: Record<string, string[]> = {
-  basic: [
-    "Up to 2 store locations",
-    "Unlimited inventory items",
-    "Recipe costing with yield tracking",
-    "Vendor order guide imports (Sysco, GFS, US Foods)",
-    "Purchase orders and receiving",
-    "Inventory count sessions",
-    "5 team member seats",
-    "Email support",
-  ],
-  pro: [
-    "Unlimited store locations",
-    "Unlimited inventory items",
-    "Advanced recipe costing with nested sub-recipes",
-    "Vendor order guide imports (all vendors)",
-    "Purchase orders and receiving",
-    "Inventory count sessions",
-    "Theoretical Food Cost (TFC) variance reporting",
-    "POS sales data import",
-    "Transfer orders between locations",
-    "Waste tracking with user accountability",
-    "Unlimited team member seats",
-    "Priority support",
-  ],
-};
+interface TierFeature {
+  text: string;
+  proOnly?: boolean;
+}
+
+const FREE_FEATURES: TierFeature[] = [
+  { text: "1 store location" },
+  { text: "Unlimited inventory items" },
+  { text: "Vendor order guide imports" },
+  { text: "Purchase orders and receiving" },
+  { text: "Inventory count sessions" },
+  { text: "2 team member seats" },
+  { text: "Community support" },
+];
+
+const BASIC_FEATURES: TierFeature[] = [
+  { text: "Up to 2 store locations" },
+  { text: "Unlimited inventory items" },
+  { text: "Recipe costing with yield tracking" },
+  { text: "Nested sub-recipe support" },
+  { text: "Vendor order guide imports (Sysco, GFS, US Foods)" },
+  { text: "Purchase orders and receiving" },
+  { text: "Inventory count sessions" },
+  { text: "5 team member seats" },
+  { text: "Email support" },
+];
+
+const PRO_FEATURES: TierFeature[] = [
+  { text: "Unlimited store locations" },
+  { text: "Unlimited inventory items" },
+  { text: "Advanced recipe costing with nested sub-recipes" },
+  { text: "Vendor order guide imports (all vendors)" },
+  { text: "Cross-shop vendor price comparison", proOnly: true },
+  { text: "Purchase orders and receiving" },
+  { text: "Power Inventory counting", proOnly: true },
+  { text: "Theoretical Food Cost (TFC) variance reporting", proOnly: true },
+  { text: "POS sales data import", proOnly: true },
+  { text: "Transfer orders between locations", proOnly: true },
+  { text: "Waste tracking with user accountability" },
+  { text: "Unlimited team member seats" },
+  { text: "Priority support" },
+];
 
 function formatAmount(cents: number | null, interval: string | undefined, intervalCount: number | undefined): string {
-  if (cents === null) return "—";
+  if (cents === null) return "\u2014";
   const dollars = cents / 100;
   if (intervalCount && intervalCount > 1) {
-    return `$${dollars.toFixed(0)} / ${intervalCount} ${interval}s`;
+    return `$${dollars.toFixed(0)}/${intervalCount} ${interval}s`;
   }
-  return `$${dollars.toFixed(0)} / ${interval}`;
+  return `$${dollars.toFixed(0)}/${interval}`;
 }
 
 function getTier(lookupKey: string | null): "basic" | "pro" | null {
@@ -77,12 +94,6 @@ function getTerm(lookupKey: string | null): string | null {
   if (lookupKey.includes("annual")) return "annual";
   return null;
 }
-
-const TERMS = ["monthly", "quarterly", "annual"];
-const SAVINGS: Record<string, string> = {
-  quarterly: "Save ~8%",
-  annual: "Save ~17%",
-};
 
 export default function WebsitePricing() {
   const [selectedTerm, setSelectedTerm] = useState("monthly");
@@ -104,8 +115,45 @@ export default function WebsitePricing() {
   const proPlan = filteredPlans.find((p) => getTier(p.lookupKey) === "pro");
 
   const tiers = [
-    { key: "basic", plan: basicPlan, highlighted: false },
-    { key: "pro", plan: proPlan, highlighted: true },
+    {
+      key: "free",
+      name: "Free",
+      plan: null as Plan | null,
+      price: "$0",
+      priceLabel: "forever",
+      features: FREE_FEATURES,
+      highlighted: false,
+      badge: null,
+      cta: "Get Started Free",
+      ctaVariant: "outline" as const,
+      note: "No credit card required",
+    },
+    {
+      key: "basic",
+      name: "Basic",
+      plan: basicPlan || null,
+      price: basicPlan ? `$${(basicPlan.unitAmount! / 100).toFixed(0)}` : null,
+      priceLabel: basicPlan ? `/${basicPlan.interval}` : "",
+      features: BASIC_FEATURES,
+      highlighted: false,
+      badge: null,
+      cta: "Start Free Trial",
+      ctaVariant: "outline" as const,
+      note: "14-day free trial",
+    },
+    {
+      key: "pro",
+      name: "Pro",
+      plan: proPlan || null,
+      price: proPlan ? `$${(proPlan.unitAmount! / 100).toFixed(0)}` : null,
+      priceLabel: proPlan ? `/${proPlan.interval}` : "",
+      features: PRO_FEATURES,
+      highlighted: true,
+      badge: "Most Popular",
+      cta: "Start Free Trial",
+      ctaVariant: "default" as const,
+      note: "14-day free trial",
+    },
   ];
 
   return (
@@ -116,16 +164,16 @@ export default function WebsitePricing() {
             Transparent Pricing
           </span>
           <h1 className="text-4xl sm:text-5xl font-extrabold text-white mb-4">
-            Simple Plans for Every F&amp;B Operation
+            A Plan for Every F&amp;B Operation
           </h1>
           <p className="text-lg text-gray-300">
-            For restaurants, bars, catering, and Food &amp; Beverage businesses of all sizes. Start with a 14-day free trial. Cancel anytime.
+            Start free with inventory and ordering essentials. Upgrade when you need recipe costing, multi-location support, or advanced variance reporting.
           </p>
         </div>
       </section>
 
       <section className="py-16 bg-white">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-center mb-12">
             <div className="inline-flex items-center bg-gray-100 rounded-full p-1 gap-1" data-testid="term-toggle">
               {TERMS.map((term) => (
@@ -149,8 +197,8 @@ export default function WebsitePricing() {
           </div>
 
           {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {[0, 1].map((i) => (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[0, 1, 2].map((i) => (
                 <div key={i} className="rounded-2xl border border-gray-200 p-8 animate-pulse">
                   <div className="h-6 bg-gray-200 rounded w-1/3 mb-4" />
                   <div className="h-10 bg-gray-200 rounded w-1/2 mb-6" />
@@ -161,83 +209,124 @@ export default function WebsitePricing() {
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-              {tiers.map(({ key, plan, highlighted }) => (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+              {tiers.map((tier) => (
                 <div
-                  key={key}
+                  key={tier.key}
                   className={`rounded-2xl border-2 p-8 relative ${
-                    highlighted
+                    tier.highlighted
                       ? "border-green-500 bg-green-50 shadow-lg shadow-green-100"
                       : "border-gray-200 bg-white"
                   }`}
-                  data-testid={`pricing-card-${key}`}
+                  data-testid={`pricing-card-${tier.key}`}
                 >
-                  {highlighted && (
-                    <span className="absolute -top-4 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs font-semibold px-4 py-1 rounded-full">
-                      Most Popular
+                  {tier.badge && (
+                    <span className="absolute -top-4 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs font-semibold px-4 py-1 rounded-full whitespace-nowrap">
+                      {tier.badge}
                     </span>
                   )}
-                  <h3 className="text-xl font-bold text-gray-900 mb-1 capitalize">
-                    {plan?.productName || (key === "basic" ? "Basic" : "Pro")}
-                  </h3>
-                  {plan?.productDescription && (
-                    <p className="text-sm text-gray-500 mb-4">{plan.productDescription}</p>
-                  )}
-                  <div className="mb-6">
-                    {plan ? (
-                      <p className="text-4xl font-extrabold text-gray-900">
-                        {formatAmount(plan.unitAmount, plan.interval, plan.intervalCount)}
-                      </p>
+
+                  <h3 className="text-xl font-bold text-gray-900 mb-1">{tier.name}</h3>
+
+                  <div className="mb-6 mt-3">
+                    {tier.key === "free" ? (
+                      <div>
+                        <span className="text-4xl font-extrabold text-gray-900">$0</span>
+                        <span className="text-gray-500 ml-1">/forever</span>
+                      </div>
+                    ) : tier.price ? (
+                      <div>
+                        <span className="text-4xl font-extrabold text-gray-900">{tier.price}</span>
+                        <span className="text-gray-500 ml-1">{tier.priceLabel}</span>
+                      </div>
                     ) : (
                       <p className="text-gray-400 text-sm">Pricing not available</p>
                     )}
                   </div>
-                  <a href={appLink("/signup")} className="block mb-8">
+
+                  <a href={tier.key === "free" ? appLink("/signup") : appLink("/signup")} className="block mb-6">
                     <Button
                       className={`w-full ${
-                        highlighted ? "bg-green-600 text-white border-0 hover:bg-green-700" : ""
+                        tier.highlighted ? "bg-green-600 text-white border-0 hover:bg-green-700" : ""
                       }`}
-                      variant={highlighted ? "default" : "outline"}
-                      data-testid={`btn-signup-${key}`}
+                      variant={tier.ctaVariant}
+                      data-testid={`btn-signup-${tier.key}`}
                     >
-                      Start Free Trial
+                      {tier.cta}
                     </Button>
                   </a>
+
+                  <p className="text-xs text-gray-400 text-center mb-6">{tier.note}</p>
+
                   <ul className="space-y-3">
-                    {(PLAN_FEATURES[key] || []).map((f) => (
-                      <li key={f} className="flex items-start gap-2.5">
-                        <CheckCircle className={`h-4 w-4 mt-0.5 flex-shrink-0 ${highlighted ? "text-green-600" : "text-gray-400"}`} />
-                        <span className="text-sm text-gray-600">{f}</span>
+                    {tier.features.map((f) => (
+                      <li key={f.text} className="flex items-start gap-2.5">
+                        <CheckCircle
+                          className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
+                            tier.highlighted ? "text-green-600" : tier.key === "free" ? "text-gray-400" : "text-gray-400"
+                          }`}
+                        />
+                        <span className="text-sm text-gray-600 flex items-center gap-1.5 flex-wrap">
+                          {f.text}
+                          {f.proOnly && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-semibold text-orange-600 border-orange-300 bg-orange-50">
+                              Pro
+                            </Badge>
+                          )}
+                        </span>
                       </li>
                     ))}
                   </ul>
+
+                  {tier.key === "free" && (
+                    <div className="mt-6 pt-4 border-t border-gray-100">
+                      <p className="text-xs text-gray-400 leading-relaxed">
+                        Includes ads. Upgrade anytime to remove ads and unlock recipe costing.
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
 
           <p className="text-center text-sm text-gray-400 mt-8">
-            All plans include a 14-day free trial. Cancel anytime.
+            Paid plans include a 14-day free trial. Cancel anytime.
           </p>
         </div>
       </section>
 
       <section className="py-16 bg-gray-50">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <SectionHeading title="Plan Comparison" subtitle="See exactly what's included at every level" />
+          <ComparisonTable />
+        </div>
+      </section>
+
+      <section className="py-16 bg-white">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading title="Frequently Asked Questions" />
           <div className="space-y-6">
             {[
               {
-                q: "Do I need a credit card to start?",
-                a: "Yes, a credit card is required to start your 14-day free trial. You won't be charged until the trial period ends. Cancel before then and you owe nothing.",
+                q: "Is the Free plan really free?",
+                a: "Yes. The Free plan includes inventory management, ordering, and receiving at no cost, forever. It's supported by ads within the app. No credit card required to get started.",
+              },
+              {
+                q: "What's included in the free trial for paid plans?",
+                a: "Both Basic and Pro come with a 14-day free trial with full access to all plan features. You won't be charged until the trial period ends.",
+              },
+              {
+                q: "When should I upgrade from Free to Basic?",
+                a: "When you need recipe costing. If you want to know the exact food cost of every dish, track ingredient costs, and calculate portion prices \u2014 that's when Basic pays for itself.",
+              },
+              {
+                q: "When should I upgrade from Basic to Pro?",
+                a: "When you're running multiple locations, need Theoretical Food Cost variance reporting, want to import POS sales data, or need transfer orders between stores. Pro is built for multi-unit operators who need full cost control.",
               },
               {
                 q: "Can I switch plans later?",
                 a: "Yes. You can upgrade or downgrade your plan at any time from within the app. Changes take effect immediately.",
-              },
-              {
-                q: "What happens when my trial ends?",
-                a: "At the end of your trial, you'll be prompted to choose a plan. Your data is preserved regardless of when you decide to subscribe.",
               },
               {
                 q: "Is there a setup fee?",
@@ -248,7 +337,7 @@ export default function WebsitePricing() {
                 a: "Yes. The Pro plan supports unlimited locations. You can add stores at any time as your operation grows.",
               },
             ].map((item) => (
-              <div key={item.q} className="bg-white rounded-lg border border-gray-200 p-6" data-testid="faq-item">
+              <div key={item.q} className="bg-gray-50 rounded-lg border border-gray-200 p-6" data-testid="faq-item">
                 <div className="flex items-start gap-3 mb-2">
                   <HelpCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
                   <h4 className="font-semibold text-gray-900 text-sm">{item.q}</h4>
@@ -260,5 +349,68 @@ export default function WebsitePricing() {
         </div>
       </section>
     </MarketingLayout>
+  );
+}
+
+const COMPARISON_ROWS: { label: string; free: boolean | string; basic: boolean | string; pro: boolean | string; proOnly?: boolean }[] = [
+  { label: "Inventory management", free: true, basic: true, pro: true },
+  { label: "Vendor order guide imports", free: true, basic: true, pro: true },
+  { label: "Purchase orders & receiving", free: true, basic: true, pro: true },
+  { label: "Inventory count sessions", free: true, basic: true, pro: true },
+  { label: "Store locations", free: "1", basic: "Up to 2", pro: "Unlimited" },
+  { label: "Team member seats", free: "2", basic: "5", pro: "Unlimited" },
+  { label: "Recipe costing", free: false, basic: true, pro: true },
+  { label: "Nested sub-recipes", free: false, basic: true, pro: true },
+  { label: "Cross-shop vendor pricing", free: false, basic: false, pro: true, proOnly: true },
+  { label: "Power Inventory counting", free: false, basic: false, pro: true, proOnly: true },
+  { label: "TFC variance reporting", free: false, basic: false, pro: true, proOnly: true },
+  { label: "POS sales data import", free: false, basic: false, pro: true, proOnly: true },
+  { label: "Transfer orders", free: false, basic: false, pro: true, proOnly: true },
+  { label: "Support", free: "Community", basic: "Email", pro: "Priority" },
+  { label: "Ads", free: "Yes", basic: "No", pro: "No" },
+];
+
+function ComparisonTable() {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm" data-testid="comparison-table">
+        <thead>
+          <tr className="border-b-2 border-gray-200">
+            <th className="text-left py-4 pr-4 font-semibold text-gray-900 w-1/3">Feature</th>
+            <th className="text-center py-4 px-3 font-semibold text-gray-900">Free</th>
+            <th className="text-center py-4 px-3 font-semibold text-gray-900">Basic</th>
+            <th className="text-center py-4 px-3 font-semibold text-green-700 bg-green-50 rounded-t-lg">Pro</th>
+          </tr>
+        </thead>
+        <tbody>
+          {COMPARISON_ROWS.map((row) => (
+            <tr key={row.label} className="border-b border-gray-100">
+              <td className="py-3 pr-4 text-gray-700 flex items-center gap-1.5 flex-wrap">
+                {row.label}
+                {row.proOnly && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-semibold text-orange-600 border-orange-300 bg-orange-50">
+                    Pro
+                  </Badge>
+                )}
+              </td>
+              {[row.free, row.basic, row.pro].map((val, i) => (
+                <td
+                  key={i}
+                  className={`text-center py-3 px-3 ${i === 2 ? "bg-green-50" : ""}`}
+                >
+                  {val === true ? (
+                    <CheckCircle className="h-4 w-4 text-green-600 mx-auto" />
+                  ) : val === false ? (
+                    <X className="h-4 w-4 text-gray-300 mx-auto" />
+                  ) : (
+                    <span className="text-gray-600 text-xs">{val}</span>
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
