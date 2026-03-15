@@ -84,6 +84,12 @@ function WebsiteRouter() {
       <Route path="/pricing" component={WebsitePricing} />
       <Route path="/about" component={WebsiteAbout} />
       <Route path="/contact" component={WebsiteContact} />
+      <Route path="/login" component={Login} />
+      <Route path="/signup" component={LeadSignup} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/reset-password" component={ResetPassword} />
+      <Route path="/activate" component={ActivateAccount} />
+      <Route path="/accept-invitation/:token" component={AcceptInvitation} />
       <Route component={WebsiteHome} />
     </Switch>
   );
@@ -231,10 +237,14 @@ function App() {
   if (isWebsiteMode) {
     return (
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <WebsiteRouter />
-          <Toaster />
-        </TooltipProvider>
+        <ThemeProvider defaultTheme="light">
+          <TooltipProvider>
+            <AuthProvider>
+              <WebsiteRouter />
+            </AuthProvider>
+            <Toaster />
+          </TooltipProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     );
   }
