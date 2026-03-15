@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarketingLayout, CTAButton, SectionHeading, appLink } from "@/components/website/marketing-layout";
 
+type FrameType = "flat" | "laptop" | "phone";
+
 function LaptopFrame({ src, alt }: { src: string; alt: string }) {
   return (
     <div className="relative mx-auto" style={{ maxWidth: 560 }}>
@@ -16,12 +18,7 @@ function LaptopFrame({ src, alt }: { src: string; alt: string }) {
           <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
           <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
         </div>
-        <img
-          src={src}
-          alt={alt}
-          className="w-full rounded-md"
-          loading="lazy"
-        />
+        <img src={src} alt={alt} className="w-full rounded-md" loading="lazy" />
       </div>
       <div className="mx-auto -mt-px h-3 w-[70%] rounded-b-xl bg-gray-700" />
     </div>
@@ -31,27 +28,34 @@ function LaptopFrame({ src, alt }: { src: string; alt: string }) {
 function PhoneFrame({ src, alt }: { src: string; alt: string }) {
   return (
     <div className="relative mx-auto" style={{ maxWidth: 220 }}>
-      <div className="rounded-[2rem] bg-gray-800 p-2.5 shadow-2xl">
-        <div className="mx-auto mb-1.5 h-1.5 w-12 rounded-full bg-gray-600" />
-        <img
-          src={src}
-          alt={alt}
-          className="w-full rounded-[1.25rem]"
-          loading="lazy"
-        />
+      <div className="rounded-[2rem] bg-gray-800 p-3 shadow-2xl">
+        <div className="mx-auto mb-2 h-1.5 w-16 rounded-full bg-gray-600" />
+        <div className="overflow-hidden rounded-[1.25rem]" style={{ aspectRatio: "9 / 19.5" }}>
+          <img src={src} alt={alt} className="w-full h-full object-cover object-top" loading="lazy" />
+        </div>
+        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-gray-600" />
       </div>
     </div>
   );
 }
 
-const SCREENSHOT_MAP: Record<string, { src: string; frame: "laptop" | "phone" }> = {
-  "Inventory Management": { src: "/screenshots/inventory-management.png", frame: "laptop" },
-  "Recipe Costing": { src: "/screenshots/recipe-costing.png", frame: "laptop" },
-  "Vendor & Order Guides": { src: "/screenshots/vendor-order-guides.png", frame: "laptop" },
-  "Food Cost Variance (TFC)": { src: "/screenshots/food-cost-variance.png", frame: "laptop" },
-  "Inventory Counting": { src: "/screenshots/inventory-counting.png", frame: "phone" },
-  "Multi-Location & Team": { src: "/screenshots/multi-location.png", frame: "laptop" },
-};
+function FlatFrame({ src, alt }: { src: string; alt: string }) {
+  return (
+    <div className="mx-auto" style={{ maxWidth: 560 }}>
+      <div className="overflow-hidden rounded-xl shadow-lg border border-gray-200" style={{ aspectRatio: "16 / 9" }}>
+        <img src={src} alt={alt} className="w-full h-full object-cover object-top" loading="lazy" />
+      </div>
+    </div>
+  );
+}
+
+function ScreenshotFrame({ src, alt, frame }: { src: string; alt: string; frame: FrameType }) {
+  switch (frame) {
+    case "laptop": return <LaptopFrame src={src} alt={alt} />;
+    case "phone": return <PhoneFrame src={src} alt={alt} />;
+    default: return <FlatFrame src={src} alt={alt} />;
+  }
+}
 
 type TierLevel = "free" | "basic" | "pro";
 
@@ -67,6 +71,8 @@ const FEATURE_GROUPS = [
     title: "Inventory Management",
     tier: "free" as TierLevel,
     color: "green",
+    imageSrc: "/screenshots/inventory-management.png",
+    frameType: "laptop" as FrameType,
     features: [
       "Back of house inventory tracking across all storage locations",
       "Set par levels and reorder points per store",
@@ -83,6 +89,8 @@ const FEATURE_GROUPS = [
     title: "Recipe Costing",
     tier: "basic" as TierLevel,
     color: "orange",
+    imageSrc: "/screenshots/recipe-costing.png",
+    frameType: "flat" as FrameType,
     features: [
       "Food cost calculator with ingredient-level cost breakdown",
       "Restaurant food cost per portion, calculated automatically",
@@ -100,6 +108,8 @@ const FEATURE_GROUPS = [
     title: "Vendor & Order Guides",
     tier: "free" as TierLevel,
     color: "green",
+    imageSrc: "/screenshots/vendor-order-guides.png",
+    frameType: "flat" as FrameType,
     features: [
       "Import order guides from any major food purveyor — Sysco, GFS, US Foods, and more",
       "Native adapters for leading distributors with automatic format detection",
@@ -119,6 +129,8 @@ const FEATURE_GROUPS = [
     title: "Food Cost Variance (TFC)",
     tier: "pro" as TierLevel,
     color: "orange",
+    imageSrc: "/screenshots/food-cost-variance.png",
+    frameType: "flat" as FrameType,
     features: [
       "Theoretical Food Cost calculated from sales and recipes",
       "Connect your POS system for restaurant sales data import",
@@ -136,6 +148,8 @@ const FEATURE_GROUPS = [
     title: "Inventory Counting",
     tier: "free" as TierLevel,
     color: "green",
+    imageSrc: "/screenshots/inventory-counting.png",
+    frameType: "phone" as FrameType,
     features: [
       "Guided count sessions by storage location",
       "Scan or manually enter counts on any device",
@@ -153,6 +167,8 @@ const FEATURE_GROUPS = [
     title: "Multi-Location & Team",
     tier: "pro" as TierLevel,
     color: "orange",
+    imageSrc: "/screenshots/multi-location.png",
+    frameType: "flat" as FrameType,
     features: [
       "Manage multiple stores under one company account",
       "Role-based access: admin, manager, staff",
@@ -220,17 +236,11 @@ function FeatureGroup({ group, reverse }: { group: typeof FEATURE_GROUPS[0]; rev
         )}
       </div>
       <div className="flex-1 w-full flex items-center justify-center">
-        {SCREENSHOT_MAP[group.title]?.frame === "phone" ? (
-          <PhoneFrame
-            src={SCREENSHOT_MAP[group.title].src}
-            alt={`${group.title} — FnB Cost Pro mobile app screenshot`}
-          />
-        ) : (
-          <LaptopFrame
-            src={SCREENSHOT_MAP[group.title]?.src || ""}
-            alt={`${group.title} — FnB Cost Pro app screenshot`}
-          />
-        )}
+        <ScreenshotFrame
+          src={group.imageSrc}
+          alt={`${group.title} — FnB Cost Pro app screenshot`}
+          frame={group.frameType}
+        />
       </div>
     </div>
   );
