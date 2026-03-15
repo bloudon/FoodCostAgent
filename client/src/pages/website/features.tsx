@@ -195,7 +195,7 @@ export default function WebsiteFeatures() {
             Everything an F&amp;B Operator Needs
           </h1>
           <p className="text-lg text-gray-300 leading-relaxed mb-6">
-            FnB Cost Pro was built from the ground up for Food &amp; Beverage operators \u2014 restaurants, bars, catering, and multi-unit F&amp;B businesses \u2014 not adapted from generic warehouse or retail software.
+            FnB Cost Pro was built from the ground up for Food &amp; Beverage operators — restaurants, bars, catering, and multi-unit F&amp;B businesses — not adapted from generic warehouse or retail software.
           </p>
           <div className="flex flex-wrap gap-2 justify-center mb-8">
             {(["free", "basic", "pro"] as TierLevel[]).map((tier) => (
@@ -228,7 +228,7 @@ export default function WebsiteFeatures() {
               <TierBadge tier="free" />
               <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">Get Organized</h3>
               <p className="text-sm text-gray-500 leading-relaxed">
-                Track your inventory, import vendor order guides, create purchase orders, and run counts. Everything you need to get your operation organized \u2014 free forever.
+                Track your inventory, import vendor order guides, create purchase orders, and run counts. Everything you need to get your operation organized — free forever.
               </p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-6" data-testid="upgrade-path-basic">
@@ -252,7 +252,7 @@ export default function WebsiteFeatures() {
       <section className="py-20 bg-green-900 text-center">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-white mb-4">
-            Start Free \u2014 Upgrade When You're Ready
+            Start Free — Upgrade When You're Ready
           </h2>
           <p className="text-green-200 mb-8">
             Get started with inventory and ordering at no cost. Add recipe costing and advanced features when your business needs them.

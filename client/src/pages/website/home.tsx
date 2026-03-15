@@ -109,7 +109,7 @@ export default function WebsiteHome() {
             Grow Your Business.
           </h1>
           <p className="text-lg sm:text-xl text-gray-200 max-w-2xl mx-auto mb-10 leading-relaxed">
-            FnB Cost Pro gives F&amp;B operators \u2014 restaurants, bars, catering companies, and Food &amp; Beverage businesses of every type \u2014 the recipe costing, inventory tracking, and food cost variance tools they need to run a more profitable operation.
+            FnB Cost Pro gives F&amp;B operators — restaurants, bars, catering companies, and Food &amp; Beverage businesses of every type — the recipe costing, inventory tracking, and food cost variance tools they need to run a more profitable operation.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <a href={appLink("/signup")}>
@@ -118,7 +118,7 @@ export default function WebsiteHome() {
                 className="bg-orange-500 text-white border-0 text-base px-8"
                 data-testid="btn-hero-trial"
               >
-                Start Free \u2014 No Credit Card
+                Start Free — No Credit Card
                 <ChevronRight className="h-5 w-5 ml-1" />
               </Button>
             </a>
@@ -241,11 +241,11 @@ export default function WebsiteHome() {
             Ready to Take Control of Your Food Costs?
           </h2>
           <p className="text-lg text-gray-500 mb-8">
-            Join F&amp;B operators \u2014 from independent restaurants to multi-unit Food &amp; Beverage groups \u2014 using FnB Cost Pro to protect their margins and grow with confidence.
+            Join F&amp;B operators — from independent restaurants to multi-unit Food &amp; Beverage groups — using FnB Cost Pro to protect their margins and grow with confidence.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <CTAButton href={appLink("/signup")} large>
-              Start Free \u2014 No Credit Card
+              Start Free — No Credit Card
             </CTAButton>
             <Link href="/contact">
               <Button size="lg" variant="outline" className="px-8" data-testid="btn-cta-contact">
