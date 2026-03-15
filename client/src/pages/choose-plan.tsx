@@ -5,6 +5,7 @@ import { Check, Zap, Building2, Loader2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RestaurantBackground } from "@/components/restaurant-background";
+import { useCompany } from "@/hooks/use-company";
 const logoImage = "/logo.png";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -93,6 +94,7 @@ const TRIAL_DAYS = 30;
 export default function ChoosePlan() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { selectedCompanyId } = useCompany();
   const [selectedTerm, setSelectedTerm] = useState<Term>("monthly");
   const [loadingTier, setLoadingTier] = useState<Tier | null>(null);
 
@@ -136,7 +138,7 @@ export default function ChoosePlan() {
 
   return (
     <div className="relative min-h-screen bg-background">
-      <RestaurantBackground />
+      <RestaurantBackground companyId={selectedCompanyId ?? undefined} />
       <div className="relative z-10 max-w-3xl mx-auto px-4 py-8">
         {/* Logo */}
         <div className="flex justify-center mb-8">
