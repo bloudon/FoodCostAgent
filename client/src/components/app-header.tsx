@@ -21,7 +21,7 @@ import {
   LogOut,
   Ruler,
 } from "lucide-react";
-const logoImage = "/website-logo-dark.png";
+const logoImage = "/website-logo.png";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -186,7 +186,7 @@ export function AppHeader() {
     : user?.email || "User";
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-primary text-primary-foreground shadow-sm">
+    <header className="sticky top-0 z-50 w-full border-b border-gray-200 dark:border-gray-200 bg-white dark:bg-white text-gray-900 dark:text-gray-900 shadow-sm">
       <div className="flex h-[56px] items-center gap-3 px-2 sm:px-4">
         <Link href="/" data-testid="link-dashboard-logo">
           <img
@@ -200,7 +200,7 @@ export function AppHeader() {
         {company && stores.length > 0 && (
           <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
             <SelectTrigger
-              className="w-[140px] sm:w-[160px] bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground"
+              className="w-[140px] sm:w-[160px] bg-gray-100 dark:bg-gray-100 border-gray-200 dark:border-gray-200 text-gray-900 dark:text-gray-900"
               data-testid="select-store"
             >
               <Store className="h-4 w-4 mr-1.5 shrink-0" />
@@ -224,7 +224,7 @@ export function AppHeader() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-primary-foreground"
+                className="text-gray-700 dark:text-gray-700"
                 data-testid="button-main-menu"
               >
                 <Menu className="h-5 w-5" />
@@ -265,7 +265,7 @@ export function AppHeader() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-primary-foreground"
+                className="text-gray-700 dark:text-gray-700"
                 data-testid="button-mobile-menu"
               >
                 <Menu className="h-5 w-5" />
@@ -427,7 +427,7 @@ export function AppHeader() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-primary-foreground"
+                className="text-gray-700 dark:text-gray-700"
                 data-testid="button-settings-menu"
               >
                 <Settings className="h-5 w-5" />
@@ -480,7 +480,7 @@ export function AppHeader() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="h-9 w-9 rounded-full bg-primary-foreground/15 text-primary-foreground flex items-center justify-center text-sm font-semibold shrink-0 hover:bg-primary-foreground/25 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-9 w-9 rounded-full bg-gray-100 dark:bg-gray-100 text-gray-800 dark:text-gray-800 flex items-center justify-center text-sm font-semibold shrink-0 hover-elevate transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               data-testid="button-avatar-menu"
             >
               {userInitials}
