@@ -189,14 +189,12 @@ export function AppHeader() {
     <header className="sticky top-0 z-50 w-full border-b bg-primary text-primary-foreground shadow-sm">
       <div className="flex h-[56px] items-center gap-3 px-2 sm:px-4">
         <Link href="/" data-testid="link-dashboard-logo">
-          <div className="flex items-center shrink-0 h-[56px] cursor-pointer">
-            <img
-              src={logoImage}
-              alt="FNB Cost Pro"
-              className="h-full w-auto"
-              data-testid="logo"
-            />
-          </div>
+          <img
+            src={logoImage}
+            alt="FNB Cost Pro"
+            className="h-10 w-auto"
+            data-testid="logo"
+          />
         </Link>
 
         {company && stores.length > 0 && (
