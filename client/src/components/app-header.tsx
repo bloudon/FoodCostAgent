@@ -21,7 +21,7 @@ import {
   LogOut,
   Ruler,
 } from "lucide-react";
-const logoImage = "/logo.png";
+const logoImage = "/website-logo-dark.png";
 import {
   DropdownMenu,
   DropdownMenuContent,
