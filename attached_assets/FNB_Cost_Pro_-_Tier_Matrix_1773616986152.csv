@@ -1,0 +1,22 @@
+Feature,Free,Basic,Pro,Enterprise
+Inventory management,✓,✓,✓,✓ (multi-brand control)
+Vendor order guide imports,manual updates,✓,✓,✓
+"Custom Security Levels (eg- Owner, Store Manager, Employee)",No,No,✓,✓
+Purchase orders & receiving,✓,✓,✓,✓
+Order Reminders,✓,✓,✓,✓
+Inventory count sessions,✓,✓,✓,✓
+Store locations,1,Up to 2,Unlimited,Unlimited
+Team member seats,2,5,Unlimited,Unlimited
+Recipe costing,No,✓,✓,✓
+Nested sub-recipes,No,✓,✓,✓
+Brand background,No,✓,✓,✓
+No ads,No,✓,✓,✓
+Cross-shop vendor pricing,No,No,✓,✓
+QuickBooks export (received orders),No,No,✓,Add-on
+Power Inventory counting,No,No,✓,✓
+TFC variance reporting,No,✓,✓,✓
+POS sales data import,No,✓,✓,✓ (multi-POS support)
+Transfer Inventory between locations,No,No,✓,✓
+Smart dashboard,No,✓,✓,✓ (franchise analytics)
+Support,Community,Online chat accessible,Priority,SLA & priority onboarding
+Ads,Yes,No,No,None
