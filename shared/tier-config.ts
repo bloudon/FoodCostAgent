@@ -26,7 +26,8 @@ export type Feature =
   | "no_ads"
   | "order_reminders"
   | "custom_security_levels"
-  | "enterprise_analytics";
+  | "enterprise_analytics"
+  | "ai_assistant";
 
 const FEATURE_MIN_TIER: Record<Feature, Tier> = {
   order_reminders: "free",
@@ -42,6 +43,7 @@ const FEATURE_MIN_TIER: Record<Feature, Tier> = {
   unlimited_locations: "pro",
   custom_security_levels: "pro",
   enterprise_analytics: "enterprise",
+  ai_assistant: "basic",
 };
 
 export function featureMinTier(feature: Feature): Tier {
