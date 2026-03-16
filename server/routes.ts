@@ -10817,9 +10817,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (tierIndex >= tierHierarchy.indexOf("pro")) {
         try {
           const tfcResult = await db.execute(
-            sql`SELECT tur.sales_date, tur.total_revenue, tur.total_theoretical_cost, tur.total_theoretical_cost_wac, s.name as store_name
+            sql`SELECT tur.sales_date, tur.total_revenue, tur.total_theoretical_cost, tur.total_theoretical_cost_wac, cs.name as store_name
                 FROM theoretical_usage_runs tur
-                LEFT JOIN stores s ON tur.store_id = s.id
+                LEFT JOIN company_stores cs ON tur.store_id = cs.id
                 WHERE tur.company_id = ${companyId} AND tur.status = 'completed'
                 ORDER BY tur.sales_date DESC LIMIT 5`
           );
@@ -10837,7 +10837,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
             tfcSummary = `\n- Recent TFC variance (last 5 runs): ${lines.join("; ")}`;
           }
-        } catch {
+        } catch (tfcErr) {
+          console.warn("Failed to fetch TFC context for chat:", tfcErr);
         }
       }
 
