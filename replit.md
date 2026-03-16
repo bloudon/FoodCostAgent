@@ -56,3 +56,11 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 - **Stripe Integration**: Subscription billing using Stripe Checkout + Webhooks.
 - **Email Service**: SMTP2GO (for contact form).
 - **Background Image System**: Unsplash (images seeded from).
+
+# VPS Deployment
+
+- **Deploy Script**: `scripts/deploy-vps.sh` — single executable that performs the full deploy sequence: preflight checks → `git pull` → `npm install` → DB migration → clean build → `pm2 restart fnbcostpro`.
+- **DB Migrations**: `scripts/vps-migrate.sql` — idempotent SQL script run via `psql $DATABASE_URL -f scripts/vps-migrate.sql`. All statements use `IF NOT EXISTS` / `IF NOT EXISTS` guards so it is safe to run multiple times.
+- **App Port**: 3001 (production); nginx config at `/etc/nginx/sites-available/app.fnbcostpro.com.conf`.
+- **PM2 Process**: `fnbcostpro`.
+- **NEVER run `db:push` on VPS** — it will try to drop the `migrations` table. Always use `vps-migrate.sql` for schema changes.
