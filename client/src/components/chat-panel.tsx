@@ -194,7 +194,7 @@ export function ChatPanel() {
                 <p className="text-sm text-muted-foreground" data-testid="text-chat-upgrade-description">
                   The AI assistant is available on the Basic plan and above. Get personalized cost management advice for your business.
                 </p>
-                <Link href="/pricing">
+                <Link href="/choose-plan">
                   <Button className="bg-[#f2690d] hover:bg-[#d95a0b] text-white" data-testid="button-chat-upgrade">
                     View Plans
                   </Button>
