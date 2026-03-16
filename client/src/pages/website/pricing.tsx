@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle, HelpCircle, X, Star } from "lucide-react";
+import { CheckCircle, HelpCircle, X, Star, Building } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarketingLayout, SectionHeading, appLink } from "@/components/website/marketing-layout";
@@ -31,14 +31,16 @@ const SAVINGS: Record<string, string> = {
 interface TierFeature {
   text: string;
   proOnly?: boolean;
+  enterpriseOnly?: boolean;
 }
 
 const FREE_FEATURES: TierFeature[] = [
   { text: "1 store location" },
   { text: "Unlimited inventory items" },
-  { text: "Vendor order guide imports" },
+  { text: "Manual vendor order guide imports" },
   { text: "Purchase orders and receiving" },
   { text: "Inventory count sessions" },
+  { text: "Order reminders" },
   { text: "2 team member seats" },
   { text: "Community support" },
 ];
@@ -51,8 +53,14 @@ const BASIC_FEATURES: TierFeature[] = [
   { text: "Vendor order guide imports (Sysco, GFS, US Foods)" },
   { text: "Purchase orders and receiving" },
   { text: "Inventory count sessions" },
+  { text: "Order reminders" },
+  { text: "TFC variance reporting" },
+  { text: "POS sales data import" },
+  { text: "Smart dashboard" },
+  { text: "Brand background" },
+  { text: "No ads" },
   { text: "5 team member seats" },
-  { text: "Email support" },
+  { text: "Online chat support" },
 ];
 
 const PRO_FEATURES: TierFeature[] = [
@@ -64,22 +72,30 @@ const PRO_FEATURES: TierFeature[] = [
   { text: "Purchase orders and receiving" },
   { text: "QuickBooks export for received orders", proOnly: true },
   { text: "Power Inventory counting", proOnly: true },
-  { text: "Theoretical Food Cost (TFC) variance reporting", proOnly: true },
-  { text: "POS sales data import (works with most POS systems)", proOnly: true },
+  { text: "TFC variance reporting" },
+  { text: "POS sales data import (works with most POS systems)" },
+  { text: "Smart dashboard" },
   { text: "Transfer orders between locations", proOnly: true },
+  { text: "Custom Security Levels", proOnly: true },
+  { text: "Order reminders" },
   { text: "Waste tracking with user accountability" },
   { text: "Unlimited team member seats" },
   { text: "Priority support" },
 ];
 
-function formatAmount(cents: number | null, interval: string | undefined, intervalCount: number | undefined): string {
-  if (cents === null) return "\u2014";
-  const dollars = cents / 100;
-  if (intervalCount && intervalCount > 1) {
-    return `$${dollars.toFixed(0)}/${intervalCount} ${interval}s`;
-  }
-  return `$${dollars.toFixed(0)}/${interval}`;
-}
+const ENTERPRISE_FEATURES: TierFeature[] = [
+  { text: "Multi-brand inventory management", enterpriseOnly: true },
+  { text: "Unlimited store locations" },
+  { text: "Unlimited team member seats" },
+  { text: "Everything in Pro" },
+  { text: "Multi-POS integration", enterpriseOnly: true },
+  { text: "Franchise analytics", enterpriseOnly: true },
+  { text: "QuickBooks export (add-on)" },
+  { text: "Custom Security Levels" },
+  { text: "Power Inventory counting" },
+  { text: "Transfer orders between locations" },
+  { text: "SLA + dedicated onboarding" },
+];
 
 function getTier(lookupKey: string | null): "basic" | "pro" | null {
   if (!lookupKey) return null;
@@ -128,6 +144,7 @@ export default function WebsitePricing() {
       cta: "Get Started Free",
       ctaVariant: "outline" as const,
       note: "No credit card required",
+      isEnterprise: false,
     },
     {
       key: "basic",
@@ -141,6 +158,7 @@ export default function WebsitePricing() {
       cta: "Start Free Trial",
       ctaVariant: "outline" as const,
       note: "30-day free trial",
+      isEnterprise: false,
     },
     {
       key: "pro",
@@ -154,6 +172,21 @@ export default function WebsitePricing() {
       cta: "Start Free Trial",
       ctaVariant: "default" as const,
       note: "30-day free trial",
+      isEnterprise: false,
+    },
+    {
+      key: "enterprise",
+      name: "Enterprise",
+      plan: null as Plan | null,
+      price: "Custom",
+      priceLabel: "",
+      features: ENTERPRISE_FEATURES,
+      highlighted: false,
+      badge: null,
+      cta: "Contact Sales",
+      ctaVariant: "outline" as const,
+      note: "Tailored for multi-unit & franchise operators",
+      isEnterprise: true,
     },
   ];
 
@@ -174,7 +207,7 @@ export default function WebsitePricing() {
       </section>
 
       <section className="py-16 bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-center mb-12">
             <div className="inline-flex items-center bg-gray-100 rounded-full p-1 gap-1" data-testid="term-toggle">
               {TERMS.map((term) => (
@@ -198,8 +231,8 @@ export default function WebsitePricing() {
           </div>
 
           {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[0, 1, 2].map((i) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[0, 1, 2, 3].map((i) => (
                 <div key={i} className="rounded-2xl border border-gray-200 p-8 animate-pulse">
                   <div className="h-6 bg-gray-200 rounded w-1/3 mb-4" />
                   <div className="h-10 bg-gray-200 rounded w-1/2 mb-6" />
@@ -210,13 +243,15 @@ export default function WebsitePricing() {
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
               {tiers.map((tier) => (
                 <div
                   key={tier.key}
                   className={`rounded-2xl border-2 p-8 relative ${
                     tier.highlighted
                       ? "border-green-500 bg-green-50 shadow-lg shadow-green-100"
+                      : tier.isEnterprise
+                      ? "border-gray-800 bg-gray-50"
                       : "border-gray-200 bg-white"
                   }`}
                   data-testid={`pricing-card-${tier.key}`}
@@ -227,13 +262,20 @@ export default function WebsitePricing() {
                     </span>
                   )}
 
-                  <h3 className="text-xl font-bold text-gray-900 mb-1">{tier.name}</h3>
+                  <div className="flex items-center gap-2 mb-1">
+                    {tier.isEnterprise && <Building className="h-5 w-5 text-gray-700" />}
+                    <h3 className="text-xl font-bold text-gray-900">{tier.name}</h3>
+                  </div>
 
                   <div className="mb-6 mt-3">
                     {tier.key === "free" ? (
                       <div>
                         <span className="text-4xl font-extrabold text-gray-900">$0</span>
                         <span className="text-gray-500 ml-1">/forever</span>
+                      </div>
+                    ) : tier.isEnterprise ? (
+                      <div>
+                        <span className="text-4xl font-extrabold text-gray-900">Custom</span>
                       </div>
                     ) : tier.price ? (
                       <div>
@@ -245,17 +287,29 @@ export default function WebsitePricing() {
                     )}
                   </div>
 
-                  <a href={tier.key === "free" ? appLink("/signup") : appLink("/signup")} className="block mb-6">
-                    <Button
-                      className={`w-full ${
-                        tier.highlighted ? "bg-green-600 text-white border-0 hover:bg-green-700" : ""
-                      }`}
-                      variant={tier.ctaVariant}
-                      data-testid={`btn-signup-${tier.key}`}
-                    >
-                      {tier.cta}
-                    </Button>
-                  </a>
+                  {tier.isEnterprise ? (
+                    <a href="/enterprise-inquiry" className="block mb-6">
+                      <Button
+                        className="w-full bg-gray-900 text-white border-0 hover:bg-gray-800"
+                        variant="default"
+                        data-testid={`btn-signup-${tier.key}`}
+                      >
+                        {tier.cta}
+                      </Button>
+                    </a>
+                  ) : (
+                    <a href={appLink("/signup")} className="block mb-6">
+                      <Button
+                        className={`w-full ${
+                          tier.highlighted ? "bg-green-600 text-white border-0 hover:bg-green-700" : ""
+                        }`}
+                        variant={tier.ctaVariant}
+                        data-testid={`btn-signup-${tier.key}`}
+                      >
+                        {tier.cta}
+                      </Button>
+                    </a>
+                  )}
 
                   <p className="text-xs text-gray-400 text-center mb-6">{tier.note}</p>
 
@@ -264,7 +318,7 @@ export default function WebsitePricing() {
                       <li key={f.text} className="flex items-start gap-2.5">
                         <CheckCircle
                           className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
-                            tier.highlighted ? "text-green-600" : tier.key === "free" ? "text-gray-400" : "text-gray-400"
+                            tier.highlighted ? "text-green-600" : tier.isEnterprise ? "text-gray-700" : "text-gray-400"
                           }`}
                         />
                         <span className="text-sm text-gray-600 flex items-center gap-1.5 flex-wrap">
@@ -272,6 +326,11 @@ export default function WebsitePricing() {
                           {f.proOnly && (
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-semibold text-orange-600 border-orange-300 bg-orange-50">
                               Pro only
+                            </Badge>
+                          )}
+                          {f.enterpriseOnly && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-semibold text-indigo-600 border-indigo-300 bg-indigo-50">
+                              Enterprise
                             </Badge>
                           )}
                         </span>
@@ -292,13 +351,13 @@ export default function WebsitePricing() {
           )}
 
           <p className="text-center text-sm text-gray-400 mt-8">
-            Paid plans include a 30-day free trial. Cancel anytime.
+            Paid plans include a 30-day free trial. Cancel anytime. Enterprise plans are billed via invoice.
           </p>
         </div>
       </section>
 
       <section className="py-16 bg-gray-50">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading title="Plan Comparison" subtitle="See exactly what's included at every level" />
           <ComparisonTable />
         </div>
@@ -319,11 +378,15 @@ export default function WebsitePricing() {
               },
               {
                 q: "When should I upgrade from Free to Basic?",
-                a: "When you need recipe costing. If you want to know the exact food cost of every dish, track ingredient costs, and calculate portion prices \u2014 that's when Basic pays for itself.",
+                a: "When you need recipe costing, TFC variance reporting, POS data imports, or the smart dashboard. Basic is built for operators who want to understand their food costs.",
               },
               {
                 q: "When should I upgrade from Basic to Pro?",
-                a: "When you're running multiple locations, need Theoretical Food Cost variance reporting, want to export received orders to QuickBooks, or need transfer orders between stores. Pro works with the POS system you already use and is built for multi-unit operators who need full cost control.",
+                a: "When you're running multiple locations, need cross-shop vendor pricing, want to export received orders to QuickBooks, or need transfer orders between stores. Pro is built for multi-unit operators who need full cost control.",
+              },
+              {
+                q: "What is the Enterprise plan?",
+                a: "Enterprise is designed for franchise groups and large multi-unit operators. It includes multi-brand support, franchise analytics, multi-POS integration, and a dedicated onboarding process with SLA-backed support. Contact our sales team to learn more.",
               },
               {
                 q: "Can I switch plans later?",
@@ -335,7 +398,7 @@ export default function WebsitePricing() {
               },
               {
                 q: "Can I add more locations later?",
-                a: "Yes. The Pro plan supports unlimited locations. You can add stores at any time as your operation grows.",
+                a: "Yes. The Pro and Enterprise plans support unlimited locations. You can add stores at any time as your operation grows.",
               },
             ].map((item) => (
               <div key={item.q} className="bg-gray-50 rounded-lg border border-gray-200 p-6" data-testid="faq-item">
@@ -353,23 +416,29 @@ export default function WebsitePricing() {
   );
 }
 
-const COMPARISON_ROWS: { label: string; free: boolean | string; basic: boolean | string; pro: boolean | string; proOnly?: boolean }[] = [
-  { label: "Inventory management", free: true, basic: true, pro: true },
-  { label: "Vendor order guide imports", free: true, basic: true, pro: true },
-  { label: "Purchase orders & receiving", free: true, basic: true, pro: true },
-  { label: "Inventory count sessions", free: true, basic: true, pro: true },
-  { label: "Store locations", free: "1", basic: "Up to 2", pro: "Unlimited" },
-  { label: "Team member seats", free: "2", basic: "5", pro: "Unlimited" },
-  { label: "Recipe costing", free: false, basic: true, pro: true },
-  { label: "Nested sub-recipes", free: false, basic: true, pro: true },
-  { label: "Cross-shop vendor pricing", free: false, basic: false, pro: true, proOnly: true },
-  { label: "QuickBooks export for received orders", free: false, basic: false, pro: true, proOnly: true },
-  { label: "Power Inventory counting", free: false, basic: false, pro: true, proOnly: true },
-  { label: "TFC variance reporting", free: false, basic: false, pro: true, proOnly: true },
-  { label: "POS sales data import (works with most POS systems)", free: false, basic: false, pro: true, proOnly: true },
-  { label: "Transfer orders", free: false, basic: false, pro: true, proOnly: true },
-  { label: "Support", free: "Community", basic: "Email", pro: "Priority" },
-  { label: "Ads", free: "Yes", basic: "No", pro: "No" },
+const COMPARISON_ROWS: { label: string; free: boolean | string; basic: boolean | string; pro: boolean | string; enterprise: boolean | string; proOnly?: boolean; enterpriseOnly?: boolean }[] = [
+  { label: "Inventory management", free: true, basic: true, pro: true, enterprise: "Multi-brand" },
+  { label: "Vendor order guide imports", free: "Manual", basic: true, pro: true, enterprise: true },
+  { label: "Order reminders", free: true, basic: true, pro: true, enterprise: true },
+  { label: "Purchase orders & receiving", free: true, basic: true, pro: true, enterprise: true },
+  { label: "Inventory count sessions", free: true, basic: true, pro: true, enterprise: true },
+  { label: "Store locations", free: "1", basic: "Up to 2", pro: "Unlimited", enterprise: "Unlimited" },
+  { label: "Team member seats", free: "2", basic: "5", pro: "Unlimited", enterprise: "Unlimited" },
+  { label: "Recipe costing", free: false, basic: true, pro: true, enterprise: true },
+  { label: "Nested sub-recipes", free: false, basic: true, pro: true, enterprise: true },
+  { label: "Brand background", free: false, basic: true, pro: true, enterprise: true },
+  { label: "No ads", free: false, basic: true, pro: true, enterprise: true },
+  { label: "TFC variance reporting", free: false, basic: true, pro: true, enterprise: true },
+  { label: "POS sales data import", free: false, basic: true, pro: true, enterprise: "Multi-POS" },
+  { label: "Smart dashboard", free: false, basic: true, pro: true, enterprise: "Franchise analytics" },
+  { label: "Cross-shop vendor pricing", free: false, basic: false, pro: true, enterprise: true, proOnly: true },
+  { label: "QuickBooks export", free: false, basic: false, pro: true, enterprise: "Add-on", proOnly: true },
+  { label: "Power Inventory counting", free: false, basic: false, pro: true, enterprise: true, proOnly: true },
+  { label: "Transfer orders", free: false, basic: false, pro: true, enterprise: true, proOnly: true },
+  { label: "Custom Security Levels", free: false, basic: false, pro: true, enterprise: true, proOnly: true },
+  { label: "Multi-POS / franchise analytics", free: false, basic: false, pro: false, enterprise: true, enterpriseOnly: true },
+  { label: "Support", free: "Community", basic: "Online chat", pro: "Priority", enterprise: "SLA + onboarding" },
+  { label: "Ads", free: "Yes", basic: "No", pro: "No", enterprise: "None" },
 ];
 
 function ComparisonTable() {
@@ -378,10 +447,11 @@ function ComparisonTable() {
       <table className="w-full text-sm" data-testid="comparison-table">
         <thead>
           <tr className="border-b-2 border-gray-200">
-            <th className="text-left py-4 pr-4 font-semibold text-gray-900 w-1/3">Feature</th>
+            <th className="text-left py-4 pr-4 font-semibold text-gray-900 w-1/4">Feature</th>
             <th className="text-center py-4 px-3 font-semibold text-gray-900">Free</th>
             <th className="text-center py-4 px-3 font-semibold text-gray-900">Basic</th>
             <th className="text-center py-4 px-3 font-semibold text-green-700 bg-green-50 rounded-t-lg">Pro</th>
+            <th className="text-center py-4 px-3 font-semibold text-gray-900">Enterprise</th>
           </tr>
         </thead>
         <tbody>
@@ -391,11 +461,16 @@ function ComparisonTable() {
                 {row.label}
                 {row.proOnly && (
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-semibold text-orange-600 border-orange-300 bg-orange-50">
-                    Pro only
+                    Pro+
+                  </Badge>
+                )}
+                {row.enterpriseOnly && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-semibold text-indigo-600 border-indigo-300 bg-indigo-50">
+                    Enterprise
                   </Badge>
                 )}
               </td>
-              {[row.free, row.basic, row.pro].map((val, i) => (
+              {[row.free, row.basic, row.pro, row.enterprise].map((val, i) => (
                 <td
                   key={i}
                   className={`text-center py-3 px-3 ${i === 2 ? "bg-green-50" : ""}`}

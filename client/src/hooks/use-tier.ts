@@ -6,7 +6,7 @@ export function useTier() {
 
   const isGlobalAdmin = user?.role === "global_admin";
   const tier: Tier = isGlobalAdmin
-    ? "pro"
+    ? "enterprise"
     : ((user?.subscriptionTier as Tier) || "free");
 
   return {

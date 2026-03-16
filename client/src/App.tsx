@@ -60,6 +60,8 @@ import ActivateAccount from "@/pages/activate-account";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import ChoosePlan from "@/pages/choose-plan";
+import EnterpriseInquiry from "@/pages/enterprise-inquiry";
+import EnterpriseOnboarding from "@/pages/enterprise-onboarding";
 import AdminBackgrounds from "@/pages/admin-backgrounds";
 import WebsiteHome from "@/pages/website/home";
 import WebsiteFeatures from "@/pages/website/features";
@@ -84,6 +86,8 @@ function WebsiteRouter() {
       <Route path="/pricing" component={WebsitePricing} />
       <Route path="/about" component={WebsiteAbout} />
       <Route path="/contact" component={WebsiteContact} />
+      <Route path="/enterprise-inquiry" component={EnterpriseInquiry} />
+      <Route path="/enterprise-onboarding" component={EnterpriseOnboarding} />
       <Route path="/login" component={Login} />
       <Route path="/signup" component={LeadSignup} />
       <Route path="/forgot-password" component={ForgotPassword} />
@@ -99,7 +103,7 @@ function ProtectedLayout() {
   const { user, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
 
-  const PUBLIC_PATHS = ["/login", "/signup", "/activate", "/onboarding", "/onboarding-wizard", "/onboarding-review", "/forgot-password", "/reset-password", "/choose-plan", "/accept-invitation"];
+  const PUBLIC_PATHS = ["/login", "/signup", "/activate", "/onboarding", "/onboarding-wizard", "/onboarding-review", "/forgot-password", "/reset-password", "/choose-plan", "/accept-invitation", "/enterprise-inquiry", "/enterprise-onboarding"];
 
   useEffect(() => {
     if (!isLoading && !user && !PUBLIC_PATHS.some(p => location === p || location.startsWith(p + "/"))) {
@@ -152,6 +156,8 @@ function ProtectedLayoutContent() {
     "/onboarding-review",
     "/onboarding",
     "/choose-plan",
+    "/enterprise-inquiry",
+    "/enterprise-onboarding",
     "/signup",
     "/activate",
     "/login",
@@ -170,6 +176,8 @@ function ProtectedLayoutContent() {
         <Route path="/onboarding-review" component={OnboardingWizard} />
         <Route path="/onboarding" component={Onboarding} />
         <Route path="/choose-plan" component={ChoosePlan} />
+        <Route path="/enterprise-inquiry" component={EnterpriseInquiry} />
+        <Route path="/enterprise-onboarding" component={EnterpriseOnboarding} />
         <Route path="/signup" component={LeadSignup} />
         <Route path="/activate" component={ActivateAccount} />
         <Route path="/login" component={Login} />
@@ -266,6 +274,8 @@ function App() {
               <Route path="/forgot-password" component={ForgotPassword} />
               <Route path="/reset-password" component={ResetPassword} />
               <Route path="/choose-plan" component={ChoosePlan} />
+              <Route path="/enterprise-inquiry" component={EnterpriseInquiry} />
+              <Route path="/enterprise-onboarding" component={EnterpriseOnboarding} />
               <Route>
                 <ProtectedLayout />
               </Route>

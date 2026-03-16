@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Check, Zap, Building2, Loader2, Star } from "lucide-react";
+import { Check, Zap, Building2, Loader2, Star, Building } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RestaurantBackground } from "@/components/restaurant-background";
@@ -38,23 +38,39 @@ const TERM_SAVINGS: Record<Term, string | null> = {
 
 const TIER_FEATURES: Record<Tier, string[]> = {
   basic: [
-    "Up to 3 store locations",
-    "Inventory tracking & costing",
-    "Recipe builder with costing",
+    "Up to 2 store locations",
+    "Recipe costing with yield tracking",
+    "Nested sub-recipe support",
     "Vendor order guide imports",
-    "Basic variance reporting",
-    "Email support",
+    "TFC variance reporting",
+    "POS sales data import",
+    "Smart dashboard",
+    "Order reminders",
+    "5 team member seats",
+    "Online chat support",
   ],
   pro: [
     "Unlimited store locations",
     "Everything in Basic",
-    "POS sales data integration",
-    "Theoretical food cost (TFC) reports",
-    "Nested recipe management",
-    "QuickBooks Online sync",
+    "Cross-shop vendor price comparison",
+    "QuickBooks export",
+    "Power Inventory counting",
+    "Transfer orders between locations",
+    "Custom Security Levels",
+    "Order reminders",
+    "Unlimited team member seats",
     "Priority support",
   ],
 };
+
+const ENTERPRISE_FEATURES: string[] = [
+  "Multi-brand inventory management",
+  "Everything in Pro",
+  "Multi-POS integration",
+  "Franchise analytics",
+  "Unlimited locations & seats",
+  "SLA + dedicated onboarding",
+];
 
 function formatPrice(unitAmount: number | null, currency: string, intervalCount?: number): string {
   if (unitAmount === null) return "—";
@@ -140,12 +156,10 @@ export default function ChoosePlan() {
     <div className="relative min-h-screen bg-background">
       <RestaurantBackground companyId={selectedCompanyId ?? undefined} />
       <div className="relative z-10 max-w-3xl mx-auto px-4 py-8">
-        {/* Logo */}
         <div className="flex justify-center mb-8">
           <img src={logoImage} alt="FNB Cost Pro" className="h-14 w-auto" />
         </div>
 
-        {/* Header */}
         <div className="bg-card rounded-lg border overflow-hidden mb-6">
           <div className="p-6 md:p-8 text-center">
             <Badge className="mb-3 bg-green-600 text-white no-default-active-elevate">
@@ -156,7 +170,6 @@ export default function ChoosePlan() {
               Start free — no charge until {trialEndStr}. Cancel anytime before then.
             </p>
 
-            {/* Term toggle */}
             <div className="flex items-center justify-center gap-2 mt-5">
               {(["monthly", "quarterly", "annual"] as Term[]).map((term) => (
                 <button
@@ -181,7 +194,6 @@ export default function ChoosePlan() {
           </div>
         </div>
 
-        {/* Plan cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           {plansLoading ? (
             <div className="col-span-2 flex items-center justify-center py-16">
@@ -208,7 +220,6 @@ export default function ChoosePlan() {
                   )}
 
                   <div className="p-6 flex flex-col flex-1">
-                    {/* Tier header */}
                     <div className="flex items-center gap-2 mb-1">
                       {isPro ? (
                         <Zap className="w-5 h-5 text-primary" />
@@ -218,7 +229,6 @@ export default function ChoosePlan() {
                       <h2 className="text-lg font-bold capitalize">{tier}</h2>
                     </div>
 
-                    {/* Price display */}
                     <div className="mb-4">
                       {plan ? (
                         <>
@@ -239,7 +249,6 @@ export default function ChoosePlan() {
                       )}
                     </div>
 
-                    {/* Features */}
                     <ul className="space-y-2 mb-6 flex-1">
                       {TIER_FEATURES[tier].map((feat) => (
                         <li key={feat} className="flex items-start gap-2 text-sm">
@@ -272,7 +281,44 @@ export default function ChoosePlan() {
           )}
         </div>
 
-        {/* Trial note + skip */}
+        <div
+          data-testid="card-plan-enterprise"
+          className="bg-card rounded-lg border overflow-hidden mb-6"
+        >
+          <div className="p-6 md:p-8">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <Building className="w-5 h-5 text-muted-foreground" />
+                  <h2 className="text-lg font-bold">Enterprise</h2>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  For franchise groups and large multi-unit operators. Custom pricing with dedicated onboarding.
+                </p>
+                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {ENTERPRISE_FEATURES.map((feat) => (
+                    <li key={feat} className="flex items-start gap-2 text-sm">
+                      <Check className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                      <span>{feat}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="flex flex-col items-center gap-2 md:min-w-[180px]">
+                <span className="text-2xl font-bold">Custom</span>
+                <Button
+                  data-testid="button-contact-sales"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => navigate("/enterprise-inquiry")}
+                >
+                  Contact Sales
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="bg-card rounded-lg border p-4 text-center">
           <p className="text-xs text-muted-foreground mb-3">
             Your card is required to reserve your spot, but you will not be charged until your {TRIAL_DAYS}-day trial ends on {trialEndStr}.
