@@ -24,7 +24,16 @@ function getAppUrl(): string {
 
 const APP_URL = getAppUrl();
 
+// In dev with VITE_SHOW_WEBSITE=true, the same origin serves both marketing
+// and app. The app is gated behind ?app which sets forceAppMode in sessionStorage.
+const DEV_WEBSITE_MODE =
+  !APP_URL && import.meta.env.VITE_SHOW_WEBSITE === "true";
+
 export function appLink(path: string) {
+  if (DEV_WEBSITE_MODE) {
+    // Append ?app so the SPA switches into app mode on arrival
+    return path + (path.includes("?") ? "&app" : "?app");
+  }
   return APP_URL + path;
 }
 
