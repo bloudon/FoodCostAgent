@@ -3,6 +3,7 @@
 # FNB Cost Pro — VPS Deploy Script
 #
 # Usage:   ./scripts/deploy-vps.sh
+# Setup:   chmod +x scripts/deploy-vps.sh   (first time only)
 #
 # WARNING: NEVER run `npm run db:push` on the VPS — it will try to drop
 #          the `migrations` table and can destroy data. This script uses
@@ -56,12 +57,9 @@ step "Installing dependencies (npm install)"
 npm install
 
 step "Running database migrations (vps-migrate.sql)"
-if [[ -f "$SCRIPT_DIR/vps-migrate.sql" ]]; then
-  psql "$DATABASE_URL" -f "$SCRIPT_DIR/vps-migrate.sql"
-  echo "  Migration script applied."
-else
-  warn "scripts/vps-migrate.sql not found — skipping DB migration."
-fi
+[[ -f "$SCRIPT_DIR/vps-migrate.sql" ]] || fail "scripts/vps-migrate.sql not found. Cannot deploy without migrations."
+psql "$DATABASE_URL" -f "$SCRIPT_DIR/vps-migrate.sql"
+echo "  Migration script applied."
 
 step "Building application (npm run build)"
 rm -rf dist
