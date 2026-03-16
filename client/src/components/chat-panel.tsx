@@ -1,6 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { MessageCircle, X, Send, Sparkles, Lock } from "lucide-react";
+import { MessageCircle, Send, Sparkles, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useTier } from "@/hooks/use-tier";
 import { Link } from "wouter";
 
@@ -46,16 +52,18 @@ export function ChatPanel() {
     };
   }, []);
 
-  const handleClose = () => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
+  const handleOpenChange = (isOpen: boolean) => {
+    if (!isOpen) {
+      if (abortRef.current) {
+        abortRef.current.abort();
+        abortRef.current = null;
+      }
+      setMessages([]);
+      setInput("");
+      setError(null);
+      setIsStreaming(false);
     }
-    setOpen(false);
-    setMessages([]);
-    setInput("");
-    setError(null);
-    setIsStreaming(false);
+    setOpen(isOpen);
   };
 
   const sendMessage = async () => {
@@ -154,33 +162,27 @@ export function ChatPanel() {
 
   return (
     <>
-      {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-[60] h-14 w-14 rounded-full bg-[#f2690d] text-white shadow-lg flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
-          data-testid="button-chat-open"
-        >
-          <MessageCircle className="h-6 w-6" />
-        </button>
-      )}
+      <button
+        onClick={() => setOpen(true)}
+        className="fixed bottom-20 right-6 z-[60] h-14 w-14 rounded-full bg-[#f2690d] text-white shadow-lg flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
+        style={{ visibility: open ? "hidden" : "visible" }}
+        data-testid="button-chat-open"
+      >
+        <MessageCircle className="h-6 w-6" />
+      </button>
 
-      {open && (
-        <div className="fixed bottom-6 right-6 z-[60] w-[380px] max-w-[calc(100vw-2rem)] h-[520px] max-h-[calc(100vh-6rem)] bg-background border rounded-lg shadow-xl flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b bg-[#f2690d] text-white shrink-0">
-            <div className="flex items-center gap-2 min-w-0">
+      <Sheet open={open} onOpenChange={handleOpenChange}>
+        <SheetContent
+          side="right"
+          className="w-[380px] sm:w-[380px] p-0 flex flex-col"
+          data-testid="chat-panel"
+        >
+          <SheetHeader className="px-4 py-3 border-b bg-[#f2690d] text-white shrink-0">
+            <SheetTitle className="flex items-center gap-2 text-white">
               <Sparkles className="h-5 w-5 shrink-0" />
-              <span className="font-semibold text-sm truncate">FNB Cost Pro AI</span>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/20 shrink-0 no-default-hover-elevate"
-              onClick={handleClose}
-              data-testid="button-chat-close"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+              <span className="text-sm font-semibold">FNB Cost Pro AI</span>
+            </SheetTitle>
+          </SheetHeader>
 
           {!canUseChat ? (
             <div className="flex-1 flex items-center justify-center p-6">
@@ -192,7 +194,7 @@ export function ChatPanel() {
                 <p className="text-sm text-muted-foreground" data-testid="text-chat-upgrade-description">
                   The AI assistant is available on the Basic plan and above. Get personalized cost management advice for your business.
                 </p>
-                <Link href="/choose-plan">
+                <Link href="/pricing">
                   <Button className="bg-[#f2690d] hover:bg-[#d95a0b] text-white" data-testid="button-chat-upgrade">
                     View Plans
                   </Button>
@@ -269,8 +271,8 @@ export function ChatPanel() {
               </div>
             </>
           )}
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

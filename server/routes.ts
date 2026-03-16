@@ -10811,11 +10811,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? topItems.map(i => `${i.name}: $${Number(i.price_per_unit).toFixed(2)}/${i.unit_name || "unit"}`).join(", ")
         : "No priced items yet";
 
+      let tfcSummary = "";
+      const tierHierarchy = ["free", "basic", "pro", "enterprise"];
+      const tierIndex = tierHierarchy.indexOf(tier);
+      if (tierIndex >= tierHierarchy.indexOf("pro")) {
+        try {
+          const tfcResult = await db.execute(
+            sql`SELECT tur.sales_date, tur.total_revenue, tur.total_theoretical_cost, tur.total_theoretical_cost_wac, s.name as store_name
+                FROM theoretical_usage_runs tur
+                LEFT JOIN stores s ON tur.store_id = s.id
+                WHERE tur.company_id = ${companyId} AND tur.status = 'completed'
+                ORDER BY tur.sales_date DESC LIMIT 5`
+          );
+          const tfcRows = ((tfcResult as any).rows || tfcResult) as Array<{
+            sales_date: string; total_revenue: number; total_theoretical_cost: number;
+            total_theoretical_cost_wac: number; store_name: string;
+          }>;
+          if (tfcRows.length > 0) {
+            const lines = tfcRows.map(r => {
+              const rev = Number(r.total_revenue);
+              const cost = Number(r.total_theoretical_cost);
+              const pct = rev > 0 ? ((cost / rev) * 100).toFixed(1) : "N/A";
+              const d = new Date(r.sales_date);
+              return `${d.toLocaleDateString()} (${r.store_name || "Unknown"}): Revenue $${rev.toFixed(2)}, TFC $${cost.toFixed(2)} (${pct}%)`;
+            });
+            tfcSummary = `\n- Recent TFC variance (last 5 runs): ${lines.join("; ")}`;
+          }
+        } catch {
+        }
+      }
+
       const systemPrompt = `You are an expert F&B cost management assistant for "${companyName}" (${tier} plan). You help food service operators control costs, optimize recipes, and improve profitability.
 
 Current data snapshot:
 - ${itemCount} inventory items, ${recipeCount} recipes
-- Top items by cost: ${topItemsSummary}
+- Top items by cost: ${topItemsSummary}${tfcSummary}
 
 Guidelines:
 - Give specific, actionable advice based on their data when possible
