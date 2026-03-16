@@ -2558,15 +2558,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ CATEGORIES ============
   app.get("/api/categories", requireAuth, async (req, res) => {
     const companyId = (req as any).companyId;
-    const cacheKey = CacheKeys.categories(companyId);
-    const cached = await cache.get(cacheKey);
-    if (cached) {
-      return res.json(cached);
+    const includeInactive = req.query.includeInactive === "true";
+    if (!includeInactive) {
+      const cacheKey = CacheKeys.categories(companyId);
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+      const cats = await storage.getCategories(companyId, false);
+      await cache.set(cacheKey, cats, CacheTTL.COMPANY);
+      return res.json(cats);
     }
-    
-    const categories = await storage.getCategories(companyId);
-    await cache.set(cacheKey, categories, CacheTTL.COMPANY);
-    res.json(categories);
+    const cats = await storage.getCategories(companyId, true);
+    res.json(cats);
   });
 
   app.get("/api/categories/:id", requireAuth, async (req, res) => {
@@ -2614,9 +2618,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/categories/:id", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
-      await storage.deleteCategory(req.params.id, companyId);
+      await storage.deactivateCategory(req.params.id, companyId);
       await cache.del(CacheKeys.categories(companyId));
       res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/categories/:id/restore", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const category = await storage.reactivateCategory(req.params.id, companyId);
+      if (!category) {
+        return res.status(404).json({ error: "Category not found" });
+      }
+      await cache.del(CacheKeys.categories(companyId));
+      res.json(category);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/categories/:id/item-count", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const count = await storage.getCategoryItemCount(req.params.id, companyId);
+      res.json({ count });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

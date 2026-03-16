@@ -113,11 +113,13 @@ export interface IStorage {
   reorderStorageLocations(companyId: string, locationOrders: { id: string; sortOrder: number }[]): Promise<void>;
 
   // Categories
-  getCategories(companyId: string): Promise<Category[]>;
+  getCategories(companyId: string, includeInactive?: boolean): Promise<Category[]>;
   getCategory(id: string, companyId: string): Promise<Category | undefined>;
   createCategory(category: InsertCategory): Promise<Category>;
   updateCategory(id: string, companyId: string, category: Partial<Category>): Promise<Category | undefined>;
-  deleteCategory(id: string, companyId: string): Promise<void>;
+  deactivateCategory(id: string, companyId: string): Promise<void>;
+  reactivateCategory(id: string, companyId: string): Promise<Category | undefined>;
+  getCategoryItemCount(id: string, companyId: string): Promise<number>;
   reorderCategories(companyId: string, categoryOrders: { id: string; sortOrder: number }[]): Promise<void>;
 
   // Units
@@ -928,9 +930,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Categories
-  async getCategories(companyId: string): Promise<Category[]> {
+  async getCategories(companyId: string, includeInactive = false): Promise<Category[]> {
+    const conditions = includeInactive
+      ? [eq(categories.companyId, companyId)]
+      : [eq(categories.companyId, companyId), eq(categories.isActive, 1)];
     return db.select().from(categories)
-      .where(eq(categories.companyId, companyId))
+      .where(and(...conditions))
       .orderBy(categories.sortOrder);
   }
 
@@ -962,12 +967,35 @@ export class DatabaseStorage implements IStorage {
     return category || undefined;
   }
 
-  async deleteCategory(id: string, companyId: string): Promise<void> {
-    await db.delete(categories)
+  async deactivateCategory(id: string, companyId: string): Promise<void> {
+    await db.update(categories)
+      .set({ isActive: 0 })
       .where(and(
         eq(categories.id, id),
         eq(categories.companyId, companyId)
       ));
+  }
+
+  async reactivateCategory(id: string, companyId: string): Promise<Category | undefined> {
+    const [category] = await db.update(categories)
+      .set({ isActive: 1 })
+      .where(and(
+        eq(categories.id, id),
+        eq(categories.companyId, companyId)
+      ))
+      .returning();
+    return category || undefined;
+  }
+
+  async getCategoryItemCount(id: string, companyId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(inventoryItems)
+      .where(and(
+        eq(inventoryItems.categoryId, id),
+        eq(inventoryItems.companyId, companyId)
+      ));
+    return result[0]?.count ?? 0;
   }
 
   async reorderCategories(companyId: string, categoryOrders: { id: string; sortOrder: number }[]): Promise<void> {
@@ -3106,24 +3134,17 @@ export class DatabaseStorage implements IStorage {
       
       // Create default categories for the new company
       await tx.insert(categories).values([
-        {
-          companyId: company.id,
-          name: "Frozen",
-          sortOrder: 1,
-          showAsIngredient: 1,
-        },
-        {
-          companyId: company.id,
-          name: "Walk-In",
-          sortOrder: 2,
-          showAsIngredient: 1,
-        },
-        {
-          companyId: company.id,
-          name: "Dry/Pantry",
-          sortOrder: 3,
-          showAsIngredient: 1,
-        },
+        { companyId: company.id, name: "Produce",             sortOrder: 1,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Dairy",               sortOrder: 2,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Proteins",            sortOrder: 3,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Seafood",             sortOrder: 4,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Frozen",              sortOrder: 5,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Walk-In",             sortOrder: 6,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Dry/Pantry",          sortOrder: 7,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Bread/Dough",         sortOrder: 8,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Spices & Seasonings", sortOrder: 9,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Beverages",           sortOrder: 10, showAsIngredient: 1 },
+        { companyId: company.id, name: "Cleaning & Supplies", sortOrder: 11, showAsIngredient: 0 },
       ]);
       
       return company;

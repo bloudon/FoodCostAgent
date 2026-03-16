@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Pencil, Trash2, Tag, GripVertical, Scale } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Search, Pencil, Trash2, Tag, GripVertical, Scale, RotateCcw, ChevronDown, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -62,11 +63,11 @@ type CategoryForm = z.infer<typeof insertCategorySchema>;
 interface SortableCategoryProps {
   category: any;
   onEdit: (category: any) => void;
-  onDelete: (category: any) => void;
+  onDeactivate: (category: any) => void;
   hideDragHandle?: boolean;
 }
 
-function SortableCategory({ category, onEdit, onDelete, hideDragHandle }: SortableCategoryProps) {
+function SortableCategory({ category, onEdit, onDeactivate, hideDragHandle }: SortableCategoryProps) {
   const {
     attributes,
     listeners,
@@ -97,16 +98,21 @@ function SortableCategory({ category, onEdit, onDelete, hideDragHandle }: Sortab
                 <GripVertical className="h-5 w-5 text-muted-foreground" />
               </button>
             )}
-            <div className="flex items-center gap-2 flex-1">
-              <Tag className="h-5 w-5 text-primary" />
+            <div className="flex items-center gap-2 flex-1 flex-wrap">
+              <Tag className="h-5 w-5 text-primary shrink-0" />
               <CardTitle className="text-lg" data-testid={`text-category-name-${category.id}`}>
                 {category.name}
               </CardTitle>
               {!!category.isTareWeightCategory && !hideDragHandle && (
-                <Scale className="h-4 w-4 text-muted-foreground" data-testid={`icon-tare-weight-${category.id}`} />
+                <Scale className="h-4 w-4 text-muted-foreground shrink-0" data-testid={`icon-tare-weight-${category.id}`} />
+              )}
+              {category.itemCount > 0 && (
+                <Badge variant="secondary" data-testid={`badge-item-count-${category.id}`}>
+                  {category.itemCount} {category.itemCount === 1 ? "item" : "items"}
+                </Badge>
               )}
             </div>
-            <div className="flex gap-1">
+            <div className="flex gap-1 shrink-0">
               <Button
                 size="icon"
                 variant="ghost"
@@ -118,8 +124,8 @@ function SortableCategory({ category, onEdit, onDelete, hideDragHandle }: Sortab
               <Button
                 size="icon"
                 variant="ghost"
-                onClick={() => onDelete(category)}
-                data-testid={`button-delete-category-${category.id}`}
+                onClick={() => onDeactivate(category)}
+                data-testid={`button-deactivate-category-${category.id}`}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -142,7 +148,8 @@ export default function Categories() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<any | null>(null);
-  const [deletingCategory, setDeletingCategory] = useState<any | null>(null);
+  const [deactivatingCategory, setDeactivatingCategory] = useState<any | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
   const { toast } = useToast();
 
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
@@ -156,9 +163,41 @@ export default function Categories() {
   const categoriesMilestone = milestonesData?.milestones.find(m => m.id === "categories");
   const showReviewButton = milestonesData && !milestonesData.dismissed && categoriesMilestone && !categoriesMilestone.completed;
 
-  const { data: categories, isLoading } = useQuery<any[]>({
-    queryKey: ["/api/categories"],
+  const { data: allCategories, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/categories", { includeInactive: true }],
+    queryFn: () => fetch("/api/categories?includeInactive=true", { credentials: "include" }).then(r => r.json()),
   });
+
+  // Fetch item counts for all categories
+  const activeCategories = allCategories?.filter(c => c.isActive === 1) ?? [];
+  const inactiveCategories = allCategories?.filter(c => c.isActive === 0) ?? [];
+
+  const { data: itemCountsData } = useQuery<Record<string, number>>({
+    queryKey: ["/api/categories/item-counts"],
+    queryFn: async () => {
+      if (!allCategories?.length) return {};
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        allCategories.map(async (cat) => {
+          const res = await fetch(`/api/categories/${cat.id}/item-count`, { credentials: "include" });
+          const data = await res.json();
+          counts[cat.id] = data.count ?? 0;
+        })
+      );
+      return counts;
+    },
+    enabled: !!allCategories?.length,
+  });
+
+  const categoriesWithCounts = activeCategories.map(c => ({
+    ...c,
+    itemCount: itemCountsData?.[c.id] ?? 0,
+  }));
+
+  const inactiveCategoriesWithCounts = inactiveCategories.map(c => ({
+    ...c,
+    itemCount: itemCountsData?.[c.id] ?? 0,
+  }));
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -179,24 +218,17 @@ export default function Categories() {
 
   const createMutation = useMutation({
     mutationFn: async (data: CategoryForm) => {
-      const sortOrder = categories?.length || 0;
+      const sortOrder = activeCategories.length;
       return apiRequest("POST", "/api/categories", { ...data, sortOrder });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
       setIsAddDialogOpen(false);
       form.reset();
-      toast({
-        title: "Success",
-        description: "Category created successfully",
-      });
+      toast({ title: "Success", description: "Category created successfully" });
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create category",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to create category", variant: "destructive" });
     },
   });
 
@@ -208,38 +240,38 @@ export default function Categories() {
       queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
       setEditingCategory(null);
       form.reset();
-      toast({
-        title: "Success",
-        description: "Category updated successfully",
-      });
+      toast({ title: "Success", description: "Category updated successfully" });
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update category",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to update category", variant: "destructive" });
     },
   });
 
-  const deleteMutation = useMutation({
+  const deactivateMutation = useMutation({
     mutationFn: async (id: string) => {
       return apiRequest("DELETE", `/api/categories/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
-      setDeletingCategory(null);
-      toast({
-        title: "Success",
-        description: "Category deleted successfully",
-      });
+      queryClient.invalidateQueries({ queryKey: ["/api/categories/item-counts"] });
+      setDeactivatingCategory(null);
+      toast({ title: "Category deactivated", description: "The category is now inactive. You can restore it at any time." });
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete category",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to deactivate category", variant: "destructive" });
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("POST", `/api/categories/${id}/restore`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      toast({ title: "Category restored", description: "The category is active again." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to restore category", variant: "destructive" });
     },
   });
 
@@ -250,14 +282,9 @@ export default function Categories() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
     },
-    onError: (error: any) => {
-      // Refetch to restore correct order on error
+    onError: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
-      toast({
-        title: "Error",
-        description: error.message || "Failed to reorder categories",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to reorder categories", variant: "destructive" });
     },
   });
 
@@ -291,30 +318,35 @@ export default function Categories() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    if (!over || active.id === over.id || !categoriesWithCounts) return;
 
-    if (!over || active.id === over.id || !categories) {
-      return;
-    }
+    const oldIndex = categoriesWithCounts.findIndex((c) => c.id === active.id);
+    const newIndex = categoriesWithCounts.findIndex((c) => c.id === over.id);
+    const newOrder = arrayMove(categoriesWithCounts, oldIndex, newIndex);
+    const categoryOrders = newOrder.map((category, index) => ({ id: category.id, sortOrder: index }));
 
-    const oldIndex = categories.findIndex((c) => c.id === active.id);
-    const newIndex = categories.findIndex((c) => c.id === over.id);
+    // Optimistically update UI (active only)
+    queryClient.setQueryData(
+      ["/api/categories", { includeInactive: true }],
+      (old: any[]) => {
+        if (!old) return old;
+        const inactives = old.filter(c => c.isActive === 0);
+        return [...newOrder, ...inactives];
+      }
+    );
 
-    const newOrder = arrayMove(categories, oldIndex, newIndex);
-    const categoryOrders = newOrder.map((category, index) => ({
-      id: category.id,
-      sortOrder: index,
-    }));
-
-    // Optimistically update the UI
-    queryClient.setQueryData(["/api/categories"], newOrder);
-
-    // Send the reorder request to the backend
     reorderMutation.mutate(categoryOrders);
   };
 
-  const filteredCategories = categories?.filter((cat) =>
+  const filteredActive = categoriesWithCounts.filter((cat) =>
     cat.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const filteredInactive = inactiveCategoriesWithCounts.filter((cat) =>
+    cat.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const deactivatingItemCount = deactivatingCategory ? (itemCountsData?.[deactivatingCategory.id] ?? 0) : 0;
 
   return (
     <div className="p-8 pb-16">
@@ -375,22 +407,22 @@ export default function Categories() {
               </Card>
             ))}
           </div>
-        ) : filteredCategories && filteredCategories.length > 0 ? (
+        ) : filteredActive.length > 0 ? (
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={filteredCategories.map((c) => c.id)}
+              items={filteredActive.map((c) => c.id)}
               strategy={verticalListSortingStrategy}
             >
-              {filteredCategories.map((category) => (
+              {filteredActive.map((category) => (
                 <SortableCategory
                   key={category.id}
                   category={category}
                   onEdit={handleEdit}
-                  onDelete={setDeletingCategory}
+                  onDeactivate={setDeactivatingCategory}
                   hideDragHandle={!!showReviewButton}
                 />
               ))}
@@ -401,7 +433,7 @@ export default function Categories() {
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Tag className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground text-center">
-                {searchQuery ? "No categories found matching your search" : "No categories yet"}
+                {searchQuery ? "No active categories match your search" : "No active categories"}
               </p>
               {!searchQuery && (
                 <Button onClick={handleAdd} className="mt-4" data-testid="button-create-first-category">
@@ -412,8 +444,68 @@ export default function Categories() {
             </CardContent>
           </Card>
         )}
+
+        {/* Inactive categories section */}
+        {(filteredInactive.length > 0) && (
+          <div className="mt-6">
+            <button
+              className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3 hover-elevate rounded px-1 py-1"
+              onClick={() => setShowInactive(v => !v)}
+              data-testid="button-toggle-inactive-categories"
+            >
+              {showInactive ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+              Inactive categories ({filteredInactive.length})
+            </button>
+
+            {showInactive && (
+              <div className="space-y-3">
+                {filteredInactive.map((category) => (
+                  <Card
+                    key={category.id}
+                    className="mb-3 opacity-60"
+                    data-testid={`card-inactive-category-${category.id}`}
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 flex-1 flex-wrap">
+                          <Tag className="h-5 w-5 text-muted-foreground shrink-0" />
+                          <CardTitle className="text-lg text-muted-foreground" data-testid={`text-inactive-category-name-${category.id}`}>
+                            {category.name}
+                          </CardTitle>
+                          <Badge variant="outline" className="text-xs">
+                            Inactive
+                          </Badge>
+                          {category.itemCount > 0 && (
+                            <Badge variant="secondary" data-testid={`badge-inactive-item-count-${category.id}`}>
+                              {category.itemCount} {category.itemCount === 1 ? "item" : "items"}
+                            </Badge>
+                          )}
+                        </div>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => restoreMutation.mutate(category.id)}
+                          disabled={restoreMutation.isPending}
+                          title="Restore category"
+                          data-testid={`button-restore-category-${category.id}`}
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* Create / Edit dialog */}
       <Dialog open={isAddDialogOpen || !!editingCategory} onOpenChange={(open) => {
         if (!open) {
           setIsAddDialogOpen(false);
@@ -504,8 +596,8 @@ export default function Categories() {
                 >
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={createMutation.isPending || updateMutation.isPending}
                   data-testid="button-save-category"
                 >
@@ -517,27 +609,42 @@ export default function Categories() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deletingCategory} onOpenChange={(open) => !open && setDeletingCategory(null)}>
-        <AlertDialogContent data-testid="dialog-delete-category">
+      {/* Deactivate confirmation dialog */}
+      <AlertDialog open={!!deactivatingCategory} onOpenChange={(open) => !open && setDeactivatingCategory(null)}>
+        <AlertDialogContent data-testid="dialog-deactivate-category">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Category</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{deletingCategory?.name}"? This action cannot be undone.
+            <AlertDialogTitle>Deactivate Category</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Are you sure you want to deactivate <strong>"{deactivatingCategory?.name}"</strong>?
+                </p>
+                {deactivatingItemCount > 0 && (
+                  <p className="text-amber-600 dark:text-amber-400">
+                    {deactivatingItemCount} inventory {deactivatingItemCount === 1 ? "item is" : "items are"} assigned to this
+                    category. They will remain in the system but the category will no longer appear in dropdowns.
+                  </p>
+                )}
+                <p className="text-muted-foreground text-sm">
+                  You can restore this category at any time from the inactive categories section.
+                </p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-delete-category">Cancel</AlertDialogCancel>
+            <AlertDialogCancel data-testid="button-cancel-deactivate-category">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deletingCategory && deleteMutation.mutate(deletingCategory.id)}
-              disabled={deleteMutation.isPending}
-              data-testid="button-confirm-delete-category"
+              onClick={() => deactivatingCategory && deactivateMutation.mutate(deactivatingCategory.id)}
+              disabled={deactivateMutation.isPending}
+              data-testid="button-confirm-deactivate-category"
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              {deactivateMutation.isPending ? "Deactivating..." : "Deactivate"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <SetupProgressBanner currentMilestoneId="categories" hasEntries={(categories?.length ?? 0) > 0} />
+
+      <SetupProgressBanner currentMilestoneId="categories" hasEntries={(activeCategories.length ?? 0) > 0} />
     </div>
   );
 }
