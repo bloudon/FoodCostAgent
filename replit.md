@@ -56,6 +56,7 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 - **Stripe Integration**: Subscription billing using Stripe Checkout + Webhooks.
 - **Email Service**: SMTP2GO (for contact form).
 - **Background Image System**: Unsplash (images seeded from).
+- **AI Chat**: OpenAI GPT-4o-mini via `openai` npm package. `OPENAI_API_KEY` env var required. In-app floating chat panel gated at Basic tier. 50 messages/day per company rate limit (in-memory, resets at midnight UTC).
 
 # VPS Deployment
 
@@ -64,3 +65,4 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 - **App Port**: 3001 (production); nginx config at `/etc/nginx/sites-available/app.fnbcostpro.com.conf`.
 - **PM2 Process**: `fnbcostpro`.
 - **NEVER run `db:push` on VPS** — it will try to drop the `migrations` table. Always use `vps-migrate.sql` for schema changes.
+- **Required Env Vars on VPS**: `DATABASE_URL`, `OPENAI_API_KEY`, Stripe keys, SMTP2GO credentials. Add `OPENAI_API_KEY` to the VPS environment for the AI chat assistant to work.

@@ -63,6 +63,7 @@ import ChoosePlan from "@/pages/choose-plan";
 import EnterpriseInquiry from "@/pages/enterprise-inquiry";
 import EnterpriseOnboarding from "@/pages/enterprise-onboarding";
 import AdminBackgrounds from "@/pages/admin-backgrounds";
+import { ChatPanel } from "@/components/chat-panel";
 import WebsiteHome from "@/pages/website/home";
 import WebsiteFeatures from "@/pages/website/features";
 import WebsitePricing from "@/pages/website/pricing";
@@ -237,6 +238,8 @@ function ProtectedLayoutContent() {
               <Route component={NotFound} />
             </Switch>
           </main>
+
+      <ChatPanel />
     </div>
   );
 }
