@@ -53,6 +53,18 @@ import {
   insertQuickBooksVendorMappingSchema,
 } from "@shared/schema";
 
+// Helper: session cookie options — shares domain across subdomains in production
+function sessionCookieOptions() {
+  const isProd = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: "lax" as const,
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    ...(isProd ? { domain: ".fnbcostpro.com" } : {}),
+  };
+}
+
 // Swagger/OpenAPI Configuration
 const swaggerOptions = {
   definition: {
@@ -600,12 +612,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.ip
       );
 
-      res.cookie("session", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      });
+      res.cookie("session", token, sessionCookieOptions());
 
       res.status(201).json({
         user: {
@@ -771,12 +778,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.ip
       );
 
-      res.cookie("session", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie("session", token, sessionCookieOptions());
 
       let company = null;
       if (user.companyId) {
@@ -1037,12 +1039,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.ip
       );
 
-      res.cookie("session", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie("session", token, sessionCookieOptions());
 
       // Send welcome email (non-blocking)
       import("./email").then(({ sendWelcomeEmail }) => {
@@ -1334,12 +1331,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.ip
       );
 
-      res.cookie("session", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      });
+      res.cookie("session", token, sessionCookieOptions());
 
       res.json({ 
         user: { 
@@ -1977,12 +1969,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create session (auto-login)
       const sessionToken = await createSession(newUser.id, req.headers["user-agent"], req.ip);
-      res.cookie("session", sessionToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie("session", sessionToken, sessionCookieOptions());
 
       console.log(`[Invitation] Accepted by ${newUser.email} (${newUser.role}) for company ${newUser.companyId}`);
 

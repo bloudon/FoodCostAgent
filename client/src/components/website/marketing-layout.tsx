@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Menu, X, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
 
 function getAppUrl(): string {
   if (typeof window !== "undefined") {
@@ -45,6 +46,19 @@ function NavLink({ href, label, onClick }: { href: string; label: string; onClic
 export function MarketingLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const { data: authUser } = useQuery<{ id: string } | null>({
+    queryKey: ["/api/auth/me"],
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const res = await fetch("/api/auth/me", { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
+  const isLoggedIn = !!authUser?.id;
+
   return (
     <div className="min-h-screen flex flex-col bg-white">
       <header className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm">
@@ -61,20 +75,34 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
             </nav>
 
             <div className="hidden md:flex items-center gap-3">
-              <a href={appLink("/login")}>
-                <Button variant="ghost" size="sm" data-testid="btn-nav-login">
-                  Log in
-                </Button>
-              </a>
-              <a href={appLink("/signup")}>
-                <Button
-                  size="sm"
-                  className="bg-orange-500 hover:bg-orange-600 text-white border-0"
-                  data-testid="btn-nav-signup"
-                >
-                  Get Started Free
-                </Button>
-              </a>
+              {isLoggedIn ? (
+                <a href={appLink("/")}>
+                  <Button
+                    size="sm"
+                    className="bg-orange-500 hover:bg-orange-600 text-white border-0"
+                    data-testid="btn-nav-my-account"
+                  >
+                    My Account
+                  </Button>
+                </a>
+              ) : (
+                <>
+                  <a href={appLink("/login")}>
+                    <Button variant="ghost" size="sm" data-testid="btn-nav-login">
+                      Log in
+                    </Button>
+                  </a>
+                  <a href={appLink("/signup")}>
+                    <Button
+                      size="sm"
+                      className="bg-orange-500 hover:bg-orange-600 text-white border-0"
+                      data-testid="btn-nav-signup"
+                    >
+                      Get Started Free
+                    </Button>
+                  </a>
+                </>
+              )}
             </div>
 
             <button
@@ -94,19 +122,32 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
               <NavLink key={l.href} href={l.href} label={l.label} onClick={() => setMobileOpen(false)} />
             ))}
             <div className="pt-2 flex flex-col gap-2">
-              <a href={appLink("/login")} className="w-full">
-                <Button variant="outline" className="w-full" data-testid="btn-mobile-login">
-                  Log in
-                </Button>
-              </a>
-              <a href={appLink("/signup")} className="w-full">
-                <Button
-                  className="w-full bg-orange-500 text-white border-0"
-                  data-testid="btn-mobile-signup"
-                >
-                  Get Started Free
-                </Button>
-              </a>
+              {isLoggedIn ? (
+                <a href={appLink("/")} className="w-full">
+                  <Button
+                    className="w-full bg-orange-500 text-white border-0"
+                    data-testid="btn-mobile-my-account"
+                  >
+                    My Account
+                  </Button>
+                </a>
+              ) : (
+                <>
+                  <a href={appLink("/login")} className="w-full">
+                    <Button variant="outline" className="w-full" data-testid="btn-mobile-login">
+                      Log in
+                    </Button>
+                  </a>
+                  <a href={appLink("/signup")} className="w-full">
+                    <Button
+                      className="w-full bg-orange-500 text-white border-0"
+                      data-testid="btn-mobile-signup"
+                    >
+                      Get Started Free
+                    </Button>
+                  </a>
+                </>
+              )}
             </div>
           </div>
         )}
