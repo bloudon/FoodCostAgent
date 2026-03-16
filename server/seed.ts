@@ -1253,3 +1253,19 @@ export async function seedDatabase() {
   console.log('   - 8 inventory items');
   console.log('   - 1 recipe (Pizza Dough)');
 }
+
+const isCLI = process.argv[1] && (
+  process.argv[1].endsWith("seed.ts") ||
+  process.argv[1].endsWith("seed.js")
+);
+if (isCLI) {
+  seedDatabase()
+    .then(() => {
+      console.log("✅ Seed complete.");
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error("❌ Seed failed:", err);
+      process.exit(1);
+    });
+}
