@@ -1,8 +1,16 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, X, ChevronRight } from "lucide-react";
+import { Menu, X, ChevronRight, LayoutDashboard, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 function getAppUrl(): string {
   if (typeof window !== "undefined") {
@@ -46,7 +54,7 @@ function NavLink({ href, label, onClick }: { href: string; label: string; onClic
 export function MarketingLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const { data: authUser } = useQuery<{ id: string } | null>({
+  const { data: authUser } = useQuery<{ id: string; email: string; firstName?: string; lastName?: string } | null>({
     queryKey: ["/api/auth/me"],
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -57,7 +65,19 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
     },
   });
 
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    },
+    onSuccess: () => {
+      window.location.reload();
+    },
+  });
+
   const isLoggedIn = !!authUser?.id;
+  const displayName = authUser?.firstName
+    ? `${authUser.firstName}${authUser.lastName ? " " + authUser.lastName : ""}`
+    : authUser?.email ?? "";
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -76,15 +96,43 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
 
             <div className="hidden md:flex items-center gap-3">
               {isLoggedIn ? (
-                <a href={appLink("/")}>
-                  <Button
-                    size="sm"
-                    className="bg-orange-500 hover:bg-orange-600 text-white border-0"
-                    data-testid="btn-nav-my-account"
-                  >
-                    My Account
-                  </Button>
-                </a>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="sm"
+                      className="bg-orange-500 hover:bg-orange-600 text-white border-0"
+                      data-testid="btn-nav-my-account"
+                    >
+                      <User className="h-4 w-4 mr-1.5" />
+                      My Account
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuLabel className="font-normal">
+                      <p className="text-sm font-medium leading-none">{displayName}</p>
+                      {authUser?.firstName && (
+                        <p className="text-xs text-muted-foreground mt-1">{authUser.email}</p>
+                      )}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <a href={appLink("/")} className="flex items-center gap-2 cursor-pointer" data-testid="btn-nav-dashboard">
+                        <LayoutDashboard className="h-4 w-4" />
+                        Go to Dashboard
+                      </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="flex items-center gap-2 text-red-600 focus:text-red-600 cursor-pointer"
+                      onClick={() => logoutMutation.mutate()}
+                      disabled={logoutMutation.isPending}
+                      data-testid="btn-nav-logout"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      {logoutMutation.isPending ? "Signing out…" : "Sign out"}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               ) : (
                 <>
                   <a href={appLink("/login")}>
@@ -123,14 +171,30 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
             ))}
             <div className="pt-2 flex flex-col gap-2">
               {isLoggedIn ? (
-                <a href={appLink("/")} className="w-full">
+                <>
+                  <div className="px-1 pb-1">
+                    <p className="text-sm font-medium text-gray-900">{displayName}</p>
+                    {authUser?.firstName && (
+                      <p className="text-xs text-gray-500">{authUser.email}</p>
+                    )}
+                  </div>
+                  <a href={appLink("/")} className="w-full">
+                    <Button variant="outline" className="w-full gap-2" data-testid="btn-mobile-dashboard">
+                      <LayoutDashboard className="h-4 w-4" />
+                      Go to Dashboard
+                    </Button>
+                  </a>
                   <Button
-                    className="w-full bg-orange-500 text-white border-0"
-                    data-testid="btn-mobile-my-account"
+                    variant="ghost"
+                    className="w-full gap-2 text-red-600 hover:text-red-600"
+                    onClick={() => logoutMutation.mutate()}
+                    disabled={logoutMutation.isPending}
+                    data-testid="btn-mobile-logout"
                   >
-                    My Account
+                    <LogOut className="h-4 w-4" />
+                    {logoutMutation.isPending ? "Signing out…" : "Sign out"}
                   </Button>
-                </a>
+                </>
               ) : (
                 <>
                   <a href={appLink("/login")} className="w-full">
