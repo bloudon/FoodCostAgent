@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AppHeader } from "@/components/app-header";
 import { GlobalAdminHeader } from "@/components/global-admin-header";
+import pkgJson from "../../package.json";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { LogOut, Store } from "lucide-react";
@@ -238,6 +239,10 @@ function ProtectedLayoutContent() {
               <Route component={NotFound} />
             </Switch>
           </main>
+
+      <footer className="shrink-0 border-t px-4 py-1 text-center" data-testid="app-footer-version">
+        <span className="text-[10px] text-muted-foreground">v{pkgJson.version}</span>
+      </footer>
 
       <ChatPanel />
     </div>
