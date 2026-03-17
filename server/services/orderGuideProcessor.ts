@@ -351,6 +351,12 @@ export class OrderGuideProcessor {
     const primaryStoreId = targetStoreIds[0];
     const defaults = await this.getSmartDefaults(companyId, primaryStoreId);
 
+    // Pre-build a set of valid company inventory item IDs for defence-in-depth validation.
+    // This guards against cross-tenant linkage even if a line's matchedInventoryItemId was
+    // set by the matching path (e.g. due to incorrect query scope).
+    const companyInventoryItems = await this.storage.getInventoryItems(undefined, undefined, companyId);
+    const validCompanyItemIds = new Set(companyInventoryItems.map((i: { id: string }) => i.id));
+
     // Process items by match status
     // guide.vendorId may be null for generic CSV imports (no specific vendor assigned)
     const guideVendorId = guide.vendorId || null;
@@ -384,6 +390,13 @@ export class OrderGuideProcessor {
         if (result.vendorItemCreated) vendorItemsCreated++;
         storeAssignmentsCreated += result.storeAssignmentsCreated;
       } else if (effectiveLine.matchedInventoryItemId) {
+        // SECURITY: Defence-in-depth — verify matched item belongs to this company
+        // before creating any vendor item or store assignment
+        if (!validCompanyItemIds.has(effectiveLine.matchedInventoryItemId)) {
+          console.error(`[OrderGuide] Skipping line ${line.id}: matchedInventoryItemId ${effectiveLine.matchedInventoryItemId} does not belong to company ${companyId}`);
+          continue;
+        }
+
         // Create vendor item linking to existing inventory (only if we have a vendor)
         if (effectiveVendorId) {
           const created = await this.createVendorItemForExisting(effectiveLine, effectiveVendorId, companyId);

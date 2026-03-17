@@ -36,8 +36,9 @@ export class ItemMatcher {
     canonicalName?: string
   ): Promise<MatchResult> {
     // Get all inventory items and categories for this company
+    // Note: getInventoryItems(locationId?, storeId?, companyId?) — pass companyId as 3rd arg
     const [inventoryItems, categories] = await Promise.all([
-      this.storage.getInventoryItems(companyId),
+      this.storage.getInventoryItems(undefined, undefined, companyId),
       this.storage.getCategories(companyId)
     ]);
     
