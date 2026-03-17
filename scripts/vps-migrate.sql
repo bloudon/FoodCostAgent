@@ -179,16 +179,20 @@ BEGIN
 END $$;
 
 -- =============================================================================
--- v008 — Task #19: canonical_name on order_guide_lines
+-- v008 — Task #19: AI CSV Inventory Import — no schema changes required
+--
+-- Implementation notes:
+--   • Generic imports use vendorKey='generic' and vendorId=null on order_guides.
+--   • CsvOrderGuide generates synthetic SKUs (GENERIC-1, GENERIC-2, …) for rows
+--     without a real vendor SKU so that getVendorItems() lookups remain consistent.
+--   • AI-normalized canonical names are computed in-memory during the preview step
+--     and passed directly to ItemMatcher.findBestMatch(); they are not persisted.
+--   • No new columns or constraints are needed for this feature.
 -- =============================================================================
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v008') THEN
-
-    -- AI-normalized product name for better fuzzy matching during CSV import
-    ALTER TABLE order_guide_lines ADD COLUMN IF NOT EXISTS canonical_name text;
-
     INSERT INTO _migration_log (version, description)
-      VALUES ('v008', 'Task #19: canonical_name on order_guide_lines for AI CSV import');
+      VALUES ('v008', 'Task #19: AI CSV import — documentation-only, no schema changes');
   END IF;
 END $$;

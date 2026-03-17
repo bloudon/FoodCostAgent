@@ -208,7 +208,7 @@ function buildProposalFromAiResponse(
   for (const [aiField, csvField] of Object.entries(FIELD_ALIASES)) {
     const headerValue = aiMapping[aiField] ?? '';
     if (headerValue && headers.includes(headerValue)) {
-      (mapping as Record<string, string>)[csvField] = headerValue;
+      (mapping as unknown as Record<string, string>)[csvField] = headerValue;
       confidence[csvField] = aiConfidence[aiField] ?? 0.5;
     } else {
       confidence[csvField] = 0;
@@ -250,7 +250,7 @@ function patternBasedMapping(headers: string[]): ColumnMappingProposal {
     for (const pattern of fieldPatterns) {
       const idx = headerLower.findIndex(h => h === pattern);
       if (idx !== -1) {
-        (mapping as Record<string, string>)[field] = headers[idx];
+        (mapping as unknown as Record<string, string>)[field] = headers[idx];
         confidence[field] = 0.7;
         matched = true;
         break;
@@ -261,7 +261,7 @@ function patternBasedMapping(headers: string[]): ColumnMappingProposal {
       for (const pattern of fieldPatterns) {
         const idx = headerLower.findIndex(h => h.includes(pattern) || pattern.includes(h));
         if (idx !== -1) {
-          (mapping as Record<string, string>)[field] = headers[idx];
+          (mapping as unknown as Record<string, string>)[field] = headers[idx];
           confidence[field] = 0.5;
           matched = true;
           break;

@@ -200,7 +200,6 @@ export class OrderGuideProcessor {
         matchedInventoryItemId: match.inventoryItemId,
         matchConfidence: matchConfidenceScore,
         isVariableWeight: product.isVariableWeight ? 1 : 0,
-        canonicalName: canonicalName ?? null,             // AI-normalized name (if available)
       };
 
       lines.push(line);
@@ -660,33 +659,47 @@ export class OrderGuideProcessor {
    * Also syncs case size and pricing from vendor data to the linked inventory item
    */
   private async createVendorItemForExisting(
-    line: any,
+    line: { vendorSku: string; brandName?: string | null; matchedInventoryItemId?: string | null; caseSize?: number | null; innerPack?: number | null; price?: number | null },
     vendorId: string,
     companyId: string
   ): Promise<boolean> {
     try {
-      // Check if vendor item already exists
-      const existingVendorItems = await this.storage.getVendorItems(companyId, line.vendorSku);
-      const alreadyExists = existingVendorItems.some(
-        vi => vi.vendorId === vendorId && vi.vendorSku === line.vendorSku
-      );
-
-      if (alreadyExists) {
-        return false;
-      }
-
       if (!line.matchedInventoryItemId) {
         return false;
       }
 
+      // Check if vendor item already exists for this vendor+SKU combination
+      const existingVendorItems = await this.storage.getVendorItems(companyId, line.vendorSku);
+      const existing = existingVendorItems.find(
+        vi => vi.vendorId === vendorId && vi.vendorSku === line.vendorSku
+      );
+
       // Get the inventory item to find its unit
       const inventoryItem = await this.storage.getInventoryItem(line.matchedInventoryItemId);
-      
       if (!inventoryItem) {
         return false;
       }
 
-      // Create vendor item
+      if (existing) {
+        // Vendor item already exists — update pricing if we have new price data
+        // This ensures matched imports always refresh vendor pricing
+        if (line.price != null && line.price > 0) {
+          const caseSize = Math.max(line.caseSize ?? 1, 1);
+          const innerPack = Math.max(line.innerPack ?? 1, 1);
+          const unitPrice = line.price / (caseSize * innerPack);
+          await this.storage.updateVendorItem(existing.id, {
+            lastPrice: unitPrice,
+            lastCasePrice: line.price,
+            caseSize: line.caseSize ?? existing.caseSize,
+            innerPackSize: line.innerPack ?? existing.innerPackSize,
+          });
+          // Also propagate updated pricing to inventory item
+          await this.syncVendorDataToInventoryItem(line, inventoryItem);
+        }
+        return false; // did not CREATE a new record, but did update
+      }
+
+      // No existing vendor item — create one
       await this.storage.createVendorItem({
         vendorId,
         inventoryItemId: line.matchedInventoryItemId,
