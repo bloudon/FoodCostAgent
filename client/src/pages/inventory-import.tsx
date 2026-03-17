@@ -128,7 +128,8 @@ export default function InventoryImport() {
   const { stores, selectedStoreId } = useStoreContext();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 'done'>(1);
+  const [importAllMode, setImportAllMode] = useState(false);
   const [csvContent, setCsvContent] = useState('');
   const [fileName, setFileName] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState<string>('none');
@@ -231,7 +232,7 @@ export default function InventoryImport() {
       });
       queryClient.invalidateQueries({ queryKey: ['/api/inventory-items'] });
       queryClient.invalidateQueries({ queryKey: ['/api/vendor-items'] });
-      setStep(4);
+      setStep('done');
     },
     onError: (err: Error) => {
       toast({ title: 'Import Failed', description: err.message, variant: 'destructive' });
@@ -298,13 +299,14 @@ export default function InventoryImport() {
   const canProceedStep1 = !!csvContent;
   const canProceedStep2 = !!mapping.productName;
 
-  // Step indicator
+  // Step indicator (4 real steps + 'done' state)
   const steps = [
     { num: 1, label: 'Upload' },
     { num: 2, label: 'Map Columns' },
     { num: 3, label: 'Review' },
-    { num: 4, label: 'Done' },
+    { num: 4, label: 'Confirm' },
   ];
+  const stepNum = step === 'done' ? 5 : step;
 
   return (
     <TierGate feature="recipe_costing">
@@ -327,16 +329,16 @@ export default function InventoryImport() {
               <div key={s.num} className="flex items-center gap-2">
                 <div
                   className={`flex items-center justify-center h-7 w-7 rounded-full text-sm font-medium border ${
-                    step > s.num
+                    stepNum > s.num
                       ? 'bg-green-600 text-white border-green-600'
-                      : step === s.num
+                      : stepNum === s.num
                       ? 'bg-primary text-primary-foreground border-primary'
                       : 'border-muted-foreground/40 text-muted-foreground'
                   }`}
                 >
-                  {step > s.num ? <Check className="h-3 w-3" /> : s.num}
+                  {stepNum > s.num ? <Check className="h-3 w-3" /> : s.num}
                 </div>
-                <span className={`text-sm hidden sm:block ${step === s.num ? 'font-medium' : 'text-muted-foreground'}`}>{s.label}</span>
+                <span className={`text-sm hidden sm:block ${stepNum === s.num ? 'font-medium' : 'text-muted-foreground'}`}>{s.label}</span>
                 {i < steps.length - 1 && <div className="h-px w-6 bg-border" />}
               </div>
             ))}
@@ -570,20 +572,20 @@ export default function InventoryImport() {
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
-                      onClick={() => approveMutation.mutate({ importAll: true })}
-                      disabled={approveMutation.isPending || targetStoreIds.size === 0}
-                      data-testid="button-import-all"
+                      onClick={() => { setImportAllMode(true); setStep(4); }}
+                      disabled={targetStoreIds.size === 0}
+                      data-testid="button-review-all"
                     >
                       <CheckCheck className="h-4 w-4 mr-2" />
-                      {approveMutation.isPending ? 'Importing...' : `Import All (${previewResult.review.summary.total})`}
+                      Import All ({previewResult.review.summary.total})
                     </Button>
                     <Button
-                      onClick={() => approveMutation.mutate({ importAll: false })}
-                      disabled={approveMutation.isPending || selectedLineIds.size === 0 || targetStoreIds.size === 0}
-                      data-testid="button-import-selected"
+                      onClick={() => { setImportAllMode(false); setStep(4); }}
+                      disabled={selectedLineIds.size === 0 || targetStoreIds.size === 0}
+                      data-testid="button-review-selected"
                     >
-                      <Check className="h-4 w-4 mr-2" />
-                      {approveMutation.isPending ? 'Importing...' : `Import Selected (${selectedLineIds.size})`}
+                      <ArrowRight className="h-4 w-4 mr-2" />
+                      Continue with {selectedLineIds.size} Selected
                     </Button>
                   </div>
                 </div>
@@ -712,8 +714,86 @@ export default function InventoryImport() {
             </div>
           )}
 
-          {/* Step 4: Done */}
-          {step === 4 && (
+          {/* Step 4: Confirm Import */}
+          {step === 4 && previewResult && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCheck className="h-5 w-5" />
+                  Confirm Import
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Review the import summary below and click Confirm to proceed.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {/* Summary */}
+                <div className="rounded-md border p-4 space-y-3 bg-muted/30">
+                  <p className="text-sm font-medium">Import Summary</p>
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
+                    <span className="text-muted-foreground">File</span>
+                    <span className="font-medium truncate">{fileName}</span>
+                    <span className="text-muted-foreground">Mode</span>
+                    <span className="font-medium">{importAllMode ? 'All items' : `${selectedLineIds.size} selected items`}</span>
+                    <span className="text-muted-foreground">Auto-matched</span>
+                    <span className="font-medium text-green-600">{previewResult.review.summary.matched}</span>
+                    <span className="text-muted-foreground">Needs review</span>
+                    <span className="font-medium text-yellow-600">{previewResult.review.summary.ambiguous}</span>
+                    <span className="text-muted-foreground">New items</span>
+                    <span className="font-medium text-blue-600">{previewResult.review.summary.new}</span>
+                  </div>
+                </div>
+
+                {/* Target stores */}
+                <div className="rounded-md border p-4 space-y-2 bg-muted/30">
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <Store className="h-4 w-4" />
+                    Target Stores ({targetStoreIds.size})
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {stores.filter(s => targetStoreIds.has(s.id)).map(s => (
+                      <Badge key={s.id} variant="secondary" data-testid={`badge-store-${s.id}`}>{s.name}</Badge>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Vendor overrides summary */}
+                {Object.keys(vendorOverrides).length > 0 && (
+                  <div className="text-sm text-muted-foreground">
+                    {Object.keys(vendorOverrides).length} vendor override(s) applied.
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setStep(3)} data-testid="button-back-step3">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Back
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={() => approveMutation.mutate({ importAll: importAllMode })}
+                    disabled={approveMutation.isPending || targetStoreIds.size === 0}
+                    data-testid="button-confirm-import"
+                  >
+                    {approveMutation.isPending ? (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-2 animate-spin" />
+                        Importing...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                        Confirm Import
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Done state: Success screen */}
+          {step === 'done' && (
             <Card>
               <CardContent className="p-8 text-center space-y-4">
                 <CheckCircle2 className="h-14 w-14 mx-auto text-green-600" />
