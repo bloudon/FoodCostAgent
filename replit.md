@@ -61,7 +61,7 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 # VPS Deployment
 
 - **Deploy Script**: `scripts/deploy-vps.sh` — single executable that performs the full deploy sequence: preflight checks → `git pull` → `npm install` → DB migration → clean build → `pm2 restart fnbcostpro`.
-- **DB Migrations**: `scripts/vps-migrate.sql` — idempotent SQL script run via `psql $DATABASE_URL -f scripts/vps-migrate.sql`. All statements use `IF NOT EXISTS` / `IF NOT EXISTS` guards so it is safe to run multiple times.
+- **DB Migrations**: `scripts/vps-migrate.sql` — idempotent SQL script run via `psql $DATABASE_URL -f scripts/vps-migrate.sql`. Uses a `_migration_log` table (auto-created on first run) to version-track each change block (v001–vNNN). Each block only executes once; re-running the script is always safe. To see what has been applied: `psql $DATABASE_URL -c "SELECT * FROM _migration_log ORDER BY version;"`. When adding new schema changes, append a new numbered `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'vNNN') THEN ... INSERT INTO _migration_log ... END IF; END $$;` block.
 - **App Port**: 3001 (production); nginx config at `/etc/nginx/sites-available/app.fnbcostpro.com.conf`.
 - **PM2 Process**: `fnbcostpro`.
 - **NEVER run `db:push` on VPS** — it will try to drop the `migrations` table. Always use `vps-migrate.sql` for schema changes.
