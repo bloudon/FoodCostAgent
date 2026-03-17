@@ -3571,6 +3571,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { csvContent, columnMapping, vendorId, fileName, useAiNormalization } = validation.data;
 
+      // SECURITY: Validate that vendorId (if provided) belongs to this company
+      if (vendorId) {
+        const companyVendors = await storage.getVendors(companyId);
+        const validVendorIds = new Set(companyVendors.map((v: { id: string }) => v.id));
+        if (!validVendorIds.has(vendorId)) {
+          return res.status(403).json({ error: 'Vendor does not belong to your company' });
+        }
+      }
+
       // Extract product names for AI normalization (optional, gated behind flag)
       let canonicalNames: Map<string, string> | undefined;
       if (useAiNormalization) {
@@ -3681,6 +3690,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           storeIdsToAssign = companyStores.map((s: any) => s.id);
         } else {
           return res.status(400).json({ error: 'No stores found for company. Please create a store first.' });
+        }
+      }
+
+      // SECURITY: Validate that any non-'new' lineOverride values are valid inventory item IDs
+      // belonging to this company (prevents cross-tenant inventory linkage via ID injection)
+      if (lineOverrides && Object.keys(lineOverrides).length > 0) {
+        const nonNewOverrides = Object.values(lineOverrides).filter(v => v !== 'new');
+        if (nonNewOverrides.length > 0) {
+          const companyItems = await storage.getInventoryItems(companyId);
+          const validItemIds = new Set(companyItems.map((item: { id: string }) => item.id));
+          for (const itemId of nonNewOverrides) {
+            if (!validItemIds.has(itemId)) {
+              return res.status(403).json({ error: `Inventory item ${itemId} does not belong to your company` });
+            }
+          }
         }
       }
 
