@@ -3649,6 +3649,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         targetStoreIds: z.array(z.string()).optional(),
         /** Per-line overrides: lineId → inventoryItemId or 'new' */
         lineOverrides: z.record(z.string()).optional(),
+        /** Per-line vendor overrides: lineId → vendorId (overrides guide-level vendor) */
+        vendorOverrides: z.record(z.string()).optional(),
       }).refine(
         (data) => data.importAll === true || (data.selectedLineIds && data.selectedLineIds.length > 0),
         { message: 'Either importAll must be true or selectedLineIds must be non-empty' }
@@ -3659,7 +3661,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Invalid request', details: validation.error.errors });
       }
 
-      const { importAll, selectedLineIds, targetStoreIds, lineOverrides } = validation.data;
+      const { importAll, selectedLineIds, targetStoreIds, lineOverrides, vendorOverrides } = validation.data;
 
       let storeIdsToAssign: string[] = [];
       if (targetStoreIds && targetStoreIds.length > 0) {
@@ -3693,6 +3695,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         importAll: importAll || false,
         selectedLineIds: selectedLineIds || [],
         lineOverrides: lineOverrides || {},
+        vendorOverrides: vendorOverrides || {},
       });
 
       res.json(result);

@@ -105,6 +105,7 @@ interface PreviewResult {
 
 type Vendor = { id: string; name: string };
 type CompanyStore = { id: string; name: string };
+type InventoryItem = { id: string; name: string };
 
 const FIELD_LABELS: Record<keyof ColumnMapping, string> = {
   productName: 'Product Name',
@@ -151,9 +152,15 @@ export default function InventoryImport() {
   const [isStoreSelectionOpen, setIsStoreSelectionOpen] = useState(false);
   /** Per-line overrides: lineId → inventoryItemId or 'new' */
   const [lineOverrides, setLineOverrides] = useState<Record<string, string>>({});
+  /** Per-line vendor overrides: lineId → vendorId */
+  const [vendorOverrides, setVendorOverrides] = useState<Record<string, string>>({});
 
   const { data: vendors } = useQuery<Vendor[]>({
     queryKey: ['/api/vendors'],
+  });
+
+  const { data: inventoryItems } = useQuery<InventoryItem[]>({
+    queryKey: ['/api/inventory-items'],
   });
 
   useEffect(() => {
@@ -211,11 +218,12 @@ export default function InventoryImport() {
         ...(importAll ? { importAll: true } : { selectedLineIds: Array.from(selectedLineIds) }),
         targetStoreIds: Array.from(targetStoreIds),
         ...(Object.keys(lineOverrides).length > 0 ? { lineOverrides } : {}),
+        ...(Object.keys(vendorOverrides).length > 0 ? { vendorOverrides } : {}),
       };
       const res = await apiRequest('POST', `/api/inventory-import/${previewResult.orderGuideId}/approve`, payload);
       return res.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { inventoryItemsCreated?: number; vendorItemsCreated?: number }) => {
       const storeMsg = targetStoreIds.size > 1 ? ` across ${targetStoreIds.size} stores` : '';
       toast({
         title: 'Import Complete',
@@ -665,6 +673,17 @@ export default function InventoryImport() {
                     showResolution
                     lineOverrides={lineOverrides}
                     onLineOverride={(lineId, value) => setLineOverrides(prev => ({ ...prev, [lineId]: value }))}
+                    allInventoryItems={inventoryItems ?? []}
+                    showVendorOverride
+                    vendorOverrides={vendorOverrides}
+                    onVendorOverride={(lineId, value) => {
+                      if (value) {
+                        setVendorOverrides(prev => ({ ...prev, [lineId]: value }));
+                      } else {
+                        setVendorOverrides(prev => { const n = { ...prev }; delete n[lineId]; return n; });
+                      }
+                    }}
+                    allVendors={vendors ?? []}
                   />
                 </TabsContent>
 
@@ -677,6 +696,16 @@ export default function InventoryImport() {
                     onDeselectAll={() => deselectAllInGroup(previewResult.review.lines.new)}
                     description="No existing match found. These will be created as new inventory items."
                     showCanonical
+                    showVendorOverride
+                    vendorOverrides={vendorOverrides}
+                    onVendorOverride={(lineId, value) => {
+                      if (value) {
+                        setVendorOverrides(prev => ({ ...prev, [lineId]: value }));
+                      } else {
+                        setVendorOverrides(prev => { const n = { ...prev }; delete n[lineId]; return n; });
+                      }
+                    }}
+                    allVendors={vendors ?? []}
                   />
                 </TabsContent>
               </Tabs>
@@ -729,6 +758,11 @@ function ImportLineTable({
   showResolution = false,
   lineOverrides,
   onLineOverride,
+  allInventoryItems = [],
+  showVendorOverride = false,
+  vendorOverrides,
+  onVendorOverride,
+  allVendors = [],
 }: {
   lines: ImportLine[];
   selectedLineIds: Set<string>;
@@ -742,6 +776,11 @@ function ImportLineTable({
   showResolution?: boolean;
   lineOverrides?: Record<string, string>;
   onLineOverride?: (lineId: string, value: string) => void;
+  allInventoryItems?: InventoryItem[];
+  showVendorOverride?: boolean;
+  vendorOverrides?: Record<string, string>;
+  onVendorOverride?: (lineId: string, value: string) => void;
+  allVendors?: Vendor[];
 }) {
   return (
     <Card>
@@ -767,10 +806,11 @@ function ImportLineTable({
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-10"></TableHead>
-                  <TableHead>Vendor Name</TableHead>
+                  <TableHead>Product Name</TableHead>
                   {showCanonical && <TableHead>Canonical Name</TableHead>}
                   {showMatchedItem && <TableHead>Matched Item</TableHead>}
                   {showResolution && <TableHead>Action</TableHead>}
+                  {showVendorOverride && <TableHead>Vendor</TableHead>}
                   <TableHead>SKU</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead>Pack</TableHead>
@@ -780,7 +820,9 @@ function ImportLineTable({
               <TableBody>
                 {lines.map((line) => {
                   const override = lineOverrides?.[line.id];
-                  const effectiveAction = override ?? (line.matchedInventoryItemId ? 'match' : 'new');
+                  // effectiveAction is either an inventoryItemId (to link) or 'new' (create fresh)
+                  // Default to the matched item ID if one exists, otherwise 'new'
+                  const effectiveAction = override ?? (line.matchedInventoryItemId ?? 'new');
                   return (
                     <TableRow
                       key={line.id}
@@ -825,7 +867,8 @@ function ImportLineTable({
                         </TableCell>
                       )}
                       {showResolution && onLineOverride && (
-                        <TableCell className="min-w-[160px]">
+                        <TableCell className="min-w-[200px]">
+                          {/* Resolution select: value is always an inventoryItemId or 'new' */}
                           <Select
                             value={effectiveAction}
                             onValueChange={(val) => onLineOverride(line.id, val)}
@@ -835,12 +878,39 @@ function ImportLineTable({
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
+                              {/* Suggested match (value = actual inventoryItemId) */}
                               {line.matchedInventoryItemId && (
-                                <SelectItem value="match">
-                                  Use match: {line.matchedInventoryItemName || line.matchedInventoryItemId.slice(0, 8)}
+                                <SelectItem value={line.matchedInventoryItemId}>
+                                  Use: {line.matchedInventoryItemName || line.matchedInventoryItemId.slice(0, 8)}
                                 </SelectItem>
                               )}
+                              {/* Create new */}
                               <SelectItem value="new">Create as new item</SelectItem>
+                              {/* Pick a different existing item */}
+                              {allInventoryItems.filter(it => it.id !== line.matchedInventoryItemId).map(item => (
+                                <SelectItem key={item.id} value={item.id}>
+                                  Link to: {item.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                      )}
+                      {showVendorOverride && onVendorOverride && (
+                        <TableCell className="min-w-[160px]">
+                          <Select
+                            value={vendorOverrides?.[line.id] ?? 'default'}
+                            onValueChange={(val) => onVendorOverride(line.id, val === 'default' ? '' : val)}
+                            data-testid={`select-vendor-${line.id}`}
+                          >
+                            <SelectTrigger className="h-8 text-xs" data-testid={`select-trigger-vendor-${line.id}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="default">Default vendor</SelectItem>
+                              {allVendors.map(v => (
+                                <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </TableCell>

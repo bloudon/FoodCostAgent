@@ -9,13 +9,31 @@ export interface ColumnMappingProposal {
   headers: string[];
 }
 
+// Shape returned by OpenAI for column mapping
+interface AiColumnMappingResponse {
+  mapping?: Record<string, string>;
+  confidence?: Record<string, number>;
+}
+
+// Map AI field names → CsvColumnMapping field names
+const FIELD_ALIASES: Record<string, keyof CsvColumnMapping> = {
+  productName: 'productName',
+  vendorSku: 'vendorSku',
+  casePrice: 'price',
+  casePkgCount: 'caseSize',
+  innerPack: 'innerPack',
+  unit: 'unit',
+  category: 'category',
+  brand: 'brand',
+  upc: 'upc',
+};
+
 /**
- * AI-powered CSV column mapper
+ * AI-powered CSV column mapper.
  * Sends CSV headers + sample rows to OpenAI and gets back a column mapping proposal.
  * Falls back to pattern-matching if OpenAI is unavailable.
  */
 export async function analyzeColumns(csvText: string): Promise<ColumnMappingProposal> {
-  // Extract headers and up to 5 sample rows
   const lines = csvText.split('\n').filter(l => l.trim());
   if (lines.length === 0) {
     throw new Error('CSV file is empty');
@@ -23,11 +41,8 @@ export async function analyzeColumns(csvText: string): Promise<ColumnMappingProp
 
   const headerLine = lines[0];
   const sampleLines = lines.slice(1, 6);
-
-  // Parse headers (handle quoted CSV)
   const headers = parseSimpleCsvRow(headerLine);
 
-  // Try AI column mapping if OpenAI is configured
   if (process.env.OPENAI_API_KEY) {
     try {
       const sampleData = sampleLines.map(line => parseSimpleCsvRow(line));
@@ -42,10 +57,7 @@ export async function analyzeColumns(csvText: string): Promise<ColumnMappingProp
 Your task is to map CSV column headers to inventory fields.
 Respond ONLY with a valid JSON object.`,
           },
-          {
-            role: 'user',
-            content: prompt,
-          },
+          { role: 'user', content: prompt },
         ],
         temperature: 0,
         max_tokens: 500,
@@ -54,7 +66,7 @@ Respond ONLY with a valid JSON object.`,
 
       const raw = response.choices[0]?.message?.content;
       if (raw) {
-        const parsed = JSON.parse(raw);
+        const parsed = JSON.parse(raw) as AiColumnMappingResponse;
         return buildProposalFromAiResponse(parsed, headers);
       }
     } catch (err) {
@@ -62,28 +74,23 @@ Respond ONLY with a valid JSON object.`,
     }
   }
 
-  // Fallback: pattern-based detection
   return patternBasedMapping(headers);
 }
 
 /**
  * AI-powered batch name normalization.
  * Takes raw vendor product names and returns a map of raw → canonical names.
- * Falls back gracefully if OpenAI is unavailable.
+ * Falls back gracefully (empty map) if OpenAI is unavailable.
+ *
+ * The canonical names are then passed to ItemMatcher.findBestMatch() via the
+ * canonicalName parameter, improving match quality for abbreviated/coded names.
  */
 export async function normalizeProductNames(
   rawNames: string[]
 ): Promise<Map<string, string>> {
   const result = new Map<string, string>();
+  if (!rawNames.length || !process.env.OPENAI_API_KEY) return result;
 
-  if (!rawNames.length) return result;
-
-  // Skip AI if no key configured
-  if (!process.env.OPENAI_API_KEY) {
-    return result;
-  }
-
-  // Process in batches of 40 to stay within token limits
   const BATCH_SIZE = 40;
   for (let i = 0; i < rawNames.length; i += BATCH_SIZE) {
     const batch = rawNames.slice(i, i + BATCH_SIZE);
@@ -115,9 +122,7 @@ ${names.map((n, i) => `${i + 1}. "${n}"`).join('\n')}`;
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: [
-        { role: 'user', content: prompt },
-      ],
+      messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
       max_tokens: 1500,
       response_format: { type: 'json_object' },
@@ -125,7 +130,7 @@ ${names.map((n, i) => `${i + 1}. "${n}"`).join('\n')}`;
 
     const raw = response.choices[0]?.message?.content;
     if (raw) {
-      const parsed = JSON.parse(raw);
+      const parsed: Record<string, unknown> = JSON.parse(raw) as Record<string, unknown>;
       for (const [original, canonical] of Object.entries(parsed)) {
         if (typeof canonical === 'string' && canonical.trim()) {
           result.set(original, canonical.trim());
@@ -191,43 +196,30 @@ Use empty string "" for fields with no matching column. Use exact header names f
 }
 
 function buildProposalFromAiResponse(
-  aiResponse: any,
+  aiResponse: AiColumnMappingResponse,
   headers: string[]
 ): ColumnMappingProposal {
-  const { mapping: aiMapping = {}, confidence: aiConfidence = {} } = aiResponse;
+  const aiMapping = aiResponse.mapping ?? {};
+  const aiConfidence = aiResponse.confidence ?? {};
 
-  // Map AI field names to CsvColumnMapping field names
-  const fieldAliases: Record<string, keyof CsvColumnMapping> = {
-    productName: 'productName',
-    vendorSku: 'vendorSku',
-    casePrice: 'price',
-    casePkgCount: 'caseSize',
-    innerPack: 'innerPack',
-    unit: 'unit',
-    category: 'category',
-    brand: 'brand',
-    upc: 'upc',
-  };
+  const mapping: CsvColumnMapping = { vendorSku: '', productName: '' };
+  const confidence: Partial<Record<keyof CsvColumnMapping, number>> = {};
 
-  const mapping: CsvColumnMapping = {
-    vendorSku: '',
-    productName: '',
-  };
-
-  const confidence: Record<string, number> = {};
-
-  for (const [aiField, csvField] of Object.entries(fieldAliases)) {
-    const headerValue = aiMapping[aiField] || '';
-    // Validate the header actually exists
+  for (const [aiField, csvField] of Object.entries(FIELD_ALIASES)) {
+    const headerValue = aiMapping[aiField] ?? '';
     if (headerValue && headers.includes(headerValue)) {
-      (mapping as any)[csvField] = headerValue;
+      (mapping as Record<string, string>)[csvField] = headerValue;
       confidence[csvField] = aiConfidence[aiField] ?? 0.5;
     } else {
       confidence[csvField] = 0;
     }
   }
 
-  return { mapping, confidence: confidence as any, headers };
+  return {
+    mapping,
+    confidence: confidence as Record<keyof CsvColumnMapping, number>,
+    headers,
+  };
 }
 
 /**
@@ -250,32 +242,40 @@ function patternBasedMapping(headers: string[]): ColumnMappingProposal {
 
   const headerLower = headers.map(h => h.toLowerCase().trim());
   const mapping: CsvColumnMapping = { vendorSku: '', productName: '' };
-  const confidence: Record<string, number> = {};
+  const confidence: Partial<Record<keyof CsvColumnMapping, number>> = {};
 
-  for (const [field, fieldPatterns] of Object.entries(patterns)) {
+  for (const [field, fieldPatterns] of Object.entries(patterns) as [keyof CsvColumnMapping, string[]][]) {
+    let matched = false;
+    // Exact match first
     for (const pattern of fieldPatterns) {
       const idx = headerLower.findIndex(h => h === pattern);
       if (idx !== -1) {
-        (mapping as any)[field] = headers[idx];
+        (mapping as Record<string, string>)[field] = headers[idx];
         confidence[field] = 0.7;
+        matched = true;
         break;
       }
     }
-    if (!(mapping as any)[field]) {
-      // Partial match
+    // Partial match fallback
+    if (!matched) {
       for (const pattern of fieldPatterns) {
         const idx = headerLower.findIndex(h => h.includes(pattern) || pattern.includes(h));
         if (idx !== -1) {
-          (mapping as any)[field] = headers[idx];
+          (mapping as Record<string, string>)[field] = headers[idx];
           confidence[field] = 0.5;
+          matched = true;
           break;
         }
       }
     }
-    if (!confidence[field]) confidence[field] = 0;
+    if (!matched) confidence[field] = 0;
   }
 
-  return { mapping, confidence: confidence as any, headers };
+  return {
+    mapping,
+    confidence: confidence as Record<keyof CsvColumnMapping, number>,
+    headers,
+  };
 }
 
 /**

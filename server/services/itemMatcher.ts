@@ -24,12 +24,16 @@ export class ItemMatcher {
   constructor(private storage: IStorage) {}
 
   /**
-   * Find best matching inventory item for a vendor product
+   * Find best matching inventory item for a vendor product.
+   * @param canonicalName - Optional AI-normalized name to use for matching instead of raw vendor name.
+   *                        When provided, matching runs against both the raw name and the canonical name,
+   *                        taking the higher score. This improves match quality for abbreviated/coded names.
    */
   async findBestMatch(
     vendorProduct: VendorProduct,
     companyId: string,
-    storeId: string
+    storeId: string,
+    canonicalName?: string
   ): Promise<MatchResult> {
     // Get all inventory items and categories for this company
     const [inventoryItems, categories] = await Promise.all([
@@ -62,8 +66,14 @@ export class ItemMatcher {
     for (const item of inventoryItems) {
       const itemCategoryName = item.categoryId ? categoryMap.get(item.categoryId) : null;
       
+      // Calculate name similarity using both raw and canonical name (take the best)
+      const rawNameScore = this.calculateNameSimilarity(vendorProduct.vendorProductName, item.name);
+      const canonicalScore = canonicalName
+        ? this.calculateNameSimilarity(canonicalName, item.name)
+        : 0;
+      
       const scores = {
-        name: this.calculateNameSimilarity(vendorProduct.vendorProductName, item.name),
+        name: Math.max(rawNameScore, canonicalScore),
         sku: this.checkSkuMatch(vendorProduct.vendorSku, item.pluSku),
         category: this.calculateCategoryMatch(vendorProduct.categoryCode, itemCategoryName),
       };

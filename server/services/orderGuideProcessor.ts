@@ -157,13 +157,11 @@ export class OrderGuideProcessor {
     };
 
     for (const product of orderGuide.products) {
-      // Use canonical name for matching if available (AI-normalized for better fuzzy matching)
-      const canonicalName = canonicalNames?.get(product.vendorProductName);
-      const productForMatching = canonicalName
-        ? { ...product, vendorProductName: canonicalName }
-        : product;
+      // Look up AI-normalized canonical name for this product (if available)
+      const canonicalName = canonicalNames?.get(product.vendorProductName) ?? undefined;
       
-      const match = await this.matcher.findBestMatch(productForMatching, companyId, storeId);
+      // Pass canonical name to matcher — it uses both raw and canonical, takes best score
+      const match = await this.matcher.findBestMatch(product, companyId, storeId, canonicalName);
 
       // Update stats
       if (match.confidence === 'high') stats.highConfidenceMatches++;
@@ -287,12 +285,14 @@ export class OrderGuideProcessor {
     selectedLineIds?: string[];
     /** Per-line overrides: lineId → inventoryItemId (or 'new' to force item creation) */
     lineOverrides?: Record<string, string>;
+    /** Per-line vendor overrides: lineId → vendorId (overrides the guide-level vendor for that row) */
+    vendorOverrides?: Record<string, string>;
   }): Promise<{
     vendorItemsCreated: number;
     inventoryItemsCreated: number;
     storeAssignmentsCreated: number;
   }> {
-    const { orderGuideId, companyId, targetStoreIds, importAll = false, selectedLineIds = [], lineOverrides = {} } = params;
+    const { orderGuideId, companyId, targetStoreIds, importAll = false, selectedLineIds = [], lineOverrides = {}, vendorOverrides = {} } = params;
 
     // Get order guide and lines
     const guide = await this.storage.getOrderGuide(orderGuideId);
@@ -354,7 +354,7 @@ export class OrderGuideProcessor {
 
     // Process items by match status
     // guide.vendorId may be null for generic CSV imports (no specific vendor assigned)
-    const effectiveVendorId = guide.vendorId || null;
+    const guideVendorId = guide.vendorId || null;
 
     for (const line of linesToProcess) {
       // Apply user-specified line overrides before processing
@@ -368,6 +368,9 @@ export class OrderGuideProcessor {
           effectiveLine = { ...line, matchStatus: 'matched', matchedInventoryItemId: lineOverride };
         }
       }
+
+      // Per-row vendor override: user may assign a different vendor for this specific row
+      const effectiveVendorId = vendorOverrides[line.id] ?? guideVendorId;
 
       if (effectiveLine.matchStatus === 'new') {
         // Create new inventory item + vendor item, assigning to all target stores
