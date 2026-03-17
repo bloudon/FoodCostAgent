@@ -682,7 +682,8 @@ export class OrderGuideProcessor {
       }
 
       // Check if vendor item already exists for this vendor+SKU combination
-      const existingVendorItems = await this.storage.getVendorItems(companyId, line.vendorSku);
+      // Signature: getVendorItems(vendorId?, companyId?, storeId?)
+      const existingVendorItems = await this.storage.getVendorItems(vendorId, companyId);
       const existing = existingVendorItems.find(
         vi => vi.vendorId === vendorId && vi.vendorSku === line.vendorSku
       );
