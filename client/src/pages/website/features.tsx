@@ -5,7 +5,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MarketingLayout, CTAButton, SectionHeading, appLink } from "@/components/website/marketing-layout";
+import { MarketingLayout, MarketingHead, CTAButton, SectionHeading, appLink } from "@/components/website/marketing-layout";
+import { useLanguage } from "@/lib/language-context";
 
 type FrameType = "flat" | "laptop" | "phone";
 
@@ -59,255 +60,147 @@ function ScreenshotFrame({ src, alt, frame }: { src: string; alt: string; frame:
 
 type TierLevel = "free" | "basic" | "pro";
 
-const TIER_CONFIG: Record<TierLevel, { label: string; color: string; bg: string; border: string }> = {
-  free: { label: "Free", color: "text-gray-600", bg: "bg-gray-100", border: "border-gray-300" },
-  basic: { label: "Basic", color: "text-green-700", bg: "bg-green-50", border: "border-green-300" },
-  pro: { label: "Pro", color: "text-orange-700", bg: "bg-orange-50", border: "border-orange-300" },
-};
-
-const FEATURE_GROUPS = [
-  {
-    icon: Package,
-    title: "Inventory Management",
-    tier: "free" as TierLevel,
-    color: "green",
-    imageSrc: "/screenshots/inventory-management.png",
-    frameType: "laptop" as FrameType,
-    features: [
-      "Back of house inventory tracking across all storage locations",
-      "Set par levels and reorder points per store",
-      "Weighted average cost and last-cost pricing",
-      "Drag-and-drop storage location ordering",
-      "Active/inactive status control at company and store level",
-      "Comprehensive unit conversion system (weight, volume, count)",
-    ],
-    description:
-      "Get a real-time view of what you have in your back of house — where it's stored, what it costs, and what needs reordering — across every location you operate.",
-  },
-  {
-    icon: BookOpen,
-    title: "Recipe Costing",
-    tier: "basic" as TierLevel,
-    color: "orange",
-    imageSrc: "/screenshots/recipe-costing.png",
-    frameType: "flat" as FrameType,
-    features: [
-      "Food cost calculator with ingredient-level cost breakdown",
-      "Restaurant food cost per portion, calculated automatically",
-      "Nested sub-recipe support for complex preparations",
-      "Per-recipe yield override for different waste factors",
-      "Automatic cost recalculation when ingredient prices change",
-      "Mark recipes as available ingredients in other recipes",
-      "Category-based filtering in the recipe builder",
-    ],
-    description:
-      "A built-in food cost calculator for every recipe — from simple prep items to multi-layer dishes. Always know your true restaurant food cost per portion, updated automatically when vendor prices change.",
-  },
-  {
-    icon: Truck,
-    title: "Vendor & Order Guides",
-    tier: "free" as TierLevel,
-    color: "green",
-    imageSrc: "/screenshots/vendor-order-guides.png",
-    frameType: "flat" as FrameType,
-    features: [
-      "Import order guides from any major food purveyor — Sysco, GFS, US Foods, and more",
-      "Native adapters for leading distributors with automatic format detection",
-      "Case-price entry matching real vendor invoices",
-      "Automatic unit price calculation from case and inner pack",
-      "Order guide approval creates inventory items and populates prices automatically",
-      "Assign vendors and order guides to specific stores",
-      "Track account numbers and delivery schedules per vendor",
-      "Prices flow into recipes — when a vendor price changes, every affected recipe cost updates automatically",
-    ],
-    description:
-      "Import your vendor catalogs in minutes. Prices auto-populate your inventory and flow directly into recipe costs — when a vendor updates pricing, every recipe recalculates. No re-entry, no spreadsheets.",
-    proFeature: "Cross-shop vendor pricing (Pro): Compare the same item across all your vendor order guides to find the best price — automatically. QuickBooks export (Pro): Export received purchase orders directly to QuickBooks to simplify bookkeeping and eliminate manual re-entry.",
-  },
-  {
-    icon: BarChart3,
-    title: "Food Cost Variance (TFC)",
-    tier: "pro" as TierLevel,
-    color: "orange",
-    imageSrc: "/screenshots/food-cost-variance.png",
-    frameType: "flat" as FrameType,
-    features: [
-      "Theoretical Food Cost calculated from sales and recipes",
-      "Works with most POS systems — no POS lock-in, no proprietary hardware required",
-      "Import sales data from the POS you already use",
-      "Track average food cost per month with date-range reporting",
-      "Compare theoretical vs. actual food cost by category",
-      "Spot over-portioning, waste, and theft instantly",
-      "Drill down into individual menu items and recipes",
-      "Period-over-period comparison to identify trends",
-    ],
-    description:
-      "Stop guessing where your restaurant food cost is going. TFC variance reporting shows your average food cost per month and pinpoints exactly where the gap is between what you should spend and what you actually spend. FnB Cost Pro is not POS-dependent — it works alongside the POS system you already have.",
-  },
-  {
-    icon: ClipboardList,
-    title: "Inventory Counting",
-    tier: "free" as TierLevel,
-    color: "green",
-    imageSrc: "/screenshots/inventory-counting.png",
-    frameType: "phone" as FrameType,
-    features: [
-      "Guided count sessions by storage location",
-      "Scan or manually enter counts on any device",
-      "Estimated on-hand calculation between counts",
-      "Count history with user accountability tracking",
-      "Variance reports comparing expected vs. counted",
-      "Mobile-first design for counting on the floor",
-    ],
-    description:
-      "Conduct fast, accurate inventory counts from your phone or tablet — right in the back of house. Every count is logged with date and user for full accountability.",
-    proFeature: "Power Inventory counting (Pro): Focus counts on high-cost power items for faster, targeted inventory tracking.",
-  },
-  {
-    icon: Users,
-    title: "Multi-Location & Team",
-    tier: "pro" as TierLevel,
-    color: "orange",
-    imageSrc: "/screenshots/multi-location.png",
-    frameType: "flat" as FrameType,
-    features: [
-      "Manage multiple stores under one company account",
-      "Role-based access: admin, manager, staff",
-      "Invite team members by email with store assignment",
-      "Per-store inventory, par levels, and vendor access",
-      "Transfer orders between locations",
-      "Waste logging with user accountability",
-    ],
-    description:
-      "Restaurant management software built for teams. Whether you're a restaurant manager overseeing one location or an owner managing twenty, FnB Cost Pro gives your team the tools to stay accountable and your operation the visibility to stay profitable.",
-  },
+const GROUP_META: { icon: React.ElementType; imageSrc: string; frameType: FrameType; tier: TierLevel; color: string }[] = [
+  { icon: Package, imageSrc: "/screenshots/inventory-management.png", frameType: "laptop", tier: "free", color: "green" },
+  { icon: BookOpen, imageSrc: "/screenshots/recipe-costing.png", frameType: "flat", tier: "basic", color: "orange" },
+  { icon: Truck, imageSrc: "/screenshots/vendor-order-guides.png", frameType: "flat", tier: "free", color: "green" },
+  { icon: BarChart3, imageSrc: "/screenshots/food-cost-variance.png", frameType: "flat", tier: "pro", color: "orange" },
+  { icon: ClipboardList, imageSrc: "/screenshots/inventory-counting.png", frameType: "phone", tier: "free", color: "green" },
+  { icon: Users, imageSrc: "/screenshots/multi-location.png", frameType: "flat", tier: "pro", color: "orange" },
 ];
 
-function TierBadge({ tier }: { tier: TierLevel }) {
-  const config = TIER_CONFIG[tier];
+function TierBadge({ tier, labels }: { tier: TierLevel; labels: Record<TierLevel, string> }) {
+  const configs: Record<TierLevel, { color: string; bg: string; border: string }> = {
+    free: { color: "text-gray-600", bg: "bg-gray-100", border: "border-gray-300" },
+    basic: { color: "text-green-700", bg: "bg-green-50", border: "border-green-300" },
+    pro: { color: "text-orange-700", bg: "bg-orange-50", border: "border-orange-300" },
+  };
+  const config = configs[tier];
   return (
     <Badge
       variant="outline"
       className={`text-[11px] px-2 py-0 h-5 font-semibold ${config.color} ${config.border} ${config.bg}`}
       data-testid={`tier-badge-${tier}`}
     >
-      {config.label}
+      {labels[tier]}
     </Badge>
   );
 }
 
-function FeatureGroup({ group, reverse }: { group: typeof FEATURE_GROUPS[0]; reverse?: boolean }) {
-  const colorMap = {
-    green: { icon: "bg-green-100 text-green-700", badge: "text-green-600", check: "text-green-500" },
-    orange: { icon: "bg-orange-100 text-orange-600", badge: "text-orange-500", check: "text-orange-500" },
-  };
-  const c = colorMap[group.color as keyof typeof colorMap];
-  return (
-    <div
-      className={`flex flex-col ${reverse ? "lg:flex-row-reverse" : "lg:flex-row"} gap-12 items-center`}
-      data-testid={`feature-group-${group.title.toLowerCase().replace(/\s+/g, "-")}`}
-    >
-      <div className="flex-1">
-        <div className="flex items-center gap-3 mb-4">
-          <div className={`inline-flex items-center justify-center w-12 h-12 rounded-xl ${c.icon}`}>
-            <group.icon className="h-6 w-6" />
-          </div>
-          <TierBadge tier={group.tier} />
-        </div>
-        <span className={`text-xs font-semibold uppercase tracking-widest ${c.badge} mb-2 block`}>
-          {group.title}
-        </span>
-        <h3 className="text-2xl font-bold text-gray-900 mb-4">{group.title}</h3>
-        <p className="text-gray-500 leading-relaxed mb-6">{group.description}</p>
-        <ul className="space-y-3">
-          {group.features.map((f) => (
-            <li key={f} className="flex items-start gap-2.5">
-              <CheckCircle className={`h-4 w-4 mt-0.5 flex-shrink-0 ${c.check}`} />
-              <span className="text-sm text-gray-600">{f}</span>
-            </li>
-          ))}
-        </ul>
-        {group.proFeature && (
-          <div className="mt-4 p-3 rounded-lg bg-orange-50 border border-orange-200">
-            <div className="flex items-start gap-2">
-              <Star className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-orange-800">{group.proFeature}</p>
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="flex-1 w-full flex items-center justify-center">
-        <ScreenshotFrame
-          src={group.imageSrc}
-          alt={`${group.title} — FnB Cost Pro app screenshot`}
-          frame={group.frameType}
-        />
-      </div>
-    </div>
-  );
-}
-
 export default function WebsiteFeatures() {
+  const { lang, t } = useLanguage();
+  const feat = t.features;
+
   return (
     <MarketingLayout>
+      <MarketingHead
+        title={feat.meta.title}
+        description={feat.meta.description}
+        lang={lang}
+      />
       <section className="py-16 bg-gradient-to-b from-gray-900 to-gray-800 text-white text-center">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <span className="inline-block text-xs font-semibold uppercase tracking-widest text-green-400 mb-4">
-            Full Feature Set
+            {feat.badge}
           </span>
           <h1 className="text-4xl sm:text-5xl font-extrabold mb-4">
-            Restaurant Management Software Built for F&amp;B Operators
+            {feat.headline}
           </h1>
           <p className="text-lg text-gray-300 leading-relaxed mb-6">
-            FnB Cost Pro is restaurant software built from the ground up for Food &amp; Beverage operators — restaurants, bars, catering, and multi-unit F&amp;B businesses. Food cost control, beverage cost control, recipe costing, and vendor ordering in one platform.
+            {feat.subheadline}
           </p>
           <div className="flex flex-wrap gap-2 justify-center mb-8">
             {(["free", "basic", "pro"] as TierLevel[]).map((tier) => (
-              <TierBadge key={tier} tier={tier} />
+              <TierBadge key={tier} tier={tier} labels={feat.tierLabels} />
             ))}
-            <span className="text-xs text-gray-400 self-center ml-1">badges show which plan includes each feature</span>
+            <span className="text-xs text-gray-400 self-center ml-1">{feat.badgesNote}</span>
           </div>
           <CTAButton href={appLink("/signup")} large>
-            Start Free
+            {feat.startFree}
           </CTAButton>
         </div>
       </section>
 
       <section className="py-20 bg-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-24">
-          {FEATURE_GROUPS.map((g, i) => (
-            <FeatureGroup key={g.title} group={g} reverse={i % 2 === 1} />
-          ))}
+          {feat.groups.map((group, i) => {
+            const meta = GROUP_META[i];
+            const colorMap = {
+              green: { icon: "bg-green-100 text-green-700", badge: "text-green-600", check: "text-green-500" },
+              orange: { icon: "bg-orange-100 text-orange-600", badge: "text-orange-500", check: "text-orange-500" },
+            };
+            const c = colorMap[meta.color as keyof typeof colorMap];
+            const Icon = meta.icon;
+            const reverse = i % 2 === 1;
+            return (
+              <div
+                key={group.title}
+                className={`flex flex-col ${reverse ? "lg:flex-row-reverse" : "lg:flex-row"} gap-12 items-center`}
+                data-testid={`feature-group-${group.title.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className={`inline-flex items-center justify-center w-12 h-12 rounded-xl ${c.icon}`}>
+                      <Icon className="h-6 w-6" />
+                    </div>
+                    <TierBadge tier={meta.tier} labels={feat.tierLabels} />
+                  </div>
+                  <span className={`text-xs font-semibold uppercase tracking-widest ${c.badge} mb-2 block`}>
+                    {group.title}
+                  </span>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-4">{group.title}</h3>
+                  <p className="text-gray-500 leading-relaxed mb-6">{group.description}</p>
+                  <ul className="space-y-3">
+                    {group.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2.5">
+                        <CheckCircle className={`h-4 w-4 mt-0.5 flex-shrink-0 ${c.check}`} />
+                        <span className="text-sm text-gray-600">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {"proFeature" in group && group.proFeature && (
+                    <div className="mt-4 p-3 rounded-lg bg-orange-50 border border-orange-200">
+                      <div className="flex items-start gap-2">
+                        <Star className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
+                        <p className="text-sm text-orange-800">{group.proFeature}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 w-full flex items-center justify-center">
+                  <ScreenshotFrame
+                    src={meta.imageSrc}
+                    alt={`${group.title} — FnB Cost Pro app screenshot`}
+                    frame={meta.frameType}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
 
       <section className="py-16 bg-gray-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
-            title="The Natural Upgrade Path"
-            subtitle="Start free. Upgrade when your business needs it."
+            title={feat.upgradeTitle}
+            subtitle={feat.upgradeSubtitle}
           />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white rounded-xl border border-gray-200 p-6" data-testid="upgrade-path-free">
-              <TierBadge tier="free" />
-              <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">Get Organized</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">
-                Track your back of house inventory, import vendor order guides, create purchase orders, and run counts. Everything you need to get your operation organized — free forever.
-              </p>
+              <TierBadge tier="free" labels={feat.tierLabels} />
+              <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">{feat.upgradeFreeTitle}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{feat.upgradeFreebody}</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-6" data-testid="upgrade-path-basic">
-              <TierBadge tier="basic" />
-              <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">Know Your Costs</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">
-                When you're ready to know your exact restaurant food cost per dish, upgrade to Basic. A built-in food cost calculator with food and beverage cost control for every recipe on your menu.
-              </p>
+              <TierBadge tier="basic" labels={feat.tierLabels} />
+              <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">{feat.upgradeBasicTitle}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{feat.upgradeBasicBody}</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-6" data-testid="upgrade-path-pro">
-              <TierBadge tier="pro" />
-              <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">Scale &amp; Optimize</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">
-                Multi-unit operators need TFC variance reporting, QuickBooks export, transfer orders, and unlimited locations. Pro works with the POS system you already have and gives restaurant managers full cost control across every location.
-              </p>
+              <TierBadge tier="pro" labels={feat.tierLabels} />
+              <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">{feat.upgradeProTitle}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{feat.upgradeProBody}</p>
             </div>
           </div>
         </div>
@@ -316,13 +209,13 @@ export default function WebsiteFeatures() {
       <section className="py-20 bg-green-900 text-center">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-white mb-4">
-            Start Free — Upgrade When You're Ready
+            {feat.ctaTitle}
           </h2>
           <p className="text-green-200 mb-8">
-            Get started with inventory and ordering at no cost. Add recipe costing, food cost control, and advanced features when your business needs them.
+            {feat.ctaSubtitle}
           </p>
           <CTAButton href={appLink("/signup")} large>
-            Get Started Free
+            {feat.getStartedFree}
           </CTAButton>
         </div>
       </section>

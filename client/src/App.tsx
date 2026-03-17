@@ -71,6 +71,9 @@ import WebsiteFeatures from "@/pages/website/features";
 import WebsitePricing from "@/pages/website/pricing";
 import WebsiteAbout from "@/pages/website/about";
 import WebsiteContact from "@/pages/website/contact";
+import { LanguageContext } from "@/lib/language-context";
+import { translations } from "@/lib/marketing-translations";
+import type { Language } from "@/lib/marketing-translations";
 
 const WEBSITE_DOMAINS = ["fnbcostpro.com", "www.fnbcostpro.com"];
 if (new URLSearchParams(window.location.search).has("app")) {
@@ -81,14 +84,41 @@ const isWebsiteMode =
   (WEBSITE_DOMAINS.includes(window.location.hostname) ||
   import.meta.env.VITE_SHOW_WEBSITE === "true");
 
+function withLang(lang: Language, Component: React.ComponentType) {
+  return function LangWrapper() {
+    return (
+      <LanguageContext.Provider value={{ lang, t: translations[lang] }}>
+        <Component />
+      </LanguageContext.Provider>
+    );
+  };
+}
+
+const EnHome = withLang("en", WebsiteHome);
+const EnFeatures = withLang("en", WebsiteFeatures);
+const EnPricing = withLang("en", WebsitePricing);
+const EnAbout = withLang("en", WebsiteAbout);
+const EnContact = withLang("en", WebsiteContact);
+
+const EsHome = withLang("es", WebsiteHome);
+const EsFeatures = withLang("es", WebsiteFeatures);
+const EsPricing = withLang("es", WebsitePricing);
+const EsAbout = withLang("es", WebsiteAbout);
+const EsContact = withLang("es", WebsiteContact);
+
 function WebsiteRouter() {
   return (
     <Switch>
-      <Route path="/" component={WebsiteHome} />
-      <Route path="/features" component={WebsiteFeatures} />
-      <Route path="/pricing" component={WebsitePricing} />
-      <Route path="/about" component={WebsiteAbout} />
-      <Route path="/contact" component={WebsiteContact} />
+      <Route path="/" component={EnHome} />
+      <Route path="/features" component={EnFeatures} />
+      <Route path="/pricing" component={EnPricing} />
+      <Route path="/about" component={EnAbout} />
+      <Route path="/contact" component={EnContact} />
+      <Route path="/es" component={EsHome} />
+      <Route path="/es/features" component={EsFeatures} />
+      <Route path="/es/pricing" component={EsPricing} />
+      <Route path="/es/about" component={EsAbout} />
+      <Route path="/es/contact" component={EsContact} />
       <Route path="/enterprise-inquiry" component={EnterpriseInquiry} />
       <Route path="/enterprise-onboarding" component={EnterpriseOnboarding} />
       <Route path="/login" component={Login} />
@@ -97,7 +127,7 @@ function WebsiteRouter() {
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/activate" component={ActivateAccount} />
       <Route path="/accept-invitation/:token" component={AcceptInvitation} />
-      <Route component={WebsiteHome} />
+      <Route component={EnHome} />
     </Switch>
   );
 }

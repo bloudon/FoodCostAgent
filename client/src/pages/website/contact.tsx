@@ -7,20 +7,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { MarketingLayout } from "@/components/website/marketing-layout";
+import { MarketingLayout, MarketingHead } from "@/components/website/marketing-layout";
 import { useToast } from "@/hooks/use-toast";
-
-const contactSchema = z.object({
-  name: z.string().min(2, "Name is required"),
-  email: z.string().email("Please enter a valid email"),
-  company: z.string().optional(),
-  message: z.string().min(10, "Message must be at least 10 characters"),
-});
-type ContactForm = z.infer<typeof contactSchema>;
+import { useLanguage } from "@/lib/language-context";
 
 export default function WebsiteContact() {
+  const { lang, t } = useLanguage();
+  const contact = t.contact;
   const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
+
+  const contactSchema = z.object({
+    name: z.string().min(2, contact.validationName),
+    email: z.string().email(contact.validationEmail),
+    company: z.string().optional(),
+    message: z.string().min(10, contact.validationMessage),
+  });
+  type ContactForm = z.infer<typeof contactSchema>;
 
   const form = useForm<ContactForm>({
     resolver: zodResolver(contactSchema),
@@ -35,27 +38,36 @@ export default function WebsiteContact() {
         body: JSON.stringify(values),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || "Failed to send message");
+        const err: unknown = await res.json().catch(() => ({}));
+        const message = typeof err === "object" && err !== null && "message" in err && typeof (err as { message: unknown }).message === "string"
+          ? (err as { message: string }).message
+          : contact.sendFailedDefault;
+        throw new Error(message);
       }
       setSubmitted(true);
-    } catch (e: any) {
-      toast({ title: "Failed to send", description: e.message, variant: "destructive" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : contact.sendFailedDefault;
+      toast({ title: contact.sendFailedTitle, description: message, variant: "destructive" });
     }
   }
 
   return (
     <MarketingLayout>
+      <MarketingHead
+        title={contact.meta.title}
+        description={contact.meta.description}
+        lang={lang}
+      />
       <section className="py-16 bg-gradient-to-b from-gray-900 to-gray-800 text-center">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <span className="inline-block text-xs font-semibold uppercase tracking-widest text-green-400 mb-4">
-            Get in Touch
+            {contact.badge}
           </span>
           <h1 className="text-4xl sm:text-5xl font-extrabold text-white mb-4">
-            We'd Love to Hear From You
+            {contact.headline}
           </h1>
           <p className="text-lg text-gray-300">
-            Have a question about FnB Cost Pro? We're here to help.
+            {contact.subheadline}
           </p>
         </div>
       </section>
@@ -65,9 +77,9 @@ export default function WebsiteContact() {
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-16">
             <div className="lg:col-span-2 space-y-8">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-3">Contact Us</h2>
+                <h2 className="text-2xl font-bold text-gray-900 mb-3">{contact.contactTitle}</h2>
                 <p className="text-gray-500 text-sm leading-relaxed">
-                  Whether you're evaluating FnB Cost Pro, need help getting started, or have a feature request — we'd love to hear from you.
+                  {contact.contactDesc}
                 </p>
               </div>
 
@@ -77,7 +89,7 @@ export default function WebsiteContact() {
                     <Mail className="h-4 w-4 text-green-700" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-gray-900 mb-0.5">Email</p>
+                    <p className="text-sm font-semibold text-gray-900 mb-0.5">{contact.emailLabel}</p>
                     <a href="mailto:hello@fnbcostpro.com" className="text-sm text-green-600 hover:underline">
                       hello@fnbcostpro.com
                     </a>
@@ -88,8 +100,8 @@ export default function WebsiteContact() {
                     <MessageSquare className="h-4 w-4 text-orange-600" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-gray-900 mb-0.5">Response Time</p>
-                    <p className="text-sm text-gray-500">We typically respond within one business day.</p>
+                    <p className="text-sm font-semibold text-gray-900 mb-0.5">{contact.responseLabel}</p>
+                    <p className="text-sm text-gray-500">{contact.responseDesc}</p>
                   </div>
                 </div>
               </div>
@@ -101,9 +113,9 @@ export default function WebsiteContact() {
                   <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
                     <CheckCircle className="h-8 w-8 text-green-600" />
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">Message Sent!</h3>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">{contact.successTitle}</h3>
                   <p className="text-gray-500 text-sm max-w-xs">
-                    Thanks for reaching out. We'll get back to you within one business day.
+                    {contact.successDesc}
                   </p>
                   <Button
                     variant="outline"
@@ -111,7 +123,7 @@ export default function WebsiteContact() {
                     onClick={() => { setSubmitted(false); form.reset(); }}
                     data-testid="btn-send-another"
                   >
-                    Send Another Message
+                    {contact.sendAnother}
                   </Button>
                 </div>
               ) : (
@@ -119,12 +131,12 @@ export default function WebsiteContact() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     <div className="space-y-1.5">
                       <Label htmlFor="name" className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-                        <User className="h-3.5 w-3.5" /> Name <span className="text-red-500">*</span>
+                        <User className="h-3.5 w-3.5" /> {contact.nameLabel} <span className="text-red-500">*</span>
                       </Label>
                       <Input
                         id="name"
                         {...form.register("name")}
-                        placeholder="Your name"
+                        placeholder={contact.namePlaceholder}
                         data-testid="input-contact-name"
                       />
                       {form.formState.errors.name && (
@@ -133,13 +145,13 @@ export default function WebsiteContact() {
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="email" className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-                        <Mail className="h-3.5 w-3.5" /> Email <span className="text-red-500">*</span>
+                        <Mail className="h-3.5 w-3.5" /> {contact.emailFormLabel} <span className="text-red-500">*</span>
                       </Label>
                       <Input
                         id="email"
                         type="email"
                         {...form.register("email")}
-                        placeholder="you@restaurant.com"
+                        placeholder={contact.emailPlaceholder}
                         data-testid="input-contact-email"
                       />
                       {form.formState.errors.email && (
@@ -150,24 +162,24 @@ export default function WebsiteContact() {
 
                   <div className="space-y-1.5">
                     <Label htmlFor="company" className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-                      <Building2 className="h-3.5 w-3.5" /> Restaurant / Company
+                      <Building2 className="h-3.5 w-3.5" /> {contact.companyLabel}
                     </Label>
                     <Input
                       id="company"
                       {...form.register("company")}
-                      placeholder="Optional"
+                      placeholder={contact.companyPlaceholder}
                       data-testid="input-contact-company"
                     />
                   </div>
 
                   <div className="space-y-1.5">
                     <Label htmlFor="message" className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-                      <MessageSquare className="h-3.5 w-3.5" /> Message <span className="text-red-500">*</span>
+                      <MessageSquare className="h-3.5 w-3.5" /> {contact.messageLabel} <span className="text-red-500">*</span>
                     </Label>
                     <Textarea
                       id="message"
                       {...form.register("message")}
-                      placeholder="How can we help you?"
+                      placeholder={contact.messagePlaceholder}
                       rows={5}
                       data-testid="input-contact-message"
                     />
@@ -182,7 +194,7 @@ export default function WebsiteContact() {
                     disabled={form.formState.isSubmitting}
                     data-testid="btn-contact-submit"
                   >
-                    {form.formState.isSubmitting ? "Sending..." : "Send Message"}
+                    {form.formState.isSubmitting ? contact.submitting : contact.submitButton}
                   </Button>
                 </form>
               )}
