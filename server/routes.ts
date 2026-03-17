@@ -3624,6 +3624,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fetch the full review data so the client has everything for step 3
       const reviewData = await processor.getForReview(result.orderGuideId);
 
+      // Enrich each line with canonical name from the in-memory normalization map
+      // (canonical names are not persisted to DB — they live only during this preview session)
+      if (canonicalNames && canonicalNames.size > 0) {
+        const enrichLine = (line: Record<string, unknown>) => ({
+          ...line,
+          canonicalName: canonicalNames!.get(String(line.productName ?? '')) ?? null,
+        });
+        reviewData.lines.matched = reviewData.lines.matched.map(enrichLine);
+        reviewData.lines.ambiguous = reviewData.lines.ambiguous.map(enrichLine);
+        reviewData.lines.new = reviewData.lines.new.map(enrichLine);
+      }
+
       res.json({
         orderGuideId: result.orderGuideId,
         summary: {

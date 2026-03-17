@@ -12,22 +12,40 @@ export interface MatchResult {
 }
 
 /**
+ * Per-import-session canonical name cache.
+ * Keyed by raw vendor product name → AI-normalized canonical name.
+ * Lives only for the duration of a single import preview session (in-memory, not persisted).
+ * Populated by callers (e.g. aiInventoryImporter.normalizeProductNames) and passed into
+ * findBestMatch() via the optional canonicalName argument so the matcher can score both
+ * the raw name and the AI-normalized form, taking whichever yields a better match.
+ *
+ * This is a transparent Map alias — the import route owns the lifecycle; the matcher just
+ * consumes entries from it when available.
+ */
+export type CanonicalNameCache = Map<string, string>;
+
+/**
  * Smart Item Matching Engine
- * 
+ *
  * Matches vendor products to existing inventory items using:
  * - Fuzzy name matching (string similarity)
  * - Category matching
  * - SKU detection
  * - Multi-factor confidence scoring
+ *
+ * When a per-session CanonicalNameCache is provided, matching also considers AI-normalized
+ * product names and takes the highest score between the raw and canonical forms.
  */
 export class ItemMatcher {
   constructor(private storage: IStorage) {}
 
   /**
    * Find best matching inventory item for a vendor product.
-   * @param canonicalName - Optional AI-normalized name to use for matching instead of raw vendor name.
-   *                        When provided, matching runs against both the raw name and the canonical name,
-   *                        taking the higher score. This improves match quality for abbreviated/coded names.
+   *
+   * @param canonicalName - Optional AI-normalized product name from the per-session cache
+   *   (see CanonicalNameCache). When provided, matching runs against both the raw vendor name
+   *   and the canonical form, taking the higher confidence score.  Falls back gracefully when
+   *   omitted (no AI normalization step, raw name only).
    */
   async findBestMatch(
     vendorProduct: VendorProduct,
