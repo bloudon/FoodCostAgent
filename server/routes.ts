@@ -3518,7 +3518,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Accepts raw CSV text and returns an AI-proposed column mapping.
    * Falls back to pattern-based detection if OpenAI is unavailable.
    */
-  app.post("/api/inventory-import/analyze", requireAuth, async (req, res) => {
+  app.post("/api/inventory-import/analyze", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const { csvContent } = req.body;
       if (!csvContent || typeof csvContent !== 'string') {
@@ -3539,7 +3539,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Parses a CSV with the confirmed column mapping, runs fuzzy matching,
    * stores results as a generic order guide, and returns the guide ID + summary.
    */
-  app.post("/api/inventory-import/preview", requireAuth, async (req, res) => {
+  app.post("/api/inventory-import/preview", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const storeId = (req as any).storeId;
@@ -3636,7 +3636,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Approves the generic CSV import — creates inventory items, vendor items,
    * and store assignments. Delegates to OrderGuideProcessor.approve().
    */
-  app.post("/api/inventory-import/:id/approve", requireAuth, async (req, res) => {
+  app.post("/api/inventory-import/:id/approve", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const { id } = req.params;
       const companyId = (req as any).companyId;
@@ -3681,6 +3681,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           storeIdsToAssign = companyStores.map((s: any) => s.id);
         } else {
           return res.status(400).json({ error: 'No stores found for company. Please create a store first.' });
+        }
+      }
+
+      // SECURITY: Validate that any per-row vendor overrides belong to this company
+      // before passing them to the processor to prevent cross-tenant data injection
+      if (vendorOverrides && Object.keys(vendorOverrides).length > 0) {
+        const companyVendors = await storage.getVendors(companyId);
+        const validVendorIds = new Set(companyVendors.map((v: { id: string }) => v.id));
+        for (const [, vendorId] of Object.entries(vendorOverrides)) {
+          if (!validVendorIds.has(vendorId)) {
+            return res.status(403).json({ error: `Vendor ${vendorId} does not belong to your company` });
+          }
         }
       }
 
