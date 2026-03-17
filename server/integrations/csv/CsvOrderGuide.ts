@@ -14,6 +14,7 @@ export interface CsvParseOptions {
   skipRows?: number;
   delimiter?: string;
   encoding?: string;
+  columnMapping?: CsvColumnMapping; // Explicit mapping overrides auto-detection
 }
 
 export interface CsvColumnMapping {
@@ -34,6 +35,10 @@ export interface CsvColumnMapping {
  * Vendor-specific column mappings
  */
 const VENDOR_MAPPINGS: Record<VendorKey, CsvColumnMapping> = {
+  generic: {
+    vendorSku: '',
+    productName: '',
+  },
   sysco: {
     vendorSku: 'SUPC',
     productName: 'Product Description',
@@ -164,9 +169,12 @@ export class CsvOrderGuide {
     const headers = Object.keys(records[0]);
     console.log('[CsvOrderGuide] CSV headers:', headers);
     
-    // Decide whether to use vendor-specific or auto-detected mapping
+    // Decide which column mapping to use (priority: explicit > vendor-specific > auto-detected)
     let mapping: CsvColumnMapping;
-    if (this.vendorMappingMatches(headers, vendorMapping)) {
+    if (options.columnMapping && options.columnMapping.productName) {
+      console.log('[CsvOrderGuide] Using explicit column mapping provided by caller');
+      mapping = options.columnMapping;
+    } else if (this.vendorMappingMatches(headers, vendorMapping)) {
       console.log('[CsvOrderGuide] Using vendor-specific mapping for:', vendorKey);
       mapping = vendorMapping;
     } else {

@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star } from "lucide-react";
+import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star, Upload } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
@@ -266,7 +266,13 @@ export default function InventoryItems() {
               </p>
             )}
           </div>
-          <div className="flex flex-col gap-2 items-end">
+          <div className="flex gap-2 items-center flex-wrap justify-end">
+            <Button asChild variant="outline" data-testid="button-import-csv">
+              <Link href="/inventory-import">
+                <Upload className="h-4 w-4 mr-2" />
+                Import CSV
+              </Link>
+            </Button>
             <Button asChild data-testid="button-add-item">
               <Link href="/inventory-items/new">
                 <Plus className="h-4 w-4 mr-2" />

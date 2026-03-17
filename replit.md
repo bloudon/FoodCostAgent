@@ -58,6 +58,8 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 - **Background Image System**: Unsplash (images seeded from).
 - **AI Chat**: OpenAI GPT-4o-mini via `openai` npm package. `OPENAI_API_KEY` env var required. In-app floating chat panel gated at Basic tier. 50 messages/day per company rate limit (in-memory, resets at midnight UTC).
 
+- AI CSV Inventory Import: 4-step wizard at `/inventory-import` (gated at Basic tier via `recipe_costing` feature flag). Step 1: upload CSV + optional vendor. Step 2: AI column mapping via GPT-4o-mini (falls back to pattern-based detection). Step 3: fuzzy match preview with grouped tabs (matched/ambiguous/new), per-item checkboxes, multi-store targeting. Step 4: completion. API routes: `POST /api/inventory-import/analyze`, `POST /api/inventory-import/preview`, `POST /api/inventory-import/:id/approve`. Uses `vendorKey='generic'`, `vendorId=null` for the underlying `order_guides` record. AI-normalized canonical names stored in `order_guide_lines.canonical_name` (v008 migration). "Import CSV" button added to inventory-items page header.
+
 # VPS Deployment
 
 - **Deploy Script**: `scripts/deploy-vps.sh` — single executable that performs the full deploy sequence: preflight checks → `git pull` → `npm install` → DB migration → clean build → `pm2 restart fnbcostpro`.

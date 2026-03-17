@@ -87,14 +87,16 @@ export class OrderGuideProcessor {
   async processUpload(params: {
     fileContent: string;
     vendorKey: VendorKey;
-    vendorId: string;
+    vendorId: string | null;
     companyId: string;
     storeId: string;
     fileName: string;
     skipRows?: number;
     isExcel?: boolean;
+    columnMapping?: import('../integrations/csv/CsvOrderGuide').CsvColumnMapping;
+    canonicalNames?: Map<string, string>; // raw product name → AI-normalized name
   }): Promise<OrderGuideUploadResult> {
-    const { fileContent, vendorKey, vendorId, companyId, storeId, fileName, skipRows = 0, isExcel = false } = params;
+    const { fileContent, vendorKey, vendorId, companyId, storeId, fileName, skipRows = 0, isExcel = false, columnMapping, canonicalNames } = params;
 
     // Step 1: Parse file content (convert Excel to CSV if needed)
     // Auto-detect Excel content even if isExcel flag wasn't set (handles misnamed files like .csv that are actually Excel)
@@ -115,6 +117,7 @@ export class OrderGuideProcessor {
     const parseOptions: CsvParseOptions = {
       vendorKey,
       skipRows,
+      ...(columnMapping ? { columnMapping } : {}),
     };
 
     const orderGuide = await CsvOrderGuide.parse(csvContent, parseOptions);
@@ -136,10 +139,12 @@ export class OrderGuideProcessor {
 
     const createdGuide = await this.storage.createOrderGuide(guideInsert);
 
-    // Step 2b: Supersede any previous order guides for this vendor
-    const supersededCount = await this.storage.supersedePreviousOrderGuides(vendorId, createdGuide.id);
-    if (supersededCount > 0) {
-      console.log(`[OrderGuideProcessor] Superseded ${supersededCount} previous order guide(s) for vendor ${vendorId}`);
+    // Step 2b: Supersede any previous order guides for this vendor (skip for generic imports)
+    if (vendorId) {
+      const supersededCount = await this.storage.supersedePreviousOrderGuides(vendorId, createdGuide.id);
+      if (supersededCount > 0) {
+        console.log(`[OrderGuideProcessor] Superseded ${supersededCount} previous order guide(s) for vendor ${vendorId}`);
+      }
     }
 
     // Step 3: Match products and create order guide lines
@@ -152,7 +157,13 @@ export class OrderGuideProcessor {
     };
 
     for (const product of orderGuide.products) {
-      const match = await this.matcher.findBestMatch(product, companyId, storeId);
+      // Use canonical name for matching if available (AI-normalized for better fuzzy matching)
+      const canonicalName = canonicalNames?.get(product.vendorProductName);
+      const productForMatching = canonicalName
+        ? { ...product, vendorProductName: canonicalName }
+        : product;
+      
+      const match = await this.matcher.findBestMatch(productForMatching, companyId, storeId);
 
       // Update stats
       if (match.confidence === 'high') stats.highConfidenceMatches++;
@@ -191,6 +202,7 @@ export class OrderGuideProcessor {
         matchedInventoryItemId: match.inventoryItemId,
         matchConfidence: matchConfidenceScore,
         isVariableWeight: product.isVariableWeight ? 1 : 0,
+        canonicalName: canonicalName ?? null,             // AI-normalized name (if available)
       };
 
       lines.push(line);
@@ -318,12 +330,15 @@ export class OrderGuideProcessor {
     const defaults = await this.getSmartDefaults(companyId, primaryStoreId);
 
     // Process items by match status
+    // guide.vendorId may be null for generic CSV imports (no specific vendor assigned)
+    const effectiveVendorId = guide.vendorId || null;
+
     for (const line of linesToProcess) {
       if (line.matchStatus === 'new') {
         // Create new inventory item + vendor item, assigning to all target stores
         const result = await this.createNewInventoryAndVendorItem(
           line, 
-          guide.vendorId!, 
+          effectiveVendorId, 
           companyId, 
           targetStoreIds, 
           defaults
@@ -332,11 +347,13 @@ export class OrderGuideProcessor {
         if (result.vendorItemCreated) vendorItemsCreated++;
         storeAssignmentsCreated += result.storeAssignmentsCreated;
       } else if (line.matchedInventoryItemId) {
-        // Create vendor item linking to existing inventory
-        const created = await this.createVendorItemForExisting(line, guide.vendorId!, companyId);
-        if (created) vendorItemsCreated++;
+        // Create vendor item linking to existing inventory (only if we have a vendor)
+        if (effectiveVendorId) {
+          const created = await this.createVendorItemForExisting(line, effectiveVendorId, companyId);
+          if (created) vendorItemsCreated++;
+        }
         
-        // Also assign existing inventory item to all target stores
+        // Assign existing inventory item to all target stores
         const assignmentsCreated = await this.assignInventoryItemToStores(
           line.matchedInventoryItemId, 
           companyId, 
@@ -509,7 +526,7 @@ export class OrderGuideProcessor {
    */
   private async createNewInventoryAndVendorItem(
     line: any,
-    vendorId: string,
+    vendorId: string | null,
     companyId: string,
     targetStoreIds: string[],
     defaults: any
@@ -577,19 +594,23 @@ export class OrderGuideProcessor {
         }
       }
 
-      // Create vendor item
-      const vendorItem = await this.storage.createVendorItem({
-        vendorId,
-        inventoryItemId: inventoryItem.id,
-        vendorSku: line.vendorSku,
-        brandName: line.brandName ?? undefined,
-        purchaseUnitId: unitId,
-        caseSize: line.caseSize ?? 1,
-        innerPackSize: line.innerPack ?? undefined,
-        lastPrice: line.price ?? undefined,
-      });
+      // Create vendor item (only if a vendor is assigned)
+      let vendorItemCreated = false;
+      if (vendorId) {
+        await this.storage.createVendorItem({
+          vendorId,
+          inventoryItemId: inventoryItem.id,
+          vendorSku: line.vendorSku,
+          brandName: line.brandName ?? undefined,
+          purchaseUnitId: unitId,
+          caseSize: line.caseSize ?? 1,
+          innerPackSize: line.innerPack ?? undefined,
+          lastPrice: line.price ?? undefined,
+        });
+        vendorItemCreated = true;
+      }
 
-      return { inventoryCreated: true, vendorItemCreated: true, storeAssignmentsCreated };
+      return { inventoryCreated: true, vendorItemCreated, storeAssignmentsCreated };
     } catch (error) {
       console.error('[OrderGuide] Error creating new inventory item:', error);
       return { inventoryCreated: false, vendorItemCreated: false, storeAssignmentsCreated: 0 };

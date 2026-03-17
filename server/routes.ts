@@ -3509,6 +3509,200 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===================================================================
+  // AI-Powered CSV Inventory Import
+  // ===================================================================
+
+  /**
+   * POST /api/inventory-import/analyze
+   * Accepts raw CSV text and returns an AI-proposed column mapping.
+   * Falls back to pattern-based detection if OpenAI is unavailable.
+   */
+  app.post("/api/inventory-import/analyze", requireAuth, async (req, res) => {
+    try {
+      const { csvContent } = req.body;
+      if (!csvContent || typeof csvContent !== 'string') {
+        return res.status(400).json({ error: 'csvContent is required' });
+      }
+
+      const { analyzeColumns } = await import('./services/aiInventoryImporter');
+      const proposal = await analyzeColumns(csvContent);
+      res.json(proposal);
+    } catch (error: any) {
+      console.error('[Inventory Import Analyze]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * POST /api/inventory-import/preview
+   * Parses a CSV with the confirmed column mapping, runs fuzzy matching,
+   * stores results as a generic order guide, and returns the guide ID + summary.
+   */
+  app.post("/api/inventory-import/preview", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const storeId = (req as any).storeId;
+
+      const schema = z.object({
+        csvContent: z.string(),
+        columnMapping: z.object({
+          productName: z.string(),
+          vendorSku: z.string().optional().default(''),
+          price: z.string().optional().default(''),
+          caseSize: z.string().optional().default(''),
+          innerPack: z.string().optional().default(''),
+          unit: z.string().optional().default(''),
+          category: z.string().optional().default(''),
+          brand: z.string().optional().default(''),
+          upc: z.string().optional().default(''),
+          description: z.string().optional().default(''),
+          variableWeight: z.string().optional().default(''),
+        }),
+        vendorId: z.string().nullable().optional(),
+        fileName: z.string().optional(),
+        useAiNormalization: z.boolean().optional().default(true),
+      });
+
+      const validation = schema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ error: 'Invalid request', details: validation.error.errors });
+      }
+
+      const { csvContent, columnMapping, vendorId, fileName, useAiNormalization } = validation.data;
+
+      // Extract product names for AI normalization (optional, gated behind flag)
+      let canonicalNames: Map<string, string> | undefined;
+      if (useAiNormalization) {
+        try {
+          // Parse CSV to extract product names
+          const { parse: parseCsv } = await import('csv-parse/sync');
+          const records = parseCsv(csvContent, {
+            columns: true,
+            skip_empty_lines: true,
+            trim: true,
+            bom: true,
+          }) as Record<string, string>[];
+
+          if (records.length > 0 && columnMapping.productName) {
+            const rawNames = records
+              .map(r => r[columnMapping.productName] || '')
+              .filter(n => n.trim().length > 0);
+
+            const { normalizeProductNames } = await import('./services/aiInventoryImporter');
+            canonicalNames = await normalizeProductNames(rawNames);
+            console.log(`[Inventory Import] Normalized ${canonicalNames.size} product names via AI`);
+          }
+        } catch (normErr) {
+          console.error('[Inventory Import] Name normalization failed (non-fatal):', normErr);
+        }
+      }
+
+      const { OrderGuideProcessor } = await import('./services/orderGuideProcessor');
+      const processor = new OrderGuideProcessor(storage);
+
+      const result = await processor.processUpload({
+        fileContent: csvContent,
+        vendorKey: 'generic',
+        vendorId: vendorId || null,
+        companyId,
+        storeId: storeId || '',
+        fileName: fileName || 'inventory_import.csv',
+        columnMapping: columnMapping as any,
+        canonicalNames,
+      });
+
+      // Fetch the full review data so the client has everything for step 3
+      const reviewData = await processor.getForReview(result.orderGuideId);
+
+      res.json({
+        orderGuideId: result.orderGuideId,
+        summary: {
+          total: result.totalItems,
+          matched: result.highConfidenceMatches,
+          ambiguous: result.mediumConfidenceMatches + result.lowConfidenceMatches,
+          new: result.noMatches,
+        },
+        review: reviewData,
+      });
+    } catch (error: any) {
+      console.error('[Inventory Import Preview]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * POST /api/inventory-import/:id/approve
+   * Approves the generic CSV import — creates inventory items, vendor items,
+   * and store assignments. Delegates to OrderGuideProcessor.approve().
+   */
+  app.post("/api/inventory-import/:id/approve", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = (req as any).companyId;
+      const sessionStoreId = (req as any).storeId;
+      const userId = (req as any).userId;
+
+      const bodySchema = z.object({
+        importAll: z.boolean().optional(),
+        selectedLineIds: z.array(z.string()).optional(),
+        targetStoreIds: z.array(z.string()).optional(),
+      }).refine(
+        (data) => data.importAll === true || (data.selectedLineIds && data.selectedLineIds.length > 0),
+        { message: 'Either importAll must be true or selectedLineIds must be non-empty' }
+      );
+
+      const validation = bodySchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ error: 'Invalid request', details: validation.error.errors });
+      }
+
+      const { importAll, selectedLineIds, targetStoreIds } = validation.data;
+
+      let storeIdsToAssign: string[] = [];
+      if (targetStoreIds && targetStoreIds.length > 0) {
+        const companyStores = await storage.getCompanyStores(companyId);
+        const validStoreIds = new Set(companyStores.map((s: any) => s.id));
+        for (const sid of targetStoreIds) {
+          if (!validStoreIds.has(sid)) {
+            return res.status(400).json({ error: `Store ${sid} does not belong to your company` });
+          }
+        }
+        storeIdsToAssign = targetStoreIds;
+      } else if (sessionStoreId) {
+        storeIdsToAssign = [sessionStoreId];
+      } else {
+        const companyStores = await storage.getCompanyStores(companyId);
+        if (companyStores.length > 0) {
+          storeIdsToAssign = companyStores.map((s: any) => s.id);
+        } else {
+          return res.status(400).json({ error: 'No stores found for company. Please create a store first.' });
+        }
+      }
+
+      const { OrderGuideProcessor } = await import('./services/orderGuideProcessor');
+      const processor = new OrderGuideProcessor(storage);
+
+      const result = await processor.approve({
+        orderGuideId: id,
+        companyId,
+        targetStoreIds: storeIdsToAssign,
+        approvedBy: userId,
+        importAll: importAll || false,
+        selectedLineIds: selectedLineIds || [],
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('[Inventory Import Approve]', error);
+      let statusCode = 500;
+      if (error.statusCode) statusCode = error.statusCode;
+      else if (error.message?.includes('does not belong')) statusCode = 403;
+      else if (error.message?.includes('already been processed')) statusCode = 409;
+      res.status(statusCode).json({ error: error.message });
+    }
+  });
+
   // PunchOut - Initialize Session
   app.post("/api/vendors/:vendorKey/punchout/init", requireAuth, async (req, res) => {
     try {

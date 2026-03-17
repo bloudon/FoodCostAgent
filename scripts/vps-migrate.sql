@@ -177,3 +177,18 @@ BEGIN
       VALUES ('v007', 'Task #17: container_qty on inventory_count_lines');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v008 — Task #19: canonical_name on order_guide_lines
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v008') THEN
+
+    -- AI-normalized product name for better fuzzy matching during CSV import
+    ALTER TABLE order_guide_lines ADD COLUMN IF NOT EXISTS canonical_name text;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v008', 'Task #19: canonical_name on order_guide_lines for AI CSV import');
+  END IF;
+END $$;
