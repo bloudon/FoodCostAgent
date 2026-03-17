@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatPhoneNumber, isValidPhone } from "@/lib/phone";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,12 +50,17 @@ export default function Settings() {
   const [selectedQbVendorId, setSelectedQbVendorId] = useState<string>("");
   const [isVendorSyncDialogOpen, setIsVendorSyncDialogOpen] = useState(false);
   const [selectedVendorsForSync, setSelectedVendorsForSync] = useState<Set<string>>(new Set());
+  const [posProvider, setPosProvider] = useState<string>("none");
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
 
   const { data: company, isLoading: companyLoading } = useQuery<Company>({
     queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}`] : [],
     enabled: !!selectedCompanyId,
   });
+
+  useEffect(() => {
+    setPosProvider(company?.posProvider ?? "none");
+  }, [company?.posProvider]);
 
   const { data: stores = [], isLoading: storesLoading } = useAccessibleStores();
 
@@ -285,7 +290,15 @@ export default function Settings() {
       return;
     }
 
-    const companyData = {
+    if (posProvider === "thrive") {
+      const tccValue = (formData.get("company-tcc-account-id") as string || "").trim();
+      if (!tccValue) {
+        toast({ variant: "destructive", title: "TCC Account ID required", description: "A valid TCC Account ID is required when using Thrive as your POS provider" });
+        return;
+      }
+    }
+
+    const companyData: Partial<Company> = {
       name: formData.get("company-name") as string,
       addressLine1: formData.get("company-address") as string,
       city: formData.get("company-city") as string,
@@ -293,6 +306,8 @@ export default function Settings() {
       postalCode: formData.get("company-zip") as string,
       phone: phoneValue,
       contactEmail: formData.get("company-email") as string,
+      posProvider: posProvider as Company["posProvider"],
+      ...(posProvider === "thrive" ? { tccAccountId: (formData.get("company-tcc-account-id") as string).trim() } : {}),
     };
     
     updateCompanyMutation.mutate(companyData);
@@ -553,6 +568,41 @@ export default function Settings() {
                     data-testid="input-company-email"
                   />
                 </div>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <Label htmlFor="company-pos-provider">POS Provider</Label>
+                  <Select value={posProvider} onValueChange={setPosProvider}>
+                    <SelectTrigger data-testid="select-pos-provider">
+                      <SelectValue placeholder="Select POS provider..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="thrive">Thrive</SelectItem>
+                      <SelectItem value="toast">Toast</SelectItem>
+                      <SelectItem value="hungerrush">HungerRush</SelectItem>
+                      <SelectItem value="clover">Clover</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {posProvider === "thrive" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="company-tcc-account-id">TCC Account ID</Label>
+                    <Input
+                      id="company-tcc-account-id"
+                      name="company-tcc-account-id"
+                      placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                      defaultValue={company?.tccAccountId || ""}
+                      data-testid="input-company-tcc-account-id"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      UUID format required for Thrive Control Center account identification
+                    </p>
+                  </div>
+                )}
 
                 <Separator />
                 
