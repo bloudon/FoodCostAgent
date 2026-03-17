@@ -3698,7 +3698,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (lineOverrides && Object.keys(lineOverrides).length > 0) {
         const nonNewOverrides = Object.values(lineOverrides).filter(v => v !== 'new');
         if (nonNewOverrides.length > 0) {
-          const companyItems = await storage.getInventoryItems(companyId);
+          const companyItems = await storage.getInventoryItems(undefined, undefined, companyId);
           const validItemIds = new Set(companyItems.map((item: { id: string }) => item.id));
           for (const itemId of nonNewOverrides) {
             if (!validItemIds.has(itemId)) {
