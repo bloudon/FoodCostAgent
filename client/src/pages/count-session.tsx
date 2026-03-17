@@ -63,10 +63,12 @@ interface CountQuantityEditorProps {
   isEditing: boolean;
   editingQty: string;
   editingCaseQty: string;
+  editingContainerQty: string;
   editingLooseUnits: string;
   onFocus: () => void;
   onQtyChange: (value: string) => void;
   onCaseQtyChange: (value: string) => void;
+  onContainerQtyChange: (value: string) => void;
   onLooseUnitsChange: (value: string) => void;
   onBlur: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
@@ -80,22 +82,38 @@ function CountQuantityEditor({
   isEditing,
   editingQty,
   editingCaseQty,
+  editingContainerQty,
   editingLooseUnits,
   onFocus,
   onQtyChange,
   onCaseQtyChange,
+  onContainerQtyChange,
   onLooseUnitsChange,
   onBlur,
   onKeyDown,
   readOnly = false
 }: CountQuantityEditorProps) {
   if (mode === 'case') {
+    const hasContainerSize = item?.containerSize && item?.casePkgCount;
     const caseQty = isEditing ? editingCaseQty : (line.caseQty != null ? line.caseQty.toString() : '');
+    const containerQty = isEditing ? editingContainerQty : (line.containerQty != null ? line.containerQty.toString() : '');
     const looseUnits = isEditing ? editingLooseUnits : (line.looseUnits != null ? line.looseUnits.toString() : '');
+    
+    const containerLabel = item?.containerLabel || "container";
+    
+    let totalQty: number;
+    if (hasContainerSize) {
+      totalQty = ((parseFloat(caseQty.toString()) || 0) * item.casePkgCount * item.containerSize) +
+                 ((parseFloat(containerQty.toString()) || 0) * item.containerSize) +
+                 (parseFloat(looseUnits.toString()) || 0);
+    } else {
+      totalQty = ((parseFloat(caseQty.toString()) || 0) * (item?.caseSize || 0)) +
+                 (parseFloat(looseUnits.toString()) || 0);
+    }
     
     return (
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 flex-1">
-        <div className="flex items-center gap-2 sm:gap-3 flex-1 sm:flex-none">
+        <div className="flex items-center gap-2 sm:gap-3 flex-1 sm:flex-none flex-wrap">
           <div className="flex flex-col flex-1 sm:flex-none">
             <label className="text-xs text-muted-foreground mb-1">Cases</label>
             <Input
@@ -112,6 +130,24 @@ function CountQuantityEditor({
               data-testid={`input-case-qty-${line.id}`}
             />
           </div>
+          {hasContainerSize && (
+            <div className="flex flex-col flex-1 sm:flex-none">
+              <label className="text-xs text-muted-foreground mb-1 capitalize">{containerLabel}s</label>
+              <Input
+                type="number"
+                step="1"
+                min="0"
+                value={containerQty}
+                onFocus={onFocus}
+                onChange={(e) => onContainerQtyChange(e.target.value)}
+                onBlur={onBlur}
+                onKeyDown={onKeyDown}
+                className="w-full sm:w-24 h-10 sm:h-9 text-base"
+                disabled={readOnly}
+                data-testid={`input-container-qty-${line.id}`}
+              />
+            </div>
+          )}
           <div className="flex flex-col flex-1 sm:flex-none">
             <label className="text-xs text-muted-foreground mb-1">Loose Units</label>
             <Input
@@ -131,7 +167,7 @@ function CountQuantityEditor({
         </div>
         <div className="flex-1 text-right w-full sm:w-auto">
           <div className="text-base font-semibold font-mono text-muted-foreground">
-            = {((parseFloat(caseQty.toString()) || 0) * (item?.caseSize || 0) + (parseFloat(looseUnits.toString()) || 0)).toFixed(2)} {item?.unitName}
+            = {totalQty.toFixed(2)} {item?.unitName}
           </div>
         </div>
       </div>
@@ -204,6 +240,7 @@ export default function CountSession() {
   
   const [editingQty, setEditingQty] = useState<string>("");
   const [editingCaseQty, setEditingCaseQty] = useState<string>("");
+  const [editingContainerQty, setEditingContainerQty] = useState<string>("");
   const [editingLooseUnits, setEditingLooseUnits] = useState<string>("");
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [wasTabPressed, setWasTabPressed] = useState(false);
@@ -315,10 +352,11 @@ export default function CountSession() {
   }, []);
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; qty: number; caseQty?: number | null; looseUnits?: number | null }) => {
+    mutationFn: async (data: { id: string; qty: number; caseQty?: number | null; containerQty?: number | null; looseUnits?: number | null }) => {
       return apiRequest("PATCH", `/api/inventory-count-lines/${data.id}`, { 
         qty: data.qty,
         caseQty: data.caseQty,
+        containerQty: data.containerQty,
         looseUnits: data.looseUnits
       });
     },
@@ -336,12 +374,15 @@ export default function CountSession() {
     },
   });
 
-  // Helper function to get the current quantity (either from editing state or stored value)
   const getCurrentQty = (line: any, mode: CountMode, item: any) => {
     if (editingLineId === line.id) {
       if (mode === 'case') {
         const cases = parseFloat(editingCaseQty) || 0;
+        const containers = parseFloat(editingContainerQty) || 0;
         const loose = parseFloat(editingLooseUnits) || 0;
+        if (item?.containerSize && item?.casePkgCount) {
+          return (cases * item.casePkgCount * item.containerSize) + (containers * item.containerSize) + loose;
+        }
         const caseSize = item?.caseSize || 0;
         return (cases * caseSize) + loose;
       } else {
@@ -352,7 +393,6 @@ export default function CountSession() {
   };
 
   const handleStartEdit = (line: any, mode: CountMode) => {
-    // Don't re-initialize if we're already editing this line (moving between fields)
     if (editingLineId === line.id) {
       return;
     }
@@ -360,59 +400,60 @@ export default function CountSession() {
     setEditingLineId(line.id);
     
     if (mode === 'case') {
-      // Initialize case counting fields - use existing values or start with blank
-      if (line.caseQty != null || line.looseUnits != null) {
-        // Use existing case count data
+      if (line.caseQty != null || line.containerQty != null || line.looseUnits != null) {
         setEditingCaseQty(line.caseQty != null ? line.caseQty.toString() : '');
+        setEditingContainerQty(line.containerQty != null ? line.containerQty.toString() : '');
         setEditingLooseUnits(line.looseUnits != null ? line.looseUnits.toString() : '');
       } else {
-        // Start with empty fields for first-time entry
         setEditingCaseQty('');
+        setEditingContainerQty('');
         setEditingLooseUnits('');
       }
       setEditingQty("");
     } else {
-      // Simple or tare mode - just use qty
       setEditingQty(line.qty.toString());
       setEditingCaseQty("");
+      setEditingContainerQty("");
       setEditingLooseUnits("");
     }
   };
 
   const handleSaveEdit = (lineId: string, mode: CountMode, item: any) => {
-    // Prevent edits in read-only mode
     if (count && count.canEdit === false) {
       return;
     }
     
     let qty: number;
     let caseQty: number | null = null;
+    let containerQty: number | null = null;
     let looseUnits: number | null = null;
     
     if (mode === 'case') {
-      // Calculate qty from case counts
-      // Only save values if they're actually entered (not empty strings)
       const casesValue = editingCaseQty.trim();
+      const containersValue = editingContainerQty.trim();
       const looseValue = editingLooseUnits.trim();
-      const caseSize = item?.caseSize || 0;
       
       const cases = casesValue !== '' ? parseFloat(casesValue) : 0;
+      const containers = containersValue !== '' ? parseFloat(containersValue) : 0;
       const loose = looseValue !== '' ? parseFloat(looseValue) : 0;
       
-      qty = (cases * caseSize) + loose;
+      if (item?.containerSize && item?.casePkgCount) {
+        qty = (cases * item.casePkgCount * item.containerSize) + (containers * item.containerSize) + loose;
+      } else {
+        qty = (cases * (item?.caseSize || 0)) + loose;
+      }
       
-      // Only store case counts if at least one field has a value
-      if (casesValue !== '' || looseValue !== '') {
+      if (casesValue !== '' || containersValue !== '' || looseValue !== '') {
         caseQty = casesValue !== '' ? cases : 0;
+        containerQty = containersValue !== '' ? containers : 0;
         looseUnits = looseValue !== '' ? loose : 0;
       }
     } else {
-      // Simple or tare mode - use qty directly
       qty = parseFloat(editingQty) || 0;
     }
     
     if (!isNaN(qty) && qty >= 0) {
-      updateMutation.mutate({ id: lineId, qty, caseQty, looseUnits });
+      updateMutation.mutate({ id: lineId, qty, caseQty, containerQty, looseUnits });
     }
   };
 
@@ -420,6 +461,7 @@ export default function CountSession() {
     setEditingLineId(null);
     setEditingQty("");
     setEditingCaseQty("");
+    setEditingContainerQty("");
     setEditingLooseUnits("");
   };
 
@@ -1220,10 +1262,12 @@ export default function CountSession() {
                                                     isEditing={editingLineId === line.id}
                                                     editingQty={editingQty}
                                                     editingCaseQty={editingCaseQty}
+                                                    editingContainerQty={editingContainerQty}
                                                     editingLooseUnits={editingLooseUnits}
                                                     onFocus={() => handleStartEdit(line, mode)}
                                                     onQtyChange={setEditingQty}
                                                     onCaseQtyChange={setEditingCaseQty}
+                                                    onContainerQtyChange={setEditingContainerQty}
                                                     onLooseUnitsChange={setEditingLooseUnits}
                                                     onBlur={() => {
                                                       if (editingLineId === line.id) {
@@ -1357,10 +1401,12 @@ export default function CountSession() {
                                                 isEditing={editingLineId === line.id}
                                                 editingQty={editingQty}
                                                 editingCaseQty={editingCaseQty}
+                                                editingContainerQty={editingContainerQty}
                                                 editingLooseUnits={editingLooseUnits}
                                                 onFocus={() => handleStartEdit(line, mode)}
                                                 onQtyChange={setEditingQty}
                                                 onCaseQtyChange={setEditingCaseQty}
+                                                onContainerQtyChange={setEditingContainerQty}
                                                 onLooseUnitsChange={setEditingLooseUnits}
                                                 onBlur={() => {
                                                   if (editingLineId === line.id) {

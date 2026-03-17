@@ -53,6 +53,9 @@ type InventoryItem = {
   pricePerUnit: number;
   avgCostPerUnit: number;
   caseSize: number;
+  containerSize: number | null;
+  containerLabel: string | null;
+  casePkgCount: number | null;
   storageLocationId: string;
   yieldPercent: number;
   imageUrl: string | null;
@@ -257,10 +260,18 @@ export default function InventoryItemDetail() {
     if (field in editedFields) {
       const value = editedFields[field];
       // Validate numeric fields
-      if (["pricePerUnit", "caseSize", "parLevel", "reorderLevel", "yieldPercent"].includes(field)) {
+      if (field === "containerLabel") {
+        updateMutation.mutate({ containerLabel: value.trim() || null });
+      } else if (["containerSize", "casePkgCount"].includes(field)) {
+        const numValue = parseFloat(value);
+        if (value !== "" && !isNaN(numValue) && numValue > 0) {
+          updateMutation.mutate({ [field]: numValue });
+        } else if (value === "") {
+          updateMutation.mutate({ [field]: null });
+        }
+      } else if (["pricePerUnit", "caseSize", "parLevel", "reorderLevel", "yieldPercent"].includes(field)) {
         const numValue = parseFloat(value);
         if (value !== "" && !isNaN(numValue)) {
-          // Validate yieldPercent range
           if (field === "yieldPercent" && (numValue < 1 || numValue > 100)) {
             toast({
               title: "Validation Error",
@@ -274,21 +285,18 @@ export default function InventoryItemDetail() {
             });
             return;
           }
-          // Include storeId for par/reorder levels when in store context
           const updates: any = { [field]: numValue };
           if ((field === "parLevel" || field === "reorderLevel") && selectedStoreId && selectedStoreId !== "all") {
             updates.storeId = selectedStoreId;
           }
           updateMutation.mutate(updates);
         } else if (value === "" && (field === "parLevel" || field === "reorderLevel")) {
-          // Include storeId for par/reorder levels when in store context
           const updates: any = { [field]: null };
           if (selectedStoreId && selectedStoreId !== "all") {
             updates.storeId = selectedStoreId;
           }
           updateMutation.mutate(updates);
         } else if (value === "" && field === "yieldPercent") {
-          // Default to 95 if empty
           updateMutation.mutate({ [field]: 95 });
         }
       } else {
@@ -1126,6 +1134,89 @@ export default function InventoryItemDetail() {
                 </div>
                 <p className="text-xs text-muted-foreground">Usable percentage after trimming/waste. Default is 95%.</p>
               </div>
+
+              {(() => {
+                const editContainerSize = getFieldValue("containerSize", item.containerSize ?? "");
+                const editCasePkgCount = getFieldValue("casePkgCount", item.casePkgCount ?? "");
+                const editContainerLabel = getFieldValue("containerLabel", item.containerLabel || "");
+                const parsedContainerSize = parseFloat(String(editContainerSize));
+                const parsedCasePkgCount = parseFloat(String(editCasePkgCount));
+                const hasValidContainer = !isNaN(parsedContainerSize) && parsedContainerSize > 0
+                  && !isNaN(parsedCasePkgCount) && parsedCasePkgCount > 0;
+                const liveComputedCaseSize = hasValidContainer
+                  ? parsedCasePkgCount * parsedContainerSize
+                  : item.caseSize;
+                const liveLabel = String(editContainerLabel).trim() || "container";
+
+                return (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="caseSize">Case Size</Label>
+                      <Input
+                        id="caseSize"
+                        type="number"
+                        step="0.01"
+                        value={hasValidContainer ? liveComputedCaseSize.toString() : getFieldValue("caseSize", item.caseSize)}
+                        onChange={(e) => handleFieldChange("caseSize", e.target.value)}
+                        onBlur={() => handleFieldBlur("caseSize")}
+                        disabled={hasValidContainer || updateMutation.isPending}
+                        data-testid="input-case-size"
+                      />
+                      {hasValidContainer && (
+                        <p className="text-sm text-muted-foreground" data-testid="text-container-summary">
+                          {parsedCasePkgCount} {liveLabel}s x {parsedContainerSize} {unit?.abbreviation || "units"} = {liveComputedCaseSize} {unit?.abbreviation || "units"} per case
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-3 border rounded-md p-3">
+                      <Label className="text-sm font-medium">Container Breakdown (optional)</Label>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="containerLabel" className="text-xs">Container Label</Label>
+                          <Input
+                            id="containerLabel"
+                            value={editContainerLabel}
+                            onChange={(e) => handleFieldChange("containerLabel", e.target.value)}
+                            onBlur={() => handleFieldBlur("containerLabel")}
+                            disabled={updateMutation.isPending}
+                            placeholder="e.g., can"
+                            data-testid="input-container-label"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="containerSize" className="text-xs">Container Size</Label>
+                          <Input
+                            id="containerSize"
+                            type="number"
+                            step="0.01"
+                            value={editContainerSize}
+                            onChange={(e) => handleFieldChange("containerSize", e.target.value)}
+                            onBlur={() => handleFieldBlur("containerSize")}
+                            disabled={updateMutation.isPending}
+                            placeholder="e.g., 128"
+                            data-testid="input-container-size"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="casePkgCount" className="text-xs">Per Case</Label>
+                          <Input
+                            id="casePkgCount"
+                            type="number"
+                            step="1"
+                            value={editCasePkgCount}
+                            onChange={(e) => handleFieldChange("casePkgCount", e.target.value)}
+                            onBlur={() => handleFieldBlur("casePkgCount")}
+                            disabled={updateMutation.isPending}
+                            placeholder="e.g., 6"
+                            data-testid="input-case-pkg-count"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* Item Flags */}
               <div className="pt-4 border-t space-y-3">

@@ -287,6 +287,9 @@ export const inventoryItems = pgTable("inventory_items", {
   pluSku: text("plu_sku"),
   unitId: varchar("unit_id").notNull(), // unit reference (pounds by default)
   caseSize: real("case_size").notNull().default(20), // case size in base units
+  containerSize: real("container_size"), // size of each container in base units (e.g. 128 oz per can)
+  containerLabel: text("container_label"), // label for the container (e.g. "can", "bottle", "bag")
+  casePkgCount: real("case_pkg_count"), // number of containers per case (e.g. 6 cans per case)
   barcode: text("barcode"),
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
   pricePerUnit: real("price_per_unit").notNull().default(0), // most recent price per base unit (last cost method)
@@ -308,6 +311,9 @@ export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit
   categoryId: z.string().nullable().optional(),
   unitId: z.string().min(1, "Unit is required"),
   yieldPercent: z.number().min(1).max(100).default(95),
+  containerSize: z.number().positive().nullable().optional(),
+  containerLabel: z.string().nullable().optional(),
+  casePkgCount: z.number().positive().nullable().optional(),
 });
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
@@ -532,6 +538,7 @@ export const inventoryCountLines = pgTable("inventory_count_lines", {
   storageLocationId: varchar("storage_location_id").notNull(), // Track qty per storage location
   qty: real("qty").notNull().default(0), // quantity in base units (calculated from caseQty + looseUnits or entered directly)
   caseQty: real("case_qty"), // number of full cases (for case counting)
+  containerQty: real("container_qty"), // number of loose containers (for three-level counting with container size)
   looseUnits: real("loose_units"), // number of loose units from opened cases (for case counting)
   unitId: varchar("unit_id").notNull(),
   unitCost: real("unit_cost").notNull().default(0), // price per unit at time of count (snapshot)

@@ -221,6 +221,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  (async function migrateContainerSizeHierarchy() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'container_size_hierarchy'`
+      );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
+      if (!existing) {
+        await db.execute(sql`
+          ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS container_size REAL;
+          ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS container_label TEXT;
+          ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS case_pkg_count REAL;
+          ALTER TABLE inventory_count_lines ADD COLUMN IF NOT EXISTS container_qty REAL;
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('container_size_hierarchy')`
+        );
+        console.log("[Migration] Applied container_size_hierarchy");
+      } else {
+        console.log("[Migration] Already applied (container_size_hierarchy)");
+      }
+    } catch (err) {
+      console.error("[Migration] container_size_hierarchy error:", err);
+    }
+  })();
+
   // GET /api/background-images — public
   // Returns active images. If ?companyId= is provided and company has a brand image, returns just that.
   // For free-tier companies without a brand image, returns the designated free-tier background (if any).
@@ -3933,6 +3964,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const data = insertInventoryItemSchema.parse(dataWithCompany);
       
+      // Auto-calculate caseSize when container fields are both provided
+      if (data.containerSize && data.casePkgCount) {
+        data.caseSize = data.casePkgCount * data.containerSize;
+      }
+      
       // Validate storeIds
       if (!storeIds || !Array.isArray(storeIds) || storeIds.length === 0) {
         return res.status(400).json({ error: "At least one store location is required" });
@@ -4034,6 +4070,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (Object.keys(storeUpdates).length > 0) {
           await storage.updateStoreInventoryItem(storeId, req.params.id, storeUpdates);
         }
+      }
+      
+      // Auto-calculate caseSize when container fields are both provided
+      const effectiveContainerSize = updates.containerSize !== undefined ? updates.containerSize : currentItem.containerSize;
+      const effectiveCasePkgCount = updates.casePkgCount !== undefined ? updates.casePkgCount : currentItem.casePkgCount;
+      if (effectiveContainerSize && effectiveCasePkgCount) {
+        updates.caseSize = effectiveCasePkgCount * effectiveContainerSize;
       }
       
       // Validate numeric fields are not NaN
@@ -5655,23 +5698,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updates: any = { ...lineData };
       
       // Validate case counting fields
-      if (updates.caseQty != null || updates.looseUnits != null) {
-        const caseQty = updates.caseQty ?? 0;
-        const looseUnits = updates.looseUnits ?? 0;
+      if (updates.caseQty != null || updates.containerQty != null || updates.looseUnits != null) {
+        const caseQty = updates.caseQty ?? existingLine.caseQty ?? 0;
+        const containerQty = updates.containerQty ?? existingLine.containerQty ?? 0;
+        const looseUnits = updates.looseUnits ?? existingLine.looseUnits ?? 0;
+        updates.caseQty = caseQty;
+        updates.containerQty = containerQty;
+        updates.looseUnits = looseUnits;
         
         if (caseQty < 0) {
           return res.status(400).json({ error: "Case quantity cannot be negative" });
+        }
+        if (containerQty < 0) {
+          return res.status(400).json({ error: "Container quantity cannot be negative" });
         }
         if (looseUnits < 0) {
           return res.status(400).json({ error: "Loose units cannot be negative" });
         }
         
         // Recalculate qty from case counts (server-side integrity check)
-        // Get inventory item to retrieve case size
         const item = await storage.getInventoryItem(existingLine.inventoryItemId);
         if (item) {
-          const caseSize = item.caseSize || 0;
-          updates.qty = (caseQty * caseSize) + looseUnits;
+          if (item.containerSize && item.casePkgCount) {
+            // Three-level counting: (cases × casePkgCount × containerSize) + (containers × containerSize) + looseUnits
+            updates.qty = (caseQty * item.casePkgCount * item.containerSize) + (containerQty * item.containerSize) + looseUnits;
+          } else {
+            // Two-level counting: (cases × caseSize) + looseUnits
+            const caseSize = item.caseSize || 0;
+            updates.qty = (caseQty * caseSize) + looseUnits;
+          }
         }
       } else if (updates.qty != null) {
         // Regular qty update - clear case counting fields
@@ -5679,6 +5734,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Quantity cannot be negative" });
         }
         updates.caseQty = null;
+        updates.containerQty = null;
         updates.looseUnits = null;
       }
 

@@ -59,6 +59,9 @@ export default function InventoryItemCreate() {
   const [pluSku, setPluSku] = useState("");
   const [unitId, setUnitId] = useState("");
   const [caseSize, setCaseSize] = useState("20");
+  const [containerLabel, setContainerLabel] = useState("");
+  const [containerSize, setContainerSize] = useState("");
+  const [casePkgCount, setCasePkgCount] = useState("");
   const [barcode, setBarcode] = useState("");
   const [pricePerUnit, setPricePerUnit] = useState("0");
   const [yieldPercent, setYieldPercent] = useState("95");
@@ -125,6 +128,11 @@ export default function InventoryItemCreate() {
     }
   }, [selectedLocations, primaryLocationId]);
 
+  const hasContainerFields = containerSize.trim() !== "" && casePkgCount.trim() !== "";
+  const computedCaseSize = hasContainerFields
+    ? (parseFloat(containerSize) || 0) * (parseFloat(casePkgCount) || 0)
+    : parseFloat(caseSize) || 20;
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const data = {
@@ -133,7 +141,7 @@ export default function InventoryItemCreate() {
         categoryId: categoryId || null,
         pluSku: pluSku.trim() || null,
         unitId,
-        caseSize: parseFloat(caseSize) || 20,
+        caseSize: computedCaseSize,
         barcode: barcode.trim() || null,
         pricePerUnit: parseFloat(pricePerUnit) || 0,
         storageLocationId: primaryLocationId,
@@ -144,6 +152,11 @@ export default function InventoryItemCreate() {
         isVariableWeight: isVariableWeight ? 1 : 0,
         locationIds: selectedLocations,
         storeIds: selectedStores,
+        ...(hasContainerFields ? {
+          containerSize: parseFloat(containerSize),
+          casePkgCount: parseFloat(casePkgCount),
+          containerLabel: containerLabel.trim() || null,
+        } : {}),
       };
       const response = await apiRequest("POST", "/api/inventory-items", data);
       return response.json();
@@ -251,6 +264,7 @@ export default function InventoryItemCreate() {
   };
 
   const filteredUnits = filterUnitsBySystem(units || [], systemPrefs?.unitSystem || "imperial");
+  const unit = units?.find(u => u.id === unitId);
 
   return (
     <div className="p-8 pb-16">
@@ -383,10 +397,59 @@ export default function InventoryItemCreate() {
                   id="caseSize"
                   type="number"
                   step="0.01"
-                  value={caseSize}
+                  value={hasContainerFields ? computedCaseSize.toString() : caseSize}
                   onChange={(e) => setCaseSize(e.target.value)}
+                  disabled={hasContainerFields}
                   data-testid="input-case-size"
                 />
+                {hasContainerFields && (
+                  <p className="text-sm text-muted-foreground" data-testid="text-case-size-summary">
+                    {parseFloat(casePkgCount)} {containerLabel.trim() || "container"}s x {parseFloat(containerSize)} {unit?.abbreviation || "units"} = {computedCaseSize} {unit?.abbreviation || "units"} per case
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-3 border rounded-md p-3">
+                <Label className="text-sm font-medium">Container Breakdown (optional)</Label>
+                <p className="text-xs text-muted-foreground">
+                  Define container size and count to auto-calculate case size
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="containerLabel" className="text-xs">Container Label</Label>
+                    <Input
+                      id="containerLabel"
+                      value={containerLabel}
+                      onChange={(e) => setContainerLabel(e.target.value)}
+                      placeholder="e.g., can"
+                      data-testid="input-container-label"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="containerSize" className="text-xs">Container Size</Label>
+                    <Input
+                      id="containerSize"
+                      type="number"
+                      step="0.01"
+                      value={containerSize}
+                      onChange={(e) => setContainerSize(e.target.value)}
+                      placeholder="e.g., 128"
+                      data-testid="input-container-size"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="casePkgCount" className="text-xs">Per Case</Label>
+                    <Input
+                      id="casePkgCount"
+                      type="number"
+                      step="1"
+                      value={casePkgCount}
+                      onChange={(e) => setCasePkgCount(e.target.value)}
+                      placeholder="e.g., 6"
+                      data-testid="input-case-pkg-count"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -400,7 +463,7 @@ export default function InventoryItemCreate() {
                   data-testid="input-price-per-unit"
                 />
                 <p className="text-sm text-muted-foreground">
-                  Case cost will be calculated as: ${(parseFloat(pricePerUnit) * parseFloat(caseSize)).toFixed(2)}
+                  Case cost will be calculated as: ${(parseFloat(pricePerUnit) * computedCaseSize).toFixed(2)}
                 </p>
               </div>
 
