@@ -3608,7 +3608,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         companyId,
         storeId: storeId || '',
         fileName: fileName || 'inventory_import.csv',
-        columnMapping: columnMapping as any,
+        columnMapping: columnMapping,
         canonicalNames,
       });
 
@@ -3647,6 +3647,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         importAll: z.boolean().optional(),
         selectedLineIds: z.array(z.string()).optional(),
         targetStoreIds: z.array(z.string()).optional(),
+        /** Per-line overrides: lineId → inventoryItemId or 'new' */
+        lineOverrides: z.record(z.string()).optional(),
       }).refine(
         (data) => data.importAll === true || (data.selectedLineIds && data.selectedLineIds.length > 0),
         { message: 'Either importAll must be true or selectedLineIds must be non-empty' }
@@ -3657,7 +3659,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Invalid request', details: validation.error.errors });
       }
 
-      const { importAll, selectedLineIds, targetStoreIds } = validation.data;
+      const { importAll, selectedLineIds, targetStoreIds, lineOverrides } = validation.data;
 
       let storeIdsToAssign: string[] = [];
       if (targetStoreIds && targetStoreIds.length > 0) {
@@ -3690,6 +3692,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         approvedBy: userId,
         importAll: importAll || false,
         selectedLineIds: selectedLineIds || [],
+        lineOverrides: lineOverrides || {},
       });
 
       res.json(result);

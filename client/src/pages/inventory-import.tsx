@@ -78,6 +78,7 @@ interface ImportLine {
   price: number | null;
   matchStatus: string;
   matchedInventoryItemId: string | null;
+  matchedInventoryItemName: string | null;
   matchConfidence: number | null;
   brandName: string | null;
   category: string | null;
@@ -148,6 +149,8 @@ export default function InventoryImport() {
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set());
   const [targetStoreIds, setTargetStoreIds] = useState<Set<string>>(new Set());
   const [isStoreSelectionOpen, setIsStoreSelectionOpen] = useState(false);
+  /** Per-line overrides: lineId → inventoryItemId or 'new' */
+  const [lineOverrides, setLineOverrides] = useState<Record<string, string>>({});
 
   const { data: vendors } = useQuery<Vendor[]>({
     queryKey: ['/api/vendors'],
@@ -207,6 +210,7 @@ export default function InventoryImport() {
       const payload = {
         ...(importAll ? { importAll: true } : { selectedLineIds: Array.from(selectedLineIds) }),
         targetStoreIds: Array.from(targetStoreIds),
+        ...(Object.keys(lineOverrides).length > 0 ? { lineOverrides } : {}),
       };
       const res = await apiRequest('POST', `/api/inventory-import/${previewResult.orderGuideId}/approve`, payload);
       return res.json();
@@ -642,6 +646,7 @@ export default function InventoryImport() {
                     onSelectAll={() => selectAllInGroup(previewResult.review.lines.matched)}
                     onDeselectAll={() => deselectAllInGroup(previewResult.review.lines.matched)}
                     description="High confidence match to existing inventory. Vendor pricing will be updated."
+                    showMatchedItem
                     showCanonical
                   />
                 </TabsContent>
@@ -653,9 +658,13 @@ export default function InventoryImport() {
                     onToggle={toggleLineSelection}
                     onSelectAll={() => selectAllInGroup(previewResult.review.lines.ambiguous)}
                     onDeselectAll={() => deselectAllInGroup(previewResult.review.lines.ambiguous)}
-                    description="Possible match found, but confidence is below threshold. These will update existing items if selected."
+                    description="Possible match found but confidence is below threshold. Confirm which existing item to link, or create a new one."
+                    showMatchedItem
                     showCanonical
                     showConfidence
+                    showResolution
+                    lineOverrides={lineOverrides}
+                    onLineOverride={(lineId, value) => setLineOverrides(prev => ({ ...prev, [lineId]: value }))}
                   />
                 </TabsContent>
 
@@ -715,7 +724,11 @@ function ImportLineTable({
   onDeselectAll,
   description,
   showCanonical = false,
+  showMatchedItem = false,
   showConfidence = false,
+  showResolution = false,
+  lineOverrides,
+  onLineOverride,
 }: {
   lines: ImportLine[];
   selectedLineIds: Set<string>;
@@ -724,7 +737,11 @@ function ImportLineTable({
   onDeselectAll: () => void;
   description: string;
   showCanonical?: boolean;
+  showMatchedItem?: boolean;
   showConfidence?: boolean;
+  showResolution?: boolean;
+  lineOverrides?: Record<string, string>;
+  onLineOverride?: (lineId: string, value: string) => void;
 }) {
   return (
     <Card>
@@ -752,67 +769,106 @@ function ImportLineTable({
                   <TableHead className="w-10"></TableHead>
                   <TableHead>Vendor Name</TableHead>
                   {showCanonical && <TableHead>Canonical Name</TableHead>}
+                  {showMatchedItem && <TableHead>Matched Item</TableHead>}
+                  {showResolution && <TableHead>Action</TableHead>}
                   <TableHead>SKU</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead>Pack</TableHead>
-                  {showConfidence && <TableHead className="text-right">Confidence</TableHead>}
+                  {showConfidence && <TableHead className="text-right">Match %</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {lines.map((line) => (
-                  <TableRow
-                    key={line.id}
-                    data-testid={`row-import-line-${line.id}`}
-                    className={!selectedLineIds.has(line.id) ? 'opacity-50' : ''}
-                  >
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedLineIds.has(line.id)}
-                        onCheckedChange={() => onToggle(line.id)}
-                        data-testid={`checkbox-line-${line.id}`}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium text-sm">{line.productName}</div>
-                      {line.brandName && (
-                        <div className="text-xs text-muted-foreground">{line.brandName}</div>
-                      )}
-                    </TableCell>
-                    {showCanonical && (
+                {lines.map((line) => {
+                  const override = lineOverrides?.[line.id];
+                  const effectiveAction = override ?? (line.matchedInventoryItemId ? 'match' : 'new');
+                  return (
+                    <TableRow
+                      key={line.id}
+                      data-testid={`row-import-line-${line.id}`}
+                      className={!selectedLineIds.has(line.id) ? 'opacity-50' : ''}
+                    >
                       <TableCell>
-                        {line.canonicalName && line.canonicalName !== line.productName ? (
-                          <div className="flex items-center gap-1">
-                            <Sparkles className="h-3 w-3 text-primary shrink-0" />
-                            <span className="text-sm text-primary">{line.canonicalName}</span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
+                        <Checkbox
+                          checked={selectedLineIds.has(line.id)}
+                          onCheckedChange={() => onToggle(line.id)}
+                          data-testid={`checkbox-line-${line.id}`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium text-sm">{line.productName}</div>
+                        {line.brandName && (
+                          <div className="text-xs text-muted-foreground">{line.brandName}</div>
                         )}
                       </TableCell>
-                    )}
-                    <TableCell>
-                      <span className="text-xs text-muted-foreground font-mono">{line.vendorSku || '—'}</span>
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {line.price != null ? `$${line.price.toFixed(2)}` : '—'}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-xs text-muted-foreground">
-                        {[line.caseSize, line.uom].filter(Boolean).join(' ')}
-                        {line.packSize ? ` · ${line.packSize}` : ''}
-                      </span>
-                    </TableCell>
-                    {showConfidence && (
-                      <TableCell className="text-right">
-                        <Badge variant="secondary" className={
-                          (line.matchConfidence ?? 0) >= 70 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' : 'bg-muted'
-                        }>
-                          {line.matchConfidence ?? 0}%
-                        </Badge>
+                      {showCanonical && (
+                        <TableCell>
+                          {line.canonicalName && line.canonicalName !== line.productName ? (
+                            <div className="flex items-center gap-1">
+                              <Sparkles className="h-3 w-3 text-primary shrink-0" />
+                              <span className="text-sm text-primary">{line.canonicalName}</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      )}
+                      {showMatchedItem && (
+                        <TableCell>
+                          {line.matchedInventoryItemName ? (
+                            <div className="flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0" />
+                              <span className="text-sm">{line.matchedInventoryItemName}</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      )}
+                      {showResolution && onLineOverride && (
+                        <TableCell className="min-w-[160px]">
+                          <Select
+                            value={effectiveAction}
+                            onValueChange={(val) => onLineOverride(line.id, val)}
+                            data-testid={`select-resolution-${line.id}`}
+                          >
+                            <SelectTrigger className="h-8 text-xs" data-testid={`select-trigger-resolution-${line.id}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {line.matchedInventoryItemId && (
+                                <SelectItem value="match">
+                                  Use match: {line.matchedInventoryItemName || line.matchedInventoryItemId.slice(0, 8)}
+                                </SelectItem>
+                              )}
+                              <SelectItem value="new">Create as new item</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        <span className="text-xs text-muted-foreground font-mono">{line.vendorSku?.startsWith('GENERIC-') ? '—' : (line.vendorSku || '—')}</span>
                       </TableCell>
-                    )}
-                  </TableRow>
-                ))}
+                      <TableCell className="text-right font-mono text-sm">
+                        {line.price != null ? `$${line.price.toFixed(2)}` : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-muted-foreground">
+                          {[line.caseSize, line.uom].filter(Boolean).join(' ')}
+                          {line.packSize ? ` · ${line.packSize}` : ''}
+                        </span>
+                      </TableCell>
+                      {showConfidence && (
+                        <TableCell className="text-right">
+                          <Badge variant="secondary" className={
+                            (line.matchConfidence ?? 0) >= 70 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' : 'bg-muted'
+                          }>
+                            {line.matchConfidence ?? 0}%
+                          </Badge>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

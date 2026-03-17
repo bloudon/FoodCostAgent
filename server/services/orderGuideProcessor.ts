@@ -234,11 +234,32 @@ export class OrderGuideProcessor {
 
     const lines = await this.storage.getOrderGuideLines(orderGuideId);
 
+    // Fetch matched inventory item names for display in review UI
+    const matchedIds = lines
+      .filter(l => l.matchedInventoryItemId)
+      .map(l => l.matchedInventoryItemId as string);
+    
+    const inventoryNameMap = new Map<string, string>();
+    for (const itemId of matchedIds) {
+      try {
+        const item = await this.storage.getInventoryItem(itemId);
+        if (item) inventoryNameMap.set(itemId, item.name);
+      } catch {}
+    }
+
+    // Enrich lines with matched item name
+    const enrichedLines = lines.map(l => ({
+      ...l,
+      matchedInventoryItemName: l.matchedInventoryItemId
+        ? (inventoryNameMap.get(l.matchedInventoryItemId) ?? null)
+        : null,
+    }));
+
     // Group lines by match status
     const grouped = {
-      matched: lines.filter(l => l.matchStatus === 'matched'),
-      ambiguous: lines.filter(l => l.matchStatus === 'ambiguous'),
-      new: lines.filter(l => l.matchStatus === 'new'),
+      matched: enrichedLines.filter(l => l.matchStatus === 'matched'),
+      ambiguous: enrichedLines.filter(l => l.matchStatus === 'ambiguous'),
+      new: enrichedLines.filter(l => l.matchStatus === 'new'),
     };
 
     return {
@@ -264,12 +285,14 @@ export class OrderGuideProcessor {
     approvedBy: string;
     importAll?: boolean;
     selectedLineIds?: string[];
+    /** Per-line overrides: lineId → inventoryItemId (or 'new' to force item creation) */
+    lineOverrides?: Record<string, string>;
   }): Promise<{
     vendorItemsCreated: number;
     inventoryItemsCreated: number;
     storeAssignmentsCreated: number;
   }> {
-    const { orderGuideId, companyId, targetStoreIds, importAll = false, selectedLineIds = [] } = params;
+    const { orderGuideId, companyId, targetStoreIds, importAll = false, selectedLineIds = [], lineOverrides = {} } = params;
 
     // Get order guide and lines
     const guide = await this.storage.getOrderGuide(orderGuideId);
@@ -334,10 +357,22 @@ export class OrderGuideProcessor {
     const effectiveVendorId = guide.vendorId || null;
 
     for (const line of linesToProcess) {
-      if (line.matchStatus === 'new') {
+      // Apply user-specified line overrides before processing
+      // 'new' means force item creation even if fuzzy-matched; any other value = override inventoryItemId
+      const lineOverride = lineOverrides[line.id];
+      let effectiveLine = line;
+      if (lineOverride) {
+        if (lineOverride === 'new') {
+          effectiveLine = { ...line, matchStatus: 'new', matchedInventoryItemId: null };
+        } else {
+          effectiveLine = { ...line, matchStatus: 'matched', matchedInventoryItemId: lineOverride };
+        }
+      }
+
+      if (effectiveLine.matchStatus === 'new') {
         // Create new inventory item + vendor item, assigning to all target stores
         const result = await this.createNewInventoryAndVendorItem(
-          line, 
+          effectiveLine, 
           effectiveVendorId, 
           companyId, 
           targetStoreIds, 
@@ -346,16 +381,16 @@ export class OrderGuideProcessor {
         if (result.inventoryCreated) inventoryItemsCreated++;
         if (result.vendorItemCreated) vendorItemsCreated++;
         storeAssignmentsCreated += result.storeAssignmentsCreated;
-      } else if (line.matchedInventoryItemId) {
+      } else if (effectiveLine.matchedInventoryItemId) {
         // Create vendor item linking to existing inventory (only if we have a vendor)
         if (effectiveVendorId) {
-          const created = await this.createVendorItemForExisting(line, effectiveVendorId, companyId);
+          const created = await this.createVendorItemForExisting(effectiveLine, effectiveVendorId, companyId);
           if (created) vendorItemsCreated++;
         }
         
         // Assign existing inventory item to all target stores
         const assignmentsCreated = await this.assignInventoryItemToStores(
-          line.matchedInventoryItemId, 
+          effectiveLine.matchedInventoryItemId, 
           companyId, 
           targetStoreIds
         );

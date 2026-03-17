@@ -228,7 +228,14 @@ export class CsvOrderGuide {
         isVariableWeight,
       };
 
-      if (product.vendorSku) {
+      // For generic/unknown vendor imports, a product name alone is sufficient
+      // For known vendor parsers, vendorSku is still required for deduplication
+      const hasIdentifier = product.vendorSku || product.vendorProductName;
+      if (hasIdentifier) {
+        // Generate a synthetic SKU for generic imports that have no SKU column
+        if (!product.vendorSku && vendorKey === 'generic') {
+          product.vendorSku = `GENERIC-${products.length + 1}`;
+        }
         products.push(product);
       }
     }
