@@ -12,10 +12,11 @@
 # What this script does (in order):
 #   1. Preflight checks  (DATABASE_URL, psql, pm2, npm)
 #   2. git pull           (fetches latest code from origin/main)
-#   3. npm install        (installs any new/changed packages)
+#   3. npm install --include=dev  (installs all deps including build tools)
 #   4. DB migration       (runs scripts/vps-migrate.sql via psql)
 #   5. Build              (removes old dist, runs npm run build)
-#   6. PM2 restart        (restarts the fnbcostpro process)
+#   6. npm prune          (removes devDependencies after build)
+#   7. PM2 restart        (restarts the fnbcostpro process)
 #
 set -euo pipefail
 
@@ -53,8 +54,8 @@ fi
 step "Pulling latest code (git pull)"
 git pull origin main
 
-step "Installing dependencies (npm install)"
-npm install
+step "Installing dependencies (npm install --include=dev)"
+npm install --include=dev
 
 step "Running database migrations (vps-migrate.sql)"
 [[ -f "$SCRIPT_DIR/vps-migrate.sql" ]] || fail "scripts/vps-migrate.sql not found. Cannot deploy without migrations."
@@ -64,6 +65,9 @@ echo "  Migration script applied."
 step "Building application (npm run build)"
 rm -rf dist
 npm run build
+
+step "Pruning dev dependencies"
+npm prune --omit=dev
 
 step "Restarting PM2 process (fnbcostpro)"
 pm2 restart fnbcostpro
