@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { MessageCircle, Send, Sparkles, Lock } from "lucide-react";
+import { MessageCircle, Send, Sparkles, Lock, UserCheck, PhoneCall } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -9,10 +9,14 @@ import {
 } from "@/components/ui/sheet";
 import { useTier } from "@/hooks/use-tier";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+
+const HANDOFF_TOKEN = "[SUGGEST_HUMAN_HANDOFF]";
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  suggestHandoff?: boolean;
 }
 
 export function ChatPanel() {
@@ -21,12 +25,22 @@ export function ChatPanel() {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [handoffRequested, setHandoffRequested] = useState(false);
+  const [handoffPending, setHandoffPending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const { hasFeature } = useTier();
 
   const canUseChat = hasFeature("ai_assistant");
+
+  const { data: handoffConfig } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/chat/handoff-enabled"],
+    enabled: open && canUseChat,
+    staleTime: Infinity,
+  });
+
+  const handoffEnabled = handoffConfig?.enabled ?? false;
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
@@ -62,8 +76,40 @@ export function ChatPanel() {
       setInput("");
       setError(null);
       setIsStreaming(false);
+      setHandoffRequested(false);
     }
     setOpen(isOpen);
+  };
+
+  const requestHandoff = async () => {
+    if (handoffRequested || handoffPending) return;
+    setHandoffPending(true);
+    try {
+      const res = await fetch("/api/chat/handoff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          messages: messages.map(m => ({ role: m.role, content: m.content })),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to notify team");
+      }
+      setHandoffRequested(true);
+      setMessages(prev => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "A member of our support team has been notified and will be in touch with you shortly. In the meantime, feel free to continue asking questions.",
+        },
+      ]);
+    } catch (err: any) {
+      setError(err.message || "Failed to contact support team");
+    } finally {
+      setHandoffPending(false);
+    }
   };
 
   const sendMessage = async () => {
@@ -127,9 +173,15 @@ export function ChatPanel() {
             }
             if (parsed.content) {
               accumulated += parsed.content;
+              const hasHandoffToken = accumulated.includes(HANDOFF_TOKEN);
+              const cleanContent = accumulated.replace(HANDOFF_TOKEN, "").trim();
               setMessages(prev => {
                 const updated = [...prev];
-                updated[updated.length - 1] = { role: "assistant", content: accumulated };
+                updated[updated.length - 1] = {
+                  role: "assistant",
+                  content: cleanContent,
+                  suggestHandoff: hasHandoffToken,
+                };
                 return updated;
               });
             }
@@ -159,6 +211,8 @@ export function ChatPanel() {
       sendMessage();
     }
   };
+
+  const aiSuggestsHandoff = messages.some(m => m.role === "assistant" && m.suggestHandoff);
 
   return (
     <>
@@ -214,29 +268,61 @@ export function ChatPanel() {
                 )}
 
                 {messages.map((msg, i) => (
-                  <div
-                    key={i}
-                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
+                  <div key={i} className="space-y-2">
                     <div
-                      className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
-                        msg.role === "user"
-                          ? "bg-[#f2690d] text-white"
-                          : "bg-muted text-foreground"
-                      }`}
-                      data-testid={`chat-message-${msg.role}-${i}`}
+                      className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                     >
-                      {msg.content}
-                      {msg.role === "assistant" && msg.content === "" && isStreaming && (
-                        <span className="inline-flex items-center gap-1">
-                          <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: "0ms" }} />
-                          <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: "150ms" }} />
-                          <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: "300ms" }} />
-                        </span>
-                      )}
+                      <div
+                        className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
+                          msg.role === "user"
+                            ? "bg-[#f2690d] text-white"
+                            : "bg-muted text-foreground"
+                        }`}
+                        data-testid={`chat-message-${msg.role}-${i}`}
+                      >
+                        {msg.content}
+                        {msg.role === "assistant" && msg.content === "" && isStreaming && (
+                          <span className="inline-flex items-center gap-1">
+                            <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: "0ms" }} />
+                            <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: "150ms" }} />
+                            <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: "300ms" }} />
+                          </span>
+                        )}
+                      </div>
                     </div>
+
+                    {msg.role === "assistant" && msg.suggestHandoff && handoffEnabled && !handoffRequested && (
+                      <div className="flex justify-start">
+                        <div className="max-w-[85%] rounded-lg border bg-background px-3 py-2 text-sm space-y-2" data-testid="handoff-suggestion-card">
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <PhoneCall className="h-4 w-4 shrink-0" />
+                            <span className="font-medium text-foreground">Need human support?</span>
+                          </div>
+                          <p className="text-muted-foreground text-xs">Our team can help with account-specific or complex requests.</p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={requestHandoff}
+                            disabled={handoffPending || isStreaming}
+                            className="w-full"
+                            data-testid="button-handoff-suggest"
+                          >
+                            {handoffPending ? "Notifying team..." : "Talk to a Human"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
+
+                {aiSuggestsHandoff && handoffEnabled && handoffRequested && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] rounded-lg border bg-background px-3 py-2 text-sm flex items-center gap-2 text-muted-foreground" data-testid="handoff-confirmed">
+                      <UserCheck className="h-4 w-4 shrink-0 text-green-600" />
+                      <span>Team notified</span>
+                    </div>
+                  </div>
+                )}
 
                 {error && (
                   <div className="text-center py-2">
@@ -245,7 +331,22 @@ export function ChatPanel() {
                 )}
               </div>
 
-              <div className="shrink-0 border-t p-3">
+              <div className="shrink-0 border-t p-3 space-y-2">
+                {handoffEnabled && (
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={requestHandoff}
+                      disabled={handoffRequested || handoffPending || isStreaming}
+                      className="text-xs gap-1.5"
+                      data-testid="button-chat-handoff"
+                    >
+                      <PhoneCall className="h-3 w-3" />
+                      {handoffRequested ? "Notified" : handoffPending ? "Notifying..." : "Talk to a Human"}
+                    </Button>
+                  </div>
+                )}
                 <div className="flex items-end gap-2">
                   <textarea
                     ref={inputRef}
