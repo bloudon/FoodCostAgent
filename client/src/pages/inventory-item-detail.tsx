@@ -328,6 +328,8 @@ export default function InventoryItemDetail() {
   const handleCaseSizeBlur = () => {
     if (!("caseSize" in editedFields)) return;
     const newCaseSize = parseFloat(editedFields["caseSize"]);
+    // Always clear the edited field — revert to server value if input is invalid
+    setEditedFields(prev => { const n = { ...prev }; delete n.caseSize; return n; });
     if (!isNaN(newCaseSize) && newCaseSize > 0) {
       // Use live casePkgCount from editedFields (user may have typed a new value not yet saved)
       const livePkgCount = "casePkgCount" in editedFields
@@ -338,13 +340,14 @@ export default function InventoryItemDetail() {
         updates.containerSize = newCaseSize / livePkgCount;
       }
       updateMutation.mutate(updates);
-      setEditedFields(prev => { const n = { ...prev }; delete n.caseSize; return n; });
     }
   };
 
   const handleCasePkgCountBlur = () => {
     if (!("casePkgCount" in editedFields)) return;
     const newPkgCount = parseFloat(editedFields["casePkgCount"]);
+    // Always clear the edited field — revert to server value if input is invalid
+    setEditedFields(prev => { const n = { ...prev }; delete n.casePkgCount; return n; });
     if (!isNaN(newPkgCount) && newPkgCount > 0 && item) {
       // Use live caseSize from editedFields first (user may have changed it in this editing session)
       const liveCaseSize = "caseSize" in editedFields
@@ -354,7 +357,6 @@ export default function InventoryItemDetail() {
         casePkgCount: newPkgCount,
         containerSize: liveCaseSize / newPkgCount,
       });
-      setEditedFields(prev => { const n = { ...prev }; delete n.casePkgCount; return n; });
     }
   };
 
