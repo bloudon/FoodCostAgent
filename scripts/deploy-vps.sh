@@ -24,8 +24,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Auto-load .env if DATABASE_URL is not already set in the environment
-if [[ -z "${DATABASE_URL:-}" ]] && [[ -f "$PROJECT_DIR/.env" ]]; then
-  set -a; source "$PROJECT_DIR/.env"; set +a
+if [[ -z "${DATABASE_URL:-}" ]]; then
+  if [[ -f "$PROJECT_DIR/.env" ]]; then
+    export $(grep -v '^#' "$PROJECT_DIR/.env" | grep -v '^[[:space:]]*$' | xargs)
+    echo "  Loaded environment from .env"
+  else
+    echo "  Warning: no .env file found at $PROJECT_DIR/.env"
+  fi
 fi
 
 GREEN='\033[0;32m'
