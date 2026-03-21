@@ -16,23 +16,23 @@ export function log(message: string, source = "express") {
 }
 
 export async function setupVite(app: Express, server: Server) {
-  // Dynamic imports so vite is never required at module-load time in production.
+  // Dynamic import so vite is never required at module-load time in production.
   // After `npm prune --omit=dev` vite is gone, but this function is never called
   // in production so the import never runs.
+  // We do NOT import vite.config.ts here — vite auto-discovers it via configFile.
   const { createServer: createViteServer, createLogger } = await import("vite");
-  const { default: viteConfig } = await import("../vite.config");
 
   const viteLogger = createLogger();
 
-  const serverOptions = {
-    middlewareMode: true,
-    hmr: { server },
-    allowedHosts: true as const,
-  };
-
   const vite = await createViteServer({
-    ...viteConfig,
-    configFile: false,
+    // vite auto-discovers vite.config.ts from process.cwd() (the project root).
+    // We only override the server-specific options needed for middleware mode.
+    server: {
+      middlewareMode: true,
+      hmr: { server },
+      allowedHosts: true as const,
+    },
+    appType: "custom",
     customLogger: {
       ...viteLogger,
       error: (msg, options) => {
@@ -40,8 +40,6 @@ export async function setupVite(app: Express, server: Server) {
         process.exit(1);
       },
     },
-    server: serverOptions,
-    appType: "custom",
   });
 
   app.use(vite.middlewares);
