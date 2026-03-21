@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { ArrowLeft, Settings } from "lucide-react";
+import { ArrowLeft, Settings, Plus, X } from "lucide-react";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +49,8 @@ type Store = {
   city?: string;
 };
 
+const PACK_OPTIONS = ["Case", "Bag", "Box", "Can", "Bottle", "Pail", "Drum", "Jug", "Carton", "Each"];
+
 export default function InventoryItemCreate() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -59,8 +61,9 @@ export default function InventoryItemCreate() {
   const [pluSku, setPluSku] = useState("");
   const [unitId, setUnitId] = useState("");
   const [caseSize, setCaseSize] = useState("20");
+  const [purchaseUom, setPurchaseUom] = useState("Case");
+  const [showMiddleRow, setShowMiddleRow] = useState(false);
   const [containerLabel, setContainerLabel] = useState("");
-  const [containerSize, setContainerSize] = useState("");
   const [casePkgCount, setCasePkgCount] = useState("");
   const [barcode, setBarcode] = useState("");
   const [pricePerUnit, setPricePerUnit] = useState("0");
@@ -128,10 +131,11 @@ export default function InventoryItemCreate() {
     }
   }, [selectedLocations, primaryLocationId]);
 
-  const hasContainerFields = containerSize.trim() !== "" && casePkgCount.trim() !== "";
-  const computedCaseSize = hasContainerFields
-    ? (parseFloat(containerSize) || 0) * (parseFloat(casePkgCount) || 0)
-    : parseFloat(caseSize) || 20;
+  const parsedCaseSize = parseFloat(caseSize) || 20;
+  const parsedCasePkgCount = parseFloat(casePkgCount) || 0;
+  const middleContainerSize = showMiddleRow && parsedCasePkgCount > 0
+    ? parsedCaseSize / parsedCasePkgCount
+    : 0;
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -141,7 +145,7 @@ export default function InventoryItemCreate() {
         categoryId: categoryId || null,
         pluSku: pluSku.trim() || null,
         unitId,
-        caseSize: computedCaseSize,
+        caseSize: parsedCaseSize,
         barcode: barcode.trim() || null,
         pricePerUnit: parseFloat(pricePerUnit) || 0,
         storageLocationId: primaryLocationId,
@@ -152,9 +156,9 @@ export default function InventoryItemCreate() {
         isVariableWeight: isVariableWeight ? 1 : 0,
         locationIds: selectedLocations,
         storeIds: selectedStores,
-        ...(hasContainerFields ? {
-          containerSize: parseFloat(containerSize),
-          casePkgCount: parseFloat(casePkgCount),
+        ...(showMiddleRow && parsedCasePkgCount > 0 ? {
+          containerSize: middleContainerSize,
+          casePkgCount: parsedCasePkgCount,
           containerLabel: containerLabel.trim() || null,
         } : {}),
       };
@@ -391,65 +395,135 @@ export default function InventoryItemCreate() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="caseSize">Case Size</Label>
-                <Input
-                  id="caseSize"
-                  type="number"
-                  step="0.01"
-                  value={hasContainerFields ? computedCaseSize.toString() : caseSize}
-                  onChange={(e) => setCaseSize(e.target.value)}
-                  disabled={hasContainerFields}
-                  data-testid="input-case-size"
-                />
-                {hasContainerFields && (
-                  <p className="text-sm text-muted-foreground" data-testid="text-case-size-summary">
-                    {parseFloat(casePkgCount)} {containerLabel.trim() || "container"}s x {parseFloat(containerSize)} {unit?.abbreviation || "units"} = {computedCaseSize} {unit?.abbreviation || "units"} per case
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-3 border rounded-md p-3">
-                <Label className="text-sm font-medium">Container Breakdown (optional)</Label>
-                <p className="text-xs text-muted-foreground">
-                  Define container size and count to auto-calculate case size
-                </p>
-                <div className="grid grid-cols-3 gap-3">
+              {/* Purchasing */}
+              <div className="space-y-3 rounded-md border p-4">
+                <div>
+                  <p className="text-sm font-semibold">Purchasing</p>
+                  <p className="text-xs text-muted-foreground">Define how this item is purchased.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label htmlFor="containerLabel" className="text-xs">Container Label</Label>
-                    <Input
-                      id="containerLabel"
-                      value={containerLabel}
-                      onChange={(e) => setContainerLabel(e.target.value)}
-                      placeholder="e.g., can"
-                      data-testid="input-container-label"
-                    />
+                    <Label className="text-xs">Purchase Unit of Measure *</Label>
+                    <Select value={purchaseUom} onValueChange={setPurchaseUom}>
+                      <SelectTrigger data-testid="select-purchase-uom">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PACK_OPTIONS.map(o => (
+                          <SelectItem key={o} value={o}>{o}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="containerSize" className="text-xs">Container Size</Label>
-                    <Input
-                      id="containerSize"
-                      type="number"
-                      step="0.01"
-                      value={containerSize}
-                      onChange={(e) => setContainerSize(e.target.value)}
-                      placeholder="e.g., 128"
-                      data-testid="input-container-size"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="casePkgCount" className="text-xs">Per Case</Label>
-                    <Input
-                      id="casePkgCount"
-                      type="number"
-                      step="1"
-                      value={casePkgCount}
-                      onChange={(e) => setCasePkgCount(e.target.value)}
-                      placeholder="e.g., 6"
-                      data-testid="input-case-pkg-count"
-                    />
+                    <Label className="text-xs">Purchase Unit Size *</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={caseSize}
+                        onChange={(e) => setCaseSize(e.target.value)}
+                        placeholder="e.g., 40"
+                        className="flex-1"
+                        data-testid="input-case-size"
+                      />
+                      <span className="flex h-9 min-w-[2.5rem] items-center justify-center rounded-md border px-2 text-sm text-muted-foreground">
+                        {unit?.abbreviation || "unit"}
+                      </span>
+                    </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Breakdown */}
+              <div className="space-y-3 rounded-md border p-4">
+                <div>
+                  <p className="text-sm font-semibold">Breakdown (optional)</p>
+                  <p className="text-xs text-muted-foreground">Define pack sizes that convert into the inventory unit.</p>
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-xs text-muted-foreground">
+                      <th className="pb-2 text-left font-medium">Pack</th>
+                      <th className="pb-2 text-left font-medium">Quantity</th>
+                      <th className="pb-2 text-left font-medium">Unit</th>
+                      <th className="w-8 pb-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="py-1.5 pr-3 text-muted-foreground">{purchaseUom}</td>
+                      <td className="py-1.5 pr-3 text-muted-foreground">1</td>
+                      <td className="py-1.5 text-muted-foreground">
+                        {parsedCaseSize} {unit?.abbreviation || ""}
+                      </td>
+                      <td></td>
+                    </tr>
+                    {showMiddleRow && (
+                      <tr>
+                        <td className="py-1.5 pr-3">
+                          <Select value={containerLabel || ""} onValueChange={setContainerLabel}>
+                            <SelectTrigger className="h-8" data-testid="select-inner-pack-label">
+                              <SelectValue placeholder="Select..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {PACK_OPTIONS.map(o => (
+                                <SelectItem key={o} value={o}>{o}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          <Input
+                            type="number"
+                            step="1"
+                            value={casePkgCount}
+                            onChange={(e) => setCasePkgCount(e.target.value)}
+                            className="h-8"
+                            placeholder="e.g., 4"
+                            data-testid="input-case-pkg-count"
+                          />
+                        </td>
+                        <td className="py-1.5 text-muted-foreground">
+                          {parsedCasePkgCount > 0
+                            ? `${parseFloat(middleContainerSize.toFixed(4)).toString()} ${unit?.abbreviation || ""}`
+                            : `— ${unit?.abbreviation || ""}`}
+                        </td>
+                        <td className="py-1.5 pl-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowMiddleRow(false);
+                              setContainerLabel("");
+                              setCasePkgCount("");
+                            }}
+                            className="text-muted-foreground hover:text-destructive"
+                            data-testid="button-remove-inner-pack"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    )}
+                    <tr>
+                      <td className="py-1.5 pr-3 text-muted-foreground">Each</td>
+                      <td className="py-1.5 pr-3 text-muted-foreground">1</td>
+                      <td className="py-1.5 text-muted-foreground">1 {unit?.abbreviation || ""}</td>
+                      <td></td>
+                    </tr>
+                  </tbody>
+                </table>
+                {!showMiddleRow && (
+                  <button
+                    type="button"
+                    onClick={() => setShowMiddleRow(true)}
+                    className="flex items-center gap-1 text-sm text-primary hover:underline"
+                    data-testid="button-add-pack-size"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add Pack Size
+                  </button>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -463,7 +537,7 @@ export default function InventoryItemCreate() {
                   data-testid="input-price-per-unit"
                 />
                 <p className="text-sm text-muted-foreground">
-                  Case cost will be calculated as: ${(parseFloat(pricePerUnit) * computedCaseSize).toFixed(2)}
+                  Case cost will be calculated as: ${(parseFloat(pricePerUnit) * parsedCaseSize).toFixed(2)}
                 </p>
               </div>
 

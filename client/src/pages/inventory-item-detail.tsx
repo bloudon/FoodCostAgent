@@ -130,6 +130,8 @@ export default function InventoryItemDetail() {
   const [showAddVendorRow, setShowAddVendorRow] = useState(false);
   const [editingVendorItemId, setEditingVendorItemId] = useState<string | null>(null);
   const [showInactiveVendors, setShowInactiveVendors] = useState(false);
+  const [purchaseUom, setPurchaseUom] = useState("Case");
+  const [showMiddleRow, setShowMiddleRow] = useState(false);
   
   // Vendor item inline edit state (keyed by vendor item id, or "new" for add row)
   const [vendorRowEdits, setVendorRowEdits] = useState<Record<string, {
@@ -198,6 +200,12 @@ export default function InventoryItemDetail() {
     queryKey: ["/api/inventory-items", id, "stores"],
     enabled: !!id,
   });
+
+  useEffect(() => {
+    if (item) {
+      setShowMiddleRow(!!(item.casePkgCount && item.casePkgCount > 0));
+    }
+  }, [item?.id]);
 
   useEffect(() => {
     if (itemLocations) {
@@ -313,6 +321,42 @@ export default function InventoryItemDetail() {
 
   const getFieldValue = (field: string, defaultValue: any) => {
     return field in editedFields ? editedFields[field] : defaultValue;
+  };
+
+  const PACK_OPTIONS = ["Case", "Bag", "Box", "Can", "Bottle", "Pail", "Drum", "Jug", "Carton", "Each"];
+
+  const handleCaseSizeBlur = () => {
+    if (!("caseSize" in editedFields)) return;
+    const newCaseSize = parseFloat(editedFields["caseSize"]);
+    if (!isNaN(newCaseSize) && newCaseSize > 0) {
+      const updates: any = { caseSize: newCaseSize };
+      const currentPkgCount = item?.casePkgCount ?? 0;
+      if (showMiddleRow && currentPkgCount > 0) {
+        updates.containerSize = newCaseSize / currentPkgCount;
+      }
+      updateMutation.mutate(updates);
+      setEditedFields(prev => { const n = { ...prev }; delete n.caseSize; return n; });
+    }
+  };
+
+  const handleCasePkgCountBlur = () => {
+    if (!("casePkgCount" in editedFields)) return;
+    const newPkgCount = parseFloat(editedFields["casePkgCount"]);
+    if (!isNaN(newPkgCount) && newPkgCount > 0 && item) {
+      const currentCaseSize = "caseSize" in editedFields
+        ? parseFloat(editedFields["caseSize"])
+        : item.caseSize;
+      updateMutation.mutate({
+        casePkgCount: newPkgCount,
+        containerSize: currentCaseSize / newPkgCount,
+      });
+      setEditedFields(prev => { const n = { ...prev }; delete n.casePkgCount; return n; });
+    }
+  };
+
+  const handleRemoveMiddleRow = () => {
+    setShowMiddleRow(false);
+    updateMutation.mutate({ containerSize: null, casePkgCount: null, containerLabel: null } as any);
   };
 
   const handleLocationToggle = (locationId: string) => {
@@ -1135,84 +1179,154 @@ export default function InventoryItemDetail() {
                 <p className="text-xs text-muted-foreground">Usable percentage after trimming/waste. Default is 95%.</p>
               </div>
 
+              {/* Purchasing */}
               {(() => {
-                const editContainerSize = getFieldValue("containerSize", item.containerSize ?? "");
-                const editCasePkgCount = getFieldValue("casePkgCount", item.casePkgCount ?? "");
-                const editContainerLabel = getFieldValue("containerLabel", item.containerLabel || "");
-                const parsedContainerSize = parseFloat(String(editContainerSize));
-                const parsedCasePkgCount = parseFloat(String(editCasePkgCount));
-                const hasValidContainer = !isNaN(parsedContainerSize) && parsedContainerSize > 0
-                  && !isNaN(parsedCasePkgCount) && parsedCasePkgCount > 0;
-                const liveComputedCaseSize = hasValidContainer
-                  ? parsedCasePkgCount * parsedContainerSize
-                  : item.caseSize;
-                const liveLabel = String(editContainerLabel).trim() || "container";
+                const liveCaseSize = getFieldValue("caseSize", item.caseSize);
+                const parsedCaseSizeDetail = parseFloat(String(liveCaseSize)) || 0;
+                const liveCasePkgCount = getFieldValue("casePkgCount", item.casePkgCount ?? "");
+                const parsedCasePkgCountDetail = parseFloat(String(liveCasePkgCount)) || 0;
+                const liveContainerLabel = getFieldValue("containerLabel", item.containerLabel || "");
+                const derivedContainerSize = parsedCaseSizeDetail > 0 && parsedCasePkgCountDetail > 0
+                  ? parsedCaseSizeDetail / parsedCasePkgCountDetail
+                  : (item.containerSize ?? 0);
 
                 return (
                   <>
-                    <div className="space-y-2">
-                      <Label htmlFor="caseSize">Case Size</Label>
-                      <Input
-                        id="caseSize"
-                        type="number"
-                        step="0.01"
-                        value={hasValidContainer ? liveComputedCaseSize.toString() : getFieldValue("caseSize", item.caseSize)}
-                        onChange={(e) => handleFieldChange("caseSize", e.target.value)}
-                        onBlur={() => handleFieldBlur("caseSize")}
-                        disabled={hasValidContainer || updateMutation.isPending}
-                        data-testid="input-case-size"
-                      />
-                      {hasValidContainer && (
-                        <p className="text-sm text-muted-foreground" data-testid="text-container-summary">
-                          {parsedCasePkgCount} {liveLabel}s x {parsedContainerSize} {unit?.abbreviation || "units"} = {liveComputedCaseSize} {unit?.abbreviation || "units"} per case
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="space-y-3 border rounded-md p-3">
-                      <Label className="text-sm font-medium">Container Breakdown (optional)</Label>
-                      <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-3 rounded-md border p-4">
+                      <div>
+                        <p className="text-sm font-semibold">Purchasing</p>
+                        <p className="text-xs text-muted-foreground">Define how this item is purchased.</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
-                          <Label htmlFor="containerLabel" className="text-xs">Container Label</Label>
-                          <Input
-                            id="containerLabel"
-                            value={editContainerLabel}
-                            onChange={(e) => handleFieldChange("containerLabel", e.target.value)}
-                            onBlur={() => handleFieldBlur("containerLabel")}
-                            disabled={updateMutation.isPending}
-                            placeholder="e.g., can"
-                            data-testid="input-container-label"
-                          />
+                          <Label className="text-xs">Purchase Unit of Measure</Label>
+                          <Select value={purchaseUom} onValueChange={setPurchaseUom}>
+                            <SelectTrigger data-testid="select-purchase-uom">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {PACK_OPTIONS.map(o => (
+                                <SelectItem key={o} value={o}>{o}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                         <div className="space-y-1">
-                          <Label htmlFor="containerSize" className="text-xs">Container Size</Label>
-                          <Input
-                            id="containerSize"
-                            type="number"
-                            step="0.01"
-                            value={editContainerSize}
-                            onChange={(e) => handleFieldChange("containerSize", e.target.value)}
-                            onBlur={() => handleFieldBlur("containerSize")}
-                            disabled={updateMutation.isPending}
-                            placeholder="e.g., 128"
-                            data-testid="input-container-size"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label htmlFor="casePkgCount" className="text-xs">Per Case</Label>
-                          <Input
-                            id="casePkgCount"
-                            type="number"
-                            step="1"
-                            value={editCasePkgCount}
-                            onChange={(e) => handleFieldChange("casePkgCount", e.target.value)}
-                            onBlur={() => handleFieldBlur("casePkgCount")}
-                            disabled={updateMutation.isPending}
-                            placeholder="e.g., 6"
-                            data-testid="input-case-pkg-count"
-                          />
+                          <Label className="text-xs">Purchase Unit Size</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={liveCaseSize}
+                              onChange={(e) => handleFieldChange("caseSize", e.target.value)}
+                              onBlur={handleCaseSizeBlur}
+                              disabled={updateMutation.isPending}
+                              className="flex-1"
+                              data-testid="input-case-size"
+                            />
+                            <span className="flex h-9 min-w-[2.5rem] items-center justify-center rounded-md border px-2 text-sm text-muted-foreground">
+                              {unit?.abbreviation || "unit"}
+                            </span>
+                          </div>
                         </div>
                       </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-md border p-4">
+                      <div>
+                        <p className="text-sm font-semibold">Breakdown (optional)</p>
+                        <p className="text-xs text-muted-foreground">Define pack sizes that convert into the inventory unit.</p>
+                      </div>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-xs text-muted-foreground">
+                            <th className="pb-2 text-left font-medium">Pack</th>
+                            <th className="pb-2 text-left font-medium">Quantity</th>
+                            <th className="pb-2 text-left font-medium">Unit</th>
+                            <th className="w-8 pb-2"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td className="py-1.5 pr-3 text-muted-foreground">{purchaseUom}</td>
+                            <td className="py-1.5 pr-3 text-muted-foreground">1</td>
+                            <td className="py-1.5 text-muted-foreground">
+                              {parsedCaseSizeDetail} {unit?.abbreviation || ""}
+                            </td>
+                            <td></td>
+                          </tr>
+                          {showMiddleRow && (
+                            <tr>
+                              <td className="py-1.5 pr-3">
+                                <Select
+                                  value={liveContainerLabel || ""}
+                                  onValueChange={(v) => {
+                                    handleFieldChange("containerLabel", v);
+                                    updateMutation.mutate({ containerLabel: v });
+                                  }}
+                                  disabled={updateMutation.isPending}
+                                >
+                                  <SelectTrigger className="h-8" data-testid="select-inner-pack-label">
+                                    <SelectValue placeholder="Select..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {PACK_OPTIONS.map(o => (
+                                      <SelectItem key={o} value={o}>{o}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </td>
+                              <td className="py-1.5 pr-3">
+                                <Input
+                                  type="number"
+                                  step="1"
+                                  value={liveCasePkgCount}
+                                  onChange={(e) => handleFieldChange("casePkgCount", e.target.value)}
+                                  onBlur={handleCasePkgCountBlur}
+                                  disabled={updateMutation.isPending}
+                                  className="h-8"
+                                  placeholder="e.g., 4"
+                                  data-testid="input-case-pkg-count"
+                                />
+                              </td>
+                              <td className="py-1.5 text-muted-foreground">
+                                {derivedContainerSize > 0
+                                  ? `${parseFloat(derivedContainerSize.toFixed(4)).toString()} ${unit?.abbreviation || ""}`
+                                  : `— ${unit?.abbreviation || ""}`}
+                              </td>
+                              <td className="py-1.5 pl-2">
+                                <button
+                                  type="button"
+                                  onClick={handleRemoveMiddleRow}
+                                  disabled={updateMutation.isPending}
+                                  className="text-muted-foreground hover:text-destructive disabled:opacity-50"
+                                  data-testid="button-remove-inner-pack"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          )}
+                          <tr>
+                            <td className="py-1.5 pr-3 text-muted-foreground">Each</td>
+                            <td className="py-1.5 pr-3 text-muted-foreground">1</td>
+                            <td className="py-1.5 text-muted-foreground">1 {unit?.abbreviation || ""}</td>
+                            <td></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      {!showMiddleRow && (
+                        <button
+                          type="button"
+                          onClick={() => setShowMiddleRow(true)}
+                          disabled={updateMutation.isPending}
+                          className="flex items-center gap-1 text-sm text-primary hover:underline disabled:opacity-50"
+                          data-testid="button-add-pack-size"
+                        >
+                          <Plus className="h-3 w-3" />
+                          Add Pack Size
+                        </button>
+                      )}
                     </div>
                   </>
                 );
