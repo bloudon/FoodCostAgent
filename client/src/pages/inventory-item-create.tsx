@@ -49,7 +49,7 @@ type Store = {
   city?: string;
 };
 
-const PACK_OPTIONS = ["Case", "Bag", "Box", "Can", "Bottle", "Pail", "Drum", "Jug", "Carton", "Each"];
+const PACK_OPTIONS = ["Case", "Bag", "Box", "Pail", "Drum", "Jug", "Each", "Other"];
 
 export default function InventoryItemCreate() {
   const [, navigate] = useLocation();

@@ -323,16 +323,19 @@ export default function InventoryItemDetail() {
     return field in editedFields ? editedFields[field] : defaultValue;
   };
 
-  const PACK_OPTIONS = ["Case", "Bag", "Box", "Can", "Bottle", "Pail", "Drum", "Jug", "Carton", "Each"];
+  const PACK_OPTIONS = ["Case", "Bag", "Box", "Pail", "Drum", "Jug", "Each", "Other"];
 
   const handleCaseSizeBlur = () => {
     if (!("caseSize" in editedFields)) return;
     const newCaseSize = parseFloat(editedFields["caseSize"]);
     if (!isNaN(newCaseSize) && newCaseSize > 0) {
-      const updates: any = { caseSize: newCaseSize };
-      const currentPkgCount = item?.casePkgCount ?? 0;
-      if (showMiddleRow && currentPkgCount > 0) {
-        updates.containerSize = newCaseSize / currentPkgCount;
+      // Use live casePkgCount from editedFields (user may have typed a new value not yet saved)
+      const livePkgCount = "casePkgCount" in editedFields
+        ? parseFloat(editedFields["casePkgCount"])
+        : (item?.casePkgCount ?? 0);
+      const updates: Partial<InventoryItem> = { caseSize: newCaseSize };
+      if (showMiddleRow && livePkgCount > 0) {
+        updates.containerSize = newCaseSize / livePkgCount;
       }
       updateMutation.mutate(updates);
       setEditedFields(prev => { const n = { ...prev }; delete n.caseSize; return n; });
@@ -343,12 +346,13 @@ export default function InventoryItemDetail() {
     if (!("casePkgCount" in editedFields)) return;
     const newPkgCount = parseFloat(editedFields["casePkgCount"]);
     if (!isNaN(newPkgCount) && newPkgCount > 0 && item) {
-      const currentCaseSize = "caseSize" in editedFields
+      // Use live caseSize from editedFields first (user may have changed it in this editing session)
+      const liveCaseSize = "caseSize" in editedFields
         ? parseFloat(editedFields["caseSize"])
         : item.caseSize;
       updateMutation.mutate({
         casePkgCount: newPkgCount,
-        containerSize: currentCaseSize / newPkgCount,
+        containerSize: liveCaseSize / newPkgCount,
       });
       setEditedFields(prev => { const n = { ...prev }; delete n.casePkgCount; return n; });
     }
@@ -356,7 +360,8 @@ export default function InventoryItemDetail() {
 
   const handleRemoveMiddleRow = () => {
     setShowMiddleRow(false);
-    updateMutation.mutate({ containerSize: null, casePkgCount: null, containerLabel: null } as any);
+    const updates: Partial<InventoryItem> = { containerSize: null, casePkgCount: null, containerLabel: null };
+    updateMutation.mutate(updates);
   };
 
   const handleLocationToggle = (locationId: string) => {
@@ -1260,10 +1265,7 @@ export default function InventoryItemDetail() {
                               <td className="py-1.5 pr-3">
                                 <Select
                                   value={liveContainerLabel || ""}
-                                  onValueChange={(v) => {
-                                    handleFieldChange("containerLabel", v);
-                                    updateMutation.mutate({ containerLabel: v });
-                                  }}
+                                  onValueChange={(v) => updateMutation.mutate({ containerLabel: v })}
                                   disabled={updateMutation.isPending}
                                 >
                                   <SelectTrigger className="h-8" data-testid="select-inner-pack-label">
