@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Upload, Package, Search, Filter, Plus, MoreVertical, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Layers, Link as LinkIcon, PlusCircle, ExternalLink, Camera } from "lucide-react";
+import { Upload, Package, Search, Filter, Plus, MoreVertical, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Layers, BookOpen, PlusCircle, ExternalLink, Camera } from "lucide-react";
 import { useStoreContext } from "@/hooks/use-store-context";
 import { useTier } from "@/hooks/use-tier";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -1841,14 +1841,23 @@ export default function MenuItemsPage() {
                                         {group.variants.length} size{group.variants.length > 1 ? 's' : ''}
                                       </Badge>
                                     )}
-                                    {group.parent.recipeId && (
+                                    {group.parent.recipeId ? (
                                       <Tooltip>
                                         <TooltipTrigger asChild>
-                                          <Link href={`/recipes/${group.parent.recipeId}`}>
-                                            <LinkIcon className="h-3 w-3 text-muted-foreground hover:text-primary" />
+                                          <Link href={`/recipes/${group.parent.recipeId}`} className="flex items-center">
+                                            <BookOpen className="h-3.5 w-3.5 text-primary" />
                                           </Link>
                                         </TooltipTrigger>
                                         <TooltipContent>View Recipe</TooltipContent>
+                                      </Tooltip>
+                                    ) : (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="flex items-center cursor-default">
+                                            <BookOpen className="h-3.5 w-3.5 text-muted-foreground/40" />
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>No recipe linked</TooltipContent>
                                       </Tooltip>
                                     )}
                                   </div>
@@ -1864,7 +1873,22 @@ export default function MenuItemsPage() {
                             <TableCell className="font-mono text-sm hidden md:table-cell">{group.parent.pluSku}</TableCell>
                             <TableCell className="text-right">{renderRecipeCost(group.parent)}</TableCell>
                             <TableCell className="text-right font-mono text-sm">
-                              {group.parent.price != null ? `$${group.parent.price.toFixed(2)}` : <span className="text-muted-foreground">-</span>}
+                              {group.variants.length > 0 ? (
+                                <button
+                                  onClick={() => toggleExpanded(group.parent.id)}
+                                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                  data-testid={`button-size-price-toggle-${group.parent.id}`}
+                                >
+                                  {group.variants.length} size{group.variants.length !== 1 ? 's' : ''}
+                                  {expandedItems.has(group.parent.id) ? (
+                                    <ChevronDown className="h-3 w-3" />
+                                  ) : (
+                                    <ChevronRight className="h-3 w-3" />
+                                  )}
+                                </button>
+                              ) : (
+                                group.parent.price != null ? `$${group.parent.price.toFixed(2)}` : <span className="text-muted-foreground">-</span>
+                              )}
                             </TableCell>
                             <TableCell className="text-right hidden sm:table-cell">{renderFoodCostPercent(group.parent)}</TableCell>
                             <TableCell>
@@ -1924,14 +1948,23 @@ export default function MenuItemsPage() {
                                         {variant.active === 0 && (
                                           <Badge variant="outline" className="text-xs text-muted-foreground">Inactive</Badge>
                                         )}
-                                        {variant.recipeId && (
+                                        {variant.recipeId ? (
                                           <Tooltip>
                                             <TooltipTrigger asChild>
-                                              <Link href={`/recipes/${variant.recipeId}`}>
-                                                <LinkIcon className="h-3 w-3 text-muted-foreground hover:text-primary" />
+                                              <Link href={`/recipes/${variant.recipeId}`} className="flex items-center">
+                                                <BookOpen className="h-3.5 w-3.5 text-primary" />
                                               </Link>
                                             </TooltipTrigger>
                                             <TooltipContent>View Recipe</TooltipContent>
+                                          </Tooltip>
+                                        ) : (
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="flex items-center cursor-default">
+                                                <BookOpen className="h-3.5 w-3.5 text-muted-foreground/40" />
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent>No recipe linked</TooltipContent>
                                           </Tooltip>
                                         )}
                                       </div>
@@ -2092,11 +2125,36 @@ export default function MenuItemsPage() {
                           className={`${rowClass} ${item.active === 0 ? "opacity-60" : ""}`}
                         >
                           <TableCell 
-                            className="font-medium cursor-pointer hover-elevate" 
-                            onClick={() => handleEditMenuItem(item)}
+                            className="font-medium"
                             data-testid={`cell-item-name-${item.id}`}
                           >
-                            {item.name}
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="cursor-pointer hover:underline"
+                                onClick={() => handleEditMenuItem(item)}
+                              >
+                                {item.name}
+                              </span>
+                              {item.recipeId ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Link href={`/recipes/${item.recipeId}`} className="flex items-center">
+                                      <BookOpen className="h-3.5 w-3.5 text-primary" />
+                                    </Link>
+                                  </TooltipTrigger>
+                                  <TooltipContent>View Recipe</TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="flex items-center cursor-default">
+                                      <BookOpen className="h-3.5 w-3.5 text-muted-foreground/40" />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>No recipe linked</TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>{item.department || "-"}</TableCell>
                           <TableCell>{item.category || "-"}</TableCell>
