@@ -3907,9 +3907,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { items, targetStoreIds } = parsed.data;
 
-      // Security: verify all stores belong to this company
-      const accessibleStores = await getAccessibleStores(companyId);
-      const accessibleIds = new Set(accessibleStores.map((s: { id: string }) => s.id));
+      // Security: verify all stores belong to this company (and are accessible to this user)
+      // getAccessibleStores returns string[] of store IDs
+      const accessibleStoreIds = await getAccessibleStores((req as any).user, companyId);
+      const accessibleIds = new Set(accessibleStoreIds);
       for (const sid of targetStoreIds) {
         if (!accessibleIds.has(sid)) {
           return res.status(403).json({ error: `Store ${sid} does not belong to your company` });
