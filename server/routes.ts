@@ -3816,8 +3816,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * POST /api/menu-import/scan
    * Accepts an objectPath for an already-uploaded menu image.
    * Reads the file using the authorized storage service, calls GPT-4o Vision
-   * to extract menu items, stores the draft in menu_import_sessions,
-   * and returns the sessionId + extracted items.
+   * to extract menu items, and either:
+   *   - Creates a new session (default) and returns sessionId + items
+   *   - Appends to an existing pending session when `sessionId` is provided
+   *     (multi-page scanning: new items are merged onto the end of existing ones)
    */
   app.post("/api/menu-import/scan", requireAuth, requireTier("basic"), async (req, res) => {
     try {
@@ -3825,12 +3827,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const bodySchema = z.object({
         imageObjectPath: z.string().min(1, "imageObjectPath is required"),
         storeId: z.string().optional(),
+        sessionId: z.string().optional(), // present for multi-page append scans
       });
       const parsed = bodySchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
       }
-      const { imageObjectPath, storeId } = parsed.data;
+      const { imageObjectPath, storeId, sessionId: appendToSessionId } = parsed.data;
       const userId = (req as any).user?.id;
       const user = (req as any).user;
 
@@ -3840,6 +3843,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!accessibleStoreIds.includes(storeId)) {
           return res.status(403).json({ error: "Store not accessible" });
         }
+      }
+
+      // When appending to an existing session, validate it first
+      let existingSession: typeof menuImportSessions.$inferSelect | null = null;
+      if (appendToSessionId) {
+        const [found] = await db.select().from(menuImportSessions)
+          .where(and(
+            eq(menuImportSessions.id, appendToSessionId),
+            eq(menuImportSessions.companyId, companyId),
+          ));
+        if (!found) return res.status(404).json({ error: "Session not found" });
+        if (found.status !== "pending") return res.status(409).json({ error: "Session is no longer editable" });
+        existingSession = found;
       }
 
       // Read the image buffer using the storage service (enforces company/user ownership)
@@ -3874,6 +3890,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { scanMenuImage } = await import('./services/menuScanner');
       const result = await scanMenuImage(buffer, mimeType);
 
+      if (existingSession) {
+        // Append mode: merge new items onto the end of existing extractedItems
+        const existingItems = (existingSession.extractedItems as any[]) ?? [];
+        const mergedItems = [...existingItems, ...result.items];
+
+        await db.update(menuImportSessions)
+          .set({ extractedItems: mergedItems, updatedAt: new Date() })
+          .where(eq(menuImportSessions.id, existingSession.id));
+
+        return res.json({
+          sessionId: existingSession.id,
+          items: mergedItems,
+          newCount: result.items.length,
+          count: mergedItems.length,
+        });
+      }
+
+      // New session
       const [session] = await db.insert(menuImportSessions).values({
         companyId,
         storeId: storeId || null,
@@ -3885,6 +3919,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json({
         sessionId: session.id,
         items: result.items,
+        newCount: result.items.length,
         count: result.items.length,
       });
     } catch (error: any) {

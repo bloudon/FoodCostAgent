@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLocation, useSearch } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import {
   Camera,
   Check,
   CheckCheck,
+  FilePlus2,
   Loader2,
   Plus,
   Sparkles,
@@ -57,6 +58,9 @@ export default function MenuImport() {
   const [sessionId, setSessionId] = useState<string>(urlSessionId);
   const [items, setItems] = useState<ExtractedItem[]>([]);
   const [selectedRowIndices, setSelectedRowIndices] = useState<Set<number>>(new Set());
+  // pageBreaks tracks indices where additional scanned pages begin (UI-only, not persisted)
+  const [pageBreaks, setPageBreaks] = useState<number[]>([]);
+  const [showAddPageUploader, setShowAddPageUploader] = useState(false);
 
 
   // Rehydrate items from server if returning with a sessionId in URL
@@ -169,6 +173,43 @@ export default function MenuImport() {
     },
   });
 
+  // Append-page mutation: scans an additional image and merges its items into the current session
+  const appendPageMutation = useMutation({
+    mutationFn: async (objectPath: string) => {
+      // Capture previousCount at call-time (not in onSuccess which has a stale closure)
+      const previousCount = items.length;
+      const scanRes = await apiRequest('POST', '/api/menu-import/scan', {
+        imageObjectPath: objectPath,
+        sessionId,
+      });
+      if (!scanRes.ok) {
+        const err = await scanRes.json() as { error?: string };
+        throw new Error(err.error || 'Scan failed');
+      }
+      const data = await scanRes.json() as { sessionId: string; items: ExtractedItem[]; newCount: number; count: number };
+      return { ...data, previousCount };
+    },
+    onSuccess: (data) => {
+      const { previousCount } = data;
+      setPageBreaks(prev => [...prev, previousCount]);
+      setItems(data.items);
+      // Auto-select only the newly added items
+      setSelectedRowIndices(prev => {
+        const next = new Set(prev);
+        for (let i = previousCount; i < data.items.length; i++) next.add(i);
+        return next;
+      });
+      setShowAddPageUploader(false);
+      toast({
+        title: 'Page Added',
+        description: `Found ${data.newCount} more item${data.newCount !== 1 ? 's' : ''} — ${data.count} total`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Scan Failed', description: err.message, variant: 'destructive' });
+    },
+  });
+
   const scheduleAutosave = (editedItems: ExtractedItem[]) => {
     if (!sessionId || step !== 2) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
@@ -237,6 +278,8 @@ export default function MenuImport() {
     setItems([]);
     setSessionId('');
     setSelectedRowIndices(new Set());
+    setPageBreaks([]);
+    setShowAddPageUploader(false);
     navigate('/menu-import', { replace: true });
   };
 
@@ -374,77 +417,139 @@ export default function MenuImport() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {items.map((item, i) => (
-                            <TableRow
-                              key={i}
-                              className={selectedRowIndices.has(i) ? '' : 'opacity-40'}
-                              data-testid={`row-item-${i}`}
-                            >
-                              <TableCell>
-                                <Checkbox
-                                  checked={selectedRowIndices.has(i)}
-                                  onCheckedChange={() => toggleRow(i)}
-                                  data-testid={`checkbox-item-${i}`}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Input
-                                  value={item.name}
-                                  onChange={(e) => updateItem(i, 'name', e.target.value)}
-                                  className="h-8 min-w-[120px]"
-                                  placeholder="Item name"
-                                  data-testid={`input-name-${i}`}
-                                />
-                              </TableCell>
-                              <TableCell className="hidden sm:table-cell">
-                                <Input
-                                  value={item.department}
-                                  onChange={(e) => updateItem(i, 'department', e.target.value)}
-                                  className="h-8 min-w-[100px]"
-                                  placeholder="e.g. Pizza"
-                                  data-testid={`input-dept-${i}`}
-                                />
-                              </TableCell>
-                              <TableCell className="hidden md:table-cell">
-                                <Input
-                                  value={item.size}
-                                  onChange={(e) => updateItem(i, 'size', e.target.value)}
-                                  className="h-8 min-w-[80px]"
-                                  placeholder="e.g. Large"
-                                  data-testid={`input-size-${i}`}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Input
-                                  type="number"
-                                  value={item.price ?? ''}
-                                  onChange={(e) => updateItem(i, 'price', e.target.value ? parseFloat(e.target.value) : null)}
-                                  className="h-8 w-24"
-                                  placeholder="$0.00"
-                                  data-testid={`input-price-${i}`}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => deleteItem(i)}
-                                  data-testid={`button-delete-${i}`}
+                          {items.map((item, i) => {
+                            const pageBreakIdx = pageBreaks.indexOf(i);
+                            const isPageStart = pageBreakIdx !== -1;
+                            const pageNum = pageBreakIdx + 2;
+                            return (
+                              <Fragment key={i}>
+                                {isPageStart && (
+                                  <TableRow className="pointer-events-none select-none" data-testid={`separator-page-${pageNum}`}>
+                                    <TableCell colSpan={6} className="py-1 text-center">
+                                      <span className="text-xs text-muted-foreground font-medium px-3 py-0.5 rounded-full bg-muted">
+                                        Page {pageNum}
+                                      </span>
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                                <TableRow
+                                  className={selectedRowIndices.has(i) ? '' : 'opacity-40'}
+                                  data-testid={`row-item-${i}`}
                                 >
-                                  <Trash2 className="h-4 w-4 text-muted-foreground" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                                  <TableCell>
+                                    <Checkbox
+                                      checked={selectedRowIndices.has(i)}
+                                      onCheckedChange={() => toggleRow(i)}
+                                      data-testid={`checkbox-item-${i}`}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={item.name}
+                                      onChange={(e) => updateItem(i, 'name', e.target.value)}
+                                      className="h-8 min-w-[120px]"
+                                      placeholder="Item name"
+                                      data-testid={`input-name-${i}`}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="hidden sm:table-cell">
+                                    <Input
+                                      value={item.department}
+                                      onChange={(e) => updateItem(i, 'department', e.target.value)}
+                                      className="h-8 min-w-[100px]"
+                                      placeholder="e.g. Pizza"
+                                      data-testid={`input-dept-${i}`}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="hidden md:table-cell">
+                                    <Input
+                                      value={item.size}
+                                      onChange={(e) => updateItem(i, 'size', e.target.value)}
+                                      className="h-8 min-w-[80px]"
+                                      placeholder="e.g. Large"
+                                      data-testid={`input-size-${i}`}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="number"
+                                      value={item.price ?? ''}
+                                      onChange={(e) => updateItem(i, 'price', e.target.value ? parseFloat(e.target.value) : null)}
+                                      className="h-8 w-24"
+                                      placeholder="$0.00"
+                                      data-testid={`input-price-${i}`}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => deleteItem(i)}
+                                      data-testid={`button-delete-${i}`}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              </Fragment>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>
                   )}
 
-                  <Button variant="outline" size="sm" onClick={addRow} data-testid="button-add-row">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Row
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={addRow} data-testid="button-add-row">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Row
+                    </Button>
+                    {!showAddPageUploader && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowAddPageUploader(true)}
+                        disabled={appendPageMutation.isPending}
+                        data-testid="button-add-page"
+                      >
+                        <FilePlus2 className="h-4 w-4 mr-2" />
+                        Add Another Page
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Inline "add another page" uploader */}
+                  {showAddPageUploader && (
+                    <div className="rounded-md border bg-muted/30 p-4 space-y-2">
+                      <p className="text-sm font-medium">Scan another page</p>
+                      <p className="text-xs text-muted-foreground">
+                        Upload the next page of your menu. Items will be appended to the list above.
+                      </p>
+                      {appendPageMutation.isPending ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Scanning page — this may take 10–20 seconds…
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <ObjectUploader
+                            onUploadComplete={(objectPath) => appendPageMutation.mutate(objectPath)}
+                            buttonText="Select Page Image"
+                            dataTestId="button-upload-next-page"
+                            visibility="private"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowAddPageUploader(false)}
+                            data-testid="button-cancel-add-page"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
