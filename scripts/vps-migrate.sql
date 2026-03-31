@@ -196,3 +196,29 @@ BEGIN
       VALUES ('v008', 'Task #19: AI CSV import — documentation-only, no schema changes');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v009 — Task #25: AI Menu Image Scan — menu_import_sessions staging table
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v009') THEN
+
+    CREATE TABLE IF NOT EXISTS menu_import_sessions (
+      id              varchar       PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id      varchar       NOT NULL,
+      store_id        varchar,
+      status          text          NOT NULL DEFAULT 'pending',
+      raw_image_path  text,
+      extracted_items text,
+      created_at      timestamptz   NOT NULL DEFAULT now(),
+      updated_at      timestamptz   NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS menu_import_sessions_company_idx
+      ON menu_import_sessions (company_id);
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v009', 'Task #25: menu_import_sessions staging table for AI menu scan');
+  END IF;
+END $$;

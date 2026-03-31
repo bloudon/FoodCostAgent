@@ -17,7 +17,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -3754,6 +3754,185 @@ export async function registerRoutes(app: Express): Promise<Server> {
       else if (error.message?.includes('does not belong')) statusCode = 403;
       else if (error.message?.includes('already been processed')) statusCode = 409;
       res.status(statusCode).json({ error: error.message });
+    }
+  });
+
+  // ===================================================================
+  // AI-Powered Menu Image Scan Import
+  // ===================================================================
+
+  /**
+   * POST /api/menu-scan/scan
+   * Accepts an objectPath for an already-uploaded menu image.
+   * Calls GPT-4o Vision to extract menu items, stores the draft in
+   * menu_import_sessions, and returns the sessionId + extracted items.
+   */
+  app.post("/api/menu-scan/scan", requireAuth, requireTier("basic"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const bodySchema = z.object({
+        imageObjectPath: z.string().min(1, "imageObjectPath is required"),
+        storeId: z.string().optional(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+      const { imageObjectPath, storeId } = parsed.data;
+
+      const { scanMenuImage } = await import('./services/menuScanner');
+      const result = await scanMenuImage(imageObjectPath);
+
+      const [session] = await db.insert(menuImportSessions).values({
+        companyId,
+        storeId: storeId || null,
+        status: "pending",
+        rawImagePath: imageObjectPath,
+        extractedItems: JSON.stringify(result.items),
+      }).returning();
+
+      return res.json({
+        sessionId: session.id,
+        items: result.items,
+        count: result.items.length,
+      });
+    } catch (error: any) {
+      console.error("[Menu Scan]", error);
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * GET /api/menu-scan/:sessionId
+   * Returns the session and its extracted items.
+   */
+  app.get("/api/menu-scan/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const [session] = await db.select().from(menuImportSessions)
+        .where(and(eq(menuImportSessions.id, req.params.sessionId), eq(menuImportSessions.companyId, companyId)));
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      return res.json({
+        sessionId: session.id,
+        status: session.status,
+        items: JSON.parse(session.extractedItems || "[]"),
+      });
+    } catch (error: any) {
+      console.error("[Menu Scan GET]", error);
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * POST /api/menu-scan/:sessionId/approve
+   * User-confirmed items → creates menu_items + store_menu_items rows.
+   * Marks the session as approved.
+   */
+  app.post("/api/menu-scan/:sessionId/approve", requireAuth, requireTier("basic"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { sessionId } = req.params;
+
+      const bodySchema = z.object({
+        items: z.array(z.object({
+          name: z.string().min(1),
+          department: z.string().default(""),
+          category: z.string().default(""),
+          size: z.string().default(""),
+          price: z.number().nullable().optional(),
+        })),
+        targetStoreIds: z.array(z.string()).min(1, "At least one store required"),
+      });
+
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const { items, targetStoreIds } = parsed.data;
+
+      // Security: verify all stores belong to this company
+      const accessibleStores = await getAccessibleStores(companyId);
+      const accessibleIds = new Set(accessibleStores.map((s: { id: string }) => s.id));
+      for (const sid of targetStoreIds) {
+        if (!accessibleIds.has(sid)) {
+          return res.status(403).json({ error: `Store ${sid} does not belong to your company` });
+        }
+      }
+
+      // Verify session belongs to this company
+      const [session] = await db.select().from(menuImportSessions)
+        .where(and(eq(menuImportSessions.id, sessionId), eq(menuImportSessions.companyId, companyId)));
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      if (session.status === "approved") return res.status(409).json({ error: "Session already approved" });
+
+      const now = Date.now();
+      let created = 0;
+      let skipped = 0;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const pluSku = `SCAN-${now}-${i + 1}`;
+
+        // Insert the menu item (skip if PLU collision — shouldn't happen with timestamp)
+        try {
+          const [menuItem] = await db.insert(menuItems).values({
+            companyId,
+            name: item.name.trim(),
+            department: item.department || null,
+            category: item.category || null,
+            size: item.size || null,
+            pluSku,
+            isRecipeItem: 1,
+            active: 1,
+            price: item.price ?? null,
+            sortOrder: i,
+          }).returning();
+
+          // Assign to all target stores
+          for (const sid of targetStoreIds) {
+            await db.insert(storeMenuItems).values({
+              companyId,
+              storeId: sid,
+              menuItemId: menuItem.id,
+              active: 1,
+            }).onConflictDoNothing();
+          }
+          created++;
+        } catch (err: any) {
+          if (err.code === "23505") {
+            skipped++;
+          } else {
+            throw err;
+          }
+        }
+      }
+
+      // Mark session approved
+      await db.update(menuImportSessions)
+        .set({ status: "approved", updatedAt: new Date() })
+        .where(eq(menuImportSessions.id, sessionId));
+
+      return res.json({ menuItemsCreated: created, skipped });
+    } catch (error: any) {
+      console.error("[Menu Scan Approve]", error);
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * DELETE /api/menu-scan/:sessionId
+   * Cancels/cleans up a pending session.
+   */
+  app.delete("/api/menu-scan/:sessionId", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      await db.update(menuImportSessions)
+        .set({ status: "cancelled", updatedAt: new Date() })
+        .where(and(eq(menuImportSessions.id, req.params.sessionId), eq(menuImportSessions.companyId, companyId)));
+      return res.json({ success: true });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
     }
   });
 

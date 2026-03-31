@@ -1249,6 +1249,25 @@ export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgr
 export type InsertOnboardingProgress = z.infer<typeof insertOnboardingProgressSchema>;
 export type OnboardingProgress = typeof onboardingProgress.$inferSelect;
 
+// Menu Import Sessions (AI-powered menu image scan staging)
+export const menuImportSessions = pgTable("menu_import_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id"),
+  status: text("status").notNull().default("pending"), // pending, approved, cancelled
+  rawImagePath: text("raw_image_path"), // objectPath of the uploaded menu image
+  extractedItems: text("extracted_items"), // JSON array of {name, category, size, price, department}
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  companyIdx: index("menu_import_sessions_company_idx").on(table.companyId),
+}));
+
+export const insertMenuImportSessionSchema = createInsertSchema(menuImportSessions)
+  .omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertMenuImportSession = z.infer<typeof insertMenuImportSessionSchema>;
+export type MenuImportSession = typeof menuImportSessions.$inferSelect;
+
 // Background Images (global admin managed carousel images)
 export const backgroundImages = pgTable("background_images", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
