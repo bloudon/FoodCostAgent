@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Upload, Package, Search, Filter, Plus, MoreVertical, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Layers, Link as LinkIcon, PlusCircle, ExternalLink, Camera } from "lucide-react";
 import { useStoreContext } from "@/hooks/use-store-context";
+import { useTier } from "@/hooks/use-tier";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -128,6 +129,7 @@ interface MilestonesResponse {
 export default function MenuItemsPage() {
   const [search, setSearch] = useState("");
   const { selectedStoreId } = useStoreContext();
+  const { hasFeature } = useTier();
   const selectedStore = selectedStoreId || "all";
   const [activeFilter, setActiveFilter] = useState<"active" | "inactive" | "all">("active");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
@@ -858,12 +860,14 @@ export default function MenuItemsPage() {
               </Button>
             </div>
 
-            <Link href="/menu-import">
-              <Button variant="outline" data-testid="button-import-from-image">
-                <Camera className="h-4 w-4 mr-2" />
-                Import from Image
-              </Button>
-            </Link>
+            {hasFeature('recipe_costing') && (
+              <Link href="/menu-import">
+                <Button variant="outline" data-testid="button-import-from-image">
+                  <Camera className="h-4 w-4 mr-2" />
+                  Import from Image
+                </Button>
+              </Link>
+            )}
 
             <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
               <DialogTrigger asChild>

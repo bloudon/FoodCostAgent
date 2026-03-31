@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,27 +46,99 @@ interface ExtractedItem {
   price: number | null;
 }
 
-type CompanyStore = { id: string; name: string };
-
 const EMPTY_ITEM: ExtractedItem = { name: '', department: '', category: '', size: '', price: null };
 
+/**
+ * Upload an image to object storage. Handles both local mode (objectPath returned)
+ * and Replit mode (uploadUrl returned — PUT directly then derive objectPath).
+ */
+async function uploadImageToStorage(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('visibility', 'private');
+
+  const response = await fetch('/api/objects/upload', {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  });
+
+  if (!response.ok) throw new Error('Image upload failed');
+  const data = await response.json() as { objectPath?: string; uploadUrl?: string };
+
+  if (data.objectPath) {
+    return data.objectPath;
+  } else if (data.uploadUrl) {
+    // Replit object storage: PUT the file directly to the signed URL
+    const putResponse = await fetch(data.uploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type },
+    });
+    if (!putResponse.ok) throw new Error('Failed to upload image to storage');
+    const url = new URL(data.uploadUrl);
+    return url.pathname;
+  } else {
+    throw new Error('Upload did not return a valid object path');
+  }
+}
+
 export default function MenuImport() {
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const { toast } = useToast();
   const { stores, selectedStoreId } = useStoreContext();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [step, setStep] = useState<1 | 2 | 3 | 'done'>(1);
+  // Parse sessionId from URL query params for refresh-safe rehydration
+  const searchParams = new URLSearchParams(location.split('?')[1] || '');
+  const urlSessionId = searchParams.get('sessionId') || '';
+
+  const [step, setStep] = useState<1 | 2 | 3 | 'done'>(urlSessionId ? 2 : 1);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string>('');
-  const [isUploading, setIsUploading] = useState(false);
-  const [sessionId, setSessionId] = useState<string>('');
+  const [sessionId, setSessionId] = useState<string>(urlSessionId);
   const [items, setItems] = useState<ExtractedItem[]>([]);
   const [selectedRowIndices, setSelectedRowIndices] = useState<Set<number>>(new Set());
   const [targetStoreIds, setTargetStoreIds] = useState<Set<string>>(
     new Set(selectedStoreId ? [selectedStoreId] : [])
   );
   const [isStoreOpen, setIsStoreOpen] = useState(false);
+
+  // Rehydrate items from server if returning with a sessionId in URL
+  const { data: sessionData } = useQuery({
+    queryKey: ['/api/menu-import', urlSessionId],
+    enabled: !!urlSessionId,
+    queryFn: async () => {
+      const res = await fetch(`/api/menu-import/${urlSessionId}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Session not found');
+      return res.json() as Promise<{ sessionId: string; status: string; items: ExtractedItem[] }>;
+    },
+  });
+
+  useEffect(() => {
+    if (!sessionData) return;
+    if (sessionData.status === 'approved') {
+      setStep('done');
+      return;
+    }
+    if (items.length === 0 && sessionData.items.length > 0) {
+      setItems(sessionData.items);
+      setSelectedRowIndices(new Set(sessionData.items.map((_: ExtractedItem, i: number) => i)));
+      if (stores.length > 0 && targetStoreIds.size === 0) {
+        setTargetStoreIds(new Set(stores.map(s => s.id)));
+      }
+      setStep(2);
+    }
+  }, [sessionData, stores.length]);
+
+  // Update URL when sessionId changes (for refresh-safety)
+  useEffect(() => {
+    if (sessionId) {
+      const params = new URLSearchParams();
+      params.set('sessionId', sessionId);
+      navigate(`/menu-import?${params.toString()}`, { replace: true });
+    }
+  }, [sessionId]);
 
   const stepNum = step === 'done' ? 4 : step;
   const steps = [
@@ -75,7 +147,6 @@ export default function MenuImport() {
     { num: 3, label: 'Confirm' },
   ];
 
-  // Upload image to object storage then scan it
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -83,28 +154,12 @@ export default function MenuImport() {
     setImagePreviewUrl(URL.createObjectURL(file));
   };
 
+  // Upload image then scan with AI
   const uploadAndScanMutation = useMutation({
     mutationFn: async () => {
       if (!imageFile) throw new Error('No image selected');
-
-      // 1. Upload image
-      setIsUploading(true);
-      const formData = new FormData();
-      formData.append('file', imageFile);
-      formData.append('visibility', 'private');
-
-      const uploadRes = await fetch('/api/objects/upload', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
-      });
-      if (!uploadRes.ok) throw new Error('Image upload failed');
-      const uploadData = await uploadRes.json() as { objectPath?: string };
-      const objectPath = uploadData.objectPath;
-      if (!objectPath) throw new Error('Upload did not return an object path');
-
-      // 2. Scan with AI
-      const scanRes = await apiRequest('POST', '/api/menu-scan/scan', {
+      const objectPath = await uploadImageToStorage(imageFile);
+      const scanRes = await apiRequest('POST', '/api/menu-import/scan', {
         imageObjectPath: objectPath,
         storeId: selectedStoreId || undefined,
       });
@@ -115,12 +170,9 @@ export default function MenuImport() {
       return scanRes.json() as Promise<{ sessionId: string; items: ExtractedItem[]; count: number }>;
     },
     onSuccess: (data) => {
-      setIsUploading(false);
       setSessionId(data.sessionId);
       setItems(data.items);
-      // Pre-select all rows
-      setSelectedRowIndices(new Set(data.items.map((_, i) => i)));
-      // Default all stores selected
+      setSelectedRowIndices(new Set(data.items.map((_: ExtractedItem, i: number) => i)));
       if (stores.length > 0 && targetStoreIds.size === 0) {
         setTargetStoreIds(new Set(stores.map(s => s.id)));
       }
@@ -131,15 +183,14 @@ export default function MenuImport() {
       });
     },
     onError: (err: Error) => {
-      setIsUploading(false);
       toast({ title: 'Scan Failed', description: err.message, variant: 'destructive' });
     },
   });
 
   const approveMutation = useMutation({
     mutationFn: async () => {
-      const approvedItems = items.filter((_, i) => selectedRowIndices.has(i));
-      const res = await apiRequest('POST', `/api/menu-scan/${sessionId}/approve`, {
+      const approvedItems = items.filter((_: ExtractedItem, i: number) => selectedRowIndices.has(i));
+      const res = await apiRequest('POST', `/api/menu-import/${sessionId}/approve`, {
         items: approvedItems,
         targetStoreIds: Array.from(targetStoreIds),
       });
@@ -163,7 +214,7 @@ export default function MenuImport() {
     },
   });
 
-  // Row editing
+  // Row editing helpers
   const updateItem = (index: number, field: keyof ExtractedItem, value: string | number | null) => {
     setItems(prev => {
       const next = [...prev];
@@ -173,7 +224,7 @@ export default function MenuImport() {
   };
 
   const deleteItem = (index: number) => {
-    setItems(prev => prev.filter((_, i) => i !== index));
+    setItems(prev => prev.filter((_: ExtractedItem, i: number) => i !== index));
     setSelectedRowIndices(prev => {
       const next = new Set<number>();
       prev.forEach(i => { if (i < index) next.add(i); else if (i > index) next.add(i - 1); });
@@ -194,7 +245,7 @@ export default function MenuImport() {
     });
   };
 
-  const selectAll = () => setSelectedRowIndices(new Set(items.map((_, i) => i)));
+  const selectAll = () => setSelectedRowIndices(new Set(items.map((_: ExtractedItem, i: number) => i)));
   const deselectAll = () => setSelectedRowIndices(new Set());
 
   const toggleStore = (id: string) => {
@@ -203,6 +254,16 @@ export default function MenuImport() {
       if (next.has(id)) { if (next.size > 1) next.delete(id); } else next.add(id);
       return next;
     });
+  };
+
+  const resetWizard = () => {
+    setStep(1);
+    setImageFile(null);
+    setImagePreviewUrl('');
+    setItems([]);
+    setSessionId('');
+    setSelectedRowIndices(new Set());
+    navigate('/menu-import', { replace: true });
   };
 
   const selectedCount = selectedRowIndices.size;
@@ -302,10 +363,10 @@ export default function MenuImport() {
                   className="w-full"
                   data-testid="button-scan"
                 >
-                  {uploadAndScanMutation.isPending || isUploading ? (
+                  {uploadAndScanMutation.isPending ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      {isUploading ? 'Uploading image...' : 'Scanning menu...'}
+                      Processing...
                     </>
                   ) : (
                     <>
@@ -349,6 +410,7 @@ export default function MenuImport() {
                   </div>
                   <p className="text-sm text-muted-foreground">
                     Review what AI found. Edit any field inline, uncheck rows to skip, or add missing items.
+                    Items with the same name and multiple sizes will be imported as size variants.
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -445,7 +507,7 @@ export default function MenuImport() {
               </Card>
 
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setStep(1)} data-testid="button-back-step1">
+                <Button variant="outline" onClick={resetWizard} data-testid="button-back-step1">
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back
                 </Button>
@@ -515,7 +577,7 @@ export default function MenuImport() {
                     <p className="text-sm font-medium mb-2">Items being imported:</p>
                     <div className="max-h-56 overflow-y-auto space-y-1">
                       {items
-                        .filter((_, i) => selectedRowIndices.has(i))
+                        .filter((_: ExtractedItem, i: number) => selectedRowIndices.has(i))
                         .map((item, i) => (
                           <div key={i} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
                             <span className="font-medium">
@@ -573,14 +635,7 @@ export default function MenuImport() {
                   Your menu items have been added. You can now link recipes to them on the Menu Items page.
                 </p>
                 <div className="flex gap-2 justify-center pt-2">
-                  <Button variant="outline" onClick={() => {
-                    setStep(1);
-                    setImageFile(null);
-                    setImagePreviewUrl('');
-                    setItems([]);
-                    setSessionId('');
-                    setSelectedRowIndices(new Set());
-                  }} data-testid="button-scan-another">
+                  <Button variant="outline" onClick={resetWizard} data-testid="button-scan-another">
                     <Camera className="h-4 w-4 mr-2" />
                     Scan Another Menu
                   </Button>

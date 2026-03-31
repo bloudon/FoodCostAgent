@@ -3761,13 +3761,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI-Powered Menu Image Scan Import
   // ===================================================================
 
+  /** Helper: read image buffer from storage with company auth */
+  async function readImageBuffer(objectPath: string, companyId: string): Promise<{ buffer: Buffer; mimeType: string }> {
+    if (useLocalStorage) {
+      const { filePath, metadata } = await localStorageService.getFile(objectPath, companyId);
+      const fsModule = await import("fs");
+      const buffer = fsModule.readFileSync(filePath);
+      const mimeType = metadata.contentType || "image/jpeg";
+      return { buffer, mimeType };
+    } else {
+      // Replit object storage: stream into a buffer
+      const objStorage = await import("./objectStorage");
+      const svc = new objStorage.ObjectStorageService();
+      const file = await svc.getObjectEntityFile(objectPath);
+      const stream = file.createReadStream();
+      const chunks: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+        stream.on("end", resolve);
+        stream.on("error", reject);
+      });
+      const buffer = Buffer.concat(chunks);
+      // Infer mime from path extension
+      const pathModule = await import("path");
+      const ext = pathModule.extname(objectPath).toLowerCase().replace(".", "");
+      const mimeMap: Record<string, string> = {
+        jpg: "image/jpeg", jpeg: "image/jpeg",
+        png: "image/png", webp: "image/webp", gif: "image/gif",
+      };
+      const mimeType = mimeMap[ext] || "image/jpeg";
+      return { buffer, mimeType };
+    }
+  }
+
   /**
-   * POST /api/menu-scan/scan
+   * POST /api/menu-import/scan
    * Accepts an objectPath for an already-uploaded menu image.
-   * Calls GPT-4o Vision to extract menu items, stores the draft in
-   * menu_import_sessions, and returns the sessionId + extracted items.
+   * Reads the file using the authorized storage service, calls GPT-4o Vision
+   * to extract menu items, stores the draft in menu_import_sessions,
+   * and returns the sessionId + extracted items.
    */
-  app.post("/api/menu-scan/scan", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/menu-import/scan", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const bodySchema = z.object({
@@ -3780,8 +3814,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const { imageObjectPath, storeId } = parsed.data;
 
+      // Read the image buffer using the storage service (enforces company ownership)
+      const { buffer, mimeType } = await readImageBuffer(imageObjectPath, companyId);
+
       const { scanMenuImage } = await import('./services/menuScanner');
-      const result = await scanMenuImage(imageObjectPath);
+      const result = await scanMenuImage(buffer, mimeType);
 
       const [session] = await db.insert(menuImportSessions).values({
         companyId,
@@ -3797,16 +3834,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         count: result.items.length,
       });
     } catch (error: any) {
-      console.error("[Menu Scan]", error);
+      console.error("[Menu Import Scan]", error);
       return res.status(500).json({ error: error.message });
     }
   });
 
   /**
-   * GET /api/menu-scan/:sessionId
+   * GET /api/menu-import/:sessionId
    * Returns the session and its extracted items.
    */
-  app.get("/api/menu-scan/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
+  app.get("/api/menu-import/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const [session] = await db.select().from(menuImportSessions)
@@ -3818,17 +3855,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         items: JSON.parse(session.extractedItems || "[]"),
       });
     } catch (error: any) {
-      console.error("[Menu Scan GET]", error);
+      console.error("[Menu Import GET]", error);
       return res.status(500).json({ error: error.message });
     }
   });
 
   /**
-   * POST /api/menu-scan/:sessionId/approve
-   * User-confirmed items → creates menu_items + store_menu_items rows.
-   * Marks the session as approved.
+   * POST /api/menu-import/:sessionId/approve
+   * User-confirmed items → creates menu_items (with parent/variant structure for
+   * multi-size items) + store_menu_items rows. Marks the session as approved.
    */
-  app.post("/api/menu-scan/:sessionId/approve", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/menu-import/:sessionId/approve", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { sessionId } = req.params;
@@ -3866,39 +3903,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!session) return res.status(404).json({ error: "Session not found" });
       if (session.status === "approved") return res.status(409).json({ error: "Session already approved" });
 
+      /** Helper: insert a menu_item row and assign to all target stores */
+      async function insertMenuItemRow(values: {
+        name: string; department: string | null; category: string | null;
+        size: string | null; pluSku: string; price: number | null;
+        sortOrder: number; parentMenuItemId?: string | null;
+      }): Promise<string> {
+        const [row] = await db.insert(menuItems).values({
+          companyId,
+          name: values.name,
+          department: values.department,
+          category: values.category,
+          size: values.size,
+          pluSku: values.pluSku,
+          parentMenuItemId: values.parentMenuItemId ?? null,
+          isRecipeItem: 1,
+          active: 1,
+          price: values.price,
+          sortOrder: values.sortOrder,
+        }).returning();
+
+        for (const sid of targetStoreIds) {
+          await db.insert(storeMenuItems).values({
+            companyId,
+            storeId: sid,
+            menuItemId: row.id,
+            active: 1,
+          }).onConflictDoNothing();
+        }
+        return row.id;
+      }
+
       const now = Date.now();
       let created = 0;
       let skipped = 0;
 
+      // Group items by (name, department, category) to detect multi-size items
+      type ItemGroup = { items: typeof items[number][], sortBase: number };
+      const groups = new Map<string, ItemGroup>();
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
-        const pluSku = `SCAN-${now}-${i + 1}`;
+        const key = `${item.name.trim().toLowerCase()}|${(item.department||'').toLowerCase()}|${(item.category||'').toLowerCase()}`;
+        if (!groups.has(key)) groups.set(key, { items: [], sortBase: i });
+        groups.get(key)!.items.push(item);
+      }
 
-        // Insert the menu item (skip if PLU collision — shouldn't happen with timestamp)
+      let pluCounter = 1;
+      for (const [, group] of groups) {
+        const representative = group.items[0];
+        const hasMultipleSizes = group.items.length > 1 && group.items.some(i => i.size);
+
         try {
-          const [menuItem] = await db.insert(menuItems).values({
-            companyId,
-            name: item.name.trim(),
-            department: item.department || null,
-            category: item.category || null,
-            size: item.size || null,
-            pluSku,
-            isRecipeItem: 1,
-            active: 1,
-            price: item.price ?? null,
-            sortOrder: i,
-          }).returning();
+          if (hasMultipleSizes) {
+            // Create a parent (size-less) item
+            const parentPlu = `SCAN-${now}-${pluCounter++}`;
+            const parentId = await insertMenuItemRow({
+              name: representative.name.trim(),
+              department: representative.department || null,
+              category: representative.category || null,
+              size: null,
+              pluSku: parentPlu,
+              price: null,
+              sortOrder: group.sortBase,
+            });
 
-          // Assign to all target stores
-          for (const sid of targetStoreIds) {
-            await db.insert(storeMenuItems).values({
-              companyId,
-              storeId: sid,
-              menuItemId: menuItem.id,
-              active: 1,
-            }).onConflictDoNothing();
+            // Create size variant children
+            for (let j = 0; j < group.items.length; j++) {
+              const variant = group.items[j];
+              const variantPlu = `SCAN-${now}-${pluCounter++}`;
+              await insertMenuItemRow({
+                name: representative.name.trim(),
+                department: representative.department || null,
+                category: representative.category || null,
+                size: variant.size || null,
+                pluSku: variantPlu,
+                price: variant.price ?? null,
+                sortOrder: group.sortBase + j + 1,
+                parentMenuItemId: parentId,
+              });
+              created++;
+            }
+            created++; // count the parent
+          } else {
+            // Single item (no sizes or single size)
+            const pluSku = `SCAN-${now}-${pluCounter++}`;
+            await insertMenuItemRow({
+              name: representative.name.trim(),
+              department: representative.department || null,
+              category: representative.category || null,
+              size: representative.size || null,
+              pluSku,
+              price: representative.price ?? null,
+              sortOrder: group.sortBase,
+            });
+            created++;
           }
-          created++;
         } catch (err: any) {
           if (err.code === "23505") {
             skipped++;
@@ -3915,16 +4014,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       return res.json({ menuItemsCreated: created, skipped });
     } catch (error: any) {
-      console.error("[Menu Scan Approve]", error);
+      console.error("[Menu Import Approve]", error);
       return res.status(500).json({ error: error.message });
     }
   });
 
   /**
-   * DELETE /api/menu-scan/:sessionId
+   * DELETE /api/menu-import/:sessionId
    * Cancels/cleans up a pending session.
    */
-  app.delete("/api/menu-scan/:sessionId", requireAuth, async (req, res) => {
+  app.delete("/api/menu-import/:sessionId", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       await db.update(menuImportSessions)

@@ -1,10 +1,6 @@
 import OpenAI from 'openai';
-import * as fs from 'fs';
-import * as path from 'path';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-const UPLOAD_BASE_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
 
 export interface ExtractedMenuItem {
   name: string;
@@ -20,43 +16,16 @@ export interface MenuScanResult {
 }
 
 /**
- * Reads an uploaded image from local storage and returns it as a base64 data URI.
- * objectPath is the company-scoped path returned by /api/objects/upload.
+ * Sends a menu image buffer to GPT-4o Vision and extracts structured menu item data.
+ * The caller is responsible for fetching the image buffer using the appropriate
+ * storage service (with proper company-level authorization).
  */
-function imageToBase64(objectPath: string): { base64: string; mimeType: string } {
-  // Sanitize to prevent path traversal
-  const normalized = path.normalize(objectPath).replace(/^(\.\.(\/|\\|$))+/, '');
-  const fullPath = path.join(UPLOAD_BASE_DIR, normalized);
-
-  if (!fullPath.startsWith(UPLOAD_BASE_DIR)) {
-    throw new Error('Invalid image path');
-  }
-
-  const buffer = fs.readFileSync(fullPath);
-  const base64 = buffer.toString('base64');
-
-  const ext = path.extname(fullPath).toLowerCase().replace('.', '');
-  const mimeMap: Record<string, string> = {
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    png: 'image/png',
-    webp: 'image/webp',
-    gif: 'image/gif',
-  };
-  const mimeType = mimeMap[ext] || 'image/jpeg';
-
-  return { base64, mimeType };
-}
-
-/**
- * Sends a menu image to GPT-4o Vision and extracts structured menu item data.
- */
-export async function scanMenuImage(objectPath: string): Promise<MenuScanResult> {
+export async function scanMenuImage(imageBuffer: Buffer, mimeType: string): Promise<MenuScanResult> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not configured. Please set it in environment variables.');
   }
 
-  const { base64, mimeType } = imageToBase64(objectPath);
+  const base64 = imageBuffer.toString('base64');
 
   const systemPrompt = `You are a menu data extraction expert for restaurant inventory systems.
 Your task is to extract all food and beverage items from a menu image.
@@ -68,7 +37,7 @@ Return a JSON object with this exact structure:
       "name": "Item name (clean, human-readable)",
       "department": "Main category group (e.g. Pizza, Appetizers, Beverages, Desserts, Sides)",
       "category": "Subcategory if visible (e.g. Specialty Pizza, Classic Pizza) — empty string if none",
-      "size": "Size variant if visible (e.g. Small, Medium, Large, 10\", 12\") — empty string if single size",
+      "size": "Size variant if visible (e.g. Small, Medium, Large, 10\\", 12\\") — empty string if single size",
       "price": 12.99
     }
   ]
