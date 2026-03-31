@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -143,6 +143,7 @@ export default function MenuItemsPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const [postSaveRecipePrompt, setPostSaveRecipePrompt] = useState<{ name: string; id: string } | null>(null);
   const [selectedStoresForAdd, setSelectedStoresForAdd] = useState<string[]>([]);
   const [selectedStoresForEdit, setSelectedStoresForEdit] = useState<string[]>([]);
   const [sortField, setSortField] = useState<string | null>(null);
@@ -151,6 +152,7 @@ export default function MenuItemsPage() {
   const [addVariantDialogOpen, setAddVariantDialogOpen] = useState(false);
   const [selectedParentForVariant, setSelectedParentForVariant] = useState<MenuItem | null>(null);
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const { data: milestonesData } = useQuery<MilestonesResponse>({
     queryKey: ["/api/onboarding/milestones"],
@@ -490,7 +492,7 @@ export default function MenuItemsPage() {
       
       return menuItem;
     },
-    onSuccess: () => {
+    onSuccess: (result: MenuItem) => {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items/hierarchy"] });
       toast({
@@ -498,10 +500,16 @@ export default function MenuItemsPage() {
         description: "Successfully updated menu item",
       });
       sessionStorage.removeItem('menu-item-edit-draft');
-      setEditDialogOpen(false);
+      const savedName = result?.name ?? editingItem?.name ?? "";
+      const savedId = result?.id ?? editingItem?.id ?? "";
       setEditingItem(null);
       setSelectedStoresForEdit([]);
       editForm.reset();
+      if (!result?.recipeId) {
+        setPostSaveRecipePrompt({ name: savedName, id: savedId });
+      } else {
+        setEditDialogOpen(false);
+      }
     },
     onError: (error: Error) => {
       toast({
@@ -1270,8 +1278,55 @@ export default function MenuItemsPage() {
           </Dialog>
 
           {/* Edit Menu Item Dialog */}
-          <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <Dialog open={editDialogOpen} onOpenChange={(open) => {
+              if (!open) {
+                setPostSaveRecipePrompt(null);
+                setEditingItem(null);
+                setSelectedStoresForEdit([]);
+                editForm.reset();
+                setEditDialogOpen(false);
+              }
+            }}>
             <DialogContent className="max-w-lg">
+              {postSaveRecipePrompt ? (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>Create a Recipe?</DialogTitle>
+                    <DialogDescription>
+                      "{postSaveRecipePrompt.name}" was saved without a recipe attached.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <p className="text-sm text-muted-foreground py-2">
+                    Would you like to create a recipe for this menu item now? You can always do this later from the edit dialog.
+                  </p>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setPostSaveRecipePrompt(null);
+                        setEditDialogOpen(false);
+                      }}
+                      data-testid="button-post-save-not-now"
+                    >
+                      Not Now
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        const { name, id } = postSaveRecipePrompt;
+                        setPostSaveRecipePrompt(null);
+                        setEditDialogOpen(false);
+                        navigate(`/recipes/new?name=${encodeURIComponent(name)}&menuItemId=${id}`);
+                      }}
+                      data-testid="button-post-save-create-recipe"
+                    >
+                      Create Recipe
+                    </Button>
+                  </DialogFooter>
+                </>
+              ) : (
+              <>
               <DialogHeader>
                 <DialogTitle>Edit Menu Item</DialogTitle>
                 <DialogDescription>
@@ -1438,16 +1493,6 @@ export default function MenuItemsPage() {
                             ))}
                           </SelectContent>
                         </Select>
-                        <FormDescription>
-                          <Link
-                            href={`/recipes/new?name=${encodeURIComponent(editForm.watch("name") || editingItem?.name || "")}&menuItemId=${editingItem?.id || ""}`}
-                            className="text-primary hover:underline text-sm"
-                            onClick={saveEditFormDraft}
-                            data-testid="link-create-recipe-edit"
-                          >
-                            Create new recipe with this name
-                          </Link>
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1502,6 +1547,8 @@ export default function MenuItemsPage() {
                   </DialogFooter>
                 </form>
               </Form>
+              </>
+              )}
             </DialogContent>
           </Dialog>
 
