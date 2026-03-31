@@ -194,26 +194,27 @@ export default function MenuImport() {
       return scanRes.json() as Promise<{ sessionId: string; items: ExtractedItem[]; newCount: number; count: number }>;
     },
     onSuccess: (data) => {
-      // Derive the new-page items from the server's response tail (server returns existing + new).
-      // We use data.newCount rather than a call-time snapshot so the count is always accurate.
+      // Derive newly scanned items from the server response tail.
       const newPageItems = data.items.slice(-data.newCount);
-      // The insertion index = total items on server − items from this page.
-      const insertionIndex = data.count - data.newCount;
 
-      // Use functional update so any edits the user made DURING the scan are preserved.
+      // Derive insertion index from local committed state (lastItemsRef.current.length),
+      // not from server counts. This stays accurate even if the user added or deleted
+      // rows while the scan was in progress (local count can diverge from server count).
+      const insertionIndex = lastItemsRef.current.length;
+
+      // Functional update preserves edits made DURING the scan.
       setItems(prev => [...prev, ...newPageItems]);
-      // Only add a page break marker if items were actually extracted from this page
+      // Only mark a page break if at least one item was extracted.
       if (newPageItems.length > 0) {
         setPageBreaks(prev => [...prev, insertionIndex]);
       }
 
-      // Schedule autosave using lastItemsRef (always reflects latest committed state,
-      // including edits made while the scan was in progress) + the new page items.
+      // Schedule autosave from local state (lastItemsRef) + new items.
       // Cancel any stale autosave timer first so it cannot send pre-append items.
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
       scheduleAutosave([...lastItemsRef.current, ...newPageItems]);
 
-      // Auto-select only the newly added items
+      // Auto-select only the newly added items using local-derived insertion index.
       setSelectedRowIndices(prev => {
         const next = new Set(prev);
         for (let i = insertionIndex; i < insertionIndex + newPageItems.length; i++) next.add(i);
