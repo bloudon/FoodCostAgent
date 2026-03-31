@@ -3891,20 +3891,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await scanMenuImage(buffer, mimeType);
 
       if (existingSession) {
-        // Append mode: re-read extractedItems inside a transaction immediately before
-        // writing to eliminate the stale-read race that arises when an autosave PATCH
-        // modifies the session during the 10–20 s AI scan window.
-        const mergedItems = await db.transaction(async (tx) => {
-          const [fresh] = await tx.select({ extractedItems: menuImportSessions.extractedItems })
-            .from(menuImportSessions)
-            .where(eq(menuImportSessions.id, existingSession.id));
-          const currentItems = fresh?.extractedItems ?? [];
-          const merged = [...currentItems, ...result.items];
-          await tx.update(menuImportSessions)
-            .set({ extractedItems: merged, updatedAt: new Date() })
-            .where(eq(menuImportSessions.id, existingSession.id));
-          return merged;
-        });
+        // Append mode: re-read extractedItems and re-validate status inside a transaction
+        // immediately before writing. This eliminates two races:
+        // 1. Stale-read: extractedItems may have changed via autosave PATCH during the scan.
+        // 2. Status race: session may have been approved/cancelled during the 10-20s scan.
+        let mergedItems: typeof result.items;
+        try {
+          mergedItems = await db.transaction(async (tx) => {
+            const [fresh] = await tx.select({
+              extractedItems: menuImportSessions.extractedItems,
+              status: menuImportSessions.status,
+            })
+              .from(menuImportSessions)
+              .where(and(
+                eq(menuImportSessions.id, existingSession.id),
+                eq(menuImportSessions.companyId, companyId),
+              ));
+            if (!fresh || fresh.status !== "pending") {
+              throw Object.assign(new Error("Session is no longer editable"), { status: 409 });
+            }
+            const currentItems = fresh.extractedItems ?? [];
+            const merged = [...currentItems, ...result.items];
+            await tx.update(menuImportSessions)
+              .set({ extractedItems: merged, updatedAt: new Date() })
+              .where(and(
+                eq(menuImportSessions.id, existingSession.id),
+                eq(menuImportSessions.companyId, companyId),
+                eq(menuImportSessions.status, "pending"),
+              ));
+            return merged;
+          });
+        } catch (txErr: any) {
+          const code = txErr.status === 409 ? 409 : 500;
+          return res.status(code).json({ error: txErr.message });
+        }
 
         return res.json({
           sessionId: existingSession.id,

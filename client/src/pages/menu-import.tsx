@@ -202,7 +202,10 @@ export default function MenuImport() {
 
       // Use functional update so any edits the user made DURING the scan are preserved.
       setItems(prev => [...prev, ...newPageItems]);
-      setPageBreaks(prev => [...prev, insertionIndex]);
+      // Only add a page break marker if items were actually extracted from this page
+      if (newPageItems.length > 0) {
+        setPageBreaks(prev => [...prev, insertionIndex]);
+      }
 
       // Schedule autosave using lastItemsRef (always reflects latest committed state,
       // including edits made while the scan was in progress) + the new page items.
