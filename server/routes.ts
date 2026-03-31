@@ -3891,13 +3891,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await scanMenuImage(buffer, mimeType);
 
       if (existingSession) {
-        // Append mode: merge new items onto the end of existing extractedItems
-        const existingItems = existingSession.extractedItems ?? [];
-        const mergedItems = [...existingItems, ...result.items];
-
-        await db.update(menuImportSessions)
-          .set({ extractedItems: mergedItems, updatedAt: new Date() })
-          .where(eq(menuImportSessions.id, existingSession.id));
+        // Append mode: re-read extractedItems inside a transaction immediately before
+        // writing to eliminate the stale-read race that arises when an autosave PATCH
+        // modifies the session during the 10–20 s AI scan window.
+        const mergedItems = await db.transaction(async (tx) => {
+          const [fresh] = await tx.select({ extractedItems: menuImportSessions.extractedItems })
+            .from(menuImportSessions)
+            .where(eq(menuImportSessions.id, existingSession.id));
+          const currentItems = fresh?.extractedItems ?? [];
+          const merged = [...currentItems, ...result.items];
+          await tx.update(menuImportSessions)
+            .set({ extractedItems: merged, updatedAt: new Date() })
+            .where(eq(menuImportSessions.id, existingSession.id));
+          return merged;
+        });
 
         return res.json({
           sessionId: existingSession.id,
