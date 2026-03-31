@@ -3761,10 +3761,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI-Powered Menu Image Scan Import
   // ===================================================================
 
-  /** Helper: read image buffer from storage with company auth enforcement */
+  /** Helper: read image buffer from storage with company/user auth enforcement */
   async function readImageBuffer(
     objectPath: string,
     companyId: string,
+    userId?: string,
   ): Promise<{ buffer: Buffer; mimeType: string }> {
     if (useLocalStorage) {
       // Local mode: getFile() resolves and validates the path belongs to companyId via prefix check
@@ -3774,12 +3775,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const mimeType = metadata.contentType || "image/jpeg";
       return { buffer, mimeType };
     } else {
-      // Replit object storage mode: files are uploaded via signed PUTs (no ACL set at upload time).
-      // Authorization here is the route-level requireAuth + requireTier guards plus session-level
-      // company scoping (the objectPath is opaque/UUID-based; callers must own the session).
+      // Replit object storage: check ACL before reading.
+      // Signed-PUT uploads track the requester's identity — canAccessObjectEntity enforces this.
       const objStorage = await import("./objectStorage");
       const svc = new objStorage.ObjectStorageService();
       const file = await svc.getObjectEntityFile(objectPath);
+
+      const canAccess = await svc.canAccessObjectEntity({
+        objectFile: file,
+        userId,
+        requestedPermission: replitObjectAcl.ObjectPermission.READ,
+      });
+      if (!canAccess) {
+        const err: any = new Error("Access denied to requested object");
+        err.status = 403;
+        throw err;
+      }
 
       const stream = file.createReadStream();
       const chunks: Buffer[] = [];
@@ -3820,9 +3831,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
       }
       const { imageObjectPath, storeId } = parsed.data;
+      const userId = (req as any).user?.id;
 
-      // Read the image buffer using the storage service (enforces company ownership)
-      const { buffer, mimeType } = await readImageBuffer(imageObjectPath, companyId);
+      // Read the image buffer using the storage service (enforces company/user ownership)
+      const { buffer, mimeType } = await readImageBuffer(imageObjectPath, companyId, userId);
 
       const { scanMenuImage } = await import('./services/menuScanner');
       const result = await scanMenuImage(buffer, mimeType);
@@ -3920,80 +3932,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Wrap in array for the insertion helpers below (single-store assignment)
       const targetStoreIds = [resolvedStoreId];
 
-      /** Helper: find or create a menu_item_sizes record by name for this company */
-      const sizeIdCache = new Map<string, string>();
-      async function findOrCreateSizeId(sizeName: string): Promise<string> {
-        const key = sizeName.trim().toLowerCase();
-        if (sizeIdCache.has(key)) return sizeIdCache.get(key)!;
-
-        // Look for existing size with this name (company-specific or global)
-        const [existing] = await db.select().from(menuItemSizes)
-          .where(and(eq(menuItemSizes.name, sizeName.trim()), eq(menuItemSizes.companyId, companyId)));
-
-        if (existing) {
-          sizeIdCache.set(key, existing.id);
-          return existing.id;
-        }
-
-        // Create new size record for this company
-        const [created] = await db.insert(menuItemSizes).values({
-          companyId,
-          name: sizeName.trim(),
-          sortOrder: 0,
-          isDefault: 0,
-          active: 1,
-        }).onConflictDoNothing().returning();
-
-        if (created) {
-          sizeIdCache.set(key, created.id);
-          return created.id;
-        }
-
-        // Race condition: another request inserted first — re-query
-        const [refetched] = await db.select().from(menuItemSizes)
-          .where(and(eq(menuItemSizes.name, sizeName.trim()), eq(menuItemSizes.companyId, companyId)));
-        sizeIdCache.set(key, refetched.id);
-        return refetched.id;
-      }
-
-      /** Helper: insert a menu_item row and assign to all target stores */
-      async function insertMenuItemRow(values: {
-        name: string; department: string | null; category: string | null;
-        size: string | null; pluSku: string; price: number | null;
-        sortOrder: number; parentMenuItemId?: string | null;
-        menuItemSizeId?: string | null;
-      }): Promise<string> {
-        const [row] = await db.insert(menuItems).values({
-          companyId,
-          name: values.name,
-          department: values.department,
-          category: values.category,
-          size: values.size,
-          pluSku: values.pluSku,
-          parentMenuItemId: values.parentMenuItemId ?? null,
-          menuItemSizeId: values.menuItemSizeId ?? null,
-          isRecipeItem: 1,
-          active: 1,
-          price: values.price,
-          sortOrder: values.sortOrder,
-        }).returning();
-
-        for (const sid of targetStoreIds) {
-          await db.insert(storeMenuItems).values({
-            companyId,
-            storeId: sid,
-            menuItemId: row.id,
-            active: 1,
-          }).onConflictDoNothing();
-        }
-        return row.id;
-      }
-
-      const now = Date.now();
-      let created = 0;
-      let skipped = 0;
-
-      // Group items by (name, department, category) to detect multi-size items
+      // Compute groups before transaction so we can pass the count back
       type ItemGroup = { items: typeof items[number][], sortBase: number };
       const groups = new Map<string, ItemGroup>();
       for (let i = 0; i < items.length; i++) {
@@ -4003,73 +3942,145 @@ export async function registerRoutes(app: Express): Promise<Server> {
         groups.get(key)!.items.push(item);
       }
 
-      let pluCounter = 1;
-      for (const [, group] of groups) {
-        const representative = group.items[0];
-        const hasMultipleSizes = group.items.length > 1 && group.items.some(i => i.size);
+      // Run all inserts and session update in a single transaction to prevent partial imports
+      const { created, skipped } = await db.transaction(async (tx) => {
+        const sizeIdCache = new Map<string, string>();
 
-        try {
-          if (hasMultipleSizes) {
-            // Create a parent (size-less) item
-            const parentPlu = `SCAN-${now}-${pluCounter++}`;
-            const parentId = await insertMenuItemRow({
-              name: representative.name.trim(),
-              department: representative.department || null,
-              category: representative.category || null,
-              size: null,
-              pluSku: parentPlu,
-              price: null,
-              sortOrder: group.sortBase,
-            });
+        /** Find or create a menu_item_sizes record within the transaction */
+        async function findOrCreateSizeId(sizeName: string): Promise<string> {
+          const key = sizeName.trim().toLowerCase();
+          if (sizeIdCache.has(key)) return sizeIdCache.get(key)!;
 
-            // Create size variant children linked to menu_item_sizes
-            for (let j = 0; j < group.items.length; j++) {
-              const variant = group.items[j];
-              const variantPlu = `SCAN-${now}-${pluCounter++}`;
-              const menuItemSizeId = variant.size
-                ? await findOrCreateSizeId(variant.size)
-                : null;
+          const [existing] = await tx.select().from(menuItemSizes)
+            .where(and(eq(menuItemSizes.name, sizeName.trim()), eq(menuItemSizes.companyId, companyId)));
+
+          if (existing) {
+            sizeIdCache.set(key, existing.id);
+            return existing.id;
+          }
+
+          const [newSize] = await tx.insert(menuItemSizes).values({
+            companyId,
+            name: sizeName.trim(),
+            sortOrder: 0,
+            isDefault: 0,
+            active: 1,
+          }).onConflictDoNothing().returning();
+
+          if (newSize) {
+            sizeIdCache.set(key, newSize.id);
+            return newSize.id;
+          }
+
+          // Race condition fallback — re-query within same tx
+          const [refetched] = await tx.select().from(menuItemSizes)
+            .where(and(eq(menuItemSizes.name, sizeName.trim()), eq(menuItemSizes.companyId, companyId)));
+          sizeIdCache.set(key, refetched.id);
+          return refetched.id;
+        }
+
+        /** Insert a menu_item row and assign to the target store within the transaction */
+        async function insertMenuItemRow(values: {
+          name: string; department: string | null; category: string | null;
+          size: string | null; pluSku: string; price: number | null;
+          sortOrder: number; parentMenuItemId?: string | null;
+          menuItemSizeId?: string | null;
+        }): Promise<string> {
+          const [row] = await tx.insert(menuItems).values({
+            companyId,
+            name: values.name,
+            department: values.department,
+            category: values.category,
+            size: values.size,
+            pluSku: values.pluSku,
+            parentMenuItemId: values.parentMenuItemId ?? null,
+            menuItemSizeId: values.menuItemSizeId ?? null,
+            isRecipeItem: 1,
+            active: 1,
+            price: values.price,
+            sortOrder: values.sortOrder,
+          }).returning();
+
+          for (const sid of targetStoreIds) {
+            await tx.insert(storeMenuItems).values({
+              companyId,
+              storeId: sid,
+              menuItemId: row.id,
+              active: 1,
+            }).onConflictDoNothing();
+          }
+          return row.id;
+        }
+
+        const now = Date.now();
+        let txCreated = 0;
+        let txSkipped = 0;
+        let pluCounter = 1;
+
+        for (const [, group] of groups) {
+          const representative = group.items[0];
+          const hasMultipleSizes = group.items.length > 1 && group.items.some(i => i.size);
+
+          try {
+            if (hasMultipleSizes) {
+              const parentPlu = `SCAN-${now}-${pluCounter++}`;
+              const parentId = await insertMenuItemRow({
+                name: representative.name.trim(),
+                department: representative.department || null,
+                category: representative.category || null,
+                size: null,
+                pluSku: parentPlu,
+                price: null,
+                sortOrder: group.sortBase,
+              });
+
+              for (let j = 0; j < group.items.length; j++) {
+                const variant = group.items[j];
+                const variantPlu = `SCAN-${now}-${pluCounter++}`;
+                const menuItemSizeId = variant.size ? await findOrCreateSizeId(variant.size) : null;
+                await insertMenuItemRow({
+                  name: representative.name.trim(),
+                  department: representative.department || null,
+                  category: representative.category || null,
+                  size: variant.size || null,
+                  pluSku: variantPlu,
+                  price: variant.price ?? null,
+                  sortOrder: group.sortBase + j + 1,
+                  parentMenuItemId: parentId,
+                  menuItemSizeId,
+                });
+                txCreated++;
+              }
+              txCreated++; // count the parent
+            } else {
+              const pluSku = `SCAN-${now}-${pluCounter++}`;
               await insertMenuItemRow({
                 name: representative.name.trim(),
                 department: representative.department || null,
                 category: representative.category || null,
-                size: variant.size || null,
-                pluSku: variantPlu,
-                price: variant.price ?? null,
-                sortOrder: group.sortBase + j + 1,
-                parentMenuItemId: parentId,
-                menuItemSizeId,
+                size: representative.size || null,
+                pluSku,
+                price: representative.price ?? null,
+                sortOrder: group.sortBase,
               });
-              created++;
+              txCreated++;
             }
-            created++; // count the parent
-          } else {
-            // Single item (no sizes or single size)
-            const pluSku = `SCAN-${now}-${pluCounter++}`;
-            await insertMenuItemRow({
-              name: representative.name.trim(),
-              department: representative.department || null,
-              category: representative.category || null,
-              size: representative.size || null,
-              pluSku,
-              price: representative.price ?? null,
-              sortOrder: group.sortBase,
-            });
-            created++;
-          }
-        } catch (err: any) {
-          if (err.code === "23505") {
-            skipped++;
-          } else {
-            throw err;
+          } catch (err: any) {
+            if (err.code === "23505") {
+              txSkipped++;
+            } else {
+              throw err; // rolls back the transaction
+            }
           }
         }
-      }
 
-      // Mark session approved
-      await db.update(menuImportSessions)
-        .set({ status: "approved", updatedAt: new Date() })
-        .where(eq(menuImportSessions.id, sessionId));
+        // Mark session approved and clear staging data within the same transaction
+        await tx.update(menuImportSessions)
+          .set({ status: "approved", rawImagePath: null, extractedItems: null, updatedAt: new Date() })
+          .where(eq(menuImportSessions.id, sessionId));
+
+        return { created: txCreated, skipped: txSkipped };
+      });
 
       return res.json({ menuItemsCreated: created, skipped });
     } catch (error: any) {
@@ -4085,8 +4096,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/menu-import/:sessionId", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
+      // Clear staging data and mark as cancelled
       await db.update(menuImportSessions)
-        .set({ status: "cancelled", updatedAt: new Date() })
+        .set({
+          status: "cancelled",
+          rawImagePath: null,
+          extractedItems: null,
+          updatedAt: new Date(),
+        })
         .where(and(eq(menuImportSessions.id, req.params.sessionId), eq(menuImportSessions.companyId, companyId)));
       return res.json({ success: true });
     } catch (error: any) {
