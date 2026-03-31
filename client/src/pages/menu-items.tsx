@@ -1874,18 +1874,23 @@ export default function MenuItemsPage() {
                             <TableCell className="text-right">{renderRecipeCost(group.parent)}</TableCell>
                             <TableCell className="text-right font-mono text-sm">
                               {group.variants.length > 0 ? (
-                                <button
-                                  onClick={() => toggleExpanded(group.parent.id)}
-                                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                                  data-testid={`button-size-price-toggle-${group.parent.id}`}
-                                >
-                                  {group.variants.length} size{group.variants.length !== 1 ? 's' : ''}
-                                  {expandedItems.has(group.parent.id) ? (
-                                    <ChevronDown className="h-3 w-3" />
-                                  ) : (
-                                    <ChevronRight className="h-3 w-3" />
+                                <div className="flex flex-col items-end gap-0.5">
+                                  {group.parent.price != null && (
+                                    <span>{`$${group.parent.price.toFixed(2)}`}</span>
                                   )}
-                                </button>
+                                  <button
+                                    onClick={() => toggleExpanded(group.parent.id)}
+                                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                    data-testid={`button-size-price-toggle-${group.parent.id}`}
+                                  >
+                                    {group.variants.length} size{group.variants.length !== 1 ? 's' : ''}
+                                    {expandedItems.has(group.parent.id) ? (
+                                      <ChevronDown className="h-3 w-3" />
+                                    ) : (
+                                      <ChevronRight className="h-3 w-3" />
+                                    )}
+                                  </button>
+                                </div>
                               ) : (
                                 group.parent.price != null ? `$${group.parent.price.toFixed(2)}` : <span className="text-muted-foreground">-</span>
                               )}
