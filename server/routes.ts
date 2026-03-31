@@ -3832,6 +3832,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const { imageObjectPath, storeId } = parsed.data;
       const userId = (req as any).user?.id;
+      const user = (req as any).user;
+
+      // Validate storeId against accessible stores early to prevent unusable sessions
+      if (storeId) {
+        const accessibleStores = await getAccessibleStores(user, companyId);
+        const storeIds = accessibleStores.map((s: any) => s.id);
+        if (!storeIds.includes(storeId)) {
+          return res.status(403).json({ error: "Store not accessible" });
+        }
+      }
 
       // Read the image buffer using the storage service (enforces company/user ownership)
       const { buffer } = await readImageBuffer(imageObjectPath, companyId, userId);

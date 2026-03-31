@@ -105,13 +105,12 @@ export default function MenuImport() {
       const sid = sessionIdRef.current;
       const st = stepRef.current;
       if (sid && st !== 'done') {
-        // fire-and-forget via sendBeacon for reliability during page unload
-        if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-          const blob = new Blob(['{}'], { type: 'application/json' });
-          navigator.sendBeacon(`/api/menu-import/${sid}`, blob);
-        } else {
-          fetch(`/api/menu-import/${sid}`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
-        }
+        // keepalive: true ensures the request survives page unload (unlike sendBeacon which only POSTs)
+        fetch(`/api/menu-import/${sid}`, {
+          method: 'DELETE',
+          credentials: 'include',
+          keepalive: true,
+        }).catch(() => {});
       }
     };
   }, []);
@@ -217,8 +216,7 @@ export default function MenuImport() {
   const selectAll = () => setSelectedRowIndices(new Set(items.map((_: ExtractedItem, i: number) => i)));
   const deselectAll = () => setSelectedRowIndices(new Set());
 
-  const resetWizard = async () => {
-    // Cancel the current session on the server to avoid leaving pending sessions
+  const cancelSession = async () => {
     if (sessionId) {
       try {
         await apiRequest('DELETE', `/api/menu-import/${sessionId}`);
@@ -226,11 +224,23 @@ export default function MenuImport() {
         // Non-fatal
       }
     }
+  };
+
+  const resetWizard = async () => {
+    // Cancel the current session on the server to avoid leaving pending sessions
+    await cancelSession();
     setStep(1);
     setItems([]);
     setSessionId('');
     setSelectedRowIndices(new Set());
     navigate('/menu-import', { replace: true });
+  };
+
+  const cancelAndGoBack = async () => {
+    // Cancel server session then navigate back to menu items (for header back button)
+    await cancelSession();
+    setSessionId('');
+    navigate('/menu-items');
   };
 
   const selectedCount = selectedRowIndices.size;
@@ -242,7 +252,7 @@ export default function MenuImport() {
 
           {/* Header */}
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/menu-items')} data-testid="button-back">
+            <Button variant="ghost" size="icon" onClick={cancelAndGoBack} data-testid="button-back">
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
