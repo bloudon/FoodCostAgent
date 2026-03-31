@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLocation, useSearch } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -58,11 +58,6 @@ export default function MenuImport() {
   const [items, setItems] = useState<ExtractedItem[]>([]);
   const [selectedRowIndices, setSelectedRowIndices] = useState<Set<number>>(new Set());
 
-  // Refs used by unmount cleanup to capture latest state without stale closures
-  const sessionIdRef = useRef(sessionId);
-  const stepRef = useRef(step);
-  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
-  useEffect(() => { stepRef.current = step; }, [step]);
 
   // Rehydrate items from server if returning with a sessionId in URL
   const { data: sessionData } = useQuery({
@@ -97,23 +92,6 @@ export default function MenuImport() {
     }
   }, [sessionId]);
 
-  // Clean up any pending session when the user navigates away from the wizard
-  // (covers browser back, link clicks, programmatic navigation, tab close)
-  useEffect(() => {
-    return () => {
-      // Use a ref snapshot so the callback captures the latest sessionId + step at unmount
-      const sid = sessionIdRef.current;
-      const st = stepRef.current;
-      if (sid && st !== 'done') {
-        // keepalive: true ensures the request survives page unload (unlike sendBeacon which only POSTs)
-        fetch(`/api/menu-import/${sid}`, {
-          method: 'DELETE',
-          credentials: 'include',
-          keepalive: true,
-        }).catch(() => {});
-      }
-    };
-  }, []);
 
   const stepNum = step === 'done' ? 4 : step;
   const steps = [
