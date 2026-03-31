@@ -239,6 +239,12 @@ export default function MenuImport() {
       prev.forEach(i => { if (i < index) next.add(i); else if (i > index) next.add(i - 1); });
       return next;
     });
+    // Shift page-break indices: remove any break at the deleted row, shift later ones down by 1
+    setPageBreaks(prev =>
+      prev
+        .filter(brk => brk !== index)
+        .map(brk => (brk > index ? brk - 1 : brk))
+    );
   };
 
   const addRow = () => {

@@ -3892,7 +3892,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (existingSession) {
         // Append mode: merge new items onto the end of existing extractedItems
-        const existingItems = (existingSession.extractedItems as any[]) ?? [];
+        const existingItems = existingSession.extractedItems ?? [];
         const mergedItems = [...existingItems, ...result.items];
 
         await db.update(menuImportSessions)
