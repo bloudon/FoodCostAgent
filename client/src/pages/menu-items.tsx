@@ -2130,20 +2130,20 @@ export default function MenuItemsPage() {
                           className={`${rowClass} ${item.active === 0 ? "opacity-60" : ""}`}
                         >
                           <TableCell 
-                            className="font-medium"
+                            className="font-medium cursor-pointer hover-elevate"
+                            onClick={() => handleEditMenuItem(item)}
                             data-testid={`cell-item-name-${item.id}`}
                           >
                             <div className="flex items-center gap-2">
-                              <span
-                                className="cursor-pointer hover:underline"
-                                onClick={() => handleEditMenuItem(item)}
-                              >
-                                {item.name}
-                              </span>
+                              <span className="hover:underline">{item.name}</span>
                               {item.recipeId ? (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Link href={`/recipes/${item.recipeId}`} className="flex items-center">
+                                    <Link
+                                      href={`/recipes/${item.recipeId}`}
+                                      className="flex items-center"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
                                       <BookOpen className="h-3.5 w-3.5 text-primary" />
                                     </Link>
                                   </TooltipTrigger>
@@ -2152,7 +2152,10 @@ export default function MenuItemsPage() {
                               ) : (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <span className="flex items-center cursor-default">
+                                    <span
+                                      className="flex items-center cursor-default"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
                                       <BookOpen className="h-3.5 w-3.5 text-muted-foreground/40" />
                                     </span>
                                   </TooltipTrigger>
