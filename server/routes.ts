@@ -17,7 +17,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -3903,11 +3903,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!session) return res.status(404).json({ error: "Session not found" });
       if (session.status === "approved") return res.status(409).json({ error: "Session already approved" });
 
+      /** Helper: find or create a menu_item_sizes record by name for this company */
+      const sizeIdCache = new Map<string, string>();
+      async function findOrCreateSizeId(sizeName: string): Promise<string> {
+        const key = sizeName.trim().toLowerCase();
+        if (sizeIdCache.has(key)) return sizeIdCache.get(key)!;
+
+        // Look for existing size with this name (company-specific or global)
+        const [existing] = await db.select().from(menuItemSizes)
+          .where(and(eq(menuItemSizes.name, sizeName.trim()), eq(menuItemSizes.companyId, companyId)));
+
+        if (existing) {
+          sizeIdCache.set(key, existing.id);
+          return existing.id;
+        }
+
+        // Create new size record for this company
+        const [created] = await db.insert(menuItemSizes).values({
+          companyId,
+          name: sizeName.trim(),
+          sortOrder: 0,
+          isDefault: 0,
+          active: 1,
+        }).onConflictDoNothing().returning();
+
+        if (created) {
+          sizeIdCache.set(key, created.id);
+          return created.id;
+        }
+
+        // Race condition: another request inserted first — re-query
+        const [refetched] = await db.select().from(menuItemSizes)
+          .where(and(eq(menuItemSizes.name, sizeName.trim()), eq(menuItemSizes.companyId, companyId)));
+        sizeIdCache.set(key, refetched.id);
+        return refetched.id;
+      }
+
       /** Helper: insert a menu_item row and assign to all target stores */
       async function insertMenuItemRow(values: {
         name: string; department: string | null; category: string | null;
         size: string | null; pluSku: string; price: number | null;
         sortOrder: number; parentMenuItemId?: string | null;
+        menuItemSizeId?: string | null;
       }): Promise<string> {
         const [row] = await db.insert(menuItems).values({
           companyId,
@@ -3917,6 +3954,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           size: values.size,
           pluSku: values.pluSku,
           parentMenuItemId: values.parentMenuItemId ?? null,
+          menuItemSizeId: values.menuItemSizeId ?? null,
           isRecipeItem: 1,
           active: 1,
           price: values.price,
@@ -3967,10 +4005,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
               sortOrder: group.sortBase,
             });
 
-            // Create size variant children
+            // Create size variant children linked to menu_item_sizes
             for (let j = 0; j < group.items.length; j++) {
               const variant = group.items[j];
               const variantPlu = `SCAN-${now}-${pluCounter++}`;
+              const menuItemSizeId = variant.size
+                ? await findOrCreateSizeId(variant.size)
+                : null;
               await insertMenuItemRow({
                 name: representative.name.trim(),
                 department: representative.department || null,
@@ -3980,6 +4021,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 price: variant.price ?? null,
                 sortOrder: group.sortBase + j + 1,
                 parentMenuItemId: parentId,
+                menuItemSizeId,
               });
               created++;
             }

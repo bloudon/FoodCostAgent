@@ -256,7 +256,15 @@ export default function MenuImport() {
     });
   };
 
-  const resetWizard = () => {
+  const resetWizard = async () => {
+    // Cancel the current session on the server to avoid leaving pending sessions
+    if (sessionId) {
+      try {
+        await apiRequest('DELETE', `/api/menu-import/${sessionId}`);
+      } catch {
+        // Non-fatal: session will remain in pending state but won't affect anything
+      }
+    }
     setStep(1);
     setImageFile(null);
     setImagePreviewUrl('');
