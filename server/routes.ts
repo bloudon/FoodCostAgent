@@ -3947,7 +3947,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const [session] = await db.select().from(menuImportSessions)
         .where(and(eq(menuImportSessions.id, sessionId), eq(menuImportSessions.companyId, companyId)));
       if (!session) return res.status(404).json({ error: "Session not found" });
-      if (session.status === "approved") return res.status(409).json({ error: "Session already approved" });
+      if (session.status !== "pending") return res.status(409).json({ error: `Session cannot be approved (status: ${session.status})` });
 
       // Resolve storeId: prefer body param → session storeId → first accessible store
       const accessibleStoreIds = await getAccessibleStores((req as any).user, companyId);
@@ -4049,7 +4049,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const now = Date.now();
         let txCreated = 0;
-        let txSkipped = 0;
         let pluCounter = 1;
 
         for (const [, group] of groups) {
@@ -4059,60 +4058,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const hasMultipleSizes = group.items.length > 1
             && group.items.every(i => (i.size || '').trim() !== '');
 
-          try {
-            if (hasMultipleSizes) {
-              const parentPlu = `SCAN-${now}-${pluCounter++}`;
-              const parentId = await insertMenuItemRow({
+          if (hasMultipleSizes) {
+            const parentPlu = `SCAN-${now}-${pluCounter++}`;
+            const parentId = await insertMenuItemRow({
+              name: representative.name.trim(),
+              department: representative.department || null,
+              category: representative.category || null,
+              size: null,
+              pluSku: parentPlu,
+              price: null,
+              sortOrder: group.sortBase,
+            });
+
+            for (let j = 0; j < group.items.length; j++) {
+              const variant = group.items[j];
+              const variantPlu = `SCAN-${now}-${pluCounter++}`;
+              const menuItemSizeId = variant.size ? await findOrCreateSizeId(variant.size) : null;
+              await insertMenuItemRow({
                 name: representative.name.trim(),
                 department: representative.department || null,
                 category: representative.category || null,
-                size: null,
-                pluSku: parentPlu,
-                price: null,
-                sortOrder: group.sortBase,
+                size: variant.size || null,
+                pluSku: variantPlu,
+                price: variant.price ?? null,
+                sortOrder: group.sortBase + j + 1,
+                parentMenuItemId: parentId,
+                menuItemSizeId,
               });
-
-              for (let j = 0; j < group.items.length; j++) {
-                const variant = group.items[j];
-                const variantPlu = `SCAN-${now}-${pluCounter++}`;
-                const menuItemSizeId = variant.size ? await findOrCreateSizeId(variant.size) : null;
-                await insertMenuItemRow({
-                  name: representative.name.trim(),
-                  department: representative.department || null,
-                  category: representative.category || null,
-                  size: variant.size || null,
-                  pluSku: variantPlu,
-                  price: variant.price ?? null,
-                  sortOrder: group.sortBase + j + 1,
-                  parentMenuItemId: parentId,
-                  menuItemSizeId,
-                });
-                txCreated++;
-              }
-              txCreated++; // count the parent
-            } else {
-              // Import each item individually (preserves duplicate rows with same name/dept/cat
-              // when they don't all have sizes — e.g., two distinct "Cheese Pizza" rows)
-              for (let j = 0; j < group.items.length; j++) {
-                const item = group.items[j];
-                const pluSku = `SCAN-${now}-${pluCounter++}`;
-                await insertMenuItemRow({
-                  name: item.name.trim(),
-                  department: item.department || null,
-                  category: item.category || null,
-                  size: item.size || null,
-                  pluSku,
-                  price: item.price ?? null,
-                  sortOrder: group.sortBase + j,
-                });
-                txCreated++;
-              }
+              txCreated++;
             }
-          } catch (err: any) {
-            if (err.code === "23505") {
-              txSkipped++;
-            } else {
-              throw err; // rolls back the transaction
+            txCreated++; // count the parent
+          } else {
+            // Import each item individually (preserves duplicate rows with same name/dept/cat
+            // when they don't all have sizes — e.g., two distinct "Cheese Pizza" rows)
+            for (let j = 0; j < group.items.length; j++) {
+              const item = group.items[j];
+              const pluSku = `SCAN-${now}-${pluCounter++}`;
+              await insertMenuItemRow({
+                name: item.name.trim(),
+                department: item.department || null,
+                category: item.category || null,
+                size: item.size || null,
+                pluSku,
+                price: item.price ?? null,
+                sortOrder: group.sortBase + j,
+              });
+              txCreated++;
             }
           }
         }
@@ -4122,7 +4113,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .set({ status: "approved", rawImagePath: null, extractedItems: null, updatedAt: new Date() })
           .where(eq(menuImportSessions.id, sessionId));
 
-        return { created: txCreated, skipped: txSkipped };
+        return { created: txCreated, skipped: 0 };
       });
 
       return res.json({ menuItemsCreated: created, skipped });
@@ -4136,7 +4127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * DELETE /api/menu-import/:sessionId
    * Cancels/cleans up a pending session.
    */
-  app.delete("/api/menu-import/:sessionId", requireAuth, async (req, res) => {
+  app.delete("/api/menu-import/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       // Clear staging data and mark as cancelled
