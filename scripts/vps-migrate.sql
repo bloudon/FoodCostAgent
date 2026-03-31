@@ -222,3 +222,23 @@ BEGIN
       VALUES ('v009', 'Task #25: menu_import_sessions staging table for AI menu scan');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v010 — Task #25: Upgrade extracted_items column from text to jsonb
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v010') THEN
+
+    -- Safely migrate text → jsonb; rows with NULL or invalid JSON become NULL
+    ALTER TABLE menu_import_sessions
+      ALTER COLUMN extracted_items TYPE jsonb
+        USING CASE
+          WHEN extracted_items IS NULL OR extracted_items = '' THEN NULL
+          ELSE extracted_items::jsonb
+        END;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v010', 'Task #25: upgrade menu_import_sessions.extracted_items from text to jsonb');
+  END IF;
+END $$;

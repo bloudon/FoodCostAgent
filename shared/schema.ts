@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, timestamp, unique, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, timestamp, unique, index, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1256,7 +1256,7 @@ export const menuImportSessions = pgTable("menu_import_sessions", {
   storeId: varchar("store_id"),
   status: text("status").notNull().default("pending"), // pending, approved, cancelled
   rawImagePath: text("raw_image_path"), // objectPath of the uploaded menu image
-  extractedItems: text("extracted_items"), // JSON array of {name, category, size, price, department}
+  extractedItems: jsonb("extracted_items").$type<Array<{ name: string; category?: string; size?: string; price?: number | null; department?: string }>>(), // JSONB array of extracted menu items
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({

@@ -3761,19 +3761,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI-Powered Menu Image Scan Import
   // ===================================================================
 
-  /** Helper: read image buffer from storage with company auth */
-  async function readImageBuffer(objectPath: string, companyId: string): Promise<{ buffer: Buffer; mimeType: string }> {
+  /** Helper: read image buffer from storage with company/user auth enforcement */
+  async function readImageBuffer(
+    objectPath: string,
+    companyId: string,
+    userId?: string,
+  ): Promise<{ buffer: Buffer; mimeType: string }> {
     if (useLocalStorage) {
+      // Local mode: getFile() resolves and validates the path belongs to companyId
       const { filePath, metadata } = await localStorageService.getFile(objectPath, companyId);
       const fsModule = await import("fs");
       const buffer = fsModule.readFileSync(filePath);
       const mimeType = metadata.contentType || "image/jpeg";
       return { buffer, mimeType };
     } else {
-      // Replit object storage: stream into a buffer
+      // Replit object storage: enforce ACL authorization before reading
       const objStorage = await import("./objectStorage");
       const svc = new objStorage.ObjectStorageService();
       const file = await svc.getObjectEntityFile(objectPath);
+
+      const canAccess = await svc.canAccessObjectEntity({
+        objectFile: file,
+        userId,
+        requestedPermission: replitObjectAcl.ObjectPermission.READ,
+      });
+      if (!canAccess) {
+        const err: any = new Error("Access denied to requested object");
+        err.status = 403;
+        throw err;
+      }
+
       const stream = file.createReadStream();
       const chunks: Buffer[] = [];
       await new Promise<void>((resolve, reject) => {
@@ -3813,9 +3830,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
       }
       const { imageObjectPath, storeId } = parsed.data;
+      const userId = (req as any).user?.id;
 
-      // Read the image buffer using the storage service (enforces company ownership)
-      const { buffer, mimeType } = await readImageBuffer(imageObjectPath, companyId);
+      // Read the image buffer using the storage service (enforces company/user ownership)
+      const { buffer, mimeType } = await readImageBuffer(imageObjectPath, companyId, userId);
 
       const { scanMenuImage } = await import('./services/menuScanner');
       const result = await scanMenuImage(buffer, mimeType);
@@ -3825,7 +3843,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storeId: storeId || null,
         status: "pending",
         rawImagePath: imageObjectPath,
-        extractedItems: JSON.stringify(result.items),
+        extractedItems: result.items,
       }).returning();
 
       return res.json({
@@ -3835,7 +3853,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error("[Menu Import Scan]", error);
-      return res.status(500).json({ error: error.message });
+      const status = error.status === 403 ? 403 : 500;
+      return res.status(status).json({ error: error.message });
     }
   });
 
@@ -3852,7 +3871,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json({
         sessionId: session.id,
         status: session.status,
-        items: JSON.parse(session.extractedItems || "[]"),
+        items: session.extractedItems ?? [],
       });
     } catch (error: any) {
       console.error("[Menu Import GET]", error);
