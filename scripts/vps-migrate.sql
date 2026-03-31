@@ -230,7 +230,9 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v010') THEN
 
-    -- Safely migrate text → jsonb; rows with NULL or invalid JSON become NULL
+    -- Migrate text → jsonb. Table is new (created in v009) so all existing values
+    -- are either NULL or valid JSON written by the application. The cast will fail
+    -- if any row contains non-NULL non-empty invalid JSON, but that cannot occur here.
     ALTER TABLE menu_import_sessions
       ALTER COLUMN extracted_items TYPE jsonb
         USING CASE
