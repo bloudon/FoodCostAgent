@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLocation, useSearch } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -160,17 +160,39 @@ export default function MenuImport() {
     },
   });
 
-  // Row editing helpers
+  // Autosave: persist edited items to server so refresh doesn't lose progress
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autosaveMutation = useMutation({
+    mutationFn: async (editedItems: ExtractedItem[]) => {
+      const res = await apiRequest('PATCH', `/api/menu-import/${sessionId}`, { items: editedItems });
+      if (!res.ok) throw new Error('Autosave failed');
+    },
+  });
+
+  const scheduleAutosave = (editedItems: ExtractedItem[]) => {
+    if (!sessionId || step !== 2) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      autosaveMutation.mutate(editedItems);
+    }, 1500);
+  };
+
+  // Row editing helpers (each triggers debounced autosave to persist progress)
   const updateItem = (index: number, field: keyof ExtractedItem, value: string | number | null) => {
     setItems(prev => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
+      scheduleAutosave(next);
       return next;
     });
   };
 
   const deleteItem = (index: number) => {
-    setItems(prev => prev.filter((_: ExtractedItem, i: number) => i !== index));
+    setItems(prev => {
+      const next = prev.filter((_: ExtractedItem, i: number) => i !== index);
+      scheduleAutosave(next);
+      return next;
+    });
     setSelectedRowIndices(prev => {
       const next = new Set<number>();
       prev.forEach(i => { if (i < index) next.add(i); else if (i > index) next.add(i - 1); });
@@ -179,7 +201,11 @@ export default function MenuImport() {
   };
 
   const addRow = () => {
-    setItems(prev => [...prev, { ...EMPTY_ITEM }]);
+    setItems(prev => {
+      const next = [...prev, { ...EMPTY_ITEM }];
+      scheduleAutosave(next);
+      return next;
+    });
     setSelectedRowIndices(prev => new Set([...prev, items.length]));
   };
 

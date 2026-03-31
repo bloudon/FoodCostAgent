@@ -3916,6 +3916,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
+   * PATCH /api/menu-import/:sessionId
+   * Persists user edits (edited/added/deleted rows) back to session staging data.
+   * Called automatically as the user edits items in Step 2 (debounced autosave).
+   */
+  app.patch("/api/menu-import/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { sessionId } = req.params;
+
+      const bodySchema = z.object({
+        items: z.array(z.object({
+          name: z.string(),
+          department: z.string().default(""),
+          category: z.string().default(""),
+          size: z.string().default(""),
+          price: z.number().nullable().optional(),
+        })),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const [session] = await db.select().from(menuImportSessions)
+        .where(and(eq(menuImportSessions.id, sessionId), eq(menuImportSessions.companyId, companyId)));
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      if (session.status !== "pending") return res.status(409).json({ error: "Session is not editable" });
+
+      await db.update(menuImportSessions)
+        .set({ extractedItems: parsed.data.items, updatedAt: new Date() })
+        .where(eq(menuImportSessions.id, sessionId));
+
+      return res.json({ success: true });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
    * POST /api/menu-import/:sessionId/approve
    * User-confirmed items → creates menu_items (with parent/variant structure for
    * multi-size items) + store_menu_items rows. Marks the session as approved.
