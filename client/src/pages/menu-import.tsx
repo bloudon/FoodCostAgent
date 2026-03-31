@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLocation, useSearch } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -58,6 +58,12 @@ export default function MenuImport() {
   const [items, setItems] = useState<ExtractedItem[]>([]);
   const [selectedRowIndices, setSelectedRowIndices] = useState<Set<number>>(new Set());
 
+  // Refs used by unmount cleanup to capture latest state without stale closures
+  const sessionIdRef = useRef(sessionId);
+  const stepRef = useRef(step);
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+  useEffect(() => { stepRef.current = step; }, [step]);
+
   // Rehydrate items from server if returning with a sessionId in URL
   const { data: sessionData } = useQuery({
     queryKey: ['/api/menu-import', urlSessionId],
@@ -90,6 +96,25 @@ export default function MenuImport() {
       navigate(`/menu-import?${params.toString()}`, { replace: true });
     }
   }, [sessionId]);
+
+  // Clean up any pending session when the user navigates away from the wizard
+  // (covers browser back, link clicks, programmatic navigation, tab close)
+  useEffect(() => {
+    return () => {
+      // Use a ref snapshot so the callback captures the latest sessionId + step at unmount
+      const sid = sessionIdRef.current;
+      const st = stepRef.current;
+      if (sid && st !== 'done') {
+        // fire-and-forget via sendBeacon for reliability during page unload
+        if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+          const blob = new Blob(['{}'], { type: 'application/json' });
+          navigator.sendBeacon(`/api/menu-import/${sid}`, blob);
+        } else {
+          fetch(`/api/menu-import/${sid}`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
+        }
+      }
+    };
+  }, []);
 
   const stepNum = step === 'done' ? 4 : step;
   const steps = [
@@ -129,6 +154,7 @@ export default function MenuImport() {
   const approveMutation = useMutation({
     mutationFn: async () => {
       const approvedItems = items.filter((_: ExtractedItem, i: number) => selectedRowIndices.has(i));
+      const selectedCount = approvedItems.length;
       const res = await apiRequest('POST', `/api/menu-import/${sessionId}/approve`, {
         items: approvedItems,
         storeId: selectedStoreId || undefined,
@@ -137,12 +163,16 @@ export default function MenuImport() {
         const err = await res.json() as { error?: string };
         throw new Error(err.error || 'Import failed');
       }
-      return res.json() as Promise<{ menuItemsCreated: number; skipped: number }>;
+      const result = await res.json() as { menuItemsCreated: number; skipped: number };
+      return { ...result, selectedCount };
     },
     onSuccess: (data) => {
+      // Report selected rows count (user's mental model) rather than total DB rows created
+      // (which may exceed selected count due to synthetic parent rows for multi-size groups)
+      const n = data.selectedCount;
       toast({
         title: 'Import Complete',
-        description: `${data.menuItemsCreated} menu item${data.menuItemsCreated !== 1 ? 's' : ''} added`,
+        description: `${n} menu item${n !== 1 ? 's' : ''} imported`,
       });
       queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
       queryClient.invalidateQueries({ queryKey: ['/api/menu-items/hierarchy'] });
