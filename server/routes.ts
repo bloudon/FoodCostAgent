@@ -3836,6 +3836,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Read the image buffer using the storage service (enforces company/user ownership)
       const { buffer, mimeType } = await readImageBuffer(imageObjectPath, companyId, userId);
 
+      // Enforce allowed image types (jpg, png, webp only — no gif or other formats)
+      const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+      if (!allowedMimeTypes.has(mimeType)) {
+        return res.status(415).json({
+          error: `Unsupported image type: ${mimeType}. Please upload JPG, PNG, or WebP.`,
+        });
+      }
+
       const { scanMenuImage } = await import('./services/menuScanner');
       const result = await scanMenuImage(buffer, mimeType);
 
@@ -4019,7 +4027,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         for (const [, group] of groups) {
           const representative = group.items[0];
-          const hasMultipleSizes = group.items.length > 1 && group.items.some(i => i.size);
+          // Only treat as multi-size variants when EVERY item in the group has a non-empty
+          // size field — this preserves intentional duplicate rows with no size
+          const hasMultipleSizes = group.items.length > 1
+            && group.items.every(i => (i.size || '').trim() !== '');
 
           try {
             if (hasMultipleSizes) {
@@ -4053,17 +4064,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
               txCreated++; // count the parent
             } else {
-              const pluSku = `SCAN-${now}-${pluCounter++}`;
-              await insertMenuItemRow({
-                name: representative.name.trim(),
-                department: representative.department || null,
-                category: representative.category || null,
-                size: representative.size || null,
-                pluSku,
-                price: representative.price ?? null,
-                sortOrder: group.sortBase,
-              });
-              txCreated++;
+              // Import each item individually (preserves duplicate rows with same name/dept/cat
+              // when they don't all have sizes — e.g., two distinct "Cheese Pizza" rows)
+              for (let j = 0; j < group.items.length; j++) {
+                const item = group.items[j];
+                const pluSku = `SCAN-${now}-${pluCounter++}`;
+                await insertMenuItemRow({
+                  name: item.name.trim(),
+                  department: item.department || null,
+                  category: item.category || null,
+                  size: item.size || null,
+                  pluSku,
+                  price: item.price ?? null,
+                  sortOrder: group.sortBase + j,
+                });
+                txCreated++;
+              }
             }
           } catch (err: any) {
             if (err.code === "23505") {
