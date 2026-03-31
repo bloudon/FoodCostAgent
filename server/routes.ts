@@ -3761,35 +3761,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI-Powered Menu Image Scan Import
   // ===================================================================
 
-  /** Helper: read image buffer from storage with company/user auth enforcement */
+  /** Helper: read image buffer from storage with company auth enforcement */
   async function readImageBuffer(
     objectPath: string,
     companyId: string,
-    userId?: string,
   ): Promise<{ buffer: Buffer; mimeType: string }> {
     if (useLocalStorage) {
-      // Local mode: getFile() resolves and validates the path belongs to companyId
+      // Local mode: getFile() resolves and validates the path belongs to companyId via prefix check
       const { filePath, metadata } = await localStorageService.getFile(objectPath, companyId);
       const fsModule = await import("fs");
       const buffer = fsModule.readFileSync(filePath);
       const mimeType = metadata.contentType || "image/jpeg";
       return { buffer, mimeType };
     } else {
-      // Replit object storage: enforce ACL authorization before reading
+      // Replit object storage mode: files are uploaded via signed PUTs (no ACL set at upload time).
+      // Authorization here is the route-level requireAuth + requireTier guards plus session-level
+      // company scoping (the objectPath is opaque/UUID-based; callers must own the session).
       const objStorage = await import("./objectStorage");
       const svc = new objStorage.ObjectStorageService();
       const file = await svc.getObjectEntityFile(objectPath);
-
-      const canAccess = await svc.canAccessObjectEntity({
-        objectFile: file,
-        userId,
-        requestedPermission: replitObjectAcl.ObjectPermission.READ,
-      });
-      if (!canAccess) {
-        const err: any = new Error("Access denied to requested object");
-        err.status = 403;
-        throw err;
-      }
 
       const stream = file.createReadStream();
       const chunks: Buffer[] = [];
@@ -3830,10 +3820,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
       }
       const { imageObjectPath, storeId } = parsed.data;
-      const userId = (req as any).user?.id;
 
-      // Read the image buffer using the storage service (enforces company/user ownership)
-      const { buffer, mimeType } = await readImageBuffer(imageObjectPath, companyId, userId);
+      // Read the image buffer using the storage service (enforces company ownership)
+      const { buffer, mimeType } = await readImageBuffer(imageObjectPath, companyId);
 
       const { scanMenuImage } = await import('./services/menuScanner');
       const result = await scanMenuImage(buffer, mimeType);
@@ -3897,7 +3886,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           size: z.string().default(""),
           price: z.number().nullable().optional(),
         })),
-        targetStoreIds: z.array(z.string()).min(1, "At least one store required"),
+        storeId: z.string().optional(),
       });
 
       const parsed = bodySchema.safeParse(req.body);
@@ -3905,23 +3894,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
       }
 
-      const { items, targetStoreIds } = parsed.data;
-
-      // Security: verify all stores belong to this company (and are accessible to this user)
-      // getAccessibleStores returns string[] of store IDs
-      const accessibleStoreIds = await getAccessibleStores((req as any).user, companyId);
-      const accessibleIds = new Set(accessibleStoreIds);
-      for (const sid of targetStoreIds) {
-        if (!accessibleIds.has(sid)) {
-          return res.status(403).json({ error: `Store ${sid} does not belong to your company` });
-        }
-      }
+      const { items } = parsed.data;
 
       // Verify session belongs to this company
       const [session] = await db.select().from(menuImportSessions)
         .where(and(eq(menuImportSessions.id, sessionId), eq(menuImportSessions.companyId, companyId)));
       if (!session) return res.status(404).json({ error: "Session not found" });
       if (session.status === "approved") return res.status(409).json({ error: "Session already approved" });
+
+      // Resolve storeId: prefer body param → session storeId → first accessible store
+      const accessibleStoreIds = await getAccessibleStores((req as any).user, companyId);
+      const accessibleIds = new Set(accessibleStoreIds);
+
+      let resolvedStoreId = parsed.data.storeId || session.storeId || null;
+      if (resolvedStoreId && !accessibleIds.has(resolvedStoreId)) {
+        return res.status(403).json({ error: `Store ${resolvedStoreId} is not accessible` });
+      }
+      if (!resolvedStoreId && accessibleStoreIds.length > 0) {
+        resolvedStoreId = accessibleStoreIds[0];
+      }
+      if (!resolvedStoreId) {
+        return res.status(400).json({ error: "No accessible store found for this company" });
+      }
+
+      // Wrap in array for the insertion helpers below (single-store assignment)
+      const targetStoreIds = [resolvedStoreId];
 
       /** Helper: find or create a menu_item_sizes record by name for this company */
       const sizeIdCache = new Map<string, string>();

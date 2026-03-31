@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,17 +15,10 @@ import {
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import {
   ArrowLeft,
   Camera,
   Check,
   CheckCheck,
-  ChevronDown,
-  ImageIcon,
   Loader2,
   Plus,
   Sparkles,
@@ -37,6 +30,7 @@ import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useStoreContext } from '@/hooks/use-store-context';
 import { TierGate } from '@/components/tier-gate';
+import { ObjectUploader } from '@/components/ObjectUploader';
 
 interface ExtractedItem {
   name: string;
@@ -48,61 +42,19 @@ interface ExtractedItem {
 
 const EMPTY_ITEM: ExtractedItem = { name: '', department: '', category: '', size: '', price: null };
 
-/**
- * Upload an image to object storage. Handles both local mode (objectPath returned)
- * and Replit mode (uploadUrl returned — PUT directly then derive objectPath).
- */
-async function uploadImageToStorage(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('visibility', 'private');
-
-  const response = await fetch('/api/objects/upload', {
-    method: 'POST',
-    credentials: 'include',
-    body: formData,
-  });
-
-  if (!response.ok) throw new Error('Image upload failed');
-  const data = await response.json() as { objectPath?: string; uploadUrl?: string };
-
-  if (data.objectPath) {
-    return data.objectPath;
-  } else if (data.uploadUrl) {
-    // Replit object storage: PUT the file directly to the signed URL
-    const putResponse = await fetch(data.uploadUrl, {
-      method: 'PUT',
-      body: file,
-      headers: { 'Content-Type': file.type },
-    });
-    if (!putResponse.ok) throw new Error('Failed to upload image to storage');
-    const url = new URL(data.uploadUrl);
-    return url.pathname;
-  } else {
-    throw new Error('Upload did not return a valid object path');
-  }
-}
-
 export default function MenuImport() {
   const [location, navigate] = useLocation();
   const { toast } = useToast();
-  const { stores, selectedStoreId } = useStoreContext();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { selectedStoreId } = useStoreContext();
 
   // Parse sessionId from URL query params for refresh-safe rehydration
   const searchParams = new URLSearchParams(location.split('?')[1] || '');
   const urlSessionId = searchParams.get('sessionId') || '';
 
   const [step, setStep] = useState<1 | 2 | 3 | 'done'>(urlSessionId ? 2 : 1);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string>('');
   const [sessionId, setSessionId] = useState<string>(urlSessionId);
   const [items, setItems] = useState<ExtractedItem[]>([]);
   const [selectedRowIndices, setSelectedRowIndices] = useState<Set<number>>(new Set());
-  const [targetStoreIds, setTargetStoreIds] = useState<Set<string>>(
-    new Set(selectedStoreId ? [selectedStoreId] : [])
-  );
-  const [isStoreOpen, setIsStoreOpen] = useState(false);
 
   // Rehydrate items from server if returning with a sessionId in URL
   const { data: sessionData } = useQuery({
@@ -124,12 +76,9 @@ export default function MenuImport() {
     if (items.length === 0 && sessionData.items.length > 0) {
       setItems(sessionData.items);
       setSelectedRowIndices(new Set(sessionData.items.map((_: ExtractedItem, i: number) => i)));
-      if (stores.length > 0 && targetStoreIds.size === 0) {
-        setTargetStoreIds(new Set(stores.map(s => s.id)));
-      }
       setStep(2);
     }
-  }, [sessionData, stores.length]);
+  }, [sessionData]);
 
   // Update URL when sessionId changes (for refresh-safety)
   useEffect(() => {
@@ -147,18 +96,9 @@ export default function MenuImport() {
     { num: 3, label: 'Confirm' },
   ];
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImageFile(file);
-    setImagePreviewUrl(URL.createObjectURL(file));
-  };
-
-  // Upload image then scan with AI
-  const uploadAndScanMutation = useMutation({
-    mutationFn: async () => {
-      if (!imageFile) throw new Error('No image selected');
-      const objectPath = await uploadImageToStorage(imageFile);
+  // Scan mutation: called once ObjectUploader returns the objectPath
+  const scanMutation = useMutation({
+    mutationFn: async (objectPath: string) => {
       const scanRes = await apiRequest('POST', '/api/menu-import/scan', {
         imageObjectPath: objectPath,
         storeId: selectedStoreId || undefined,
@@ -173,9 +113,6 @@ export default function MenuImport() {
       setSessionId(data.sessionId);
       setItems(data.items);
       setSelectedRowIndices(new Set(data.items.map((_: ExtractedItem, i: number) => i)));
-      if (stores.length > 0 && targetStoreIds.size === 0) {
-        setTargetStoreIds(new Set(stores.map(s => s.id)));
-      }
       setStep(2);
       toast({
         title: 'Scan Complete',
@@ -192,7 +129,7 @@ export default function MenuImport() {
       const approvedItems = items.filter((_: ExtractedItem, i: number) => selectedRowIndices.has(i));
       const res = await apiRequest('POST', `/api/menu-import/${sessionId}/approve`, {
         items: approvedItems,
-        targetStoreIds: Array.from(targetStoreIds),
+        storeId: selectedStoreId || undefined,
       });
       if (!res.ok) {
         const err = await res.json() as { error?: string };
@@ -248,26 +185,16 @@ export default function MenuImport() {
   const selectAll = () => setSelectedRowIndices(new Set(items.map((_: ExtractedItem, i: number) => i)));
   const deselectAll = () => setSelectedRowIndices(new Set());
 
-  const toggleStore = (id: string) => {
-    setTargetStoreIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) { if (next.size > 1) next.delete(id); } else next.add(id);
-      return next;
-    });
-  };
-
   const resetWizard = async () => {
     // Cancel the current session on the server to avoid leaving pending sessions
     if (sessionId) {
       try {
         await apiRequest('DELETE', `/api/menu-import/${sessionId}`);
       } catch {
-        // Non-fatal: session will remain in pending state but won't affect anything
+        // Non-fatal
       }
     }
     setStep(1);
-    setImageFile(null);
-    setImagePreviewUrl('');
     setItems([]);
     setSessionId('');
     setSelectedRowIndices(new Set());
@@ -328,66 +255,27 @@ export default function MenuImport() {
                 <p className="text-sm text-muted-foreground">
                   Take a clear photo of your menu or upload an existing image.
                   Works best with well-lit, straight-on shots. JPG, PNG, or WebP accepted.
+                  The AI scan will start automatically once your image is uploaded.
                 </p>
 
-                {/* Image drop zone */}
-                <div
-                  className="border-2 border-dashed rounded-md p-8 text-center cursor-pointer hover-elevate"
-                  onClick={() => fileInputRef.current?.click()}
-                  data-testid="image-drop-zone"
-                >
-                  {imagePreviewUrl ? (
-                    <div className="space-y-3">
-                      <img
-                        src={imagePreviewUrl}
-                        alt="Menu preview"
-                        className="max-h-72 mx-auto rounded-md object-contain"
-                      />
-                      <p className="text-sm text-muted-foreground">
-                        {imageFile?.name} — click to change
-                      </p>
-                    </div>
-                  ) : (
-                    <div>
-                      <ImageIcon className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-                      <p className="font-medium">Click to upload a menu image</p>
-                      <p className="text-sm text-muted-foreground mt-1">JPG, PNG, or WebP</p>
-                    </div>
-                  )}
-                </div>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  onChange={handleFileChange}
-                  data-testid="input-image-upload"
-                />
-
-                <Button
-                  onClick={() => uploadAndScanMutation.mutate()}
-                  disabled={!imageFile || uploadAndScanMutation.isPending}
-                  className="w-full"
-                  data-testid="button-scan"
-                >
-                  {uploadAndScanMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Scan Menu with AI
-                    </>
-                  )}
-                </Button>
-
-                {uploadAndScanMutation.isPending && (
-                  <p className="text-xs text-center text-muted-foreground">
-                    This may take 10–20 seconds depending on menu size
-                  </p>
+                {scanMutation.isPending ? (
+                  <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
+                    <Loader2 className="h-10 w-10 animate-spin" />
+                    <p className="font-medium">Scanning your menu with AI…</p>
+                    <p className="text-xs">This may take 10–20 seconds depending on menu size</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-4">
+                    <ObjectUploader
+                      onUploadComplete={(objectPath) => scanMutation.mutate(objectPath)}
+                      buttonText="Select Menu Image"
+                      dataTestId="button-upload-menu"
+                      visibility="private"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Supports JPG, PNG, WebP up to 10 MB
+                    </p>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -542,64 +430,40 @@ export default function MenuImport() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {/* Summary */}
-                  <div className="grid grid-cols-2 gap-4 text-center">
-                    <div className="rounded-md bg-muted/50 p-4">
-                      <div className="text-3xl font-bold">{selectedCount}</div>
-                      <div className="text-sm text-muted-foreground mt-1">Items to import</div>
+                  <div className="text-center rounded-md bg-muted/50 p-6">
+                    <div className="text-4xl font-bold">{selectedCount}</div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      item{selectedCount !== 1 ? 's' : ''} ready to import
                     </div>
-                    <div className="rounded-md bg-muted/50 p-4">
-                      <div className="text-3xl font-bold">{targetStoreIds.size}</div>
-                      <div className="text-sm text-muted-foreground mt-1">Target store{targetStoreIds.size !== 1 ? 's' : ''}</div>
+                    <div className="text-sm text-muted-foreground mt-3">
+                      Items will be added to your current store.
+                      You can assign them to other stores after import.
                     </div>
                   </div>
 
-                  {/* Store selector */}
-                  {stores.length > 1 && (
-                    <Collapsible open={isStoreOpen} onOpenChange={setIsStoreOpen}>
-                      <CollapsibleTrigger asChild>
-                        <Button variant="outline" className="w-full justify-between" data-testid="button-store-selector">
-                          <span className="flex items-center gap-2">
-                            <Store className="h-4 w-4" />
-                            Assign to stores
-                            <Badge variant="secondary">{targetStoreIds.size} selected</Badge>
-                          </span>
-                          <ChevronDown className={`h-4 w-4 transition-transform ${isStoreOpen ? 'rotate-180' : ''}`} />
-                        </Button>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="mt-2 space-y-2 border rounded-md p-3">
-                        {stores.map((s) => (
-                          <label key={s.id} className="flex items-center gap-2 cursor-pointer" data-testid={`store-option-${s.id}`}>
-                            <Checkbox
-                              checked={targetStoreIds.has(s.id)}
-                              onCheckedChange={() => toggleStore(s.id)}
-                            />
-                            <span className="text-sm">{s.name}</span>
-                          </label>
-                        ))}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  )}
-
-                  {/* Item preview list */}
-                  <div>
-                    <p className="text-sm font-medium mb-2">Items being imported:</p>
-                    <div className="max-h-56 overflow-y-auto space-y-1">
+                  {/* Item preview (first 5) */}
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Items to import:</p>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
                       {items
                         .filter((_: ExtractedItem, i: number) => selectedRowIndices.has(i))
+                        .slice(0, 10)
                         .map((item, i) => (
                           <div key={i} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
-                            <span className="font-medium">
+                            <span>
                               {item.name}
                               {item.size && <span className="text-muted-foreground ml-1">({item.size})</span>}
                             </span>
-                            <div className="flex items-center gap-2">
-                              {item.department && <Badge variant="outline" className="text-xs">{item.department}</Badge>}
-                              {item.price != null && (
-                                <span className="text-muted-foreground">${item.price.toFixed(2)}</span>
-                              )}
-                            </div>
+                            {item.price != null && (
+                              <span className="text-muted-foreground">${item.price.toFixed(2)}</span>
+                            )}
                           </div>
                         ))}
+                      {selectedCount > 10 && (
+                        <p className="text-xs text-muted-foreground pt-1">
+                          …and {selectedCount - 10} more
+                        </p>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -612,19 +476,13 @@ export default function MenuImport() {
                 </Button>
                 <Button
                   onClick={() => approveMutation.mutate()}
-                  disabled={approveMutation.isPending || selectedCount === 0 || targetStoreIds.size === 0}
+                  disabled={approveMutation.isPending || selectedCount === 0}
                   data-testid="button-confirm-import"
                 >
                   {approveMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Importing...
-                    </>
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing…</>
                   ) : (
-                    <>
-                      <Check className="h-4 w-4 mr-2" />
-                      Import {selectedCount} Item{selectedCount !== 1 ? 's' : ''}
-                    </>
+                    <><Sparkles className="h-4 w-4 mr-2" />Import {selectedCount} item{selectedCount !== 1 ? 's' : ''}</>
                   )}
                 </Button>
               </div>
@@ -634,26 +492,28 @@ export default function MenuImport() {
           {/* ── Done ── */}
           {step === 'done' && (
             <Card>
-              <CardContent className="pt-8 pb-8 text-center space-y-4">
-                <div className="flex items-center justify-center h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/30 mx-auto">
-                  <Check className="h-8 w-8 text-green-600 dark:text-green-400" />
+              <CardContent className="py-10 text-center space-y-4">
+                <div className="flex items-center justify-center h-14 w-14 rounded-full bg-green-100 dark:bg-green-900/20 mx-auto">
+                  <Check className="h-7 w-7 text-green-600" />
                 </div>
-                <h2 className="text-xl font-bold">Import Complete!</h2>
-                <p className="text-muted-foreground">
-                  Your menu items have been added. You can now link recipes to them on the Menu Items page.
-                </p>
-                <div className="flex gap-2 justify-center pt-2">
-                  <Button variant="outline" onClick={resetWizard} data-testid="button-scan-another">
-                    <Camera className="h-4 w-4 mr-2" />
-                    Scan Another Menu
+                <div>
+                  <h2 className="text-xl font-semibold">Import Complete</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Your menu items have been added successfully.
+                  </p>
+                </div>
+                <div className="flex gap-2 justify-center">
+                  <Button variant="outline" onClick={resetWizard} data-testid="button-import-another">
+                    Import Another Menu
                   </Button>
-                  <Button onClick={() => navigate('/menu-items')} data-testid="button-go-to-menu">
+                  <Button onClick={() => navigate('/menu-items')} data-testid="button-view-menu-items">
                     View Menu Items
                   </Button>
                 </div>
               </CardContent>
             </Card>
           )}
+
         </div>
       </div>
     </TierGate>
