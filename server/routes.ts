@@ -4133,6 +4133,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (let j = 0; j < group.items.length; j++) {
               const item = group.items[j];
               const pluSku = `SCAN-${now}-${pluCounter++}`;
+              // Populate menuItemSizeId even for single items that have a size string
+              const menuItemSizeId = item.size ? await findOrCreateSizeId(item.size) : null;
               await insertMenuItemRow({
                 name: item.name.trim(),
                 department: item.department || null,
@@ -4141,6 +4143,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 pluSku,
                 price: item.price ?? null,
                 sortOrder: group.sortBase + j,
+                menuItemSizeId,
               });
               txCreated++;
             }
