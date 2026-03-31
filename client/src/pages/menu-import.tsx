@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -43,12 +43,14 @@ interface ExtractedItem {
 const EMPTY_ITEM: ExtractedItem = { name: '', department: '', category: '', size: '', price: null };
 
 export default function MenuImport() {
-  const [location, navigate] = useLocation();
+  const [, navigate] = useLocation();
+  const search = useSearch();
   const { toast } = useToast();
   const { selectedStoreId } = useStoreContext();
 
   // Parse sessionId from URL query params for refresh-safe rehydration
-  const searchParams = new URLSearchParams(location.split('?')[1] || '');
+  // useSearch() returns the raw query string (e.g. "sessionId=abc") in wouter v3
+  const searchParams = new URLSearchParams(search);
   const urlSessionId = searchParams.get('sessionId') || '';
 
   const [step, setStep] = useState<1 | 2 | 3 | 'done'>(urlSessionId ? 2 : 1);
