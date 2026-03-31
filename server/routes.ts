@@ -4169,15 +4169,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/menu-import/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
-      // Clear staging data and mark as cancelled
-      await db.update(menuImportSessions)
+      // Only cancel sessions that are still pending (preserve audit integrity for approved/cancelled)
+      const result = await db.update(menuImportSessions)
         .set({
           status: "cancelled",
           rawImagePath: null,
           extractedItems: null,
           updatedAt: new Date(),
         })
-        .where(and(eq(menuImportSessions.id, req.params.sessionId), eq(menuImportSessions.companyId, companyId)));
+        .where(and(
+          eq(menuImportSessions.id, req.params.sessionId),
+          eq(menuImportSessions.companyId, companyId),
+          eq(menuImportSessions.status, "pending"),
+        ))
+        .returning({ id: menuImportSessions.id });
+      if (result.length === 0) {
+        // Session not found, already approved/cancelled — treat as success (idempotent cleanup)
+        return res.json({ success: true });
+      }
       return res.json({ success: true });
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
