@@ -4092,10 +4092,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         for (const [, group] of groups) {
           const representative = group.items[0];
-          // Only treat as multi-size variants when EVERY item in the group has a non-empty
-          // size field — this preserves intentional duplicate rows with no size
+          // Only treat as multi-size variants when EVERY item has a non-empty size AND
+          // there are at least 2 DISTINCT size values — this prevents duplicate rows
+          // with the same size from being incorrectly modeled as parent+variant pairs
+          const nonEmptySizes = group.items.map(i => (i.size || '').trim()).filter(Boolean);
           const hasMultipleSizes = group.items.length > 1
-            && group.items.every(i => (i.size || '').trim() !== '');
+            && nonEmptySizes.length === group.items.length
+            && new Set(nonEmptySizes).size >= 2;
 
           if (hasMultipleSizes) {
             const parentPlu = `SCAN-${now}-${pluCounter++}`;
