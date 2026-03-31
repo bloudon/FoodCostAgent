@@ -176,8 +176,10 @@ export default function MenuImport() {
   // Append-page mutation: scans an additional image and merges its items into the current session
   const appendPageMutation = useMutation({
     mutationFn: async (objectPath: string) => {
-      // Capture previousCount at call-time (not in onSuccess which has a stale closure)
+      // Capture current local state at call-time so onSuccess can merge correctly.
+      // This avoids stale-closure issues: items captured here = in-progress local edits.
       const previousCount = items.length;
+      const previousItems = [...items];
       const scanRes = await apiRequest('POST', '/api/menu-import/scan', {
         imageObjectPath: objectPath,
         sessionId,
@@ -187,16 +189,24 @@ export default function MenuImport() {
         throw new Error(err.error || 'Scan failed');
       }
       const data = await scanRes.json() as { sessionId: string; items: ExtractedItem[]; newCount: number; count: number };
-      return { ...data, previousCount };
+      return { ...data, previousCount, previousItems };
     },
     onSuccess: (data) => {
-      const { previousCount } = data;
+      const { previousCount, previousItems } = data;
+      // Build merged list from local snapshot + new-page items only.
+      // This preserves any in-progress edits to existing rows, avoiding the
+      // overwrite that would occur if we used data.items (server's view) directly.
+      // Cancel any pending autosave timer first so it doesn't overwrite merged state.
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+      const newPageItems = data.items.slice(previousCount);
+      const merged = [...previousItems, ...newPageItems];
       setPageBreaks(prev => [...prev, previousCount]);
-      setItems(data.items);
+      setItems(merged);
+      scheduleAutosave(merged); // persist merged state (new timer, replaces cancelled one)
       // Auto-select only the newly added items
       setSelectedRowIndices(prev => {
         const next = new Set(prev);
-        for (let i = previousCount; i < data.items.length; i++) next.add(i);
+        for (let i = previousCount; i < previousCount + newPageItems.length; i++) next.add(i);
         return next;
       });
       setShowAddPageUploader(false);
