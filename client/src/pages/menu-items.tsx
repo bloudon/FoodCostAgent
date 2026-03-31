@@ -1279,12 +1279,12 @@ export default function MenuItemsPage() {
 
           {/* Edit Menu Item Dialog */}
           <Dialog open={editDialogOpen} onOpenChange={(open) => {
+              setEditDialogOpen(open);
               if (!open) {
                 setPostSaveRecipePrompt(null);
                 setEditingItem(null);
                 setSelectedStoresForEdit([]);
                 editForm.reset();
-                setEditDialogOpen(false);
               }
             }}>
             <DialogContent className="max-w-lg">
@@ -1317,7 +1317,7 @@ export default function MenuItemsPage() {
                         const { name, id } = postSaveRecipePrompt;
                         setPostSaveRecipePrompt(null);
                         setEditDialogOpen(false);
-                        navigate(`/recipes/new?name=${encodeURIComponent(name)}&menuItemId=${id}`);
+                        navigate(`/recipes/new?name=${encodeURIComponent(name)}&menuItemId=${encodeURIComponent(id)}`);
                       }}
                       data-testid="button-post-save-create-recipe"
                     >
