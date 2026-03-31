@@ -3836,9 +3836,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Validate storeId against accessible stores early to prevent unusable sessions
       if (storeId) {
-        const accessibleStores = await getAccessibleStores(user, companyId);
-        const storeIds = accessibleStores.map((s: any) => s.id);
-        if (!storeIds.includes(storeId)) {
+        const accessibleStoreIds = await getAccessibleStores(user, companyId);
+        if (!accessibleStoreIds.includes(storeId)) {
           return res.status(403).json({ error: "Store not accessible" });
         }
       }
