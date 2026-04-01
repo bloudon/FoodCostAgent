@@ -8572,12 +8572,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (ownedSet.size !== orderedIds.length || !orderedIds.every((id) => ownedSet.has(id))) {
           return res.status(403).json({ error: "One or more section IDs do not belong to this account" });
         }
-        for (let i = 0; i < orderedIds.length; i++) {
-          await db
-            .update(menuDepartments)
-            .set({ sortOrder: i })
-            .where(eq(menuDepartments.id, orderedIds[i]));
-        }
+        await db.transaction(async (tx) => {
+          for (let i = 0; i < orderedIds.length; i++) {
+            await tx
+              .update(menuDepartments)
+              .set({ sortOrder: i })
+              .where(eq(menuDepartments.id, orderedIds[i]));
+          }
+        });
       }
       res.json({ ok: true });
     } catch (error: any) {

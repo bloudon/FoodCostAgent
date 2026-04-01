@@ -2638,13 +2638,20 @@ export default function MenuItemsPage() {
                   <Button
                     className="w-full"
                     onClick={async () => {
-                      for (const s of stagingDefaults) {
-                        if (s.name.trim()) {
+                      const toCreate = stagingDefaults.filter(s => s.name.trim());
+                      const failed: string[] = [];
+                      for (const s of toCreate) {
+                        try {
                           await apiRequest("POST", "/api/menu-departments", { name: s.name.trim() });
+                        } catch {
+                          failed.push(s.name.trim());
                         }
                       }
                       queryClient.invalidateQueries({ queryKey: ["/api/menu-departments"] });
                       setStagingDefaults([]);
+                      if (failed.length > 0) {
+                        toast({ title: "Some sections could not be created", description: `Skipped: ${failed.join(", ")}`, variant: "destructive" });
+                      }
                     }}
                     disabled={createDeptMutation.isPending}
                     data-testid="button-create-staged-sections"
