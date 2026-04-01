@@ -117,6 +117,7 @@ function InlineIngredientRow({
   onUpdate,
   onDelete,
   onAddToInventory,
+  onLinkToExisting,
 }: {
   component: ComponentWithDetails;
   units: Unit[] | undefined;
@@ -126,6 +127,7 @@ function InlineIngredientRow({
   onUpdate: (updated: ComponentWithDetails) => void;
   onDelete: () => void;
   onAddToInventory?: (component: ComponentWithDetails) => void;
+  onLinkToExisting?: (component: ComponentWithDetails) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: component.id });
@@ -253,17 +255,33 @@ function InlineIngredientRow({
               Item not found in inventory — cost not included
             </p>
           </div>
-          {component.componentType === "inventory_item" && onAddToInventory && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onAddToInventory(component)}
-              className="shrink-0 text-xs"
-              data-testid={`button-add-to-inventory-${component.id}`}
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Add to Inventory
-            </Button>
+          {component.componentType === "inventory_item" && (
+            <div className="flex items-center gap-1 shrink-0">
+              {onLinkToExisting && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onLinkToExisting(component)}
+                  className="text-xs"
+                  data-testid={`button-link-to-existing-${component.id}`}
+                >
+                  <LinkIcon className="h-3 w-3 mr-1" />
+                  Link Existing
+                </Button>
+              )}
+              {onAddToInventory && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onAddToInventory(component)}
+                  className="text-xs"
+                  data-testid={`button-add-to-inventory-${component.id}`}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add New
+                </Button>
+              )}
+            </div>
           )}
           <Button
             variant="ghost"
@@ -531,6 +549,11 @@ function RecipeBuilderContent() {
     pricePerUnit: "",
     unitId: "",
   });
+
+  // Link to Existing dialog state
+  const [linkToExistingDialogOpen, setLinkToExistingDialogOpen] = useState(false);
+  const [missingComponentForLink, setMissingComponentForLink] = useState<ComponentWithDetails | null>(null);
+  const [linkSearchQuery, setLinkSearchQuery] = useState("");
 
   // Queries
   const { data: recipe, isLoading: recipeLoading } = useQuery<Recipe>({
@@ -1018,6 +1041,49 @@ function RecipeBuilderContent() {
     });
     setAddToInventoryDialogOpen(true);
   };
+
+  // Handle opening "Link to Existing" dialog for missing ingredients
+  const handleOpenLinkToExisting = (component: ComponentWithDetails) => {
+    setMissingComponentForLink(component);
+    setLinkSearchQuery(component.name !== "Unknown item" && component.name !== "Unknown" ? component.name : "");
+    setLinkToExistingDialogOpen(true);
+  };
+
+  // Mutation to link a missing component to an existing inventory item
+  const linkToExistingMutation = useMutation({
+    mutationFn: async ({ componentRowId, inventoryItem }: { componentRowId: string; inventoryItem: InventoryItem }) => {
+      const response = await apiRequest("PATCH", `/api/recipe-components/${componentRowId}`, {
+        componentId: inventoryItem.id,
+        missingItemName: null,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error((err as any).error || "Failed to link inventory item");
+      }
+      return inventoryItem;
+    },
+    onSuccess: (inventoryItem) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipe-components", id] });
+      setComponents(prev => prev.map(comp => {
+        if (comp.id === missingComponentForLink?.id) {
+          return {
+            ...comp,
+            componentId: inventoryItem.id,
+            name: inventoryItem.name,
+            missingItem: false,
+          };
+        }
+        return comp;
+      }));
+      toast({ title: "Ingredient linked", description: `${inventoryItem.name} has been linked to this recipe component.` });
+      setLinkToExistingDialogOpen(false);
+      setMissingComponentForLink(null);
+      setLinkSearchQuery("");
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to link item", description: err.message, variant: "destructive" });
+    },
+  });
 
   const createInventoryItemMutation = useMutation({
     mutationFn: async (data: { name: string; categoryId?: string; pricePerUnit: number; unitId: string; componentId: string; storeIds: string[] }) => {
@@ -1811,6 +1877,7 @@ function RecipeBuilderContent() {
                             onUpdate={handleInlineComponentUpdate}
                             onDelete={() => handleDeleteIngredient(component.id)}
                             onAddToInventory={handleOpenAddToInventory}
+                            onLinkToExisting={handleOpenLinkToExisting}
                           />
                         ))}
                       </div>
@@ -2204,6 +2271,76 @@ function RecipeBuilderContent() {
               data-testid="button-confirm-add-to-inventory"
             >
               {createInventoryItemMutation.isPending ? "Creating..." : "Create & Link"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Link to Existing Inventory Item dialog */}
+      <Dialog
+        open={linkToExistingDialogOpen}
+        onOpenChange={(open) => {
+          setLinkToExistingDialogOpen(open);
+          if (!open) { setMissingComponentForLink(null); setLinkSearchQuery(""); }
+        }}
+      >
+        <DialogContent data-testid="dialog-link-to-existing">
+          <DialogHeader>
+            <DialogTitle>Link to Existing Inventory Item</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {missingComponentForLink && (
+              <>Select an inventory item to link to <span className="font-medium">{missingComponentForLink.name}</span>.</>
+            )}
+          </p>
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-9"
+                placeholder="Search inventory..."
+                value={linkSearchQuery}
+                onChange={(e) => setLinkSearchQuery(e.target.value)}
+                data-testid="input-link-search"
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto border rounded-md divide-y">
+              {(() => {
+                const q = linkSearchQuery.toLowerCase();
+                const filtered = (inventoryItems ?? []).filter(item =>
+                  !q || item.name.toLowerCase().includes(q)
+                );
+                if (filtered.length === 0) {
+                  return (
+                    <p className="text-sm text-muted-foreground text-center py-6">
+                      No items match your search.
+                    </p>
+                  );
+                }
+                return filtered.map(item => (
+                  <button
+                    key={item.id}
+                    className="w-full text-left px-3 py-2 text-sm hover-elevate flex items-center justify-between gap-2"
+                    onClick={() => {
+                      if (!missingComponentForLink) return;
+                      linkToExistingMutation.mutate({
+                        componentRowId: missingComponentForLink.id,
+                        inventoryItem: item,
+                      });
+                    }}
+                    disabled={linkToExistingMutation.isPending}
+                    data-testid={`button-select-link-item-${item.id}`}
+                  >
+                    <span className="font-medium">{item.name}</span>
+                    <span className="text-muted-foreground text-xs shrink-0">{item.unitName || ""}</span>
+                  </button>
+                ));
+              })()}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkToExistingDialogOpen(false)}>
+              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>

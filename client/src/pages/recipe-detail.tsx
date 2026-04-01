@@ -113,6 +113,14 @@ function RecipeDetailContent() {
                 </Link>{" "}
                 to resolve.
               </p>
+              <ul className="mt-1.5 space-y-0.5">
+                {missingComponents.map((c: any) => (
+                  <li key={c.id} className="text-xs text-yellow-700 dark:text-yellow-400 flex items-center gap-1">
+                    <span className="inline-block w-1 h-1 rounded-full bg-yellow-600 dark:bg-yellow-400 shrink-0" />
+                    {c.inventoryItemName || c.name || "Unknown item"}
+                  </li>
+                ))}
+              </ul>
             </div>
             <button
               onClick={() => setAlertDismissed(true)}
