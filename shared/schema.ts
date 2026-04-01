@@ -680,11 +680,26 @@ export type MenuItemSize = typeof menuItemSizes.$inferSelect;
 // Menu Items - Hierarchical structure: Parent menu items can have size variants (children)
 // Single-sized items: parentMenuItemId = null, size = null (or a default size)
 // Multi-sized items: Parent has parentMenuItemId = null, children have parentMenuItemId pointing to parent
+// Menu Departments (company-level menu section taxonomy)
+export const menuDepartments = pgTable("menu_departments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+}, (table) => ({
+  uniqueCompanyDept: unique().on(table.companyId, table.name),
+}));
+
+export const insertMenuDepartmentSchema = createInsertSchema(menuDepartments).omit({ id: true });
+export type InsertMenuDepartment = z.infer<typeof insertMenuDepartmentSchema>;
+export type MenuDepartment = typeof menuDepartments.$inferSelect;
+
 export const menuItems = pgTable("menu_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
-  department: text("department"), // e.g., "Pizza", "Appetizers", "Beverages"
+  menuDepartmentId: varchar("menu_department_id"), // FK to menu_departments (managed)
+  department: text("department"), // Legacy free-text field kept for POS import compatibility
   category: text("category"), // e.g., "Specialty Pizza*", "Chicken Fingers"
   size: text("size"), // Legacy field - e.g., "Lg", "Sm", kept for backwards compatibility
   menuItemSizeId: varchar("menu_item_size_id"), // Links to managed size (null for variant group parents)

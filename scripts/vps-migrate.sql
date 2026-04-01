@@ -244,3 +244,44 @@ BEGIN
       VALUES ('v010', 'Task #25: upgrade menu_import_sessions.extracted_items from text to jsonb');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v011 — Task #30: Managed menu departments table + FK column on menu_items
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v011') THEN
+
+    -- Create the managed menu departments table
+    CREATE TABLE IF NOT EXISTS menu_departments (
+      id          varchar     PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id  varchar     NOT NULL,
+      name        text        NOT NULL,
+      sort_order  integer     NOT NULL DEFAULT 0,
+      UNIQUE (company_id, name)
+    );
+
+    CREATE INDEX IF NOT EXISTS menu_departments_company_idx
+      ON menu_departments (company_id);
+
+    -- Add the FK column on menu_items (nullable — items without a managed dept
+    -- continue to work via the legacy free-text department column)
+    ALTER TABLE menu_items
+      ADD COLUMN IF NOT EXISTS menu_department_id varchar;
+
+    -- Auto-link existing items: if menu_items.department matches a managed
+    -- department name (case-insensitive) update menu_department_id accordingly.
+    -- This runs AFTER departments are created, so it is a no-op on first deploy
+    -- (no managed departments exist yet). It becomes useful on re-runs after
+    -- departments have been set up by the company.
+    UPDATE menu_items mi
+    SET menu_department_id = md.id
+    FROM menu_departments md
+    WHERE md.company_id = mi.company_id
+      AND lower(mi.department) = lower(md.name)
+      AND mi.menu_department_id IS NULL;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v011', 'Task #30: menu_departments table + menu_department_id FK on menu_items');
+  END IF;
+END $$;

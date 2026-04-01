@@ -17,7 +17,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -8451,6 +8451,120 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // ============ MENU DEPARTMENTS ============
+
+  app.get("/api/menu-departments", requireAuth, async (req, res) => {
+    try {
+      const companyId = req.companyId!;
+      const depts = await db
+        .select()
+        .from(menuDepartments)
+        .where(eq(menuDepartments.companyId, companyId))
+        .orderBy(menuDepartments.sortOrder, menuDepartments.name);
+      res.json(depts);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/menu-departments", requireAuth, async (req, res) => {
+    try {
+      const companyId = req.companyId!;
+      const { name, sortOrder } = req.body;
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: "Name is required" });
+      }
+      const maxOrder = await db
+        .select({ max: sql<number>`coalesce(max(sort_order), -1)` })
+        .from(menuDepartments)
+        .where(eq(menuDepartments.companyId, companyId));
+      const nextOrder = (maxOrder[0]?.max ?? -1) + 1;
+      const [created] = await db
+        .insert(menuDepartments)
+        .values({ companyId, name: name.trim(), sortOrder: sortOrder ?? nextOrder })
+        .returning();
+      res.status(201).json(created);
+    } catch (error: any) {
+      if (error.message?.includes("unique")) {
+        return res.status(409).json({ error: "A section with this name already exists" });
+      }
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/menu-departments/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = req.companyId!;
+      const existing = await db
+        .select()
+        .from(menuDepartments)
+        .where(and(eq(menuDepartments.id, id), eq(menuDepartments.companyId, companyId)))
+        .limit(1);
+      if (existing.length === 0) {
+        return res.status(404).json({ error: "Section not found" });
+      }
+      const { name, sortOrder } = req.body;
+      const updates: Partial<{ name: string; sortOrder: number }> = {};
+      if (name !== undefined) updates.name = name.trim();
+      if (sortOrder !== undefined) updates.sortOrder = sortOrder;
+      const [updated] = await db
+        .update(menuDepartments)
+        .set(updates)
+        .where(eq(menuDepartments.id, id))
+        .returning();
+      res.json(updated);
+    } catch (error: any) {
+      if (error.message?.includes("unique")) {
+        return res.status(409).json({ error: "A section with this name already exists" });
+      }
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/menu-departments/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = req.companyId!;
+      const existing = await db
+        .select()
+        .from(menuDepartments)
+        .where(and(eq(menuDepartments.id, id), eq(menuDepartments.companyId, companyId)))
+        .limit(1);
+      if (existing.length === 0) {
+        return res.status(404).json({ error: "Section not found" });
+      }
+      // Unassign any menu items using this department
+      await db
+        .update(menuItems)
+        .set({ menuDepartmentId: null })
+        .where(and(eq(menuItems.companyId, companyId), eq(menuItems.menuDepartmentId, id)));
+      await db.delete(menuDepartments).where(eq(menuDepartments.id, id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/menu-departments/reorder", requireAuth, async (req, res) => {
+    try {
+      const companyId = req.companyId!;
+      const { orderedIds } = req.body as { orderedIds: string[] };
+      if (!Array.isArray(orderedIds)) {
+        return res.status(400).json({ error: "orderedIds must be an array" });
+      }
+      for (let i = 0; i < orderedIds.length; i++) {
+        await db
+          .update(menuDepartments)
+          .set({ sortOrder: i })
+          .where(and(eq(menuDepartments.id, orderedIds[i]), eq(menuDepartments.companyId, companyId)));
+      }
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
     }
   });
 

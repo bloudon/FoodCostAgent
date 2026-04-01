@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Upload, Package, Search, Filter, Plus, MoreVertical, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Layers, BookOpen, PlusCircle, ExternalLink, Camera } from "lucide-react";
+import { Upload, Package, Search, Filter, Plus, MoreVertical, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Layers, BookOpen, PlusCircle, ExternalLink, Camera, GripVertical, Settings2, Trash2, Pencil, Check, X } from "lucide-react";
 import { useStoreContext } from "@/hooks/use-store-context";
 import { useTier } from "@/hooks/use-tier";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -25,11 +25,36 @@ import { formatRecipeName } from "@/lib/utils";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
+interface MenuDepartment {
+  id: string;
+  companyId: string;
+  name: string;
+  sortOrder: number;
+}
 
 interface MenuItem {
   id: string;
   companyId: string;
   name: string;
+  menuDepartmentId: string | null;
   department: string | null;
   category: string | null;
   size: string | null;
@@ -97,6 +122,7 @@ const addMenuItemFormSchema = insertMenuItemSchema
   .extend({
     name: z.string().min(1, "Item name is required"),
     pluSku: z.string().min(1, "PLU/SKU is required"),
+    menuDepartmentId: z.string().nullable().optional(),
     department: z.string().optional(),
     category: z.string().optional(),
     size: z.string().optional(),
@@ -126,6 +152,81 @@ interface MilestonesResponse {
   dismissed: boolean;
 }
 
+// Sortable row for the Manage Sections drag-to-reorder list
+function SortableDeptRow({
+  dept,
+  onRename,
+  onDelete,
+}: {
+  dept: MenuDepartment;
+  onRename: (id: string, newName: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(dept.name);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: dept.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const commitRename = () => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== dept.name) {
+      onRename(dept.id, trimmed);
+    } else {
+      setEditValue(dept.name);
+    }
+    setEditing(false);
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-2 p-2 rounded-md bg-background border group">
+      <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground" data-testid={`drag-handle-dept-${dept.id}`}>
+        <GripVertical className="h-4 w-4" />
+      </button>
+      {editing ? (
+        <Input
+          autoFocus
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitRename();
+            if (e.key === "Escape") { setEditValue(dept.name); setEditing(false); }
+          }}
+          className="h-7 flex-1 text-sm"
+          data-testid={`input-rename-dept-${dept.id}`}
+        />
+      ) : (
+        <span className="flex-1 text-sm font-medium">{dept.name}</span>
+      )}
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {editing ? (
+          <>
+            <Button size="icon" variant="ghost" onClick={commitRename} data-testid={`button-confirm-rename-${dept.id}`}>
+              <Check className="h-3.5 w-3.5" />
+            </Button>
+            <Button size="icon" variant="ghost" onClick={() => { setEditValue(dept.name); setEditing(false); }} data-testid={`button-cancel-rename-${dept.id}`}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button size="icon" variant="ghost" onClick={() => setEditing(true)} data-testid={`button-rename-dept-${dept.id}`}>
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button size="icon" variant="ghost" onClick={() => onDelete(dept.id)} className="text-destructive" data-testid={`button-delete-dept-${dept.id}`}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function MenuItemsPage() {
   const [search, setSearch] = useState("");
   const { selectedStoreId } = useStoreContext();
@@ -140,6 +241,8 @@ export default function MenuItemsPage() {
   const [csvContent, setCsvContent] = useState("");
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [selectedStoreForImport, setSelectedStoreForImport] = useState<string>("");
+  const [manageSectionsOpen, setManageSectionsOpen] = useState(false);
+  const [newDeptName, setNewDeptName] = useState("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
@@ -168,6 +271,7 @@ export default function MenuItemsPage() {
     resolver: zodResolver(addMenuItemFormSchema),
     defaultValues: {
       name: "",
+      menuDepartmentId: null,
       department: "",
       category: "",
       size: "",
@@ -186,6 +290,7 @@ export default function MenuItemsPage() {
     resolver: zodResolver(addMenuItemFormSchema),
     defaultValues: {
       name: "",
+      menuDepartmentId: null,
       department: "",
       category: "",
       size: "",
@@ -236,6 +341,10 @@ export default function MenuItemsPage() {
 
   const { data: menuItemSizes } = useQuery<MenuItemSize[]>({
     queryKey: ["/api/menu-item-sizes"],
+  });
+
+  const { data: menuDepts, isLoading: isLoadingDepts } = useQuery<MenuDepartment[]>({
+    queryKey: ["/api/menu-departments"],
   });
 
   // Find the "One Size" default size
@@ -466,6 +575,55 @@ export default function MenuItemsPage() {
     },
   });
 
+  const createDeptMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", "/api/menu-departments", { name });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-departments"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateDeptMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const res = await apiRequest("PATCH", `/api/menu-departments/${id}`, { name });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-departments"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteDeptMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/menu-departments/${id}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-departments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items/hierarchy"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const reorderDeptsMutation = useMutation({
+    mutationFn: async (orderedIds: string[]) => {
+      await apiRequest("POST", "/api/menu-departments/reorder", { orderedIds });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-departments"] });
+    },
+  });
+
   const updateItemMutation = useMutation({
     mutationFn: async ({ id, data, storeIds }: { id: string; data: Partial<AddMenuItemForm>; storeIds: string[] }) => {
       const response = await apiRequest("PATCH", `/api/menu-items/${id}`, data);
@@ -555,6 +713,13 @@ export default function MenuItemsPage() {
       return;
     }
     
+    // Sync managed department name to legacy text field
+    const selectedDept = menuDepts?.find(d => d.id === data.menuDepartmentId);
+    const enrichedData = {
+      ...data,
+      department: selectedDept?.name || data.department || undefined,
+    };
+    
     // Check if a non-"One Size" size is selected - need to create variant group
     const selectedSize = menuItemSizes?.find(s => s.id === data.menuItemSizeId);
     const isOneSize = !data.menuItemSizeId || (selectedSize && selectedSize.name === "One Size");
@@ -562,13 +727,13 @@ export default function MenuItemsPage() {
     if (!isOneSize && data.menuItemSizeId) {
       // Create variant group: parent item + first variant
       createVariantGroupMutation.mutate({
-        data,
+        data: enrichedData,
         sizeId: data.menuItemSizeId,
         sizeName: selectedSize?.name || "Unknown",
       });
     } else {
       // Standard standalone item creation
-      createItemMutation.mutate(data);
+      createItemMutation.mutate(enrichedData);
     }
   };
 
@@ -583,6 +748,7 @@ export default function MenuItemsPage() {
     setEditingItem(item);
     editForm.reset({
       name: item.name,
+      menuDepartmentId: item.menuDepartmentId || null,
       department: item.department || "",
       category: item.category || "",
       size: item.size || "",
@@ -612,13 +778,16 @@ export default function MenuItemsPage() {
     // Get the size name from menuItemSizeId for the legacy size field
     const selectedSize = menuItemSizes?.find(s => s.id === data.menuItemSizeId);
     
+    // When assigning a managed department, also update the legacy text field for display
+    const selectedDept = menuDepts?.find(d => d.id === data.menuDepartmentId);
     const payload: Partial<AddMenuItemForm> = {
       name: data.name,
       pluSku: data.pluSku,
       isRecipeItem: data.isRecipeItem,
       active: data.active,
       recipeId: data.recipeId || null,
-      department: data.department || undefined,
+      menuDepartmentId: data.menuDepartmentId || null,
+      department: selectedDept?.name || data.department || undefined,
       category: data.category || undefined,
       size: selectedSize?.name || data.size || undefined,
       menuItemSizeId: data.menuItemSizeId || undefined,
@@ -675,13 +844,25 @@ export default function MenuItemsPage() {
     });
   };
 
-  // Get unique departments and categories for filters
-  const uniqueDepartments = Array.from(new Set(
-    menuItems?.map(item => item.department).filter((dept): dept is string => Boolean(dept)) || []
-  )).sort();
+  // Use managed departments for filter; fall back to scraped strings for unmanaged items
   const uniqueCategories = Array.from(new Set(
     menuItems?.map(item => item.category).filter((cat): cat is string => Boolean(cat)) || []
   )).sort();
+
+  // Helper: does an item match the selected department filter?
+  const itemMatchesDeptFilter = (item: MenuItem): boolean => {
+    if (departmentFilter === "all") return true;
+    if (departmentFilter === "__unassigned__") {
+      // Show items with no managed dept AND no legacy dept text
+      return !item.menuDepartmentId && !item.department;
+    }
+    // Primary: match by managed department ID
+    if (item.menuDepartmentId === departmentFilter) return true;
+    // Fallback: legacy text match against managed dept name
+    const dept = menuDepts?.find(d => d.id === departmentFilter);
+    if (dept && item.department?.toLowerCase() === dept.name.toLowerCase()) return true;
+    return false;
+  };
 
   // Handle sorting
   const handleSort = (field: string) => {
@@ -717,7 +898,7 @@ export default function MenuItemsPage() {
       activeFilter === "all" ? true :
       activeFilter === "active" ? group.parent.active === 1 :
       group.parent.active === 0;
-    const matchesDepartment = departmentFilter === "all" || group.parent.department === departmentFilter;
+    const matchesDepartment = itemMatchesDeptFilter(group.parent);
     const matchesCategory = categoryFilter === "all" || group.parent.category === categoryFilter;
     const matchesType = 
       typeFilter === "all" ? true :
@@ -737,7 +918,7 @@ export default function MenuItemsPage() {
       activeFilter === "all" ? true :
       activeFilter === "active" ? item.active === 1 :
       item.active === 0;
-    const matchesDepartment = departmentFilter === "all" || item.department === departmentFilter;
+    const matchesDepartment = itemMatchesDeptFilter(item);
     const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
     const matchesType = 
       typeFilter === "all" ? true :
@@ -804,6 +985,34 @@ export default function MenuItemsPage() {
     return 0;
   });
 
+  // Group hierarchy by managed department for section header rows
+  const hierarchyByDept = (() => {
+    const deptMap = new Map<string | null, typeof filteredHierarchy>();
+    filteredHierarchy.forEach((group) => {
+      const key = group.parent.menuDepartmentId || null;
+      if (!deptMap.has(key)) deptMap.set(key, []);
+      deptMap.get(key)!.push(group);
+    });
+
+    const sections: { dept: MenuDepartment | null; groups: typeof filteredHierarchy }[] = [];
+
+    // First: ordered managed departments
+    (menuDepts || []).forEach((dept) => {
+      const groups = deptMap.get(dept.id) || [];
+      if (groups.length > 0) {
+        sections.push({ dept, groups });
+      }
+    });
+
+    // Then: unmanaged (null dept key — legacy text dept or truly unassigned)
+    const unmanaged = deptMap.get(null) || [];
+    if (unmanaged.length > 0) {
+      sections.push({ dept: null, groups: unmanaged });
+    }
+
+    return sections;
+  })();
+
   const renderRecipeCost = (item: MenuItem) => {
     const recipe = item.recipe || (item.recipeId ? recipes?.find(r => r.id === item.recipeId) : null);
     if (recipe) {
@@ -868,6 +1077,16 @@ export default function MenuItemsPage() {
               </Button>
             </div>
 
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setManageSectionsOpen(true)}
+              data-testid="button-manage-sections"
+            >
+              <Settings2 className="h-4 w-4 mr-2" />
+              Manage Sections
+            </Button>
+
             {hasFeature('recipe_costing') && (
               <Link href="/menu-import">
                 <Button variant="outline" data-testid="button-import-from-image">
@@ -916,17 +1135,28 @@ export default function MenuItemsPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
-                      name="department"
+                      name="menuDepartmentId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Department</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              placeholder="e.g., Pizza"
-                              data-testid="input-new-item-department"
-                            />
-                          </FormControl>
+                          <FormLabel>Section</FormLabel>
+                          <Select
+                            value={field.value || "none"}
+                            onValueChange={(val) => field.onChange(val === "none" ? null : val)}
+                          >
+                            <FormControl>
+                              <SelectTrigger data-testid="select-new-item-department">
+                                <SelectValue placeholder="Select section..." />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="none">None</SelectItem>
+                              {(menuDepts || []).map((dept) => (
+                                <SelectItem key={dept.id} value={dept.id}>
+                                  {dept.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -1348,6 +1578,34 @@ export default function MenuItemsPage() {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={editForm.control}
+                    name="menuDepartmentId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Section</FormLabel>
+                        <Select
+                          value={field.value || "none"}
+                          onValueChange={(val) => field.onChange(val === "none" ? null : val)}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-edit-department">
+                              <SelectValue placeholder="Select section..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {(menuDepts || []).map((dept) => (
+                              <SelectItem key={dept.id} value={dept.id}>
+                                {dept.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={editForm.control}
@@ -1719,11 +1977,14 @@ export default function MenuItemsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Departments</SelectItem>
-                  {uniqueDepartments.map((dept) => (
-                    <SelectItem key={dept} value={dept}>
-                      {dept}
+                  {(menuDepts || []).map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      {dept.name}
                     </SelectItem>
                   ))}
+                  {(menuDepts || []).length > 0 && (
+                    <SelectItem value="__unassigned__">Unassigned</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
               
@@ -1797,7 +2058,19 @@ export default function MenuItemsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredHierarchy.map((group, groupIndex) => (
+                    {hierarchyByDept.map(({ dept, groups }) => (
+                      <Fragment key={dept?.id || "unmanaged"}>
+                        {/* Section header row */}
+                        {(menuDepts?.length ?? 0) > 0 && (
+                          <TableRow className="bg-muted/60 hover:bg-muted/60">
+                            <TableCell colSpan={6} className="py-1.5 px-3">
+                              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                {dept ? dept.name : (groups[0]?.parent.department || "Unassigned")}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {groups.map((group, groupIndex) => (
                       <Collapsible key={group.parent.id} asChild open={expandedItems.has(group.parent.id)}>
                         <>
                           {/* Parent Row */}
@@ -2013,6 +2286,8 @@ export default function MenuItemsPage() {
                           </CollapsibleContent>
                         </>
                       </Collapsible>
+                        ))}
+                      </Fragment>
                     ))}
                   </TableBody>
                 </Table>
@@ -2245,6 +2520,89 @@ export default function MenuItemsPage() {
         </CardContent>
       </Card>
       <SetupProgressBanner currentMilestoneId="menu" hasEntries={(menuItems?.length ?? 0) > 0} />
+
+      {/* Manage Sections Dialog */}
+      <Dialog open={manageSectionsOpen} onOpenChange={setManageSectionsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Manage Menu Sections</DialogTitle>
+            <DialogDescription>
+              Add, rename, and reorder your menu sections. Drag to reorder.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {/* Add new dept */}
+            <div className="flex gap-2">
+              <Input
+                placeholder="New section name..."
+                value={newDeptName}
+                onChange={(e) => setNewDeptName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newDeptName.trim()) {
+                    createDeptMutation.mutate(newDeptName.trim());
+                    setNewDeptName("");
+                  }
+                }}
+                data-testid="input-new-dept-name"
+              />
+              <Button
+                onClick={() => {
+                  if (newDeptName.trim()) {
+                    createDeptMutation.mutate(newDeptName.trim());
+                    setNewDeptName("");
+                  }
+                }}
+                disabled={!newDeptName.trim() || createDeptMutation.isPending}
+                data-testid="button-add-dept"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            </div>
+
+            {/* Sortable list */}
+            {(menuDepts?.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No sections yet. Add one above.
+              </p>
+            ) : (
+              <DndContext
+                collisionDetection={closestCenter}
+                onDragEnd={(event) => {
+                  const { active, over } = event;
+                  if (over && active.id !== over.id) {
+                    const oldIndex = (menuDepts || []).findIndex(d => d.id === active.id);
+                    const newIndex = (menuDepts || []).findIndex(d => d.id === over.id);
+                    const reordered = arrayMove(menuDepts || [], oldIndex, newIndex);
+                    reorderDeptsMutation.mutate(reordered.map(d => d.id));
+                  }
+                }}
+              >
+                <SortableContext
+                  items={(menuDepts || []).map(d => d.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {(menuDepts || []).map((dept) => (
+                      <SortableDeptRow
+                        key={dept.id}
+                        dept={dept}
+                        onRename={(id, name) => updateDeptMutation.mutate({ id, name })}
+                        onDelete={(id) => deleteDeptMutation.mutate(id)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManageSectionsOpen(false)} data-testid="button-close-manage-sections">
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
