@@ -853,15 +853,11 @@ export default function MenuItemsPage() {
   const itemMatchesDeptFilter = (item: MenuItem): boolean => {
     if (departmentFilter === "all") return true;
     if (departmentFilter === "__unassigned__") {
-      // Show items with no managed dept AND no legacy dept text
-      return !item.menuDepartmentId && !item.department;
+      // Show all items with no managed section (menuDepartmentId is null)
+      return item.menuDepartmentId == null;
     }
-    // Primary: match by managed department ID
-    if (item.menuDepartmentId === departmentFilter) return true;
-    // Fallback: legacy text match against managed dept name
-    const dept = menuDepts?.find(d => d.id === departmentFilter);
-    if (dept && item.department?.toLowerCase() === dept.name.toLowerCase()) return true;
-    return false;
+    // Match by managed department ID only
+    return item.menuDepartmentId === departmentFilter;
   };
 
   // Handle sorting
@@ -2065,7 +2061,7 @@ export default function MenuItemsPage() {
                           <TableRow className="bg-muted/60 hover:bg-muted/60">
                             <TableCell colSpan={6} className="py-1.5 px-3">
                               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                {dept ? dept.name : (groups[0]?.parent.department || "Unassigned")}
+                                {dept ? dept.name : "Unassigned"}
                               </span>
                             </TableCell>
                           </TableRow>
@@ -2562,9 +2558,41 @@ export default function MenuItemsPage() {
 
             {/* Sortable list */}
             {(menuDepts?.length ?? 0) === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No sections yet. Add one above.
-              </p>
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground text-center">
+                  No sections yet. Add one above or use these common defaults:
+                </p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {["Appetizers", "Entrees", "Sides", "Desserts", "Beverages", "Specials"].map((name) => (
+                    <Button
+                      key={name}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => createDeptMutation.mutate(name)}
+                      disabled={createDeptMutation.isPending}
+                      data-testid={`button-default-dept-${name.toLowerCase()}`}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      {name}
+                    </Button>
+                  ))}
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                  onClick={async () => {
+                    for (const name of ["Appetizers", "Entrees", "Sides", "Desserts", "Beverages", "Specials"]) {
+                      await apiRequest("POST", "/api/menu-departments", { name });
+                    }
+                    queryClient.invalidateQueries({ queryKey: ["/api/menu-departments"] });
+                  }}
+                  disabled={createDeptMutation.isPending}
+                  data-testid="button-add-all-defaults"
+                >
+                  Add All Defaults
+                </Button>
+              </div>
             ) : (
               <DndContext
                 collisionDetection={closestCenter}

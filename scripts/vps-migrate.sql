@@ -285,3 +285,22 @@ BEGIN
       VALUES ('v011', 'Task #30: menu_departments table + menu_department_id FK on menu_items');
   END IF;
 END $$;
+
+-- v012 — Task #30: Add FK constraint menu_items.menu_department_id -> menu_departments(id) ON DELETE SET NULL
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v012') THEN
+    -- Add FK constraint if it doesn't already exist
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.table_constraints
+      WHERE constraint_name = 'menu_items_menu_department_id_fk'
+        AND table_name = 'menu_items'
+    ) THEN
+      ALTER TABLE menu_items
+        ADD CONSTRAINT menu_items_menu_department_id_fk
+        FOREIGN KEY (menu_department_id) REFERENCES menu_departments(id) ON DELETE SET NULL;
+    END IF;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v012', 'Task #30: FK constraint menu_items.menu_department_id -> menu_departments(id) SET NULL');
+  END IF;
+END $$;

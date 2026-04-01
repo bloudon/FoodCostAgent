@@ -698,7 +698,7 @@ export const menuItems = pgTable("menu_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
-  menuDepartmentId: varchar("menu_department_id"), // FK to menu_departments (managed)
+  menuDepartmentId: varchar("menu_department_id").references(() => menuDepartments.id, { onDelete: "set null" }), // FK to menu_departments (managed)
   department: text("department"), // Legacy free-text field kept for POS import compatibility
   category: text("category"), // e.g., "Specialty Pizza*", "Chicken Fingers"
   size: text("size"), // Legacy field - e.g., "Lg", "Sm", kept for backwards compatibility
