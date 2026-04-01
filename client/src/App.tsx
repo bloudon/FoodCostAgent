@@ -189,6 +189,7 @@ function ProtectedLayoutContent() {
   const FULL_SCREEN_PATHS = [
     "/onboarding-wizard",
     "/onboarding-review",
+    "/onboarding/menu-scan",
     "/onboarding",
     "/choose-plan",
     "/enterprise-inquiry",
