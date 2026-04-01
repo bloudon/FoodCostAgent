@@ -8508,6 +8508,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Section not found" });
       }
       const { name, sortOrder } = req.body;
+      if (name !== undefined && !name.trim()) {
+        return res.status(400).json({ error: "Section name cannot be empty" });
+      }
       const updates: Partial<{ name: string; sortOrder: number }> = {};
       if (name !== undefined) updates.name = name.trim();
       if (sortOrder !== undefined) updates.sortOrder = sortOrder;
@@ -8556,11 +8559,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!Array.isArray(orderedIds)) {
         return res.status(400).json({ error: "orderedIds must be an array" });
       }
-      for (let i = 0; i < orderedIds.length; i++) {
-        await db
-          .update(menuDepartments)
-          .set({ sortOrder: i })
-          .where(and(eq(menuDepartments.id, orderedIds[i]), eq(menuDepartments.companyId, companyId)));
+      if (orderedIds.length > 0) {
+        // Verify all IDs belong to this company before updating
+        const owned = await db
+          .select({ id: menuDepartments.id })
+          .from(menuDepartments)
+          .where(and(
+            eq(menuDepartments.companyId, companyId),
+            inArray(menuDepartments.id, orderedIds),
+          ));
+        const ownedSet = new Set(owned.map((r) => r.id));
+        if (ownedSet.size !== orderedIds.length || !orderedIds.every((id) => ownedSet.has(id))) {
+          return res.status(403).json({ error: "One or more section IDs do not belong to this account" });
+        }
+        for (let i = 0; i < orderedIds.length; i++) {
+          await db
+            .update(menuDepartments)
+            .set({ sortOrder: i })
+            .where(eq(menuDepartments.id, orderedIds[i]));
+        }
       }
       res.json({ ok: true });
     } catch (error: any) {

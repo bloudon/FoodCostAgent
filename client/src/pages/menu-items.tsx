@@ -2000,9 +2000,7 @@ export default function MenuItemsPage() {
                       {dept.name}
                     </SelectItem>
                   ))}
-                  {(menuDepts || []).length > 0 && (
-                    <SelectItem value="__unassigned__">Unassigned</SelectItem>
-                  )}
+                  <SelectItem value="__unassigned__">Unassigned</SelectItem>
                 </SelectContent>
               </Select>
               
