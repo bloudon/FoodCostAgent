@@ -4613,6 +4613,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           yieldQty: scan.yieldQty,
           yieldUnit: scan.yieldUnit,
           ingredients: matchedIngredients,
+          instructions: scan.instructions ?? null,
         },
       }).returning();
 
@@ -4622,6 +4623,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         yieldQty: scan.yieldQty,
         yieldUnit: scan.yieldUnit,
         ingredients: matchedIngredients,
+        instructions: scan.instructions ?? null,
       });
     } catch (error: any) {
       console.error("[Recipe Import Scan]", error);
@@ -4679,6 +4681,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         yieldUnit: z.string().min(1),
         canBeIngredient: z.number().int().min(0).max(1).default(0),
         ingredients: z.array(ingredientSchema),
+        instructions: z.string().optional(),
       });
       const parsed = bodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -4700,6 +4703,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             yieldUnit: parsed.data.yieldUnit,
             canBeIngredient: parsed.data.canBeIngredient,
             ingredients: parsed.data.ingredients,
+            instructions: parsed.data.instructions ?? null,
           },
           updatedAt: new Date(),
         })
@@ -4735,6 +4739,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         yieldUnit: z.string().min(1),
         canBeIngredient: z.number().int().min(0).max(1).default(0),
         ingredients: z.array(ingredientSchema),
+        instructions: z.string().optional(),
       });
       const parsed = bodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -4817,6 +4822,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           computedCost: 0,
           canBeIngredient: parsed.data.canBeIngredient,
           isActive: 1,
+          instructions: parsed.data.instructions || null,
         }).returning();
 
         // Create recipe components for matched ingredients
@@ -4871,7 +4877,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json({
         recipeId: recipe.id,
         recipeName: recipe.name,
-        componentsCreated: includedIngredients.length,
+        componentsCreated: matchedIngredients.length,
         skippedIngredients: skippedCount,
       });
     } catch (error: any) {

@@ -63,11 +63,12 @@ export interface RecipeScanResult {
   yieldQty: number;
   yieldUnit: string;
   ingredients: ExtractedIngredient[];
+  instructions?: string;
 }
 
 /**
  * Sends a recipe image buffer to GPT-4o Vision and extracts structured recipe data.
- * Returns recipe name, yield, and ingredient list.
+ * Returns recipe name, yield, ingredient list, AND preparation instructions in a single AI call.
  */
 export async function scanRecipeImage(imageBuffer: Buffer, mimeType: string): Promise<RecipeScanResult> {
   if (!process.env.OPENAI_API_KEY) {
@@ -84,6 +85,7 @@ Return a JSON object with this exact structure:
   "recipeName": "Clean recipe name (title case)",
   "yieldQty": 1,
   "yieldUnit": "portion",
+  "instructions": "1. Step one.\n2. Step two.\n3. Step three.",
   "ingredients": [
     {
       "name": "Ingredient name (clean, human-readable)",
@@ -97,6 +99,7 @@ Rules:
 - recipeName: extract the dish name, use title case
 - yieldQty: numeric yield quantity (e.g. 1, 12, 24) — use 1 if unclear
 - yieldUnit: unit for the yield (e.g. "portion", "serving", "dozen", "loaf", "quart") — use "portion" if unclear
+- instructions: extract the full preparation method as a single plain text string with numbered steps separated by newlines (e.g. "1. Preheat oven...\n2. Mix ingredients..."). Use an empty string if no instructions are visible.
 - ingredients: extract ALL ingredients listed
 - qty: numeric quantity as a decimal (e.g. 0.5 for 1/2, 0.25 for 1/4, 2.5 for 2 1/2)
 - unit: measurement unit (e.g. "oz", "cup", "lb", "tsp", "tbsp", "each", "bunch", "clove")
@@ -140,6 +143,7 @@ Rules:
   const recipeName = String(parsed.recipeName || 'Untitled Recipe').trim();
   const yieldQty = Number(parsed.yieldQty) || 1;
   const yieldUnit = String(parsed.yieldUnit || 'portion').trim();
+  const instructions = String(parsed.instructions || '').trim() || undefined;
 
   const ingredients: ExtractedIngredient[] = (parsed.ingredients || [])
     .map((ing: any) => ({
@@ -149,5 +153,5 @@ Rules:
     }))
     .filter((ing: ExtractedIngredient) => ing.name.length > 0);
 
-  return { recipeName, yieldQty, yieldUnit, ingredients };
+  return { recipeName, yieldQty, yieldUnit, ingredients, instructions };
 }

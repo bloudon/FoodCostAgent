@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Table,
   TableBody,
@@ -42,6 +43,7 @@ import {
   ChefHat,
   ChevronsUpDown,
   Loader2,
+  ScanText,
   Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -70,6 +72,7 @@ interface ScanResult {
   yieldQty: number;
   yieldUnit: string;
   ingredients: IngredientRow[];
+  instructions?: string | null;
 }
 
 interface InventoryItem {
@@ -221,6 +224,7 @@ export default function RecipeImport() {
   const [yieldUnit, setYieldUnit] = useState('');
   const [canBeIngredient, setCanBeIngredient] = useState(false);
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
+  const [instructions, setInstructions] = useState('');
 
   const [createdRecipeId, setCreatedRecipeId] = useState<string | null>(null);
 
@@ -259,6 +263,7 @@ export default function RecipeImport() {
       setYieldUnit(sessionData.yieldUnit || '');
       setCanBeIngredient(!!(sessionData.canBeIngredient));
       setIngredients(sessionData.ingredients);
+      setInstructions(sessionData.instructions || '');
       setStep(2);
     }
   }, [sessionData]);
@@ -272,13 +277,13 @@ export default function RecipeImport() {
   }, [sessionId]);
 
   const patchMutation = useMutation({
-    mutationFn: async (payload: { recipeName: string; yieldQty: number; yieldUnit: string; ingredients: IngredientRow[] }) => {
+    mutationFn: async (payload: { recipeName: string; yieldQty: number; yieldUnit: string; canBeIngredient: number; ingredients: IngredientRow[]; instructions: string }) => {
       if (!sessionId) return;
       await apiRequest('PATCH', `/api/recipe-import/${sessionId}`, payload);
     },
   });
 
-  function scheduleAutosave(payload: { recipeName: string; yieldQty: number; yieldUnit: string; canBeIngredient: number; ingredients: IngredientRow[] }) {
+  function scheduleAutosave(payload: { recipeName: string; yieldQty: number; yieldUnit: string; canBeIngredient: number; ingredients: IngredientRow[]; instructions: string }) {
     if (!payload.recipeName.trim() || !payload.yieldUnit.trim() || payload.yieldQty <= 0) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
@@ -307,6 +312,7 @@ export default function RecipeImport() {
       setYieldQty(data.yieldQty);
       setYieldUnit(data.yieldUnit);
       setIngredients(data.ingredients);
+      setInstructions(data.instructions || '');
       setStep(2);
       toast({
         title: 'Scan Complete',
@@ -332,6 +338,7 @@ export default function RecipeImport() {
           inventoryItemId: ing.inventoryItemId,
           include: ing.include,
         })),
+        instructions: instructions || undefined,
       });
       return res.json() as Promise<{ recipeId: string; recipeName: string; componentsCreated: number; skippedIngredients: number; alreadyApproved?: boolean }>;
     },
@@ -363,7 +370,7 @@ export default function RecipeImport() {
   function updateIngredient(index: number, changes: Partial<IngredientRow>) {
     setIngredients(prev => {
       const next = prev.map((ing, i) => i === index ? { ...ing, ...changes } : ing);
-      scheduleAutosave({ recipeName, yieldQty, yieldUnit, canBeIngredient: canBeIngredient ? 1 : 0, ingredients: next });
+      scheduleAutosave({ recipeName, yieldQty, yieldUnit, canBeIngredient: canBeIngredient ? 1 : 0, ingredients: next, instructions });
       return next;
     });
   }
@@ -371,29 +378,34 @@ export default function RecipeImport() {
   function toggleAll(checked: boolean) {
     setIngredients(prev => {
       const next = prev.map(ing => ({ ...ing, include: checked }));
-      scheduleAutosave({ recipeName, yieldQty, yieldUnit, canBeIngredient: canBeIngredient ? 1 : 0, ingredients: next });
+      scheduleAutosave({ recipeName, yieldQty, yieldUnit, canBeIngredient: canBeIngredient ? 1 : 0, ingredients: next, instructions });
       return next;
     });
   }
 
   function handleRecipeNameChange(val: string) {
     setRecipeName(val);
-    scheduleAutosave({ recipeName: val, yieldQty, yieldUnit, canBeIngredient: canBeIngredient ? 1 : 0, ingredients });
+    scheduleAutosave({ recipeName: val, yieldQty, yieldUnit, canBeIngredient: canBeIngredient ? 1 : 0, ingredients, instructions });
   }
 
   function handleYieldQtyChange(val: number) {
     setYieldQty(val);
-    scheduleAutosave({ recipeName, yieldQty: val, yieldUnit, canBeIngredient: canBeIngredient ? 1 : 0, ingredients });
+    scheduleAutosave({ recipeName, yieldQty: val, yieldUnit, canBeIngredient: canBeIngredient ? 1 : 0, ingredients, instructions });
   }
 
   function handleYieldUnitChange(val: string) {
     setYieldUnit(val);
-    scheduleAutosave({ recipeName, yieldQty, yieldUnit: val, canBeIngredient: canBeIngredient ? 1 : 0, ingredients });
+    scheduleAutosave({ recipeName, yieldQty, yieldUnit: val, canBeIngredient: canBeIngredient ? 1 : 0, ingredients, instructions });
   }
 
   function handleCanBeIngredientChange(val: boolean) {
     setCanBeIngredient(val);
-    scheduleAutosave({ recipeName, yieldQty, yieldUnit, canBeIngredient: val ? 1 : 0, ingredients });
+    scheduleAutosave({ recipeName, yieldQty, yieldUnit, canBeIngredient: val ? 1 : 0, ingredients, instructions });
+  }
+
+  function handleInstructionsChange(val: string) {
+    setInstructions(val);
+    scheduleAutosave({ recipeName, yieldQty, yieldUnit, canBeIngredient: canBeIngredient ? 1 : 0, ingredients, instructions: val });
   }
 
   const allChecked = ingredients.length > 0 && ingredients.every(i => i.include);
@@ -401,7 +413,7 @@ export default function RecipeImport() {
 
   return (
     <TierGate feature="recipe_costing">
-      <div className="p-8">
+      <div className="p-4 sm:p-8">
         <div className="mb-6 flex items-center gap-3">
           <Button variant="ghost" size="icon" asChild>
             <Link href="/recipes">
@@ -411,7 +423,7 @@ export default function RecipeImport() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Scan Recipe</h1>
             <p className="text-muted-foreground text-sm mt-0.5">
-              Upload a recipe photo and let AI extract the ingredients
+              Upload a recipe photo and let AI extract the ingredients and instructions
             </p>
           </div>
         </div>
@@ -449,7 +461,7 @@ export default function RecipeImport() {
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 Take a photo or upload a scan of your recipe card. GPT-4o will extract
-                the recipe name, yield, and ingredient list automatically.
+                the recipe name, yield, ingredient list, and preparation instructions automatically.
               </p>
               {scanMutation.isPending ? (
                 <div className="flex flex-col items-center gap-3 py-8">
@@ -644,6 +656,30 @@ export default function RecipeImport() {
                     </TableBody>
                   </Table>
                 )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ScanText className="h-4 w-4 text-muted-foreground" />
+                  Preparation Instructions
+                  {instructions && (
+                    <Badge variant="secondary" className="text-xs">Extracted</Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  value={instructions}
+                  onChange={e => handleInstructionsChange(e.target.value)}
+                  placeholder="Preparation instructions extracted from your recipe photo will appear here. You can edit or add steps manually."
+                  className="min-h-[140px] resize-y text-sm"
+                  data-testid="textarea-instructions"
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  These instructions will be saved with your recipe and can be edited anytime in the recipe builder.
+                </p>
               </CardContent>
             </Card>
 

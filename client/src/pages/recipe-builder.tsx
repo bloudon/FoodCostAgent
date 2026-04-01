@@ -1726,9 +1726,39 @@ function RecipeBuilderContent() {
                       <p className="text-muted-foreground mb-2">
                         Drag items from the left panel or click the + button to add
                       </p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-muted-foreground mb-4">
                         Drop items here to get started
                       </p>
+                      <div className="flex flex-col items-center gap-1">
+                        <TierGate
+                          feature="ai_assistant"
+                          fallback={
+                            <Button
+                              variant="outline"
+                              disabled
+                              data-testid="button-scan-recipe-card-locked"
+                            >
+                              <ScanText className="h-4 w-4 mr-2" />
+                              Scan Recipe Card
+                              <Badge variant="secondary" className="ml-2 text-xs">Basic Plan</Badge>
+                            </Button>
+                          }
+                        >
+                          <Button
+                            variant="outline"
+                            asChild
+                            data-testid="button-scan-recipe-card"
+                          >
+                            <Link href="/recipe-import">
+                              <ScanText className="h-4 w-4 mr-2" />
+                              Scan Recipe Card
+                            </Link>
+                          </Button>
+                        </TierGate>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Scanning creates a new recipe with matched ingredients and instructions
+                        </p>
+                      </div>
                     </div>
                   ) : (
                     <SortableContext
