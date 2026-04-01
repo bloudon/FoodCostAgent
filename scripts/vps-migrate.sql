@@ -286,6 +286,46 @@ BEGIN
   END IF;
 END $$;
 
+-- v013 — Task #30: Auto-seed menu_departments from distinct legacy department text per company,
+--          then link menu_items.menu_department_id via case-insensitive match.
+--          Safe to run on existing tenants AND on first-time deploys.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v013') THEN
+
+    -- Step 1: Create managed department records for every distinct non-empty legacy
+    --         department text that doesn't already have a matching managed department.
+    INSERT INTO menu_departments (id, company_id, name, sort_order)
+    SELECT
+      gen_random_uuid(),
+      sub.company_id,
+      sub.department,
+      ROW_NUMBER() OVER (PARTITION BY sub.company_id ORDER BY sub.department)
+    FROM (
+      SELECT DISTINCT mi.company_id, mi.department
+      FROM menu_items mi
+      WHERE mi.department IS NOT NULL
+        AND mi.department <> ''
+        AND NOT EXISTS (
+          SELECT 1 FROM menu_departments md
+          WHERE md.company_id = mi.company_id
+            AND lower(md.name) = lower(mi.department)
+        )
+    ) sub
+    ON CONFLICT (company_id, name) DO NOTHING;
+
+    -- Step 2: Link every existing unlinked menu item to its managed department.
+    UPDATE menu_items mi
+    SET menu_department_id = md.id
+    FROM menu_departments md
+    WHERE md.company_id = mi.company_id
+      AND lower(mi.department) = lower(md.name)
+      AND mi.menu_department_id IS NULL;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v013', 'Task #30: Auto-seed menu_departments from legacy department text + link menu_department_id');
+  END IF;
+END $$;
+
 -- v012 — Task #30: Add FK constraint menu_items.menu_department_id -> menu_departments(id) ON DELETE SET NULL
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v012') THEN

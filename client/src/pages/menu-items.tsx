@@ -243,6 +243,7 @@ export default function MenuItemsPage() {
   const [selectedStoreForImport, setSelectedStoreForImport] = useState<string>("");
   const [manageSectionsOpen, setManageSectionsOpen] = useState(false);
   const [newDeptName, setNewDeptName] = useState("");
+  const [stagingDefaults, setStagingDefaults] = useState<{ id: string; name: string; editing: boolean }[]>([]);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
@@ -346,6 +347,21 @@ export default function MenuItemsPage() {
   const { data: menuDepts, isLoading: isLoadingDepts } = useQuery<MenuDepartment[]>({
     queryKey: ["/api/menu-departments"],
   });
+
+  // When Manage Sections dialog opens with no departments, pre-load editable staging suggestions
+  const DEFAULT_SECTIONS = ["Appetizers", "Entrees", "Sides", "Desserts", "Beverages", "Specials"];
+  useEffect(() => {
+    if (manageSectionsOpen && (menuDepts?.length ?? 0) === 0) {
+      setStagingDefaults(DEFAULT_SECTIONS.map((name) => ({
+        id: Math.random().toString(36).slice(2),
+        name,
+        editing: false,
+      })));
+    } else if (!manageSectionsOpen) {
+      setStagingDefaults([]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manageSectionsOpen, menuDepts?.length]);
 
   // Find the "One Size" default size
   const oneSizeDefault = menuItemSizes?.find(s => s.isDefault === 1 && s.name === "One Size");
@@ -2557,42 +2573,87 @@ export default function MenuItemsPage() {
               </Button>
             </div>
 
-            {/* Sortable list */}
+            {/* Sortable list or empty-state staging area */}
             {(menuDepts?.length ?? 0) === 0 ? (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground text-center">
-                  No sections yet. Add one above or use these common defaults:
+                <p className="text-sm text-muted-foreground">
+                  No sections yet. Edit or remove suggestions below, then create them — or type a custom name above.
                 </p>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {["Appetizers", "Entrees", "Sides", "Desserts", "Beverages", "Specials"].map((name) => (
-                    <Button
-                      key={name}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => createDeptMutation.mutate(name)}
-                      disabled={createDeptMutation.isPending}
-                      data-testid={`button-default-dept-${name.toLowerCase()}`}
-                    >
-                      <Plus className="h-3 w-3 mr-1" />
-                      {name}
-                    </Button>
-                  ))}
-                </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="w-full"
-                  onClick={async () => {
-                    for (const name of ["Appetizers", "Entrees", "Sides", "Desserts", "Beverages", "Specials"]) {
-                      await apiRequest("POST", "/api/menu-departments", { name });
-                    }
-                    queryClient.invalidateQueries({ queryKey: ["/api/menu-departments"] });
-                  }}
-                  disabled={createDeptMutation.isPending}
-                  data-testid="button-add-all-defaults"
-                >
-                  Add All Defaults
-                </Button>
+                {stagingDefaults.length > 0 && (
+                  <div className="space-y-1.5">
+                    {stagingDefaults.map((s) => (
+                      <div key={s.id} className="flex items-center gap-2 p-2 rounded-md border bg-background">
+                        {s.editing ? (
+                          <Input
+                            autoFocus
+                            value={s.name}
+                            onChange={(e) =>
+                              setStagingDefaults((prev) =>
+                                prev.map((x) => x.id === s.id ? { ...x, name: e.target.value } : x)
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === "Escape")
+                                setStagingDefaults((prev) =>
+                                  prev.map((x) => x.id === s.id ? { ...x, editing: false } : x)
+                                );
+                            }}
+                            onBlur={() =>
+                              setStagingDefaults((prev) =>
+                                prev.map((x) => x.id === s.id ? { ...x, editing: false } : x)
+                              )
+                            }
+                            className="h-7 flex-1 text-sm"
+                            data-testid={`input-staging-rename-${s.id}`}
+                          />
+                        ) : (
+                          <span
+                            className="flex-1 text-sm font-medium cursor-pointer"
+                            onClick={() =>
+                              setStagingDefaults((prev) =>
+                                prev.map((x) => x.id === s.id ? { ...x, editing: true } : x)
+                              )
+                            }
+                            data-testid={`text-staging-name-${s.id}`}
+                          >
+                            {s.name}
+                          </span>
+                        )}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setStagingDefaults((prev) => prev.filter((x) => x.id !== s.id))}
+                          data-testid={`button-remove-staging-${s.id}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {stagingDefaults.length > 0 && (
+                  <Button
+                    className="w-full"
+                    onClick={async () => {
+                      for (const s of stagingDefaults) {
+                        if (s.name.trim()) {
+                          await apiRequest("POST", "/api/menu-departments", { name: s.name.trim() });
+                        }
+                      }
+                      queryClient.invalidateQueries({ queryKey: ["/api/menu-departments"] });
+                      setStagingDefaults([]);
+                    }}
+                    disabled={createDeptMutation.isPending}
+                    data-testid="button-create-staged-sections"
+                  >
+                    Create {stagingDefaults.length} Section{stagingDefaults.length !== 1 ? "s" : ""}
+                  </Button>
+                )}
+                {stagingDefaults.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-2">
+                    All suggestions removed. Type a name above to add your first section.
+                  </p>
+                )}
               </div>
             ) : (
               <DndContext
