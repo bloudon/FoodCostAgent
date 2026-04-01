@@ -4573,59 +4573,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { scanRecipeImage } = await import('./services/recipeScanner');
       const scan = await scanRecipeImage(buffer, mimeType);
 
-      // Fuzzy-match each ingredient against company inventory items (single DB query)
-      const allItems = await storage.getInventoryItems(undefined, undefined, companyId);
+      // Fuzzy-match each ingredient against company inventory items using shared ItemMatcher
+      const { ItemMatcher } = await import('./services/itemMatcher');
+      const matcher = new ItemMatcher(storage);
 
-      function levenshtein(a: string, b: string): number {
-        const m = a.length, n = b.length;
-        const dp: number[][] = Array.from({ length: m + 1 }, (_, i) => Array(n + 1).fill(0));
-        for (let i = 0; i <= m; i++) dp[i][0] = i;
-        for (let j = 0; j <= n; j++) dp[0][j] = j;
-        for (let i = 1; i <= m; i++) {
-          for (let j = 1; j <= n; j++) {
-            if (a[i-1] === b[j-1]) dp[i][j] = dp[i-1][j-1];
-            else dp[i][j] = 1 + Math.min(dp[i-1][j-1], dp[i][j-1], dp[i-1][j]);
-          }
-        }
-        return dp[m][n];
-      }
-
-      function nameSimilarity(a: string, b: string): number {
-        const s1 = a.toLowerCase().trim();
-        const s2 = b.toLowerCase().trim();
-        if (s1 === s2) return 1.0;
-        if (s1.includes(s2) || s2.includes(s1)) return 0.8;
-        const dist = levenshtein(s1, s2);
-        const maxLen = Math.max(s1.length, s2.length);
-        return Math.max(0, 1 - dist / maxLen);
-      }
-
-      const matchedIngredients = scan.ingredients.map((ing) => {
-        let bestId: string | null = null;
-        let bestName: string | null = null;
-        let bestScore = 0;
-        for (const item of allItems) {
-          const score = nameSimilarity(ing.name, item.name);
-          if (score > bestScore) {
-            bestScore = score;
-            bestId = item.id;
-            bestName = item.name;
-          }
-        }
-        const confidence: 'high' | 'medium' | 'low' | 'none' =
-          bestScore >= 0.85 ? 'high' :
-          bestScore >= 0.65 ? 'medium' :
-          bestScore >= 0.45 ? 'low' : 'none';
+      const matchedIngredients = await Promise.all(scan.ingredients.map(async (ing) => {
+        const result = await matcher.findBestMatch(
+          { vendorSku: '', vendorProductName: ing.name },
+          companyId,
+          ''
+        );
         return {
           name: ing.name,
           qty: ing.qty,
           unit: ing.unit,
-          inventoryItemId: confidence !== 'none' ? bestId : null,
-          inventoryItemName: confidence !== 'none' ? bestName : null,
-          matchConfidence: confidence,
-          include: confidence === 'high' || confidence === 'medium',
+          inventoryItemId: result.confidence !== 'none' ? result.inventoryItemId : null,
+          inventoryItemName: result.confidence !== 'none' ? result.inventoryItemName : null,
+          matchConfidence: result.confidence,
+          include: result.confidence === 'high' || result.confidence === 'medium',
         };
-      });
+      }));
 
       // Create session
       const [session] = await db.insert(recipeImportSessions).values({
@@ -4789,13 +4756,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const yieldUnitId = resolveUnitId(parsed.data.yieldUnit);
-      if (!yieldUnitId) {
-        // Fall back to "each" or first unit
-        const eachUnit = allUnits.find(u => u.name.toLowerCase() === 'each' || u.abbreviation?.toLowerCase() === 'ea');
-        if (!eachUnit) return res.status(400).json({ error: `Cannot resolve yield unit: ${parsed.data.yieldUnit}` });
-        (parsed.data as any)._yieldUnitId = eachUnit.id;
-      } else {
-        (parsed.data as any)._yieldUnitId = yieldUnitId;
+      const eachUnit = allUnits.find(u => u.name.toLowerCase() === 'each' || u.abbreviation?.toLowerCase() === 'ea');
+      const resolvedYieldUnitId: string = yieldUnitId ?? eachUnit?.id ?? allUnits[0]?.id;
+      if (!resolvedYieldUnitId) {
+        return res.status(400).json({ error: `Cannot resolve yield unit: ${parsed.data.yieldUnit}` });
       }
 
       // Filter ingredients to include
@@ -4814,7 +4778,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create the recipe and components in a transaction
-      const resolvedYieldUnitId = (parsed.data as any)._yieldUnitId as string;
       const recipe = await db.transaction(async (tx) => {
         // Create recipe
         const [newRecipe] = await tx.insert(recipes).values({
