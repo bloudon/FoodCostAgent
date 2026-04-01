@@ -345,12 +345,13 @@ export default function RecipeImport() {
       setCreatedRecipeId(data.recipeId);
       setStep('done');
       queryClient.invalidateQueries({ queryKey: ['/api/recipes'] });
-      const skippedMsg = data.skippedIngredients > 0
-        ? ` (${data.skippedIngredients} unmatched skipped)`
+      queryClient.invalidateQueries({ queryKey: ['/api/recipes/missing-ingredients'] });
+      const unmatchedMsg = data.skippedIngredients > 0
+        ? ` • ${data.skippedIngredients} unmatched added as missing items`
         : '';
       toast({
         title: 'Recipe Created',
-        description: `${formatRecipeName(data.recipeName)} imported with ${data.componentsCreated} ingredient${data.componentsCreated !== 1 ? 's' : ''}${skippedMsg}`,
+        description: `${formatRecipeName(data.recipeName)} imported with ${data.componentsCreated} linked ingredient${data.componentsCreated !== 1 ? 's' : ''}${unmatchedMsg}`,
       });
     },
     onError: (err: Error) => {

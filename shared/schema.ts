@@ -488,11 +488,12 @@ export const recipeComponents = pgTable("recipe_components", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   recipeId: varchar("recipe_id").notNull(),
   componentType: text("component_type").notNull(), // 'inventory_item' | 'recipe'
-  componentId: varchar("component_id").notNull(), // inventory_item_id or recipe_id
+  componentId: varchar("component_id").notNull(), // inventory_item_id or recipe_id; may be a placeholder UUID if missingItemName is set
   qty: real("qty").notNull(),
   unitId: varchar("unit_id").notNull(),
   yieldOverride: real("yield_override"), // Optional yield % override (0-100) for this ingredient in this recipe
   sortOrder: integer("sort_order").notNull().default(0), // For drag-and-drop ordering
+  missingItemName: text("missing_item_name"), // Name of unmatched ingredient (placeholder components from recipe scan)
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

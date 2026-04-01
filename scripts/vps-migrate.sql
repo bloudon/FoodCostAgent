@@ -392,3 +392,19 @@ DO $$ BEGIN
       VALUES ('v015', 'Task #33: recipe_import_sessions table for AI recipe image scan wizard');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v016 — Task #33 fix: missing_item_name column on recipe_components
+-- Allows recipe scan to save unmatched-but-included ingredients as placeholder
+-- components that appear as "missing items" in the recipe builder/dashboard.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v016') THEN
+
+    ALTER TABLE recipe_components
+      ADD COLUMN IF NOT EXISTS missing_item_name text;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v016', 'Task #33 fix: missing_item_name on recipe_components for unmatched scan ingredients');
+  END IF;
+END $$;

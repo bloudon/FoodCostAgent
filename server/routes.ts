@@ -4599,7 +4599,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           inventoryItemId: result.confidence !== 'none' ? result.inventoryItemId : null,
           inventoryItemName: result.confidence !== 'none' ? result.inventoryItemName : null,
           matchConfidence: result.confidence,
-          include: result.confidence === 'high' || result.confidence === 'medium',
+          include: true, // All ingredients included by default; unmatched ones become missing-item placeholders
         };
       });
 
@@ -4773,14 +4773,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: `Cannot resolve yield unit: ${parsed.data.yieldUnit}` });
       }
 
-      // Filter ingredients to include
-      const includedIngredients = parsed.data.ingredients.filter(
+      // Split: matched ingredients get real components; unmatched-but-included get placeholder components
+      const matchedIngredients = parsed.data.ingredients.filter(
         (ing) => ing.include && ing.inventoryItemId
+      );
+      const unmatchedIncluded = parsed.data.ingredients.filter(
+        (ing) => ing.include && !ing.inventoryItemId
       );
 
       // Validate ownership of all referenced inventory items
-      if (includedIngredients.length > 0) {
-        const itemIds = includedIngredients.map(i => i.inventoryItemId!);
+      if (matchedIngredients.length > 0) {
+        const itemIds = matchedIngredients.map(i => i.inventoryItemId!);
         const validItems = await db.select({ id: inventoryItems.id }).from(inventoryItems)
           .where(and(inArray(inventoryItems.id, itemIds), eq(inventoryItems.companyId, companyId)));
         const validIds = new Set(validItems.map(i => i.id));
@@ -4803,7 +4806,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Create recipe components for matched ingredients
         let sortOrder = 0;
-        for (const ing of includedIngredients) {
+        for (const ing of matchedIngredients) {
           const unitId = resolveUnitId(ing.unit) || resolvedYieldUnitId;
           await tx.insert(recipeComponents).values({
             recipeId: newRecipe.id,
@@ -4812,6 +4815,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             qty: ing.qty,
             unitId,
             sortOrder: sortOrder++,
+          });
+        }
+
+        // Create placeholder components for unmatched-but-included ingredients
+        // componentId is a random UUID that won't exist in inventory_items — system detects as missingItem:true
+        // missingItemName stores the display name so the recipe builder shows it correctly
+        for (const ing of unmatchedIncluded) {
+          const unitId = resolveUnitId(ing.unit) || resolvedYieldUnitId;
+          await tx.insert(recipeComponents).values({
+            recipeId: newRecipe.id,
+            componentType: 'inventory_item',
+            componentId: crypto.randomUUID(),
+            qty: ing.qty,
+            unitId,
+            sortOrder: sortOrder++,
+            missingItemName: ing.name,
           });
         }
 
@@ -4831,10 +4850,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("[Recipe Import] Cost calculation failed (non-fatal):", costErr);
       }
 
-      // Skipped = included by user but has no matched inventory item (cannot be costed)
-      const skippedCount = parsed.data.ingredients.filter(
-        (ing) => ing.include && !ing.inventoryItemId
-      ).length;
+      // Unmatched count = placeholder components created (visible in recipe builder as missing items)
+      const skippedCount = unmatchedIncluded.length;
 
       return res.json({
         recipeId: recipe.id,
@@ -5921,7 +5938,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const companyId = (req as any).companyId;
       const allRecipes = await storage.getRecipes(companyId);
-      const inventoryItems = await storage.getInventoryItems(companyId);
+      const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
       const inventoryItemIds = new Set(inventoryItems.map((i) => i.id));
       const recipeIds = new Set(allRecipes.map((r) => r.id));
 
@@ -5934,7 +5951,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         for (const comp of components) {
           if (comp.componentType === "inventory_item" && !inventoryItemIds.has(comp.componentId)) {
-            missingNames.push(`Inventory item (id: ${comp.componentId.slice(0, 8)})`);
+            // Use stored missingItemName (from recipe scan placeholders) or fall back to a generic label
+            missingNames.push((comp as any).missingItemName || `Inventory item (id: ${comp.componentId.slice(0, 8)})`);
           } else if (comp.componentType === "recipe" && !recipeIds.has(comp.componentId)) {
             missingNames.push(`Sub-recipe (id: ${comp.componentId.slice(0, 8)})`);
           }
@@ -5961,7 +5979,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const components = await storage.getRecipeComponents(req.params.id);
     const units = await storage.getUnits();
-    const inventoryItems = await storage.getInventoryItems((req as any).companyId);
+    const inventoryItems = await storage.getInventoryItems(undefined, undefined, (req as any).companyId);
     const recipes = await storage.getRecipes((req as any).companyId);
 
     const expandedComponents = await Promise.all(
@@ -5971,7 +5989,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const item = inventoryItems.find((i) => i.id === comp.componentId);
           return {
             ...comp,
-            name: item?.name || "Unknown",
+            name: item?.name || (comp as any).missingItemName || "Unknown",
             unitName: unit?.name || "Unknown",
           };
         } else {
@@ -6348,7 +6366,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return {
             ...comp,
             inventoryItemId: comp.componentId,
-            inventoryItemName: item?.name || "Unknown",
+            inventoryItemName: item?.name || (comp as any).missingItemName || "Unknown",
             unitName: unit?.name || "Unknown",
             componentCost,
             missingItem,
