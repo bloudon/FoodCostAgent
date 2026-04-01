@@ -2888,12 +2888,13 @@ export class DatabaseStorage implements IStorage {
     const existingVariants = await this.getMenuItemVariants(parentId);
     const sortOrder = existingVariants.length;
     
-    // Create the variant with parent reference
+    // Create the variant with parent reference; inherit department fields from parent
     const [item] = await db.insert(menuItems).values({
       ...variant,
       companyId: parent.companyId,
       parentMenuItemId: parentId,
       department: variant.department || parent.department,
+      menuDepartmentId: variant.menuDepartmentId ?? parent.menuDepartmentId,
       category: variant.category || parent.category,
       sortOrder,
     }).returning();

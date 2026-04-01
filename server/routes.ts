@@ -8670,12 +8670,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Update menu item
+      // Update the menu item
       const [updated] = await db.update(menuItems)
         .set(req.body)
         .where(eq(menuItems.id, id))
         .returning();
-      
+
+      // If menuDepartmentId changed and this is a parent item, propagate to all child variants
+      if ("menuDepartmentId" in req.body && existingItem[0].parentMenuItemId === null) {
+        await db.update(menuItems)
+          .set({ menuDepartmentId: req.body.menuDepartmentId ?? null })
+          .where(and(eq(menuItems.parentMenuItemId, id), eq(menuItems.companyId, companyId)));
+      }
+
       res.json(updated);
     } catch (error: any) {
       res.status(400).json({ error: error.message });

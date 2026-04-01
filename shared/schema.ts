@@ -681,14 +681,17 @@ export type MenuItemSize = typeof menuItemSizes.$inferSelect;
 // Single-sized items: parentMenuItemId = null, size = null (or a default size)
 // Multi-sized items: Parent has parentMenuItemId = null, children have parentMenuItemId pointing to parent
 // Menu Departments (company-level menu section taxonomy)
+// Note: uniqueness is enforced case-insensitively at DB level via
+// UNIQUE INDEX menu_departments_company_lower_name_idx ON (company_id, lower(name)).
+// The server normalises names (trim) before insert/update so duplicates are caught
+// with a 409 response. No ORM-level unique constraint is declared here to avoid
+// drift with the DB's case-insensitive index.
 export const menuDepartments = pgTable("menu_departments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
-}, (table) => ({
-  uniqueCompanyDept: unique().on(table.companyId, table.name),
-}));
+});
 
 export const insertMenuDepartmentSchema = createInsertSchema(menuDepartments).omit({ id: true });
 export type InsertMenuDepartment = z.infer<typeof insertMenuDepartmentSchema>;
