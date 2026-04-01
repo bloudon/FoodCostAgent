@@ -9,7 +9,7 @@ interface SimpleObjectUploaderProps {
   maxFileSize?: number;
   buttonVariant?: "default" | "outline" | "secondary" | "ghost" | "destructive";
   visibility?: "public" | "private";
-  capture?: "environment" | "user" | boolean;
+  capture?: "environment" | "user";
   icon?: React.ReactNode;
 }
 
@@ -91,7 +91,7 @@ export function ObjectUploader({
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture={capture as string | undefined}
+        capture={capture}
         onChange={handleFileSelect}
         className="hidden"
         data-testid={`${dataTestId}-input`}
