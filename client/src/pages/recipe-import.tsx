@@ -456,13 +456,28 @@ export default function RecipeImport() {
                   <p className="text-sm text-muted-foreground">Reading your recipe...</p>
                 </div>
               ) : (
-                <ObjectUploader
-                  buttonText="Upload Recipe Photo"
-                  visibility="private"
-                  onUploadComplete={(objectPath: string) => {
-                    scanMutation.mutate(objectPath);
-                  }}
-                />
+                <div className="flex flex-wrap gap-2">
+                  <ObjectUploader
+                    buttonText="Upload Photo"
+                    visibility="private"
+                    dataTestId="button-upload-recipe-photo"
+                    onUploadComplete={(objectPath: string) => {
+                      scanMutation.mutate(objectPath);
+                    }}
+                  />
+                  <div className="touch-only">
+                    <ObjectUploader
+                      buttonText="Take Photo"
+                      visibility="private"
+                      capture="environment"
+                      icon={<Camera className="h-4 w-4" />}
+                      dataTestId="button-take-recipe-photo"
+                      onUploadComplete={(objectPath: string) => {
+                        scanMutation.mutate(objectPath);
+                      }}
+                    />
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>

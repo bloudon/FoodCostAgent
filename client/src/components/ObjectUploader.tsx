@@ -9,6 +9,8 @@ interface SimpleObjectUploaderProps {
   maxFileSize?: number;
   buttonVariant?: "default" | "outline" | "secondary" | "ghost" | "destructive";
   visibility?: "public" | "private";
+  capture?: "environment" | "user" | boolean;
+  icon?: React.ReactNode;
 }
 
 export function ObjectUploader({
@@ -18,6 +20,8 @@ export function ObjectUploader({
   maxFileSize = 10485760,
   buttonVariant = "outline",
   visibility = "private",
+  capture,
+  icon,
 }: SimpleObjectUploaderProps) {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -87,6 +91,7 @@ export function ObjectUploader({
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        capture={capture as string | undefined}
         onChange={handleFileSelect}
         className="hidden"
         data-testid={`${dataTestId}-input`}
@@ -100,6 +105,8 @@ export function ObjectUploader({
       >
         {isUploading ? (
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        ) : icon ? (
+          <span className="mr-2 flex items-center">{icon}</span>
         ) : (
           <Upload className="mr-2 h-4 w-4" />
         )}

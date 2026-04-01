@@ -360,4 +360,16 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
   }
+
+  /* Show only on touch/mobile devices (pointer: coarse = no fine mouse pointer).
+     Use this class to hide elements that only make sense on touchscreens,
+     e.g. a "Take Photo" camera button that opens the native camera app. */
+  .touch-only {
+    display: none;
+  }
+  @media (pointer: coarse) {
+    .touch-only {
+      display: contents;
+    }
+  }
 }
