@@ -144,8 +144,19 @@ WHERE user_id IN (
 -- ============================================================
 
 DELETE FROM store_inventory_items    WHERE company_id != 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1';
-DELETE FROM recipe_components        WHERE company_id != 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1';
-DELETE FROM store_recipes            WHERE company_id != 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1';
+
+-- recipe_components has no company_id column on VPS — delete via parent recipe
+DELETE FROM recipe_components
+WHERE recipe_id IN (
+  SELECT id FROM recipes WHERE company_id != 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1'
+);
+
+-- store_recipes has no company_id column on VPS — delete via parent recipe
+DELETE FROM store_recipes
+WHERE recipe_id IN (
+  SELECT id FROM recipes WHERE company_id != 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1'
+);
+
 DELETE FROM recipe_cost_snapshots    WHERE company_id != 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1';
 DELETE FROM store_menu_items         WHERE company_id != 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1';
 DELETE FROM daily_menu_item_sales    WHERE company_id != 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1';
