@@ -148,7 +148,10 @@ export class TheoreticalUsageService {
     for (const component of components) {
       if (component.componentType === "inventory_item") {
         const item = await storage.getInventoryItem(component.componentId);
-        if (!item) continue;
+        if (!item) {
+          console.warn(`[TheoreticalUsage] Missing inventory item: componentId=${component.componentId} recipeId=${recipeId} componentRowId=${component.id} — skipping component in usage calculation`);
+          continue;
+        }
 
         const qtyInComponentUnit = component.qty * multiplier;
         

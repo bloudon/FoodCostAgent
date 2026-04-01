@@ -125,6 +125,12 @@ function RecipesContent() {
     queryKey: ["/api/recipes"],
   });
 
+  const { data: recipesWithMissing = [] } = useQuery<Array<{ id: string; name: string; missingComponentNames: string[] }>>({
+    queryKey: ["/api/recipes/missing-ingredients"],
+  });
+
+  const missingIngredientRecipeIds = new Set(recipesWithMissing.map((r) => r.id));
+
   const { data: units } = useQuery<{ id: string; name: string; abbreviation: string }[]>({
     queryKey: ["/api/units"],
   });
@@ -491,9 +497,16 @@ function RecipesContent() {
                         </TableCell>
                         <TableCell className="text-right">
                           <Link href={`/recipes/${group.parent.id}`} className="block w-full">
-                            <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${group.parent.id}`}>
-                              ${group.parent.computedCost?.toFixed(2) || "0.00"}
-                            </span>
+                            <div className="flex items-center justify-end gap-2">
+                              {missingIngredientRecipeIds.has(group.parent.id) && (
+                                <span title="Recipe has missing ingredients — cost may be incomplete" data-testid={`badge-missing-ingredients-${group.parent.id}`}>
+                                  <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                                </span>
+                              )}
+                              <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${group.parent.id}`}>
+                                ${group.parent.computedCost?.toFixed(2) || "0.00"}
+                              </span>
+                            </div>
                           </Link>
                         </TableCell>
                         <TableCell>
@@ -579,9 +592,16 @@ function RecipesContent() {
                               </TableCell>
                               <TableCell className="text-right">
                                 <Link href={`/recipes/${child.id}`} className="block w-full">
-                                  <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${child.id}`}>
-                                    ${child.computedCost?.toFixed(2) || "0.00"}
-                                  </span>
+                                  <div className="flex items-center justify-end gap-2">
+                                    {missingIngredientRecipeIds.has(child.id) && (
+                                      <span title="Recipe has missing ingredients — cost may be incomplete" data-testid={`badge-missing-ingredients-${child.id}`}>
+                                        <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                                      </span>
+                                    )}
+                                    <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${child.id}`}>
+                                      ${child.computedCost?.toFixed(2) || "0.00"}
+                                    </span>
+                                  </div>
                                 </Link>
                               </TableCell>
                               <TableCell>

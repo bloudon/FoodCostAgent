@@ -70,6 +70,7 @@ import {
   Plus,
   Copy,
   Link as LinkIcon,
+  AlertTriangle,
 } from "lucide-react";
 import type { Recipe, RecipeComponent, Category, InventoryItem as BaseInventoryItem, Unit as BaseUnit } from "@shared/schema";
 
@@ -96,6 +97,7 @@ type ComponentWithDetails = RecipeComponent & {
   cost: number;
   yieldOverride?: number | null;
   itemYieldPercent?: number | null;
+  missingItem?: boolean;
 };
 
 // Inline ingredient row component with stacked form fields
@@ -107,6 +109,7 @@ function InlineIngredientRow({
   recipes,
   onUpdate,
   onDelete,
+  onAddToInventory,
 }: {
   component: ComponentWithDetails;
   units: Unit[] | undefined;
@@ -115,6 +118,7 @@ function InlineIngredientRow({
   recipes: Recipe[] | undefined;
   onUpdate: (updated: ComponentWithDetails) => void;
   onDelete: () => void;
+  onAddToInventory?: (component: ComponentWithDetails) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: component.id });
@@ -220,6 +224,53 @@ function InlineIngredientRow({
     if (compatibleUnits?.length) return compatibleUnits;
     return units || [];
   };
+
+  if (component.missingItem) {
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className="border rounded-lg px-3 py-2 bg-yellow-50/60 dark:bg-yellow-950/20 border-yellow-300 dark:border-yellow-800"
+        data-testid={`row-ingredient-${component.id}`}
+      >
+        <div className="flex items-center gap-2">
+          <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing shrink-0">
+            <GripVertical className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <span className="font-medium text-sm text-yellow-800 dark:text-yellow-300 truncate" data-testid={`text-ingredient-name-${component.id}`}>
+              {component.name || "Unknown item"}
+            </span>
+            <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
+              Item not found in inventory — cost not included
+            </p>
+          </div>
+          {component.componentType === "inventory_item" && onAddToInventory && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onAddToInventory(component)}
+              className="shrink-0 text-xs"
+              data-testid={`button-add-to-inventory-${component.id}`}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Add to Inventory
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onDelete}
+            className="shrink-0"
+            data-testid={`button-delete-ingredient-${component.id}`}
+          >
+            <Trash2 className="h-4 w-4 text-muted-foreground" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -458,6 +509,16 @@ function RecipeBuilderContent() {
   const [cloneSizeName, setCloneSizeName] = useState("");
   const [cloneScaleFactor, setCloneScaleFactor] = useState("1.0");
   const [cloneCreateMenuItem, setCloneCreateMenuItem] = useState(false);
+
+  // Add to Inventory dialog state (for missing ingredients)
+  const [addToInventoryDialogOpen, setAddToInventoryDialogOpen] = useState(false);
+  const [missingComponentForInventory, setMissingComponentForInventory] = useState<ComponentWithDetails | null>(null);
+  const [newInventoryForm, setNewInventoryForm] = useState({
+    name: "",
+    categoryId: "",
+    pricePerUnit: "",
+    unitId: "",
+  });
 
   // Queries
   const { data: recipe, isLoading: recipeLoading } = useQuery<Recipe>({
@@ -934,6 +995,69 @@ function RecipeBuilderContent() {
     }
   };
 
+  // Handle opening "Add to inventory" dialog for missing ingredients
+  const handleOpenAddToInventory = (component: ComponentWithDetails) => {
+    setMissingComponentForInventory(component);
+    setNewInventoryForm({
+      name: component.name !== "Unknown item" && component.name !== "Unknown" ? component.name : "",
+      categoryId: "",
+      pricePerUnit: "",
+      unitId: component.unitId || "",
+    });
+    setAddToInventoryDialogOpen(true);
+  };
+
+  const createInventoryItemMutation = useMutation({
+    mutationFn: async (data: { name: string; categoryId?: string; pricePerUnit: number; unitId: string; componentId: string }) => {
+      const response = await apiRequest("POST", "/api/inventory-items", {
+        name: data.name,
+        categoryId: data.categoryId || null,
+        pricePerUnit: data.pricePerUnit,
+        unitId: data.unitId,
+        caseSize: 1,
+        active: 1,
+      });
+      const newItem = await response.json();
+      return { newItem, componentId: data.componentId };
+    },
+    onSuccess: ({ newItem, componentId }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipe-components", id] });
+      // Update the component in local state to link to the new inventory item
+      setComponents(prev => prev.map(comp => {
+        if (comp.id === componentId) {
+          return {
+            ...comp,
+            componentId: newItem.id,
+            name: newItem.name,
+            missingItem: false,
+          };
+        }
+        return comp;
+      }));
+      toast({ title: "Inventory item created", description: `${newItem.name} added to inventory and linked to this recipe.` });
+      setAddToInventoryDialogOpen(false);
+      setMissingComponentForInventory(null);
+    },
+    onError: () => {
+      toast({ title: "Failed to create inventory item", variant: "destructive" });
+    },
+  });
+
+  const handleSaveNewInventoryItem = () => {
+    if (!missingComponentForInventory || !newInventoryForm.name || !newInventoryForm.unitId) {
+      toast({ title: "Name and unit are required", variant: "destructive" });
+      return;
+    }
+    createInventoryItemMutation.mutate({
+      name: newInventoryForm.name,
+      categoryId: newInventoryForm.categoryId || undefined,
+      pricePerUnit: parseFloat(newInventoryForm.pricePerUnit) || 0,
+      unitId: newInventoryForm.unitId,
+      componentId: missingComponentForInventory.id,
+    });
+  };
+
   // Save recipe mutation
   const saveRecipeMutation = useMutation({
     mutationFn: async () => {
@@ -1150,20 +1274,22 @@ function RecipeBuilderContent() {
       setYieldUnitId(recipe.yieldUnitId);
       setCanBeIngredient(recipe.canBeIngredient === 1);
 
-      const componentsWithDetails: ComponentWithDetails[] = recipeComponents.map((comp) => {
+      const componentsWithDetails: ComponentWithDetails[] = recipeComponents.map((comp: any) => {
+        const missingItem = comp.missingItem === true;
         let name = "";
         if (comp.componentType === "inventory_item") {
-          name = inventoryItems?.find((i) => i.id === comp.componentId)?.name || "Unknown";
+          name = inventoryItems?.find((i) => i.id === comp.componentId)?.name || comp.inventoryItemName || "Unknown";
         } else {
-          name = recipes?.find((r) => r.id === comp.componentId)?.name || "Unknown";
+          name = recipes?.find((r) => r.id === comp.componentId)?.name || comp.subRecipeName || "Unknown";
         }
 
         const unitName = units?.find((u) => u.id === comp.unitId)?.name || "";
-        const compWithDetails = {
+        const compWithDetails: ComponentWithDetails = {
           ...comp,
           name,
           unitName,
           cost: 0,
+          missingItem,
         };
         compWithDetails.cost = calculateComponentCost(compWithDetails);
         return compWithDetails;
@@ -1583,6 +1709,7 @@ function RecipeBuilderContent() {
                             recipes={recipes}
                             onUpdate={handleInlineComponentUpdate}
                             onDelete={() => handleDeleteIngredient(component.id)}
+                            onAddToInventory={handleOpenAddToInventory}
                           />
                         ))}
                       </div>
@@ -1780,6 +1907,91 @@ function RecipeBuilderContent() {
               data-testid="button-save-inventory-item"
             >
               {updateInventoryItemMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add to Inventory dialog — for missing ingredient rows */}
+      <Dialog open={addToInventoryDialogOpen} onOpenChange={setAddToInventoryDialogOpen}>
+        <DialogContent data-testid="dialog-add-to-inventory">
+          <DialogHeader>
+            <DialogTitle>Add to Inventory</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Create a new inventory item to resolve the missing ingredient. It will be automatically linked to this recipe component.
+          </p>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-item-name">Item Name *</Label>
+              <Input
+                id="new-item-name"
+                value={newInventoryForm.name}
+                onChange={(e) => setNewInventoryForm({ ...newInventoryForm, name: e.target.value })}
+                placeholder="Enter item name"
+                data-testid="input-new-inventory-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-item-unit">Unit *</Label>
+              <Select
+                value={newInventoryForm.unitId || undefined}
+                onValueChange={(value) => setNewInventoryForm({ ...newInventoryForm, unitId: value })}
+              >
+                <SelectTrigger id="new-item-unit" data-testid="select-new-inventory-unit">
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {units?.map((unit) => (
+                    <SelectItem key={unit.id} value={unit.id}>
+                      {formatUnitName(unit.name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-item-category">Category</Label>
+              <Select
+                value={newInventoryForm.categoryId || undefined}
+                onValueChange={(value) => setNewInventoryForm({ ...newInventoryForm, categoryId: value })}
+              >
+                <SelectTrigger id="new-item-category" data-testid="select-new-inventory-category">
+                  <SelectValue placeholder="No category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories?.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-item-price">Price per Unit</Label>
+              <Input
+                id="new-item-price"
+                type="number"
+                step="0.01"
+                min="0"
+                value={newInventoryForm.pricePerUnit}
+                onChange={(e) => setNewInventoryForm({ ...newInventoryForm, pricePerUnit: e.target.value })}
+                placeholder="0.00"
+                data-testid="input-new-inventory-price"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddToInventoryDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveNewInventoryItem}
+              disabled={createInventoryItemMutation.isPending || !newInventoryForm.name || !newInventoryForm.unitId}
+              data-testid="button-confirm-add-to-inventory"
+            >
+              {createInventoryItemMutation.isPending ? "Creating..." : "Create & Link"}
             </Button>
           </DialogFooter>
         </DialogContent>

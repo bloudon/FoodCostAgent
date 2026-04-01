@@ -1,11 +1,12 @@
 import { TierGate } from "@/components/tier-gate";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Edit, TrendingUp, Package } from "lucide-react";
+import { ArrowLeft, Edit, TrendingUp, Package, AlertTriangle, X } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -20,6 +21,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 function RecipeDetailContent() {
   const [, params] = useRoute("/recipes/:id");
   const recipeId = params?.id;
+  const [alertDismissed, setAlertDismissed] = useState(false);
 
   const { data: recipe, isLoading: recipeLoading } = useQuery<any>({
     queryKey: ["/api/recipes", recipeId],
@@ -80,6 +82,9 @@ function RecipeDetailContent() {
     );
   }
 
+  const missingComponents = components?.filter((c: any) => c.missingItem) ?? [];
+  const hasMissingIngredients = missingComponents.length > 0;
+
   return (
     <div className="p-8">
       <div className="mb-8">
@@ -89,6 +94,37 @@ function RecipeDetailContent() {
             Back to Recipes
           </Button>
         </Link>
+
+        {hasMissingIngredients && !alertDismissed && (
+          <div
+            className="flex items-start gap-3 rounded-md border border-yellow-300 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950/30 px-4 py-3 mb-6 text-yellow-800 dark:text-yellow-300"
+            data-testid="alert-missing-ingredients"
+          >
+            <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-sm">Missing ingredient{missingComponents.length > 1 ? "s" : ""} detected</p>
+              <p className="text-sm mt-0.5 text-yellow-700 dark:text-yellow-400">
+                {missingComponents.length === 1
+                  ? "1 ingredient in this recipe no longer exists in your inventory."
+                  : `${missingComponents.length} ingredients in this recipe no longer exist in your inventory.`}{" "}
+                Cost calculations may be incomplete.{" "}
+                <Link href={`/recipes/${recipeId}/edit`} className="underline underline-offset-2 font-medium">
+                  Edit recipe
+                </Link>{" "}
+                to resolve.
+              </p>
+            </div>
+            <button
+              onClick={() => setAlertDismissed(true)}
+              className="flex-shrink-0 text-yellow-600 dark:text-yellow-400 hover:text-yellow-900 dark:hover:text-yellow-200"
+              aria-label="Dismiss"
+              data-testid="button-dismiss-missing-alert"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-recipe-name">

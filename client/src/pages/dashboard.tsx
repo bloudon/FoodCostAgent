@@ -143,6 +143,11 @@ export default function Dashboard() {
     enabled: !!selectedStoreId,
   });
 
+  // Fetch recipes with missing ingredients for the alert card
+  const { data: recipesWithMissing = [] } = useQuery<Array<{ id: string; name: string; missingComponentNames: string[] }>>({
+    queryKey: ["/api/recipes/missing-ingredients"],
+  });
+
   // Fetch estimated on-hand inventory for critical items detection
   const { data: estimatedOnHand = [], isLoading: estimatedLoading } = useQuery<Array<{
     inventoryItemId: string;
@@ -688,6 +693,53 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
+        )}
+
+        {/* Missing Ingredients Card - Only show if has data */}
+        {recipesWithMissing.length > 0 && (
+          <Card
+            className="bg-gradient-to-r from-yellow-50/50 to-slate-50/50 dark:from-yellow-950/20 dark:to-slate-950/20 border-yellow-200 dark:border-yellow-800"
+            data-testid="card-missing-ingredients"
+          >
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                <CardTitle className="text-base">
+                  Missing Recipe Ingredients ({recipesWithMissing.length})
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="pb-4">
+              <div className="space-y-2">
+                {recipesWithMissing.slice(0, 3).map((r) => (
+                  <Link key={r.id} href={`/recipes/${r.id}`}>
+                    <div
+                      className="flex items-start gap-3 p-3 rounded-md border bg-yellow-50 dark:bg-yellow-950/30 border-yellow-300 dark:border-yellow-800 hover-elevate cursor-pointer"
+                      data-testid={`missing-recipe-${r.id}`}
+                    >
+                      <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{r.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                          {r.missingComponentNames.length === 1
+                            ? `Missing: ${r.missingComponentNames[0]}`
+                            : `${r.missingComponentNames.length} missing ingredients`}
+                        </p>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                    </div>
+                  </Link>
+                ))}
+                {recipesWithMissing.length > 3 && (
+                  <Link href="/recipes">
+                    <p className="text-xs text-muted-foreground text-center pt-1 hover:text-foreground transition-colors" data-testid="link-view-all-missing">
+                      +{recipesWithMissing.length - 3} more recipes affected
+                    </p>
+                  </Link>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
 

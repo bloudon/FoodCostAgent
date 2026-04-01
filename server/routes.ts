@@ -5915,6 +5915,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(recipesWithCosts);
   });
 
+  // GET /api/recipes/missing-ingredients — list recipes that have missing components
+  // IMPORTANT: must be registered BEFORE /api/recipes/:id to avoid route conflict
+  app.get("/api/recipes/missing-ingredients", requireAuth, requireTier("basic"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const allRecipes = await storage.getRecipes(companyId);
+      const inventoryItems = await storage.getInventoryItems(companyId);
+      const inventoryItemIds = new Set(inventoryItems.map((i) => i.id));
+      const recipeIds = new Set(allRecipes.map((r) => r.id));
+
+      const result: Array<{ id: string; name: string; missingComponentNames: string[] }> = [];
+
+      for (const recipe of allRecipes) {
+        if (recipe.isActive === 0) continue;
+        const components = await storage.getRecipeComponents(recipe.id);
+        const missingNames: string[] = [];
+
+        for (const comp of components) {
+          if (comp.componentType === "inventory_item" && !inventoryItemIds.has(comp.componentId)) {
+            missingNames.push(`Inventory item (id: ${comp.componentId.slice(0, 8)})`);
+          } else if (comp.componentType === "recipe" && !recipeIds.has(comp.componentId)) {
+            missingNames.push(`Sub-recipe (id: ${comp.componentId.slice(0, 8)})`);
+          }
+        }
+
+        if (missingNames.length > 0) {
+          result.push({ id: recipe.id, name: recipe.name, missingComponentNames: missingNames });
+        }
+      }
+
+      res.json(result);
+    } catch (err) {
+      console.error("GET /api/recipes/missing-ingredients error:", err);
+      res.status(500).json({ error: "Failed to fetch recipes with missing ingredients" });
+    }
+  });
+
   app.get("/api/recipes/:id", requireAuth, requireTier("basic"), async (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const recipe = await storage.getRecipe(req.params.id, (req as any).companyId);
@@ -6304,21 +6341,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (comp.componentType === "inventory_item") {
           const item = inventoryItems.find((i) => i.id === comp.componentId);
+          const missingItem = !item;
+          if (missingItem) {
+            console.warn(`[RecipeComponents] Missing inventory item: componentId=${comp.componentId} recipeId=${comp.recipeId} componentRowId=${comp.id}`);
+          }
           return {
             ...comp,
             inventoryItemId: comp.componentId,
             inventoryItemName: item?.name || "Unknown",
             unitName: unit?.name || "Unknown",
             componentCost,
+            missingItem,
           };
         } else {
           const subRecipe = recipes.find((r) => r.id === comp.componentId);
+          const missingItem = !subRecipe;
+          if (missingItem) {
+            console.warn(`[RecipeComponents] Missing sub-recipe: componentId=${comp.componentId} recipeId=${comp.recipeId} componentRowId=${comp.id}`);
+          }
           return {
             ...comp,
             subRecipeId: comp.componentId,
             subRecipeName: subRecipe?.name || "Unknown",
             unitName: unit?.name || "Unknown",
             componentCost,
+            missingItem,
           };
         }
       })
