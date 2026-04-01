@@ -170,7 +170,9 @@ DELETE FROM quickbooks_sync_logs     WHERE company_id != 'ad95ecda-74a9-49d7-833
 DELETE FROM quickbooks_token_logs    WHERE company_id != 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1';
 DELETE FROM invitations              WHERE company_id != 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1';
 DELETE FROM onboarding_progress      WHERE company_id != 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1';
-DELETE FROM company_settings         WHERE company_id != 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1';
+
+-- company_settings has no company_id column; delete all rows (app handles empty settings gracefully)
+DELETE FROM company_settings;
 
 -- ============================================================
 -- ROUND 3: Mid-level parents (children cleared above)

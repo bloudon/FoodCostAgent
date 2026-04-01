@@ -1,0 +1,74 @@
+
+                  id                  |          name
+--------------------------------------+-------------------------
+ 59457b9d-2bcc-4298-9129-71fb2f1d5b03 | Harmony Tech Inc
+ 6d3096fa-bfb8-4e71-8174-05f3b5cc2b73 | Big City Pizza
+ 7f92c83e-f9c0-4bfd-b78b-4f9fb7fa0b9d | Taco Cheese Inc
+ 026b15cb-ca66-4216-be70-34020990ee35 | Taco Cheese Inc
+ a1e884ab-0fee-42bd-95f4-7795af969a1f | TestPizza
+ 37f791db-462d-4c73-bda7-074752bd3027 | Jerry's Meatball Stoppe
+ e795800a-53bc-47cb-bd44-9d6225d4fa1f | Brian's Breakfast Place
+ 94b7d4fd-b7b6-41fe-b36f-60ff2d77d486 | Jo's Pizza
+ 0bdfcc7d-9b6a-412d-b124-e8619eb2ca18 | Padraig Pizza
+(9 rows)
+
+DELETE 44
+DELETE 35
+DELETE 35
+DELETE 56
+DELETE 393
+DELETE 0
+DELETE 27
+DELETE 0
+DELETE 0
+DELETE 10
+DELETE 6
+DELETE 0
+DELETE 34
+DELETE 160
+DELETE 0
+DELETE 18
+DELETE 3
+DELETE 311
+DELETE 60
+DELETE 10
+DELETE 0
+DELETE 193
+DELETE 13
+DELETE 37
+DELETE 6
+DELETE 4
+DELETE 3
+DELETE 8
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 3
+DELETE 4
+psql:scripts/purge_test_data.sql:173: ERROR:  column "company_id" does not exist
+LINE 1: DELETE FROM company_settings         WHERE company_id != 'ad...
+                                                   ^
+psql:scripts/purge_test_data.sql:179: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:180: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:181: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:182: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:183: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:184: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:185: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:186: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:187: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:188: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:189: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:190: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:191: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:192: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:193: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:194: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:195: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:200: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:208: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:210: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:216: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:221: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:222: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ROLLBACK
