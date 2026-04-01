@@ -4657,6 +4657,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   /**
    * GET /api/recipe-import/:sessionId
    * Returns session data for URL-based rehydration.
+   * Returns 409 if session is already approved (non-re-enterable).
    */
   app.get("/api/recipe-import/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
     try {
@@ -4664,12 +4665,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const [session] = await db.select().from(recipeImportSessions)
         .where(and(eq(recipeImportSessions.id, req.params.sessionId), eq(recipeImportSessions.companyId, companyId)));
       if (!session) return res.status(404).json({ error: "Session not found" });
+      if (session.status === "approved") {
+        return res.status(409).json({ error: "Session already approved", status: "approved" });
+      }
       return res.json({
         sessionId: session.id,
         status: session.status,
         ...(session.extractedData || {}),
       });
     } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * PATCH /api/recipe-import/:sessionId
+   * Persists user edits back to the session's extractedData (staged state).
+   * Only allowed on pending sessions.
+   */
+  app.patch("/api/recipe-import/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { sessionId } = req.params;
+
+      const ingredientSchema = z.object({
+        name: z.string(),
+        qty: z.number(),
+        unit: z.string(),
+        inventoryItemId: z.string().nullable(),
+        inventoryItemName: z.string().nullable(),
+        matchConfidence: z.enum(["high", "medium", "low", "none"]),
+        include: z.boolean(),
+      });
+      const bodySchema = z.object({
+        recipeName: z.string().min(1),
+        yieldQty: z.number().positive(),
+        yieldUnit: z.string().min(1),
+        ingredients: z.array(ingredientSchema),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const [session] = await db.select().from(recipeImportSessions)
+        .where(and(eq(recipeImportSessions.id, sessionId), eq(recipeImportSessions.companyId, companyId)));
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      if (session.status !== "pending") {
+        return res.status(409).json({ error: `Session cannot be edited (status: ${session.status})` });
+      }
+
+      await db.update(recipeImportSessions)
+        .set({
+          extractedData: {
+            recipeName: parsed.data.recipeName,
+            yieldQty: parsed.data.yieldQty,
+            yieldUnit: parsed.data.yieldUnit,
+            ingredients: parsed.data.ingredients,
+          },
+          updatedAt: new Date(),
+        })
+        .where(eq(recipeImportSessions.id, sessionId));
+
+      return res.json({ ok: true });
+    } catch (error: any) {
+      console.error("[Recipe Import PATCH]", error);
       return res.status(500).json({ error: error.message });
     }
   });
@@ -4781,9 +4841,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
-        // Mark session approved
+        // Mark session approved and clear staging payload
         await tx.update(recipeImportSessions)
-          .set({ status: "approved", updatedAt: new Date() })
+          .set({ status: "approved", extractedData: null, updatedAt: new Date() })
           .where(eq(recipeImportSessions.id, sessionId));
 
         return newRecipe;

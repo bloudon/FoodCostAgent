@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLocation, useSearch } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,13 +23,28 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
   ArrowLeft,
   Camera,
   Check,
   ChefHat,
+  ChevronsUpDown,
   Loader2,
   Sparkles,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { TierGate } from '@/components/tier-gate';
@@ -62,12 +77,133 @@ interface InventoryItem {
   name: string;
 }
 
+interface UnitOption {
+  id: string;
+  name: string;
+  abbreviation: string | null;
+}
+
 const CONFIDENCE_BADGE: Record<MatchConfidence, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
   high:   { label: 'High',      variant: 'default' },
   medium: { label: 'Medium',    variant: 'secondary' },
   low:    { label: 'Low',       variant: 'outline' },
   none:   { label: 'Unmatched', variant: 'destructive' },
 };
+
+function UnitSelect({
+  value,
+  onChange,
+  units,
+  placeholder,
+  className,
+  testId,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  units: UnitOption[];
+  placeholder?: string;
+  className?: string;
+  testId?: string;
+}) {
+  const displayLabel = (u: UnitOption) =>
+    u.abbreviation ? `${u.abbreviation} (${u.name})` : u.name;
+
+  const selected = units.find(
+    u => u.name.toLowerCase() === value.toLowerCase() ||
+         (u.abbreviation && u.abbreviation.toLowerCase() === value.toLowerCase())
+  );
+
+  return (
+    <Select
+      value={selected?.id ?? '__custom'}
+      onValueChange={id => {
+        if (id === '__custom') return;
+        const u = units.find(u => u.id === id);
+        onChange(u ? u.name : id);
+      }}
+    >
+      <SelectTrigger className={className} data-testid={testId}>
+        <SelectValue placeholder={placeholder ?? 'Unit'}>
+          {selected ? displayLabel(selected) : value || placeholder}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {units.map(u => (
+          <SelectItem key={u.id} value={u.id}>
+            {displayLabel(u)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function InventoryCombobox({
+  value,
+  items,
+  onChange,
+  testId,
+}: {
+  value: string | null;
+  items: InventoryItem[];
+  onChange: (id: string | null, name: string | null) => void;
+  testId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = items.find(i => i.id === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-full justify-between text-sm font-normal truncate"
+          data-testid={testId}
+        >
+          <span className="truncate">
+            {selected ? selected.name : 'Not matched'}
+          </span>
+          <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search inventory..." className="h-9" />
+          <CommandList>
+            <CommandEmpty>No items found.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="__none"
+                onSelect={() => {
+                  onChange(null, null);
+                  setOpen(false);
+                }}
+              >
+                <span className="text-muted-foreground">Not matched</span>
+              </CommandItem>
+              {items.map(item => (
+                <CommandItem
+                  key={item.id}
+                  value={item.name}
+                  onSelect={() => {
+                    onChange(item.id, item.name);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn('mr-2 h-4 w-4', value === item.id ? 'opacity-100' : 'opacity-0')}
+                  />
+                  {item.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function RecipeImport() {
   const [, navigate] = useLocation();
@@ -80,28 +216,35 @@ export default function RecipeImport() {
   const [step, setStep] = useState<1 | 2 | 'done'>(urlSessionId ? 2 : 1);
   const [sessionId, setSessionId] = useState<string>(urlSessionId);
 
-  // Step 2 state
   const [recipeName, setRecipeName] = useState('');
   const [yieldQty, setYieldQty] = useState<number>(1);
   const [yieldUnit, setYieldUnit] = useState('');
   const [canBeIngredient, setCanBeIngredient] = useState(false);
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
 
-  // Result state
   const [createdRecipeId, setCreatedRecipeId] = useState<string | null>(null);
 
-  // Fetch all inventory items for the dropdown
-  const { data: inventoryItems } = useQuery<InventoryItem[]>({
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { data: inventoryItems = [] } = useQuery<InventoryItem[]>({
     queryKey: ['/api/inventory-items'],
     select: (data: any[]) => data.map(i => ({ id: i.id, name: i.name })),
   });
 
-  // Rehydrate from server if URL has sessionId
+  const { data: units = [] } = useQuery<UnitOption[]>({
+    queryKey: ['/api/units'],
+    select: (data: any[]) => data.map(u => ({ id: u.id, name: u.name, abbreviation: u.abbreviation ?? null })),
+  });
+
   const { data: sessionData } = useQuery({
     queryKey: ['/api/recipe-import', urlSessionId],
     enabled: !!urlSessionId,
     queryFn: async () => {
       const res = await fetch(`/api/recipe-import/${urlSessionId}`, { credentials: 'include' });
+      if (res.status === 409) {
+        const body = await res.json() as { status?: string };
+        return { status: body.status || 'approved' } as { status: string; recipeName?: string; yieldQty?: number; yieldUnit?: string; ingredients?: IngredientRow[] };
+      }
       if (!res.ok) throw new Error('Session not found');
       return res.json() as Promise<ScanResult & { status: string }>;
     },
@@ -113,7 +256,7 @@ export default function RecipeImport() {
       setStep('done');
       return;
     }
-    if (ingredients.length === 0 && sessionData.ingredients?.length > 0) {
+    if (ingredients.length === 0 && sessionData.ingredients && sessionData.ingredients.length > 0) {
       setRecipeName(sessionData.recipeName || '');
       setYieldQty(sessionData.yieldQty || 1);
       setYieldUnit(sessionData.yieldUnit || '');
@@ -122,7 +265,6 @@ export default function RecipeImport() {
     }
   }, [sessionData]);
 
-  // Update URL when sessionId changes
   useEffect(() => {
     if (sessionId) {
       const params = new URLSearchParams();
@@ -131,13 +273,26 @@ export default function RecipeImport() {
     }
   }, [sessionId]);
 
+  const patchMutation = useMutation({
+    mutationFn: async (payload: { recipeName: string; yieldQty: number; yieldUnit: string; ingredients: IngredientRow[] }) => {
+      if (!sessionId) return;
+      await apiRequest('PATCH', `/api/recipe-import/${sessionId}`, payload);
+    },
+  });
+
+  function scheduleAutosave(payload: { recipeName: string; yieldQty: number; yieldUnit: string; ingredients: IngredientRow[] }) {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      patchMutation.mutate(payload);
+    }, 1200);
+  }
+
   const steps = [
     { num: 1, label: 'Upload' },
     { num: 2, label: 'Review' },
   ];
   const stepNum = step === 'done' ? 3 : step;
 
-  // Scan mutation
   const scanMutation = useMutation({
     mutationFn: async (objectPath: string) => {
       const res = await apiRequest('POST', '/api/recipe-import/scan', { imageObjectPath: objectPath });
@@ -164,7 +319,6 @@ export default function RecipeImport() {
     },
   });
 
-  // Approve mutation
   const approveMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest('POST', `/api/recipe-import/${sessionId}/approve`, {
@@ -201,15 +355,37 @@ export default function RecipeImport() {
   });
 
   function updateIngredient(index: number, changes: Partial<IngredientRow>) {
-    setIngredients(prev => prev.map((ing, i) => i === index ? { ...ing, ...changes } : ing));
+    setIngredients(prev => {
+      const next = prev.map((ing, i) => i === index ? { ...ing, ...changes } : ing);
+      scheduleAutosave({ recipeName, yieldQty, yieldUnit, ingredients: next });
+      return next;
+    });
   }
 
   function toggleAll(checked: boolean) {
-    setIngredients(prev => prev.map(ing => ({ ...ing, include: checked })));
+    setIngredients(prev => {
+      const next = prev.map(ing => ({ ...ing, include: checked }));
+      scheduleAutosave({ recipeName, yieldQty, yieldUnit, ingredients: next });
+      return next;
+    });
+  }
+
+  function handleRecipeNameChange(val: string) {
+    setRecipeName(val);
+    scheduleAutosave({ recipeName: val, yieldQty, yieldUnit, ingredients });
+  }
+
+  function handleYieldQtyChange(val: number) {
+    setYieldQty(val);
+    scheduleAutosave({ recipeName, yieldQty: val, yieldUnit, ingredients });
+  }
+
+  function handleYieldUnitChange(val: string) {
+    setYieldUnit(val);
+    scheduleAutosave({ recipeName, yieldQty, yieldUnit: val, ingredients });
   }
 
   const allChecked = ingredients.length > 0 && ingredients.every(i => i.include);
-  const someChecked = ingredients.some(i => i.include);
   const includedCount = ingredients.filter(i => i.include && i.inventoryItemId).length;
 
   return (
@@ -229,7 +405,6 @@ export default function RecipeImport() {
           </div>
         </div>
 
-        {/* Step indicator */}
         {step !== 'done' && (
           <div className="flex items-center gap-2 mb-6">
             {steps.map((s, idx) => (
@@ -252,7 +427,6 @@ export default function RecipeImport() {
           </div>
         )}
 
-        {/* Step 1: Upload */}
         {step === 1 && (
           <Card className="max-w-lg">
             <CardHeader>
@@ -284,10 +458,8 @@ export default function RecipeImport() {
           </Card>
         )}
 
-        {/* Step 2: Review */}
         {step === 2 && (
           <div className="space-y-4 max-w-4xl">
-            {/* Recipe metadata */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Recipe Details</CardTitle>
@@ -299,7 +471,7 @@ export default function RecipeImport() {
                     <Input
                       id="recipe-name"
                       value={recipeName}
-                      onChange={e => setRecipeName(e.target.value)}
+                      onChange={e => handleRecipeNameChange(e.target.value)}
                       placeholder="Recipe name"
                       className="mt-1"
                       data-testid="input-recipe-name"
@@ -311,22 +483,23 @@ export default function RecipeImport() {
                       id="yield-qty"
                       type="number"
                       value={yieldQty}
-                      onChange={e => setYieldQty(Number(e.target.value))}
+                      onChange={e => handleYieldQtyChange(Number(e.target.value))}
                       placeholder="1"
                       className="mt-1"
                       data-testid="input-yield-qty"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="yield-unit">Yield Unit</Label>
-                    <Input
-                      id="yield-unit"
-                      value={yieldUnit}
-                      onChange={e => setYieldUnit(e.target.value)}
-                      placeholder="portion"
-                      className="mt-1"
-                      data-testid="input-yield-unit"
-                    />
+                    <Label>Yield Unit</Label>
+                    <div className="mt-1">
+                      <UnitSelect
+                        value={yieldUnit}
+                        onChange={handleYieldUnitChange}
+                        units={units}
+                        placeholder="Select unit"
+                        testId="select-yield-unit"
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="mt-4 flex items-center gap-2">
@@ -343,7 +516,6 @@ export default function RecipeImport() {
               </CardContent>
             </Card>
 
-            {/* Ingredients table */}
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -376,7 +548,7 @@ export default function RecipeImport() {
                         </TableHead>
                         <TableHead>Ingredient (from photo)</TableHead>
                         <TableHead className="w-20">Qty</TableHead>
-                        <TableHead className="w-24">Unit</TableHead>
+                        <TableHead className="w-28">Unit</TableHead>
                         <TableHead>Match in Inventory</TableHead>
                         <TableHead className="w-24">Confidence</TableHead>
                       </TableRow>
@@ -415,41 +587,25 @@ export default function RecipeImport() {
                               />
                             </TableCell>
                             <TableCell>
-                              <Input
+                              <UnitSelect
                                 value={ing.unit}
-                                onChange={e => updateIngredient(index, { unit: e.target.value })}
+                                onChange={v => updateIngredient(index, { unit: v })}
+                                units={units}
                                 className="h-8 text-sm"
-                                data-testid={`input-ingredient-unit-${index}`}
+                                testId={`select-ingredient-unit-${index}`}
                               />
                             </TableCell>
                             <TableCell>
-                              <Select
-                                value={ing.inventoryItemId || 'none'}
-                                onValueChange={v => {
-                                  if (v === 'none') {
-                                    updateIngredient(index, { inventoryItemId: null, inventoryItemName: null, matchConfidence: 'none' });
-                                  } else {
-                                    const item = inventoryItems?.find(i => i.id === v);
-                                    updateIngredient(index, {
-                                      inventoryItemId: v,
-                                      inventoryItemName: item?.name || null,
-                                      matchConfidence: 'high',
-                                    });
-                                  }
-                                }}
-                              >
-                                <SelectTrigger className="h-8 text-sm" data-testid={`select-inventory-item-${index}`}>
-                                  <SelectValue placeholder="Not matched" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="none">Not matched</SelectItem>
-                                  {inventoryItems?.map(item => (
-                                    <SelectItem key={item.id} value={item.id}>
-                                      {item.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                              <InventoryCombobox
+                                value={ing.inventoryItemId}
+                                items={inventoryItems}
+                                onChange={(id, name) => updateIngredient(index, {
+                                  inventoryItemId: id,
+                                  inventoryItemName: name,
+                                  matchConfidence: id ? 'high' : 'none',
+                                })}
+                                testId={`combobox-inventory-item-${index}`}
+                              />
                             </TableCell>
                             <TableCell>
                               <Badge variant={conf.variant} className="text-xs">
@@ -490,7 +646,6 @@ export default function RecipeImport() {
           </div>
         )}
 
-        {/* Done */}
         {step === 'done' && (
           <Card className="max-w-md">
             <CardContent className="pt-6 text-center space-y-4">

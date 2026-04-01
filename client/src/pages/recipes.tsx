@@ -364,12 +364,14 @@ function RecipesContent() {
               <Wrench className="h-4 w-4 mr-2" />
               Cleanup
             </Button>
-            <Button variant="outline" asChild data-testid="button-scan-recipe">
-              <Link href="/recipe-import">
-                <ScanLine className="h-4 w-4 mr-2" />
-                Scan Recipe
-              </Link>
-            </Button>
+            <TierGate feature="recipe_costing" fallback={null}>
+              <Button variant="outline" asChild data-testid="button-scan-recipe">
+                <Link href="/recipe-import">
+                  <ScanLine className="h-4 w-4 mr-2" />
+                  Scan Recipe
+                </Link>
+              </Button>
+            </TierGate>
             <Button asChild data-testid="button-create-recipe">
               <Link href="/recipes/new">
                 <Plus className="h-4 w-4 mr-2" />
