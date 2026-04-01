@@ -34,6 +34,7 @@ import Vendors from "@/pages/vendors";
 import VendorDetail from "@/pages/vendor-detail";
 import OrderGuideReview from "@/pages/order-guide-review";
 import InventoryImport from "@/pages/inventory-import";
+import RecipeImport from "@/pages/recipe-import";
 import Orders from "@/pages/orders";
 import PurchaseOrders from "@/pages/purchase-orders";
 import PurchaseOrderDetail from "@/pages/purchase-order-detail";
@@ -257,6 +258,7 @@ function ProtectedLayoutContent() {
               <Route path="/vendors" component={Vendors} />
               <Route path="/order-guides/:id/review" component={OrderGuideReview} />
               <Route path="/inventory-import" component={InventoryImport} />
+              <Route path="/recipe-import" component={RecipeImport} />
               <Route path="/orders" component={Orders} />
               <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
               <Route path="/purchase-orders" component={PurchaseOrders} />

@@ -1303,3 +1303,38 @@ export const insertBackgroundImageSchema = createInsertSchema(backgroundImages)
 export type InsertBackgroundImage = z.infer<typeof insertBackgroundImageSchema>;
 export type BackgroundImage = typeof backgroundImages.$inferSelect;
 
+// Recipe Import Sessions (AI-powered recipe image scan staging)
+export type RecipeIngredientMatch = {
+  name: string;
+  qty: number;
+  unit: string;
+  inventoryItemId: string | null;
+  inventoryItemName: string | null;
+  matchConfidence: 'high' | 'medium' | 'low' | 'none';
+  include: boolean;
+};
+
+export type RecipeExtractedData = {
+  recipeName: string;
+  yieldQty: number;
+  yieldUnit: string;
+  ingredients: RecipeIngredientMatch[];
+};
+
+export const recipeImportSessions = pgTable("recipe_import_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  status: text("status").notNull().default("pending"), // pending, approved, cancelled
+  rawImagePath: text("raw_image_path"),
+  extractedData: jsonb("extracted_data").$type<RecipeExtractedData>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  companyIdx: index("recipe_import_sessions_company_idx").on(table.companyId),
+}));
+
+export const insertRecipeImportSessionSchema = createInsertSchema(recipeImportSessions)
+  .omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertRecipeImportSession = z.infer<typeof insertRecipeImportSessionSchema>;
+export type RecipeImportSession = typeof recipeImportSessions.$inferSelect;
+

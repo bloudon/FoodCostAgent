@@ -1,6 +1,6 @@
 # Overview
 
-FNB Cost Pro is an inventory management and recipe costing system designed for food service businesses. Its primary goal is to boost profitability and operational efficiency through precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and detailed variance reporting. The system aims to minimize waste, optimize profit margins, provide real-time inventory estimates, streamline vendor interactions, and accurately control food costs, thereby supporting business growth and informed decision-making.
+FNB Cost Pro is an inventory management and recipe costing system for food service businesses. Its core purpose is to enhance profitability and operational efficiency through precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and detailed variance reporting. The system aims to minimize waste, optimize profit margins, provide real-time inventory estimates, streamline vendor interactions, and accurately control food costs, supporting informed decision-making and business growth.
 
 # User Preferences
 
@@ -39,12 +39,12 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 - **Backend**: Node.js (TypeScript) with Express.js and Zod for data validation.
 - **Database**: PostgreSQL with Drizzle ORM.
 - **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation.
-- **UI/UX Decisions**: Mobile-first design; intuitive recipe creation; dynamic dashboards with filterable tables; consistent, color-coded status badges; conditional UI rendering based on data availability; smooth scrolling; and optimized inventory count layouts.
-- **Technical Implementations**: Micro-unit precision for all inventory calculations, comprehensive unit conversion system, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), robust multi-tenant QuickBooks integration, intelligent vendor order guide import, real-time recipe cost calculation with caching, dynamic estimated on-hand inventory with automated cache invalidation, detailed TFC (Theoretical Food Cost) variance reporting, and single-timezone date handling for data consistency.
-- **System Design Choices**: Adherence to strict multi-tenancy principles, secure OAuth using HMAC-SHA256, extensive server-side validation, and robust vendor relationship management features.
-- **Vendor-Store Assignment Model**: Vendors are company-level entities with shared credentials, but a `store_vendors` join table controls which stores can access each vendor. Order guides can be assigned to multiple stores via an `order_guide_stores` join table. Order guide approval accepts a `targetStoreIds` array to create inventory items for all selected stores simultaneously.
-- **Subscription Tier System**: Four-tier model (Free < Basic < Pro < Enterprise) stored as `subscriptionTier` on the `companies` table. Tier configuration in `shared/tier-config.ts` defines hierarchy and feature mapping. Backend gating uses `requireTier(minTier)` middleware, while frontend gating uses `useTier()` hook and `TierGate` component. Enterprise tier uses a lead form flow (`/enterprise-inquiry`) instead of Stripe checkout, with an onboarding landing page (`/enterprise-onboarding`). Key feature gate changes: TFC variance, POS import, Smart dashboard moved to Basic; Order reminders available to all tiers; Custom Security Levels at Pro; Enterprise analytics at Enterprise only.
-- **Marketing Website**: Hostname-based routing (`fnbcostpro.com` for marketing, `app.fnbcostpro.com` for the app) handled by the same Express server. Marketing pages (`/`, `/features`, `/pricing`, `/about`, `/contact`) are self-contained. Pricing page fetches live Stripe plans. Contact form sends emails via SMTP2GO. Homepage hero uses a background image gallery.
+- **UI/UX Decisions**: Mobile-first design, intuitive recipe creation, dynamic dashboards with filterable tables, consistent color-coded status badges, conditional UI rendering, smooth scrolling, and optimized inventory count layouts.
+- **Technical Implementations**: Micro-unit precision for inventory calculations, comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), multi-tenant QuickBooks integration, intelligent vendor order guide import, real-time recipe cost calculation with caching, dynamic estimated on-hand inventory with automated cache invalidation, detailed TFC (Theoretical Food Cost) variance reporting, and single-timezone date handling.
+- **System Design Choices**: Strict multi-tenancy principles, secure OAuth using HMAC-SHA256, extensive server-side validation, robust vendor relationship management.
+- **Vendor-Store Assignment Model**: Vendors are company-level entities; `store_vendors` join table controls store access. Order guides can be assigned to multiple stores via `order_guide_stores` join table.
+- **Subscription Tier System**: Four-tier model (Free, Basic, Pro, Enterprise) stored on `companies` table. Backend uses `requireTier(minTier)` middleware; frontend uses `useTier()` hook and `TierGate` component. Enterprise tier uses a lead form flow.
+- **Marketing Website**: Hostname-based routing (`fnbcostpro.com` for marketing, `app.fnbcostpro.com` for the app) managed by the same Express server.
 
 # External Dependencies
 
@@ -56,16 +56,7 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 - **QuickBooks Online Integration**: `intuit-oauth` package for OAuth 2.0.
 - **Stripe Integration**: Subscription billing using Stripe Checkout + Webhooks.
 - **Email Service**: SMTP2GO (for contact form).
-- **Background Image System**: Unsplash (images seeded from).
-- **AI Chat**: OpenAI GPT-4o-mini via `openai` npm package. `OPENAI_API_KEY` env var required. In-app floating chat panel gated at Basic tier. 50 messages/day per company rate limit (in-memory, resets at midnight UTC).
-
-- AI CSV Inventory Import: 4-step wizard at `/inventory-import` (gated at Basic tier via `recipe_costing` feature flag). Step 1: upload CSV + optional vendor. Step 2: AI column mapping via GPT-4o-mini (falls back to pattern-based detection). Step 3: fuzzy match review with grouped tabs (matched/ambiguous/new), per-item checkboxes, per-row resolution selects, per-row vendor overrides, multi-store targeting. Step 4: pre-import confirmation summary (item counts, target stores, vendor overrides) + "Confirm Import" button. Import fires from Step 4 only. API routes: `POST /api/inventory-import/analyze`, `POST /api/inventory-import/preview`, `POST /api/inventory-import/:id/approve`. Uses `vendorKey='generic'`, `vendorId=null` for the underlying `order_guides` record. AI-normalized canonical names computed in-memory during preview (not persisted) and enriched into review response. Canonical names fed into `ItemMatcher.findBestMatch()` via optional param. v008 in `vps-migrate.sql` is a documentation-only version bump (no schema changes). Security: requireTier("basic") on all 3 endpoints; company ownership validation on vendorId, lineOverrides, and vendorOverrides; defence-in-depth inventory item ownership check in approve path. "Import CSV" button added to inventory-items page header.
-
-# VPS Deployment
-
-- **Deploy Script**: `scripts/deploy-vps.sh` — single executable that performs the full deploy sequence: preflight checks → `git pull` → `npm install` → DB migration → clean build → `pm2 restart fnbcostpro`.
-- **DB Migrations**: `scripts/vps-migrate.sql` — idempotent SQL script run via `psql $DATABASE_URL -f scripts/vps-migrate.sql`. Uses a `_migration_log` table (auto-created on first run) to version-track each change block (v001–vNNN). Each block only executes once; re-running the script is always safe. To see what has been applied: `psql $DATABASE_URL -c "SELECT * FROM _migration_log ORDER BY version;"`. When adding new schema changes, append a new numbered `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'vNNN') THEN ... INSERT INTO _migration_log ... END IF; END $$;` block.
-- **App Port**: 3001 (production); nginx config at `/etc/nginx/sites-available/app.fnbcostpro.com.conf`.
-- **PM2 Process**: `fnbcostpro`.
-- **NEVER run `db:push` on VPS** — it will try to drop the `migrations` table. Always use `vps-migrate.sql` for schema changes.
-- **Required Env Vars on VPS**: `DATABASE_URL`, `OPENAI_API_KEY`, Stripe keys, SMTP2GO credentials. Add `OPENAI_API_KEY` to the VPS environment for the AI chat assistant to work.
+- **Background Image System**: Unsplash.
+- **AI Chat**: OpenAI GPT-4o-mini via `openai` npm package. Gated at Basic tier, 50 messages/day per company rate limit.
+- **AI Recipe Image Scan**: GPT-4o vision via `server/services/recipeScanner.ts`. Gated at Basic tier. Allows uploading recipe photos for AI extraction of name, yield, and ingredients.
+- **AI CSV Inventory Import**: GPT-4o-mini for column mapping. Gated at Basic tier. Enables AI-assisted import of inventory items from CSV files.

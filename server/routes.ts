@@ -17,7 +17,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -4527,6 +4527,283 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       return res.json({ success: true });
     } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================================
+  // RECIPE IMPORT — AI recipe image scan wizard
+  // ============================================================
+
+  /**
+   * POST /api/recipe-import/scan
+   * Upload image → GPT-4o extracts recipe name/yield/ingredients → fuzzy-match inventory → create session
+   */
+  app.post("/api/recipe-import/scan", requireAuth, requireTier("basic"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const userId = (req as any).user?.id;
+
+      const bodySchema = z.object({
+        imageObjectPath: z.string().min(1),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "imageObjectPath is required" });
+      }
+      const { imageObjectPath } = parsed.data;
+
+      // Read the image buffer (reuses the readImageBuffer helper defined earlier in this file)
+      const { buffer } = await readImageBuffer(imageObjectPath, companyId, userId);
+
+      // Detect MIME from magic bytes
+      function detectMime(buf: Buffer): string | null {
+        if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+        if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
+        if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+            buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
+        return null;
+      }
+      const mimeType = detectMime(buffer);
+      if (!mimeType) {
+        return res.status(415).json({ error: "Unsupported image type. Please upload JPG, PNG, or WebP." });
+      }
+
+      // Run AI extraction
+      const { scanRecipeImage } = await import('./services/recipeScanner');
+      const scan = await scanRecipeImage(buffer, mimeType);
+
+      // Fuzzy-match each ingredient against company inventory items (single DB query)
+      const allItems = await storage.getInventoryItems(undefined, undefined, companyId);
+
+      function levenshtein(a: string, b: string): number {
+        const m = a.length, n = b.length;
+        const dp: number[][] = Array.from({ length: m + 1 }, (_, i) => Array(n + 1).fill(0));
+        for (let i = 0; i <= m; i++) dp[i][0] = i;
+        for (let j = 0; j <= n; j++) dp[0][j] = j;
+        for (let i = 1; i <= m; i++) {
+          for (let j = 1; j <= n; j++) {
+            if (a[i-1] === b[j-1]) dp[i][j] = dp[i-1][j-1];
+            else dp[i][j] = 1 + Math.min(dp[i-1][j-1], dp[i][j-1], dp[i-1][j]);
+          }
+        }
+        return dp[m][n];
+      }
+
+      function nameSimilarity(a: string, b: string): number {
+        const s1 = a.toLowerCase().trim();
+        const s2 = b.toLowerCase().trim();
+        if (s1 === s2) return 1.0;
+        if (s1.includes(s2) || s2.includes(s1)) return 0.8;
+        const dist = levenshtein(s1, s2);
+        const maxLen = Math.max(s1.length, s2.length);
+        return Math.max(0, 1 - dist / maxLen);
+      }
+
+      const matchedIngredients = scan.ingredients.map((ing) => {
+        let bestId: string | null = null;
+        let bestName: string | null = null;
+        let bestScore = 0;
+        for (const item of allItems) {
+          const score = nameSimilarity(ing.name, item.name);
+          if (score > bestScore) {
+            bestScore = score;
+            bestId = item.id;
+            bestName = item.name;
+          }
+        }
+        const confidence: 'high' | 'medium' | 'low' | 'none' =
+          bestScore >= 0.85 ? 'high' :
+          bestScore >= 0.65 ? 'medium' :
+          bestScore >= 0.45 ? 'low' : 'none';
+        return {
+          name: ing.name,
+          qty: ing.qty,
+          unit: ing.unit,
+          inventoryItemId: confidence !== 'none' ? bestId : null,
+          inventoryItemName: confidence !== 'none' ? bestName : null,
+          matchConfidence: confidence,
+          include: confidence === 'high' || confidence === 'medium',
+        };
+      });
+
+      // Create session
+      const [session] = await db.insert(recipeImportSessions).values({
+        companyId,
+        status: "pending",
+        rawImagePath: imageObjectPath,
+        extractedData: {
+          recipeName: scan.recipeName,
+          yieldQty: scan.yieldQty,
+          yieldUnit: scan.yieldUnit,
+          ingredients: matchedIngredients,
+        },
+      }).returning();
+
+      return res.json({
+        sessionId: session.id,
+        recipeName: scan.recipeName,
+        yieldQty: scan.yieldQty,
+        yieldUnit: scan.yieldUnit,
+        ingredients: matchedIngredients,
+      });
+    } catch (error: any) {
+      console.error("[Recipe Import Scan]", error);
+      const status = error.status === 403 ? 403 : 500;
+      return res.status(status).json({ error: error.message });
+    }
+  });
+
+  /**
+   * GET /api/recipe-import/:sessionId
+   * Returns session data for URL-based rehydration.
+   */
+  app.get("/api/recipe-import/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const [session] = await db.select().from(recipeImportSessions)
+        .where(and(eq(recipeImportSessions.id, req.params.sessionId), eq(recipeImportSessions.companyId, companyId)));
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      return res.json({
+        sessionId: session.id,
+        status: session.status,
+        ...(session.extractedData || {}),
+      });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * POST /api/recipe-import/:sessionId/approve
+   * Creates a recipe + recipe_components from user-confirmed data.
+   * Body: { recipeName, yieldQty, yieldUnit, canBeIngredient?, ingredients: [{ name, qty, unit, inventoryItemId, include }] }
+   */
+  app.post("/api/recipe-import/:sessionId/approve", requireAuth, requireTier("basic"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { sessionId } = req.params;
+
+      const ingredientSchema = z.object({
+        name: z.string(),
+        qty: z.number().positive(),
+        unit: z.string(),
+        inventoryItemId: z.string().nullable(),
+        include: z.boolean(),
+      });
+      const bodySchema = z.object({
+        recipeName: z.string().min(1),
+        yieldQty: z.number().positive(),
+        yieldUnit: z.string().min(1),
+        canBeIngredient: z.number().int().min(0).max(1).default(0),
+        ingredients: z.array(ingredientSchema),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      // Verify session
+      const [session] = await db.select().from(recipeImportSessions)
+        .where(and(eq(recipeImportSessions.id, sessionId), eq(recipeImportSessions.companyId, companyId)));
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      if (session.status !== "pending") return res.status(409).json({ error: `Session cannot be approved (status: ${session.status})` });
+
+      // Resolve units
+      const allUnits = await storage.getUnits();
+      function resolveUnitId(unitText: string): string | null {
+        const u = unitText.toLowerCase().trim();
+        // Exact match on name or abbreviation
+        let found = allUnits.find(unit =>
+          unit.name.toLowerCase() === u ||
+          (unit.abbreviation && unit.abbreviation.toLowerCase() === u)
+        );
+        if (!found) {
+          // Substring match
+          found = allUnits.find(unit =>
+            unit.name.toLowerCase().includes(u) ||
+            u.includes(unit.name.toLowerCase())
+          );
+        }
+        return found?.id || null;
+      }
+
+      const yieldUnitId = resolveUnitId(parsed.data.yieldUnit);
+      if (!yieldUnitId) {
+        // Fall back to "each" or first unit
+        const eachUnit = allUnits.find(u => u.name.toLowerCase() === 'each' || u.abbreviation?.toLowerCase() === 'ea');
+        if (!eachUnit) return res.status(400).json({ error: `Cannot resolve yield unit: ${parsed.data.yieldUnit}` });
+        (parsed.data as any)._yieldUnitId = eachUnit.id;
+      } else {
+        (parsed.data as any)._yieldUnitId = yieldUnitId;
+      }
+
+      // Filter ingredients to include
+      const includedIngredients = parsed.data.ingredients.filter(
+        (ing) => ing.include && ing.inventoryItemId
+      );
+
+      // Validate ownership of all referenced inventory items
+      if (includedIngredients.length > 0) {
+        const itemIds = includedIngredients.map(i => i.inventoryItemId!);
+        const validItems = await db.select({ id: inventoryItems.id }).from(inventoryItems)
+          .where(and(inArray(inventoryItems.id, itemIds), eq(inventoryItems.companyId, companyId)));
+        const validIds = new Set(validItems.map(i => i.id));
+        const invalid = itemIds.find(id => !validIds.has(id));
+        if (invalid) return res.status(403).json({ error: `Inventory item ${invalid} does not belong to your company` });
+      }
+
+      // Create the recipe and components in a transaction
+      const resolvedYieldUnitId = (parsed.data as any)._yieldUnitId as string;
+      const recipe = await db.transaction(async (tx) => {
+        // Create recipe
+        const [newRecipe] = await tx.insert(recipes).values({
+          companyId,
+          name: parsed.data.recipeName,
+          yieldQty: parsed.data.yieldQty,
+          yieldUnitId: resolvedYieldUnitId,
+          computedCost: 0,
+          canBeIngredient: parsed.data.canBeIngredient,
+          isActive: 1,
+        }).returning();
+
+        // Create recipe components for matched ingredients
+        let sortOrder = 0;
+        for (const ing of includedIngredients) {
+          const unitId = resolveUnitId(ing.unit) || resolvedYieldUnitId;
+          await tx.insert(recipeComponents).values({
+            recipeId: newRecipe.id,
+            componentType: 'inventory_item',
+            componentId: ing.inventoryItemId!,
+            qty: ing.qty,
+            unitId,
+            sortOrder: sortOrder++,
+          });
+        }
+
+        // Mark session approved
+        await tx.update(recipeImportSessions)
+          .set({ status: "approved", updatedAt: new Date() })
+          .where(eq(recipeImportSessions.id, sessionId));
+
+        return newRecipe;
+      });
+
+      // Calculate and update computed cost (outside transaction so it reads committed data)
+      try {
+        const cost = await calculateRecipeCost(recipe.id);
+        await storage.updateRecipe(recipe.id, { computedCost: cost });
+      } catch (costErr) {
+        console.error("[Recipe Import] Cost calculation failed (non-fatal):", costErr);
+      }
+
+      return res.json({
+        recipeId: recipe.id,
+        recipeName: recipe.name,
+        componentsCreated: includedIngredients.length,
+      });
+    } catch (error: any) {
+      console.error("[Recipe Import Approve]", error);
       return res.status(500).json({ error: error.message });
     }
   });

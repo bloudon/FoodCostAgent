@@ -368,3 +368,27 @@ DO $$ BEGIN
       VALUES ('v014', 'Task #30: Case-insensitive unique index on menu_departments(company_id, lower(name))');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v015 — Task #33: recipe_import_sessions table for AI-powered recipe image scan wizard
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v015') THEN
+
+    CREATE TABLE IF NOT EXISTS recipe_import_sessions (
+      id          varchar     PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id  varchar     NOT NULL,
+      status      text        NOT NULL DEFAULT 'pending',
+      raw_image_path text,
+      extracted_data jsonb,
+      created_at  timestamp   NOT NULL DEFAULT now(),
+      updated_at  timestamp   NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS recipe_import_sessions_company_idx
+      ON recipe_import_sessions (company_id);
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v015', 'Task #33: recipe_import_sessions table for AI recipe image scan wizard');
+  END IF;
+END $$;

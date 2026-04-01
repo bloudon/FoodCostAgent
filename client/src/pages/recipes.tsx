@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, ChefHat, ChevronRight, MoreHorizontal, Trash2, EyeOff, Eye, AlertTriangle, Wrench, Archive, X, LinkIcon } from "lucide-react";
+import { Plus, Search, ChefHat, ChevronRight, MoreHorizontal, Trash2, EyeOff, Eye, AlertTriangle, Wrench, Archive, X, LinkIcon, ScanLine } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRecipeName } from "@/lib/utils";
@@ -363,6 +363,12 @@ function RecipesContent() {
             >
               <Wrench className="h-4 w-4 mr-2" />
               Cleanup
+            </Button>
+            <Button variant="outline" asChild data-testid="button-scan-recipe">
+              <Link href="/recipe-import">
+                <ScanLine className="h-4 w-4 mr-2" />
+                Scan Recipe
+              </Link>
             </Button>
             <Button asChild data-testid="button-create-recipe">
               <Link href="/recipes/new">
