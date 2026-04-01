@@ -226,14 +226,14 @@ export default function RecipeImport() {
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { data: inventoryItems = [] } = useQuery<InventoryItem[]>({
+  const { data: inventoryItems = [] } = useQuery<InventoryItem[], Error, InventoryItem[]>({
     queryKey: ['/api/inventory-items'],
-    select: (data: any[]) => data.map(i => ({ id: i.id, name: i.name })),
+    select: (data: InventoryItem[]) => data.map(i => ({ id: i.id, name: i.name })),
   });
 
-  const { data: units = [] } = useQuery<UnitOption[]>({
+  const { data: units = [] } = useQuery<UnitOption[], Error, UnitOption[]>({
     queryKey: ['/api/units'],
-    select: (data: any[]) => data.map(u => ({ id: u.id, name: u.name, abbreviation: u.abbreviation ?? null })),
+    select: (data: UnitOption[]) => data.map(u => ({ id: u.id, name: u.name, abbreviation: u.abbreviation ?? null })),
   });
 
   const { data: sessionData } = useQuery({

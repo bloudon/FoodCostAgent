@@ -4573,15 +4573,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { scanRecipeImage } = await import('./services/recipeScanner');
       const scan = await scanRecipeImage(buffer, mimeType);
 
-      // Fuzzy-match ingredients using ItemMatcher batchMatch (serialized to avoid N×full-fetch)
+      // Fuzzy-match ingredients: preload inventory + categories once, then match in-process (O(1) DB round-trips)
       const { ItemMatcher } = await import('./services/itemMatcher');
       const matcher = new ItemMatcher(storage);
+
+      const [inventoryItems, categories] = await Promise.all([
+        storage.getInventoryItems(undefined, undefined, companyId),
+        storage.getCategories(companyId),
+      ]);
 
       const vendorProducts = scan.ingredients.map((ing, i) => ({
         vendorSku: `scan-${i}`,
         vendorProductName: ing.name,
       }));
-      const batchResults = await matcher.batchMatch(vendorProducts, companyId, '');
+      const batchResults = matcher.matchWithPreloadedData(vendorProducts, inventoryItems, categories);
 
       const matchedIngredients = scan.ingredients.map((ing, i) => {
         const result = batchResults.get(`scan-${i}`) ?? {

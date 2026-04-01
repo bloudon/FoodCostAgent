@@ -326,4 +326,67 @@ export class ItemMatcher {
 
     return results;
   }
+
+  /**
+   * Batch-match vendor products against pre-loaded inventory + categories.
+   * Performs exactly ONE fetch (caller's responsibility) and runs all
+   * comparisons in-process — O(P×I) CPU, O(1) DB round-trips.
+   *
+   * Use this instead of batchMatch() when the caller can preload data,
+   * e.g. the recipe-import scan route which processes many ingredients at once.
+   */
+  matchWithPreloadedData(
+    vendorProducts: VendorProduct[],
+    inventoryItems: Array<{ id: string; name: string; categoryId?: string | null; pluSku?: string | null }>,
+    categories: Array<{ id: string; name: string }>
+  ): Map<string, MatchResult> {
+    const results = new Map<string, MatchResult>();
+    const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+
+    const noMatch: MatchResult = {
+      inventoryItemId: null,
+      inventoryItemName: null,
+      confidence: 'none',
+      score: 0,
+      matchReason: 'No inventory items in system',
+    };
+
+    for (const product of vendorProducts) {
+      if (inventoryItems.length === 0) {
+        results.set(product.vendorSku, noMatch);
+        continue;
+      }
+
+      let bestMatch: MatchResult = {
+        inventoryItemId: null,
+        inventoryItemName: null,
+        confidence: 'none',
+        score: 0,
+        matchReason: 'No match found',
+      };
+
+      for (const item of inventoryItems) {
+        const itemCategoryName = item.categoryId ? categoryMap.get(item.categoryId) : null;
+        const scores = {
+          name: this.calculateNameSimilarity(product.vendorProductName, item.name),
+          sku: this.checkSkuMatch(product.vendorSku, item.pluSku),
+          category: this.calculateCategoryMatch(undefined, itemCategoryName ?? undefined),
+        };
+        const totalScore = scores.name * 0.6 + scores.sku * 0.25 + scores.category * 0.15;
+        if (totalScore > bestMatch.score) {
+          bestMatch = {
+            inventoryItemId: item.id,
+            inventoryItemName: item.name,
+            confidence: this.determineConfidence(totalScore, scores),
+            score: totalScore,
+            matchReason: this.buildMatchReason(scores),
+          };
+        }
+      }
+
+      results.set(product.vendorSku, bestMatch);
+    }
+
+    return results;
+  }
 }
