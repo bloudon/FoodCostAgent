@@ -1775,7 +1775,7 @@ function RecipeBuilderContent() {
                         <ScanText className="h-4 w-4 text-muted-foreground" />
                         Preparation Instructions
                         {instructions && (
-                          <Badge variant="secondary" className="text-xs">Saved</Badge>
+                          <Badge variant="secondary" className="text-xs">Has content</Badge>
                         )}
                       </span>
                     </AccordionTrigger>
@@ -1801,6 +1801,7 @@ function RecipeBuilderContent() {
                             buttonVariant="outline"
                             visibility="private"
                             dataTestId="button-scan-instructions"
+                            capture="environment"
                             icon={isScanningInstructions ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
                           />
                         </TierGate>
@@ -1840,6 +1841,7 @@ function RecipeBuilderContent() {
                         buttonVariant="outline"
                         visibility="private"
                         dataTestId="button-upload-recipe-photo"
+                        capture="environment"
                         icon={<ImageIcon className="h-4 w-4" />}
                       />
                     )}
