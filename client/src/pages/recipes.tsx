@@ -363,18 +363,33 @@ function RecipesContent() {
         <div className="flex flex-col gap-2 items-end">
           <div className="flex items-center gap-2">
             <Button 
-              variant="outline" 
+              variant="outline"
+              size="icon"
+              className="sm:hidden"
+              onClick={() => setCleanupDialogOpen(true)}
+              data-testid="button-cleanup-recipes-mobile"
+            >
+              <Wrench className="h-4 w-4" />
+            </Button>
+            <Button 
+              variant="outline"
+              className="hidden sm:flex"
               onClick={() => setCleanupDialogOpen(true)}
               data-testid="button-cleanup-recipes"
             >
-              <Wrench className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Cleanup</span>
+              <Wrench className="h-4 w-4 mr-2" />
+              Cleanup
             </Button>
             <TierGate feature="recipe_costing" fallback={null}>
-              <Button variant="outline" asChild data-testid="button-scan-recipe">
+              <Button variant="outline" size="icon" className="sm:hidden" asChild data-testid="button-scan-recipe-mobile">
                 <Link href="/recipe-import">
-                  <ScanLine className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Scan Recipe</span>
+                  <ScanLine className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button variant="outline" className="hidden sm:flex" asChild data-testid="button-scan-recipe">
+                <Link href="/recipe-import">
+                  <ScanLine className="h-4 w-4 mr-2" />
+                  Scan Recipe
                 </Link>
               </Button>
             </TierGate>
@@ -488,14 +503,14 @@ function RecipesContent() {
                             </Link>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right whitespace-nowrap">
                           <Link href={`/recipes/${group.parent.id}`} className="block w-full">
                             <span className="font-mono text-sm" data-testid={`text-recipe-yield-${group.parent.id}`}>
                               {group.parent.yieldQty} {getUnitName(group.parent.yieldUnitId)}
                             </span>
                           </Link>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right whitespace-nowrap">
                           <Link href={`/recipes/${group.parent.id}`} className="block w-full">
                             <div className="flex items-center justify-end gap-2">
                               {missingIngredientRecipeIds.has(group.parent.id) && (
@@ -563,11 +578,11 @@ function RecipesContent() {
                               className="cursor-pointer hover-elevate bg-muted/30" 
                               data-testid={`row-recipe-${child.id}`}
                             >
-                              <TableCell>
-                                <Link href={`/recipes/${child.id}`} className="flex-1">
-                                  <div className="flex items-center gap-2 pl-8">
-                                    <span className="text-muted-foreground">└</span>
-                                    <span className={`font-medium ${child.isActive === 0 ? 'text-muted-foreground' : ''}`} data-testid={`text-recipe-name-${child.id}`}>
+                              <TableCell className="min-w-0">
+                                <Link href={`/recipes/${child.id}`} className="flex-1 min-w-0 block">
+                                  <div className="flex items-center gap-2 pl-8 min-w-0">
+                                    <span className="text-muted-foreground shrink-0">└</span>
+                                    <span className={`font-medium line-clamp-2 ${child.isActive === 0 ? 'text-muted-foreground' : ''}`} data-testid={`text-recipe-name-${child.id}`}>
                                       {formatRecipeName(child.name)}
                                     </span>
                                     {child.isActive === 0 && (
@@ -583,14 +598,14 @@ function RecipesContent() {
                                   </div>
                                 </Link>
                               </TableCell>
-                              <TableCell className="text-right">
+                              <TableCell className="text-right whitespace-nowrap">
                                 <Link href={`/recipes/${child.id}`} className="block w-full">
                                   <span className="font-mono text-sm" data-testid={`text-recipe-yield-${child.id}`}>
                                     {child.yieldQty} {getUnitName(child.yieldUnitId)}
                                   </span>
                                 </Link>
                               </TableCell>
-                              <TableCell className="text-right">
+                              <TableCell className="text-right whitespace-nowrap">
                                 <Link href={`/recipes/${child.id}`} className="block w-full">
                                   <div className="flex items-center justify-end gap-2">
                                     {missingIngredientRecipeIds.has(child.id) && (
