@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -32,6 +32,7 @@ type LeadSignupValues = z.infer<typeof leadSignupSchema>;
 
 export default function LeadSignup() {
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -50,8 +51,10 @@ export default function LeadSignup() {
   async function onSubmit(data: LeadSignupValues) {
     setIsLoading(true);
     try {
+      const variant = new URLSearchParams(searchString).get("v");
       await apiRequest("POST", "/api/leads/signup", data);
-      setLocation(`/activate?email=${encodeURIComponent(data.email)}`);
+      const variantParam = variant ? `&v=${encodeURIComponent(variant)}` : "";
+      setLocation(`/activate?email=${encodeURIComponent(data.email)}${variantParam}`);
     } catch (error: any) {
       toast({
         variant: "destructive",

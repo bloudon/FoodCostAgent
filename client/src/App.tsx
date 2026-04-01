@@ -58,6 +58,7 @@ import SsoAccessDenied from "@/pages/sso-access-denied";
 import AcceptInvitation from "@/pages/accept-invitation";
 import Onboarding from "@/pages/onboarding";
 import OnboardingWizard from "@/pages/onboarding-wizard";
+import OnboardingMenuScan from "@/pages/onboarding-menu-scan";
 import LeadSignup from "@/pages/lead-signup";
 import ActivateAccount from "@/pages/activate-account";
 import ForgotPassword from "@/pages/forgot-password";
@@ -208,6 +209,7 @@ function ProtectedLayoutContent() {
       <Switch>
         <Route path="/onboarding-wizard" component={OnboardingWizard} />
         <Route path="/onboarding-review" component={OnboardingWizard} />
+        <Route path="/onboarding/menu-scan" component={OnboardingMenuScan} />
         <Route path="/onboarding" component={Onboarding} />
         <Route path="/choose-plan" component={ChoosePlan} />
         <Route path="/enterprise-inquiry" component={EnterpriseInquiry} />
@@ -308,6 +310,7 @@ function App() {
               <Route path="/pending-approval" component={PendingApproval} />
               <Route path="/sso-access-denied" component={SsoAccessDenied} />
               <Route path="/accept-invitation/:token" component={AcceptInvitation} />
+              <Route path="/onboarding/menu-scan" component={OnboardingMenuScan} />
               <Route path="/onboarding" component={Onboarding} />
               <Route path="/onboarding-wizard" component={OnboardingWizard} />
               <Route path="/onboarding-review" component={OnboardingWizard} />

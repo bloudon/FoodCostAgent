@@ -1344,6 +1344,226 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ ONBOARDING MENU SCAN (Variant B — no tier gate) ============
+
+  /**
+   * POST /api/onboarding/menu-scan
+   * Tier-gate-free version of /api/menu-import/scan for the onboarding flow.
+   * Accepts a single image upload, scans it, and creates a pending session.
+   */
+  app.post("/api/onboarding/menu-scan", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const bodySchema = z.object({
+        imageObjectPath: z.string().min(1, "imageObjectPath is required"),
+        storeId: z.string().optional(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+      const { imageObjectPath, storeId } = parsed.data;
+      const userId = (req as any).user?.id;
+      const user = (req as any).user;
+
+      if (storeId) {
+        const accessibleStoreIds = await getAccessibleStores(user, companyId);
+        if (!accessibleStoreIds.includes(storeId)) {
+          return res.status(403).json({ error: "Store not accessible" });
+        }
+      }
+
+      const { buffer } = await readImageBuffer(imageObjectPath, companyId, userId);
+
+      function detectMimeFromBuffer(buf: Buffer): string | null {
+        if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+        if (buf.length >= 8 &&
+          buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+          buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a) return "image/png";
+        if (buf.length >= 12 &&
+          buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+          buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
+        return null;
+      }
+
+      const detectedMime = detectMimeFromBuffer(buffer);
+      if (!detectedMime) {
+        return res.status(415).json({ error: "Unsupported image type. Please upload JPG, PNG, or WebP." });
+      }
+
+      const { scanMenuImage } = await import('./services/menuScanner');
+      const result = await scanMenuImage(buffer, detectedMime);
+
+      const [session] = await db.insert(menuImportSessions).values({
+        companyId,
+        storeId: storeId || null,
+        status: "pending",
+        rawImagePath: imageObjectPath,
+        extractedItems: result.items,
+      }).returning();
+
+      return res.json({
+        sessionId: session.id,
+        items: result.items,
+        count: result.items.length,
+      });
+    } catch (error: any) {
+      console.error("[Onboarding Menu Scan]", error);
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * POST /api/onboarding/menu-scan/:sessionId/approve
+   * Tier-gate-free version of /api/menu-import/:sessionId/approve for the onboarding flow.
+   */
+  app.post("/api/onboarding/menu-scan/:sessionId/approve", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { sessionId } = req.params;
+
+      const bodySchema = z.object({
+        items: z.array(z.object({
+          name: z.string().min(1),
+          department: z.string().default(""),
+          category: z.string().default(""),
+          size: z.string().default(""),
+          price: z.number().nullable().optional(),
+        })),
+        storeId: z.string().optional(),
+      });
+
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const { items } = parsed.data;
+
+      const [session] = await db.select().from(menuImportSessions)
+        .where(and(eq(menuImportSessions.id, sessionId), eq(menuImportSessions.companyId, companyId)));
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      if (session.status !== "pending") return res.status(409).json({ error: `Session cannot be approved (status: ${session.status})` });
+
+      const accessibleStoreIds = await getAccessibleStores((req as any).user, companyId);
+      const accessibleIds = new Set(accessibleStoreIds);
+
+      let resolvedStoreId = parsed.data.storeId || session.storeId || null;
+      if (resolvedStoreId && !accessibleIds.has(resolvedStoreId)) {
+        return res.status(403).json({ error: `Store ${resolvedStoreId} is not accessible` });
+      }
+      if (!resolvedStoreId && accessibleStoreIds.length > 0) {
+        resolvedStoreId = accessibleStoreIds[0];
+      }
+      if (!resolvedStoreId) {
+        return res.status(400).json({ error: "No accessible store found for this company" });
+      }
+
+      const targetStoreIds = [resolvedStoreId];
+
+      type ItemGroup = { items: typeof items[number][], sortBase: number };
+      const groups = new Map<string, ItemGroup>();
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const key = `${item.name.trim().toLowerCase()}|${(item.department||'').toLowerCase()}|${(item.category||'').toLowerCase()}`;
+        if (!groups.has(key)) groups.set(key, { items: [], sortBase: i });
+        groups.get(key)!.items.push(item);
+      }
+
+      const { created } = await db.transaction(async (tx) => {
+        const sizeIdCache = new Map<string, string>();
+
+        async function findOrCreateSizeId(sizeName: string): Promise<string> {
+          const key = sizeName.trim().toLowerCase();
+          if (sizeIdCache.has(key)) return sizeIdCache.get(key)!;
+          const [existing] = await tx.select().from(menuItemSizes)
+            .where(and(eq(menuItemSizes.name, sizeName.trim()), eq(menuItemSizes.companyId, companyId)));
+          if (existing) { sizeIdCache.set(key, existing.id); return existing.id; }
+          const [newSize] = await tx.insert(menuItemSizes).values({
+            companyId, name: sizeName.trim(), sortOrder: 0, isDefault: 0, active: 1,
+          }).onConflictDoNothing().returning();
+          if (newSize) { sizeIdCache.set(key, newSize.id); return newSize.id; }
+          const [refetched] = await tx.select().from(menuItemSizes)
+            .where(and(eq(menuItemSizes.name, sizeName.trim()), eq(menuItemSizes.companyId, companyId)));
+          sizeIdCache.set(key, refetched.id);
+          return refetched.id;
+        }
+
+        async function insertMenuItemRow(values: {
+          name: string; department: string | null; category: string | null;
+          size: string | null; pluSku: string; price: number | null;
+          sortOrder: number; parentMenuItemId?: string | null; menuItemSizeId?: string | null;
+        }): Promise<string> {
+          const [row] = await tx.insert(menuItems).values({
+            companyId, name: values.name, department: values.department, category: values.category,
+            size: values.size, pluSku: values.pluSku, parentMenuItemId: values.parentMenuItemId ?? null,
+            menuItemSizeId: values.menuItemSizeId ?? null, isRecipeItem: 1, active: 1,
+            price: values.price, sortOrder: values.sortOrder,
+          }).returning();
+          for (const sid of targetStoreIds) {
+            await tx.insert(storeMenuItems).values({ companyId, storeId: sid, menuItemId: row.id, active: 1 }).onConflictDoNothing();
+          }
+          return row.id;
+        }
+
+        const now = Date.now();
+        let txCreated = 0;
+        let pluCounter = 1;
+
+        for (const [, group] of groups) {
+          const representative = group.items[0];
+          const nonEmptySizes = group.items.map(i => (i.size || '').trim()).filter(Boolean);
+          const hasMultipleSizes = group.items.length > 1
+            && nonEmptySizes.length === group.items.length
+            && new Set(nonEmptySizes).size >= 2;
+
+          if (hasMultipleSizes) {
+            const parentPlu = `SCAN-${now}-${pluCounter++}`;
+            const parentId = await insertMenuItemRow({
+              name: representative.name.trim(), department: representative.department || null,
+              category: representative.category || null, size: null, pluSku: parentPlu, price: null, sortOrder: group.sortBase,
+            });
+            for (let j = 0; j < group.items.length; j++) {
+              const variant = group.items[j];
+              const menuItemSizeId = variant.size ? await findOrCreateSizeId(variant.size) : null;
+              await insertMenuItemRow({
+                name: representative.name.trim(), department: representative.department || null,
+                category: representative.category || null, size: variant.size || null,
+                pluSku: `SCAN-${now}-${pluCounter++}`, price: variant.price ?? null,
+                sortOrder: group.sortBase + j + 1, parentMenuItemId: parentId, menuItemSizeId,
+              });
+              txCreated++;
+            }
+            txCreated++;
+          } else {
+            for (let j = 0; j < group.items.length; j++) {
+              const item = group.items[j];
+              const menuItemSizeId = item.size ? await findOrCreateSizeId(item.size) : null;
+              await insertMenuItemRow({
+                name: item.name.trim(), department: item.department || null,
+                category: item.category || null, size: item.size || null,
+                pluSku: `SCAN-${now}-${pluCounter++}`, price: item.price ?? null,
+                sortOrder: group.sortBase + j, menuItemSizeId,
+              });
+              txCreated++;
+            }
+          }
+        }
+
+        await tx.update(menuImportSessions)
+          .set({ status: "approved", rawImagePath: null, extractedItems: null, updatedAt: new Date() })
+          .where(eq(menuImportSessions.id, sessionId));
+
+        return { created: txCreated };
+      });
+
+      return res.json({ menuItemsCreated: created });
+    } catch (error: any) {
+      console.error("[Onboarding Menu Scan Approve]", error);
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { email, password } = z.object({

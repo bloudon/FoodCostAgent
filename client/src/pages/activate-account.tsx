@@ -45,6 +45,11 @@ export default function ActivateAccount() {
     return params.get("email") || "";
   }, [searchString]);
 
+  const variantFromUrl = useMemo(() => {
+    const params = new URLSearchParams(searchString);
+    return params.get("v") || "";
+  }, [searchString]);
+
   const form = useForm<ActivateValues>({
     resolver: zodResolver(activateSchema),
     defaultValues: {
@@ -65,7 +70,7 @@ export default function ActivateAccount() {
       if (result.user) {
         await refreshAuth();
       }
-      setLocation("/");
+      setLocation(variantFromUrl === "b" ? "/onboarding/menu-scan" : "/");
     } catch (error: any) {
       toast({
         variant: "destructive",
