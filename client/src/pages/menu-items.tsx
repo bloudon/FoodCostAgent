@@ -32,7 +32,6 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -367,6 +366,12 @@ export default function MenuItemsPage() {
   const oneSizeDefault = menuItemSizes?.find(s => s.isDefault === 1 && s.name === "One Size");
 
   const isLoading = viewMode === "hierarchy" ? isLoadingHierarchy : isLoadingFlat;
+
+  // Sensors for Manage Sections drag-and-drop (pointer + keyboard for accessibility)
+  const deptDndSensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   // Save form data before navigating to recipe builder
   const saveFormDraft = () => {
@@ -2657,6 +2662,7 @@ export default function MenuItemsPage() {
               </div>
             ) : (
               <DndContext
+                sensors={deptDndSensors}
                 collisionDetection={closestCenter}
                 onDragEnd={(event) => {
                   const { active, over } = event;
