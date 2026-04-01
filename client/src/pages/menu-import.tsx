@@ -430,7 +430,15 @@ export default function MenuImport() {
                     <div className="text-center py-8 text-muted-foreground">
                       <p>No items were extracted. Try uploading a clearer image.</p>
                     </div>
-                  ) : (
+                  ) : (() => {
+                    const deptOrder: string[] = [];
+                    const deptGroups = new Map<string, number[]>();
+                    items.forEach((item, i) => {
+                      const dept = (item.department || '').trim() || 'Other';
+                      if (!deptGroups.has(dept)) { deptGroups.set(dept, []); deptOrder.push(dept); }
+                      deptGroups.get(dept)!.push(i);
+                    });
+                    return (
                     <div className="overflow-x-auto">
                       <Table>
                         <TableHeader>
@@ -444,22 +452,16 @@ export default function MenuImport() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {items.map((item, i) => {
-                            const pageBreakIdx = pageBreaks.indexOf(i);
-                            const isPageStart = pageBreakIdx !== -1;
-                            const pageNum = pageBreakIdx + 2;
-                            return (
-                              <Fragment key={i}>
-                                {isPageStart && (
-                                  <TableRow className="pointer-events-none select-none" data-testid={`separator-page-${pageNum}`}>
-                                    <TableCell colSpan={6} className="py-1 text-center">
-                                      <span className="text-xs text-muted-foreground font-medium px-3 py-0.5 rounded-full bg-muted">
-                                        Page {pageNum}
-                                      </span>
-                                    </TableCell>
-                                  </TableRow>
-                                )}
+                          {deptOrder.map((dept) => (
+                            <Fragment key={`dept-${dept}`}>
+                              <TableRow className="pointer-events-none select-none" data-testid={`header-department-${dept}`}>
+                                <TableCell colSpan={6} className="py-1.5 px-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide bg-muted/40">
+                                  {dept}
+                                </TableCell>
+                              </TableRow>
+                              {deptGroups.get(dept)!.map((i) => (
                                 <TableRow
+                                  key={i}
                                   className={selectedRowIndices.has(i) ? '' : 'opacity-40'}
                                   data-testid={`row-item-${i}`}
                                 >
@@ -472,7 +474,7 @@ export default function MenuImport() {
                                   </TableCell>
                                   <TableCell>
                                     <Input
-                                      value={item.name}
+                                      value={items[i].name}
                                       onChange={(e) => updateItem(i, 'name', e.target.value)}
                                       className="h-8 min-w-[120px]"
                                       placeholder="Item name"
@@ -481,7 +483,7 @@ export default function MenuImport() {
                                   </TableCell>
                                   <TableCell className="hidden sm:table-cell">
                                     <Input
-                                      value={item.department}
+                                      value={items[i].department}
                                       onChange={(e) => updateItem(i, 'department', e.target.value)}
                                       className="h-8 min-w-[100px]"
                                       placeholder="e.g. Pizza"
@@ -490,7 +492,7 @@ export default function MenuImport() {
                                   </TableCell>
                                   <TableCell className="hidden md:table-cell">
                                     <Input
-                                      value={item.size}
+                                      value={items[i].size}
                                       onChange={(e) => updateItem(i, 'size', e.target.value)}
                                       className="h-8 min-w-[80px]"
                                       placeholder="e.g. Large"
@@ -500,7 +502,7 @@ export default function MenuImport() {
                                   <TableCell>
                                     <Input
                                       type="number"
-                                      value={item.price ?? ''}
+                                      value={items[i].price ?? ''}
                                       onChange={(e) => updateItem(i, 'price', e.target.value ? parseFloat(e.target.value) : null)}
                                       className="h-8 w-24"
                                       placeholder="$0.00"
@@ -518,13 +520,14 @@ export default function MenuImport() {
                                     </Button>
                                   </TableCell>
                                 </TableRow>
-                              </Fragment>
-                            );
-                          })}
+                              ))}
+                            </Fragment>
+                          ))}
                         </TableBody>
                       </Table>
                     </div>
-                  )}
+                    );
+                  })()}
 
                   <div className="flex flex-wrap items-center gap-2">
                     <Button variant="outline" size="sm" onClick={addRow} data-testid="button-add-row">
