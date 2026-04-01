@@ -4573,16 +4573,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { scanRecipeImage } = await import('./services/recipeScanner');
       const scan = await scanRecipeImage(buffer, mimeType);
 
-      // Fuzzy-match each ingredient against company inventory items using shared ItemMatcher
+      // Fuzzy-match ingredients using ItemMatcher batchMatch (serialized to avoid N×full-fetch)
       const { ItemMatcher } = await import('./services/itemMatcher');
       const matcher = new ItemMatcher(storage);
 
-      const matchedIngredients = await Promise.all(scan.ingredients.map(async (ing) => {
-        const result = await matcher.findBestMatch(
-          { vendorSku: '', vendorProductName: ing.name },
-          companyId,
-          ''
-        );
+      const vendorProducts = scan.ingredients.map((ing, i) => ({
+        vendorSku: `scan-${i}`,
+        vendorProductName: ing.name,
+      }));
+      const batchResults = await matcher.batchMatch(vendorProducts, companyId, '');
+
+      const matchedIngredients = scan.ingredients.map((ing, i) => {
+        const result = batchResults.get(`scan-${i}`) ?? {
+          inventoryItemId: null, inventoryItemName: null, confidence: 'none' as const, score: 0, matchReason: '',
+        };
         return {
           name: ing.name,
           qty: ing.qty,
@@ -4592,7 +4596,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           matchConfidence: result.confidence,
           include: result.confidence === 'high' || result.confidence === 'medium',
         };
-      }));
+      });
 
       // Create session
       const [session] = await db.insert(recipeImportSessions).values({

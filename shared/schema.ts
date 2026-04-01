@@ -1318,6 +1318,7 @@ export type RecipeExtractedData = {
   recipeName: string;
   yieldQty: number;
   yieldUnit: string;
+  canBeIngredient?: number;
   ingredients: RecipeIngredientMatch[];
 };
 
