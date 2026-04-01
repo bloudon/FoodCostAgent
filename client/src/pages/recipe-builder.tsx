@@ -278,7 +278,7 @@ function InlineIngredientRow({
                   data-testid={`button-add-to-inventory-${component.id}`}
                 >
                   <Plus className="h-3 w-3 mr-1" />
-                  Add New
+                  Add to Inventory
                 </Button>
               )}
             </div>
@@ -1056,18 +1056,15 @@ function RecipeBuilderContent() {
         componentId: inventoryItem.id,
         missingItemName: null,
       });
-      return inventoryItem;
+      return { inventoryItem, componentRowId };
     },
-    onSuccess: (inventoryItem) => {
+    onSuccess: ({ inventoryItem, componentRowId }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/recipe-components", id] });
       setComponents(prev => prev.map(comp => {
-        if (comp.id === missingComponentForLink?.id) {
-          return {
-            ...comp,
-            componentId: inventoryItem.id,
-            name: inventoryItem.name,
-            missingItem: false,
-          };
+        if (comp.id === componentRowId) {
+          const updated = { ...comp, componentId: inventoryItem.id, name: inventoryItem.name, missingItem: false };
+          updated.cost = calculateComponentCost(updated);
+          return updated;
         }
         return comp;
       }));
