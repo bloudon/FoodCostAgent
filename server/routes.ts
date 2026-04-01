@@ -4668,6 +4668,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         recipeName: z.string().min(1),
         yieldQty: z.number().positive(),
         yieldUnit: z.string().min(1),
+        canBeIngredient: z.number().int().min(0).max(1).default(0),
         ingredients: z.array(ingredientSchema),
       });
       const parsed = bodySchema.safeParse(req.body);
@@ -4688,6 +4689,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             recipeName: parsed.data.recipeName,
             yieldQty: parsed.data.yieldQty,
             yieldUnit: parsed.data.yieldUnit,
+            canBeIngredient: parsed.data.canBeIngredient,
             ingredients: parsed.data.ingredients,
           },
           updatedAt: new Date(),

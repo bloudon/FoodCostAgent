@@ -242,11 +242,10 @@ export default function RecipeImport() {
     queryFn: async () => {
       const res = await fetch(`/api/recipe-import/${urlSessionId}`, { credentials: 'include' });
       if (res.status === 409) {
-        const body = await res.json() as { status?: string };
-        return { status: body.status || 'approved' } as { status: string; recipeName?: string; yieldQty?: number; yieldUnit?: string; ingredients?: IngredientRow[] };
+        return { status: 'approved' } as { status: string; recipeName?: string; yieldQty?: number; yieldUnit?: string; canBeIngredient?: number; ingredients?: IngredientRow[] };
       }
       if (!res.ok) throw new Error('Session not found');
-      return res.json() as Promise<ScanResult & { status: string }>;
+      return res.json() as Promise<ScanResult & { status: string; canBeIngredient?: number }>;
     },
   });
 
@@ -260,6 +259,7 @@ export default function RecipeImport() {
       setRecipeName(sessionData.recipeName || '');
       setYieldQty(sessionData.yieldQty || 1);
       setYieldUnit(sessionData.yieldUnit || '');
+      setCanBeIngredient(!!(sessionData.canBeIngredient));
       setIngredients(sessionData.ingredients);
       setStep(2);
     }
@@ -280,7 +280,7 @@ export default function RecipeImport() {
     },
   });
 
-  function scheduleAutosave(payload: { recipeName: string; yieldQty: number; yieldUnit: string; ingredients: IngredientRow[] }) {
+  function scheduleAutosave(payload: { recipeName: string; yieldQty: number; yieldUnit: string; canBeIngredient: number; ingredients: IngredientRow[] }) {
     if (!payload.recipeName.trim() || !payload.yieldUnit.trim() || payload.yieldQty <= 0) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
@@ -361,7 +361,7 @@ export default function RecipeImport() {
   function updateIngredient(index: number, changes: Partial<IngredientRow>) {
     setIngredients(prev => {
       const next = prev.map((ing, i) => i === index ? { ...ing, ...changes } : ing);
-      scheduleAutosave({ recipeName, yieldQty, yieldUnit, ingredients: next });
+      scheduleAutosave({ recipeName, yieldQty, yieldUnit, canBeIngredient: canBeIngredient ? 1 : 0, ingredients: next });
       return next;
     });
   }
@@ -369,24 +369,29 @@ export default function RecipeImport() {
   function toggleAll(checked: boolean) {
     setIngredients(prev => {
       const next = prev.map(ing => ({ ...ing, include: checked }));
-      scheduleAutosave({ recipeName, yieldQty, yieldUnit, ingredients: next });
+      scheduleAutosave({ recipeName, yieldQty, yieldUnit, canBeIngredient: canBeIngredient ? 1 : 0, ingredients: next });
       return next;
     });
   }
 
   function handleRecipeNameChange(val: string) {
     setRecipeName(val);
-    scheduleAutosave({ recipeName: val, yieldQty, yieldUnit, ingredients });
+    scheduleAutosave({ recipeName: val, yieldQty, yieldUnit, canBeIngredient: canBeIngredient ? 1 : 0, ingredients });
   }
 
   function handleYieldQtyChange(val: number) {
     setYieldQty(val);
-    scheduleAutosave({ recipeName, yieldQty: val, yieldUnit, ingredients });
+    scheduleAutosave({ recipeName, yieldQty: val, yieldUnit, canBeIngredient: canBeIngredient ? 1 : 0, ingredients });
   }
 
   function handleYieldUnitChange(val: string) {
     setYieldUnit(val);
-    scheduleAutosave({ recipeName, yieldQty, yieldUnit: val, ingredients });
+    scheduleAutosave({ recipeName, yieldQty, yieldUnit: val, canBeIngredient: canBeIngredient ? 1 : 0, ingredients });
+  }
+
+  function handleCanBeIngredientChange(val: boolean) {
+    setCanBeIngredient(val);
+    scheduleAutosave({ recipeName, yieldQty, yieldUnit, canBeIngredient: val ? 1 : 0, ingredients });
   }
 
   const allChecked = ingredients.length > 0 && ingredients.every(i => i.include);
@@ -510,7 +515,7 @@ export default function RecipeImport() {
                   <Checkbox
                     id="can-be-ingredient"
                     checked={canBeIngredient}
-                    onCheckedChange={v => setCanBeIngredient(!!v)}
+                    onCheckedChange={v => handleCanBeIngredientChange(!!v)}
                     data-testid="checkbox-can-be-ingredient"
                   />
                   <Label htmlFor="can-be-ingredient" className="cursor-pointer font-normal">
