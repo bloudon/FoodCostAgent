@@ -241,17 +241,15 @@ export default function RecipeImport() {
     enabled: !!urlSessionId,
     queryFn: async () => {
       const res = await fetch(`/api/recipe-import/${urlSessionId}`, { credentials: 'include' });
-      if (res.status === 409) {
-        return { status: 'approved' } as { status: string; recipeName?: string; yieldQty?: number; yieldUnit?: string; canBeIngredient?: number; ingredients?: IngredientRow[] };
-      }
       if (!res.ok) throw new Error('Session not found');
-      return res.json() as Promise<ScanResult & { status: string; canBeIngredient?: number }>;
+      return res.json() as Promise<ScanResult & { status: string; canBeIngredient?: number; recipeId?: string }>;
     },
   });
 
   useEffect(() => {
     if (!sessionData) return;
     if (sessionData.status === 'approved') {
+      if (sessionData.recipeId) setCreatedRecipeId(sessionData.recipeId);
       setStep('done');
       return;
     }
@@ -335,24 +333,27 @@ export default function RecipeImport() {
           include: ing.include,
         })),
       });
-      if (!res.ok) {
-        const err = await res.json() as { error?: string };
-        throw new Error(err.error || 'Import failed');
-      }
-      return res.json() as Promise<{ recipeId: string; recipeName: string; componentsCreated: number; skippedIngredients: number }>;
+      return res.json() as Promise<{ recipeId: string; recipeName: string; componentsCreated: number; skippedIngredients: number; alreadyApproved?: boolean }>;
     },
     onSuccess: (data) => {
       setCreatedRecipeId(data.recipeId);
       setStep('done');
       queryClient.invalidateQueries({ queryKey: ['/api/recipes'] });
       queryClient.invalidateQueries({ queryKey: ['/api/recipes/missing-ingredients'] });
-      const unmatchedMsg = data.skippedIngredients > 0
-        ? ` • ${data.skippedIngredients} unmatched added as missing items`
-        : '';
-      toast({
-        title: 'Recipe Created',
-        description: `${formatRecipeName(data.recipeName)} imported with ${data.componentsCreated} linked ingredient${data.componentsCreated !== 1 ? 's' : ''}${unmatchedMsg}`,
-      });
+      if (data.alreadyApproved) {
+        toast({
+          title: 'Recipe Already Created',
+          description: `${formatRecipeName(data.recipeName)} was already imported. Showing the result.`,
+        });
+      } else {
+        const unmatchedMsg = data.skippedIngredients > 0
+          ? ` • ${data.skippedIngredients} unmatched added as missing items`
+          : '';
+        toast({
+          title: 'Recipe Created',
+          description: `${formatRecipeName(data.recipeName)} imported with ${data.componentsCreated} linked ingredient${data.componentsCreated !== 1 ? 's' : ''}${unmatchedMsg}`,
+        });
+      }
     },
     onError: (err: Error) => {
       toast({ title: 'Import Failed', description: err.message, variant: 'destructive' });

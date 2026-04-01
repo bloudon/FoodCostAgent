@@ -427,3 +427,19 @@ DO $$ BEGIN
       VALUES ('v017', 'Task #36: instructions and image_path columns on recipes');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v018 — recipe_id column on recipe_import_sessions (idempotent approve)
+-- Stores the created recipe ID on the session so that if the client loses the
+-- response after a successful approve, a retry returns the same recipe info.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v018') THEN
+
+    ALTER TABLE recipe_import_sessions
+      ADD COLUMN IF NOT EXISTS recipe_id text;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v018', 'recipe_id column on recipe_import_sessions for idempotent approve');
+  END IF;
+END $$;

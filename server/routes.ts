@@ -4642,7 +4642,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(and(eq(recipeImportSessions.id, req.params.sessionId), eq(recipeImportSessions.companyId, companyId)));
       if (!session) return res.status(404).json({ error: "Session not found" });
       if (session.status === "approved") {
-        return res.status(409).json({ error: "Session already approved", status: "approved" });
+        return res.json({ status: "approved", recipeId: session.recipeId || null });
       }
       return res.json({
         sessionId: session.id,
@@ -4745,6 +4745,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const [session] = await db.select().from(recipeImportSessions)
         .where(and(eq(recipeImportSessions.id, sessionId), eq(recipeImportSessions.companyId, companyId)));
       if (!session) return res.status(404).json({ error: "Session not found" });
+
+      // Idempotent: if already approved and recipe exists, return the recipe info
+      if (session.status === "approved" && session.recipeId) {
+        const [existingRecipe] = await db.select().from(recipes)
+          .where(and(eq(recipes.id, session.recipeId), eq(recipes.companyId, companyId)));
+        if (existingRecipe) {
+          return res.json({
+            recipeId: existingRecipe.id,
+            recipeName: existingRecipe.name,
+            componentsCreated: 0,
+            skippedIngredients: 0,
+            alreadyApproved: true,
+          });
+        }
+      }
       if (session.status !== "pending") return res.status(409).json({ error: `Session cannot be approved (status: ${session.status})` });
 
       // Resolve units
@@ -4834,9 +4849,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
-        // Mark session approved and clear staging payload (extracted data + raw image path)
+        // Mark session approved, store recipeId for idempotent retries, clear staging payload
         await tx.update(recipeImportSessions)
-          .set({ status: "approved", extractedData: null, rawImagePath: null, updatedAt: new Date() })
+          .set({ status: "approved", recipeId: newRecipe.id, extractedData: null, rawImagePath: null, updatedAt: new Date() })
           .where(eq(recipeImportSessions.id, sessionId));
 
         return newRecipe;

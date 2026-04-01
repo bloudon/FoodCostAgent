@@ -1331,6 +1331,7 @@ export const recipeImportSessions = pgTable("recipe_import_sessions", {
   status: text("status").notNull().default("pending"), // pending, approved, cancelled
   rawImagePath: text("raw_image_path"),
   extractedData: jsonb("extracted_data").$type<RecipeExtractedData>(),
+  recipeId: varchar("recipe_id"), // set on approval, enables idempotent retry
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
