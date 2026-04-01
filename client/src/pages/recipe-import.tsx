@@ -281,6 +281,7 @@ export default function RecipeImport() {
   });
 
   function scheduleAutosave(payload: { recipeName: string; yieldQty: number; yieldUnit: string; ingredients: IngredientRow[] }) {
+    if (!payload.recipeName.trim() || !payload.yieldUnit.trim() || payload.yieldQty <= 0) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       patchMutation.mutate(payload);

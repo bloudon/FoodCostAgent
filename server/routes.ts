@@ -4820,9 +4820,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("[Recipe Import] Cost calculation failed (non-fatal):", costErr);
       }
 
+      // Skipped = included by user but has no matched inventory item (cannot be costed)
       const skippedCount = parsed.data.ingredients.filter(
         (ing) => ing.include && !ing.inventoryItemId
-      ).length + parsed.data.ingredients.filter((ing) => !ing.include).length;
+      ).length;
 
       return res.json({
         recipeId: recipe.id,
