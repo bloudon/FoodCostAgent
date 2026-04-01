@@ -1,4 +1,4 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, useLocation, Redirect } from "wouter";
 import { useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -57,7 +57,6 @@ import Login from "@/pages/login";
 import PendingApproval from "@/pages/pending-approval";
 import SsoAccessDenied from "@/pages/sso-access-denied";
 import AcceptInvitation from "@/pages/accept-invitation";
-import Onboarding from "@/pages/onboarding";
 import OnboardingWizard from "@/pages/onboarding-wizard";
 import OnboardingMenuScan from "@/pages/onboarding-menu-scan";
 import LeadSignup from "@/pages/lead-signup";
@@ -212,7 +211,7 @@ function ProtectedLayoutContent() {
         <Route path="/onboarding-wizard" component={OnboardingWizard} />
         <Route path="/onboarding-review" component={OnboardingWizard} />
         <Route path="/onboarding/menu-scan" component={OnboardingMenuScan} />
-        <Route path="/onboarding" component={Onboarding} />
+        <Route path="/onboarding"><Redirect to="/signup" /></Route>
         <Route path="/choose-plan" component={ChoosePlan} />
         <Route path="/enterprise-inquiry" component={EnterpriseInquiry} />
         <Route path="/enterprise-onboarding" component={EnterpriseOnboarding} />
@@ -314,7 +313,7 @@ function App() {
               <Route path="/sso-access-denied" component={SsoAccessDenied} />
               <Route path="/accept-invitation/:token" component={AcceptInvitation} />
               <Route path="/onboarding/menu-scan" component={OnboardingMenuScan} />
-              <Route path="/onboarding" component={Onboarding} />
+              <Route path="/onboarding"><Redirect to="/signup" /></Route>
               <Route path="/onboarding-wizard" component={OnboardingWizard} />
               <Route path="/onboarding-review" component={OnboardingWizard} />
               <Route path="/signup" component={LeadSignup} />
