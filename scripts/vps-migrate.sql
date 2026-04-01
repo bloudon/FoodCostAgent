@@ -286,9 +286,30 @@ BEGIN
   END IF;
 END $$;
 
+-- v012 — Task #30: Add FK constraint menu_items.menu_department_id -> menu_departments(id) ON DELETE SET NULL
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v012') THEN
+    -- Add FK constraint if it doesn't already exist
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.table_constraints
+      WHERE constraint_name = 'menu_items_menu_department_id_fk'
+        AND table_name = 'menu_items'
+    ) THEN
+      ALTER TABLE menu_items
+        ADD CONSTRAINT menu_items_menu_department_id_fk
+        FOREIGN KEY (menu_department_id) REFERENCES menu_departments(id) ON DELETE SET NULL;
+    END IF;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v012', 'Task #30: FK constraint menu_items.menu_department_id -> menu_departments(id) SET NULL');
+  END IF;
+END $$;
+
 -- v013 — Task #30: Auto-seed menu_departments from distinct legacy department text per company,
 --          then link menu_items.menu_department_id via case-insensitive match.
 --          Safe to run on existing tenants AND on first-time deploys.
+-- =============================================================================
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v013') THEN
 
@@ -326,21 +347,24 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- v012 — Task #30: Add FK constraint menu_items.menu_department_id -> menu_departments(id) ON DELETE SET NULL
+-- v014 — Task #30: Upgrade menu_departments name uniqueness to case-insensitive.
+--          Drops the case-sensitive UNIQUE(company_id, name) constraint created in
+--          v011 and replaces it with a partial unique index on lower(name) so that
+--          "Entrees" and "entrees" are treated as duplicates. Application code
+--          (POST/PATCH /api/menu-departments) also validates trimmed lower-case names.
+-- =============================================================================
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v012') THEN
-    -- Add FK constraint if it doesn't already exist
-    IF NOT EXISTS (
-      SELECT 1 FROM information_schema.table_constraints
-      WHERE constraint_name = 'menu_items_menu_department_id_fk'
-        AND table_name = 'menu_items'
-    ) THEN
-      ALTER TABLE menu_items
-        ADD CONSTRAINT menu_items_menu_department_id_fk
-        FOREIGN KEY (menu_department_id) REFERENCES menu_departments(id) ON DELETE SET NULL;
-    END IF;
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v014') THEN
+
+    -- Drop the old case-sensitive constraint (may have been created with a generated name)
+    ALTER TABLE menu_departments
+      DROP CONSTRAINT IF EXISTS menu_departments_company_id_name_key;
+
+    -- Create a case-insensitive unique index
+    CREATE UNIQUE INDEX IF NOT EXISTS menu_departments_company_lower_name_idx
+      ON menu_departments (company_id, lower(name));
 
     INSERT INTO _migration_log (version, description)
-      VALUES ('v012', 'Task #30: FK constraint menu_items.menu_department_id -> menu_departments(id) SET NULL');
+      VALUES ('v014', 'Task #30: Case-insensitive unique index on menu_departments(company_id, lower(name))');
   END IF;
 END $$;
