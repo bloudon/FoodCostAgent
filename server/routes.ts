@@ -4804,9 +4804,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
-        // Mark session approved and clear staging payload
+        // Mark session approved and clear staging payload (extracted data + raw image path)
         await tx.update(recipeImportSessions)
-          .set({ status: "approved", extractedData: null, updatedAt: new Date() })
+          .set({ status: "approved", extractedData: null, rawImagePath: null, updatedAt: new Date() })
           .where(eq(recipeImportSessions.id, sessionId));
 
         return newRecipe;
@@ -4820,10 +4820,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("[Recipe Import] Cost calculation failed (non-fatal):", costErr);
       }
 
+      const skippedCount = parsed.data.ingredients.filter(
+        (ing) => ing.include && !ing.inventoryItemId
+      ).length + parsed.data.ingredients.filter((ing) => !ing.include).length;
+
       return res.json({
         recipeId: recipe.id,
         recipeName: recipe.name,
         componentsCreated: includedIngredients.length,
+        skippedIngredients: skippedCount,
       });
     } catch (error: any) {
       console.error("[Recipe Import Approve]", error);

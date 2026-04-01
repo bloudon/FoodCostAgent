@@ -338,15 +338,18 @@ export default function RecipeImport() {
         const err = await res.json() as { error?: string };
         throw new Error(err.error || 'Import failed');
       }
-      return res.json() as Promise<{ recipeId: string; recipeName: string; componentsCreated: number }>;
+      return res.json() as Promise<{ recipeId: string; recipeName: string; componentsCreated: number; skippedIngredients: number }>;
     },
     onSuccess: (data) => {
       setCreatedRecipeId(data.recipeId);
       setStep('done');
       queryClient.invalidateQueries({ queryKey: ['/api/recipes'] });
+      const skippedMsg = data.skippedIngredients > 0
+        ? ` (${data.skippedIngredients} unmatched skipped)`
+        : '';
       toast({
         title: 'Recipe Created',
-        description: `${formatRecipeName(data.recipeName)} imported with ${data.componentsCreated} ingredient${data.componentsCreated !== 1 ? 's' : ''}`,
+        description: `${formatRecipeName(data.recipeName)} imported with ${data.componentsCreated} ingredient${data.componentsCreated !== 1 ? 's' : ''}${skippedMsg}`,
       });
     },
     onError: (err: Error) => {
