@@ -488,10 +488,10 @@ export default function Vendors() {
   };
 
   return (
-    <div className="p-8 pb-16">
-      <div className="mb-8 flex items-center justify-between gap-3 flex-wrap">
+    <div className="p-4 pb-16 sm:p-8">
+      <div className="mb-4 sm:mb-8 flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-vendors-title">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight" data-testid="text-vendors-title">
             Vendors
           </h1>
           {!showOnboardingButtons && (
@@ -512,8 +512,8 @@ export default function Vendors() {
               onClick={() => setIsImportDialogOpen(true)} 
               data-testid="button-import-order-guide"
             >
-              <Upload className="h-4 w-4 mr-2" />
-              Import Order Guide
+              <Upload className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Import Order Guide</span>
             </Button>
             <Button onClick={handleCreateClick} data-testid="button-create-vendor">
               <Plus className="h-4 w-4 mr-2" />

@@ -343,10 +343,10 @@ function RecipesContent() {
   const totalRecipes = groupedRecipes.reduce((sum, group) => sum + 1 + group.children.length, 0);
 
   return (
-    <div className="p-8 pb-16">
-      <div className="mb-8 flex items-center justify-between gap-3 flex-wrap">
+    <div className="p-4 pb-16 sm:p-8">
+      <div className="mb-4 sm:mb-8 flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-recipes-title">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight" data-testid="text-recipes-title">
             Recipes
           </h1>
           {!showOnboardingButtons && (
@@ -367,14 +367,14 @@ function RecipesContent() {
               onClick={() => setCleanupDialogOpen(true)}
               data-testid="button-cleanup-recipes"
             >
-              <Wrench className="h-4 w-4 mr-2" />
-              Cleanup
+              <Wrench className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Cleanup</span>
             </Button>
             <TierGate feature="recipe_costing" fallback={null}>
               <Button variant="outline" asChild data-testid="button-scan-recipe">
                 <Link href="/recipe-import">
-                  <ScanLine className="h-4 w-4 mr-2" />
-                  Scan Recipe
+                  <ScanLine className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Scan Recipe</span>
                 </Link>
               </Button>
             </TierGate>
@@ -388,7 +388,7 @@ function RecipesContent() {
         </div>
       </div>
 
-      <div className="mb-6 flex items-center gap-4">
+      <div className="mb-4 sm:mb-6 flex items-center gap-2 sm:gap-4">
         <div className="relative max-w-md flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -441,14 +441,14 @@ function RecipesContent() {
                         className="cursor-pointer hover-elevate" 
                         data-testid={`row-recipe-${group.parent.id}`}
                       >
-                        <TableCell>
-                          <div className="flex items-center gap-2">
+                        <TableCell className="min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
                             {group.children.length > 0 && (
                               <CollapsibleTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-6 w-6"
+                                  className="h-6 w-6 shrink-0"
                                   onClick={(e) => {
                                     e.preventDefault();
                                     toggleGroup(group.parent.id);
@@ -463,9 +463,9 @@ function RecipesContent() {
                                 </Button>
                               </CollapsibleTrigger>
                             )}
-                            <Link href={`/recipes/${group.parent.id}`} className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className={`font-medium ${group.parent.isActive === 0 ? 'text-muted-foreground' : ''}`} data-testid={`text-recipe-name-${group.parent.id}`}>
+                            <Link href={`/recipes/${group.parent.id}`} className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                                <span className={`font-medium line-clamp-2 ${group.parent.isActive === 0 ? 'text-muted-foreground' : ''}`} data-testid={`text-recipe-name-${group.parent.id}`}>
                                   {formatRecipeName(group.parent.name)}
                                 </span>
                                 {group.parent.isActive === 0 && (

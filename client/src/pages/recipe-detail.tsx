@@ -64,8 +64,8 @@ function RecipeDetailContent() {
 
   if (recipeLoading) {
     return (
-      <div className="p-8">
-        <Skeleton className="h-8 w-64 mb-8" />
+      <div className="p-4 sm:p-8">
+        <Skeleton className="h-8 w-64 mb-4 sm:mb-8" />
         <div className="space-y-4">
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-64 w-full" />
@@ -76,7 +76,7 @@ function RecipeDetailContent() {
 
   if (!recipe) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-8">
         <p className="text-muted-foreground">Recipe not found</p>
       </div>
     );
@@ -86,8 +86,8 @@ function RecipeDetailContent() {
   const hasMissingIngredients = missingComponents.length > 0;
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
+    <div className="p-4 sm:p-8">
+      <div className="mb-4 sm:mb-8">
         <Link href="/recipes">
           <Button variant="ghost" size="sm" className="mb-4" data-testid="button-back-to-recipes">
             <ArrowLeft className="h-4 w-4 mr-2" />

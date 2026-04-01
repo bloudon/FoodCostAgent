@@ -1057,10 +1057,10 @@ export default function MenuItemsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 pb-16">
+    <div className="p-4 space-y-4 pb-16 sm:p-6 sm:space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Menu Items</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Menu Items</h1>
           {!showOnboardingButtons && (
             <p className="text-muted-foreground mt-1">
               Manage your menu items, sizes, and recipe links

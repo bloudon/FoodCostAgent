@@ -372,9 +372,9 @@ export default function Dashboard() {
   // Loading state while store context initializes
   if (storesLoading) {
     return (
-      <div className="p-8">
-        <Skeleton className="h-12 w-64 mb-8" />
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="p-4 sm:p-8">
+        <Skeleton className="h-12 w-64 mb-4 sm:mb-8" />
+        <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-32" />
           ))}
@@ -386,7 +386,7 @@ export default function Dashboard() {
   // Empty state for users with no accessible stores - show milestone tracker so they can create first store
   if (stores.length === 0 || !selectedStoreId) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-8">
         <SetupMilestoneTracker />
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
@@ -409,7 +409,7 @@ export default function Dashboard() {
   const showBothSections = hasOrderDeadlines && hasCriticalItems;
   
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       {/* Welcome banner — shown once after completing the onboarding wizard */}
       {isWelcome && !welcomeDismissed && (
         <Card className="mb-6 border-accent/30 bg-gradient-to-r from-accent/5 to-transparent" data-testid="welcome-banner">

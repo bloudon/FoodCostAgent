@@ -349,10 +349,10 @@ export default function Categories() {
   const deactivatingItemCount = deactivatingCategory ? (itemCountsData?.[deactivatingCategory.id] ?? 0) : 0;
 
   return (
-    <div className="p-8 pb-16">
-      <div className="mb-8 flex items-center justify-between gap-3 flex-wrap">
+    <div className="p-4 pb-16 sm:p-8">
+      <div className="mb-4 sm:mb-8 flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-categories-title">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight" data-testid="text-categories-title">
             Categories
           </h1>
           {!showReviewButton && (

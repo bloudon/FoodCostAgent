@@ -294,10 +294,10 @@ export default function StorageLocations() {
   );
 
   return (
-    <div className="p-8">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="p-4 sm:p-8">
+      <div className="mb-4 sm:mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-storage-locations-title">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight" data-testid="text-storage-locations-title">
             Storage Locations
           </h1>
           <p className="text-muted-foreground mt-2">
