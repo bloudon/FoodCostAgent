@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Edit, TrendingUp, Package, AlertTriangle, X } from "lucide-react";
+import { ArrowLeft, Edit, TrendingUp, Package, AlertTriangle, X, ImageIcon, BookOpen } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -292,6 +292,43 @@ function RecipeDetailContent() {
           </CardContent>
         </Card>
       </div>
+
+      {(recipe.imagePath || recipe.instructions) && (
+        <div className="grid gap-6 lg:grid-cols-2 mb-8">
+          {recipe.imagePath && (
+            <Card data-testid="card-recipe-photo">
+              <CardHeader className="flex flex-row items-center gap-2 pb-2">
+                <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-base">Recipe Photo</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <img
+                  src={`/objects/${recipe.imagePath}`}
+                  alt={`Photo of ${recipe.name}`}
+                  className="rounded-md w-full object-cover max-h-72"
+                  data-testid="img-recipe-photo"
+                />
+              </CardContent>
+            </Card>
+          )}
+          {recipe.instructions && (
+            <Card data-testid="card-recipe-instructions">
+              <CardHeader className="flex flex-row items-center gap-2 pb-2">
+                <BookOpen className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-base">Preparation Instructions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p
+                  className="text-sm whitespace-pre-wrap leading-relaxed"
+                  data-testid="text-recipe-instructions"
+                >
+                  {recipe.instructions}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   );
 }

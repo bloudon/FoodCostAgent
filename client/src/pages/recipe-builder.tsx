@@ -75,6 +75,7 @@ import {
   X,
   ImageIcon,
   Loader2,
+  Lock,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { ObjectUploader } from "@/components/ObjectUploader";
@@ -1318,8 +1319,8 @@ function RecipeBuilderContent() {
       setYieldQty(recipe.yieldQty.toString());
       setYieldUnitId(recipe.yieldUnitId);
       setCanBeIngredient(recipe.canBeIngredient === 1);
-      setInstructions((recipe as any).instructions || "");
-      setRecipeImagePath((recipe as any).imagePath || null);
+      setInstructions(recipe.instructions || "");
+      setRecipeImagePath(recipe.imagePath || null);
 
       const componentsWithDetails: ComponentWithDetails[] = recipeComponents.map((comp: any) => {
         const missingItem = comp.missingItem === true;
@@ -1780,7 +1781,20 @@ function RecipeBuilderContent() {
                     </AccordionTrigger>
                     <AccordionContent className="px-6 pb-4 space-y-3">
                       <div className="flex items-center gap-2">
-                        <TierGate feature="ai_assistant" fallback={null}>
+                        <TierGate
+                          feature="ai_assistant"
+                          fallback={
+                            <Button
+                              variant="outline"
+                              disabled
+                              data-testid="button-scan-instructions-locked"
+                            >
+                              <Lock className="h-4 w-4 mr-2" />
+                              Scan from Photo
+                              <Badge variant="secondary" className="ml-2 text-xs">Basic Plan</Badge>
+                            </Button>
+                          }
+                        >
                           <ObjectUploader
                             onUploadComplete={handleScanInstructions}
                             buttonText={isScanningInstructions ? "Scanning..." : "Scan from Photo"}
