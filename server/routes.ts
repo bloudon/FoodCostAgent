@@ -8608,9 +8608,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/menu-items", requireAuth, async (req, res) => {
     try {
+      const companyId = req.companyId!;
       // Parse without companyId, then add it from session
       const data = insertMenuItemSchema.omit({ companyId: true }).parse(req.body);
-      const item = await storage.createMenuItem({ ...data, companyId: req.companyId! });
+
+      // Validate menuDepartmentId belongs to this company (if provided)
+      if (data.menuDepartmentId) {
+        const dept = await db.select().from(menuDepartments)
+          .where(and(eq(menuDepartments.id, data.menuDepartmentId), eq(menuDepartments.companyId, companyId)))
+          .limit(1);
+        if (dept.length === 0) {
+          return res.status(400).json({ error: "Invalid section assignment" });
+        }
+      }
+
+      const item = await storage.createMenuItem({ ...data, companyId });
       res.status(201).json(item);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -8629,6 +8641,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (existingItem.length === 0) {
         return res.status(404).json({ error: "Menu item not found" });
+      }
+
+      // Validate menuDepartmentId belongs to this company (if provided and non-null)
+      if (req.body.menuDepartmentId) {
+        const dept = await db.select().from(menuDepartments)
+          .where(and(eq(menuDepartments.id, req.body.menuDepartmentId), eq(menuDepartments.companyId, companyId)))
+          .limit(1);
+        if (dept.length === 0) {
+          return res.status(400).json({ error: "Invalid section assignment" });
+        }
       }
 
       // Update menu item

@@ -485,6 +485,7 @@ export default function MenuItemsPage() {
       // Step 1: Create parent menu item (group header) - no size, no price, no PLU
       const parentResponse = await apiRequest("POST", "/api/menu-items", {
         name: data.name,
+        menuDepartmentId: data.menuDepartmentId || null,
         department: data.department,
         category: data.category,
         isRecipeItem: data.isRecipeItem,
