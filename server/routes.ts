@@ -1472,6 +1472,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { created } = await db.transaction(async (tx) => {
         const sizeIdCache = new Map<string, string>();
+        const deptIdCache = new Map<string, string>();
+
+        async function findOrCreateDepartmentId(deptName: string): Promise<string> {
+          const key = deptName.trim().toLowerCase();
+          if (deptIdCache.has(key)) return deptIdCache.get(key)!;
+          const [existing] = await tx.select().from(menuDepartments)
+            .where(and(eq(menuDepartments.companyId, companyId), sql`lower(${menuDepartments.name}) = ${key}`));
+          if (existing) { deptIdCache.set(key, existing.id); return existing.id; }
+          const [newDept] = await tx.insert(menuDepartments).values({
+            companyId, name: deptName.trim(), sortOrder: 0,
+          }).onConflictDoNothing().returning();
+          if (newDept) { deptIdCache.set(key, newDept.id); return newDept.id; }
+          const [refetched] = await tx.select().from(menuDepartments)
+            .where(and(eq(menuDepartments.companyId, companyId), sql`lower(${menuDepartments.name}) = ${key}`));
+          deptIdCache.set(key, refetched.id);
+          return refetched.id;
+        }
 
         async function findOrCreateSizeId(sizeName: string): Promise<string> {
           const key = sizeName.trim().toLowerCase();
@@ -1493,12 +1510,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: string; department: string | null; category: string | null;
           size: string | null; pluSku: string; price: number | null;
           sortOrder: number; parentMenuItemId?: string | null; menuItemSizeId?: string | null;
+          menuDepartmentId?: string | null;
         }): Promise<string> {
           const [row] = await tx.insert(menuItems).values({
             companyId, name: values.name, department: values.department, category: values.category,
             size: values.size, pluSku: values.pluSku, parentMenuItemId: values.parentMenuItemId ?? null,
             menuItemSizeId: values.menuItemSizeId ?? null, isRecipeItem: 1, active: 1,
             price: values.price, sortOrder: values.sortOrder,
+            menuDepartmentId: values.menuDepartmentId ?? null,
           }).returning();
           for (const sid of targetStoreIds) {
             await tx.insert(storeMenuItems).values({ companyId, storeId: sid, menuItemId: row.id, active: 1 }).onConflictDoNothing();
@@ -1517,11 +1536,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             && nonEmptySizes.length === group.items.length
             && new Set(nonEmptySizes).size >= 2;
 
+          const deptName = (representative.department || '').trim() || 'Other';
+          const menuDepartmentId = await findOrCreateDepartmentId(deptName);
+
           if (hasMultipleSizes) {
             const parentPlu = `SCAN-${now}-${pluCounter++}`;
             const parentId = await insertMenuItemRow({
               name: representative.name.trim(), department: representative.department || null,
               category: representative.category || null, size: null, pluSku: parentPlu, price: null, sortOrder: group.sortBase,
+              menuDepartmentId,
             });
             for (let j = 0; j < group.items.length; j++) {
               const variant = group.items[j];
@@ -1531,6 +1554,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 category: representative.category || null, size: variant.size || null,
                 pluSku: `SCAN-${now}-${pluCounter++}`, price: variant.price ?? null,
                 sortOrder: group.sortBase + j + 1, parentMenuItemId: parentId, menuItemSizeId,
+                menuDepartmentId,
               });
               txCreated++;
             }
@@ -1544,6 +1568,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 category: item.category || null, size: item.size || null,
                 pluSku: `SCAN-${now}-${pluCounter++}`, price: item.price ?? null,
                 sortOrder: group.sortBase + j, menuItemSizeId,
+                menuDepartmentId,
               });
               txCreated++;
             }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { useCompany } from "@/hooks/use-company";
@@ -269,57 +269,75 @@ export default function OnboardingMenuScan() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {items.length > 0 ? (
-                <div className="rounded-md border overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-muted/50">
-                        <th className="text-left px-3 py-2 font-medium">Item name</th>
-                        <th className="text-left px-3 py-2 font-medium w-28">Price</th>
-                        <th className="w-10" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((item, idx) => (
-                        <tr key={idx} className="border-b last:border-0">
-                          <td className="px-3 py-1.5">
-                            <Input
-                              value={item.name}
-                              onChange={(e) => updateItemName(idx, e.target.value)}
-                              className="h-8 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent"
-                              data-testid={`input-item-name-${idx}`}
-                            />
-                          </td>
-                          <td className="px-3 py-1.5">
-                            <div className="flex items-center gap-1">
-                              <span className="text-muted-foreground text-xs">$</span>
-                              <Input
-                                type="number"
-                                value={item.price ?? ""}
-                                onChange={(e) => updateItemPrice(idx, e.target.value)}
-                                placeholder="—"
-                                className="h-8 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent w-20"
-                                data-testid={`input-item-price-${idx}`}
-                              />
-                            </div>
-                          </td>
-                          <td className="px-2 py-1.5">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => deleteItem(idx)}
-                              data-testid={`button-delete-item-${idx}`}
-                              className="text-muted-foreground"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </td>
+              {items.length > 0 ? (() => {
+                const deptOrder: string[] = [];
+                const deptGroups = new Map<string, number[]>();
+                items.forEach((item, idx) => {
+                  const dept = (item.department || "").trim() || "Other";
+                  if (!deptGroups.has(dept)) { deptGroups.set(dept, []); deptOrder.push(dept); }
+                  deptGroups.get(dept)!.push(idx);
+                });
+                return (
+                  <div className="rounded-md border overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/50">
+                          <th className="text-left px-3 py-2 font-medium">Item name</th>
+                          <th className="text-left px-3 py-2 font-medium w-28">Price</th>
+                          <th className="w-10" />
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
+                      </thead>
+                      <tbody>
+                        {deptOrder.map((dept) => (
+                          <Fragment key={`dept-${dept}`}>
+                            <tr className="border-b bg-muted/30">
+                              <td colSpan={3} className="px-3 py-1.5 font-semibold text-xs text-muted-foreground uppercase tracking-wide" data-testid={`header-department-${dept}`}>
+                                {dept}
+                              </td>
+                            </tr>
+                            {deptGroups.get(dept)!.map((idx) => (
+                              <tr key={idx} className="border-b last:border-0">
+                                <td className="px-3 py-1.5">
+                                  <Input
+                                    value={items[idx].name}
+                                    onChange={(e) => updateItemName(idx, e.target.value)}
+                                    className="h-8 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent"
+                                    data-testid={`input-item-name-${idx}`}
+                                  />
+                                </td>
+                                <td className="px-3 py-1.5">
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-muted-foreground text-xs">$</span>
+                                    <Input
+                                      type="number"
+                                      value={items[idx].price ?? ""}
+                                      onChange={(e) => updateItemPrice(idx, e.target.value)}
+                                      placeholder="—"
+                                      className="h-8 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent w-20"
+                                      data-testid={`input-item-price-${idx}`}
+                                    />
+                                  </div>
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => deleteItem(idx)}
+                                    data-testid={`button-delete-item-${idx}`}
+                                    className="text-muted-foreground"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })() : (
                 <div className="py-8 text-center text-muted-foreground">
                   <p className="text-sm">No items were extracted from the image.</p>
                   <p className="text-xs mt-1">Try a clearer photo or a different page of your menu.</p>
