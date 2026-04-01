@@ -266,7 +266,7 @@ function InlineIngredientRow({
                   data-testid={`button-link-to-existing-${component.id}`}
                 >
                   <LinkIcon className="h-3 w-3 mr-1" />
-                  Link Existing
+                  Link to Existing
                 </Button>
               )}
               {onAddToInventory && (
@@ -1052,14 +1052,10 @@ function RecipeBuilderContent() {
   // Mutation to link a missing component to an existing inventory item
   const linkToExistingMutation = useMutation({
     mutationFn: async ({ componentRowId, inventoryItem }: { componentRowId: string; inventoryItem: InventoryItem }) => {
-      const response = await apiRequest("PATCH", `/api/recipe-components/${componentRowId}`, {
+      await apiRequest("PATCH", `/api/recipe-components/${componentRowId}`, {
         componentId: inventoryItem.id,
         missingItemName: null,
       });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error((err as any).error || "Failed to link inventory item");
-      }
       return inventoryItem;
     },
     onSuccess: (inventoryItem) => {
