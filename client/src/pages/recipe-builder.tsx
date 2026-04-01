@@ -1020,7 +1020,7 @@ function RecipeBuilderContent() {
   };
 
   const createInventoryItemMutation = useMutation({
-    mutationFn: async (data: { name: string; categoryId?: string; pricePerUnit: number; unitId: string; componentId: string }) => {
+    mutationFn: async (data: { name: string; categoryId?: string; pricePerUnit: number; unitId: string; componentId: string; storeIds: string[] }) => {
       const response = await apiRequest("POST", "/api/inventory-items", {
         name: data.name,
         categoryId: data.categoryId || null,
@@ -1028,13 +1028,27 @@ function RecipeBuilderContent() {
         unitId: data.unitId,
         caseSize: 1,
         active: 1,
+        storeIds: data.storeIds,
       });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error((err as any).error || "Failed to create inventory item");
+      }
       const newItem = await response.json();
       return { newItem, componentId: data.componentId };
     },
-    onSuccess: ({ newItem, componentId }) => {
+    onSuccess: async ({ newItem, componentId }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/recipe-components", id] });
+      // Immediately persist the link in the DB (PATCH the recipe component)
+      try {
+        await apiRequest("PATCH", `/api/recipe-components/${componentId}`, {
+          componentId: newItem.id,
+          missingItemName: null,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/recipe-components", id] });
+      } catch {
+        // Non-fatal — local state still updated; user can save recipe to persist
+      }
       // Update the component in local state to link to the new inventory item
       setComponents(prev => prev.map(comp => {
         if (comp.id === componentId) {
@@ -1051,8 +1065,8 @@ function RecipeBuilderContent() {
       setAddToInventoryDialogOpen(false);
       setMissingComponentForInventory(null);
     },
-    onError: () => {
-      toast({ title: "Failed to create inventory item", variant: "destructive" });
+    onError: (err: Error) => {
+      toast({ title: "Failed to create inventory item", description: err.message, variant: "destructive" });
     },
   });
 
@@ -1061,12 +1075,21 @@ function RecipeBuilderContent() {
       toast({ title: "Name and unit are required", variant: "destructive" });
       return;
     }
+    // Use the recipe's assigned stores, or fall back to all accessible stores
+    const storeIds = selectedStores.length > 0
+      ? selectedStores
+      : (stores?.map((s: any) => s.id) ?? []);
+    if (storeIds.length === 0) {
+      toast({ title: "No store assigned", description: "Assign this recipe to a store first, then try again.", variant: "destructive" });
+      return;
+    }
     createInventoryItemMutation.mutate({
       name: newInventoryForm.name,
       categoryId: newInventoryForm.categoryId || undefined,
       pricePerUnit: parseFloat(newInventoryForm.pricePerUnit) || 0,
       unitId: newInventoryForm.unitId,
       componentId: missingComponentForInventory.id,
+      storeIds,
     });
   };
 

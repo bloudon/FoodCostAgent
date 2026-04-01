@@ -6508,11 +6508,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const updateData = {
+      const updateData: Record<string, any> = {
         qty: req.body.qty !== undefined ? req.body.qty : component.qty,
         unitId: req.body.unitId || component.unitId,
         sortOrder: req.body.sortOrder !== undefined ? req.body.sortOrder : component.sortOrder,
       };
+
+      // Allow linking a missing component to a real inventory item
+      if (req.body.componentId !== undefined) {
+        updateData.componentId = req.body.componentId;
+      }
+      if (req.body.missingItemName !== undefined) {
+        updateData.missingItemName = req.body.missingItemName;
+      }
 
       await storage.updateRecipeComponent(req.params.id, updateData);
       
