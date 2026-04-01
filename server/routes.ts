@@ -6038,13 +6038,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updateSchema = insertRecipeSchema.partial();
       const validatedData = updateSchema.parse(req.body);
 
-      const updateData = {
+      const updateData: Partial<typeof recipe> = {
         name: validatedData.name !== undefined ? validatedData.name : recipe.name,
         yieldQty: validatedData.yieldQty !== undefined ? validatedData.yieldQty : recipe.yieldQty,
         yieldUnitId: validatedData.yieldUnitId || recipe.yieldUnitId,
         computedCost: validatedData.computedCost !== undefined ? validatedData.computedCost : recipe.computedCost,
         canBeIngredient: validatedData.canBeIngredient !== undefined ? validatedData.canBeIngredient : recipe.canBeIngredient,
       };
+      if (validatedData.instructions !== undefined) updateData.instructions = validatedData.instructions;
+      if (validatedData.imagePath !== undefined) updateData.imagePath = validatedData.imagePath;
 
       await storage.updateRecipe(req.params.id, updateData);
       
@@ -6055,6 +6057,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(updated);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Extract step-by-step instructions from a recipe image using GPT-4o Vision
+  app.post("/api/recipes/extract-instructions", requireAuth, requireTier("basic"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const userId = (req as any).user?.id;
+
+      const bodySchema = z.object({
+        objectPath: z.string().min(1, "objectPath is required"),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "objectPath is required" });
+      }
+
+      const { buffer, mimeType } = await readImageBuffer(parsed.data.objectPath, companyId, userId);
+
+      const { extractRecipeInstructions } = await import('./services/recipeScanner');
+      const instructions = await extractRecipeInstructions(buffer, mimeType);
+
+      res.json({ instructions });
+    } catch (error: any) {
+      console.error("extract-instructions error:", error);
+      res.status(500).json({ error: error.message || "Failed to extract instructions" });
     }
   });
 

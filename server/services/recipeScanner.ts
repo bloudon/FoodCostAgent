@@ -2,6 +2,56 @@ import OpenAI from 'openai';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+/**
+ * Sends a recipe image to GPT-4o Vision and extracts step-by-step preparation instructions.
+ */
+export async function extractRecipeInstructions(imageBuffer: Buffer, mimeType: string): Promise<string> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured.');
+  }
+
+  const base64 = imageBuffer.toString('base64');
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:${mimeType};base64,${base64}`,
+              detail: 'high',
+            },
+          },
+          {
+            type: 'text',
+            text: `You are a culinary assistant. Look at this recipe image and extract the preparation instructions (method/directions/steps).
+
+Return a JSON object with a single key "instructions" containing the step-by-step instructions as a plain text string.
+Number each step (e.g. "1. Preheat oven to 375°F.\n2. Mix dry ingredients...").
+If no instructions are visible in the image, return an empty string.
+Respond ONLY with the JSON object, no markdown.
+
+Example: {"instructions": "1. Preheat oven to 375°F.\n2. Mix flour and sugar.\n3. Bake for 25 minutes."}`,
+          },
+        ],
+      },
+    ],
+    max_tokens: 1024,
+    response_format: { type: 'json_object' },
+  });
+
+  const raw = response.choices[0]?.message?.content || '{}';
+  try {
+    const parsed = JSON.parse(raw);
+    return String(parsed.instructions || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 export interface ExtractedIngredient {
   name: string;
   qty: number;

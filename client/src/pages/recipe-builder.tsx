@@ -71,7 +71,13 @@ import {
   Copy,
   Link as LinkIcon,
   AlertTriangle,
+  ScanText,
+  X,
+  ImageIcon,
+  Loader2,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { ObjectUploader } from "@/components/ObjectUploader";
 import type { Recipe, RecipeComponent, Category, InventoryItem as BaseInventoryItem, Unit as BaseUnit } from "@shared/schema";
 
 // Extended types for API responses with joined fields
@@ -475,6 +481,11 @@ function RecipeBuilderContent() {
   const [yieldUnitId, setYieldUnitId] = useState("");
   const [canBeIngredient, setCanBeIngredient] = useState(false);
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
+
+  // Instructions & photo state
+  const [instructions, setInstructions] = useState("");
+  const [recipeImagePath, setRecipeImagePath] = useState<string | null>(null);
+  const [isScanningInstructions, setIsScanningInstructions] = useState(false);
 
   // Component management state
   const [components, setComponents] = useState<ComponentWithDetails[]>([]);
@@ -1058,7 +1069,39 @@ function RecipeBuilderContent() {
     });
   };
 
-  // Save recipe mutation
+  // Immediately PATCH a specific field on the recipe (used for image upload/remove)
+  const patchRecipeFieldsMutation = useMutation({
+    mutationFn: async (fields: Record<string, unknown>) => {
+      if (!id || isNew) return;
+      await apiRequest("PATCH", `/api/recipes/${id}`, fields);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes", id] });
+    },
+    onError: () => {
+      toast({ title: "Failed to save change", variant: "destructive" });
+    },
+  });
+
+  // Scan a recipe image to extract step-by-step instructions via GPT-4o Vision
+  const handleScanInstructions = async (objectPath: string) => {
+    setIsScanningInstructions(true);
+    try {
+      const response = await apiRequest("POST", "/api/recipes/extract-instructions", { objectPath });
+      const data = await response.json();
+      if (data.instructions) {
+        setInstructions(data.instructions);
+        toast({ title: "Instructions extracted", description: "Review and edit the text below." });
+      } else {
+        toast({ title: "No instructions found", description: "The image didn't contain readable instructions.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Scan failed", description: "Could not extract instructions from image.", variant: "destructive" });
+    } finally {
+      setIsScanningInstructions(false);
+    }
+  };
+
   const saveRecipeMutation = useMutation({
     mutationFn: async () => {
       const recipeData = {
@@ -1068,6 +1111,8 @@ function RecipeBuilderContent() {
         computedCost: totalCost,
         canBeIngredient: canBeIngredient ? 1 : 0,
         isPlaceholder: 0, // Convert placeholder to complete recipe when saved
+        instructions: instructions || null,
+        imagePath: recipeImagePath,
       };
 
       let recipeId = id;
@@ -1273,6 +1318,8 @@ function RecipeBuilderContent() {
       setYieldQty(recipe.yieldQty.toString());
       setYieldUnitId(recipe.yieldUnitId);
       setCanBeIngredient(recipe.canBeIngredient === 1);
+      setInstructions((recipe as any).instructions || "");
+      setRecipeImagePath((recipe as any).imagePath || null);
 
       const componentsWithDetails: ComponentWithDetails[] = recipeComponents.map((comp: any) => {
         const missingItem = comp.missingItem === true;
@@ -1539,7 +1586,7 @@ function RecipeBuilderContent() {
             </div>
 
             {/* Right panel - Recipe canvas */}
-            <div className="col-span-8 flex flex-col gap-4 overflow-hidden">
+            <div className="col-span-8 flex flex-col gap-4 overflow-y-auto">
               {/* Recipe metadata - compact */}
               <Card className="flex-shrink-0">
                 <CardContent className="pt-4 pb-3 space-y-3">
@@ -1660,7 +1707,7 @@ function RecipeBuilderContent() {
               <Card
                 ref={setCanvasRef}
                 id="recipe-canvas"
-                className="flex-1 overflow-hidden flex flex-col min-h-0"
+                className="flex-shrink-0 min-h-[300px] overflow-hidden flex flex-col"
               >
                 <CardHeader className="py-3 flex flex-row items-center justify-between gap-2">
                   <h3 className="text-sm font-medium">Ingredients ({components.length})</h3>
@@ -1714,6 +1761,102 @@ function RecipeBuilderContent() {
                         ))}
                       </div>
                     </SortableContext>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Instructions card */}
+              <Card className="flex-shrink-0">
+                <Accordion type="single" collapsible>
+                  <AccordionItem value="instructions" className="border-0">
+                    <AccordionTrigger className="px-6 py-3 text-sm font-medium hover:no-underline">
+                      <span className="flex items-center gap-2">
+                        <ScanText className="h-4 w-4 text-muted-foreground" />
+                        Preparation Instructions
+                        {instructions && (
+                          <Badge variant="secondary" className="text-xs">Saved</Badge>
+                        )}
+                      </span>
+                    </AccordionTrigger>
+                    <AccordionContent className="px-6 pb-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <TierGate feature="ai_assistant" fallback={null}>
+                          <ObjectUploader
+                            onUploadComplete={handleScanInstructions}
+                            buttonText={isScanningInstructions ? "Scanning..." : "Scan from Photo"}
+                            buttonVariant="outline"
+                            visibility="private"
+                            dataTestId="button-scan-instructions"
+                            icon={isScanningInstructions ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
+                          />
+                        </TierGate>
+                        <p className="text-xs text-muted-foreground">
+                          Upload a photo of a recipe card to auto-extract the steps.
+                        </p>
+                      </div>
+                      <Textarea
+                        value={instructions}
+                        onChange={(e) => setInstructions(e.target.value)}
+                        placeholder="Enter step-by-step preparation instructions..."
+                        className="min-h-[160px] resize-y text-sm"
+                        data-testid="textarea-instructions"
+                      />
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              </Card>
+
+              {/* Recipe photo card */}
+              <Card className="flex-shrink-0">
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-center justify-between gap-4 mb-3">
+                    <h3 className="text-sm font-medium flex items-center gap-2">
+                      <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                      Recipe Photo
+                    </h3>
+                    {!recipeImagePath && (
+                      <ObjectUploader
+                        onUploadComplete={(path) => {
+                          setRecipeImagePath(path);
+                          if (!isNew && id) {
+                            patchRecipeFieldsMutation.mutate({ imagePath: path });
+                          }
+                        }}
+                        buttonText="Upload Photo"
+                        buttonVariant="outline"
+                        visibility="private"
+                        dataTestId="button-upload-recipe-photo"
+                        icon={<ImageIcon className="h-4 w-4" />}
+                      />
+                    )}
+                    {recipeImagePath && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setRecipeImagePath(null);
+                          if (!isNew && id) {
+                            patchRecipeFieldsMutation.mutate({ imagePath: null });
+                          }
+                        }}
+                        data-testid="button-remove-recipe-photo"
+                        title="Remove photo"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  {recipeImagePath ? (
+                    <img
+                      src={`/objects/${recipeImagePath}`}
+                      alt="Recipe"
+                      className="w-full max-h-48 object-cover rounded-md"
+                      data-testid="img-recipe-photo"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-24 rounded-md border-2 border-dashed border-muted-foreground/25 text-muted-foreground/50">
+                      <ImageIcon className="h-8 w-8" />
+                    </div>
                   )}
                 </CardContent>
               </Card>

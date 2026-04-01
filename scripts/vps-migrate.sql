@@ -408,3 +408,22 @@ DO $$ BEGIN
       VALUES ('v016', 'Task #33 fix: missing_item_name on recipe_components for unmatched scan ingredients');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v017 — Task #36: instructions and image_path columns on recipes
+-- Stores step-by-step preparation instructions and a reference photo path
+-- per recipe, enabling the recipe photo upload and AI instruction scan features.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v017') THEN
+
+    ALTER TABLE recipes
+      ADD COLUMN IF NOT EXISTS instructions text;
+
+    ALTER TABLE recipes
+      ADD COLUMN IF NOT EXISTS image_path text;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v017', 'Task #36: instructions and image_path columns on recipes');
+  END IF;
+END $$;
