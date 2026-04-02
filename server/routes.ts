@@ -10616,6 +10616,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Admin: stats overview ──────────────────────────────────────────────────
+  app.get("/api/admin/stats", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.user!.id);
+    if (user?.role !== "global_admin") {
+      return res.status(403).json({ error: "Only global admins can access this" });
+    }
+    try {
+      const { authSessions } = await import("@shared/schema");
+      const now = new Date();
+      const thirtyMinAgo = new Date(now.getTime() - 30 * 60 * 1000);
+
+      const [totalCompaniesRow] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(companiesTable)
+        .where(eq(companiesTable.status, "active"));
+
+      const [pendingSignupsRow] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(companiesTable)
+        .where(eq(companiesTable.status, "pending"));
+
+      const [activeUsersRow] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(users)
+        .where(and(eq(users.active, 1), not(eq(users.role, "global_admin"))));
+
+      const [activeSessionsRow] = await db
+        .select({ count: sql<number>`count(distinct ${authSessions.userId})` })
+        .from(authSessions)
+        .where(and(
+          gt(authSessions.expiresAt, now),
+          isNull(authSessions.revokedAt),
+          gt(authSessions.lastActiveAt, thirtyMinAgo)
+        ));
+
+      const { getActiveUserCount } = await import("./auth");
+      const inMemoryCount = getActiveUserCount();
+      const dbSessionCount = Number(activeSessionsRow?.count || 0);
+
+      res.json({
+        totalCompanies: Number(totalCompaniesRow?.count || 0),
+        pendingSignups: Number(pendingSignupsRow?.count || 0),
+        activeUsers: Number(activeUsersRow?.count || 0),
+        activeSessions: Math.max(dbSessionCount, inMemoryCount),
+      });
+    } catch (error) {
+      console.error("Admin stats error:", error);
+      res.status(500).json({ error: "Failed to fetch stats" });
+    }
+  });
+
+  // ── Admin: orphaned (pending) signups ─────────────────────────────────────
+  app.get("/api/admin/orphaned-signups", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.user!.id);
+    if (user?.role !== "global_admin") {
+      return res.status(403).json({ error: "Only global admins can access this" });
+    }
+    try {
+      const rows = await db
+        .select({
+          companyId: companiesTable.id,
+          companyName: companiesTable.name,
+          companyCreatedAt: companiesTable.createdAt,
+          userId: users.id,
+          userEmail: users.email,
+          userFirstName: users.firstName,
+          userActive: users.active,
+        })
+        .from(companiesTable)
+        .leftJoin(users, and(
+          eq(users.companyId, companiesTable.id),
+          eq(users.role, "company_admin")
+        ))
+        .where(eq(companiesTable.status, "pending"))
+        .orderBy(companiesTable.createdAt);
+
+      res.json(rows);
+    } catch (error) {
+      console.error("Orphaned signups error:", error);
+      res.status(500).json({ error: "Failed to fetch orphaned signups" });
+    }
+  });
+
+  // ── Admin: resend OTP to incomplete signup ────────────────────────────────
+  app.post("/api/admin/orphaned-signups/:companyId/resend-otp", requireAuth, async (req, res) => {
+    const adminUser = await storage.getUser(req.user!.id);
+    if (adminUser?.role !== "global_admin") {
+      return res.status(403).json({ error: "Only global admins can perform this action" });
+    }
+    const { companyId } = req.params;
+    try {
+      const company = await storage.getCompany(companyId);
+      if (!company || company.status !== "pending") {
+        return res.status(404).json({ error: "Pending company not found" });
+      }
+
+      const [targetUser] = await db
+        .select()
+        .from(users)
+        .where(and(eq(users.companyId, companyId), eq(users.role, "company_admin")))
+        .limit(1);
+
+      if (!targetUser) {
+        return res.status(404).json({ error: "No admin user found for this company" });
+      }
+
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const key = targetUser.email.toLowerCase();
+      await upsertOtp(key, otp, new Date(Date.now() + 15 * 60 * 1000));
+
+      import("./email").then(({ sendOtpEmail }) => {
+        sendOtpEmail({ to: targetUser.email, firstName: targetUser.firstName || "there", otp }).catch((err) =>
+          console.error("Failed to send OTP email:", err)
+        );
+      });
+
+      res.json({ success: true, email: targetUser.email });
+    } catch (error) {
+      console.error("Resend OTP error:", error);
+      res.status(500).json({ error: "Failed to resend OTP" });
+    }
+  });
+
   app.get("/api/companies", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.user!.id);
     
@@ -10754,13 +10877,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
    *   - Requires global_admin role
    */
   app.delete("/api/admin/companies/:id/purge", requireAuth, async (req, res) => {
-    // Safety: Only allow in development environment
-    if (process.env.NODE_ENV === 'production') {
-      return res.status(403).json({ 
-        error: "Company purge is disabled in production for safety" 
-      });
-    }
-
     const user = await storage.getUser(req.user!.id);
     
     // Only global admins can purge companies
