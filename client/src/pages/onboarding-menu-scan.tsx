@@ -25,7 +25,7 @@ type Step = 1 | 2 | 3;
 export default function OnboardingMenuScan() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { company } = useCompany();
+  const { company, selectedCompanyId, isLoading: companyLoading } = useCompany();
   const { user, isLoading: authLoading } = useAuth();
 
   const [step, setStep] = useState<Step>(1);
@@ -131,8 +131,9 @@ export default function OnboardingMenuScan() {
 
   const stepLabels = ["Your restaurant", "Scan menu", "Review items"];
 
-  // Auth guard — show spinner while auth resolves to avoid flashing the form
-  if (authLoading) {
+  // Auth guard — show spinner while auth resolves to avoid flashing the form.
+  // Also wait for useCompany to resolve so selectedCompanyId is available.
+  if (authLoading || (user && companyLoading && !selectedCompanyId)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -140,21 +141,38 @@ export default function OnboardingMenuScan() {
     );
   }
 
-  // Block unauthenticated visitors AND authenticated users with no company link.
-  // The backend has a safety net (auto-create company) but we still need to show
-  // a sensible UX for sessions that are truly broken / mis-associated.
-  const userCompanyId = user?.companyId ?? null;
-  if (!user || !userCompanyId) {
+  // Block truly unauthenticated visitors. Authenticated users without a company
+  // link (global admins who haven't selected a company, or broken sessions) see
+  // a helpful prompt instead of a broken form.
+  if (!user) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
         <div className="w-full max-w-md text-center space-y-4">
           <img src={logoImage} alt="FNB Cost Pro" className="h-14 w-auto mx-auto mb-6" />
           <div className="flex items-center justify-center gap-2 text-muted-foreground">
             <AlertCircle className="h-5 w-5 text-amber-500" />
-            <p>Your session is incomplete. Please sign up again to continue.</p>
+            <p>Please sign in to continue setting up your account.</p>
           </div>
-          <Button onClick={() => setLocation("/signup")} data-testid="button-go-to-signup">
-            Go to Sign Up
+          <Button onClick={() => setLocation("/login")} data-testid="button-go-to-login">
+            Sign In
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Global admins must select a company first (via the header company picker).
+  if (user.role === "global_admin" && !selectedCompanyId) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md text-center space-y-4">
+          <img src={logoImage} alt="FNB Cost Pro" className="h-14 w-auto mx-auto mb-6" />
+          <div className="flex items-center justify-center gap-2 text-muted-foreground">
+            <AlertCircle className="h-5 w-5 text-amber-500" />
+            <p>Select a company from the header before running the setup wizard.</p>
+          </div>
+          <Button onClick={() => setLocation("/companies")} data-testid="button-go-to-companies">
+            Select Company
           </Button>
         </div>
       </div>

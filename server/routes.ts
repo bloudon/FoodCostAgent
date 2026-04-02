@@ -710,6 +710,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tempPassword = crypto.randomBytes(32).toString("hex");
       const passwordHash = await hashPassword(tempPassword);
 
+      let createdCompanyId: string | null = null;
+
       await db.transaction(async (tx) => {
         const { companies, users, onboardingProgress } = await import("@shared/schema");
 
@@ -718,6 +720,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           postalCode,
           status: "pending",
         }).returning();
+
+        createdCompanyId = newCompany.id;
 
         await tx.insert(users).values({
           firstName,
@@ -735,9 +739,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       });
 
-      // Generate and send OTP for email verification
+      // Generate and send OTP for email verification.
+      // If OTP storage fails, roll back the company/user to avoid orphaned records.
       const otp = String(Math.floor(100000 + Math.random() * 900000));
-      await upsertOtp(email.toLowerCase(), otp, new Date(Date.now() + 15 * 60 * 1000));
+      try {
+        await upsertOtp(email.toLowerCase(), otp, new Date(Date.now() + 15 * 60 * 1000));
+      } catch (otpErr) {
+        console.error("[Signup OTP] Failed to store OTP — rolling back company/user:", otpErr);
+        if (createdCompanyId) {
+          try {
+            await db.delete(onboardingProgress).where(eq(onboardingProgress.companyId, createdCompanyId));
+            await db.delete(users).where(eq(users.email, email.toLowerCase()));
+            await db.delete(companiesTable).where(eq(companiesTable.id, createdCompanyId));
+          } catch (cleanupErr) {
+            console.error("[Signup OTP] Cleanup also failed — orphaned records may remain:", cleanupErr);
+          }
+        }
+        return res.status(500).json({ error: "Unable to send verification email. Please try again or contact support." });
+      }
+
       import("./email").then(({ sendOtpEmail }) => {
         sendOtpEmail({ to: email, firstName, otp }).catch((err) =>
           console.error("[Signup OTP] Email send failed:", err)
