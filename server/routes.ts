@@ -17,7 +17,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -737,7 +737,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Generate and send OTP for email verification
       const otp = String(Math.floor(100000 + Math.random() * 900000));
-      otpStore.set(email.toLowerCase(), { otp, expiresAt: new Date(Date.now() + 15 * 60 * 1000) });
+      await upsertOtp(email.toLowerCase(), otp, new Date(Date.now() + 15 * 60 * 1000));
       import("./email").then(({ sendOtpEmail }) => {
         sendOtpEmail({ to: email, firstName, otp }).catch((err) =>
           console.error("[Signup OTP] Email send failed:", err)
@@ -846,8 +846,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ============ OTP STORE (in-memory, no DB needed) ============
-  const otpStore = new Map<string, { otp: string; expiresAt: Date }>();
+  // OTPs are now persisted in the email_otps DB table (not in-memory).
+  // Helper: upsert an OTP row for a given email.
+  async function upsertOtp(email: string, otp: string, expiresAt: Date): Promise<void> {
+    await db.insert(emailOtps)
+      .values({ email, otp, expiresAt })
+      .onConflictDoUpdate({
+        target: emailOtps.email,
+        set: { otp, expiresAt, createdAt: new Date() },
+      });
+  }
+
+  // Helper: look up an OTP row; returns null if missing or expired.
+  async function getOtp(email: string): Promise<{ otp: string; expiresAt: Date } | null> {
+    const [entry] = await db.select().from(emailOtps).where(eq(emailOtps.email, email));
+    if (!entry) return null;
+    if (entry.expiresAt < new Date()) {
+      await db.delete(emailOtps).where(eq(emailOtps.email, email));
+      return null;
+    }
+    return { otp: entry.otp, expiresAt: entry.expiresAt };
+  }
+
+  // Helper: delete an OTP row.
+  async function deleteOtp(email: string): Promise<void> {
+    await db.delete(emailOtps).where(eq(emailOtps.email, email));
+  }
 
   // ============ SEND OTP ============
   app.post("/api/auth/send-otp", async (req, res) => {
@@ -866,7 +890,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const otp = String(Math.floor(100000 + Math.random() * 900000));
-      otpStore.set(key, { otp, expiresAt: new Date(Date.now() + 15 * 60 * 1000) });
+      await upsertOtp(key, otp, new Date(Date.now() + 15 * 60 * 1000));
 
       // Send email non-blocking — still return success so user can resend
       import("./email").then(({ sendOtpEmail }) => {
@@ -895,19 +919,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { email, otp } = schema.parse(req.body);
       const key = email.toLowerCase();
 
-      const entry = otpStore.get(key);
+      const entry = await getOtp(key);
       if (!entry) {
-        return res.status(401).json({ error: "Invalid or expired code" });
-      }
-      if (entry.expiresAt < new Date()) {
-        otpStore.delete(key);
         return res.status(401).json({ error: "Invalid or expired code" });
       }
       if (entry.otp !== otp) {
         return res.status(401).json({ error: "Invalid or expired code" });
       }
 
-      otpStore.delete(key);
+      await deleteOtp(key);
       res.json({ verified: true });
     } catch (error: any) {
       if (error.name === "ZodError") {
@@ -933,7 +953,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const otp = String(Math.floor(100000 + Math.random() * 900000));
-      otpStore.set(key, { otp, expiresAt: new Date(Date.now() + 15 * 60 * 1000) });
+      await upsertOtp(key, otp, new Date(Date.now() + 15 * 60 * 1000));
 
       import("./email").then(({ sendOtpEmail }) => {
         sendOtpEmail({ to: email, firstName: user.firstName || "there", otp }).catch((err) =>
@@ -1161,10 +1181,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const storeData = storeSchema.parse(req.body);
       const user = (req as any).user;
-      const companyId = user.companyId;
+      let companyId: string = user.companyId;
 
+      // Safety net: if the user has no companyId (edge case during signup), auto-create one.
       if (!companyId) {
-        return res.status(400).json({ error: "User is not associated with a company" });
+        console.warn(`[onboarding/store] User ${user.id} has no companyId — auto-creating company from store name.`);
+        const companyName = storeData.name.replace(/['']s?\s+(store|restaurant|kitchen|cafe|diner|grill|bar|pub)$/i, "").trim() || storeData.name;
+        const [newCompany] = await db.insert(companiesTable).values({ name: companyName }).returning();
+        companyId = newCompany.id;
+        await db.update(users).set({ companyId }).where(eq(users.id, user.id));
+        // Refresh the user object so downstream code sees the new companyId
+        user.companyId = companyId;
+        console.log(`[onboarding/store] Auto-created company ${companyId} for user ${user.id}`);
       }
 
       const result = await db.transaction(async (tx) => {

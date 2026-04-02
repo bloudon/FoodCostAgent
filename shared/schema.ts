@@ -182,6 +182,19 @@ export const insertAuthSessionSchema = createInsertSchema(authSessions).omit({ i
 export type InsertAuthSession = z.infer<typeof insertAuthSessionSchema>;
 export type AuthSession = typeof authSessions.$inferSelect;
 
+// Email OTPs (persistent one-time codes for signup verification)
+// Stored in the DB so server restarts do not invalidate pending signups.
+export const emailOtps = pgTable("email_otps", {
+  email: text("email").primaryKey(), // lower-cased email — one active OTP per address
+  otp: text("otp").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertEmailOtpSchema = createInsertSchema(emailOtps);
+export type InsertEmailOtp = z.infer<typeof insertEmailOtpSchema>;
+export type EmailOtp = typeof emailOtps.$inferSelect;
+
 // API Credentials (for HMAC authentication of inbound data feeds)
 export const apiCredentials = pgTable("api_credentials", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

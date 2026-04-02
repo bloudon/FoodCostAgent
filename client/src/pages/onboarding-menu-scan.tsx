@@ -2,13 +2,14 @@ import { useState, useEffect, Fragment } from "react";
 import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { useCompany } from "@/hooks/use-company";
+import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ObjectUploader } from "@/components/ObjectUploader";
-import { Check, Loader2, Trash2, Camera, Sparkles } from "lucide-react";
+import { Check, Loader2, Trash2, Camera, Sparkles, AlertCircle } from "lucide-react";
 const logoImage = "/logo.png";
 
 interface ExtractedItem {
@@ -25,6 +26,7 @@ export default function OnboardingMenuScan() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { company } = useCompany();
+  const { user, isLoading: authLoading } = useAuth();
 
   const [step, setStep] = useState<Step>(1);
   const [storeName, setStoreName] = useState("");
@@ -128,6 +130,24 @@ export default function OnboardingMenuScan() {
   });
 
   const stepLabels = ["Your restaurant", "Scan menu", "Review items"];
+
+  // Auth guard — prevent unauthenticated access to this onboarding page
+  if (!authLoading && !user) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md text-center space-y-4">
+          <img src={logoImage} alt="FNB Cost Pro" className="h-14 w-auto mx-auto mb-6" />
+          <div className="flex items-center justify-center gap-2 text-muted-foreground">
+            <AlertCircle className="h-5 w-5 text-amber-500" />
+            <p>You need to sign up before setting up your restaurant.</p>
+          </div>
+          <Button onClick={() => setLocation("/signup")} data-testid="button-go-to-signup">
+            Go to Sign Up
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">

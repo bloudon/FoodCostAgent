@@ -443,3 +443,23 @@ DO $$ BEGIN
       VALUES ('v018', 'recipe_id column on recipe_import_sessions for idempotent approve');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v019 — email_otps table for persistent OTP storage (Task #41)
+-- Replaces the in-memory otpStore Map so OTPs survive server restarts/deploys.
+-- One row per email address; upserted on every send, deleted on verify/expire.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v019') THEN
+
+    CREATE TABLE IF NOT EXISTS email_otps (
+      email       text        PRIMARY KEY,
+      otp         text        NOT NULL,
+      expires_at  timestamptz NOT NULL,
+      created_at  timestamptz NOT NULL DEFAULT now()
+    );
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v019', 'Task #41: email_otps table for DB-backed OTP persistence');
+  END IF;
+END $$;
