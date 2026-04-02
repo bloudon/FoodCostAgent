@@ -32,16 +32,13 @@ import { Building2, Store, FolderTree, Check, Plus, Upload, Users, Info, CheckCi
 import { useOnboarding } from "@/pages/onboarding-wizard";
 import { insertVendorSchema, type Vendor } from "@shared/schema";
 
-const STORE_LOCATION_OPTIONS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10+"];
-
-// Account Setup Form Schema (step 1 - personal info + location count)
+// Account Setup Form Schema (step 1 - personal info)
 const accountFormSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   confirmPassword: z.string().min(1, "Please confirm your password"),
-  storeLocationCount: z.string().min(1, "Please select the number of locations"),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords do not match",
   path: ["confirmPassword"],
@@ -64,7 +61,6 @@ export function AccountSetupStep({ onComplete }: { onComplete: () => void }) {
       email: wizardData.company?.email || "",
       password: wizardData.company?.password || "",
       confirmPassword: "",
-      storeLocationCount: wizardData.company?.storeLocationCount || "",
     },
   });
 
@@ -224,28 +220,6 @@ export function AccountSetupStep({ onComplete }: { onComplete: () => void }) {
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="storeLocationCount"
-              render={({ field }) => (
-                <FormItem className="md:col-span-2">
-                  <FormLabel>How many store locations do you have? *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger data-testid="select-store-location-count">
-                        <SelectValue placeholder="Select number of locations" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {STORE_LOCATION_OPTIONS.map((opt) => (
-                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
           </div>
 
           <div className="flex justify-end pt-4">
@@ -523,12 +497,6 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
   };
 
   const firstName = wizardData.company?.firstName;
-  const rawCount = wizardData.company?.storeLocationCount;
-  const locationLabel = !rawCount || rawCount === "1"
-    ? "1 location"
-    : rawCount === "10+"
-    ? "10+ locations"
-    : `${rawCount} locations`;
 
   return (
     <div data-testid="step-company">
@@ -536,7 +504,7 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
         <div className="flex items-center gap-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-md px-4 py-3 mb-6">
           <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />
           <p className="text-sm font-medium text-green-800 dark:text-green-300">
-            Welcome, {firstName}! Your email is verified. We'll set up your {locationLabel} during this process.
+            Welcome, {firstName}! Your email is verified. Let's get your company set up.
           </p>
         </div>
       )}
