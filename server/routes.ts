@@ -735,6 +735,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       });
 
+      // Generate and send OTP for email verification
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      otpStore.set(email.toLowerCase(), { otp, expiresAt: new Date(Date.now() + 15 * 60 * 1000) });
+      import("./email").then(({ sendOtpEmail }) => {
+        sendOtpEmail({ to: email, firstName, otp }).catch((err) =>
+          console.error("[Signup OTP] Email send failed:", err)
+        );
+      });
+      console.log(`[Signup OTP] Code ${otp} stored for ${email.toLowerCase()} (expires in 15min)`);
+
       res.status(201).json({
         success: true,
         message: "Account created. Check your email to activate.",
@@ -904,6 +914,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid request", details: error.errors });
       }
       res.status(500).json({ error: "Verification failed" });
+    }
+  });
+
+  // ============ RESEND ACTIVATION OTP (for inactive/pending users) ============
+  app.post("/api/auth/resend-activation-otp", async (req, res) => {
+    try {
+      const schema = z.object({ email: z.string().email() });
+      const { email } = schema.parse(req.body);
+      const key = email.toLowerCase();
+
+      const user = await storage.getUserByEmail(key);
+      if (!user) {
+        return res.status(404).json({ error: "Account not found" });
+      }
+      if (user.active === 1) {
+        return res.status(400).json({ error: "Account is already activated" });
+      }
+
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      otpStore.set(key, { otp, expiresAt: new Date(Date.now() + 15 * 60 * 1000) });
+
+      import("./email").then(({ sendOtpEmail }) => {
+        sendOtpEmail({ to: email, firstName: user.firstName || "there", otp }).catch((err) =>
+          console.error("[Resend Activation OTP] Email send failed:", err)
+        );
+      });
+
+      console.log(`[Resend Activation OTP] Code ${otp} stored for ${key}`);
+      res.json({ sent: true });
+    } catch (error: any) {
+      if (error.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid request", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to resend verification code" });
     }
   });
 
