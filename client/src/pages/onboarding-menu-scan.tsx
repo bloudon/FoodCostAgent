@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ObjectUploader } from "@/components/ObjectUploader";
-import { Check, Loader2, Trash2, Camera, Sparkles, AlertCircle } from "lucide-react";
+import { Check, Loader2, Trash2, Camera, Sparkles, AlertCircle, Building2 } from "lucide-react";
 const logoImage = "/logo.png";
 
 interface ExtractedItem {
@@ -20,7 +20,20 @@ interface ExtractedItem {
   price: number | null;
 }
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4;
+
+interface LocationOption {
+  label: string;
+  sublabel: string;
+  value: number;
+}
+
+const LOCATION_OPTIONS: LocationOption[] = [
+  { label: "Just me", sublabel: "One location", value: 1 },
+  { label: "A couple", sublabel: "2–3 locations", value: 2 },
+  { label: "A few", sublabel: "4–5 locations", value: 4 },
+  { label: "Many", sublabel: "6+ locations", value: 6 },
+];
 
 export default function OnboardingMenuScan() {
   const [, setLocation] = useLocation();
@@ -35,14 +48,22 @@ export default function OnboardingMenuScan() {
   const [sessionId, setSessionId] = useState<string>("");
   const [items, setItems] = useState<ExtractedItem[]>([]);
   const [scanning, setScanning] = useState(false);
+  const [selectedLocations, setSelectedLocations] = useState<number | null>(null);
 
   useEffect(() => {
     if (company?.name && !storeNameTouched && !storeName) {
-      setStoreName(`${company.name}'s Store`);
+      setStoreName(company.name);
     }
   }, [company?.name]);
 
-  const skip = () => setLocation("/choose-plan");
+  const goToStep4 = () => setStep(4);
+  const skip = (fromStep: Step) => {
+    if (fromStep < 4) {
+      goToStep4();
+    } else {
+      setLocation("/choose-plan");
+    }
+  };
 
   const createStoreMutation = useMutation({
     mutationFn: async () => {
@@ -120,19 +141,26 @@ export default function OnboardingMenuScan() {
       const n = data.menuItemsCreated;
       toast({
         title: "Menu imported!",
-        description: `${n} menu item${n !== 1 ? "s" : ""} imported — now let's choose your plan.`,
+        description: `${n} menu item${n !== 1 ? "s" : ""} added successfully.`,
       });
-      setLocation("/choose-plan");
+      goToStep4();
     },
     onError: (err: Error) => {
       toast({ title: "Import failed", description: err.message, variant: "destructive" });
     },
   });
 
-  const stepLabels = ["Your restaurant", "Scan menu", "Review items"];
+  const handleContinueLocations = () => {
+    if (selectedLocations !== null) {
+      setLocation(`/choose-plan?locations=${selectedLocations}`);
+    } else {
+      setLocation("/choose-plan");
+    }
+  };
 
-  // Auth guard — show spinner while auth resolves to avoid flashing the form.
-  // Also wait for useCompany to resolve so selectedCompanyId is available.
+  const stepLabels = ["Your restaurant", "Scan menu", "Review items", "Your locations"];
+
+  // Auth guard
   if (authLoading || (user && companyLoading && !selectedCompanyId)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -141,9 +169,6 @@ export default function OnboardingMenuScan() {
     );
   }
 
-  // Block truly unauthenticated visitors. Authenticated users without a company
-  // link (global admins who haven't selected a company, or broken sessions) see
-  // a helpful prompt instead of a broken form.
   if (!user) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
@@ -161,7 +186,6 @@ export default function OnboardingMenuScan() {
     );
   }
 
-  // Global admins must select a company first (via the header company picker).
   if (user.role === "global_admin" && !selectedCompanyId) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
@@ -186,7 +210,7 @@ export default function OnboardingMenuScan() {
         <div className="flex items-center justify-between mb-6">
           <img src={logoImage} alt="FNB Cost Pro" className="h-14 w-auto" />
           <button
-            onClick={skip}
+            onClick={() => skip(step)}
             className="text-sm text-muted-foreground hover:underline"
             data-testid="button-onboarding-skip"
           >
@@ -235,7 +259,7 @@ export default function OnboardingMenuScan() {
               <div className="space-y-2">
                 <label className="text-sm font-medium">Restaurant name</label>
                 <Input
-                  placeholder="e.g. Joe's Pizza — Downtown"
+                  placeholder="e.g. Joe's Pizza"
                   value={storeName}
                   onChange={(e) => {
                     setStoreName(e.target.value);
@@ -256,7 +280,7 @@ export default function OnboardingMenuScan() {
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating…</>
                   ) : "Continue"}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={skip} data-testid="button-skip-step1">
+                <Button variant="ghost" size="sm" onClick={() => skip(1)} data-testid="button-skip-step1">
                   Skip this step
                 </Button>
               </div>
@@ -297,7 +321,7 @@ export default function OnboardingMenuScan() {
                 </div>
               )}
               {!scanning && (
-                <Button variant="ghost" size="sm" onClick={skip} data-testid="button-skip-step2" className="w-full">
+                <Button variant="ghost" size="sm" onClick={() => skip(2)} data-testid="button-skip-step2" className="w-full">
                   Skip for now
                 </Button>
               )}
@@ -410,9 +434,65 @@ export default function OnboardingMenuScan() {
                     ) : `Import ${items.filter(i => i.name.trim()).length} Item${items.filter(i => i.name.trim()).length !== 1 ? "s" : ""}`}
                   </Button>
                 )}
-                <Button variant="ghost" size="sm" onClick={skip} data-testid="button-skip-step3">
+                <Button variant="ghost" size="sm" onClick={() => skip(3)} data-testid="button-skip-step3">
                   Skip for now
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step 4: Location count */}
+        {step === 4 && (
+          <Card data-testid="card-step-locations">
+            <CardHeader>
+              <CardTitle>How many locations do you run?</CardTitle>
+              <CardDescription>
+                This helps us recommend the right plan for your operation.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid grid-cols-2 gap-3">
+                {LOCATION_OPTIONS.map((opt) => {
+                  const isSelected = selectedLocations === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setSelectedLocations(opt.value)}
+                      data-testid={`button-location-option-${opt.value}`}
+                      className={`flex flex-col items-center justify-center gap-2 rounded-md border p-5 text-center transition-colors cursor-pointer ${
+                        isSelected
+                          ? "border-primary bg-primary/10 ring-1 ring-primary"
+                          : "border-border bg-card hover-elevate"
+                      }`}
+                    >
+                      <Building2 className={`w-8 h-8 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                      <div>
+                        <p className={`font-semibold text-sm ${isSelected ? "text-primary" : "text-foreground"}`}>
+                          {opt.label}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{opt.sublabel}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-col gap-2 pt-1">
+                <Button
+                  onClick={handleContinueLocations}
+                  disabled={selectedLocations === null}
+                  data-testid="button-continue-locations"
+                >
+                  Continue
+                </Button>
+                <button
+                  onClick={() => skip(4)}
+                  className="text-xs text-muted-foreground hover:underline text-center py-1"
+                  data-testid="button-skip-locations"
+                >
+                  I'll decide later
+                </button>
               </div>
             </CardContent>
           </Card>

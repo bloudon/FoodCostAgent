@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
+import { useState, useMemo } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Check, Zap, Building2, Loader2, Star, Building } from "lucide-react";
+import { Check, Zap, Building2, Loader2, Star, Building, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RestaurantBackground } from "@/components/restaurant-background";
@@ -109,10 +109,19 @@ const TRIAL_DAYS = 30;
 
 export default function ChoosePlan() {
   const [, navigate] = useLocation();
+  const searchString = useSearch();
   const { toast } = useToast();
   const { selectedCompanyId } = useCompany();
   const [selectedTerm, setSelectedTerm] = useState<Term>("monthly");
   const [loadingTier, setLoadingTier] = useState<Tier | null>(null);
+
+  const locationCount = useMemo(() => {
+    const params = new URLSearchParams(searchString);
+    const val = parseInt(params.get("locations") || "0", 10);
+    return isNaN(val) ? 0 : val;
+  }, [searchString]);
+
+  const isMultiLocation = locationCount > 1;
 
   const { data, isLoading: plansLoading } = useQuery<{ plans: Plan[] }>({
     queryKey: ["/api/billing/plans"],
@@ -194,6 +203,15 @@ export default function ChoosePlan() {
           </div>
         </div>
 
+        {isMultiLocation && (
+          <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3 mb-4 flex items-start gap-3" data-testid="callout-multi-location">
+            <MapPin className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <p className="text-sm text-amber-800 dark:text-amber-300">
+              You have <strong>{locationCount} locations</strong> — the Pro plan includes unlimited locations and cross-location reporting.
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           {plansLoading ? (
             <div className="col-span-2 flex items-center justify-center py-16">
@@ -203,6 +221,7 @@ export default function ChoosePlan() {
             tiers.map((tier) => {
               const plan = getPriceForTierTerm(plans, tier, selectedTerm);
               const isPro = tier === "pro";
+              const isRecommended = isPro && isMultiLocation;
 
               return (
                 <div
@@ -212,10 +231,10 @@ export default function ChoosePlan() {
                     isPro ? "border-primary ring-1 ring-primary" : ""
                   }`}
                 >
-                  {isPro && (
+                  {(isPro || isRecommended) && (
                     <div className="bg-primary text-primary-foreground text-center text-xs font-semibold py-1.5 flex items-center justify-center gap-1">
                       <Star className="w-3 h-3" />
-                      Most Popular
+                      {isRecommended ? "Recommended for You" : "Most Popular"}
                     </div>
                   )}
 
