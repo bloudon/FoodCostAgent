@@ -1,10 +1,11 @@
 import { useState, createContext, useContext } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Redirect } from "wouter";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 const logoImage = "/logo.png";
 import { RestaurantBackground } from "@/components/restaurant-background";
 import { AccountSetupStep, EmailVerificationStep, CompanySetupStep, StoreSetupStep } from "@/pages/onboarding-steps";
+import { useAuth } from "@/lib/auth-context";
 
 export interface WizardCompanyData {
   firstName?: string;
@@ -67,6 +68,7 @@ function parseTotalStores(count?: string): number {
 }
 
 export default function OnboardingWizard() {
+  const { user } = useAuth();
   const [, navigate] = useLocation();
   const [stepIndex, setStepIndex] = useState(0);
   const [storeIndex, setStoreIndex] = useState(0);
@@ -77,6 +79,10 @@ export default function OnboardingWizard() {
   };
 
   const totalStores = parseTotalStores(wizardData.company?.storeLocationCount);
+
+  if (user && user.role !== "global_admin") {
+    return <Redirect to="/" />;
+  }
 
   const handleStepComplete = () => {
     const currentStep = STEPS[stepIndex];

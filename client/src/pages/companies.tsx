@@ -4,7 +4,7 @@ import { Company, InsertCompany, insertCompanySchema } from "@shared/schema";
 import {
   Building2, MapPin, Plus, Settings2, UserCircle, Trash2, AlertTriangle,
   Users, CreditCard, Clock, MailWarning, RefreshCw, Activity,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Wand2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -222,13 +222,22 @@ export default function Companies() {
           <h1 className="text-3xl font-bold mb-1" data-testid="text-page-title">Admin Dashboard</h1>
           <p className="text-muted-foreground text-sm">System health and company management</p>
         </div>
-        <Dialog open={isNewCompanyDialogOpen} onOpenChange={setIsNewCompanyDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-new-company">
-              <Plus className="h-4 w-4 mr-2" />
-              New Company
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            onClick={() => setLocation("/onboarding-wizard")}
+            data-testid="button-launch-onboarding-wizard"
+          >
+            <Wand2 className="h-4 w-4 mr-2" />
+            Onboarding Wizard
+          </Button>
+          <Dialog open={isNewCompanyDialogOpen} onOpenChange={setIsNewCompanyDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-new-company">
+                <Plus className="h-4 w-4 mr-2" />
+                New Company
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create New Company</DialogTitle>
@@ -328,6 +337,7 @@ export default function Companies() {
             </Form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Stats row */}

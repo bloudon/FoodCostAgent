@@ -138,7 +138,7 @@ function ProtectedLayout() {
   const { user, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
 
-  const PUBLIC_PATHS = ["/login", "/signup", "/activate", "/onboarding", "/onboarding-wizard", "/onboarding-review", "/forgot-password", "/reset-password", "/choose-plan", "/accept-invitation", "/enterprise-inquiry", "/enterprise-onboarding"];
+  const PUBLIC_PATHS = ["/login", "/signup", "/activate", "/onboarding", "/forgot-password", "/reset-password", "/choose-plan", "/accept-invitation", "/enterprise-inquiry", "/enterprise-onboarding"];
 
   useEffect(() => {
     if (!isLoading && !user && !PUBLIC_PATHS.some(p => location === p || location.startsWith(p + "/"))) {
@@ -149,7 +149,8 @@ function ProtectedLayout() {
       const selectedCompanyId = localStorage.getItem("selectedCompanyId");
       const isOnCompaniesPage = location === "/companies" || location.startsWith("/companies/");
       const isOnAdminPage = location.startsWith("/admin/") || location === "/admin";
-      if (!selectedCompanyId && !isOnCompaniesPage && !isOnAdminPage) {
+      const isOnWizardPage = location === "/onboarding-wizard" || location === "/onboarding-review";
+      if (!selectedCompanyId && !isOnCompaniesPage && !isOnAdminPage && !isOnWizardPage) {
         setLocation("/companies");
       }
     }
@@ -208,8 +209,12 @@ function ProtectedLayoutContent() {
   if (isFullScreen) {
     return (
       <Switch>
-        <Route path="/onboarding-wizard" component={OnboardingWizard} />
-        <Route path="/onboarding-review" component={OnboardingWizard} />
+        <Route path="/onboarding-wizard">
+          {isGlobalAdmin ? <OnboardingWizard /> : <Redirect to="/" />}
+        </Route>
+        <Route path="/onboarding-review">
+          {isGlobalAdmin ? <OnboardingWizard /> : <Redirect to="/" />}
+        </Route>
         <Route path="/onboarding/menu-scan" component={OnboardingMenuScan} />
         <Route path="/onboarding"><Redirect to="/signup" /></Route>
         <Route path="/choose-plan" component={ChoosePlan} />
@@ -314,8 +319,6 @@ function App() {
               <Route path="/accept-invitation/:token" component={AcceptInvitation} />
               <Route path="/onboarding/menu-scan" component={OnboardingMenuScan} />
               <Route path="/onboarding"><Redirect to="/signup" /></Route>
-              <Route path="/onboarding-wizard" component={OnboardingWizard} />
-              <Route path="/onboarding-review" component={OnboardingWizard} />
               <Route path="/signup" component={LeadSignup} />
               <Route path="/activate" component={ActivateAccount} />
               <Route path="/forgot-password" component={ForgotPassword} />
