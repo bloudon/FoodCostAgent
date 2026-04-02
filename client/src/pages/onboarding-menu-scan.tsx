@@ -131,15 +131,27 @@ export default function OnboardingMenuScan() {
 
   const stepLabels = ["Your restaurant", "Scan menu", "Review items"];
 
-  // Auth guard — prevent unauthenticated access to this onboarding page
-  if (!authLoading && !user) {
+  // Auth guard — show spinner while auth resolves to avoid flashing the form
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Block unauthenticated visitors AND authenticated users with no company link.
+  // The backend has a safety net (auto-create company) but we still need to show
+  // a sensible UX for sessions that are truly broken / mis-associated.
+  const userCompanyId = user?.companyId ?? null;
+  if (!user || !userCompanyId) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
         <div className="w-full max-w-md text-center space-y-4">
           <img src={logoImage} alt="FNB Cost Pro" className="h-14 w-auto mx-auto mb-6" />
           <div className="flex items-center justify-center gap-2 text-muted-foreground">
             <AlertCircle className="h-5 w-5 text-amber-500" />
-            <p>You need to sign up before setting up your restaurant.</p>
+            <p>Your session is incomplete. Please sign up again to continue.</p>
           </div>
           <Button onClick={() => setLocation("/signup")} data-testid="button-go-to-signup">
             Go to Sign Up
