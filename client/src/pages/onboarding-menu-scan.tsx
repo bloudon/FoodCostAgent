@@ -40,7 +40,7 @@ export default function OnboardingMenuScan() {
     }
   }, [company?.name]);
 
-  const skip = () => setLocation("/");
+  const skip = () => setLocation("/choose-plan");
 
   const createStoreMutation = useMutation({
     mutationFn: async () => {
@@ -117,10 +117,10 @@ export default function OnboardingMenuScan() {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items/hierarchy"] });
       const n = data.menuItemsCreated;
       toast({
-        title: "Welcome!",
-        description: `${n} menu item${n !== 1 ? "s" : ""} imported — let's explore your dashboard!`,
+        title: "Menu imported!",
+        description: `${n} menu item${n !== 1 ? "s" : ""} imported — now let's choose your plan.`,
       });
-      setLocation("/");
+      setLocation("/choose-plan");
     },
     onError: (err: Error) => {
       toast({ title: "Import failed", description: err.message, variant: "destructive" });
