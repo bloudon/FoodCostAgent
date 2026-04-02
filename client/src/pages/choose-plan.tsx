@@ -207,7 +207,7 @@ export default function ChoosePlan() {
           <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3 mb-4 flex items-start gap-3" data-testid="callout-multi-location">
             <MapPin className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
             <p className="text-sm text-amber-800 dark:text-amber-300">
-              You have <strong>{locationCount} locations</strong> — the Pro plan includes unlimited locations and cross-location reporting.
+              You have <strong>{locationCount} locations</strong> — multiple locations require the Pro plan for unlimited access and cross-location reporting.
             </p>
           </div>
         )}
