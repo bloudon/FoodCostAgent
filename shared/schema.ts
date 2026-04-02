@@ -187,8 +187,8 @@ export type AuthSession = typeof authSessions.$inferSelect;
 export const emailOtps = pgTable("email_otps", {
   email: text("email").primaryKey(), // lower-cased email — one active OTP per address
   otp: text("otp").notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const insertEmailOtpSchema = createInsertSchema(emailOtps);
