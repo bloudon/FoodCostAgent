@@ -229,7 +229,7 @@ export default function Companies() {
             data-testid="button-launch-onboarding-wizard"
           >
             <Wand2 className="h-4 w-4 mr-2" />
-            Onboarding Wizard
+            Launch Onboarding Wizard
           </Button>
           <Dialog open={isNewCompanyDialogOpen} onOpenChange={setIsNewCompanyDialogOpen}>
             <DialogTrigger asChild>
