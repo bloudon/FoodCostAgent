@@ -10715,11 +10715,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const [targetUser] = await db
         .select()
         .from(users)
-        .where(and(eq(users.companyId, companyId), eq(users.role, "company_admin")))
+        .where(and(
+          eq(users.companyId, companyId),
+          eq(users.role, "company_admin"),
+          eq(users.active, 0)
+        ))
         .limit(1);
 
       if (!targetUser) {
-        return res.status(404).json({ error: "No admin user found for this company" });
+        return res.status(404).json({ error: "No inactive admin user found for this pending company" });
       }
 
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -10866,14 +10870,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   /**
    * DELETE /api/admin/companies/:id/purge
    * 
-   * Admin-only endpoint to purge all data for a company (DEVELOPMENT USE ONLY)
-   * Proves multi-tenant isolation by deleting only target company data
+   * Admin-only endpoint to purge all data for a company.
+   * Deletes only the target company's data (multi-tenant safe).
    * 
    * Query params:
    *   ?dryRun=true - Show what would be deleted without actually deleting
    * 
    * Security:
-   *   - Only available in development (NODE_ENV !== 'production')
    *   - Requires global_admin role
    */
   app.delete("/api/admin/companies/:id/purge", requireAuth, async (req, res) => {

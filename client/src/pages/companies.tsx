@@ -4,6 +4,7 @@ import { Company, InsertCompany, insertCompanySchema } from "@shared/schema";
 import {
   Building2, MapPin, Plus, Settings2, UserCircle, Trash2, AlertTriangle,
   Users, CreditCard, Clock, MailWarning, RefreshCw, Activity,
+  ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +61,7 @@ export default function Companies() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [isNewCompanyDialogOpen, setIsNewCompanyDialogOpen] = useState(false);
+  const [incompleteSignupsExpanded, setIncompleteSignupsExpanded] = useState(true);
 
   const { data: companies, isLoading } = useQuery<Company[]>({
     queryKey: ["/api/companies"],
@@ -370,10 +372,26 @@ export default function Companies() {
                 </Badge>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              These companies were created but the user never finished activating their account.
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-muted-foreground hidden sm:block">
+                Companies created but never activated.
+              </p>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIncompleteSignupsExpanded((v) => !v)}
+                data-testid="button-toggle-incomplete-signups"
+                title={incompleteSignupsExpanded ? "Collapse" : "Expand"}
+              >
+                {incompleteSignupsExpanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </CardHeader>
+          {incompleteSignupsExpanded && (
           <CardContent className="p-0">
             {orphansLoading ? (
               <div className="px-4 py-3 text-sm text-muted-foreground">Loading...</div>
@@ -468,6 +486,7 @@ export default function Companies() {
               </div>
             )}
           </CardContent>
+          )}
         </Card>
       )}
 
