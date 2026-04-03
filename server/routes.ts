@@ -10969,7 +10969,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Only global admins can access chat logs" });
       }
       const filterCompanyId = req.query.companyId as string | undefined;
-      const limit = Math.min(parseInt((req.query.limit as string) || "100", 10), 200);
+      const parsedLimit = parseInt((req.query.limit as string) || "100", 10);
+      const limit = isNaN(parsedLimit) ? 100 : Math.min(parsedLimit, 200);
 
       const rows = filterCompanyId
         ? await db.execute(
@@ -13046,14 +13047,16 @@ Human Handoff:
         res.end();
       }
 
-      // Fire-and-forget: save the Q&A pair to chat_logs
+      // Fire-and-forget: save the Q&A pair to chat_logs (even on disconnect / partial output)
       const fullResponse = responseChunks.join("");
       const lastUserMessage = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
-      if (lastUserMessage && fullResponse) {
+      if (lastUserMessage) {
         const userId = (req as any).user?.id ?? null;
+        // Store partial response if disconnected, empty string marker if no output at all
+        const storedResponse = fullResponse || "(no response — disconnected or aborted)";
         db.execute(
           sql`INSERT INTO chat_logs (company_id, user_id, user_message, assistant_response, tier)
-              VALUES (${companyId}, ${userId}, ${lastUserMessage}, ${fullResponse}, ${tier})`
+              VALUES (${companyId}, ${userId}, ${lastUserMessage}, ${storedResponse}, ${tier})`
         ).catch((logErr: any) => console.warn("Failed to save chat log:", logErr));
       }
     } catch (err: any) {
