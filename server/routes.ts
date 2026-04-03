@@ -10999,7 +10999,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const mostActiveCompany = Object.values(companyCounts).sort((a, b) => b.count - a.count)[0] ?? null;
 
-      res.json({ logs: allRows, todayCount, mostActiveCompany });
+      // Common question topics — keyword bucket analysis
+      const TOPIC_KEYWORDS: Array<{ label: string; keywords: string[] }> = [
+        { label: "Food Cost",       keywords: ["cost", "food cost", "cogs", "margin", "profit", "expensive", "price", "pricing"] },
+        { label: "Recipes",         keywords: ["recipe", "recipes", "ingredient", "ingredients", "portion", "yield", "preparation"] },
+        { label: "Inventory",       keywords: ["inventory", "stock", "on hand", "count", "par", "reorder", "item", "items"] },
+        { label: "Vendors",         keywords: ["vendor", "vendors", "supplier", "order guide", "invoice", "purchase"] },
+        { label: "Waste",           keywords: ["waste", "spoilage", "loss", "discard", "expire"] },
+        { label: "Reports / TFC",   keywords: ["report", "tfc", "theoretical", "variance", "sales", "pos", "dashboard"] },
+        { label: "Getting Started", keywords: ["how do i", "how to", "where", "setup", "start", "begin", "onboard", "add", "create"] },
+        { label: "Transfers",       keywords: ["transfer", "move", "location", "store"] },
+        { label: "Billing / Plan",  keywords: ["plan", "subscription", "tier", "upgrade", "billing", "pro", "basic", "premium"] },
+      ];
+      const topicCounts: Record<string, number> = {};
+      for (const r of allRows) {
+        const msg = (r.user_message as string).toLowerCase();
+        for (const topic of TOPIC_KEYWORDS) {
+          if (topic.keywords.some(kw => msg.includes(kw))) {
+            topicCounts[topic.label] = (topicCounts[topic.label] ?? 0) + 1;
+          }
+        }
+      }
+      const topTopics = Object.entries(topicCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([label, count]) => ({ label, count }));
+
+      res.json({ logs: allRows, todayCount, mostActiveCompany, topTopics });
     } catch (err: any) {
       console.error("GET /api/admin/chat-logs error:", err);
       res.status(500).json({ error: err.message });

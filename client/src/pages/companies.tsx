@@ -74,6 +74,7 @@ type ChatLogsResponse = {
   logs: ChatLogRow[];
   todayCount: number;
   mostActiveCompany: { name: string; count: number } | null;
+  topTopics: Array<{ label: string; count: number }>;
 };
 
 type ChatCorrection = {
@@ -637,6 +638,20 @@ export default function Companies() {
                 ))}
               </select>
             </div>
+
+            {/* Recap: top question topics */}
+            {chatLogsQuery.data && chatLogsQuery.data.topTopics.length > 0 && (
+              <div className="mb-4 p-3 bg-muted/40 rounded-md" data-testid="section-chat-topics">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">Common question topics:</p>
+                <div className="flex flex-wrap gap-2">
+                  {chatLogsQuery.data.topTopics.map(topic => (
+                    <Badge key={topic.label} variant="secondary" className="text-xs" data-testid={`badge-topic-${topic.label}`}>
+                      {topic.label} ({topic.count})
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Active Corrections sub-section */}
             <div className="mb-4">
