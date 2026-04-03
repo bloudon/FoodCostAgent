@@ -11019,7 +11019,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? { name: mostActiveRow.company_name ?? mostActiveRow.company_id, count: Number(mostActiveRow.cnt) }
         : null;
 
-      // Common question topics — keyword bucket analysis across ALL logs (not just paged rows)
+      // Common question topics — keyword bucket analysis bounded to last 30 days to avoid full-table scans
       const TOPIC_KEYWORDS: Array<{ label: string; keywords: string[] }> = [
         { label: "Food Cost",       keywords: ["cost", "food cost", "cogs", "margin", "profit", "expensive", "price", "pricing"] },
         { label: "Recipes",         keywords: ["recipe", "recipes", "ingredient", "ingredients", "portion", "yield", "preparation"] },
@@ -11031,10 +11031,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { label: "Transfers",       keywords: ["transfer", "move", "location", "store"] },
         { label: "Billing / Plan",  keywords: ["plan", "subscription", "tier", "upgrade", "billing", "pro", "basic", "premium"] },
       ];
-      // Fetch all messages for topic aggregation (message text only, no limit)
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      // Fetch messages from last 30 days only for bounded aggregation
       const topicMsgResult = filterCompanyId
-        ? await db.execute(sql`SELECT user_message FROM chat_logs WHERE company_id = ${filterCompanyId}`)
-        : await db.execute(sql`SELECT user_message FROM chat_logs`);
+        ? await db.execute(sql`SELECT user_message FROM chat_logs WHERE company_id = ${filterCompanyId} AND created_at >= ${thirtyDaysAgo}`)
+        : await db.execute(sql`SELECT user_message FROM chat_logs WHERE created_at >= ${thirtyDaysAgo}`);
       const allMessages = ((topicMsgResult as any).rows || topicMsgResult) as Array<{ user_message: string }>;
       const topicCounts: Record<string, number> = {};
       for (const r of allMessages) {

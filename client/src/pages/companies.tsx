@@ -782,7 +782,7 @@ export default function Companies() {
             ) : chatLogsQuery.data?.logs.length === 0 ? (
               <p className="text-sm text-muted-foreground italic">No chat logs found.</p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
                 {chatLogsQuery.data?.logs.map(log => (
                   <div
                     key={log.id}
