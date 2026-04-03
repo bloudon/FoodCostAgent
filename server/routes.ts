@@ -11123,6 +11123,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const { isActive, correctedResponse } = parseResult.data;
 
+      if (isActive === undefined && correctedResponse === undefined) {
+        return res.status(400).json({ error: "Request must include at least one of: isActive, correctedResponse" });
+      }
+
       if (isActive !== undefined && correctedResponse !== undefined) {
         await db.execute(
           sql`UPDATE chat_corrections SET is_active = ${isActive}, corrected_response = ${correctedResponse} WHERE id = ${req.params.id}`

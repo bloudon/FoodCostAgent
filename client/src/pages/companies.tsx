@@ -5,7 +5,7 @@ import {
   Building2, MapPin, Plus, Settings2, UserCircle, Trash2, AlertTriangle,
   Users, CreditCard, Clock, MailWarning, RefreshCw, Activity,
   ChevronDown, ChevronUp, Wand2, MessageSquare, CheckCircle, XCircle,
-  Pencil, Check, X,
+  Pencil,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
