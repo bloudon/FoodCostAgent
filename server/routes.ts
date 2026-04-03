@@ -10970,7 +10970,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const filterCompanyId = req.query.companyId as string | undefined;
       const parsedLimit = parseInt((req.query.limit as string) || "100", 10);
-      const limit = isNaN(parsedLimit) ? 100 : Math.min(parsedLimit, 200);
+      const limit = isNaN(parsedLimit) ? 100 : Math.min(Math.max(1, parsedLimit), 200);
 
       const rows = filterCompanyId
         ? await db.execute(
