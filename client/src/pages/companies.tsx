@@ -104,11 +104,13 @@ export default function Companies() {
 
   const chatLogsQuery = useQuery<ChatLogsResponse>({
     queryKey: ["/api/admin/chat-logs", chatLogCompanyFilter],
-    queryFn: () => {
+    queryFn: async () => {
       const url = chatLogCompanyFilter !== "all"
         ? `/api/admin/chat-logs?companyId=${chatLogCompanyFilter}`
         : "/api/admin/chat-logs";
-      return fetch(url).then(r => r.json());
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Failed to load chat logs: ${res.status}`);
+      return res.json();
     },
     enabled: chatLogsExpanded,
     refetchInterval: 30000,
@@ -120,40 +122,52 @@ export default function Companies() {
   });
 
   const createCorrectionMutation = useMutation({
-    mutationFn: (payload: { chatLogId?: string | null; userMessage: string; correctedResponse: string }) =>
-      fetch("/api/admin/chat-corrections", {
+    mutationFn: async (payload: { chatLogId?: string | null; userMessage: string; correctedResponse: string }) => {
+      const res = await fetch("/api/admin/chat-corrections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      }).then(r => r.json()),
+      });
+      if (!res.ok) throw new Error(`Failed to create correction: ${res.status}`);
+      return res.json();
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/chat-corrections"] });
       setExpandedCorrectionForm(null);
       setCorrectionDraft("");
+      setNewCorrectionQuestion("");
       toast({ description: "Correction saved and will be injected into future prompts." });
     },
     onError: () => toast({ variant: "destructive", description: "Failed to save correction." }),
   });
 
   const toggleCorrectionMutation = useMutation({
-    mutationFn: ({ id, isActive }: { id: string; isActive: number }) =>
-      fetch(`/api/admin/chat-corrections/${id}`, {
+    mutationFn: async ({ id, isActive }: { id: string; isActive: number }) => {
+      const res = await fetch(`/api/admin/chat-corrections/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive }),
-      }).then(r => r.json()),
+      });
+      if (!res.ok) throw new Error(`Failed to update correction: ${res.status}`);
+      return res.json();
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/chat-corrections"] });
     },
+    onError: () => toast({ variant: "destructive", description: "Failed to update correction." }),
   });
 
   const deleteCorrectionMutation = useMutation({
-    mutationFn: (id: string) =>
-      fetch(`/api/admin/chat-corrections/${id}`, { method: "DELETE" }).then(r => r.json()),
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/admin/chat-corrections/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`Failed to delete correction: ${res.status}`);
+      return res.json();
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/chat-corrections"] });
       toast({ description: "Correction deleted." });
     },
+    onError: () => toast({ variant: "destructive", description: "Failed to delete correction." }),
   });
 
   const { data: adminStats } = useQuery<AdminStats>({
