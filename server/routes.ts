@@ -10991,7 +10991,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allRows = ((rows as any).rows || rows) as any[];
       const todayCount = allRows.filter((r: any) => new Date(r.created_at) >= todayStart).length;
 
-      res.json({ logs: allRows, todayCount });
+      // Most active company (by log count in the result set)
+      const companyCounts: Record<string, { name: string; count: number }> = {};
+      for (const r of allRows) {
+        if (!companyCounts[r.company_id]) companyCounts[r.company_id] = { name: r.company_name ?? r.company_id, count: 0 };
+        companyCounts[r.company_id].count++;
+      }
+      const mostActiveCompany = Object.values(companyCounts).sort((a, b) => b.count - a.count)[0] ?? null;
+
+      res.json({ logs: allRows, todayCount, mostActiveCompany });
     } catch (err: any) {
       console.error("GET /api/admin/chat-logs error:", err);
       res.status(500).json({ error: err.message });

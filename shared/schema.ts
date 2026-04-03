@@ -1359,7 +1359,7 @@ export type RecipeImportSession = typeof recipeImportSessions.$inferSelect;
 // AI Chat Logs — one row per Q&A exchange
 export const chatLogs = pgTable("chat_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  companyId: varchar("company_id").notNull(),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
   userId: varchar("user_id"), // nullable — logged from session when available
   userMessage: text("user_message").notNull(),
   assistantResponse: text("assistant_response").notNull(),
@@ -1377,10 +1377,10 @@ export type ChatLog = typeof chatLogs.$inferSelect;
 // AI Chat Corrections — admin-authored ideal answers injected as few-shot examples
 export const chatCorrections = pgTable("chat_corrections", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  chatLogId: varchar("chat_log_id"), // nullable FK → chat_logs (traceability)
+  chatLogId: varchar("chat_log_id").references(() => chatLogs.id, { onDelete: "set null" }), // nullable FK → chat_logs
   userMessage: text("user_message").notNull(), // the question pattern this correction addresses
   correctedResponse: text("corrected_response").notNull(), // the ideal answer
-  isActive: integer("is_active").notNull().default(1), // 1 = injected into prompts, 0 = disabled
+  isActive: integer("is_active").notNull().default(1), // 1 = injected into prompts, 0 = disabled (project convention: integer for booleans)
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

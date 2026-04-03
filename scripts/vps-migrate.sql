@@ -474,7 +474,7 @@ DO $$ BEGIN
 
     CREATE TABLE IF NOT EXISTS chat_logs (
       id              varchar     PRIMARY KEY DEFAULT gen_random_uuid(),
-      company_id      varchar     NOT NULL,
+      company_id      varchar     NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
       user_id         varchar,
       user_message    text        NOT NULL,
       assistant_response text     NOT NULL,
@@ -486,7 +486,7 @@ DO $$ BEGIN
 
     CREATE TABLE IF NOT EXISTS chat_corrections (
       id                  varchar     PRIMARY KEY DEFAULT gen_random_uuid(),
-      chat_log_id         varchar,
+      chat_log_id         varchar     REFERENCES chat_logs(id) ON DELETE SET NULL,
       user_message        text        NOT NULL,
       corrected_response  text        NOT NULL,
       is_active           integer     NOT NULL DEFAULT 1,

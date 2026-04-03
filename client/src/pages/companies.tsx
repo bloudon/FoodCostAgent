@@ -73,6 +73,7 @@ type ChatLogRow = {
 type ChatLogsResponse = {
   logs: ChatLogRow[];
   todayCount: number;
+  mostActiveCompany: { name: string; count: number } | null;
 };
 
 type ChatCorrection = {
@@ -589,12 +590,17 @@ export default function Companies() {
       {/* AI Chat Logs & Corrections */}
       <Card className="mb-6" data-testid="card-chat-logs">
         <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <MessageSquare className="h-5 w-5 text-primary" />
             <CardTitle className="text-base">AI Chat Logs</CardTitle>
             {chatLogsQuery.data && (
               <Badge variant="secondary" className="text-xs" data-testid="badge-chat-today">
                 {chatLogsQuery.data.todayCount} today
+              </Badge>
+            )}
+            {chatLogsQuery.data?.mostActiveCompany && (
+              <Badge variant="outline" className="text-xs" data-testid="badge-chat-most-active">
+                Most active: {chatLogsQuery.data.mostActiveCompany.name} ({chatLogsQuery.data.mostActiveCompany.count})
               </Badge>
             )}
             {correctionsQuery.data && (
@@ -782,10 +788,9 @@ export default function Companies() {
                     {/* Inline "Add Correction from this log" */}
                     {expandedCorrectionForm === log.id ? (
                       <div className="mt-3 border-t pt-3 space-y-2">
-                        <p className="text-xs font-semibold text-muted-foreground">Override this response:</p>
+                        <p className="text-xs font-semibold text-muted-foreground">Edit the AI response to the ideal answer:</p>
                         <Textarea
-                          rows={4}
-                          placeholder="Type the ideal answer here..."
+                          rows={6}
                           value={correctionDraft}
                           onChange={e => setCorrectionDraft(e.target.value)}
                           className="text-sm"
@@ -821,7 +826,10 @@ export default function Companies() {
                     ) : (
                       <button
                         className="mt-2 text-xs text-muted-foreground underline hover-elevate rounded-sm"
-                        onClick={() => { setExpandedCorrectionForm(log.id); setCorrectionDraft(""); }}
+                        onClick={() => {
+                          setExpandedCorrectionForm(log.id);
+                          setCorrectionDraft(log.assistant_response);
+                        }}
                         data-testid={`button-add-correction-from-log-${log.id}`}
                       >
                         <Pencil className="h-3 w-3 inline mr-1" />
