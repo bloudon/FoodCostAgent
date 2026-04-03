@@ -10986,20 +10986,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 ORDER BY cl.created_at DESC LIMIT ${limit}`
           );
 
+      const allRows = ((rows as any).rows || rows) as any[];
+
+      // True aggregate metrics from DB (not limited by the paged result set)
       const todayStart = new Date();
       todayStart.setUTCHours(0, 0, 0, 0);
-      const allRows = ((rows as any).rows || rows) as any[];
-      const todayCount = allRows.filter((r: any) => new Date(r.created_at) >= todayStart).length;
+      const todayStartISO = todayStart.toISOString();
 
-      // Most active company (by log count in the result set)
-      const companyCounts: Record<string, { name: string; count: number }> = {};
-      for (const r of allRows) {
-        if (!companyCounts[r.company_id]) companyCounts[r.company_id] = { name: r.company_name ?? r.company_id, count: 0 };
-        companyCounts[r.company_id].count++;
-      }
-      const mostActiveCompany = Object.values(companyCounts).sort((a, b) => b.count - a.count)[0] ?? null;
+      const todayCountResult = filterCompanyId
+        ? await db.execute(
+            sql`SELECT COUNT(*) as cnt FROM chat_logs WHERE company_id = ${filterCompanyId} AND created_at >= ${todayStartISO}`
+          )
+        : await db.execute(
+            sql`SELECT COUNT(*) as cnt FROM chat_logs WHERE created_at >= ${todayStartISO}`
+          );
+      const todayCount = Number(((todayCountResult as any).rows?.[0] ?? (todayCountResult as any)[0])?.cnt ?? 0);
 
-      // Common question topics — keyword bucket analysis
+      const mostActiveResult = filterCompanyId
+        ? await db.execute(
+            sql`SELECT cl.company_id, c.name as company_name, COUNT(*) as cnt
+                FROM chat_logs cl LEFT JOIN companies c ON cl.company_id = c.id
+                WHERE cl.company_id = ${filterCompanyId}
+                GROUP BY cl.company_id, c.name ORDER BY cnt DESC LIMIT 1`
+          )
+        : await db.execute(
+            sql`SELECT cl.company_id, c.name as company_name, COUNT(*) as cnt
+                FROM chat_logs cl LEFT JOIN companies c ON cl.company_id = c.id
+                GROUP BY cl.company_id, c.name ORDER BY cnt DESC LIMIT 1`
+          );
+      const mostActiveRow = ((mostActiveResult as any).rows?.[0] ?? (mostActiveResult as any)[0]);
+      const mostActiveCompany = mostActiveRow
+        ? { name: mostActiveRow.company_name ?? mostActiveRow.company_id, count: Number(mostActiveRow.cnt) }
+        : null;
+
+      // Common question topics — keyword bucket analysis across ALL logs (not just paged rows)
       const TOPIC_KEYWORDS: Array<{ label: string; keywords: string[] }> = [
         { label: "Food Cost",       keywords: ["cost", "food cost", "cogs", "margin", "profit", "expensive", "price", "pricing"] },
         { label: "Recipes",         keywords: ["recipe", "recipes", "ingredient", "ingredients", "portion", "yield", "preparation"] },
@@ -11011,9 +11031,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { label: "Transfers",       keywords: ["transfer", "move", "location", "store"] },
         { label: "Billing / Plan",  keywords: ["plan", "subscription", "tier", "upgrade", "billing", "pro", "basic", "premium"] },
       ];
+      // Fetch all messages for topic aggregation (message text only, no limit)
+      const topicMsgResult = filterCompanyId
+        ? await db.execute(sql`SELECT user_message FROM chat_logs WHERE company_id = ${filterCompanyId}`)
+        : await db.execute(sql`SELECT user_message FROM chat_logs`);
+      const allMessages = ((topicMsgResult as any).rows || topicMsgResult) as Array<{ user_message: string }>;
       const topicCounts: Record<string, number> = {};
-      for (const r of allRows) {
-        const msg = (r.user_message as string).toLowerCase();
+      for (const r of allMessages) {
+        const msg = (r.user_message ?? "").toLowerCase();
         for (const topic of TOPIC_KEYWORDS) {
           if (topic.keywords.some(kw => msg.includes(kw))) {
             topicCounts[topic.label] = (topicCounts[topic.label] ?? 0) + 1;
@@ -11057,11 +11082,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (user?.role !== "global_admin") {
         return res.status(403).json({ error: "Only global admins can create chat corrections" });
       }
-      const { chatLogId, userMessage, correctedResponse } = z.object({
+      const parseResult = z.object({
         chatLogId: z.string().nullable().optional(),
         userMessage: z.string().min(1),
         correctedResponse: z.string().min(1),
-      }).parse(req.body);
+      }).safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: "Invalid request", details: parseResult.error.flatten() });
+      }
+      const { chatLogId, userMessage, correctedResponse } = parseResult.data;
 
       const result = await db.execute(
         sql`INSERT INTO chat_corrections (chat_log_id, user_message, corrected_response, is_active)
@@ -11083,10 +11112,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (user?.role !== "global_admin") {
         return res.status(403).json({ error: "Only global admins can update chat corrections" });
       }
-      const { isActive, correctedResponse } = z.object({
+      const parseResult = z.object({
         isActive: z.number().int().min(0).max(1).optional(),
         correctedResponse: z.string().min(1).optional(),
-      }).parse(req.body);
+      }).safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: "Invalid request", details: parseResult.error.flatten() });
+      }
+      const { isActive, correctedResponse } = parseResult.data;
 
       if (isActive !== undefined && correctedResponse !== undefined) {
         await db.execute(

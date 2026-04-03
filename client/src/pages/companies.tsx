@@ -96,6 +96,7 @@ export default function Companies() {
   const [chatLogCompanyFilter, setChatLogCompanyFilter] = useState<string>("all");
   const [expandedCorrectionForm, setExpandedCorrectionForm] = useState<string | null>(null);
   const [correctionDraft, setCorrectionDraft] = useState<string>("");
+  const [newCorrectionQuestion, setNewCorrectionQuestion] = useState<string>("");
 
   const { data: companies, isLoading } = useQuery<Company[]>({
     queryKey: ["/api/companies"],
@@ -723,7 +724,8 @@ export default function Companies() {
                       <Textarea
                         placeholder="Question pattern (e.g. 'How do I add a vendor?')"
                         rows={2}
-                        id="new-correction-q"
+                        value={newCorrectionQuestion}
+                        onChange={e => setNewCorrectionQuestion(e.target.value)}
                         className="text-sm"
                         data-testid="input-new-correction-question"
                       />
@@ -739,12 +741,11 @@ export default function Companies() {
                         <Button
                           size="sm"
                           onClick={() => {
-                            const q = (document.getElementById("new-correction-q") as HTMLTextAreaElement)?.value;
-                            if (q && correctionDraft) {
-                              createCorrectionMutation.mutate({ userMessage: q, correctedResponse: correctionDraft });
+                            if (newCorrectionQuestion && correctionDraft) {
+                              createCorrectionMutation.mutate({ userMessage: newCorrectionQuestion, correctedResponse: correctionDraft });
                             }
                           }}
-                          disabled={createCorrectionMutation.isPending}
+                          disabled={createCorrectionMutation.isPending || !newCorrectionQuestion || !correctionDraft}
                           data-testid="button-save-new-correction"
                         >
                           Save
@@ -752,7 +753,7 @@ export default function Companies() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => { setExpandedCorrectionForm(null); setCorrectionDraft(""); }}
+                          onClick={() => { setExpandedCorrectionForm(null); setCorrectionDraft(""); setNewCorrectionQuestion(""); }}
                           data-testid="button-cancel-new-correction"
                         >
                           Cancel
