@@ -12742,7 +12742,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const isNewAccount = itemCount === 0 && recipeCount === 0 && vendorCount === 0;
+      const isNewAccount = itemCount === 0 && recipeCount === 0 && vendorCount === 0 && storeCount === 0;
 
       const systemPrompt = `You are an expert F&B cost management assistant for "${companyName}" (${tier} plan). You help food service operators control costs, optimize recipes, and improve profitability.
 
