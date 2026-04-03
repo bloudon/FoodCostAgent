@@ -10961,6 +10961,140 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/admin/chat-logs — global admin: recent Q&A pairs with optional companyId filter
+  app.get("/api/admin/chat-logs", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.user!.id);
+      if (user?.role !== "global_admin") {
+        return res.status(403).json({ error: "Only global admins can access chat logs" });
+      }
+      const filterCompanyId = req.query.companyId as string | undefined;
+      const limit = Math.min(parseInt((req.query.limit as string) || "100", 10), 200);
+
+      const rows = filterCompanyId
+        ? await db.execute(
+            sql`SELECT cl.id, cl.company_id, cl.user_id, cl.user_message, cl.assistant_response, cl.tier, cl.created_at,
+                       c.name as company_name
+                FROM chat_logs cl LEFT JOIN companies c ON cl.company_id = c.id
+                WHERE cl.company_id = ${filterCompanyId}
+                ORDER BY cl.created_at DESC LIMIT ${limit}`
+          )
+        : await db.execute(
+            sql`SELECT cl.id, cl.company_id, cl.user_id, cl.user_message, cl.assistant_response, cl.tier, cl.created_at,
+                       c.name as company_name
+                FROM chat_logs cl LEFT JOIN companies c ON cl.company_id = c.id
+                ORDER BY cl.created_at DESC LIMIT ${limit}`
+          );
+
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const allRows = ((rows as any).rows || rows) as any[];
+      const todayCount = allRows.filter((r: any) => new Date(r.created_at) >= todayStart).length;
+
+      res.json({ logs: allRows, todayCount });
+    } catch (err: any) {
+      console.error("GET /api/admin/chat-logs error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/admin/chat-corrections — global admin: list all corrections
+  app.get("/api/admin/chat-corrections", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.user!.id);
+      if (user?.role !== "global_admin") {
+        return res.status(403).json({ error: "Only global admins can access chat corrections" });
+      }
+      const rows = await db.execute(
+        sql`SELECT id, chat_log_id, user_message, corrected_response, is_active, created_at
+            FROM chat_corrections ORDER BY created_at DESC`
+      );
+      res.json(((rows as any).rows || rows) as any[]);
+    } catch (err: any) {
+      console.error("GET /api/admin/chat-corrections error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/admin/chat-corrections — create a correction
+  app.post("/api/admin/chat-corrections", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.user!.id);
+      if (user?.role !== "global_admin") {
+        return res.status(403).json({ error: "Only global admins can create chat corrections" });
+      }
+      const { chatLogId, userMessage, correctedResponse } = z.object({
+        chatLogId: z.string().nullable().optional(),
+        userMessage: z.string().min(1),
+        correctedResponse: z.string().min(1),
+      }).parse(req.body);
+
+      const result = await db.execute(
+        sql`INSERT INTO chat_corrections (chat_log_id, user_message, corrected_response, is_active)
+            VALUES (${chatLogId ?? null}, ${userMessage}, ${correctedResponse}, 1)
+            RETURNING id, chat_log_id, user_message, corrected_response, is_active, created_at`
+      );
+      const row = ((result as any).rows?.[0] || (result as any)[0]);
+      res.status(201).json(row);
+    } catch (err: any) {
+      console.error("POST /api/admin/chat-corrections error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // PATCH /api/admin/chat-corrections/:id — toggle isActive or update response
+  app.patch("/api/admin/chat-corrections/:id", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.user!.id);
+      if (user?.role !== "global_admin") {
+        return res.status(403).json({ error: "Only global admins can update chat corrections" });
+      }
+      const { isActive, correctedResponse } = z.object({
+        isActive: z.number().int().min(0).max(1).optional(),
+        correctedResponse: z.string().min(1).optional(),
+      }).parse(req.body);
+
+      if (isActive !== undefined && correctedResponse !== undefined) {
+        await db.execute(
+          sql`UPDATE chat_corrections SET is_active = ${isActive}, corrected_response = ${correctedResponse} WHERE id = ${req.params.id}`
+        );
+      } else if (isActive !== undefined) {
+        await db.execute(
+          sql`UPDATE chat_corrections SET is_active = ${isActive} WHERE id = ${req.params.id}`
+        );
+      } else if (correctedResponse !== undefined) {
+        await db.execute(
+          sql`UPDATE chat_corrections SET corrected_response = ${correctedResponse} WHERE id = ${req.params.id}`
+        );
+      }
+
+      const result = await db.execute(
+        sql`SELECT id, chat_log_id, user_message, corrected_response, is_active, created_at FROM chat_corrections WHERE id = ${req.params.id}`
+      );
+      const row = ((result as any).rows?.[0] || (result as any)[0]);
+      if (!row) return res.status(404).json({ error: "Correction not found" });
+      res.json(row);
+    } catch (err: any) {
+      console.error("PATCH /api/admin/chat-corrections/:id error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // DELETE /api/admin/chat-corrections/:id — remove a correction
+  app.delete("/api/admin/chat-corrections/:id", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.user!.id);
+      if (user?.role !== "global_admin") {
+        return res.status(403).json({ error: "Only global admins can delete chat corrections" });
+      }
+      await db.execute(sql`DELETE FROM chat_corrections WHERE id = ${req.params.id}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("DELETE /api/admin/chat-corrections/:id error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Update company logo
   app.put("/api/companies/:id/logo", requireAuth, async (req, res) => {
     try {
@@ -12744,6 +12878,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const isNewAccount = itemCount === 0 && recipeCount === 0 && vendorCount === 0 && storeCount === 0;
 
+      // Pull active corrections to inject as few-shot examples
+      let correctionsBlock = "";
+      try {
+        const correctionsResult = await db.execute(
+          sql`SELECT user_message, corrected_response FROM chat_corrections WHERE is_active = 1 ORDER BY created_at DESC LIMIT 20`
+        );
+        const corrections = ((correctionsResult as any).rows || correctionsResult) as Array<{ user_message: string; corrected_response: string }>;
+        if (corrections.length > 0) {
+          const examples = corrections.map(c => `Q: ${c.user_message}\nIdeal A: ${c.corrected_response}`).join("\n\n");
+          correctionsBlock = `\nCORRECTION EXAMPLES — use these as reference when answering similar questions:\n${examples}\n`;
+        }
+      } catch (corrErr) {
+        console.warn("Failed to fetch chat corrections:", corrErr);
+      }
+
       const systemPrompt = `You are an expert F&B cost management assistant for "${companyName}" (${tier} plan). You help food service operators control costs, optimize recipes, and improve profitability.
 
 APP NAVIGATION — when users ask how to do something, direct them to the correct section by name:
@@ -12790,7 +12939,7 @@ Guidelines:
 
 Human Handoff:
 - If the user's request is beyond your capabilities — such as billing changes, subscription cancellations, account deletions, VPS or deployment help, custom integrations, accessing or modifying data you cannot see, or any account-specific issue requiring human intervention — include the exact token [SUGGEST_HUMAN_HANDOFF] somewhere in your response (on its own line if possible) along with a brief explanation of why a human team member would be better suited to help.
-- Only include [SUGGEST_HUMAN_HANDOFF] when you genuinely cannot resolve the issue yourself.`;
+- Only include [SUGGEST_HUMAN_HANDOFF] when you genuinely cannot resolve the issue yourself.${correctionsBlock}`;
 
       const OpenAI = (await import("openai")).default;
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -12811,6 +12960,8 @@ Human Handoff:
       res.setHeader("Connection", "keep-alive");
       res.setHeader("X-Accel-Buffering", "no");
 
+      const responseChunks: string[] = [];
+
       for await (const chunk of completion) {
         if (clientDisconnected) {
           completion.controller.abort();
@@ -12818,12 +12969,24 @@ Human Handoff:
         }
         const content = chunk.choices[0]?.delta?.content;
         if (content) {
+          responseChunks.push(content);
           res.write(`data: ${JSON.stringify({ content })}\n\n`);
         }
       }
       if (!clientDisconnected) {
         res.write("data: [DONE]\n\n");
         res.end();
+      }
+
+      // Fire-and-forget: save the Q&A pair to chat_logs
+      const fullResponse = responseChunks.join("");
+      const lastUserMessage = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
+      if (lastUserMessage && fullResponse) {
+        const userId = (req as any).user?.id ?? null;
+        db.execute(
+          sql`INSERT INTO chat_logs (company_id, user_id, user_message, assistant_response, tier)
+              VALUES (${companyId}, ${userId}, ${lastUserMessage}, ${fullResponse}, ${tier})`
+        ).catch((logErr: any) => console.warn("Failed to save chat log:", logErr));
       }
     } catch (err: any) {
       console.error("POST /api/chat error:", err);

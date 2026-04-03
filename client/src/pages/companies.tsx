@@ -4,8 +4,10 @@ import { Company, InsertCompany, insertCompanySchema } from "@shared/schema";
 import {
   Building2, MapPin, Plus, Settings2, UserCircle, Trash2, AlertTriangle,
   Users, CreditCard, Clock, MailWarning, RefreshCw, Activity,
-  ChevronDown, ChevronUp, Wand2,
+  ChevronDown, ChevronUp, Wand2, MessageSquare, CheckCircle, XCircle,
+  Pencil, Check, X,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,14 +59,98 @@ type OrphanedSignup = {
   userActive: number | null;
 };
 
+type ChatLogRow = {
+  id: string;
+  company_id: string;
+  company_name: string | null;
+  user_id: string | null;
+  user_message: string;
+  assistant_response: string;
+  tier: string;
+  created_at: string;
+};
+
+type ChatLogsResponse = {
+  logs: ChatLogRow[];
+  todayCount: number;
+};
+
+type ChatCorrection = {
+  id: string;
+  chat_log_id: string | null;
+  user_message: string;
+  corrected_response: string;
+  is_active: number;
+  created_at: string;
+};
+
 export default function Companies() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [isNewCompanyDialogOpen, setIsNewCompanyDialogOpen] = useState(false);
   const [incompleteSignupsExpanded, setIncompleteSignupsExpanded] = useState(true);
+  const [chatLogsExpanded, setChatLogsExpanded] = useState(false);
+  const [correctionsExpanded, setCorrectionsExpanded] = useState(false);
+  const [chatLogCompanyFilter, setChatLogCompanyFilter] = useState<string>("all");
+  const [expandedCorrectionForm, setExpandedCorrectionForm] = useState<string | null>(null);
+  const [correctionDraft, setCorrectionDraft] = useState<string>("");
 
   const { data: companies, isLoading } = useQuery<Company[]>({
     queryKey: ["/api/companies"],
+  });
+
+  const chatLogsQuery = useQuery<ChatLogsResponse>({
+    queryKey: ["/api/admin/chat-logs", chatLogCompanyFilter],
+    queryFn: () => {
+      const url = chatLogCompanyFilter !== "all"
+        ? `/api/admin/chat-logs?companyId=${chatLogCompanyFilter}`
+        : "/api/admin/chat-logs";
+      return fetch(url).then(r => r.json());
+    },
+    enabled: chatLogsExpanded,
+    refetchInterval: 30000,
+  });
+
+  const correctionsQuery = useQuery<ChatCorrection[]>({
+    queryKey: ["/api/admin/chat-corrections"],
+    enabled: chatLogsExpanded,
+  });
+
+  const createCorrectionMutation = useMutation({
+    mutationFn: (payload: { chatLogId?: string | null; userMessage: string; correctedResponse: string }) =>
+      fetch("/api/admin/chat-corrections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chat-corrections"] });
+      setExpandedCorrectionForm(null);
+      setCorrectionDraft("");
+      toast({ description: "Correction saved and will be injected into future prompts." });
+    },
+    onError: () => toast({ variant: "destructive", description: "Failed to save correction." }),
+  });
+
+  const toggleCorrectionMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: number }) =>
+      fetch(`/api/admin/chat-corrections/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive }),
+      }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chat-corrections"] });
+    },
+  });
+
+  const deleteCorrectionMutation = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/admin/chat-corrections/${id}`, { method: "DELETE" }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chat-corrections"] });
+      toast({ description: "Correction deleted." });
+    },
   });
 
   const { data: adminStats } = useQuery<AdminStats>({
@@ -499,6 +585,256 @@ export default function Companies() {
           )}
         </Card>
       )}
+
+      {/* AI Chat Logs & Corrections */}
+      <Card className="mb-6" data-testid="card-chat-logs">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="h-5 w-5 text-primary" />
+            <CardTitle className="text-base">AI Chat Logs</CardTitle>
+            {chatLogsQuery.data && (
+              <Badge variant="secondary" className="text-xs" data-testid="badge-chat-today">
+                {chatLogsQuery.data.todayCount} today
+              </Badge>
+            )}
+            {correctionsQuery.data && (
+              <Badge variant="outline" className="text-xs" data-testid="badge-corrections-active">
+                {correctionsQuery.data.filter(c => c.is_active === 1).length} active corrections
+              </Badge>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setChatLogsExpanded(v => !v)}
+            data-testid="button-toggle-chat-logs"
+            title={chatLogsExpanded ? "Collapse" : "Expand"}
+          >
+            {chatLogsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
+        </CardHeader>
+
+        {chatLogsExpanded && (
+          <CardContent className="pt-0">
+            {/* Company filter */}
+            <div className="flex items-center gap-2 mb-4 flex-wrap">
+              <span className="text-sm text-muted-foreground">Filter by company:</span>
+              <select
+                className="text-sm border rounded-md px-2 py-1 bg-background"
+                value={chatLogCompanyFilter}
+                onChange={e => setChatLogCompanyFilter(e.target.value)}
+                data-testid="select-chat-log-company-filter"
+              >
+                <option value="all">All companies</option>
+                {companies?.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Active Corrections sub-section */}
+            <div className="mb-4">
+              <button
+                className="flex items-center gap-2 text-sm font-semibold mb-2 hover-elevate rounded-md px-1"
+                onClick={() => setCorrectionsExpanded(v => !v)}
+                data-testid="button-toggle-corrections"
+              >
+                {correctionsExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                Active Corrections
+                <Badge variant="secondary" className="text-xs">
+                  {correctionsQuery.data?.filter(c => c.is_active === 1).length ?? 0} active / {correctionsQuery.data?.length ?? 0} total
+                </Badge>
+              </button>
+
+              {correctionsExpanded && (
+                <div className="space-y-2">
+                  {correctionsQuery.isLoading && (
+                    <p className="text-sm text-muted-foreground">Loading corrections...</p>
+                  )}
+                  {correctionsQuery.data?.length === 0 && (
+                    <p className="text-sm text-muted-foreground italic">No corrections yet.</p>
+                  )}
+                  {correctionsQuery.data?.map(correction => (
+                    <div
+                      key={correction.id}
+                      className={`border rounded-md p-3 text-sm ${correction.is_active === 1 ? "border-border" : "border-border/40 opacity-60"}`}
+                      data-testid={`row-correction-${correction.id}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-muted-foreground text-xs mb-1">Question pattern:</p>
+                          <p className="text-sm mb-2">{correction.user_message}</p>
+                          <p className="font-medium text-muted-foreground text-xs mb-1">Ideal answer:</p>
+                          <p className="text-sm whitespace-pre-wrap">{correction.corrected_response}</p>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title={correction.is_active === 1 ? "Disable" : "Enable"}
+                            onClick={() => toggleCorrectionMutation.mutate({ id: correction.id, isActive: correction.is_active === 1 ? 0 : 1 })}
+                            data-testid={`button-toggle-correction-${correction.id}`}
+                          >
+                            {correction.is_active === 1
+                              ? <CheckCircle className="h-4 w-4 text-green-600" />
+                              : <XCircle className="h-4 w-4 text-muted-foreground" />
+                            }
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="Delete correction"
+                            onClick={() => deleteCorrectionMutation.mutate(correction.id)}
+                            data-testid={`button-delete-correction-${correction.id}`}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Add standalone correction */}
+                  {expandedCorrectionForm === "__new__" ? (
+                    <div className="border rounded-md p-3 space-y-2 mt-2" data-testid="form-new-correction">
+                      <p className="text-xs font-semibold text-muted-foreground">New correction</p>
+                      <Textarea
+                        placeholder="Question pattern (e.g. 'How do I add a vendor?')"
+                        rows={2}
+                        id="new-correction-q"
+                        className="text-sm"
+                        data-testid="input-new-correction-question"
+                      />
+                      <Textarea
+                        placeholder="Ideal answer..."
+                        rows={4}
+                        value={correctionDraft}
+                        onChange={e => setCorrectionDraft(e.target.value)}
+                        className="text-sm"
+                        data-testid="input-new-correction-answer"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const q = (document.getElementById("new-correction-q") as HTMLTextAreaElement)?.value;
+                            if (q && correctionDraft) {
+                              createCorrectionMutation.mutate({ userMessage: q, correctedResponse: correctionDraft });
+                            }
+                          }}
+                          disabled={createCorrectionMutation.isPending}
+                          data-testid="button-save-new-correction"
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => { setExpandedCorrectionForm(null); setCorrectionDraft(""); }}
+                          data-testid="button-cancel-new-correction"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-1"
+                      onClick={() => setExpandedCorrectionForm("__new__")}
+                      data-testid="button-add-correction"
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1.5" />
+                      Add Correction
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Q&A log cards */}
+            {chatLogsQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading chat logs...</p>
+            ) : chatLogsQuery.data?.logs.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">No chat logs found.</p>
+            ) : (
+              <div className="space-y-3">
+                {chatLogsQuery.data?.logs.map(log => (
+                  <div
+                    key={log.id}
+                    className="border rounded-md p-3 text-sm"
+                    data-testid={`row-chat-log-${log.id}`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs">{log.company_name ?? log.company_id}</Badge>
+                        <Badge variant="secondary" className="text-xs capitalize">{log.tier}</Badge>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(log.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="font-medium mb-1">Q: {log.user_message}</p>
+                    <p className="text-muted-foreground whitespace-pre-wrap">A: {log.assistant_response}</p>
+
+                    {/* Inline "Add Correction from this log" */}
+                    {expandedCorrectionForm === log.id ? (
+                      <div className="mt-3 border-t pt-3 space-y-2">
+                        <p className="text-xs font-semibold text-muted-foreground">Override this response:</p>
+                        <Textarea
+                          rows={4}
+                          placeholder="Type the ideal answer here..."
+                          value={correctionDraft}
+                          onChange={e => setCorrectionDraft(e.target.value)}
+                          className="text-sm"
+                          data-testid={`input-correction-draft-${log.id}`}
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (correctionDraft) {
+                                createCorrectionMutation.mutate({
+                                  chatLogId: log.id,
+                                  userMessage: log.user_message,
+                                  correctedResponse: correctionDraft,
+                                });
+                              }
+                            }}
+                            disabled={createCorrectionMutation.isPending || !correctionDraft}
+                            data-testid={`button-save-correction-${log.id}`}
+                          >
+                            Save Correction
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => { setExpandedCorrectionForm(null); setCorrectionDraft(""); }}
+                            data-testid={`button-cancel-correction-${log.id}`}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        className="mt-2 text-xs text-muted-foreground underline hover-elevate rounded-sm"
+                        onClick={() => { setExpandedCorrectionForm(log.id); setCorrectionDraft(""); }}
+                        data-testid={`button-add-correction-from-log-${log.id}`}
+                      >
+                        <Pencil className="h-3 w-3 inline mr-1" />
+                        Add correction for this response
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
 
       {/* Companies list */}
       <div className="mb-4 flex items-center gap-2">

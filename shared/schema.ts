@@ -1356,3 +1356,34 @@ export const insertRecipeImportSessionSchema = createInsertSchema(recipeImportSe
 export type InsertRecipeImportSession = z.infer<typeof insertRecipeImportSessionSchema>;
 export type RecipeImportSession = typeof recipeImportSessions.$inferSelect;
 
+// AI Chat Logs — one row per Q&A exchange
+export const chatLogs = pgTable("chat_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  userId: varchar("user_id"), // nullable — logged from session when available
+  userMessage: text("user_message").notNull(),
+  assistantResponse: text("assistant_response").notNull(),
+  tier: text("tier").notNull().default("free"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  companyIdx: index("chat_logs_company_idx").on(table.companyId),
+  createdAtIdx: index("chat_logs_created_at_idx").on(table.createdAt),
+}));
+
+export const insertChatLogSchema = createInsertSchema(chatLogs).omit({ id: true, createdAt: true });
+export type InsertChatLog = z.infer<typeof insertChatLogSchema>;
+export type ChatLog = typeof chatLogs.$inferSelect;
+
+// AI Chat Corrections — admin-authored ideal answers injected as few-shot examples
+export const chatCorrections = pgTable("chat_corrections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  chatLogId: varchar("chat_log_id"), // nullable FK → chat_logs (traceability)
+  userMessage: text("user_message").notNull(), // the question pattern this correction addresses
+  correctedResponse: text("corrected_response").notNull(), // the ideal answer
+  isActive: integer("is_active").notNull().default(1), // 1 = injected into prompts, 0 = disabled
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertChatCorrectionSchema = createInsertSchema(chatCorrections).omit({ id: true, createdAt: true });
+export type InsertChatCorrection = z.infer<typeof insertChatCorrectionSchema>;
+export type ChatCorrection = typeof chatCorrections.$inferSelect;

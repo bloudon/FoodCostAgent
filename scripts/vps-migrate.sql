@@ -463,3 +463,37 @@ DO $$ BEGIN
       VALUES ('v019', 'Task #41: email_otps table for DB-backed OTP persistence');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v020: Task #46 — AI chat_logs and chat_corrections tables
+-- chat_logs: one row per Q&A exchange from the AI assistant
+-- chat_corrections: admin-authored ideal answers injected as few-shot examples
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v020') THEN
+
+    CREATE TABLE IF NOT EXISTS chat_logs (
+      id              varchar     PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id      varchar     NOT NULL,
+      user_id         varchar,
+      user_message    text        NOT NULL,
+      assistant_response text     NOT NULL,
+      tier            text        NOT NULL DEFAULT 'free',
+      created_at      timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS chat_logs_company_idx    ON chat_logs(company_id);
+    CREATE INDEX IF NOT EXISTS chat_logs_created_at_idx ON chat_logs(created_at);
+
+    CREATE TABLE IF NOT EXISTS chat_corrections (
+      id                  varchar     PRIMARY KEY DEFAULT gen_random_uuid(),
+      chat_log_id         varchar,
+      user_message        text        NOT NULL,
+      corrected_response  text        NOT NULL,
+      is_active           integer     NOT NULL DEFAULT 1,
+      created_at          timestamptz NOT NULL DEFAULT now()
+    );
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v020', 'Task #46: chat_logs and chat_corrections tables for AI chat logging and admin corrections');
+  END IF;
+END $$;
