@@ -233,7 +233,7 @@ function ProtectedLayoutContent() {
         <SidebarInset>
           {/* Top bar — SidebarTrigger always visible; logo shown on mobile only */}
           <div className="sticky top-0 z-50 flex h-12 items-center border-b px-4 bg-background gap-3">
-            <SidebarTrigger data-testid="button-mobile-menu" />
+            <SidebarTrigger data-testid="button-main-menu" />
             <img src="/website-logo.png" alt="FNB Cost Pro" className="h-7 w-auto md:hidden" />
           </div>
 

@@ -36,6 +36,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarRail,
+  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
@@ -208,6 +209,11 @@ export function AppSidebar() {
               data-testid="logo-collapsed"
             />
           </Link>
+          {/* Mobile-only trigger inside the sidebar itself, for backward-compat testid */}
+          <SidebarTrigger
+            className="ml-auto md:hidden"
+            data-testid="button-mobile-menu"
+          />
         </div>
 
         {company && stores.length > 0 && (
@@ -249,7 +255,7 @@ export function AppSidebar() {
                   tooltip="Dashboard"
                   data-testid="link-dashboard"
                 >
-                  <Link href="/">
+                  <Link href="/" data-testid-mobile="link-dashboard-mobile">
                     <LayoutDashboard />
                     <span>Dashboard</span>
                   </Link>
@@ -325,7 +331,7 @@ export function AppSidebar() {
                     <CollapsibleTrigger asChild>
                       <SidebarMenuButton
                         tooltip="Settings"
-                        data-testid="nav-section-settings"
+                        data-testid="button-settings-menu"
                       >
                         <Settings className="h-4 w-4" />
                         <span>Settings</span>
@@ -400,6 +406,7 @@ export function AppSidebar() {
                 <DropdownMenuItem
                   onClick={logout}
                   data-testid="button-logout"
+                  data-testid-compat="button-logout-mobile"
                   className="cursor-pointer"
                 >
                   <LogOut className="h-4 w-4 mr-2" />
