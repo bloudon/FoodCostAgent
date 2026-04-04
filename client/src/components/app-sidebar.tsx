@@ -357,19 +357,12 @@ export function AppSidebar() {
                       <SidebarMenuSub>
                         {settingsItems.map((item) => {
                           const slug = item.title.toLowerCase().replace(/\s+/g, "-");
-                          // Store Locations was grouped under a "Locations" sub-trigger in the
-                          // old header (data-testid="menu-settings-locations"). On desktop,
-                          // preserve that testid for backward compat.
-                          const testId =
-                            !isMobile && item.title === "Store Locations"
-                              ? "menu-settings-locations"
-                              : `link-${slug}`;
                           return (
                             <SidebarMenuSubItem key={item.url}>
                               <SidebarMenuSubButton
                                 asChild
                                 isActive={location === item.url}
-                                data-testid={testId}
+                                data-testid={`link-${slug}`}
                               >
                                 <Link href={item.url}>
                                   <item.icon className="h-3.5 w-3.5" />
