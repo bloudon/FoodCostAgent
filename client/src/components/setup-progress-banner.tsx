@@ -90,38 +90,43 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
 
   return (
     <div
-      className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80"
+      className="fixed bottom-0 left-0 right-0 z-50 bg-[#f2690d]"
       data-testid="setup-progress-banner"
     >
       <div className="flex items-center justify-between gap-3 px-4 py-3 max-w-screen-xl mx-auto">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {prevMilestone && (
             <Link href={prevMilestone.path}>
-              <Button variant="ghost" size="icon" data-testid="button-prev-milestone">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-white hover:bg-white/20 hover:text-white"
+                data-testid="button-prev-milestone"
+              >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             </Link>
           )}
           {currentCompleted ? (
             <div className="flex items-center gap-1.5 shrink-0">
-              <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-              <span className="text-sm font-medium hidden sm:inline">
+              <CheckCircle2 className="h-5 w-5 text-white" />
+              <span className="text-base font-bold text-white hidden sm:inline">
                 {milestoneLabels[currentMilestoneId] || currentMilestone?.label} done!
               </span>
-              <span className="text-sm font-medium sm:hidden">
+              <span className="text-base font-bold text-white sm:hidden">
                 Done!
               </span>
             </div>
           ) : (
-            <span className="text-sm text-muted-foreground">
+            <span className="text-base font-bold text-white">
               Step {currentIndex + 1} of {data.totalCount}
             </span>
           )}
           {nextMilestone && currentCompleted && (
-            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 hidden sm:block" />
+            <ChevronRight className="h-5 w-5 text-white/80 shrink-0 hidden sm:block" />
           )}
           {nextMilestone && currentCompleted && (
-            <span className="text-sm text-muted-foreground truncate">
+            <span className="text-base font-bold text-white truncate hidden sm:block">
               Next: {nextMilestone.label}
             </span>
           )}
@@ -129,7 +134,11 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
         <div className="flex items-center gap-2 shrink-0">
           {nextMilestone && currentCompleted && (
             <Link href={nextMilestone.path}>
-              <Button size="sm" data-testid="button-next-milestone">
+              <Button
+                size="sm"
+                className="bg-white text-[#f2690d] font-bold hover:bg-white/90 hover:text-[#f2690d]"
+                data-testid="button-next-milestone"
+              >
                 Done, Next Step
                 <ArrowRight className="h-3.5 w-3.5 ml-1" />
               </Button>
@@ -138,6 +147,7 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
           {currentCompleted && isLastStep && (
             <Button
               size="sm"
+              className="bg-white text-[#f2690d] font-bold hover:bg-white/90 hover:text-[#f2690d]"
               onClick={() => {
                 toast({ title: "Setup complete!", description: "Your account is ready to go." });
                 navigate("/");
@@ -151,6 +161,7 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
           {!currentCompleted && hasEntries && (
             <Button
               size="sm"
+              className="bg-white text-[#f2690d] font-bold hover:bg-white/90 hover:text-[#f2690d]"
               onClick={() => reviewStepMutation.mutate()}
               disabled={reviewStepMutation.isPending}
               data-testid="button-done-next-step"
@@ -161,7 +172,12 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
           )}
           {nextMilestone && !currentCompleted && (
             <Link href={nextMilestone.path}>
-              <Button variant="outline" size="sm" data-testid="button-skip-milestone">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-white border border-white/60 hover:bg-white/20 hover:text-white font-semibold"
+                data-testid="button-skip-milestone"
+              >
                 Skip
                 <ArrowRight className="h-3.5 w-3.5 ml-1" />
               </Button>
