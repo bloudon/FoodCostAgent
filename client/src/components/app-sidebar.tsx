@@ -179,9 +179,9 @@ export function AppSidebar() {
       (item) => location === item.url || location.startsWith(item.url + "/")
     );
 
-  const isSettingsActive = settingsItems.some(
-    (item) => location === item.url
-  );
+  const isSettingsActive =
+    settingsItems.some((item) => location === item.url) ||
+    locationItems.some((item) => location === item.url);
 
   const userInitials =
     user?.firstName && user?.lastName
