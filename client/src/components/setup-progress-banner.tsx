@@ -126,7 +126,7 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
             <ChevronRight className="h-5 w-5 text-white/80 shrink-0 hidden sm:block" />
           )}
           {nextMilestone && currentCompleted && (
-            <span className="text-base font-bold text-white truncate hidden sm:block">
+            <span className="text-base font-bold text-white truncate">
               Next: {nextMilestone.label}
             </span>
           )}
@@ -175,7 +175,7 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-white border border-white/60 hover:bg-white/20 hover:text-white font-semibold"
+                className="text-white border border-white/60 hover:bg-white/20 hover:text-white font-bold"
                 data-testid="button-skip-milestone"
               >
                 Skip
