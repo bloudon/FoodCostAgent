@@ -1720,8 +1720,8 @@ function RecipeBuilderContent() {
                     </div>
                   </div>
 
-                  {/* Yield and canBeIngredient in closed accordion */}
-                  <Accordion type="single" collapsible className="-mb-2">
+                  {/* Yield and canBeIngredient - open by default */}
+                  <Accordion type="single" collapsible defaultValue="yield-details" className="-mb-2">
                     <AccordionItem value="yield-details" className="border-0">
                       <AccordionTrigger className="text-sm font-medium py-2">
                         Recipe Yield & Options
