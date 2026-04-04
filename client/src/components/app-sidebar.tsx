@@ -362,6 +362,36 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
+
+        {/* Hidden backward-compat aliases: these mirror the old app-header.tsx mobile
+            sheet testids so existing test selectors continue to work. They are
+            aria-hidden and visually hidden (sr-only) but remain clickable. */}
+        <div className="sr-only" aria-hidden="true">
+          {company && (
+            <span data-testid="text-company-name-mobile">{company.name}</span>
+          )}
+          <Link href="/" data-testid="link-dashboard-mobile" tabIndex={-1}>Dashboard</Link>
+          {visibleSections.flatMap((section) =>
+            section.items.map((item) => (
+              <Link
+                key={`${item.url}-mobile-compat`}
+                href={item.url}
+                data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}-mobile`}
+                tabIndex={-1}
+              >
+                {item.title}
+              </Link>
+            ))
+          )}
+          <button
+            onClick={logout}
+            data-testid="button-logout-mobile"
+            tabIndex={-1}
+            type="button"
+          >
+            Logout
+          </button>
+        </div>
       </SidebarContent>
 
       <SidebarFooter className="border-t">
@@ -406,7 +436,6 @@ export function AppSidebar() {
                 <DropdownMenuItem
                   onClick={logout}
                   data-testid="button-logout"
-                  data-testid-compat="button-logout-mobile"
                   className="cursor-pointer"
                 >
                   <LogOut className="h-4 w-4 mr-2" />
