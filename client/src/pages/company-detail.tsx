@@ -988,7 +988,7 @@ function BrandImageCard({ companyId, brandImagePath }: { companyId: string; bran
           <CardContent>
             <div className="relative aspect-video max-w-md overflow-hidden rounded-md bg-muted">
               <img
-                src={`/objects/${brandImagePath}`}
+                src={brandImagePath}
                 alt="Brand background"
                 className="w-full h-full object-cover"
                 data-testid="img-brand-background"

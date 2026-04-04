@@ -269,7 +269,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (company?.brandImagePath) {
           return res.json({
-            images: [{ url: `/objects/${company.brandImagePath}`, label: "Brand background" }],
+            images: [{ url: company.brandImagePath, label: "Brand background" }],
             isBranded: true,
           });
         }

@@ -1997,7 +1997,7 @@ function RecipeBuilderContent() {
                   </div>
                   {recipeImagePath ? (
                     <img
-                      src={`/objects/${recipeImagePath}`}
+                      src={recipeImagePath}
                       alt="Recipe"
                       className="w-full max-h-48 object-cover rounded-md"
                       data-testid="img-recipe-photo"

@@ -311,7 +311,7 @@ function RecipeDetailContent() {
               </CardHeader>
               <CardContent>
                 <img
-                  src={`/objects/${recipe.imagePath}`}
+                  src={recipe.imagePath}
                   alt={`Photo of ${recipe.name}`}
                   className="rounded-md w-full object-cover max-h-72"
                   data-testid="img-recipe-photo"
