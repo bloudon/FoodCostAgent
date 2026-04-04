@@ -208,6 +208,8 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     if (user) {
       (req as any).user = user;
       (req as any).sessionId = session.id;
+      const companyId = user.companyId || session.selectedCompanyId || null;
+      (req as any).companyId = companyId;
     }
   }
   

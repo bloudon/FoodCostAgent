@@ -12,7 +12,7 @@ import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
-import { createSession, requireAuth, requireTier, verifyPassword, hashPassword } from "./auth";
+import { createSession, requireAuth, optionalAuth, requireTier, verifyPassword, hashPassword } from "./auth";
 import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
@@ -2592,7 +2592,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/objects/:objectPath(*)", async (req, res) => {
+  app.get("/objects/:objectPath(*)", optionalAuth, async (req, res) => {
     const thumbnail = req.query.thumbnail === "true";
 
     try {
