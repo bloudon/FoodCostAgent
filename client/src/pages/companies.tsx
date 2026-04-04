@@ -463,6 +463,7 @@ export default function Companies() {
           label="Active Users"
           value={adminStats?.activeUsers ?? "—"}
           testId="card-stat-active-users"
+          onClick={() => setLocation("/admin/users")}
         />
         <StatCard
           icon={<Activity className="h-5 w-5 text-green-500" />}
@@ -1071,15 +1072,27 @@ function StatCard({
   value,
   highlight = false,
   testId,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number | string;
   highlight?: boolean;
   testId?: string;
+  onClick?: () => void;
 }) {
   return (
-    <Card className={highlight ? "border-amber-300 dark:border-amber-700" : ""} data-testid={testId}>
+    <Card
+      className={[
+        highlight ? "border-amber-300 dark:border-amber-700" : "",
+        onClick ? "cursor-pointer hover-elevate" : "",
+      ].join(" ").trim()}
+      data-testid={testId}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") onClick(); } : undefined}
+    >
       <CardContent className="p-4">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center h-9 w-9 rounded-md bg-muted flex-shrink-0">

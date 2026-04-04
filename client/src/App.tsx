@@ -67,6 +67,7 @@ import ChoosePlan from "@/pages/choose-plan";
 import EnterpriseInquiry from "@/pages/enterprise-inquiry";
 import EnterpriseOnboarding from "@/pages/enterprise-onboarding";
 import AdminBackgrounds from "@/pages/admin-backgrounds";
+import AdminUsers from "@/pages/admin-users";
 import { ChatPanel } from "@/components/chat-panel";
 import WebsiteHome from "@/pages/website/home";
 import WebsiteFeatures from "@/pages/website/features";
@@ -279,6 +280,7 @@ function ProtectedLayoutContent() {
               <Route path="/api-credentials" component={ApiCredentials} />
               <Route path="/settings" component={Settings} />
               <Route path="/admin/backgrounds" component={AdminBackgrounds} />
+              <Route path="/admin/users" component={AdminUsers} />
               <Route component={NotFound} />
             </Switch>
           </main>

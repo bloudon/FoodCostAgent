@@ -11168,6 +11168,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/admin/users — global admin: full cross-company user roster with last-login stats
+  app.get("/api/admin/users", requireAuth, async (req, res) => {
+    try {
+      const reqUser = await storage.getUser(req.user!.id);
+      if (reqUser?.role !== "global_admin") {
+        return res.status(403).json({ error: "Only global admins can access this endpoint" });
+      }
+      const search = (req.query.search as string | undefined)?.toLowerCase();
+
+      const rows = await db.execute(
+        sql`SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.active, u.created_at,
+                   c.id as company_id, c.name as company_name, c.subscription_tier,
+                   MAX(s.last_active_at) as last_login_at,
+                   COUNT(CASE WHEN s.revoked_at IS NULL AND s.expires_at > NOW() THEN 1 END) as active_session_count
+            FROM users u
+            LEFT JOIN companies c ON u.company_id = c.id
+            LEFT JOIN auth_sessions s ON s.user_id = u.id
+            GROUP BY u.id, u.email, u.first_name, u.last_name, u.role, u.active, u.created_at,
+                     c.id, c.name, c.subscription_tier
+            ORDER BY u.created_at DESC`
+      );
+
+      let allRows = ((rows as any).rows || rows) as any[];
+
+      if (search) {
+        allRows = allRows.filter((r: any) => {
+          const name = `${r.first_name ?? ""} ${r.last_name ?? ""}`.toLowerCase();
+          return (
+            name.includes(search) ||
+            (r.email ?? "").toLowerCase().includes(search) ||
+            (r.company_name ?? "").toLowerCase().includes(search)
+          );
+        });
+      }
+
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const todayStartISO = todayStart.toISOString();
+
+      const totalUsers = allRows.length;
+      const activeUsers = allRows.filter((r: any) => r.active === 1 || r.active === true).length;
+      const inactiveUsers = totalUsers - activeUsers;
+      const activeToday = allRows.filter((r: any) => r.last_login_at && new Date(r.last_login_at) >= todayStart).length;
+
+      res.json({
+        users: allRows,
+        stats: { totalUsers, activeUsers, inactiveUsers, activeToday },
+      });
+    } catch (err: any) {
+      console.error("GET /api/admin/users error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Update company logo
   app.put("/api/companies/:id/logo", requireAuth, async (req, res) => {
     try {
