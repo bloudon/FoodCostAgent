@@ -19,7 +19,6 @@ import {
   LogOut,
   Ruler,
   ChevronRight,
-  ChevronsUpDown,
 } from "lucide-react";
 import {
   Sidebar,
@@ -43,14 +42,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -421,56 +412,38 @@ export function AppSidebar() {
 
       </SidebarContent>
 
-      <SidebarFooter className="border-t">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                  data-testid="button-avatar-menu"
-                >
-                  <div className="h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold shrink-0">
-                    {userInitials}
-                  </div>
-                  <div className="grid flex-1 min-w-0 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">{userName}</span>
-                    <span className="truncate text-xs text-muted-foreground">{user?.email}</span>
-                  </div>
-                  <ChevronsUpDown className="ml-auto h-4 w-4 shrink-0" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                side={state === "collapsed" ? "right" : "top"}
-                align="end"
-                sideOffset={4}
-              >
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col gap-0.5">
-                    <p className="text-sm font-medium">{userName}</p>
-                    <p className="text-xs text-muted-foreground">{user?.email}</p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <div className="flex items-center justify-between gap-2 px-2 py-1.5">
-                  <span className="text-sm">Theme</span>
-                  <ThemeToggle />
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={logout}
-                  data-testid={isMobile ? "button-logout-mobile" : "button-logout"}
-                  className="cursor-pointer"
-                >
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Logout
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
+      <SidebarFooter className="border-t p-2 space-y-1">
+        {/* User info row — hidden when collapsed */}
+        <div className="flex items-center gap-2 px-1 py-1 group-data-[collapsible=icon]:hidden">
+          <div className="h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold shrink-0">
+            {userInitials}
+          </div>
+          <div className="flex-1 min-w-0 text-left text-sm leading-tight">
+            <p className="truncate font-semibold">{userName}</p>
+            <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+          </div>
+        </div>
+
+        {/* Action row */}
+        <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
+          {/* Collapsed: show avatar */}
+          <div className="hidden group-data-[collapsible=icon]:flex h-7 w-7 rounded-full bg-primary text-primary-foreground items-center justify-center text-xs font-semibold mb-1">
+            {userInitials}
+          </div>
+
+          <div className="flex-1 group-data-[collapsible=icon]:hidden" />
+
+          <ThemeToggle />
+
+          <button
+            onClick={logout}
+            data-testid={isMobile ? "button-logout-mobile" : "button-logout"}
+            className="inline-flex items-center justify-center rounded-md h-9 w-9 text-muted-foreground hover-elevate active-elevate-2 transition-colors"
+            title="Logout"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
       </SidebarFooter>
 
       <SidebarRail />
