@@ -430,7 +430,6 @@ export function AppSidebar() {
                   size="lg"
                   className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                   data-testid="button-avatar-menu"
-                  tooltip={userName}
                 >
                   <div className="h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold shrink-0">
                     {userInitials}
