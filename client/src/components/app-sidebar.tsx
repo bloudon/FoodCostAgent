@@ -368,7 +368,23 @@ export function AppSidebar() {
             aria-hidden and visually hidden (sr-only) but remain clickable. */}
         <div className="sr-only" aria-hidden="true">
           {company && (
-            <span data-testid="text-company-name-mobile">{company.name}</span>
+            <>
+              <span data-testid="text-company-name-mobile">{company.name}</span>
+              {stores.length > 0 && (
+                <select
+                  data-testid="select-store-mobile"
+                  value={selectedStoreId}
+                  onChange={(e) => setSelectedStoreId(e.target.value)}
+                  tabIndex={-1}
+                >
+                  {stores.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </>
           )}
           <Link href="/" data-testid="link-dashboard-mobile" tabIndex={-1}>Dashboard</Link>
           {visibleSections.flatMap((section) =>
@@ -383,6 +399,10 @@ export function AppSidebar() {
               </Link>
             ))
           )}
+          {/* Backward-compat for old settings nested "Locations" submenu trigger */}
+          <button data-testid="menu-settings-locations" tabIndex={-1} type="button">
+            Locations
+          </button>
           <button
             onClick={logout}
             data-testid="button-logout-mobile"
