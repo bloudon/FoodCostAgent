@@ -73,6 +73,7 @@ import {
   AlertTriangle,
   ScanText,
   X,
+  Check,
   ImageIcon,
   Loader2,
   Lock,
@@ -549,6 +550,8 @@ function RecipeBuilderContent() {
     pricePerUnit: "",
     unitId: "",
   });
+  const [showAddCategoryInDialog, setShowAddCategoryInDialog] = useState(false);
+  const [newCategoryNameInDialog, setNewCategoryNameInDialog] = useState("");
 
   // Link to Existing dialog state
   const [linkToExistingDialogOpen, setLinkToExistingDialogOpen] = useState(false);
@@ -1151,6 +1154,23 @@ function RecipeBuilderContent() {
       storeIds,
     });
   };
+
+  const createCategoryInDialogMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", "/api/categories", { name });
+      return res.json();
+    },
+    onSuccess: (newCategory: { id: string; name: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      setNewInventoryForm(prev => ({ ...prev, categoryId: newCategory.id }));
+      setShowAddCategoryInDialog(false);
+      setNewCategoryNameInDialog("");
+      toast({ title: "Category created", description: `"${newCategory.name}" has been added.` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to create category", description: error.message, variant: "destructive" });
+    },
+  });
 
   // Immediately PATCH a specific field on the recipe (used for image upload/remove)
   const patchRecipeFieldsMutation = useMutation({
@@ -2185,7 +2205,10 @@ function RecipeBuilderContent() {
       </Dialog>
 
       {/* Add to Inventory dialog — for missing ingredient rows */}
-      <Dialog open={addToInventoryDialogOpen} onOpenChange={setAddToInventoryDialogOpen}>
+      <Dialog open={addToInventoryDialogOpen} onOpenChange={(open) => {
+        setAddToInventoryDialogOpen(open);
+        if (!open) { setShowAddCategoryInDialog(false); setNewCategoryNameInDialog(""); }
+      }}>
         <DialogContent data-testid="dialog-add-to-inventory">
           <DialogHeader>
             <DialogTitle>Add to Inventory</DialogTitle>
@@ -2223,22 +2246,75 @@ function RecipeBuilderContent() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="new-item-category">Category</Label>
-              <Select
-                value={newInventoryForm.categoryId || undefined}
-                onValueChange={(value) => setNewInventoryForm({ ...newInventoryForm, categoryId: value })}
-              >
-                <SelectTrigger id="new-item-category" data-testid="select-new-inventory-category">
-                  <SelectValue placeholder="No category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories?.map((category) => (
-                    <SelectItem key={category.id} value={category.id}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="new-item-category">Category</Label>
+                {!showAddCategoryInDialog && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCategoryInDialog(true)}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors"
+                    data-testid="button-add-category-inline-dialog"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add new
+                  </button>
+                )}
+              </div>
+
+              {showAddCategoryInDialog ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    autoFocus
+                    placeholder="New category name"
+                    value={newCategoryNameInDialog}
+                    onChange={(e) => setNewCategoryNameInDialog(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newCategoryNameInDialog.trim()) {
+                        createCategoryInDialogMutation.mutate(newCategoryNameInDialog.trim());
+                      } else if (e.key === "Escape") {
+                        setShowAddCategoryInDialog(false);
+                        setNewCategoryNameInDialog("");
+                      }
+                    }}
+                    disabled={createCategoryInDialogMutation.isPending}
+                    data-testid="input-new-category-name-dialog"
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    disabled={!newCategoryNameInDialog.trim() || createCategoryInDialogMutation.isPending}
+                    onClick={() => createCategoryInDialogMutation.mutate(newCategoryNameInDialog.trim())}
+                    data-testid="button-create-category-confirm-dialog"
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => { setShowAddCategoryInDialog(false); setNewCategoryNameInDialog(""); }}
+                    data-testid="button-create-category-cancel-dialog"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <Select
+                  value={newInventoryForm.categoryId || undefined}
+                  onValueChange={(value) => setNewInventoryForm({ ...newInventoryForm, categoryId: value })}
+                >
+                  <SelectTrigger id="new-item-category" data-testid="select-new-inventory-category">
+                    <SelectValue placeholder="No category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories?.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="new-item-price">Price per Unit</Label>
