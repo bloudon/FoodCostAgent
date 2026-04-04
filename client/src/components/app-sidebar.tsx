@@ -36,7 +36,6 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarRail,
-  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
@@ -121,9 +120,12 @@ const mainNavSections: NavSection[] = [
   },
 ];
 
-const settingsItems = [
+const locationItems = [
   { title: "Store Locations", url: "/stores", icon: Store },
   { title: "Storage Locations", url: "/storage-locations", icon: MapPin },
+];
+
+const settingsItems = [
   { title: "Categories", url: "/categories", icon: Tag },
   { title: "Unit Conversions", url: "/unit-conversions", icon: Ruler },
   { title: "API Credentials", url: "/api-credentials", icon: Key },
@@ -209,11 +211,6 @@ export function AppSidebar() {
               data-testid="logo-collapsed"
             />
           </Link>
-          {/* Mobile-only trigger inside the sidebar itself, for backward-compat testid */}
-          <SidebarTrigger
-            className="ml-auto md:hidden"
-            data-testid="button-mobile-menu"
-          />
         </div>
 
         {company && isMobile && (
@@ -355,6 +352,47 @@ export function AppSidebar() {
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <SidebarMenuSub>
+                        {/* Locations sub-group (mirrors old header Locations sub-trigger) */}
+                        <SidebarMenuSubItem>
+                          <Collapsible
+                            defaultOpen={locationItems.some((i) => location === i.url)}
+                            className="group/loc-collapsible w-full"
+                          >
+                            <CollapsibleTrigger asChild>
+                              <SidebarMenuSubButton
+                                data-testid="menu-settings-locations"
+                                className="w-full"
+                              >
+                                <MapPin className="h-3.5 w-3.5" />
+                                <span>Locations</span>
+                                <ChevronRight className="ml-auto h-3 w-3 transition-transform duration-200 group-data-[state=open]/loc-collapsible:rotate-90" />
+                              </SidebarMenuSubButton>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <SidebarMenuSub>
+                                {locationItems.map((item) => {
+                                  const slug = item.title.toLowerCase().replace(/\s+/g, "-");
+                                  return (
+                                    <SidebarMenuSubItem key={item.url}>
+                                      <SidebarMenuSubButton
+                                        asChild
+                                        isActive={location === item.url}
+                                        data-testid={`link-${slug}`}
+                                      >
+                                        <Link href={item.url}>
+                                          <item.icon className="h-3.5 w-3.5" />
+                                          <span>{item.title}</span>
+                                        </Link>
+                                      </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                  );
+                                })}
+                              </SidebarMenuSub>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        </SidebarMenuSubItem>
+
+                        {/* Other settings items */}
                         {settingsItems.map((item) => {
                           const slug = item.title.toLowerCase().replace(/\s+/g, "-");
                           return (

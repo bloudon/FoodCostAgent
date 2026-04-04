@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppSidebar } from "@/components/app-sidebar";
 import { GlobalAdminHeader } from "@/components/global-admin-header";
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import pkgJson from "../../package.json";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { StoreProvider } from "@/hooks/use-store-context";
@@ -174,6 +174,19 @@ function ProtectedLayout() {
   );
 }
 
+/** Renders the top bar inside SidebarInset so useSidebar() is in scope. */
+function AppTopBar() {
+  const { isMobile } = useSidebar();
+  return (
+    <div className="sticky top-0 z-50 flex h-12 items-center border-b px-4 bg-background gap-3">
+      <SidebarTrigger
+        data-testid={isMobile ? "button-mobile-menu" : "button-main-menu"}
+      />
+      <img src="/website-logo.png" alt="FNB Cost Pro" className="h-7 w-auto md:hidden" />
+    </div>
+  );
+}
+
 function ProtectedLayoutContent() {
   const { user } = useAuth();
   const [location] = useLocation();
@@ -231,11 +244,7 @@ function ProtectedLayoutContent() {
       <SidebarProvider className="flex-1 min-h-0">
         <AppSidebar />
         <SidebarInset>
-          {/* Top bar — SidebarTrigger always visible; logo shown on mobile only */}
-          <div className="sticky top-0 z-50 flex h-12 items-center border-b px-4 bg-background gap-3">
-            <SidebarTrigger data-testid="button-main-menu" />
-            <img src="/website-logo.png" alt="FNB Cost Pro" className="h-7 w-auto md:hidden" />
-          </div>
+          <AppTopBar />
 
           <main className="flex-1 overflow-auto">
             <Switch>
