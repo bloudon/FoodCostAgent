@@ -126,7 +126,7 @@ export default function InventoryItemDetail() {
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
   const [deleteVendorItemId, setDeleteVendorItemId] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState<string | undefined>(undefined);
+  const [settingsOpen, setSettingsOpen] = useState<string | undefined>("settings");
   const [showAddVendorRow, setShowAddVendorRow] = useState(false);
   const [editingVendorItemId, setEditingVendorItemId] = useState<string | null>(null);
   const [showInactiveVendors, setShowInactiveVendors] = useState(false);
