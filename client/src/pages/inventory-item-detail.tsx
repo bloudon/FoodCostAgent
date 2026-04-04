@@ -132,6 +132,8 @@ export default function InventoryItemDetail() {
   const [showInactiveVendors, setShowInactiveVendors] = useState(false);
   const [purchaseUom, setPurchaseUom] = useState("Case");
   const [showMiddleRow, setShowMiddleRow] = useState(false);
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
   
   // Vendor item inline edit state (keyed by vendor item id, or "new" for add row)
   const [vendorRowEdits, setVendorRowEdits] = useState<Record<string, {
@@ -257,6 +259,23 @@ export default function InventoryItemDetail() {
         description: error.message,
         variant: "destructive",
       });
+    },
+  });
+
+  const createCategoryMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", "/api/categories", { name });
+      return res.json();
+    },
+    onSuccess: (newCategory: { id: string; name: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      updateMutation.mutate({ categoryId: newCategory.id });
+      setShowAddCategory(false);
+      setNewCategoryName("");
+      toast({ title: "Category created", description: `"${newCategory.name}" has been added.` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to create category", description: error.message, variant: "destructive" });
     },
   });
 
@@ -1037,25 +1056,81 @@ export default function InventoryItemDetail() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="categoryId">Category</Label>
-              <Select 
-                value={getFieldValue("categoryId", item.categoryId || "")} 
-                onValueChange={(value) => {
-                  updateMutation.mutate({ categoryId: value || null });
-                }}
-                disabled={updateMutation.isPending}
-              >
-                <SelectTrigger data-testid="select-category">
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories?.map((category) => (
-                    <SelectItem key={category.id} value={category.id} data-testid={`option-category-${category.id}`}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="categoryId">Category</Label>
+                {!showAddCategory && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto py-0 px-1 text-xs text-muted-foreground"
+                    onClick={() => setShowAddCategory(true)}
+                    data-testid="button-add-category-inline"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add new
+                  </Button>
+                )}
+              </div>
+
+              {showAddCategory ? (
+                <div className="flex items-center gap-2" data-testid="inline-add-category">
+                  <Input
+                    autoFocus
+                    placeholder="New category name"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newCategoryName.trim()) {
+                        createCategoryMutation.mutate(newCategoryName.trim());
+                      } else if (e.key === "Escape") {
+                        setShowAddCategory(false);
+                        setNewCategoryName("");
+                      }
+                    }}
+                    disabled={createCategoryMutation.isPending}
+                    data-testid="input-new-category-name"
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="default"
+                    disabled={!newCategoryName.trim() || createCategoryMutation.isPending}
+                    onClick={() => createCategoryMutation.mutate(newCategoryName.trim())}
+                    data-testid="button-create-category-confirm"
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => { setShowAddCategory(false); setNewCategoryName(""); }}
+                    data-testid="button-create-category-cancel"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <Select 
+                  value={getFieldValue("categoryId", item.categoryId || "")} 
+                  onValueChange={(value) => {
+                    updateMutation.mutate({ categoryId: value || null });
+                  }}
+                  disabled={updateMutation.isPending}
+                >
+                  <SelectTrigger data-testid="select-category">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories?.map((category) => (
+                      <SelectItem key={category.id} value={category.id} data-testid={`option-category-${category.id}`}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Item Image</Label>
