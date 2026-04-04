@@ -1022,6 +1022,7 @@ export default function InventoryItemDetail() {
             );
           })()}
 
+          <div className="grid gap-6 md:grid-cols-2">
           {/* Basic Information Accordion */}
           <Accordion type="single" collapsible value={settingsOpen} onValueChange={setSettingsOpen}>
             <AccordionItem value="settings" className="border rounded-lg px-4">
@@ -1179,7 +1180,6 @@ export default function InventoryItemDetail() {
             </AccordionItem>
           </Accordion>
 
-          <div className="grid gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
