@@ -11170,14 +11170,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // GET /api/admin/users — global admin: full cross-company user roster with last-login stats
   app.get("/api/admin/users", requireAuth, async (req, res) => {
+    type UserRow = {
+      id: string;
+      email: string;
+      first_name: string | null;
+      last_name: string | null;
+      role: string;
+      active: number;
+      created_at: string;
+      company_id: string | null;
+      company_name: string | null;
+      subscription_tier: string | null;
+      last_login_at: string | null;
+      active_session_count: string;
+    };
+
     try {
       const reqUser = await storage.getUser(req.user!.id);
       if (reqUser?.role !== "global_admin") {
         return res.status(403).json({ error: "Only global admins can access this endpoint" });
       }
-      const search = (req.query.search as string | undefined)?.toLowerCase();
+      const search = typeof req.query.search === "string"
+        ? req.query.search.toLowerCase()
+        : undefined;
 
-      const rows = await db.execute(
+      const result = await db.execute(
         sql`SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.active, u.created_at,
                    c.id as company_id, c.name as company_name, c.subscription_tier,
                    MAX(s.last_active_at) as last_login_at,
@@ -11190,10 +11207,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ORDER BY u.created_at DESC`
       );
 
-      let allRows = ((rows as any).rows || rows) as any[];
+      // Neon driver wraps rows in a .rows property; fall back for other drivers
+      const rawRows = (result as { rows?: UserRow[] }).rows ?? (result as UserRow[]);
+      let allRows: UserRow[] = Array.isArray(rawRows) ? rawRows : [];
 
       if (search) {
-        allRows = allRows.filter((r: any) => {
+        allRows = allRows.filter((r) => {
           const name = `${r.first_name ?? ""} ${r.last_name ?? ""}`.toLowerCase();
           return (
             name.includes(search) ||
@@ -11205,20 +11224,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const todayStart = new Date();
       todayStart.setUTCHours(0, 0, 0, 0);
-      const todayStartISO = todayStart.toISOString();
 
       const totalUsers = allRows.length;
-      const activeUsers = allRows.filter((r: any) => r.active === 1 || r.active === true).length;
+      const activeUsers = allRows.filter((r) => r.active === 1).length;
       const inactiveUsers = totalUsers - activeUsers;
-      const activeToday = allRows.filter((r: any) => r.last_login_at && new Date(r.last_login_at) >= todayStart).length;
+      const activeToday = allRows.filter(
+        (r) => r.last_login_at !== null && new Date(r.last_login_at) >= todayStart
+      ).length;
 
       res.json({
         users: allRows,
         stats: { totalUsers, activeUsers, inactiveUsers, activeToday },
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       console.error("GET /api/admin/users error:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: message });
     }
   });
 
