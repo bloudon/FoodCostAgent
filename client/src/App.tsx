@@ -287,9 +287,10 @@ function ProtectedLayoutContent() {
             <span className="text-[10px] text-muted-foreground">v{pkgJson.version}</span>
           </footer>
         </SidebarInset>
-
-        <ChatPanel />
       </SidebarProvider>
+
+      {/* ChatPanel is a fixed overlay — outside the sidebar shell */}
+      <ChatPanel />
     </div>
   );
 }

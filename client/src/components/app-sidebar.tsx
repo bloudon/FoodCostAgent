@@ -312,7 +312,7 @@ export function AppSidebar() {
         )}
 
         {showSettings && (
-          <SidebarGroup>
+          <SidebarGroup className="mt-auto">
             <SidebarGroupLabel>Settings</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
