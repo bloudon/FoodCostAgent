@@ -5,16 +5,12 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { AppHeader } from "@/components/app-header";
+import { AppSidebar } from "@/components/app-sidebar";
 import { GlobalAdminHeader } from "@/components/global-admin-header";
+import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import pkgJson from "../../package.json";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
-import { Button } from "@/components/ui/button";
-import { LogOut, Store } from "lucide-react";
-import { StoreProvider, useStoreContext } from "@/hooks/use-store-context";
-import { useCompany } from "@/hooks/use-company";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { StoreProvider } from "@/hooks/use-store-context";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import InventorySessions from "@/pages/inventory-sessions";
@@ -179,9 +175,7 @@ function ProtectedLayout() {
 }
 
 function ProtectedLayoutContent() {
-  const { user, logout } = useAuth();
-  const { company } = useCompany();
-  const { selectedStoreId, setSelectedStoreId, stores } = useStoreContext();
+  const { user } = useAuth();
   const [location] = useLocation();
 
   const isGlobalAdmin = user?.role === "global_admin";
@@ -232,65 +226,70 @@ function ProtectedLayoutContent() {
   }
 
   return (
-    <div className="flex flex-col h-screen w-full">
-      {isGlobalAdmin && <GlobalAdminHeader />}
-      
-      {/* Compact Combined Header */}
-      <AppHeader />
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>
+        {/* Mobile trigger bar — visible only on small screens */}
+        <div className="md:hidden sticky top-0 z-50 flex h-12 items-center border-b px-4 bg-background gap-3">
+          <SidebarTrigger data-testid="button-mobile-menu" />
+          <img src="/website-logo.png" alt="FNB Cost Pro" className="h-7 w-auto" />
+        </div>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-            <Switch>
-              <Route path="/" component={Dashboard} />
-              <Route path="/companies/:id" component={CompanyDetail} />
-              <Route path="/companies" component={Companies} />
-              <Route path="/stores" component={Stores} />
-              <Route path="/users" component={Users} />
-              <Route path="/inventory-items" component={InventoryItems} />
-              <Route path="/inventory-items/new" component={InventoryItemCreate} />
-              <Route path="/inventory-items/:id" component={InventoryItemDetail} />
-              <Route path="/menu-items" component={MenuItems} />
-              <Route path="/menu-import" component={MenuImport} />
-              <Route path="/inventory-sessions" component={InventorySessions} />
-              <Route path="/inventory-count" component={InventoryCount} />
-              <Route path="/count/:id" component={CountSession} />
-              <Route path="/item-count/:id" component={ItemCount} />
-              <Route path="/recipes/new" component={RecipeBuilder} />
-              <Route path="/recipes/:id/edit" component={RecipeBuilder} />
-              <Route path="/recipes/:id" component={RecipeDetail} />
-              <Route path="/recipes" component={Recipes} />
-              <Route path="/vendors/:id" component={VendorDetail} />
-              <Route path="/vendors" component={Vendors} />
-              <Route path="/order-guides/:id/review" component={OrderGuideReview} />
-              <Route path="/inventory-import" component={InventoryImport} />
-              <Route path="/recipe-import" component={RecipeImport} />
-              <Route path="/orders" component={Orders} />
-              <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
-              <Route path="/purchase-orders" component={PurchaseOrders} />
-              <Route path="/receiving/:poId" component={ReceivingDetail} />
-              <Route path="/transfer-orders/:id" component={TransferOrderDetail} />
-              <Route path="/transfer-orders" component={TransferOrders} />
-              <Route path="/variance" component={VarianceReport} />
-              <Route path="/waste" component={WasteEntry} />
-              <Route path="/tfc/sales-import" component={TfcSalesImport} />
-              <Route path="/tfc/variance" component={TfcVariance} />
-              <Route path="/storage-locations" component={StorageLocations} />
-              <Route path="/categories" component={Categories} />
-              <Route path="/unit-conversions" component={UnitConversions} />
-              <Route path="/api-credentials" component={ApiCredentials} />
-              <Route path="/settings" component={Settings} />
-              <Route path="/admin/backgrounds" component={AdminBackgrounds} />
-              <Route path="/admin/users" component={AdminUsers} />
-              <Route component={NotFound} />
-            </Switch>
-          </main>
+        {isGlobalAdmin && <GlobalAdminHeader />}
 
-      <footer className="shrink-0 border-t px-4 py-1 text-center" data-testid="app-footer-version">
-        <span className="text-[10px] text-muted-foreground">v{pkgJson.version}</span>
-      </footer>
+        <main className="flex-1 overflow-auto">
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/companies/:id" component={CompanyDetail} />
+            <Route path="/companies" component={Companies} />
+            <Route path="/stores" component={Stores} />
+            <Route path="/users" component={Users} />
+            <Route path="/inventory-items" component={InventoryItems} />
+            <Route path="/inventory-items/new" component={InventoryItemCreate} />
+            <Route path="/inventory-items/:id" component={InventoryItemDetail} />
+            <Route path="/menu-items" component={MenuItems} />
+            <Route path="/menu-import" component={MenuImport} />
+            <Route path="/inventory-sessions" component={InventorySessions} />
+            <Route path="/inventory-count" component={InventoryCount} />
+            <Route path="/count/:id" component={CountSession} />
+            <Route path="/item-count/:id" component={ItemCount} />
+            <Route path="/recipes/new" component={RecipeBuilder} />
+            <Route path="/recipes/:id/edit" component={RecipeBuilder} />
+            <Route path="/recipes/:id" component={RecipeDetail} />
+            <Route path="/recipes" component={Recipes} />
+            <Route path="/vendors/:id" component={VendorDetail} />
+            <Route path="/vendors" component={Vendors} />
+            <Route path="/order-guides/:id/review" component={OrderGuideReview} />
+            <Route path="/inventory-import" component={InventoryImport} />
+            <Route path="/recipe-import" component={RecipeImport} />
+            <Route path="/orders" component={Orders} />
+            <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
+            <Route path="/purchase-orders" component={PurchaseOrders} />
+            <Route path="/receiving/:poId" component={ReceivingDetail} />
+            <Route path="/transfer-orders/:id" component={TransferOrderDetail} />
+            <Route path="/transfer-orders" component={TransferOrders} />
+            <Route path="/variance" component={VarianceReport} />
+            <Route path="/waste" component={WasteEntry} />
+            <Route path="/tfc/sales-import" component={TfcSalesImport} />
+            <Route path="/tfc/variance" component={TfcVariance} />
+            <Route path="/storage-locations" component={StorageLocations} />
+            <Route path="/categories" component={Categories} />
+            <Route path="/unit-conversions" component={UnitConversions} />
+            <Route path="/api-credentials" component={ApiCredentials} />
+            <Route path="/settings" component={Settings} />
+            <Route path="/admin/backgrounds" component={AdminBackgrounds} />
+            <Route path="/admin/users" component={AdminUsers} />
+            <Route component={NotFound} />
+          </Switch>
+        </main>
+
+        <footer className="shrink-0 border-t px-4 py-1 text-center" data-testid="app-footer-version">
+          <span className="text-[10px] text-muted-foreground">v{pkgJson.version}</span>
+        </footer>
+      </SidebarInset>
 
       <ChatPanel />
-    </div>
+    </SidebarProvider>
   );
 }
 
