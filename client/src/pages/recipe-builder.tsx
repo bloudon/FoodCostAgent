@@ -1500,7 +1500,7 @@ function RecipeBuilderContent() {
       <div className="h-full flex flex-col pb-16">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-background border-b">
-          <div className="p-6 pb-4">
+          <div className="px-6 py-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <Button
@@ -1518,10 +1518,18 @@ function RecipeBuilderContent() {
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
                 <div>
-                  <div className="flex items-center gap-3">
-                    <h1 className="text-3xl font-bold">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h1 className="text-2xl font-bold">
                       {isNew ? "New Recipe" : "Edit Recipe"}
                     </h1>
+                    {recipeName && (
+                      <span className="text-2xl font-bold text-muted-foreground">—</span>
+                    )}
+                    {recipeName && (
+                      <span className="text-2xl font-bold" data-testid="text-header-recipe-name">
+                        {formatRecipeName(recipeName)}
+                      </span>
+                    )}
                     {isNew && menuItemIdToLink && menuItems && (() => {
                       const menuItem = menuItems.find((mi: any) => mi.id === menuItemIdToLink);
                       if (menuItem) {
@@ -1548,7 +1556,7 @@ function RecipeBuilderContent() {
                       return null;
                     })()}
                   </div>
-                  <p className="text-muted-foreground mt-1">
+                  <p className="text-muted-foreground mt-0.5 text-sm">
                     {menuItemIdToLink 
                       ? "Build your recipe, then save to automatically link it to your menu item"
                       : "Drag ingredients from the left to build your recipe"
@@ -1604,27 +1612,24 @@ function RecipeBuilderContent() {
         <div className="flex-1 overflow-hidden">
           <div className="h-full grid grid-cols-12 gap-6 p-6">
             {/* Left panel - Source items */}
-            <div className="col-span-4 flex flex-col gap-4 overflow-hidden">
-              <div className="space-y-3">
-                <h2 className="text-lg font-semibold">Available Ingredients</h2>
+            <div className="col-span-4 flex flex-col gap-2 overflow-hidden">
+              <div className="space-y-2">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Available Ingredients</h2>
                 
                 {/* Category filter */}
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Category Filter</label>
-                  <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
-                    <SelectTrigger data-testid="select-category-filter">
-                      <SelectValue placeholder="All Categories" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Categories</SelectItem>
-                      {categories?.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          {category.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
+                  <SelectTrigger data-testid="select-category-filter" className="h-8 text-sm">
+                    <SelectValue placeholder="All Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {categories?.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
                 {/* Search */}
                 <div className="relative">
@@ -1633,7 +1638,7 @@ function RecipeBuilderContent() {
                     placeholder="Search items and recipes..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9"
+                    className="pl-9 h-8 text-sm"
                     data-testid="input-search-ingredients"
                   />
                 </div>
