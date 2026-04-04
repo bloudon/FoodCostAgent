@@ -201,7 +201,7 @@ function sortValue(u: AdminUser, col: SortColumn): string | number {
 }
 
 export default function AdminUsers() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const [searchInput, setSearchInput] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -211,13 +211,18 @@ export default function AdminUsers() {
 
   const search = useDebounce(searchInput, 300);
 
+  useEffect(() => {
+    if (!authLoading && user?.role !== "global_admin") {
+      setLocation("/");
+    }
+  }, [authLoading, user, setLocation]);
+
   const { data, isLoading } = useQuery<AdminUsersResponse>({
     queryKey: ["/api/admin/users"],
-    enabled: user?.role === "global_admin",
+    enabled: !authLoading && user?.role === "global_admin",
   });
 
-  if (user?.role !== "global_admin") {
-    setLocation("/");
+  if (authLoading || user?.role !== "global_admin") {
     return null;
   }
 
