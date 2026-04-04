@@ -20,12 +20,6 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -126,7 +120,6 @@ export default function InventoryItemDetail() {
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
   const [deleteVendorItemId, setDeleteVendorItemId] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState<string | undefined>("settings");
   const [showAddVendorRow, setShowAddVendorRow] = useState(false);
   const [editingVendorItemId, setEditingVendorItemId] = useState<string | null>(null);
   const [showInactiveVendors, setShowInactiveVendors] = useState(false);
@@ -655,14 +648,6 @@ export default function InventoryItemDetail() {
               {item.manufacturer && <span>{item.manufacturer} | </span>}PLU/SKU: {item.pluSku}
             </p>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSettingsOpen(settingsOpen ? undefined : "settings")}
-            data-testid="button-settings"
-          >
-            <Settings className="h-4 w-4" />
-          </Button>
           <Badge variant={item.active ? "outline" : "secondary"}>
             {item.active ? "Active" : "Inactive"}
           </Badge>
@@ -1023,16 +1008,15 @@ export default function InventoryItemDetail() {
           })()}
 
           <div className="grid gap-6 md:grid-cols-2">
-          {/* Basic Information Accordion */}
-          <Accordion type="single" collapsible value={settingsOpen} onValueChange={setSettingsOpen}>
-            <AccordionItem value="settings" className="border rounded-lg px-4">
-              <AccordionTrigger className="hover:no-underline">
-                <div className="flex items-center gap-2">
-                  <Settings className="h-4 w-4" />
-                  <span className="font-semibold">Basic Settings</span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="pt-4 space-y-4">
+          {/* Basic Settings Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Basic Settings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">Item Name</Label>
               <Input
@@ -1176,9 +1160,8 @@ export default function InventoryItemDetail() {
                 Upload a product image (max 10MB). Thumbnails will be automatically generated.
               </p>
             </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
