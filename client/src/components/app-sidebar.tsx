@@ -137,7 +137,7 @@ export function AppSidebar() {
   const { selectedStoreId, setSelectedStoreId, stores } = useStoreContext();
   const { data: accessibleStores, isLoading: storesLoading } = useAccessibleStores();
   const { hasFeature } = useTier();
-  const { state } = useSidebar();
+  const { state, isMobile } = useSidebar();
 
   const isStoreUser = user?.role === "store_user";
   const isGlobalAdmin = user?.role === "global_admin";
@@ -216,11 +216,23 @@ export function AppSidebar() {
           />
         </div>
 
+        {company && isMobile && (
+          <div
+            className="font-semibold text-sm px-1 pb-0.5 truncate group-data-[collapsible=icon]:hidden"
+            data-testid="text-company-name-mobile"
+          >
+            {company.name}
+          </div>
+        )}
+
         {company && stores.length > 0 && (
           <>
             <div className="group-data-[collapsible=icon]:hidden">
               <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-                <SelectTrigger className="w-full h-8 text-xs" data-testid="select-store">
+                <SelectTrigger
+                  className="w-full h-8 text-xs"
+                  data-testid={isMobile ? "select-store-mobile" : "select-store"}
+                >
                   <Store className="h-3.5 w-3.5 mr-1 shrink-0" />
                   <SelectValue placeholder="Select store" />
                 </SelectTrigger>
@@ -253,9 +265,9 @@ export function AppSidebar() {
                   asChild
                   isActive={location === "/"}
                   tooltip="Dashboard"
-                  data-testid="link-dashboard"
+                  data-testid={isMobile ? "link-dashboard-mobile" : "link-dashboard"}
                 >
-                  <Link href="/" data-testid-mobile="link-dashboard-mobile">
+                  <Link href="/">
                     <LayoutDashboard />
                     <span>Dashboard</span>
                   </Link>
@@ -290,23 +302,26 @@ export function AppSidebar() {
                       </CollapsibleTrigger>
                       <CollapsibleContent>
                         <SidebarMenuSub>
-                          {section.items.map((item) => (
-                            <SidebarMenuSubItem key={item.url}>
-                              <SidebarMenuSubButton
-                                asChild
-                                isActive={
-                                  location === item.url ||
-                                  location.startsWith(item.url + "/")
-                                }
-                                data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
-                              >
-                                <Link href={item.url}>
-                                  <item.icon className="h-3.5 w-3.5" />
-                                  <span>{item.title}</span>
-                                </Link>
-                              </SidebarMenuSubButton>
-                            </SidebarMenuSubItem>
-                          ))}
+                          {section.items.map((item) => {
+                            const slug = item.title.toLowerCase().replace(/\s+/g, "-");
+                            return (
+                              <SidebarMenuSubItem key={item.url}>
+                                <SidebarMenuSubButton
+                                  asChild
+                                  isActive={
+                                    location === item.url ||
+                                    location.startsWith(item.url + "/")
+                                  }
+                                  data-testid={isMobile ? `link-${slug}-mobile` : `link-${slug}`}
+                                >
+                                  <Link href={item.url}>
+                                    <item.icon className="h-3.5 w-3.5" />
+                                    <span>{item.title}</span>
+                                  </Link>
+                                </SidebarMenuSubButton>
+                              </SidebarMenuSubItem>
+                            );
+                          })}
                         </SidebarMenuSub>
                       </CollapsibleContent>
                     </SidebarMenuItem>
@@ -340,20 +355,30 @@ export function AppSidebar() {
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <SidebarMenuSub>
-                        {settingsItems.map((item) => (
-                          <SidebarMenuSubItem key={item.url}>
-                            <SidebarMenuSubButton
-                              asChild
-                              isActive={location === item.url}
-                              data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
-                            >
-                              <Link href={item.url}>
-                                <item.icon className="h-3.5 w-3.5" />
-                                <span>{item.title}</span>
-                              </Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))}
+                        {settingsItems.map((item) => {
+                          const slug = item.title.toLowerCase().replace(/\s+/g, "-");
+                          // Store Locations was grouped under a "Locations" sub-trigger in the
+                          // old header (data-testid="menu-settings-locations"). On desktop,
+                          // preserve that testid for backward compat.
+                          const testId =
+                            !isMobile && item.title === "Store Locations"
+                              ? "menu-settings-locations"
+                              : `link-${slug}`;
+                          return (
+                            <SidebarMenuSubItem key={item.url}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={location === item.url}
+                                data-testid={testId}
+                              >
+                                <Link href={item.url}>
+                                  <item.icon className="h-3.5 w-3.5" />
+                                  <span>{item.title}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          );
+                        })}
                       </SidebarMenuSub>
                     </CollapsibleContent>
                   </SidebarMenuItem>
@@ -363,55 +388,6 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        {/* Hidden backward-compat aliases: these mirror the old app-header.tsx mobile
-            sheet testids so existing test selectors continue to work. They are
-            aria-hidden and visually hidden (sr-only) but remain clickable. */}
-        <div className="sr-only" aria-hidden="true">
-          {company && (
-            <>
-              <span data-testid="text-company-name-mobile">{company.name}</span>
-              {stores.length > 0 && (
-                <select
-                  data-testid="select-store-mobile"
-                  value={selectedStoreId}
-                  onChange={(e) => setSelectedStoreId(e.target.value)}
-                  tabIndex={-1}
-                >
-                  {stores.map((store) => (
-                    <option key={store.id} value={store.id}>
-                      {store.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </>
-          )}
-          <Link href="/" data-testid="link-dashboard-mobile" tabIndex={-1}>Dashboard</Link>
-          {visibleSections.flatMap((section) =>
-            section.items.map((item) => (
-              <Link
-                key={`${item.url}-mobile-compat`}
-                href={item.url}
-                data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}-mobile`}
-                tabIndex={-1}
-              >
-                {item.title}
-              </Link>
-            ))
-          )}
-          {/* Backward-compat for old settings nested "Locations" submenu trigger */}
-          <button data-testid="menu-settings-locations" tabIndex={-1} type="button">
-            Locations
-          </button>
-          <button
-            onClick={logout}
-            data-testid="button-logout-mobile"
-            tabIndex={-1}
-            type="button"
-          >
-            Logout
-          </button>
-        </div>
       </SidebarContent>
 
       <SidebarFooter className="border-t">
@@ -455,7 +431,7 @@ export function AppSidebar() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={logout}
-                  data-testid="button-logout"
+                  data-testid={isMobile ? "button-logout-mobile" : "button-logout"}
                   className="cursor-pointer"
                 >
                   <LogOut className="h-4 w-4 mr-2" />
