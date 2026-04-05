@@ -384,6 +384,8 @@ export default function InventoryItemDetail() {
     const baseUnit = units.find(u => u.id === item.unitId);
     const cUnit = units.find(u => u.id === cUnitId);
     if (!baseUnit || !cUnit || baseUnit.toBaseRatio <= 0) return null;
+    // Guard: reject cross-kind conversions (e.g., oz → gallon)
+    if (baseUnit.kind !== cUnit.kind) return null;
     return displayVal * (cUnit.toBaseRatio / baseUnit.toBaseRatio);
   };
 
@@ -1302,7 +1304,7 @@ export default function InventoryItemDetail() {
                   if (!isNaN(val) && val > 0 && item && selectedContainerUnitId && units) {
                     const baseUnit = units.find(u => u.id === item.unitId);
                     const cUnit = units.find(u => u.id === selectedContainerUnitId);
-                    if (baseUnit && cUnit && baseUnit.toBaseRatio > 0) {
+                    if (baseUnit && cUnit && baseUnit.toBaseRatio > 0 && baseUnit.kind === cUnit.kind) {
                       const containerSizeInItemUnit = val * (cUnit.toBaseRatio / baseUnit.toBaseRatio);
                       if (containerSizeInItemUnit > 0 && item.caseSize) {
                         return item.caseSize / containerSizeInItemUnit;

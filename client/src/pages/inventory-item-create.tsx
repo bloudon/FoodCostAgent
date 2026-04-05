@@ -121,12 +121,22 @@ export default function InventoryItemCreate() {
     }
   }, [units, unitId]);
 
-  // Sync containerUnitId default when unitId changes
+  // Sync containerUnitId whenever unitId changes:
+  // - Default to base unit when not set
+  // - Reset to base unit if current containerUnit is a different kind (e.g., lb → gallon)
   useEffect(() => {
-    if (unitId && !containerUnitId) {
+    if (!unitId || !units) return;
+    if (!containerUnitId) {
+      setContainerUnitId(unitId);
+      return;
+    }
+    const baseUnit = units.find(u => u.id === unitId);
+    const cUnit = units.find(u => u.id === containerUnitId);
+    if (baseUnit && cUnit && baseUnit.kind !== cUnit.kind) {
+      // Incompatible kinds after base unit change — reset to new base unit
       setContainerUnitId(unitId);
     }
-  }, [unitId, containerUnitId]);
+  }, [unitId, units]);
 
   // Select all stores by default when stores are loaded
   useEffect(() => {
@@ -154,11 +164,14 @@ export default function InventoryItemCreate() {
   const parsedContainerDisplaySize = parseFloat(containerDisplaySize) || 0;
 
   // Convert displayed container size to item's unit using toBaseRatio
+  // Returns null if units are incompatible (different kind) to prevent cross-kind math
   const computeContainerSizeInItemUnit = (): number | null => {
     if (!parsedContainerDisplaySize || !containerUnitId || !unitId || !units) return null;
     const baseUnit = units.find(u => u.id === unitId);
     const cUnit = units.find(u => u.id === containerUnitId);
     if (!baseUnit || !cUnit || baseUnit.toBaseRatio <= 0) return null;
+    // Guard: reject cross-kind conversions (e.g., oz → gallon)
+    if (baseUnit.kind !== cUnit.kind) return null;
     return parsedContainerDisplaySize * (cUnit.toBaseRatio / baseUnit.toBaseRatio);
   };
 
