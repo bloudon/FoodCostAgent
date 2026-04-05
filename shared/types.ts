@@ -12,6 +12,10 @@ export interface EnrichedInventoryItem {
   avgCostPerUnit: number;
   unitId: string;
   caseSize: number;
+  containerSize: number | null;
+  containerLabel: string | null;
+  containerUnitId: string | null;
+  casePkgCount: number | null;
   yieldPercent: number;
   imageUrl: string | null;
   parLevel: number | null;

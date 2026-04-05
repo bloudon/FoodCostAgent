@@ -476,7 +476,7 @@ export default function InventoryItemCreate() {
                   <thead>
                     <tr className="border-b text-xs text-muted-foreground">
                       <th className="pb-2 text-left font-medium">Pack</th>
-                      <th className="pb-2 text-left font-medium">Container Size</th>
+                      <th className="pb-2 text-left font-medium">Size</th>
                       <th className="pb-2 text-left font-medium">Qty / Case</th>
                       <th className="w-8 pb-2"></th>
                     </tr>

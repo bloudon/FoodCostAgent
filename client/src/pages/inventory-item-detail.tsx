@@ -397,7 +397,7 @@ export default function InventoryItemDetail() {
       containerSize: containerSizeInItemUnit,
       containerUnitId: selectedContainerUnitId,
       casePkgCount: newCasePkgCount,
-    } as any);
+    });
   };
 
   const handleContainerUnitChange = (newUnitId: string) => {
@@ -411,7 +411,7 @@ export default function InventoryItemDetail() {
           containerSize: containerSizeInItemUnit,
           containerUnitId: newUnitId,
           casePkgCount: newCasePkgCount,
-        } as any);
+        });
       }
     }
   };
@@ -420,7 +420,7 @@ export default function InventoryItemDetail() {
     setShowMiddleRow(false);
     setContainerDisplaySize("");
     setSelectedContainerUnitId(item?.unitId || "");
-    updateMutation.mutate({ containerSize: null, casePkgCount: null, containerLabel: null, containerUnitId: null } as any);
+    updateMutation.mutate({ containerSize: null, casePkgCount: null, containerLabel: null, containerUnitId: null });
   };
 
   const handleLocationToggle = (locationId: string) => {
@@ -1366,7 +1366,7 @@ export default function InventoryItemDetail() {
                         <thead>
                           <tr className="border-b text-xs text-muted-foreground">
                             <th className="pb-2 text-left font-medium">Pack</th>
-                            <th className="pb-2 text-left font-medium">Container Size</th>
+                            <th className="pb-2 text-left font-medium">Size</th>
                             <th className="pb-2 text-left font-medium">Qty / Case</th>
                             <th className="w-8 pb-2"></th>
                           </tr>
