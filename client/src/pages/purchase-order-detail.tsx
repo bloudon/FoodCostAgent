@@ -331,7 +331,8 @@ export default function PurchaseOrderDetail() {
           };
         } else {
           const vendorItem = vendorItems?.find(item => item.id === itemId);
-          const caseSize = vendorItem?.inventoryItem?.caseSize || 1;
+          // Use vendor item's caseSize (Units/Case) — this is total units per case after Task #52
+          const caseSize = vendorItem?.caseSize ?? vendorItem?.inventoryItem?.caseSize ?? 1;
           const unitPrice = vendorItem?.lastPrice ?? vendorItem?.inventoryItem?.pricePerUnit ?? 0;
           
           return {
@@ -455,7 +456,8 @@ export default function PurchaseOrderDetail() {
       return sum + (caseQty * (invItem?.pricePerUnit || 0));
     } else {
       const vendorItem = vendorItems?.find(item => item.id === itemId);
-      const caseSize = vendorItem?.inventoryItem?.caseSize || 1;
+      // Use vendor item's caseSize (Units/Case) — total units per case after Task #52
+      const caseSize = vendorItem?.caseSize ?? vendorItem?.inventoryItem?.caseSize ?? 1;
       const unitPrice = vendorItem?.lastPrice ?? vendorItem?.inventoryItem?.pricePerUnit ?? 0;
       const casePrice = unitPrice * caseSize;
       return sum + (caseQty * casePrice);

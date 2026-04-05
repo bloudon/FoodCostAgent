@@ -497,6 +497,7 @@ export default function InventoryItemDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "vendor-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "detail"] });
       toast({
         title: "Vendor added",
         description: "The vendor has been successfully added to this item.",
@@ -524,6 +525,7 @@ export default function InventoryItemDetail() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "vendor-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "detail"] });
       toast({
         title: "Vendor updated",
         description: "The vendor information has been successfully updated.",

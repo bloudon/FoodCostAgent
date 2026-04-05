@@ -5814,6 +5814,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertVendorItemSchema.parse(req.body);
       
+      // Normalize: fold any legacy innerPackSize into caseSize, then force innerPackSize = 1
+      // (Task #52: caseSize is now the single "total units per case" field)
+      if (data.innerPackSize && data.innerPackSize > 1) {
+        data.caseSize = (data.caseSize || 1) * data.innerPackSize;
+      }
+      data.innerPackSize = 1;
+      
       // Derive unit price from case price (caseSize is now total units per case)
       const caseSize = data.caseSize || 1;
       if (data.lastCasePrice && data.lastCasePrice > 0 && caseSize > 0) {
@@ -5856,6 +5863,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const currentItem = await storage.getVendorItem(req.params.id);
       if (!currentItem) {
         return res.status(404).json({ error: "Vendor item not found" });
+      }
+      
+      // Normalize: fold any legacy innerPackSize into caseSize, then force innerPackSize = 1
+      // (Task #52: caseSize is the single "total units per case" field)
+      if (updates.innerPackSize && updates.innerPackSize > 1) {
+        updates.caseSize = (updates.caseSize ?? currentItem.caseSize ?? 1) * updates.innerPackSize;
+      }
+      if (updates.innerPackSize !== undefined) {
+        updates.innerPackSize = 1;
       }
       
       // If case price or caseSize is changing, recalculate unit price
