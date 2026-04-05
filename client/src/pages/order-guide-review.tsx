@@ -14,7 +14,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, AlertCircle, PlusCircle, ArrowLeft, Check, CheckCheck, Store, ChevronDown } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { CheckCircle2, AlertCircle, PlusCircle, ArrowLeft, Check, CheckCheck, Store, ChevronDown, Building2, TriangleAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useStoreContext } from '@/hooks/use-store-context';
@@ -23,6 +30,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+
+interface Vendor {
+  id: string;
+  name: string;
+}
 
 interface OrderGuideLine {
   id: string;
@@ -44,6 +56,8 @@ interface ReviewData {
     fileName: string | null;
     rowCount: number;
     status: string;
+    vendorId: string | null;
+    source: string | null;
   };
   lines: {
     matched: OrderGuideLine[];
@@ -70,6 +84,10 @@ export default function OrderGuideReview() {
   // Track target stores for import - default to all stores
   const [targetStoreIds, setTargetStoreIds] = useState<Set<string>>(new Set());
   const [isStoreSelectionOpen, setIsStoreSelectionOpen] = useState(false);
+
+  // Vendor selection state — initialized from guide.vendorId once loaded
+  const [currentVendorId, setCurrentVendorId] = useState<string | null>(null);
+  const [vendorInitialized, setVendorInitialized] = useState(false);
   
   // Initialize target stores when stores are loaded
   useEffect(() => {
@@ -88,6 +106,24 @@ export default function OrderGuideReview() {
     enabled: !!orderGuideId,
   });
 
+  // Initialize vendor from guide data (only once)
+  useEffect(() => {
+    if (reviewData && !vendorInitialized) {
+      setCurrentVendorId(reviewData.guide.vendorId ?? null);
+      setVendorInitialized(true);
+    }
+  }, [reviewData, vendorInitialized]);
+
+  // Fetch all company vendors for the selector
+  const { data: vendors } = useQuery<Vendor[]>({
+    queryKey: ['/api/vendors'],
+    queryFn: async () => {
+      const res = await fetch('/api/vendors');
+      if (!res.ok) throw new Error('Failed to load vendors');
+      return res.json();
+    },
+  });
+
   // Select all items by default when data loads
   useMemo(() => {
     if (reviewData && selectedLineIds.size === 0) {
@@ -98,6 +134,29 @@ export default function OrderGuideReview() {
       setSelectedLineIds(allLineIds);
     }
   }, [reviewData]);
+
+  // Mutation to update vendor on the guide
+  const vendorMutation = useMutation({
+    mutationFn: async (vendorId: string | null) => {
+      return apiRequest('PATCH', `/api/order-guides/${orderGuideId}/vendor`, { vendorId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/order-guides', orderGuideId, 'review'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Vendor update failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleVendorChange = (value: string) => {
+    const newVendorId = value === '__none__' ? null : value;
+    setCurrentVendorId(newVendorId);
+    vendorMutation.mutate(newVendorId);
+  };
 
   const approveMutation = useMutation({
     mutationFn: async ({ importAll }: { importAll: boolean }) => {
@@ -216,6 +275,9 @@ export default function OrderGuideReview() {
 
   const matchPercentage = Math.round((reviewData.summary.matched / reviewData.summary.total) * 100);
   const selectedCount = selectedLineIds.size;
+  const isImageScan = reviewData.guide.source === 'image_scan';
+  const noVendorWarning = isImageScan && !currentVendorId;
+  const selectedVendorName = vendors?.find(v => v.id === currentVendorId)?.name;
 
   return (
     <div className="p-6 space-y-6">
@@ -326,10 +388,55 @@ export default function OrderGuideReview() {
         </div>
       </div>
 
+      {/* Vendor Assignment Card */}
+      <Card className={noVendorWarning ? 'border-yellow-500/60' : ''}>
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              <span>Vendor</span>
+            </div>
+            <Select
+              value={currentVendorId ?? '__none__'}
+              onValueChange={handleVendorChange}
+              disabled={vendorMutation.isPending}
+            >
+              <SelectTrigger className="w-64" data-testid="select-vendor">
+                <SelectValue placeholder="Select a vendor…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">No vendor assigned</SelectItem>
+                {(vendors ?? []).map(vendor => (
+                  <SelectItem key={vendor.id} value={vendor.id}>
+                    {vendor.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {currentVendorId && selectedVendorName && (
+              <Badge variant="secondary" data-testid="badge-vendor-name">
+                {selectedVendorName}
+              </Badge>
+            )}
+            {isImageScan && currentVendorId && (
+              <span className="text-xs text-muted-foreground">Auto-detected from invoice</span>
+            )}
+          </div>
+          {noVendorWarning && (
+            <div className="mt-3 flex items-start gap-2 rounded-md bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 p-3">
+              <TriangleAlert className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5 shrink-0" />
+              <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                No vendor selected — item prices won't be saved as vendor pricing. Select a vendor above to link pricing data.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Items</CardTitle>
           </CardHeader>
           <CardContent>
@@ -339,7 +446,7 @@ export default function OrderGuideReview() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Auto-Matched</CardTitle>
             <CheckCircle2 className="h-4 w-4 text-green-600" />
           </CardHeader>
@@ -350,7 +457,7 @@ export default function OrderGuideReview() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Needs Review</CardTitle>
             <AlertCircle className="h-4 w-4 text-yellow-600" />
           </CardHeader>
@@ -361,7 +468,7 @@ export default function OrderGuideReview() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">New Items</CardTitle>
             <PlusCircle className="h-4 w-4 text-blue-600" />
           </CardHeader>
@@ -388,7 +495,7 @@ export default function OrderGuideReview() {
 
         <TabsContent value="matched" className="space-y-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
               <div>
                 <CardTitle>Auto-Matched Items</CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
@@ -426,7 +533,7 @@ export default function OrderGuideReview() {
 
         <TabsContent value="ambiguous" className="space-y-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
               <div>
                 <CardTitle>Items Needing Review</CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
@@ -465,7 +572,7 @@ export default function OrderGuideReview() {
 
         <TabsContent value="new" className="space-y-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
               <div>
                 <CardTitle>New Items</CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">

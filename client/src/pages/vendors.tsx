@@ -530,9 +530,14 @@ export default function Vendors() {
         storeIds: scanStoreIds,
       });
       const data = await response.json();
+      const vendorNote = data.detectedVendorId
+        ? ` Vendor auto-identified: ${data.detectedVendorName || 'detected'}.`
+        : data.detectedVendorName && !data.detectedVendorId
+        ? ` Vendor "${data.detectedVendorName}" on invoice not found in your vendor list.`
+        : '';
       toast({
         title: "Invoice scanned",
-        description: `${data.totalItems} items extracted — ${data.highConfidenceMatches} auto-matched. Review below.`,
+        description: `${data.totalItems} items extracted — ${data.highConfidenceMatches} auto-matched.${vendorNote}`,
       });
       setIsScanDialogOpen(false);
       setLocation(`/order-guides/${data.orderGuideId}/review`);

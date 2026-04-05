@@ -3810,6 +3810,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(422).json({ error: "No product line items could be extracted from this image. Try a clearer photo." });
       }
 
+      // --- Auto-detect vendor from scanned vendor name (if no explicit vendorId provided) ---
+      let detectedVendorId: string | null = null;
+      let detectedVendorName: string | null = scanResult.vendorName || null;
+      if (!validatedVendorId && scanResult.vendorName) {
+        const companyVendors = await storage.getVendors(companyId);
+        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+        const scannedNorm = normalize(scanResult.vendorName);
+        let bestScore = 0;
+        let bestVendorId: string | null = null;
+        for (const vendor of companyVendors) {
+          const vendorNorm = normalize(vendor.name);
+          // Token-based Jaccard similarity
+          const scannedTokens = new Set(scannedNorm.split(' '));
+          const vendorTokens = new Set(vendorNorm.split(' '));
+          const intersection = [...scannedTokens].filter(t => vendorTokens.has(t)).length;
+          const union = new Set([...scannedTokens, ...vendorTokens]).size;
+          const score = union > 0 ? intersection / union : 0;
+          // Also check substring containment for short names
+          const subScore = vendorNorm.includes(scannedNorm) || scannedNorm.includes(vendorNorm) ? 0.8 : 0;
+          const finalScore = Math.max(score, subScore);
+          if (finalScore > bestScore) {
+            bestScore = finalScore;
+            bestVendorId = vendor.id;
+          }
+        }
+        if (bestScore >= 0.5 && bestVendorId) {
+          validatedVendorId = bestVendorId;
+          detectedVendorId = bestVendorId;
+        }
+      }
+
       // Convert extracted items to VendorProduct[] shape that orderGuideProcessor consumes.
       // IMPORTANT: VendorProduct.price and orderGuideLine.price both represent CASE price —
       // the orderGuideProcessor.approve() flow divides by caseSize to derive unit price.
@@ -3906,6 +3937,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         noMatches: stats.noMatches,
         readyForReview: true,
         vendorName: scanResult.vendorName,
+        detectedVendorId,
+        detectedVendorName,
       });
     } catch (error: any) {
       console.error('[Vendor Receipt Scan Error]', error);
@@ -3942,6 +3975,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('[Order Guide Review Error]', error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PATCH /api/order-guides/:id/vendor — update vendor assignment on a pending_review guide
+  app.patch("/api/order-guides/:id/vendor", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { id } = req.params;
+
+      const bodySchema = z.object({
+        vendorId: z.string().nullable(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+      const { vendorId } = parsed.data;
+
+      // Verify guide exists and belongs to company
+      const guide = await storage.getOrderGuide(id);
+      if (!guide || guide.companyId !== companyId) {
+        return res.status(404).json({ error: "Order guide not found." });
+      }
+      if (guide.status !== 'pending_review') {
+        return res.status(409).json({ error: "Order guide has already been processed." });
+      }
+
+      // Validate vendorId belongs to company (if provided)
+      if (vendorId) {
+        const vendor = await storage.getVendor(vendorId, companyId);
+        if (!vendor || vendor.companyId !== companyId) {
+          return res.status(403).json({ error: "Vendor not found or access denied." });
+        }
+      }
+
+      await storage.updateOrderGuideVendor(id, vendorId);
+      return res.json({ success: true });
+    } catch (error: any) {
+      console.error('[Order Guide Vendor PATCH Error]', error);
+      return res.status(500).json({ error: error.message });
     }
   });
 

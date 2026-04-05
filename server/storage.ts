@@ -431,6 +431,7 @@ export interface IStorage {
   getOrderGuides(vendorKey?: string, limit?: number): Promise<OrderGuide[]>;
   getOrderGuide(id: string): Promise<OrderGuide | undefined>;
   createOrderGuide(guide: InsertOrderGuide): Promise<OrderGuide>;
+  updateOrderGuideVendor(id: string, vendorId: string | null): Promise<void>;
   supersedePreviousOrderGuides(vendorId: string, excludeGuideId?: string): Promise<number>;
 
   // Order Guide Lines
@@ -3323,6 +3324,13 @@ export class DatabaseStorage implements IStorage {
   async createOrderGuide(guide: InsertOrderGuide): Promise<OrderGuide> {
     const results = await db.insert(orderGuides).values(guide).returning();
     return results[0];
+  }
+
+  async updateOrderGuideVendor(id: string, vendorId: string | null): Promise<void> {
+    await db
+      .update(orderGuides)
+      .set({ vendorId })
+      .where(eq(orderGuides.id, id));
   }
 
   async supersedePreviousOrderGuides(vendorId: string, excludeGuideId?: string): Promise<number> {
