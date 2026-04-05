@@ -3759,6 +3759,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const { objectPath, vendorId, storeIds } = parsed.data;
 
+      // --- Security: validate vendorId belongs to this company ---
+      let validatedVendorId: string | null = null;
+      if (vendorId) {
+        const vendor = await storage.getVendor(vendorId, companyId);
+        if (!vendor || vendor.companyId !== companyId) {
+          return res.status(403).json({ error: "Vendor not found or access denied." });
+        }
+        validatedVendorId = vendorId;
+      }
+
+      // --- Security: validate storeIds all belong to this company ---
+      let validatedStoreIds: string[] = [];
+      if (storeIds && storeIds.length > 0) {
+        const companyStoresList = await storage.getCompanyStores(companyId);
+        const companyStoreIds = new Set(companyStoresList.map(s => s.id));
+        validatedStoreIds = storeIds.filter(id => companyStoreIds.has(id));
+        if (validatedStoreIds.length === 0) {
+          return res.status(400).json({ error: "No valid stores found for your company in the provided storeIds." });
+        }
+      } else if (storeId) {
+        validatedStoreIds = [storeId];
+      }
+
       // Read image from storage
       const { buffer, mimeType: storageMime } = await readImageBuffer(objectPath, companyId, userId);
 
@@ -3803,11 +3826,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const matcher = new ItemMatcher(storage);
 
       const guideFileName = `Receipt Scan — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-      const effectiveStoreId = (storeIds && storeIds.length > 0) ? storeIds[0] : storeId;
+      // Use first validated store for item matching context
+      const effectiveStoreId = validatedStoreIds[0] || storeId;
 
       const guideInsert = {
         companyId,
-        vendorId: vendorId || null,
+        vendorId: validatedVendorId,
         vendorKey: 'generic' as const,
         fileName: guideFileName,
         rowCount: vendorProducts.length,
@@ -3817,9 +3841,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const createdGuide = await storage.createOrderGuide(guideInsert);
 
-      // Supersede previous guides for this vendor
-      if (vendorId) {
-        await storage.supersedePreviousOrderGuides(vendorId, createdGuide.id);
+      // Persist store assignments so review page knows which stores this guide applies to
+      if (validatedStoreIds.length > 0) {
+        await storage.setOrderGuideStores(createdGuide.id, validatedStoreIds);
+      }
+
+      // Supersede previous guides for this vendor (scoped to company via vendor ownership already verified)
+      if (validatedVendorId) {
+        await storage.supersedePreviousOrderGuides(validatedVendorId, createdGuide.id);
       }
 
       // Match products and build lines
