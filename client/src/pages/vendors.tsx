@@ -100,7 +100,7 @@ export default function Vendors() {
 
   // Scan Invoice dialog state
   const [isScanDialogOpen, setIsScanDialogOpen] = useState(false);
-  const [scanVendorId, setScanVendorId] = useState<string>("");
+  const [scanVendorId, setScanVendorId] = useState<string>("__none__");
   const [scanStoreIds, setScanStoreIds] = useState<string[]>([]);
   const [scannedObjectPath, setScannedObjectPath] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -498,7 +498,7 @@ export default function Vendors() {
   };
 
   const handleOpenScanDialog = () => {
-    setScanVendorId("");
+    setScanVendorId("__none__");
     setScanStoreIds(selectedStoreId ? [selectedStoreId] : stores.map(s => s.id));
     setScannedObjectPath(null);
     setIsScanning(false);
@@ -526,7 +526,7 @@ export default function Vendors() {
     try {
       const response = await apiRequest("POST", "/api/order-guides/scan-image", {
         objectPath: scannedObjectPath,
-        vendorId: scanVendorId || undefined,
+        vendorId: (scanVendorId && scanVendorId !== "__none__") ? scanVendorId : undefined,
         storeIds: scanStoreIds,
       });
       const data = await response.json();
@@ -1255,7 +1255,7 @@ export default function Vendors() {
                   <SelectValue placeholder="Select vendor (recommended)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No vendor / Unknown</SelectItem>
+                  <SelectItem value="__none__">No vendor / Unknown</SelectItem>
                   {vendors?.filter(v => v.active === 1).map(vendor => (
                     <SelectItem key={vendor.id} value={vendor.id}>
                       {vendor.name}
