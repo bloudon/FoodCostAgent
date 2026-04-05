@@ -3810,14 +3810,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(422).json({ error: "No product line items could be extracted from this image. Try a clearer photo." });
       }
 
-      // Convert extracted items to VendorProduct[] shape that orderGuideProcessor consumes
+      // Convert extracted items to VendorProduct[] shape that orderGuideProcessor consumes.
+      // IMPORTANT: VendorProduct.price and orderGuideLine.price both represent CASE price —
+      // the orderGuideProcessor.approve() flow divides by caseSize to derive unit price.
+      // Therefore we only populate price from item.casePrice.
+      // If the scanner only returned unitPrice (priceType='unit'), we leave price undefined
+      // (null on the line) to avoid the approve() flow dividing it again incorrectly.
       const vendorProducts = scanResult.items.map((item, index) => ({
         vendorSku: item.sku || `scan-${index + 1}`,
         vendorProductName: item.name,
         description: item.packSizeDescription || undefined,
         caseSizeRaw: item.packSizeDescription || undefined,
         unit: item.unit || undefined,
-        price: item.unitPrice ?? (item.casePrice ?? undefined),
+        // Use casePrice when available; fall back to unitPrice only when priceType explicitly says 'unit'
+        // to leave it null (we don't convert unit→case as we'd need caseSize which isn't reliable here)
+        price: item.casePrice ?? undefined,
         categoryCode: item.categoryHint || undefined,
       }));
 
