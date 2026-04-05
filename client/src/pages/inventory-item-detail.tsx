@@ -49,6 +49,7 @@ type InventoryItem = {
   caseSize: number;
   containerSize: number | null;
   containerLabel: string | null;
+  containerUnitId: string | null;
   casePkgCount: number | null;
   storageLocationId: string;
   yieldPercent: number;
@@ -125,6 +126,8 @@ export default function InventoryItemDetail() {
   const [showInactiveVendors, setShowInactiveVendors] = useState(false);
   const [purchaseUom, setPurchaseUom] = useState("Case");
   const [showMiddleRow, setShowMiddleRow] = useState(false);
+  const [containerDisplaySize, setContainerDisplaySize] = useState<string>("");
+  const [selectedContainerUnitId, setSelectedContainerUnitId] = useState<string>("");
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   
@@ -162,6 +165,16 @@ export default function InventoryItemDetail() {
     queryKey: ["/api/units"],
   });
 
+  const { data: compatibleUnits } = useQuery<Unit[]>({
+    queryKey: ["/api/units/compatible", item?.unitId],
+    queryFn: async () => {
+      const response = await fetch(`/api/units/compatible?unitId=${item!.unitId}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch compatible units");
+      return response.json();
+    },
+    enabled: !!item?.unitId,
+  });
+
   const { data: systemPrefs } = useQuery<SystemPreferences>({
     queryKey: ["/api/system-preferences"],
   });
@@ -197,10 +210,24 @@ export default function InventoryItemDetail() {
   });
 
   useEffect(() => {
-    if (item) {
-      setShowMiddleRow(!!(item.casePkgCount && item.casePkgCount > 0));
+    if (!item) return;
+    setShowMiddleRow(!!(item.casePkgCount && item.casePkgCount > 0));
+    // Initialize container display size and unit
+    const cUnitId = item.containerUnitId || item.unitId;
+    setSelectedContainerUnitId(cUnitId);
+    if (item.containerSize && item.containerSize > 0 && units) {
+      const baseUnit = units.find(u => u.id === item.unitId);
+      const cUnit = units.find(u => u.id === cUnitId);
+      if (baseUnit && cUnit && cUnit.toBaseRatio > 0) {
+        const displayVal = item.containerSize * (baseUnit.toBaseRatio / cUnit.toBaseRatio);
+        setContainerDisplaySize(parseFloat(displayVal.toFixed(6)).toString());
+      } else {
+        setContainerDisplaySize(item.containerSize > 0 ? String(item.containerSize) : "");
+      }
+    } else {
+      setContainerDisplaySize("");
     }
-  }, [item?.id]);
+  }, [item?.id, units]);
 
   useEffect(() => {
     if (itemLocations) {
@@ -340,42 +367,60 @@ export default function InventoryItemDetail() {
   const handleCaseSizeBlur = () => {
     if (!("caseSize" in editedFields)) return;
     const newCaseSize = parseFloat(editedFields["caseSize"]);
-    // Always clear the edited field — revert to server value if input is invalid
     setEditedFields(prev => { const n = { ...prev }; delete n.caseSize; return n; });
     if (!isNaN(newCaseSize) && newCaseSize > 0) {
-      // Use live casePkgCount from editedFields (user may have typed a new value not yet saved)
-      const livePkgCount = "casePkgCount" in editedFields
-        ? parseFloat(editedFields["casePkgCount"])
-        : (item?.casePkgCount ?? 0);
       const updates: Partial<InventoryItem> = { caseSize: newCaseSize };
-      if (showMiddleRow && livePkgCount > 0) {
-        updates.containerSize = newCaseSize / livePkgCount;
+      // Recalculate casePkgCount keeping containerSize the same
+      if (showMiddleRow && item?.containerSize && item.containerSize > 0) {
+        updates.casePkgCount = newCaseSize / item.containerSize;
       }
       updateMutation.mutate(updates);
     }
   };
 
-  const handleCasePkgCountBlur = () => {
-    if (!("casePkgCount" in editedFields)) return;
-    const newPkgCount = parseFloat(editedFields["casePkgCount"]);
-    // Always clear the edited field — revert to server value if input is invalid
-    setEditedFields(prev => { const n = { ...prev }; delete n.casePkgCount; return n; });
-    if (!isNaN(newPkgCount) && newPkgCount > 0 && item) {
-      // Use live caseSize from editedFields first (user may have changed it in this editing session)
-      const liveCaseSize = "caseSize" in editedFields
-        ? parseFloat(editedFields["caseSize"])
-        : item.caseSize;
-      updateMutation.mutate({
-        casePkgCount: newPkgCount,
-        containerSize: liveCaseSize / newPkgCount,
-      });
+  // Convert displayed container size value to item's unit using toBaseRatio
+  const containerDisplayToItemUnit = (displayVal: number, cUnitId: string): number | null => {
+    if (!units || !item) return null;
+    const baseUnit = units.find(u => u.id === item.unitId);
+    const cUnit = units.find(u => u.id === cUnitId);
+    if (!baseUnit || !cUnit || baseUnit.toBaseRatio <= 0) return null;
+    return displayVal * (cUnit.toBaseRatio / baseUnit.toBaseRatio);
+  };
+
+  const handleContainerSizeBlur = () => {
+    const val = parseFloat(containerDisplaySize);
+    if (isNaN(val) || val <= 0 || !item) return;
+    const containerSizeInItemUnit = containerDisplayToItemUnit(val, selectedContainerUnitId);
+    if (containerSizeInItemUnit === null || containerSizeInItemUnit <= 0) return;
+    const newCasePkgCount = item.caseSize / containerSizeInItemUnit;
+    updateMutation.mutate({
+      containerSize: containerSizeInItemUnit,
+      containerUnitId: selectedContainerUnitId,
+      casePkgCount: newCasePkgCount,
+    } as any);
+  };
+
+  const handleContainerUnitChange = (newUnitId: string) => {
+    setSelectedContainerUnitId(newUnitId);
+    const val = parseFloat(containerDisplaySize);
+    if (!isNaN(val) && val > 0 && item) {
+      const containerSizeInItemUnit = containerDisplayToItemUnit(val, newUnitId);
+      if (containerSizeInItemUnit && containerSizeInItemUnit > 0) {
+        const newCasePkgCount = item.caseSize / containerSizeInItemUnit;
+        updateMutation.mutate({
+          containerSize: containerSizeInItemUnit,
+          containerUnitId: newUnitId,
+          casePkgCount: newCasePkgCount,
+        } as any);
+      }
     }
   };
 
   const handleRemoveMiddleRow = () => {
     setShowMiddleRow(false);
-    const updates: Partial<InventoryItem> = { containerSize: null, casePkgCount: null, containerLabel: null };
-    updateMutation.mutate(updates);
+    setContainerDisplaySize("");
+    setSelectedContainerUnitId(item?.unitId || "");
+    updateMutation.mutate({ containerSize: null, casePkgCount: null, containerLabel: null, containerUnitId: null } as any);
   };
 
   const handleLocationToggle = (locationId: string) => {
@@ -1248,12 +1293,27 @@ export default function InventoryItemDetail() {
               {(() => {
                 const liveCaseSize = getFieldValue("caseSize", item.caseSize);
                 const parsedCaseSizeDetail = parseFloat(String(liveCaseSize)) || 0;
-                const liveCasePkgCount = getFieldValue("casePkgCount", item.casePkgCount ?? "");
-                const parsedCasePkgCountDetail = parseFloat(String(liveCasePkgCount)) || 0;
                 const liveContainerLabel = getFieldValue("containerLabel", item.containerLabel || "");
-                const derivedContainerSize = parsedCaseSizeDetail > 0 && parsedCasePkgCountDetail > 0
-                  ? parsedCaseSizeDetail / parsedCasePkgCountDetail
-                  : (item.containerSize ?? 0);
+                // Derived count per case (for display in breakdown table)
+                // Compute Qty/Case locally if the user has filled in the size input
+                // This shows an immediate value without waiting for a server round-trip
+                const localCasePkgCount = (() => {
+                  const val = parseFloat(containerDisplaySize);
+                  if (!isNaN(val) && val > 0 && item && selectedContainerUnitId && units) {
+                    const baseUnit = units.find(u => u.id === item.unitId);
+                    const cUnit = units.find(u => u.id === selectedContainerUnitId);
+                    if (baseUnit && cUnit && baseUnit.toBaseRatio > 0) {
+                      const containerSizeInItemUnit = val * (cUnit.toBaseRatio / baseUnit.toBaseRatio);
+                      if (containerSizeInItemUnit > 0 && item.caseSize) {
+                        return item.caseSize / containerSizeInItemUnit;
+                      }
+                    }
+                  }
+                  return null;
+                })();
+                const derivedCasePkgCount = (localCasePkgCount ?? item.casePkgCount)
+                  ? parseFloat((localCasePkgCount ?? item.casePkgCount!).toFixed(4)).toString()
+                  : null;
 
                 return (
                   <>
@@ -1306,18 +1366,18 @@ export default function InventoryItemDetail() {
                         <thead>
                           <tr className="border-b text-xs text-muted-foreground">
                             <th className="pb-2 text-left font-medium">Pack</th>
-                            <th className="pb-2 text-left font-medium">Quantity</th>
-                            <th className="pb-2 text-left font-medium">Unit</th>
+                            <th className="pb-2 text-left font-medium">Container Size</th>
+                            <th className="pb-2 text-left font-medium">Qty / Case</th>
                             <th className="w-8 pb-2"></th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr>
                             <td className="py-1.5 pr-3 text-muted-foreground">{purchaseUom}</td>
-                            <td className="py-1.5 pr-3 text-muted-foreground">1</td>
-                            <td className="py-1.5 text-muted-foreground">
+                            <td className="py-1.5 pr-3 text-muted-foreground">
                               {parsedCaseSizeDetail} {unit?.abbreviation || ""}
                             </td>
+                            <td className="py-1.5 text-muted-foreground">1</td>
                             <td></td>
                           </tr>
                           {showMiddleRow && (
@@ -1339,22 +1399,36 @@ export default function InventoryItemDetail() {
                                 </Select>
                               </td>
                               <td className="py-1.5 pr-3">
-                                <Input
-                                  type="number"
-                                  step="1"
-                                  value={liveCasePkgCount}
-                                  onChange={(e) => handleFieldChange("casePkgCount", e.target.value)}
-                                  onBlur={handleCasePkgCountBlur}
-                                  disabled={updateMutation.isPending}
-                                  className="h-8"
-                                  placeholder="e.g., 4"
-                                  data-testid="input-case-pkg-count"
-                                />
+                                <div className="flex items-center gap-1">
+                                  <Input
+                                    type="number"
+                                    step="any"
+                                    value={containerDisplaySize}
+                                    onChange={(e) => setContainerDisplaySize(e.target.value)}
+                                    onBlur={handleContainerSizeBlur}
+                                    disabled={updateMutation.isPending}
+                                    className="h-8 w-20"
+                                    placeholder="e.g., 6"
+                                    data-testid="input-container-size"
+                                  />
+                                  <Select
+                                    value={selectedContainerUnitId}
+                                    onValueChange={handleContainerUnitChange}
+                                    disabled={updateMutation.isPending}
+                                  >
+                                    <SelectTrigger className="h-8 w-20" data-testid="select-container-unit">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {(compatibleUnits ?? (unit ? [unit] : [])).map(u => (
+                                        <SelectItem key={u.id} value={u.id}>{u.abbreviation}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                               </td>
                               <td className="py-1.5 text-muted-foreground">
-                                {derivedContainerSize > 0
-                                  ? `${parseFloat(derivedContainerSize.toFixed(4)).toString()} ${unit?.abbreviation || ""}`
-                                  : `— ${unit?.abbreviation || ""}`}
+                                {derivedCasePkgCount ?? "—"}
                               </td>
                               <td className="py-1.5 pl-2">
                                 <button
@@ -1371,8 +1445,8 @@ export default function InventoryItemDetail() {
                           )}
                           <tr>
                             <td className="py-1.5 pr-3 text-muted-foreground">Each</td>
-                            <td className="py-1.5 pr-3 text-muted-foreground">1</td>
-                            <td className="py-1.5 text-muted-foreground">1 {unit?.abbreviation || ""}</td>
+                            <td className="py-1.5 pr-3 text-muted-foreground">1 {unit?.abbreviation || ""}</td>
+                            <td className="py-1.5 text-muted-foreground">1</td>
                             <td></td>
                           </tr>
                         </tbody>

@@ -497,3 +497,20 @@ DO $$ BEGIN
       VALUES ('v020', 'Task #46: chat_logs and chat_corrections tables for AI chat logging and admin corrections');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v021 — Task #51: container_unit_id column on inventory_items
+-- Stores which unit the user chose when entering the container size, enabling
+-- round-trip display (e.g. "6 oz" instead of "0.375 lb"). The containerSize
+-- field continues to hold the value converted to the item's own unit.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v021') THEN
+
+    ALTER TABLE inventory_items
+      ADD COLUMN IF NOT EXISTS container_unit_id varchar;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v021', 'Task #51: container_unit_id on inventory_items for unit-aware container size entry');
+  END IF;
+END $$;

@@ -300,8 +300,9 @@ export const inventoryItems = pgTable("inventory_items", {
   pluSku: text("plu_sku"),
   unitId: varchar("unit_id").notNull(), // unit reference (pounds by default)
   caseSize: real("case_size").notNull().default(20), // case size in base units
-  containerSize: real("container_size"), // size of each container in base units (e.g. 128 oz per can)
+  containerSize: real("container_size"), // size of each container in item's unit (e.g. 0.375 lb per can)
   containerLabel: text("container_label"), // label for the container (e.g. "can", "bottle", "bag")
+  containerUnitId: varchar("container_unit_id"), // unit used to display/enter container size (e.g. oz)
   casePkgCount: real("case_pkg_count"), // number of containers per case (e.g. 6 cans per case)
   barcode: text("barcode"),
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
@@ -326,6 +327,7 @@ export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit
   yieldPercent: z.number().min(1).max(100).default(95),
   containerSize: z.number().positive().nullable().optional(),
   containerLabel: z.string().nullable().optional(),
+  containerUnitId: z.string().nullable().optional(),
   casePkgCount: z.number().positive().nullable().optional(),
 });
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;

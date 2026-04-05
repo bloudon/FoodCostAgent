@@ -64,7 +64,8 @@ export default function InventoryItemCreate() {
   const [purchaseUom, setPurchaseUom] = useState("Case");
   const [showMiddleRow, setShowMiddleRow] = useState(false);
   const [containerLabel, setContainerLabel] = useState("");
-  const [casePkgCount, setCasePkgCount] = useState("");
+  const [containerDisplaySize, setContainerDisplaySize] = useState("");
+  const [containerUnitId, setContainerUnitId] = useState("");
   const [barcode, setBarcode] = useState("");
   const [pricePerUnit, setPricePerUnit] = useState("0");
   const [yieldPercent, setYieldPercent] = useState("95");
@@ -79,6 +80,16 @@ export default function InventoryItemCreate() {
 
   const { data: units } = useQuery<Unit[]>({
     queryKey: ["/api/units"],
+  });
+
+  const { data: compatibleUnits } = useQuery<Unit[]>({
+    queryKey: ["/api/units/compatible", unitId],
+    queryFn: async () => {
+      const response = await fetch(`/api/units/compatible?unitId=${unitId}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch compatible units");
+      return response.json();
+    },
+    enabled: !!unitId,
   });
 
   const { data: systemPrefs } = useQuery<SystemPreferences>({
@@ -105,9 +116,17 @@ export default function InventoryItemCreate() {
       const poundUnit = units.find(u => u.name.toLowerCase() === "pound");
       if (poundUnit) {
         setUnitId(poundUnit.id);
+        setContainerUnitId(poundUnit.id);
       }
     }
   }, [units, unitId]);
+
+  // Sync containerUnitId default when unitId changes
+  useEffect(() => {
+    if (unitId && !containerUnitId) {
+      setContainerUnitId(unitId);
+    }
+  }, [unitId, containerUnitId]);
 
   // Select all stores by default when stores are loaded
   useEffect(() => {
@@ -132,13 +151,24 @@ export default function InventoryItemCreate() {
   }, [selectedLocations, primaryLocationId]);
 
   const parsedCaseSize = parseFloat(caseSize) || 20;
-  const parsedCasePkgCount = parseFloat(casePkgCount) || 0;
-  const middleContainerSize = showMiddleRow && parsedCasePkgCount > 0
-    ? parsedCaseSize / parsedCasePkgCount
-    : 0;
+  const parsedContainerDisplaySize = parseFloat(containerDisplaySize) || 0;
+
+  // Convert displayed container size to item's unit using toBaseRatio
+  const computeContainerSizeInItemUnit = (): number | null => {
+    if (!parsedContainerDisplaySize || !containerUnitId || !unitId || !units) return null;
+    const baseUnit = units.find(u => u.id === unitId);
+    const cUnit = units.find(u => u.id === containerUnitId);
+    if (!baseUnit || !cUnit || baseUnit.toBaseRatio <= 0) return null;
+    return parsedContainerDisplaySize * (cUnit.toBaseRatio / baseUnit.toBaseRatio);
+  };
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      const containerSizeInItemUnit = showMiddleRow ? computeContainerSizeInItemUnit() : null;
+      const computedCasePkgCount = containerSizeInItemUnit && containerSizeInItemUnit > 0
+        ? parsedCaseSize / containerSizeInItemUnit
+        : null;
+
       const data = {
         name: name.trim(),
         manufacturer: manufacturer.trim() || null,
@@ -156,10 +186,11 @@ export default function InventoryItemCreate() {
         isVariableWeight: isVariableWeight ? 1 : 0,
         locationIds: selectedLocations,
         storeIds: selectedStores,
-        ...(showMiddleRow && parsedCasePkgCount > 0 ? {
-          containerSize: middleContainerSize,
-          casePkgCount: parsedCasePkgCount,
+        ...(showMiddleRow && containerSizeInItemUnit && containerSizeInItemUnit > 0 ? {
+          containerSize: containerSizeInItemUnit,
+          casePkgCount: computedCasePkgCount,
           containerLabel: containerLabel.trim() || null,
+          containerUnitId: containerUnitId || null,
         } : {}),
       };
       const response = await apiRequest("POST", "/api/inventory-items", data);
@@ -445,18 +476,18 @@ export default function InventoryItemCreate() {
                   <thead>
                     <tr className="border-b text-xs text-muted-foreground">
                       <th className="pb-2 text-left font-medium">Pack</th>
-                      <th className="pb-2 text-left font-medium">Quantity</th>
-                      <th className="pb-2 text-left font-medium">Unit</th>
+                      <th className="pb-2 text-left font-medium">Container Size</th>
+                      <th className="pb-2 text-left font-medium">Qty / Case</th>
                       <th className="w-8 pb-2"></th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
                       <td className="py-1.5 pr-3 text-muted-foreground">{purchaseUom}</td>
-                      <td className="py-1.5 pr-3 text-muted-foreground">1</td>
-                      <td className="py-1.5 text-muted-foreground">
+                      <td className="py-1.5 pr-3 text-muted-foreground">
                         {parsedCaseSize} {unit?.abbreviation || ""}
                       </td>
+                      <td className="py-1.5 text-muted-foreground">1</td>
                       <td></td>
                     </tr>
                     {showMiddleRow && (
@@ -474,20 +505,40 @@ export default function InventoryItemCreate() {
                           </Select>
                         </td>
                         <td className="py-1.5 pr-3">
-                          <Input
-                            type="number"
-                            step="1"
-                            value={casePkgCount}
-                            onChange={(e) => setCasePkgCount(e.target.value)}
-                            className="h-8"
-                            placeholder="e.g., 4"
-                            data-testid="input-case-pkg-count"
-                          />
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              step="any"
+                              value={containerDisplaySize}
+                              onChange={(e) => setContainerDisplaySize(e.target.value)}
+                              className="h-8 w-20"
+                              placeholder="e.g., 6"
+                              data-testid="input-container-size"
+                            />
+                            <Select
+                              value={containerUnitId}
+                              onValueChange={setContainerUnitId}
+                            >
+                              <SelectTrigger className="h-8 w-20" data-testid="select-container-unit">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(compatibleUnits ?? (unit ? [unit] : [])).map(u => (
+                                  <SelectItem key={u.id} value={u.id}>{u.abbreviation}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </td>
                         <td className="py-1.5 text-muted-foreground">
-                          {parsedCasePkgCount > 0
-                            ? `${parseFloat(middleContainerSize.toFixed(4)).toString()} ${unit?.abbreviation || ""}`
-                            : `— ${unit?.abbreviation || ""}`}
+                          {(() => {
+                            const cs = computeContainerSizeInItemUnit();
+                            if (cs && cs > 0) {
+                              const count = parsedCaseSize / cs;
+                              return parseFloat(count.toFixed(4)).toString();
+                            }
+                            return "—";
+                          })()}
                         </td>
                         <td className="py-1.5 pl-2">
                           <button
@@ -495,7 +546,8 @@ export default function InventoryItemCreate() {
                             onClick={() => {
                               setShowMiddleRow(false);
                               setContainerLabel("");
-                              setCasePkgCount("");
+                              setContainerDisplaySize("");
+                              setContainerUnitId(unitId);
                             }}
                             className="text-muted-foreground hover:text-destructive"
                             data-testid="button-remove-inner-pack"
@@ -507,8 +559,8 @@ export default function InventoryItemCreate() {
                     )}
                     <tr>
                       <td className="py-1.5 pr-3 text-muted-foreground">Each</td>
-                      <td className="py-1.5 pr-3 text-muted-foreground">1</td>
-                      <td className="py-1.5 text-muted-foreground">1 {unit?.abbreviation || ""}</td>
+                      <td className="py-1.5 pr-3 text-muted-foreground">1 {unit?.abbreviation || ""}</td>
+                      <td className="py-1.5 text-muted-foreground">1</td>
                       <td></td>
                     </tr>
                   </tbody>
