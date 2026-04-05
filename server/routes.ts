@@ -3817,27 +3817,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const companyVendors = await storage.getVendors(companyId);
         const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
         const scannedNorm = normalize(scanResult.vendorName);
-        let bestScore = 0;
-        let bestVendorId: string | null = null;
-        for (const vendor of companyVendors) {
-          const vendorNorm = normalize(vendor.name);
-          // Token-based Jaccard similarity
-          const scannedTokens = new Set(scannedNorm.split(' '));
-          const vendorTokens = new Set(vendorNorm.split(' '));
-          const intersection = [...scannedTokens].filter(t => vendorTokens.has(t)).length;
-          const union = new Set([...scannedTokens, ...vendorTokens]).size;
-          const score = union > 0 ? intersection / union : 0;
-          // Also check substring containment for short names
-          const subScore = vendorNorm.includes(scannedNorm) || scannedNorm.includes(vendorNorm) ? 0.8 : 0;
-          const finalScore = Math.max(score, subScore);
-          if (finalScore > bestScore) {
-            bestScore = finalScore;
-            bestVendorId = vendor.id;
+        // Only attempt matching if scanned name is meaningful (>= 4 chars, at least one word >= 3 chars)
+        const scannedWords = scannedNorm.split(' ').filter(w => w.length > 0);
+        const hasMeaningfulWord = scannedWords.some(w => w.length >= 3);
+        if (scannedNorm.length >= 4 && hasMeaningfulWord) {
+          let bestScore = 0;
+          let bestVendorId: string | null = null;
+          for (const vendor of companyVendors) {
+            const vendorNorm = normalize(vendor.name);
+            const vendorWords = vendorNorm.split(' ').filter(w => w.length > 0);
+            // Token-based Jaccard similarity
+            const scannedTokens = new Set(scannedWords);
+            const vendorTokens = new Set(vendorWords);
+            const intersection = [...scannedTokens].filter(t => vendorTokens.has(t)).length;
+            const union = new Set([...scannedWords, ...vendorWords]).size;
+            const score = union > 0 ? intersection / union : 0;
+            // Substring containment only for names >= 5 chars to avoid false positives
+            const minLen = Math.min(scannedNorm.length, vendorNorm.length);
+            const subScore = minLen >= 5 && (vendorNorm.includes(scannedNorm) || scannedNorm.includes(vendorNorm)) ? 0.8 : 0;
+            const finalScore = Math.max(score, subScore);
+            if (finalScore > bestScore) {
+              bestScore = finalScore;
+              bestVendorId = vendor.id;
+            }
           }
-        }
-        if (bestScore >= 0.7 && bestVendorId) {
-          validatedVendorId = bestVendorId;
-          detectedVendorId = bestVendorId;
+          if (bestScore >= 0.7 && bestVendorId) {
+            validatedVendorId = bestVendorId;
+            detectedVendorId = bestVendorId;
+          }
         }
       }
 

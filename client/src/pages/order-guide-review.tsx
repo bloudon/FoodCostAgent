@@ -137,13 +137,15 @@ export default function OrderGuideReview() {
 
   // Mutation to update vendor on the guide
   const vendorMutation = useMutation({
-    mutationFn: async (vendorId: string | null) => {
+    mutationFn: async ({ vendorId, previousVendorId }: { vendorId: string | null; previousVendorId: string | null }) => {
       return apiRequest('PATCH', `/api/order-guides/${orderGuideId}/vendor`, { vendorId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/order-guides', orderGuideId, 'review'] });
     },
-    onError: (error: Error) => {
+    onError: (error: Error, variables) => {
+      // Roll back optimistic update to previous vendor
+      setCurrentVendorId(variables.previousVendorId);
       toast({
         title: 'Vendor update failed',
         description: error.message,
@@ -154,8 +156,9 @@ export default function OrderGuideReview() {
 
   const handleVendorChange = (value: string) => {
     const newVendorId = value === '__none__' ? null : value;
+    const previousVendorId = currentVendorId;
     setCurrentVendorId(newVendorId);
-    vendorMutation.mutate(newVendorId);
+    vendorMutation.mutate({ vendorId: newVendorId, previousVendorId });
   };
 
   const approveMutation = useMutation({
