@@ -12,8 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin } from "lucide-react";
-import { Link } from "wouter";
+import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin, ScanLine, Loader2 } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { ObjectUploader } from "@/components/ObjectUploader";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -96,8 +97,17 @@ export default function Vendors() {
   const [vendorToAssign, setVendorToAssign] = useState<Vendor | null>(null);
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>([]);
   const [storeAccountNumbers, setStoreAccountNumbers] = useState<Record<string, string>>({});
+
+  // Scan Invoice dialog state
+  const [isScanDialogOpen, setIsScanDialogOpen] = useState(false);
+  const [scanVendorId, setScanVendorId] = useState<string>("");
+  const [scanStoreIds, setScanStoreIds] = useState<string[]>([]);
+  const [scannedObjectPath, setScannedObjectPath] = useState<string | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+
   const { toast } = useToast();
   const { selectedStoreId, stores } = useStoreContext();
+  const [, setLocation] = useLocation();
 
   const { data: milestonesData } = useQuery<MilestonesResponse>({
     queryKey: ["/api/onboarding/milestones"],
@@ -487,6 +497,52 @@ export default function Vendors() {
     }
   };
 
+  const handleOpenScanDialog = () => {
+    setScanVendorId("");
+    setScanStoreIds(selectedStoreId ? [selectedStoreId] : stores.map(s => s.id));
+    setScannedObjectPath(null);
+    setIsScanning(false);
+    setIsScanDialogOpen(true);
+  };
+
+  const handleScanStoreToggle = (storeId: string) => {
+    setScanStoreIds(prev =>
+      prev.includes(storeId)
+        ? prev.filter(id => id !== storeId)
+        : [...prev, storeId]
+    );
+  };
+
+  const handleScanSubmit = async () => {
+    if (!scannedObjectPath) {
+      toast({ title: "No image uploaded", description: "Please upload an invoice or receipt image first.", variant: "destructive" });
+      return;
+    }
+    if (scanStoreIds.length === 0) {
+      toast({ title: "No store selected", description: "Please select at least one store.", variant: "destructive" });
+      return;
+    }
+    setIsScanning(true);
+    try {
+      const response = await apiRequest("POST", "/api/order-guides/scan-image", {
+        objectPath: scannedObjectPath,
+        vendorId: scanVendorId || undefined,
+        storeIds: scanStoreIds,
+      });
+      const data = await response.json();
+      toast({
+        title: "Invoice scanned",
+        description: `${data.totalItems} items extracted — ${data.highConfidenceMatches} auto-matched. Review below.`,
+      });
+      setIsScanDialogOpen(false);
+      setLocation(`/order-guides/${data.orderGuideId}/review`);
+    } catch (error: any) {
+      toast({ title: "Scan failed", description: error.message || "Could not extract items from the image. Try a clearer photo.", variant: "destructive" });
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
   return (
     <div className="p-4 pb-16 sm:p-8">
       <div className="mb-4 sm:mb-8 flex items-center justify-between gap-3 flex-wrap">
@@ -506,7 +562,15 @@ export default function Vendors() {
           )}
         </div>
         <div className="flex flex-col gap-2 items-end">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-end">
+            <Button
+              variant="outline"
+              onClick={handleOpenScanDialog}
+              data-testid="button-scan-invoice"
+            >
+              <ScanLine className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Scan Invoice</span>
+            </Button>
             <Button 
               variant="outline" 
               onClick={() => setIsImportDialogOpen(true)} 
@@ -1160,6 +1224,108 @@ export default function Vendors() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Scan Invoice Dialog */}
+      <Dialog open={isScanDialogOpen} onOpenChange={setIsScanDialogOpen}>
+        <DialogContent className="max-w-lg" data-testid="dialog-scan-invoice">
+          <DialogHeader>
+            <DialogTitle>Scan Invoice / Receipt</DialogTitle>
+            <DialogDescription>
+              Upload a photo of a vendor invoice or delivery receipt. AI will extract the product list and prices automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Invoice Image</label>
+              <ObjectUploader
+                onUploadComplete={(path) => setScannedObjectPath(path)}
+                buttonText={scannedObjectPath ? "Replace Image" : "Upload Invoice Photo"}
+                dataTestId="button-upload-scan-image"
+                visibility="private"
+                icon={<ScanLine className="h-4 w-4" />}
+              />
+              {scannedObjectPath && (
+                <p className="text-xs text-green-600 dark:text-green-400">Image uploaded — ready to scan.</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Vendor (Optional)</label>
+              <Select value={scanVendorId} onValueChange={setScanVendorId}>
+                <SelectTrigger data-testid="select-scan-vendor">
+                  <SelectValue placeholder="Select vendor (recommended)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">No vendor / Unknown</SelectItem>
+                  {vendors?.filter(v => v.active === 1).map(vendor => (
+                    <SelectItem key={vendor.id} value={vendor.id}>
+                      {vendor.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Selecting a vendor helps link extracted items to your order guide.</p>
+            </div>
+
+            {stores.length > 1 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Apply to Stores</label>
+                <div className="space-y-2 max-h-40 overflow-y-auto rounded-md border p-3">
+                  {stores.map(store => (
+                    <div key={store.id} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`scan-store-${store.id}`}
+                        checked={scanStoreIds.includes(store.id)}
+                        onCheckedChange={() => handleScanStoreToggle(store.id)}
+                        data-testid={`checkbox-scan-store-${store.id}`}
+                      />
+                      <label htmlFor={`scan-store-${store.id}`} className="text-sm cursor-pointer">
+                        {store.name}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-md bg-muted p-3 space-y-1 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">How it works:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>AI reads the invoice image and extracts product names, SKUs, and prices</li>
+                <li>Items are automatically matched to your inventory</li>
+                <li>Review the matches before applying pricing</li>
+              </ol>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsScanDialogOpen(false)}
+              disabled={isScanning}
+              data-testid="button-cancel-scan"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleScanSubmit}
+              disabled={!scannedObjectPath || scanStoreIds.length === 0 || isScanning}
+              data-testid="button-submit-scan"
+            >
+              {isScanning ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Scanning...
+                </>
+              ) : (
+                <>
+                  <ScanLine className="h-4 w-4 mr-2" />
+                  Scan Invoice
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <SetupProgressBanner currentMilestoneId="vendors" hasEntries={(vendors?.length ?? 0) > 0} />
     </div>
   );

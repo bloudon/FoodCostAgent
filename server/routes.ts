@@ -3735,6 +3735,149 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
+   * POST /api/order-guides/scan-image
+   * Accepts an already-uploaded image objectPath, vendor ID, and target store IDs.
+   * Calls GPT-4o Vision via vendorReceiptScanner to extract vendor line items,
+   * then feeds them through the existing orderGuideProcessor matching pipeline.
+   * Returns { orderGuideId } pointing at a pending_review order guide — identical
+   * to the CSV upload flow so the existing review page works without changes.
+   */
+  app.post("/api/order-guides/scan-image", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const storeId = (req as any).storeId;
+      const userId = (req as any).user?.id;
+
+      const bodySchema = z.object({
+        objectPath: z.string().min(1, "objectPath is required"),
+        vendorId: z.string().optional(),
+        storeIds: z.array(z.string()).optional(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+      const { objectPath, vendorId, storeIds } = parsed.data;
+
+      // Read image from storage
+      const { buffer, mimeType: storageMime } = await readImageBuffer(objectPath, companyId, userId);
+
+      // Detect MIME from buffer magic bytes for reliability
+      function detectMimeFromBuffer(buf: Buffer): string | null {
+        if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+        if (buf.length >= 8 &&
+          buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+          buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a) return "image/png";
+        if (buf.length >= 12 &&
+          buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+          buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
+        return null;
+      }
+      const mimeType = detectMimeFromBuffer(buffer) || storageMime || "image/jpeg";
+
+      if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+        return res.status(415).json({ error: "Unsupported image type. Please upload JPG, PNG, or WebP." });
+      }
+
+      // Run GPT-4o Vision extraction
+      const { scanVendorReceipt } = await import('./services/vendorReceiptScanner');
+      const scanResult = await scanVendorReceipt(buffer, mimeType);
+
+      if (scanResult.items.length === 0) {
+        return res.status(422).json({ error: "No product line items could be extracted from this image. Try a clearer photo." });
+      }
+
+      // Convert extracted items to VendorProduct[] shape that orderGuideProcessor consumes
+      const vendorProducts = scanResult.items.map((item, index) => ({
+        vendorSku: item.sku || `scan-${index + 1}`,
+        vendorProductName: item.name,
+        description: item.packSizeDescription || undefined,
+        caseSizeRaw: item.packSizeDescription || undefined,
+        unit: item.unit || undefined,
+        price: item.unitPrice ?? (item.casePrice ?? undefined),
+        categoryCode: item.categoryHint || undefined,
+      }));
+
+      // Build order guide and lines manually, mirroring processUpload logic but without CSV
+      const { ItemMatcher } = await import('./services/itemMatcher');
+      const matcher = new ItemMatcher(storage);
+
+      const guideFileName = `Receipt Scan — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+      const effectiveStoreId = (storeIds && storeIds.length > 0) ? storeIds[0] : storeId;
+
+      const guideInsert = {
+        companyId,
+        vendorId: vendorId || null,
+        vendorKey: 'generic' as const,
+        fileName: guideFileName,
+        rowCount: vendorProducts.length,
+        status: 'pending_review' as const,
+        source: 'image_scan' as const,
+      };
+
+      const createdGuide = await storage.createOrderGuide(guideInsert);
+
+      // Supersede previous guides for this vendor
+      if (vendorId) {
+        await storage.supersedePreviousOrderGuides(vendorId, createdGuide.id);
+      }
+
+      // Match products and build lines
+      const lines = [];
+      for (const product of vendorProducts) {
+        const match = await matcher.findBestMatch(product, companyId, effectiveStoreId);
+
+        let matchStatus: 'matched' | 'ambiguous' | 'new';
+        if (match.confidence === 'high') matchStatus = 'matched';
+        else if (match.confidence === 'medium' || match.confidence === 'low') matchStatus = 'ambiguous';
+        else matchStatus = 'new';
+
+        lines.push({
+          orderGuideId: createdGuide.id,
+          vendorSku: product.vendorSku,
+          productName: product.vendorProductName,
+          packSize: product.description || null,
+          uom: product.unit || null,
+          caseSize: null,
+          caseSizeRaw: product.caseSizeRaw || null,
+          innerPack: null,
+          innerPackRaw: null,
+          price: product.price ?? null,
+          brandName: null,
+          category: product.categoryCode || null,
+          gtin: null,
+          matchStatus,
+          matchedInventoryItemId: match.inventoryItemId,
+          matchConfidence: Math.round(match.score * 100),
+          isVariableWeight: 0,
+        });
+      }
+
+      await storage.createOrderGuideLinesBatch(lines);
+
+      const stats = {
+        highConfidenceMatches: lines.filter(l => l.matchStatus === 'matched').length,
+        ambiguousMatches: lines.filter(l => l.matchStatus === 'ambiguous').length,
+        noMatches: lines.filter(l => l.matchStatus === 'new').length,
+      };
+
+      return res.json({
+        orderGuideId: createdGuide.id,
+        totalItems: vendorProducts.length,
+        highConfidenceMatches: stats.highConfidenceMatches,
+        mediumConfidenceMatches: stats.ambiguousMatches,
+        lowConfidenceMatches: 0,
+        noMatches: stats.noMatches,
+        readyForReview: true,
+        vendorName: scanResult.vendorName,
+      });
+    } catch (error: any) {
+      console.error('[Vendor Receipt Scan Error]', error);
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
    * @swagger
    * /api/order-guides/{id}/review:
    *   get:
