@@ -2736,28 +2736,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ error: "Company not found" });
     }
 
-    const units = await storage.getUnits();
+    const [units, conversions] = await Promise.all([
+      storage.getUnits(),
+      storage.getUnitConversions(),
+    ]);
     const targetUnit = units.find(u => u.id === unitId);
     
     if (!targetUnit) {
       return res.status(404).json({ error: "Unit not found" });
     }
 
+    // Build a bidirectional adjacency list from unit_conversions
+    const graph = new Map<string, Set<string>>();
+    for (const conv of conversions) {
+      if (!graph.has(conv.fromUnitId)) graph.set(conv.fromUnitId, new Set());
+      if (!graph.has(conv.toUnitId)) graph.set(conv.toUnitId, new Set());
+      graph.get(conv.fromUnitId)!.add(conv.toUnitId);
+      graph.get(conv.toUnitId)!.add(conv.fromUnitId);
+    }
+
+    // BFS over the conversion graph to find all units reachable from the target
+    const reachable = new Set<string>([targetUnit.id]);
+    const queue: string[] = [targetUnit.id];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const neighbor of (graph.get(current) || [])) {
+        if (!reachable.has(neighbor)) {
+          reachable.add(neighbor);
+          queue.push(neighbor);
+        }
+      }
+    }
+
     // Fractional pound units to exclude (can be entered in ounces instead)
     const fractionalPounds = ['eighth-pound', 'quarter-pound', 'half-pound'];
 
-    // Filter units by:
-    // 1. Same kind (weight/volume/count)
-    // 2. Company's unit system preference (imperial/metric/both)
-    // 3. Exclude fractional pounds
-    let compatibleUnits = units.filter(u => {
+    // A unit is compatible if ALL of:
+    // 1. Same kind as target (prevents cross-kind selections like oz for a gallon item)
+    // 2. Not a fractional pound
+    // 3. Reachable via the unit_conversions graph OR convertible via toBaseRatio
+    //    (toBaseRatio handles standard same-kind conversions through the common base unit)
+    // 4. Matches company's preferred unit system
+    const compatibleUnits = units.filter(u => {
       if (u.kind !== targetUnit.kind) return false;
       if (fractionalPounds.includes(u.name)) return false;
-      
-      // If company prefers "both" or unit has no system, include it
+
+      // Conversion-path check: allow if reachable via explicit graph edges OR
+      // via the toBaseRatio transitive path (all same-kind units with valid ratios)
+      const graphCompatible = reachable.has(u.id);
+      const ratioCompatible = u.toBaseRatio > 0 && targetUnit.toBaseRatio > 0;
+      if (!graphCompatible && !ratioCompatible) return false;
+
+      // Apply company's preferred unit system
       if (company.preferredUnitSystem === 'both' || !u.system) return true;
-      
-      // Otherwise, match the company's preference
       return u.system === company.preferredUnitSystem;
     });
 
