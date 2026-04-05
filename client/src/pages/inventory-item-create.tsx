@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { ArrowLeft, Settings, Plus, X } from "lucide-react";
+import { GroupedUnitOptions } from "@/components/grouped-unit-options";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -430,11 +431,7 @@ export default function InventoryItemCreate() {
                     <SelectValue placeholder="Select unit" />
                   </SelectTrigger>
                   <SelectContent>
-                    {filteredUnits?.map((unit) => (
-                      <SelectItem key={unit.id} value={unit.id} data-testid={`option-unit-${unit.id}`}>
-                        {formatUnitName(unit.name)}
-                      </SelectItem>
-                    ))}
+                    <GroupedUnitOptions units={filteredUnits ?? []} />
                   </SelectContent>
                 </Select>
               </div>

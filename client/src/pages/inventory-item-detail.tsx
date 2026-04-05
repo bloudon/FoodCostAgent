@@ -10,6 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { GroupedUnitOptions } from "@/components/grouped-unit-options";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { Button } from "@/components/ui/button";
@@ -803,11 +804,7 @@ export default function InventoryItemDetail() {
                                     <SelectValue placeholder="Unit" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {filteredUnits?.map((unit) => (
-                                      <SelectItem key={unit.id} value={unit.id}>
-                                        {formatUnitName(unit.name)}
-                                      </SelectItem>
-                                    ))}
+                                    <GroupedUnitOptions units={filteredUnits ?? []} />
                                   </SelectContent>
                                 </Select>
                               </TableCell>
@@ -974,11 +971,7 @@ export default function InventoryItemDetail() {
                               <SelectValue placeholder="Unit" />
                             </SelectTrigger>
                             <SelectContent>
-                              {filteredUnits?.map((unit) => (
-                                <SelectItem key={unit.id} value={unit.id}>
-                                  {formatUnitName(unit.name)}
-                                </SelectItem>
-                              ))}
+                              <GroupedUnitOptions units={filteredUnits ?? []} />
                             </SelectContent>
                           </Select>
                         </TableCell>
@@ -1261,11 +1254,7 @@ export default function InventoryItemDetail() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {filteredUnits?.map((unit) => (
-                      <SelectItem key={unit.id} value={unit.id}>
-                        {formatUnitName(unit.name)}
-                      </SelectItem>
-                    ))}
+                    <GroupedUnitOptions units={filteredUnits ?? []} />
                   </SelectContent>
                 </Select>
               </div>
