@@ -3835,7 +3835,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             bestVendorId = vendor.id;
           }
         }
-        if (bestScore >= 0.5 && bestVendorId) {
+        if (bestScore >= 0.7 && bestVendorId) {
           validatedVendorId = bestVendorId;
           detectedVendorId = bestVendorId;
         }
@@ -4011,6 +4011,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.updateOrderGuideVendor(id, vendorId);
+
+      // Sync order guide store assignments from vendor store assignments when setting a vendor.
+      // If the vendor has store assignments, use those as the guide's target stores.
+      // If vendorId is null or vendor has no store assignments, leave existing store assignments.
+      if (vendorId) {
+        const vendorStores = await storage.getVendorStores(vendorId);
+        if (vendorStores.length > 0) {
+          const storeIds = vendorStores.map(vs => vs.storeId);
+          await storage.setOrderGuideStores(id, storeIds);
+        }
+      }
+
       return res.json({ success: true });
     } catch (error: any) {
       console.error('[Order Guide Vendor PATCH Error]', error);
