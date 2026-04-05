@@ -595,11 +595,11 @@ export class OrderGuideProcessor {
       }
 
       // Calculate unit price from case price
-      // line.price is the CASE price, we need to divide by total units per case
+      // line.price is the CASE price; caseSize now equals total units per case (innerPack folded in)
       // Guard against zero/negative values that would cause Infinity
-      const caseSize = Math.max(line.caseSize ?? 1, 1);
-      const innerPack = Math.max(line.innerPack ?? 1, 1);
-      const totalUnitsPerCase = caseSize * innerPack;
+      const rawCaseSize = Math.max(line.caseSize ?? 1, 1);
+      const rawInnerPack = Math.max(line.innerPack ?? 1, 1);
+      const totalUnitsPerCase = rawCaseSize * rawInnerPack; // merged caseSize
       const unitPrice = line.price ? line.price / totalUnitsPerCase : 0;
 
       // Create inventory item with smart defaults
@@ -645,17 +645,19 @@ export class OrderGuideProcessor {
       }
 
       // Create vendor item (only if a vendor is assigned)
+      // Fold innerPack into caseSize: total units per case = caseSize × innerPack
       let vendorItemCreated = false;
       if (vendorId) {
+        const mergedCaseSize = (line.caseSize ?? 1) * Math.max(line.innerPack ?? 1, 1);
         await this.storage.createVendorItem({
           vendorId,
           inventoryItemId: inventoryItem.id,
           vendorSku: line.vendorSku,
           brandName: line.brandName ?? undefined,
           purchaseUnitId: unitId,
-          caseSize: line.caseSize ?? 1,
-          innerPackSize: line.innerPack ?? undefined,
-          lastPrice: line.price ?? undefined,
+          caseSize: mergedCaseSize,
+          lastPrice: unitPrice > 0 ? unitPrice : (line.price ?? undefined),
+          lastCasePrice: line.price ?? undefined,
         });
         vendorItemCreated = true;
       }
@@ -698,14 +700,13 @@ export class OrderGuideProcessor {
         // Vendor item already exists — update pricing if we have new price data
         // This ensures matched imports always refresh vendor pricing
         if (line.price != null && line.price > 0) {
-          const caseSize = Math.max(line.caseSize ?? 1, 1);
-          const innerPack = Math.max(line.innerPack ?? 1, 1);
-          const unitPrice = line.price / (caseSize * innerPack);
+          // Fold innerPack into caseSize: total units per case = caseSize × innerPack
+          const mergedCaseSize = Math.max(line.caseSize ?? 1, 1) * Math.max(line.innerPack ?? 1, 1);
+          const unitPrice = line.price / mergedCaseSize;
           await this.storage.updateVendorItem(existing.id, {
             lastPrice: unitPrice,
             lastCasePrice: line.price,
-            caseSize: line.caseSize ?? existing.caseSize,
-            innerPackSize: line.innerPack ?? existing.innerPackSize,
+            caseSize: mergedCaseSize,
           });
           // Also propagate updated pricing to inventory item
           await this.syncVendorDataToInventoryItem(line, inventoryItem);
@@ -713,16 +714,20 @@ export class OrderGuideProcessor {
         return false; // did not CREATE a new record, but did update
       }
 
-      // No existing vendor item — create one
+      // No existing vendor item — create one; fold innerPack into caseSize
+      const mergedCaseSize = (line.caseSize ?? 1) * Math.max(line.innerPack ?? 1, 1);
+      const caseUnitPrice = line.price != null && line.price > 0 && mergedCaseSize > 0
+        ? line.price / mergedCaseSize
+        : (line.price ?? undefined);
       await this.storage.createVendorItem({
         vendorId,
         inventoryItemId: line.matchedInventoryItemId,
         vendorSku: line.vendorSku,
         brandName: line.brandName ?? undefined,
         purchaseUnitId: inventoryItem.unitId,
-        caseSize: line.caseSize ?? 1,
-        innerPackSize: line.innerPack ?? undefined,
-        lastPrice: line.price ?? undefined,
+        caseSize: mergedCaseSize,
+        lastPrice: caseUnitPrice,
+        lastCasePrice: line.price ?? undefined,
       });
 
       // Sync vendor data to linked inventory item
@@ -746,21 +751,22 @@ export class OrderGuideProcessor {
       const updates: any = {};
       
       // Sync price if vendor has pricing data
-      // line.price is the CASE price, we need to divide by total units per case
+      // line.price is the CASE price; fold innerPack into caseSize for total units per case
       // Guard against zero/negative values that would cause Infinity
       if (line.price && line.price > 0) {
-        const caseSize = Math.max(line.caseSize ?? 1, 1);
-        const innerPack = Math.max(line.innerPack ?? 1, 1);
-        const totalUnitsPerCase = caseSize * innerPack;
+        const rawCaseSize = Math.max(line.caseSize ?? 1, 1);
+        const rawInnerPack = Math.max(line.innerPack ?? 1, 1);
+        const totalUnitsPerCase = rawCaseSize * rawInnerPack;
         const unitPrice = line.price / totalUnitsPerCase;
         updates.pricePerUnit = unitPrice;
         console.log(`[OrderGuide] Syncing unit price ${unitPrice.toFixed(4)} (case price ${line.price} ÷ ${totalUnitsPerCase} units) to inventory item ${inventoryItem.id}`);
       }
       
-      // Sync case size if vendor has case size data
+      // Sync merged case size (innerPack folded in) if vendor has case size data
       if (line.caseSize && line.caseSize > 0) {
-        updates.caseSize = line.caseSize;
-        console.log(`[OrderGuide] Syncing case size ${line.caseSize} to inventory item ${inventoryItem.id}`);
+        const mergedCaseSize = line.caseSize * Math.max(line.innerPack ?? 1, 1);
+        updates.caseSize = mergedCaseSize;
+        console.log(`[OrderGuide] Syncing case size ${mergedCaseSize} to inventory item ${inventoryItem.id}`);
       }
       
       // Sync variable weight flag if vendor marks item as variable weight

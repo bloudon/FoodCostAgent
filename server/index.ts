@@ -106,6 +106,13 @@ async function runStartupMigrations() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS auth_sessions_last_active_at_idx ON auth_sessions (last_active_at)`);
     // Task #51: container_unit_id for unit-aware pack size entry
     await db.execute(sql`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS container_unit_id varchar`);
+    // Task #52: Collapse vendor_items inner_pack_size into case_size (idempotent: WHERE skips migrated rows)
+    await db.execute(sql`
+      UPDATE vendor_items
+      SET case_size = case_size * COALESCE(inner_pack_size, 1),
+          inner_pack_size = 1
+      WHERE inner_pack_size IS NOT NULL AND inner_pack_size != 1
+    `);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

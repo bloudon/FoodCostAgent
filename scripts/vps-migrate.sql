@@ -514,3 +514,23 @@ DO $$ BEGIN
       VALUES ('v021', 'Task #51: container_unit_id on inventory_items for unit-aware container size entry');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v022 — Task #52: Collapse vendor_items inner_pack_size into case_size
+-- Eliminates the separate Inner Pack Size field. The single case_size field
+-- now represents total units per case (was case_size × inner_pack_size).
+-- After this migration inner_pack_size is set to 1 everywhere (no-op).
+-- Safe to run multiple times: the WHERE clause skips already-migrated rows.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v022') THEN
+
+    UPDATE vendor_items
+    SET case_size = case_size * COALESCE(inner_pack_size, 1),
+        inner_pack_size = 1
+    WHERE inner_pack_size IS NOT NULL AND inner_pack_size != 1;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v022', 'Task #52: Collapse inner_pack_size into case_size on vendor_items');
+  END IF;
+END $$;

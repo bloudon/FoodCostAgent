@@ -138,7 +138,6 @@ export default function InventoryItemDetail() {
     vendorSku: string;
     purchaseUnitId: string;
     caseSize: string;
-    innerPackSize: string;
     lastCasePrice: string;
     active: number;
   }>>({});
@@ -576,7 +575,6 @@ export default function InventoryItemDetail() {
         vendorSku: vendorItem.vendorSku || "",
         purchaseUnitId: vendorItem.purchaseUnitId,
         caseSize: vendorItem.caseSize.toString(),
-        innerPackSize: vendorItem.innerPackSize?.toString() || "",
         lastCasePrice: vendorItem.lastCasePrice.toString(),
         active: vendorItem.active,
       }
@@ -593,7 +591,6 @@ export default function InventoryItemDetail() {
         vendorSku: "",
         purchaseUnitId: item?.unitId || "",
         caseSize: "1",
-        innerPackSize: "",
         lastCasePrice: "0",
         active: 1,
       }
@@ -633,7 +630,6 @@ export default function InventoryItemDetail() {
       vendorSku: rowData.vendorSku.trim() || null,
       purchaseUnitId: rowData.purchaseUnitId,
       caseSize: parseFloat(rowData.caseSize) || 1,
-      innerPackSize: rowData.innerPackSize.trim() !== "" ? parseFloat(rowData.innerPackSize) : null,
       lastCasePrice: parseFloat(rowData.lastCasePrice) || 0,
       active: rowData.active,
     };
@@ -753,8 +749,7 @@ export default function InventoryItemDetail() {
                       <TableHead>SKU</TableHead>
                       <TableHead>Unit</TableHead>
                       <TableHead>Case Price</TableHead>
-                      <TableHead>Case</TableHead>
-                      <TableHead>Inner</TableHead>
+                      <TableHead>Units/Case</TableHead>
                       <TableHead>Price</TableHead>
                       <TableHead>Last Order</TableHead>
                       <TableHead className="w-[100px]">Actions</TableHead>
@@ -828,24 +823,11 @@ export default function InventoryItemDetail() {
                                   data-testid={`input-case-${vi.id}`}
                                 />
                               </TableCell>
-                              <TableCell>
-                                <Input
-                                  type="number"
-                                  step="1"
-                                  value={rowData.innerPackSize}
-                                  onChange={(e) => updateVendorRowField(vi.id, "innerPackSize", e.target.value)}
-                                  placeholder="-"
-                                  className="w-[60px]"
-                                  data-testid={`input-inner-${vi.id}`}
-                                />
-                              </TableCell>
                               <TableCell className="text-muted-foreground">
                                 ${(() => {
                                   const casePrice = parseFloat(rowData.lastCasePrice || "0");
                                   const caseSize = parseFloat(rowData.caseSize || "1");
-                                  const innerPack = parseFloat(rowData.innerPackSize || "1") || 1;
-                                  const totalUnits = caseSize * innerPack;
-                                  return totalUnits > 0 ? (casePrice / totalUnits).toFixed(4) : "0.0000";
+                                  return caseSize > 0 ? (casePrice / caseSize).toFixed(4) : "0.0000";
                                 })()}
                               </TableCell>
                               <TableCell className="text-muted-foreground">
@@ -895,7 +877,6 @@ export default function InventoryItemDetail() {
                             <TableCell>{formatUnitName(vi.unit?.name)}</TableCell>
                             <TableCell>${vi.lastCasePrice.toFixed(2)}</TableCell>
                             <TableCell>{vi.caseSize}</TableCell>
-                            <TableCell className="text-muted-foreground">{vi.innerPackSize || "-"}</TableCell>
                             <TableCell className="text-muted-foreground">${vi.lastPrice.toFixed(4)}</TableCell>
                             <TableCell className="text-muted-foreground">
                               {vi.lastOrderDate ? new Date(vi.lastOrderDate).toLocaleDateString() : "-"}
@@ -926,7 +907,7 @@ export default function InventoryItemDetail() {
                       })
                     ) : !showAddVendorRow && (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                           {inactiveVendorItems.length > 0 
                             ? "No active vendors. Use toggle above to show inactive vendors."
                             : "No vendors configured for this item"}
@@ -995,24 +976,11 @@ export default function InventoryItemDetail() {
                             data-testid="input-case-new"
                           />
                         </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            step="1"
-                            value={vendorRowEdits.new.innerPackSize}
-                            onChange={(e) => updateVendorRowField("new", "innerPackSize", e.target.value)}
-                            placeholder="-"
-                            className="w-[60px]"
-                            data-testid="input-inner-new"
-                          />
-                        </TableCell>
                         <TableCell className="text-muted-foreground">
                           ${(() => {
                             const casePrice = parseFloat(vendorRowEdits.new.lastCasePrice || "0");
                             const caseSize = parseFloat(vendorRowEdits.new.caseSize || "1");
-                            const innerPack = parseFloat(vendorRowEdits.new.innerPackSize || "1") || 1;
-                            const totalUnits = caseSize * innerPack;
-                            return totalUnits > 0 ? (casePrice / totalUnits).toFixed(4) : "0.0000";
+                            return caseSize > 0 ? (casePrice / caseSize).toFixed(4) : "0.0000";
                           })()}
                         </TableCell>
                         <TableCell className="text-muted-foreground">-</TableCell>
@@ -1329,21 +1297,35 @@ export default function InventoryItemDetail() {
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Purchase Unit Size</Label>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={liveCaseSize}
-                              onChange={(e) => handleFieldChange("caseSize", e.target.value)}
-                              onBlur={handleCaseSizeBlur}
-                              disabled={updateMutation.isPending}
-                              className="flex-1"
-                              data-testid="input-case-size"
-                            />
-                            <span className="flex h-9 min-w-[2.5rem] items-center justify-center rounded-md border px-2 text-sm text-muted-foreground">
-                              {unit?.abbreviation || "unit"}
-                            </span>
-                          </div>
+                          {vendorItems && vendorItems.filter(vi => vi.active === 1).length > 0 ? (
+                            <div className="flex items-center gap-2">
+                              <div className="flex flex-1 h-9 items-center rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground" data-testid="input-case-size">
+                                {parsedCaseSizeDetail}
+                              </div>
+                              <span className="flex h-9 min-w-[2.5rem] items-center justify-center rounded-md border px-2 text-sm text-muted-foreground">
+                                {unit?.abbreviation || "unit"}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={liveCaseSize}
+                                onChange={(e) => handleFieldChange("caseSize", e.target.value)}
+                                onBlur={handleCaseSizeBlur}
+                                disabled={updateMutation.isPending}
+                                className="flex-1"
+                                data-testid="input-case-size"
+                              />
+                              <span className="flex h-9 min-w-[2.5rem] items-center justify-center rounded-md border px-2 text-sm text-muted-foreground">
+                                {unit?.abbreviation || "unit"}
+                              </span>
+                            </div>
+                          )}
+                          {vendorItems && vendorItems.filter(vi => vi.active === 1).length > 0 && (
+                            <p className="text-xs text-muted-foreground">Auto-synced from vendor</p>
+                          )}
                         </div>
                       </div>
                     </div>
