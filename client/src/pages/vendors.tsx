@@ -1313,7 +1313,7 @@ export default function Vendors() {
               {isScanning ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Scanning...
+                  Scanning invoice...
                 </>
               ) : (
                 <>
