@@ -130,11 +130,15 @@ export function AppSidebar() {
   const { selectedStoreId, setSelectedStoreId, stores } = useStoreContext();
   const { data: accessibleStores, isLoading: storesLoading } = useAccessibleStores();
   const { hasFeature } = useTier();
-  const { state, isMobile } = useSidebar();
+  const { state, isMobile, setOpenMobile } = useSidebar();
 
   const isStoreUser = user?.role === "store_user";
   const isGlobalAdmin = user?.role === "global_admin";
   const hasMultipleStores = storesLoading ? true : (accessibleStores?.length ?? 0) >= 2;
+
+  const closeMobile = () => {
+    if (isMobile) setOpenMobile(false);
+  };
 
   const getVisibleSections = (): NavSection[] => {
     if (isGlobalAdmin && !company) return [];
@@ -165,15 +169,6 @@ export function AppSidebar() {
   const visibleSections = getVisibleSections();
   const showSettings = !isStoreUser && (!isGlobalAdmin || !!company);
 
-  const isSectionActive = (section: NavSection) =>
-    section.items.some(
-      (item) => location === item.url || location.startsWith(item.url + "/")
-    );
-
-  const isSettingsActive =
-    settingsItems.some((item) => location === item.url) ||
-    locationItems.some((item) => location === item.url);
-
   const userInitials =
     user?.firstName && user?.lastName
       ? `${user.firstName[0]}${user.lastName[0]}`.toUpperCase()
@@ -188,7 +183,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b pb-3">
         <div className="flex items-center gap-2 px-1 pt-1">
-          <Link href="/" data-testid="link-dashboard-logo">
+          <Link href="/" onClick={closeMobile} data-testid="link-dashboard-logo">
             <img
               src={logoImage}
               alt="FNB Cost Pro"
@@ -255,7 +250,7 @@ export function AppSidebar() {
                   tooltip="Dashboard"
                   data-testid={isMobile ? "link-dashboard-mobile" : "link-dashboard"}
                 >
-                  <Link href="/">
+                  <Link href="/" onClick={closeMobile}>
                     <LayoutDashboard />
                     <span>Dashboard</span>
                   </Link>
@@ -274,7 +269,7 @@ export function AppSidebar() {
                   <Collapsible
                     key={section.title}
                     asChild
-                    defaultOpen={isSectionActive(section)}
+                    defaultOpen={true}
                     className="group/collapsible"
                   >
                     <SidebarMenuItem>
@@ -302,7 +297,7 @@ export function AppSidebar() {
                                   }
                                   data-testid={isMobile ? `link-${slug}-mobile` : `link-${slug}`}
                                 >
-                                  <Link href={item.url}>
+                                  <Link href={item.url} onClick={closeMobile}>
                                     <item.icon className="h-3.5 w-3.5" />
                                     <span>{item.title}</span>
                                   </Link>
@@ -327,7 +322,7 @@ export function AppSidebar() {
               <SidebarMenu>
                 <Collapsible
                   asChild
-                  defaultOpen={isSettingsActive}
+                  defaultOpen={true}
                   className="group/collapsible"
                 >
                   <SidebarMenuItem>
@@ -343,10 +338,10 @@ export function AppSidebar() {
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <SidebarMenuSub>
-                        {/* Locations sub-group (mirrors old header Locations sub-trigger) */}
+                        {/* Locations sub-group */}
                         <SidebarMenuSubItem>
                           <Collapsible
-                            defaultOpen={locationItems.some((i) => location === i.url)}
+                            defaultOpen={true}
                             className="group/loc-collapsible w-full"
                           >
                             <CollapsibleTrigger asChild>
@@ -370,7 +365,7 @@ export function AppSidebar() {
                                         isActive={location === item.url}
                                         data-testid={`link-${slug}`}
                                       >
-                                        <Link href={item.url}>
+                                        <Link href={item.url} onClick={closeMobile}>
                                           <item.icon className="h-3.5 w-3.5" />
                                           <span>{item.title}</span>
                                         </Link>
@@ -393,7 +388,7 @@ export function AppSidebar() {
                                 isActive={location === item.url}
                                 data-testid={`link-${slug}`}
                               >
-                                <Link href={item.url}>
+                                <Link href={item.url} onClick={closeMobile}>
                                   <item.icon className="h-3.5 w-3.5" />
                                   <span>{item.title}</span>
                                 </Link>

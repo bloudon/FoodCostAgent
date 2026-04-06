@@ -1701,6 +1701,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.cookie("session", token, sessionCookieOptions());
 
+      let loginSubscriptionTier: string | null = null;
+      if (user.companyId) {
+        const loginCompany = await storage.getCompany(user.companyId);
+        loginSubscriptionTier = loginCompany?.subscriptionTier || "free";
+      }
+
       res.json({ 
         user: { 
           id: user.id, 
@@ -1708,7 +1714,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           role: user.role,
           companyId: user.companyId,
           firstName: user.firstName,
-          lastName: user.lastName
+          lastName: user.lastName,
+          subscriptionTier: loginSubscriptionTier,
         } 
       });
     } catch (error: any) {
