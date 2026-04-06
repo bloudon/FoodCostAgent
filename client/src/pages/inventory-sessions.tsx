@@ -114,7 +114,7 @@ function SessionRow({ count, inventoryItems, stores, index }: any) {
         </div>
       </TableCell>
       <TableCell data-testid={`text-store-${count.id}`}>{storeName}</TableCell>
-      <TableCell>{count.userId}</TableCell>
+      <TableCell>{count.userName || "System"}</TableCell>
       <TableCell className="text-right font-mono">{countLines?.length || 0}</TableCell>
       <TableCell className="text-right font-mono font-semibold" data-testid={`text-session-value-${count.id}`}>
         ${totalValue.toFixed(2)}

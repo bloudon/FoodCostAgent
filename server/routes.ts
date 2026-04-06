@@ -7384,12 +7384,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       companyIds.map(id => storage.getCompanyStores(id))
     );
     const storesMap = new Map(allStores.flat().map(s => [s.id, s]));
+
+    // Resolve userId → user full name, grouped by companyId for tenant isolation
+    const usersByCompany = new Map<string, Map<string, { id: string; firstName: string; lastName: string; fullName: string }>>();
+    for (const cid of companyIds) {
+      const userIds = counts
+        .filter(c => c.companyId === cid && c.userId && c.userId !== "system")
+        .map(c => c.userId);
+      const userMap = await storage.getUsersByIds(userIds, cid);
+      usersByCompany.set(cid, userMap);
+    }
     
     const enrichedCounts = counts.map(count => {
       const store = storesMap.get(count.storeId);
+      const userMap = usersByCompany.get(count.companyId);
+      const resolvedUser = userMap?.get(count.userId);
+      const userName = resolvedUser
+        ? resolvedUser.fullName
+        : count.userId === "system"
+          ? "System"
+          : count.userId || "Unknown";
       return {
         ...count,
         storeName: store?.name || 'Unknown Store',
+        userName,
       };
     });
     
