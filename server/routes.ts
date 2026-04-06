@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { APP_VERSION } from "@shared/version";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import crypto from "crypto";
@@ -132,7 +133,7 @@ const swaggerSpec = swaggerJsdoc(swaggerOptions);
 export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint for deployment monitoring
   app.get('/api/health', (_req, res) => {
-    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.status(200).json({ status: 'ok', version: APP_VERSION, timestamp: new Date().toISOString() });
   });
 
   // ============ BILLING (Stripe) ============
