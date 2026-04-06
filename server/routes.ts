@@ -6840,7 +6840,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const components = await storage.getRecipeComponents(req.params.recipeId);
     const units = await storage.getUnits();
-    const inventoryItems = await storage.getInventoryItems((req as any).companyId);
+    const inventoryItems = await storage.getInventoryItems(undefined, undefined, (req as any).companyId);
     const recipes = await storage.getRecipes((req as any).companyId);
 
     const enriched = await Promise.all(
