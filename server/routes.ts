@@ -1,5 +1,7 @@
 import type { Express } from "express";
-import { APP_VERSION } from "@shared/version";
+import { createRequire } from "module";
+const _require = createRequire(import.meta.url);
+const { version: APP_VERSION } = _require("../package.json") as { version: string };
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import crypto from "crypto";

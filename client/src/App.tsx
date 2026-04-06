@@ -8,7 +8,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AppSidebar } from "@/components/app-sidebar";
 import { GlobalAdminHeader } from "@/components/global-admin-header";
 import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { APP_VERSION } from "@shared/version";
+import pkgJson from "../../package.json";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { StoreProvider } from "@/hooks/use-store-context";
 import NotFound from "@/pages/not-found";
@@ -293,7 +293,7 @@ function ProtectedLayoutContent() {
           </main>
 
           <footer className="shrink-0 border-t px-4 py-1 text-center" data-testid="app-footer-version">
-            <span className="text-[10px] text-muted-foreground">v{APP_VERSION}</span>
+            <span className="text-[10px] text-muted-foreground">v{pkgJson.version}</span>
           </footer>
         </SidebarInset>
       </SidebarProvider>
