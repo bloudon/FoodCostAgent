@@ -830,18 +830,6 @@ export default function CountSession() {
               </p>
             )}
           </div>
-          
-          {count && !count.applied && !isReadOnly && (
-            <Button
-              onClick={() => applyCountMutation.mutate()}
-              disabled={applyCountMutation.isPending}
-              variant="default"
-              data-testid="button-apply-count"
-            >
-              <Package className="h-4 w-4 mr-2" />
-              Apply Count to Inventory
-            </Button>
-          )}
         </div>
       </div>
 
@@ -905,22 +893,35 @@ export default function CountSession() {
           </div>
 
           {!isReadOnly && count && count.applied === 0 && (
-            <Button
-              onClick={() => lockCountMutation.mutate()}
-              disabled={lockCountMutation.isPending}
-              variant="default"
-              size="sm"
-              className="shrink-0 ml-2"
-              data-testid="button-complete-count"
-            >
-              <CheckCircle2 className="h-4 w-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">
-                {lockCountMutation.isPending ? "Completing..." : "Complete Count"}
-              </span>
-              <span className="sm:hidden">
-                {lockCountMutation.isPending ? "..." : "Complete"}
-              </span>
-            </Button>
+            <div className="flex items-center gap-2 shrink-0 ml-2">
+              <Button
+                onClick={() => applyCountMutation.mutate()}
+                disabled={applyCountMutation.isPending}
+                variant="outline"
+                size="sm"
+                data-testid="button-apply-count"
+              >
+                <Package className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">
+                  {applyCountMutation.isPending ? "Applying..." : "Apply to Inventory"}
+                </span>
+              </Button>
+              <Button
+                onClick={() => lockCountMutation.mutate()}
+                disabled={lockCountMutation.isPending}
+                variant="default"
+                size="sm"
+                data-testid="button-complete-count"
+              >
+                <CheckCircle2 className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">
+                  {lockCountMutation.isPending ? "Completing..." : "Complete Count"}
+                </span>
+                <span className="sm:hidden">
+                  {lockCountMutation.isPending ? "..." : "Done"}
+                </span>
+              </Button>
+            </div>
           )}
         </div>
       </div>
