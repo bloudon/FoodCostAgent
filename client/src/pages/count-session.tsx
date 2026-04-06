@@ -901,9 +901,12 @@ export default function CountSession() {
                 size="sm"
                 data-testid="button-apply-count"
               >
-                <Package className="h-4 w-4 sm:mr-2" />
+                <Package className="h-4 w-4 mr-1 sm:mr-2" />
+                <span className="sm:hidden">
+                  {applyCountMutation.isPending ? "Applying..." : "Apply"}
+                </span>
                 <span className="hidden sm:inline">
-                  {applyCountMutation.isPending ? "Applying..." : "Apply to Inventory"}
+                  {applyCountMutation.isPending ? "Applying..." : "Apply Count to Inventory"}
                 </span>
               </Button>
               <Button
