@@ -747,7 +747,7 @@ export default function InventoryItemDetail() {
               {/* ── MOBILE LAYOUT (hidden on sm+) ── */}
               <div className="sm:hidden">
 
-                {/* Mobile edit/add form — rendered above the list while active */}
+                {/* Mobile edit/add form — replaces list while active */}
                 {(showAddVendorRow || editingVendorItemId !== null) && (() => {
                   const rowId = editingVendorItemId ?? "new";
                   const rowData = vendorRowEdits[rowId];
@@ -762,7 +762,7 @@ export default function InventoryItemDetail() {
                     return cs > 0 ? (cp / cs).toFixed(4) : "0.0000";
                   })();
                   return (
-                    <div className="border rounded-lg p-4 mb-4 space-y-3 bg-muted/30" data-testid={`vendor-form-mobile-${rowId}`}>
+                    <div className="border rounded-lg p-4 mb-2 space-y-3 bg-muted/30" data-testid={`vendor-form-mobile-${rowId}`}>
                       <p className="text-sm font-semibold">{editingVendorItemId ? "Edit Vendor" : "Add Vendor"}</p>
 
                       <div className="space-y-1">
@@ -807,50 +807,47 @@ export default function InventoryItemDetail() {
                         </Select>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium text-muted-foreground">Case Price ($)</label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={rowData.lastCasePrice}
-                            onChange={(e) => updateVendorRowField(rowId, "lastCasePrice", e.target.value)}
-                            data-testid={`input-case-price-mobile-${rowId}`}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium text-muted-foreground">Units / Case</label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={rowData.caseSize}
-                            onChange={(e) => updateVendorRowField(rowId, "caseSize", e.target.value)}
-                            data-testid={`input-case-mobile-${rowId}`}
-                          />
-                        </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Case Price ($)</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={rowData.lastCasePrice}
+                          onChange={(e) => updateVendorRowField(rowId, "lastCasePrice", e.target.value)}
+                          data-testid={`input-case-price-mobile-${rowId}`}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Units / Case</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={rowData.caseSize}
+                          onChange={(e) => updateVendorRowField(rowId, "caseSize", e.target.value)}
+                          data-testid={`input-case-mobile-${rowId}`}
+                        />
                       </div>
 
                       <p className="text-xs text-muted-foreground">
                         Unit price: ${derivedUnitPrice}
                       </p>
 
-                      {editingVendorItemId && (
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium text-muted-foreground">Status</label>
-                          <Select
-                            value={rowData.active.toString()}
-                            onValueChange={(v) => updateVendorRowField(rowId, "active", parseInt(v))}
-                          >
-                            <SelectTrigger className="w-full" data-testid={`select-status-mobile-${rowId}`}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">Active</SelectItem>
-                              <SelectItem value="0">Inactive</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Status</label>
+                        <Select
+                          value={rowData.active.toString()}
+                          onValueChange={(v) => updateVendorRowField(rowId, "active", parseInt(v))}
+                        >
+                          <SelectTrigger className="w-full" data-testid={`select-status-mobile-${rowId}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">Active</SelectItem>
+                            <SelectItem value="0">Inactive</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
 
                       <div className="flex gap-2 pt-1">
                         <Button
@@ -876,7 +873,7 @@ export default function InventoryItemDetail() {
                   );
                 })()}
 
-                {/* Mobile read-only list */}
+                {/* Mobile read-only list — hidden while add/edit form is active */}
                 {!showAddVendorRow && editingVendorItemId === null && (!displayedVendorItems || displayedVendorItems.length === 0) && (
                   <p className="text-center py-8 text-sm text-muted-foreground">
                     {inactiveVendorItems.length > 0
@@ -885,9 +882,9 @@ export default function InventoryItemDetail() {
                   </p>
                 )}
 
+                {!showAddVendorRow && editingVendorItemId === null && (
                 <div className="divide-y">
                   {displayedVendorItems?.map((vi) => {
-                    if (editingVendorItemId === vi.id) return null;
                     return (
                       <div key={vi.id} className="py-3" data-testid={`vendor-item-card-mobile-${vi.id}`}>
                         <div className="flex items-center justify-between gap-2">
@@ -930,6 +927,8 @@ export default function InventoryItemDetail() {
                     );
                   })}
                 </div>
+                )}
+
               </div>
 
               {/* ── DESKTOP TABLE (hidden on mobile) ── */}
