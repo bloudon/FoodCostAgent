@@ -682,7 +682,7 @@ export default function WasteEntry() {
                               </TableRow>
                             ))}
                             <TableRow className="font-semibold bg-muted/50">
-                              <TableCell colSpan={2} className="text-right sm:hidden">
+                              <TableCell colSpan={2} className="text-right sm:hidden truncate max-w-0">
                                 Inventory Subtotal
                               </TableCell>
                               <TableCell colSpan={4} className="text-right hidden sm:table-cell">
@@ -752,7 +752,7 @@ export default function WasteEntry() {
                               </TableRow>
                             ))}
                             <TableRow className="font-semibold bg-muted/50">
-                              <TableCell colSpan={2} className="text-right sm:hidden">
+                              <TableCell colSpan={2} className="text-right sm:hidden truncate max-w-0">
                                 Menu Items Subtotal
                               </TableCell>
                               <TableCell colSpan={4} className="text-right hidden sm:table-cell">

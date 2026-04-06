@@ -77,6 +77,7 @@ import {
   ImageIcon,
   Loader2,
   Lock,
+  ChevronDown,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { ObjectUploader } from "@/components/ObjectUploader";
@@ -425,7 +426,8 @@ function DraggableSourceItem({
   return (
     <Card
       ref={setNodeRef}
-      className={`hover-elevate ${isDragging ? "opacity-50" : ""}`}
+      className={`hover-elevate cursor-pointer ${isDragging ? "opacity-50" : ""}`}
+      onClick={() => onAdd(item)}
       data-testid={`draggable-item-${item.id}`}
     >
       <CardContent className="p-3">
@@ -433,7 +435,7 @@ function DraggableSourceItem({
           <div 
             {...attributes}
             {...listeners}
-            className="flex-1 min-w-0 flex items-center gap-2 cursor-grab active:cursor-grabbing"
+            className="flex-1 min-w-0 flex items-center gap-2 md:cursor-grab md:active:cursor-grabbing"
           >
             {item.type === "recipe" ? (
               <ChefHat className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -539,6 +541,7 @@ function RecipeBuilderContent() {
 
   // Clone as Size Variant dialog state
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
+  const [mobileIngredientsOpen, setMobileIngredientsOpen] = useState(true);
   const [cloneSizeName, setCloneSizeName] = useState("");
   const [cloneScaleFactor, setCloneScaleFactor] = useState("1.0");
   const [cloneCreateMenuItem, setCloneCreateMenuItem] = useState(false);
@@ -1620,8 +1623,21 @@ function RecipeBuilderContent() {
           <div className="flex flex-col gap-4 p-4 md:h-full md:grid md:grid-cols-12 md:gap-6 md:p-6">
             {/* Left panel - Source items (shows below recipe form on mobile) */}
             <div className="order-2 md:order-1 md:col-span-4 flex flex-col gap-2 md:overflow-hidden">
-              <div className="space-y-2">
-                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Available Ingredients</h2>
+              {/* Mobile collapsible toggle */}
+              <button
+                className="md:hidden flex items-center justify-between w-full py-2.5 px-3 border rounded-lg bg-muted/30 text-left"
+                onClick={() => setMobileIngredientsOpen(!mobileIngredientsOpen)}
+                data-testid="button-toggle-ingredients-panel"
+              >
+                <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  Add Ingredients
+                </span>
+                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${mobileIngredientsOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              <div className={`${mobileIngredientsOpen ? "flex flex-col gap-2" : "hidden"} md:flex md:flex-col md:gap-2 md:flex-1 md:overflow-hidden`}>
+              <div className="space-y-2 md:space-y-2">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide hidden md:block">Available Ingredients</h2>
                 
                 {/* Category filter */}
                 <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
@@ -1698,6 +1714,7 @@ function RecipeBuilderContent() {
                   </div>
                 )}
               </div>
+              </div>{/* closes collapsible wrapper */}
             </div>
 
             {/* Right panel - Recipe canvas (shows first on mobile) */}
@@ -1705,8 +1722,8 @@ function RecipeBuilderContent() {
               {/* Recipe metadata - compact */}
               <Card className="flex-shrink-0">
                 <CardContent className="pt-4 pb-3 space-y-3">
-                  {/* Recipe name and cost on same line */}
-                  <div className="flex items-center gap-4">
+                  {/* Recipe name and cost */}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                     <div className="flex-1 space-y-1">
                       <label className="text-sm font-medium">Recipe Name</label>
                       <Input
@@ -1716,10 +1733,10 @@ function RecipeBuilderContent() {
                         data-testid="input-recipe-name"
                       />
                     </div>
-                    <div className="w-32 text-right">
-                      <label className="text-sm font-medium text-muted-foreground">Cost:</label>
+                    <div className="flex items-center justify-between sm:block sm:w-32 sm:text-right">
+                      <label className="text-sm font-medium text-muted-foreground">Total Cost:</label>
                       <div
-                        className="text-2xl font-bold text-primary"
+                        className="text-xl sm:text-2xl font-bold text-primary"
                         data-testid="text-total-cost"
                       >
                         ${totalCost.toFixed(2)}
@@ -1734,7 +1751,7 @@ function RecipeBuilderContent() {
                         Recipe Yield & Options
                       </AccordionTrigger>
                       <AccordionContent className="space-y-4 pt-2">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <label className="text-sm font-medium">Yield Quantity</label>
                             <Input
