@@ -1,11 +1,11 @@
 import { useState, useEffect, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation as useWouterLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2 } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -212,6 +212,7 @@ function generateAnchorId(prefix: string, value: string): string {
 export default function CountSession() {
   const params = useParams();
   const countId = params.id;
+  const [, navigate] = useWouterLocation();
   
   // Get URL search parameters for filtering and navigation
   const urlParams = new URLSearchParams(window.location.search);
@@ -642,13 +643,16 @@ export default function CountSession() {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts", countId] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
       toast({
-        title: "Session Locked",
-        description: "This inventory count session is now locked",
+        title: "Count Completed",
+        description: "Inventory count has been completed and locked",
       });
+      // Navigate back to sessions index, pre-filtered to this count's store
+      const storeId = count?.storeId;
+      navigate(storeId ? `/inventory-sessions?store=${storeId}` : "/inventory-sessions");
     },
     onError: (error: Error) => {
       toast({
-        title: "Failed to lock session",
+        title: "Failed to complete count",
         description: error.message,
         variant: "destructive",
       });
@@ -867,27 +871,11 @@ export default function CountSession() {
         </Alert>
       )}
 
-      {/* Lock Session Button for admins on unlocked sessions */}
-      {!isReadOnly && count?.applied === 0 && (user?.role === "global_admin" || user?.role === "company_admin") && (
-        <div className="mb-8 flex justify-end">
-          <Button
-            onClick={() => lockCountMutation.mutate()}
-            disabled={lockCountMutation.isPending}
-            variant="outline"
-            size="sm"
-            data-testid="button-lock-session"
-          >
-            <Lock className="h-4 w-4 mr-2" />
-            {lockCountMutation.isPending ? "Locking..." : "Lock Session"}
-          </Button>
-        </div>
-      )}
-
       {/* Mini Dashboard - Sticky Stats Bar */}
       <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-4 sm:mb-8 -mx-4 sm:-mx-8 px-4 sm:px-8 py-2 sm:py-3">
-        <div className="grid grid-cols-3 gap-2 sm:gap-4">
-          <div className="flex items-center gap-2">
-            <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground hidden sm:block" />
+        <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 flex-1">
+            <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground hidden sm:block shrink-0" />
             <div>
               <div className="text-xs sm:text-sm text-muted-foreground">Value</div>
               <div className="text-sm sm:text-lg font-bold font-mono" data-testid="text-dashboard-total-value">
@@ -896,8 +884,8 @@ export default function CountSession() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Package className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground hidden sm:block" />
+          <div className="flex items-center gap-2 flex-1">
+            <Package className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground hidden sm:block shrink-0" />
             <div>
               <div className="text-xs sm:text-sm text-muted-foreground">Items</div>
               <div className="text-sm sm:text-lg font-bold font-mono" data-testid="text-dashboard-total-items">
@@ -906,8 +894,8 @@ export default function CountSession() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Layers className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground hidden sm:block" />
+          <div className="flex items-center gap-2 flex-1">
+            <Layers className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground hidden sm:block shrink-0" />
             <div>
               <div className="text-xs sm:text-sm text-muted-foreground">Categories</div>
               <div className="text-sm sm:text-lg font-bold font-mono" data-testid="text-dashboard-categories">
@@ -915,6 +903,25 @@ export default function CountSession() {
               </div>
             </div>
           </div>
+
+          {!isReadOnly && count && count.applied === 0 && (
+            <Button
+              onClick={() => lockCountMutation.mutate()}
+              disabled={lockCountMutation.isPending}
+              variant="default"
+              size="sm"
+              className="shrink-0 ml-2"
+              data-testid="button-complete-count"
+            >
+              <CheckCircle2 className="h-4 w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">
+                {lockCountMutation.isPending ? "Completing..." : "Complete Count"}
+              </span>
+              <span className="sm:hidden">
+                {lockCountMutation.isPending ? "..." : "Complete"}
+              </span>
+            </Button>
+          )}
         </div>
       </div>
 

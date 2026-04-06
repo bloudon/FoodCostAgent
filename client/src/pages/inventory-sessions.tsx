@@ -153,7 +153,9 @@ export default function InventorySessions() {
   const [, setLocation] = useLocation();
   const { hasFeature } = useTier();
   const canUsePowerInventory = hasFeature("power_inventory");
-  const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
+  // Pre-select store from URL ?store= param (set when navigating back from a count session)
+  const initialStoreId = new URLSearchParams(window.location.search).get("store") || "all";
+  const [selectedStoreId, setSelectedStoreId] = useState<string>(initialStoreId);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogStoreId, setDialogStoreId] = useState<string>("");
   const [countDate, setCountDate] = useState<Date>(new Date());
