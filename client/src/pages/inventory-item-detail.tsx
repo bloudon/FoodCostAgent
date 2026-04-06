@@ -877,7 +877,7 @@ export default function InventoryItemDetail() {
                 {!showAddVendorRow && editingVendorItemId === null && (!displayedVendorItems || displayedVendorItems.length === 0) && (
                   <p className="text-center py-8 text-sm text-muted-foreground">
                     {inactiveVendorItems.length > 0
-                      ? "No active vendors. Use toggle above to show inactive."
+                      ? "No active vendors. Use toggle above to show inactive vendors."
                       : "No vendors configured for this item"}
                   </p>
                 )}
