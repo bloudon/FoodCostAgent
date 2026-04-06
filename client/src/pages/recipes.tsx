@@ -441,11 +441,11 @@ function RecipesContent() {
             {/* Mobile card list */}
             <div className="sm:hidden divide-y">
               {groupedRecipes.map((group) => (
-                <div key={group.parent.id} data-testid={`row-recipe-${group.parent.id}`}>
+                <div key={group.parent.id} data-testid={`row-recipe-mobile-${group.parent.id}`}>
                   <div className="flex items-center px-4 py-3 gap-3">
                     <Link href={`/recipes/${group.parent.id}`} className="flex-1 min-w-0 block">
                       <div className="flex items-center gap-2 flex-wrap min-w-0">
-                        <span className={`font-medium truncate ${group.parent.isActive === 0 ? 'text-muted-foreground' : ''}`} data-testid={`text-recipe-name-${group.parent.id}`}>
+                        <span className={`font-medium truncate ${group.parent.isActive === 0 ? 'text-muted-foreground' : ''}`} data-testid={`text-recipe-name-mobile-${group.parent.id}`}>
                           {formatRecipeName(group.parent.name)}
                         </span>
                         {group.parent.isActive === 0 && <Badge variant="outline" className="text-xs text-muted-foreground">Inactive</Badge>}
@@ -468,12 +468,12 @@ function RecipesContent() {
                       {missingIngredientRecipeIds.has(group.parent.id) && (
                         <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                       )}
-                      <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${group.parent.id}`}>
+                      <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-mobile-${group.parent.id}`}>
                         ${group.parent.computedCost?.toFixed(2) || "0.00"}
                       </span>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-actions-recipe-${group.parent.id}`}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-actions-recipe-mobile-${group.parent.id}`}>
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -485,11 +485,11 @@ function RecipesContent() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           {group.parent.isActive === 0 ? (
-                            <DropdownMenuItem onClick={() => reactivateMutation.mutate(group.parent.id)} data-testid={`button-reactivate-recipe-${group.parent.id}`}>
+                            <DropdownMenuItem onClick={() => reactivateMutation.mutate(group.parent.id)} data-testid={`button-reactivate-recipe-mobile-${group.parent.id}`}>
                               <Eye className="h-4 w-4 mr-2" />Reactivate
                             </DropdownMenuItem>
                           ) : (
-                            <DropdownMenuItem onClick={() => checkCanDelete(group.parent)} className="text-destructive focus:text-destructive" data-testid={`button-delete-recipe-${group.parent.id}`}>
+                            <DropdownMenuItem onClick={() => checkCanDelete(group.parent)} className="text-destructive focus:text-destructive" data-testid={`button-delete-recipe-mobile-${group.parent.id}`}>
                               <Trash2 className="h-4 w-4 mr-2" />Delete / Deactivate
                             </DropdownMenuItem>
                           )}
