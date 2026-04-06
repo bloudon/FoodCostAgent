@@ -635,20 +635,21 @@ export default function WasteEntry() {
                           <Package className="h-5 w-5 text-muted-foreground" />
                           <h3 className="text-lg font-semibold">Inventory Items</h3>
                         </div>
+                        <div className="overflow-x-auto">
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead>Date</TableHead>
+                              <TableHead className="hidden sm:table-cell">Date</TableHead>
                               <TableHead>Item</TableHead>
                               <TableHead className="text-right">Qty</TableHead>
-                              <TableHead>Reason</TableHead>
+                              <TableHead className="hidden sm:table-cell">Reason</TableHead>
                               <TableHead className="text-right">Value</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {inventoryLogs.map(log => (
                               <TableRow key={log.id} data-testid={`waste-log-${log.id}`}>
-                                <TableCell className="whitespace-nowrap">
+                                <TableCell className="whitespace-nowrap hidden sm:table-cell">
                                   {new Date(log.wastedAt).toLocaleDateString('en-US', {
                                     month: 'short',
                                     day: 'numeric',
@@ -658,6 +659,10 @@ export default function WasteEntry() {
                                 <TableCell>
                                   <div>
                                     <div className="font-medium">{log.inventoryItemName}</div>
+                                    <div className="text-xs text-muted-foreground sm:hidden">
+                                      {new Date(log.wastedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                      {' · '}{log.reasonCode.replace(/_/g, ' ')}
+                                    </div>
                                     {log.notes && (
                                       <div className="text-sm text-muted-foreground italic">
                                         {log.notes}
@@ -665,19 +670,22 @@ export default function WasteEntry() {
                                     )}
                                   </div>
                                 </TableCell>
-                                <TableCell className="text-right tabular-nums">
+                                <TableCell className="text-right tabular-nums whitespace-nowrap">
                                   {log.qty} {log.unitName}
                                 </TableCell>
-                                <TableCell className="text-muted-foreground">
+                                <TableCell className="text-muted-foreground hidden sm:table-cell">
                                   {log.reasonCode.replace(/_/g, ' ')}
                                 </TableCell>
-                                <TableCell className="text-right tabular-nums font-medium">
+                                <TableCell className="text-right tabular-nums font-medium whitespace-nowrap">
                                   ${log.totalValue.toFixed(2)}
                                 </TableCell>
                               </TableRow>
                             ))}
                             <TableRow className="font-semibold bg-muted/50">
-                              <TableCell colSpan={4} className="text-right">
+                              <TableCell colSpan={2} className="text-right sm:hidden">
+                                Inventory Subtotal
+                              </TableCell>
+                              <TableCell colSpan={4} className="text-right hidden sm:table-cell">
                                 Inventory Subtotal
                               </TableCell>
                               <TableCell className="text-right tabular-nums">
@@ -686,6 +694,7 @@ export default function WasteEntry() {
                             </TableRow>
                           </TableBody>
                         </Table>
+                        </div>
                       </div>
                     )}
 
@@ -696,20 +705,21 @@ export default function WasteEntry() {
                           <UtensilsCrossed className="h-5 w-5 text-muted-foreground" />
                           <h3 className="text-lg font-semibold">Menu Items</h3>
                         </div>
+                        <div className="overflow-x-auto">
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead>Date</TableHead>
+                              <TableHead className="hidden sm:table-cell">Date</TableHead>
                               <TableHead>Item</TableHead>
                               <TableHead className="text-right">Qty</TableHead>
-                              <TableHead>Reason</TableHead>
+                              <TableHead className="hidden sm:table-cell">Reason</TableHead>
                               <TableHead className="text-right">Value</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {menuItemLogs.map(log => (
                               <TableRow key={log.id} data-testid={`waste-log-${log.id}`}>
-                                <TableCell className="whitespace-nowrap">
+                                <TableCell className="whitespace-nowrap hidden sm:table-cell">
                                   {new Date(log.wastedAt).toLocaleDateString('en-US', {
                                     month: 'short',
                                     day: 'numeric',
@@ -719,6 +729,10 @@ export default function WasteEntry() {
                                 <TableCell>
                                   <div>
                                     <div className="font-medium">{log.menuItemName}</div>
+                                    <div className="text-xs text-muted-foreground sm:hidden">
+                                      {new Date(log.wastedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                      {' · '}{log.reasonCode.replace(/_/g, ' ')}
+                                    </div>
                                     {log.notes && (
                                       <div className="text-sm text-muted-foreground italic">
                                         {log.notes}
@@ -726,19 +740,22 @@ export default function WasteEntry() {
                                     )}
                                   </div>
                                 </TableCell>
-                                <TableCell className="text-right tabular-nums">
+                                <TableCell className="text-right tabular-nums whitespace-nowrap">
                                   {log.qty}
                                 </TableCell>
-                                <TableCell className="text-muted-foreground">
+                                <TableCell className="text-muted-foreground hidden sm:table-cell">
                                   {log.reasonCode.replace(/_/g, ' ')}
                                 </TableCell>
-                                <TableCell className="text-right tabular-nums font-medium">
+                                <TableCell className="text-right tabular-nums font-medium whitespace-nowrap">
                                   ${log.totalValue.toFixed(2)}
                                 </TableCell>
                               </TableRow>
                             ))}
                             <TableRow className="font-semibold bg-muted/50">
-                              <TableCell colSpan={4} className="text-right">
+                              <TableCell colSpan={2} className="text-right sm:hidden">
+                                Menu Items Subtotal
+                              </TableCell>
+                              <TableCell colSpan={4} className="text-right hidden sm:table-cell">
                                 Menu Items Subtotal
                               </TableCell>
                               <TableCell className="text-right tabular-nums">
@@ -747,6 +764,7 @@ export default function WasteEntry() {
                             </TableRow>
                           </TableBody>
                         </Table>
+                        </div>
                       </div>
                     )}
 

@@ -305,23 +305,25 @@ function InlineIngredientRow({
       className="border rounded-lg px-3 py-2 bg-card"
       data-testid={`row-ingredient-${component.id}`}
     >
-      {/* Grid layout for aligned columns */}
-      <div className="grid grid-cols-[24px_20px_1fr_80px_100px_70px_70px_32px] gap-2 items-center">
-        {/* Drag handle */}
+      {/* Responsive grid: compact on mobile, full columns on desktop */}
+      <div className="grid grid-cols-[1fr_64px_76px_48px_32px] md:grid-cols-[24px_20px_1fr_80px_100px_70px_70px_32px] gap-2 items-center">
+        {/* Drag handle - desktop only */}
         <div 
           {...attributes} 
           {...listeners} 
-          className="cursor-grab active:cursor-grabbing"
+          className="cursor-grab active:cursor-grabbing hidden md:flex"
         >
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
 
-        {/* Type icon */}
-        {component.componentType === "recipe" ? (
-          <ChefHat className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-        ) : (
-          <Package className="h-4 w-4 text-muted-foreground" />
-        )}
+        {/* Type icon - desktop only */}
+        <div className="hidden md:block">
+          {component.componentType === "recipe" ? (
+            <ChefHat className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          ) : (
+            <Package className="h-4 w-4 text-muted-foreground" />
+          )}
+        </div>
 
         {/* Ingredient name - truncate */}
         <span 
@@ -359,9 +361,9 @@ function InlineIngredientRow({
           </SelectContent>
         </Select>
 
-        {/* Yield override - only for inventory items */}
+        {/* Yield override - desktop only */}
         {component.componentType === "inventory_item" ? (
-          <div className="flex items-center gap-1">
+          <div className="hidden md:flex items-center gap-1">
             <Input
               type="number"
               step="0.1"
@@ -379,7 +381,7 @@ function InlineIngredientRow({
             <span className="text-xs text-muted-foreground">%</span>
           </div>
         ) : (
-          <div />
+          <div className="hidden md:block" />
         )}
 
         {/* Cost - right aligned */}
@@ -1500,9 +1502,9 @@ function RecipeBuilderContent() {
       <div className="h-full flex flex-col pb-16">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-background border-b">
-          <div className="px-6 py-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
+          <div className="px-4 py-3 sm:px-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -1518,15 +1520,15 @@ function RecipeBuilderContent() {
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
                 <div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <h1 className="text-2xl font-bold">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h1 className="text-lg sm:text-2xl font-bold">
                       {isNew ? "New Recipe" : "Edit Recipe"}
                     </h1>
                     {recipeName && (
-                      <span className="text-2xl font-bold text-muted-foreground">—</span>
+                      <span className="text-lg sm:text-2xl font-bold text-muted-foreground hidden sm:inline">—</span>
                     )}
                     {recipeName && (
-                      <span className="text-2xl font-bold" data-testid="text-header-recipe-name">
+                      <span className="text-lg sm:text-2xl font-bold hidden sm:inline" data-testid="text-header-recipe-name">
                         {formatRecipeName(recipeName)}
                       </span>
                     )}
@@ -1559,12 +1561,17 @@ function RecipeBuilderContent() {
                   <p className="text-muted-foreground mt-0.5 text-sm">
                     {menuItemIdToLink 
                       ? "Build your recipe, then save to automatically link it to your menu item"
-                      : "Drag ingredients from the left to build your recipe"
+                      : (
+                        <>
+                          <span className="hidden md:inline">Drag ingredients from the left to build your recipe</span>
+                          <span className="md:hidden">Tap an ingredient below to add it to your recipe</span>
+                        </>
+                      )
                     }
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 self-end sm:self-auto">
                 {/* Clone as Size Variant button - only show for existing recipes */}
                 {!isNew && id && (
                   <Button
@@ -1573,13 +1580,12 @@ function RecipeBuilderContent() {
                     disabled={cloneRecipeMutation.isPending}
                     data-testid="button-clone-recipe"
                   >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Clone as Size
+                    <Copy className="h-4 w-4" />
+                    <span className="hidden sm:inline ml-2">Clone as Size</span>
                   </Button>
                 )}
                 <Button
                   onClick={() => {
-                    // Validate at least one store is selected
                     if (selectedStores.length === 0) {
                       toast({
                         title: "Store Required",
@@ -1600,8 +1606,9 @@ function RecipeBuilderContent() {
                   }
                   data-testid="button-save-recipe"
                 >
-                  <Save className="h-4 w-4 mr-2" />
-                  {saveRecipeMutation.isPending ? "Saving..." : "Save Recipe"}
+                  <Save className="h-4 w-4" />
+                  <span className="hidden sm:inline ml-2">{saveRecipeMutation.isPending ? "Saving..." : "Save Recipe"}</span>
+                  <span className="sm:hidden ml-1">{saveRecipeMutation.isPending ? "..." : "Save"}</span>
                 </Button>
               </div>
             </div>
@@ -1609,10 +1616,10 @@ function RecipeBuilderContent() {
         </div>
 
         {/* Main content */}
-        <div className="flex-1 overflow-hidden">
-          <div className="h-full grid grid-cols-12 gap-6 p-6">
-            {/* Left panel - Source items */}
-            <div className="col-span-4 flex flex-col gap-2 overflow-hidden">
+        <div className="flex-1 md:overflow-hidden overflow-y-auto">
+          <div className="flex flex-col gap-4 p-4 md:h-full md:grid md:grid-cols-12 md:gap-6 md:p-6">
+            {/* Left panel - Source items (shows below recipe form on mobile) */}
+            <div className="order-2 md:order-1 md:col-span-4 flex flex-col gap-2 md:overflow-hidden">
               <div className="space-y-2">
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Available Ingredients</h2>
                 
@@ -1644,7 +1651,7 @@ function RecipeBuilderContent() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-auto space-y-4">
+              <div className="md:flex-1 md:overflow-auto space-y-4">
                 {/* Base Recipes Section - Warm amber tones */}
                 {baseRecipesSource.length > 0 && (
                   <div className="bg-amber-50/50 dark:bg-amber-950/20 rounded-lg p-3 border border-amber-200/50 dark:border-amber-800/30">
@@ -1693,8 +1700,8 @@ function RecipeBuilderContent() {
               </div>
             </div>
 
-            {/* Right panel - Recipe canvas */}
-            <div className="col-span-8 flex flex-col gap-4 overflow-y-auto">
+            {/* Right panel - Recipe canvas (shows first on mobile) */}
+            <div className="order-1 md:order-2 md:col-span-8 flex flex-col gap-4 md:overflow-y-auto">
               {/* Recipe metadata - compact */}
               <Card className="flex-shrink-0">
                 <CardContent className="pt-4 pb-3 space-y-3">
@@ -1872,8 +1879,16 @@ function RecipeBuilderContent() {
                       items={components.map((c) => c.id)}
                       strategy={verticalListSortingStrategy}
                     >
-                      {/* Column headers */}
-                      <div className="grid grid-cols-[24px_20px_1fr_80px_100px_70px_70px_32px] gap-2 items-center px-3 py-1 mb-2 text-xs text-muted-foreground font-medium">
+                      {/* Column headers - mobile */}
+                      <div className="grid grid-cols-[1fr_64px_76px_48px_32px] md:hidden gap-2 items-center px-3 py-1 mb-2 text-xs text-muted-foreground font-medium">
+                        <div>Item</div>
+                        <div>Qty</div>
+                        <div>Unit</div>
+                        <div className="text-right">Cost</div>
+                        <div></div>
+                      </div>
+                      {/* Column headers - desktop */}
+                      <div className="hidden md:grid grid-cols-[24px_20px_1fr_80px_100px_70px_70px_32px] gap-2 items-center px-3 py-1 mb-2 text-xs text-muted-foreground font-medium">
                         <div></div>
                         <div></div>
                         <div>Item</div>

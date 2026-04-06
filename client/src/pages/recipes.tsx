@@ -438,11 +438,12 @@ function RecipesContent() {
       ) : groupedRecipes.length > 0 ? (
         <Card>
           <CardContent className="p-0">
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Recipe Name</TableHead>
-                  <TableHead className="text-right">Yield</TableHead>
+                  <TableHead className="text-right hidden sm:table-cell">Yield</TableHead>
                   <TableHead className="text-right">Cost</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
@@ -503,7 +504,7 @@ function RecipesContent() {
                             </Link>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right whitespace-nowrap">
+                        <TableCell className="text-right whitespace-nowrap hidden sm:table-cell">
                           <Link href={`/recipes/${group.parent.id}`} className="block w-full">
                             <span className="font-mono text-sm" data-testid={`text-recipe-yield-${group.parent.id}`}>
                               {group.parent.yieldQty} {getUnitName(group.parent.yieldUnitId)}
@@ -598,7 +599,7 @@ function RecipesContent() {
                                   </div>
                                 </Link>
                               </TableCell>
-                              <TableCell className="text-right whitespace-nowrap">
+                              <TableCell className="text-right whitespace-nowrap hidden sm:table-cell">
                                 <Link href={`/recipes/${child.id}`} className="block w-full">
                                   <span className="font-mono text-sm" data-testid={`text-recipe-yield-${child.id}`}>
                                     {child.yieldQty} {getUnitName(child.yieldUnitId)}
@@ -671,6 +672,7 @@ function RecipesContent() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       ) : (
