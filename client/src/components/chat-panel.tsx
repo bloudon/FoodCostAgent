@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { MessageCircle, Send, Sparkles, Lock, UserCheck, PhoneCall } from "lucide-react";
+import { MessageCircle, Send, Sparkles, Lock, UserCheck, PhoneCall, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SheetClose,
 } from "@/components/ui/sheet";
 import { useTier } from "@/hooks/use-tier";
 import { Link } from "wouter";
@@ -19,8 +20,21 @@ interface ChatMessage {
   suggestHandoff?: boolean;
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return isMobile;
+}
+
 export function ChatPanel() {
   const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -227,14 +241,27 @@ export function ChatPanel() {
 
       <Sheet open={open} onOpenChange={handleOpenChange}>
         <SheetContent
-          side="right"
-          className="w-[380px] sm:w-[380px] p-0 flex flex-col"
+          side={isMobile ? "bottom" : "right"}
+          className={isMobile ? "h-[85vh] w-full p-0 flex flex-col" : "w-[380px] p-0 flex flex-col"}
           data-testid="chat-panel"
         >
           <SheetHeader className="px-4 py-3 border-b bg-[#f2690d] text-white shrink-0">
             <SheetTitle className="flex items-center gap-2 text-white">
               <Sparkles className="h-5 w-5 shrink-0" />
               <span className="text-sm font-semibold">FNB Cost Pro AI</span>
+              {isMobile && (
+                <SheetClose asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="ml-auto text-white"
+                    data-testid="button-chat-close-mobile"
+                  >
+                    <ChevronDown className="h-5 w-5" />
+                    <span className="sr-only">Close</span>
+                  </Button>
+                </SheetClose>
+              )}
             </SheetTitle>
           </SheetHeader>
 
