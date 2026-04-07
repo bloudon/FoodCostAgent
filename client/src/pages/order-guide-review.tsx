@@ -387,13 +387,13 @@ export default function OrderGuideReview() {
             </Collapsible>
           )}
 
-          {/* Secondary import buttons (keep as escape hatch) */}
+          {/* Secondary import buttons (kept as escape hatch; also gated on vendor for image scans) */}
           <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={() => approveMutation.mutate({ importAll: true })}
-              disabled={approveMutation.isPending || targetStoreIds.size === 0}
+              disabled={approveMutation.isPending || targetStoreIds.size === 0 || noVendorWarning}
               data-testid="button-import-all"
             >
               <CheckCheck className="h-4 w-4 mr-2" />
@@ -403,7 +403,7 @@ export default function OrderGuideReview() {
               size="sm"
               variant="outline"
               onClick={() => approveMutation.mutate({ importAll: false })}
-              disabled={approveMutation.isPending || selectedCount === 0 || targetStoreIds.size === 0}
+              disabled={approveMutation.isPending || selectedCount === 0 || targetStoreIds.size === 0 || noVendorWarning}
               data-testid="button-import-selected"
             >
               <Check className="h-4 w-4 mr-2" />
@@ -592,19 +592,26 @@ export default function OrderGuideReview() {
       {/* Sticky Confirm Bar */}
       <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="max-w-screen-xl mx-auto px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
-          <p className="text-sm text-muted-foreground" data-testid="text-confirm-summary">
-            {confirmSummary}
+          <div className="text-sm" data-testid="text-confirm-summary">
+            <span className="text-muted-foreground">{confirmSummary}</span>
             {selectedVendorName && (
               <span className="ml-2 font-medium text-foreground">→ {selectedVendorName}</span>
             )}
-          </p>
+            {noVendorWarning && (
+              <span className="ml-2 text-yellow-600 dark:text-yellow-400">— select or add a vendor first</span>
+            )}
+          </div>
           <Button
             onClick={() => approveMutation.mutate({ importAll: false })}
-            disabled={approveMutation.isPending || selectedCount === 0 || targetStoreIds.size === 0}
+            disabled={approveMutation.isPending || selectedCount === 0 || targetStoreIds.size === 0 || noVendorWarning}
             data-testid="button-confirm-import"
           >
             <Check className="h-4 w-4 mr-2" />
-            {approveMutation.isPending ? 'Importing…' : `Confirm & Import (${selectedCount})`}
+            {approveMutation.isPending
+              ? 'Importing…'
+              : selectedVendorName
+                ? `Confirm & Import (${selectedCount}) → ${selectedVendorName}`
+                : `Confirm & Import (${selectedCount})`}
           </Button>
         </div>
       </div>
