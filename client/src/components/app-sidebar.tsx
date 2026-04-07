@@ -59,7 +59,7 @@ import { useStoreContext } from "@/hooks/use-store-context";
 import { useTier } from "@/hooks/use-tier";
 import { type Feature } from "@shared/tier-config";
 
-const logoImage = "/website-logo.png";
+const logoImage = "/website-logo-dark.png";
 
 interface NavItem {
   title: string;
