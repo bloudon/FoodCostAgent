@@ -94,7 +94,8 @@ function PrepItemBuilderContent() {
 
   const { data: existingItem, isLoading } = useQuery<ApiPrepItem>({
     queryKey: ["/api/prep-items", prepItemId],
-    enabled: !!prepItemId,
+    // Only fetch when we have a real UUID prepItemId (not "new")
+    enabled: !!prepItemId && prepItemId !== "new",
   });
 
   const form = useForm<FormValues>({

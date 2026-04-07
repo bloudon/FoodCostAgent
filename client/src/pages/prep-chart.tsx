@@ -164,43 +164,70 @@ function PrepChartContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {chartResult.lines.map(line => {
-                    const item = prepItemMap.get(line.prepItemId);
-                    const stationName = line.stationId ? (stationMap.get(line.stationId) ?? "—") : "—";
-                    return (
-                      <tr key={line.id} className="border-b last:border-b-0 hover:bg-muted/20" data-testid={`row-chart-line-${line.id}`}>
-                        <td className="py-3 px-4">
-                          <span className="font-medium text-sm">{item?.name ?? line.prepItemId}</span>
-                        </td>
-                        <td className="py-3 px-4 text-sm text-muted-foreground">
-                          {stationName}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="font-semibold text-sm" data-testid={`text-recommended-qty-${line.id}`}>
-                            {line.recommendedQty.toFixed(1)} {item?.outputUnit ?? ""}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <Badge
-                            variant={line.recommendedBatches === 0 ? "secondary" : "default"}
-                            className="text-xs"
-                            data-testid={`badge-batches-${line.id}`}
-                          >
-                            {line.recommendedBatches}x
-                          </Badge>
-                        </td>
-                        <td className="py-3 px-4 text-sm text-muted-foreground" data-testid={`text-on-hand-${line.id}`}>
-                          {line.onHandQty.toFixed(1)} {item?.outputUnit ?? ""}
-                        </td>
-                        <td className="py-3 px-4 text-sm text-muted-foreground">
-                          {line.dueTime ? format(new Date(line.dueTime), "h:mma") : "—"}
-                        </td>
-                        <td className="py-3 px-4 text-xs text-muted-foreground max-w-xs" data-testid={`text-reasoning-${line.id}`}>
-                          {line.reasoningSummary ?? "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {(() => {
+                    // Group by station for visual section headers
+                    const grouped = new Map<string, ChartLine[]>();
+                    for (const line of chartResult.lines) {
+                      const key = line.stationId ?? "__none__";
+                      const group = grouped.get(key) ?? [];
+                      group.push(line);
+                      grouped.set(key, group);
+                    }
+
+                    const rows: JSX.Element[] = [];
+                    grouped.forEach((lines, stationKey) => {
+                      const stationLabel = stationKey === "__none__"
+                        ? "General"
+                        : (stationMap.get(stationKey) ?? "Unknown Station");
+
+                      rows.push(
+                        <tr key={`header-${stationKey}`} className="bg-muted/50 border-b">
+                          <td colSpan={7} className="py-1.5 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            {stationLabel}
+                          </td>
+                        </tr>
+                      );
+
+                      lines.forEach(line => {
+                        const item = prepItemMap.get(line.prepItemId);
+                        const stationName = line.stationId ? (stationMap.get(line.stationId) ?? "—") : "—";
+                        rows.push(
+                          <tr key={line.id} className="border-b last:border-b-0 hover:bg-muted/20" data-testid={`row-chart-line-${line.id}`}>
+                            <td className="py-3 px-4">
+                              <span className="font-medium text-sm">{item?.name ?? line.prepItemId}</span>
+                            </td>
+                            <td className="py-3 px-4 text-sm text-muted-foreground">
+                              {stationName}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="font-semibold text-sm" data-testid={`text-recommended-qty-${line.id}`}>
+                                {line.recommendedQty.toFixed(1)} {item?.outputUnit ?? ""}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <Badge
+                                variant={line.recommendedBatches === 0 ? "secondary" : "default"}
+                                className="text-xs"
+                                data-testid={`badge-batches-${line.id}`}
+                              >
+                                {line.recommendedBatches}x
+                              </Badge>
+                            </td>
+                            <td className="py-3 px-4 text-sm text-muted-foreground" data-testid={`text-on-hand-${line.id}`}>
+                              {line.onHandQty.toFixed(1)} {item?.outputUnit ?? ""}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-muted-foreground">
+                              {line.dueTime ? format(new Date(line.dueTime), "h:mma") : "—"}
+                            </td>
+                            <td className="py-3 px-4 text-xs text-muted-foreground max-w-xs" data-testid={`text-reasoning-${line.id}`}>
+                              {line.reasoningSummary ?? "—"}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    });
+                    return rows;
+                  })()}
                 </tbody>
               </table>
             </div>
