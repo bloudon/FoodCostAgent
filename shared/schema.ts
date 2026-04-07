@@ -1106,6 +1106,7 @@ export const orderGuides = pgTable("order_guides", {
   status: text("status").notNull().default("pending_review"), // pending_review, approved, rejected
   approvedAt: timestamp("approved_at"),
   approvedBy: varchar("approved_by"), // User ID who approved
+  detectedVendorName: text("detected_vendor_name"), // AI-extracted vendor name from image scans (for pre-filling "Add Vendor" dialog)
 }, (table) => ({
   companyIdx: index("order_guides_company_idx").on(table.companyId),
   vendorIdx: index("order_guides_vendor_idx").on(table.vendorId),

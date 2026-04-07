@@ -3892,6 +3892,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         rowCount: vendorProducts.length,
         status: 'pending_review' as const,
         source: 'image_scan' as const,
+        detectedVendorName: scanResult.vendorName || null,
       };
 
       const createdGuide = await storage.createOrderGuide(guideInsert);
