@@ -534,3 +534,19 @@ DO $$ BEGIN
       VALUES ('v022', 'Task #52: Collapse inner_pack_size into case_size on vendor_items');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v023 — Task #64: detected_vendor_name column on order_guides
+-- Stores the AI-extracted vendor name from image scans so the review page can
+-- pre-fill the "Add New Vendor" dialog without client-side ephemeral state.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v023') THEN
+
+    ALTER TABLE order_guides
+      ADD COLUMN IF NOT EXISTS detected_vendor_name text;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v023', 'Task #64: detected_vendor_name on order_guides for receipt scan vendor pre-fill');
+  END IF;
+END $$;

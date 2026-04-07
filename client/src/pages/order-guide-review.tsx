@@ -172,7 +172,8 @@ export default function OrderGuideReview() {
 
   const addVendorMutation = useMutation({
     mutationFn: async (name: string) => {
-      return apiRequest('POST', '/api/vendors', { name }) as Promise<Vendor>;
+      const res = await apiRequest('POST', '/api/vendors', { name });
+      return res.json() as Promise<Vendor>;
     },
     onSuccess: async (newVendor: Vendor) => {
       await queryClient.invalidateQueries({ queryKey: ['/api/vendors'] });
