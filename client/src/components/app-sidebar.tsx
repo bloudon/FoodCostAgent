@@ -195,18 +195,18 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b pb-3">
-        <div className="flex items-center gap-2 px-1 pt-1">
-          <Link href="/" onClick={closeMobile} data-testid="link-dashboard-logo">
+        <div className="flex items-center justify-center px-3 pt-2">
+          <Link href="/" onClick={closeMobile} data-testid="link-dashboard-logo" className="flex w-full items-center justify-center group-data-[collapsible=icon]:justify-center">
             <img
               src={logoImage}
               alt="FNB Cost Pro"
-              className="h-8 w-auto group-data-[collapsible=icon]:hidden"
+              className="w-full max-h-12 object-contain group-data-[collapsible=icon]:hidden"
               data-testid="logo"
             />
             <img
               src={logoImage}
               alt="FNB Cost Pro"
-              className="hidden h-6 w-auto group-data-[collapsible=icon]:block"
+              className="hidden h-7 w-auto object-contain group-data-[collapsible=icon]:block"
               data-testid="logo-collapsed"
             />
           </Link>
