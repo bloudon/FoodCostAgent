@@ -20,7 +20,7 @@ interface Unit { id: string; name: string; abbreviation: string }
 interface InventoryItem { id: string; name: string }
 interface PrepItemOption { id: string; name: string }
 interface MenuItem { id: string; name: string }
-interface RecipeOption { id: string; name: string; canBeIngredient: number; yieldQty?: number | null; yieldUnit?: string | null }
+interface RecipeOption { id: string; name: string; canBeIngredient: number; yieldQty?: number | null; yieldUnitId?: string | null }
 
 interface ApiIngredient {
   id: string;
@@ -216,8 +216,11 @@ function PrepItemBuilderContent() {
     if (newId) {
       const recipe = baseRecipes.find(r => r.id === newId);
       if (recipe) {
-        if (recipe.yieldUnit) form.setValue("outputUnit", recipe.yieldUnit);
         if (recipe.yieldQty) form.setValue("outputQtyPerBatch", recipe.yieldQty);
+        if (recipe.yieldUnitId) {
+          const unit = units.find(u => u.id === recipe.yieldUnitId);
+          if (unit) form.setValue("outputUnit", unit.abbreviation || unit.name);
+        }
       }
     }
   };
