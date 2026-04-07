@@ -468,9 +468,18 @@ function RecipesContent() {
                       {missingIngredientRecipeIds.has(group.parent.id) && (
                         <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                       )}
-                      <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-mobile-${group.parent.id}`}>
-                        ${group.parent.computedCost?.toFixed(2) || "0.00"}
-                      </span>
+                      <div className="text-right">
+                        <div className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-mobile-${group.parent.id}`}>
+                          ${group.parent.yieldQty > 0
+                            ? (group.parent.computedCost / group.parent.yieldQty).toFixed(2)
+                            : (group.parent.computedCost?.toFixed(2) || "0.00")}/srv
+                        </div>
+                        {group.parent.yieldQty > 1 && (
+                          <div className="text-xs text-muted-foreground font-mono">
+                            ${group.parent.computedCost?.toFixed(2) || "0.00"} total
+                          </div>
+                        )}
+                      </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-actions-recipe-mobile-${group.parent.id}`}>
@@ -508,7 +517,8 @@ function RecipesContent() {
                 <TableRow>
                   <TableHead>Recipe Name</TableHead>
                   <TableHead className="text-right hidden sm:table-cell">Yield</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="text-right hidden md:table-cell">Total Cost</TableHead>
+                  <TableHead className="text-right">Cost / Serving</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -575,6 +585,13 @@ function RecipesContent() {
                             </span>
                           </Link>
                         </TableCell>
+                        <TableCell className="text-right whitespace-nowrap hidden md:table-cell">
+                          <Link href={`/recipes/${group.parent.id}`} className="block w-full">
+                            <span className="font-mono text-sm text-muted-foreground" data-testid={`text-recipe-total-cost-${group.parent.id}`}>
+                              ${group.parent.computedCost?.toFixed(2) || "0.00"}
+                            </span>
+                          </Link>
+                        </TableCell>
                         <TableCell className="text-right whitespace-nowrap">
                           <Link href={`/recipes/${group.parent.id}`} className="block w-full">
                             <div className="flex items-center justify-end gap-2">
@@ -584,7 +601,9 @@ function RecipesContent() {
                                 </span>
                               )}
                               <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${group.parent.id}`}>
-                                ${group.parent.computedCost?.toFixed(2) || "0.00"}
+                                ${group.parent.yieldQty > 0
+                                  ? (group.parent.computedCost / group.parent.yieldQty).toFixed(2)
+                                  : (group.parent.computedCost?.toFixed(2) || "0.00")}
                               </span>
                             </div>
                           </Link>
@@ -670,6 +689,13 @@ function RecipesContent() {
                                   </span>
                                 </Link>
                               </TableCell>
+                              <TableCell className="text-right whitespace-nowrap hidden md:table-cell">
+                                <Link href={`/recipes/${child.id}`} className="block w-full">
+                                  <span className="font-mono text-sm text-muted-foreground" data-testid={`text-recipe-total-cost-${child.id}`}>
+                                    ${child.computedCost?.toFixed(2) || "0.00"}
+                                  </span>
+                                </Link>
+                              </TableCell>
                               <TableCell className="text-right whitespace-nowrap">
                                 <Link href={`/recipes/${child.id}`} className="block w-full">
                                   <div className="flex items-center justify-end gap-2">
@@ -679,7 +705,9 @@ function RecipesContent() {
                                       </span>
                                     )}
                                     <span className="font-mono font-semibold text-primary" data-testid={`text-recipe-cost-${child.id}`}>
-                                      ${child.computedCost?.toFixed(2) || "0.00"}
+                                      ${child.yieldQty > 0
+                                        ? (child.computedCost / child.yieldQty).toFixed(2)
+                                        : (child.computedCost?.toFixed(2) || "0.00")}
                                     </span>
                                   </div>
                                 </Link>
@@ -869,7 +897,9 @@ function RecipesContent() {
                                 )}
                               </div>
                               <p className="text-sm text-muted-foreground mt-1">
-                                Cost: ${recipe.computedCost?.toFixed(2) || "0.00"}
+                                {recipe.yieldQty > 1
+                                  ? `$${(recipe.computedCost / recipe.yieldQty).toFixed(2)}/srv · $${recipe.computedCost?.toFixed(2) || "0.00"} total`
+                                  : `$${recipe.computedCost?.toFixed(2) || "0.00"}`}
                               </p>
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">
@@ -929,7 +959,9 @@ function RecipesContent() {
                                 </Badge>
                               </div>
                               <p className="text-sm text-muted-foreground mt-1">
-                                Cost: ${recipe.computedCost?.toFixed(2) || "0.00"} (base recipe)
+                                {recipe.yieldQty > 1
+                                  ? `$${(recipe.computedCost / recipe.yieldQty).toFixed(2)}/srv · $${recipe.computedCost?.toFixed(2) || "0.00"} total (base recipe)`
+                                  : `$${recipe.computedCost?.toFixed(2) || "0.00"} (base recipe)`}
                               </p>
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">
