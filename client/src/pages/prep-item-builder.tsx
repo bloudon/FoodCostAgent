@@ -50,6 +50,7 @@ interface LinkedRecipe {
   id: string;
   name: string;
   yieldQty: number | null;
+  yieldUnitId: string | null;
   yieldUnit: string | null;
 }
 

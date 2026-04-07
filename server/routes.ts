@@ -13750,12 +13750,18 @@ Human Handoff:
       const usages = await storage.getMenuItemPrepUsages(item.id, companyId);
 
       // If linked to a base recipe, include the recipe info and its components for the builder UI
-      let linkedRecipe: { id: string; name: string; yieldQty: number | null; yieldUnit: string | null } | null = null;
+      let linkedRecipe: { id: string; name: string; yieldQty: number | null; yieldUnitId: string | null; yieldUnit: string | null } | null = null;
       let inheritedComponents: Array<{ componentId: string; componentType: string; qty: number; unitId: string; name: string }> = [];
       if (item.recipeId) {
-        const recipe = await storage.getRecipe(item.recipeId, companyId);
+        const [recipe, allUnits] = await Promise.all([
+          storage.getRecipe(item.recipeId, companyId),
+          storage.getUnits(),
+        ]);
         if (recipe) {
-          linkedRecipe = { id: recipe.id, name: recipe.name, yieldQty: recipe.yieldQty ?? null, yieldUnit: recipe.yieldUnit ?? null };
+          const yieldUnit = recipe.yieldUnitId
+            ? (allUnits.find(u => u.id === recipe.yieldUnitId)?.abbreviation ?? allUnits.find(u => u.id === recipe.yieldUnitId)?.name ?? null)
+            : null;
+          linkedRecipe = { id: recipe.id, name: recipe.name, yieldQty: recipe.yieldQty ?? null, yieldUnitId: recipe.yieldUnitId ?? null, yieldUnit };
           const components = await storage.getRecipeComponents(recipe.id);
           const allInvItems = await storage.getInventoryItems(undefined, undefined, companyId);
           const invItemMap = new Map(allInvItems.map(i => [i.id, i.name]));
