@@ -1417,13 +1417,16 @@ export const prepItems = pgTable("prep_items", {
   stationId: varchar("station_id"), // FK → stations (nullable)
   yieldPercent: real("yield_percent").notNull().default(100),
   active: integer("active").notNull().default(1),
+  recipeId: varchar("recipe_id"), // nullable FK → recipes.id — links to a canBeIngredient recipe for ingredient inheritance
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
   companyIdx: index("prep_items_company_idx").on(table.companyId),
 }));
 
-export const insertPrepItemSchema = createInsertSchema(prepItems).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPrepItemSchema = createInsertSchema(prepItems).omit({ id: true, createdAt: true, updatedAt: true }).extend({
+  recipeId: z.string().nullable().optional(),
+});
 export type InsertPrepItem = z.infer<typeof insertPrepItemSchema>;
 export type PrepItem = typeof prepItems.$inferSelect;
 

@@ -668,3 +668,14 @@ DO $$ BEGIN
       VALUES ('v024', 'Task #65: Prep Chart module — 8 new tables for production planning (Pro tier)');
   END IF;
 END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v025') THEN
+    -- Task #66: Add recipe_id FK to prep_items for canBeIngredient recipe linkage
+    ALTER TABLE prep_items ADD COLUMN IF NOT EXISTS recipe_id varchar;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v025', 'Task #66: Add recipe_id FK to prep_items for recipe linkage & pull list');
+  END IF;
+END $$;

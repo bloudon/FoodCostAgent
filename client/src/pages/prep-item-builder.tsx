@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Save } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Save, Link2, Link2Off, BookOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { TierGate } from "@/components/tier-gate";
 import { Link } from "wouter";
@@ -19,6 +20,7 @@ interface Unit { id: string; name: string; abbreviation: string }
 interface InventoryItem { id: string; name: string }
 interface PrepItemOption { id: string; name: string }
 interface MenuItem { id: string; name: string }
+interface RecipeOption { id: string; name: string; canBeIngredient: number; yieldQty?: number | null; yieldUnit?: string | null }
 
 interface ApiIngredient {
   id: string;
@@ -36,6 +38,21 @@ interface ApiUsage {
   unitId: string | null;
 }
 
+interface InheritedComponent {
+  componentId: string;
+  componentType: string;
+  qty: number;
+  unitId: string;
+  name: string;
+}
+
+interface LinkedRecipe {
+  id: string;
+  name: string;
+  yieldQty: number | null;
+  yieldUnit: string | null;
+}
+
 interface ApiPrepItem {
   id: string;
   name: string;
@@ -46,8 +63,11 @@ interface ApiPrepItem {
   stationId: string | null;
   yieldPercent: number;
   active: number;
+  recipeId: string | null;
   ingredients: ApiIngredient[];
   usages: ApiUsage[];
+  linkedRecipe: LinkedRecipe | null;
+  inheritedComponents: InheritedComponent[];
 }
 
 interface Ingredient {
@@ -74,6 +94,7 @@ interface FormValues {
   stationId: string;
   yieldPercent: number | string;
   active: number;
+  recipeId: string;
   ingredients: Ingredient[];
   usages: Usage[];
 }
@@ -91,10 +112,12 @@ function PrepItemBuilderContent() {
   const { data: inventoryItems = [] } = useQuery<InventoryItem[]>({ queryKey: ["/api/inventory-items"] });
   const { data: prepItemsAll = [] } = useQuery<PrepItemOption[]>({ queryKey: ["/api/prep-items"] });
   const { data: menuItemsData = [] } = useQuery<MenuItem[]>({ queryKey: ["/api/menu-items"] });
+  const { data: allRecipes = [] } = useQuery<RecipeOption[]>({ queryKey: ["/api/recipes"] });
+
+  const baseRecipes = allRecipes.filter(r => r.canBeIngredient === 1);
 
   const { data: existingItem, isLoading } = useQuery<ApiPrepItem>({
     queryKey: ["/api/prep-items", prepItemId],
-    // Only fetch when we have a real UUID prepItemId (not "new")
     enabled: !!prepItemId && prepItemId !== "new",
   });
 
@@ -108,6 +131,7 @@ function PrepItemBuilderContent() {
       stationId: "",
       yieldPercent: 100,
       active: 1,
+      recipeId: "",
       ingredients: [],
       usages: [],
     },
@@ -134,6 +158,7 @@ function PrepItemBuilderContent() {
         stationId: existingItem.stationId ?? "",
         yieldPercent: existingItem.yieldPercent ?? 100,
         active: existingItem.active ?? 1,
+        recipeId: existingItem.recipeId ?? "",
         ingredients: (existingItem.ingredients ?? []).map((ing: ApiIngredient) => ({
           id: ing.id,
           sourceType: ing.sourceType,
@@ -151,6 +176,22 @@ function PrepItemBuilderContent() {
     }
   }, [existingItem]);
 
+  const watchRecipeId = form.watch("recipeId");
+  const linkedRecipe = existingItem?.linkedRecipe ?? null;
+  const inheritedComponents = existingItem?.inheritedComponents ?? [];
+
+  // When a recipe is selected in the dropdown for the first time (new form), auto-populate fields
+  const handleRecipeLink = (recipeId: string) => {
+    form.setValue("recipeId", recipeId === "__none__" ? "" : recipeId);
+    if (recipeId && recipeId !== "__none__") {
+      const recipe = baseRecipes.find(r => r.id === recipeId);
+      if (recipe) {
+        if (recipe.yieldUnit) form.setValue("outputUnit", recipe.yieldUnit);
+        if (recipe.yieldQty) form.setValue("outputQtyPerBatch", recipe.yieldQty);
+      }
+    }
+  };
+
   const saveMutation = useMutation({
     mutationFn: async (values: FormValues) => {
       const payload = {
@@ -160,6 +201,7 @@ function PrepItemBuilderContent() {
         prepLeadMinutes: Number(values.prepLeadMinutes),
         yieldPercent: Number(values.yieldPercent),
         stationId: values.stationId || null,
+        recipeId: values.recipeId || null,
         ingredients: values.ingredients.map((ing, i) => ({
           ...ing,
           quantity: Number(ing.quantity),
@@ -197,6 +239,12 @@ function PrepItemBuilderContent() {
   }
 
   const watchStationId = form.watch("stationId");
+
+  // Determine if a recipe is currently linked
+  const hasLinkedRecipe = !!watchRecipeId;
+  // Show inherited components from the API if the recipe is already saved on the item
+  // For a new linkage not yet saved, just show the dropdown selection
+  const showInherited = hasLinkedRecipe && inheritedComponents.length > 0 && watchRecipeId === (existingItem?.recipeId ?? "");
 
   return (
     <div className="p-6 space-y-6 max-w-3xl pb-24">
@@ -267,17 +315,92 @@ function PrepItemBuilderContent() {
           </CardContent>
         </Card>
 
+        {/* Recipe Linkage */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-muted-foreground" />
+                Link to Base Recipe
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Optionally link to a recipe marked as "Can Be Ingredient" to inherit its ingredient list for pull-list calculations.
+              </p>
+            </div>
+            {hasLinkedRecipe && (
+              <Button type="button" size="sm" variant="ghost" onClick={() => form.setValue("recipeId", "")} data-testid="button-unlink-recipe">
+                <Link2Off className="h-4 w-4 mr-1" /> Unlink
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1">
+              <Label>Base Recipe</Label>
+              {baseRecipes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No recipes marked as "Can Be Ingredient" yet. Open a recipe and enable that option to link it here.</p>
+              ) : (
+                <Select value={watchRecipeId || "__none__"} onValueChange={handleRecipeLink}>
+                  <SelectTrigger data-testid="select-base-recipe">
+                    <SelectValue placeholder="No recipe linked" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No recipe linked</SelectItem>
+                    {baseRecipes.map(r => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.name.charAt(0).toUpperCase() + r.name.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {showInherited && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Link2 className="h-3 w-3" />
+                  Ingredients inherited from <span className="font-medium text-foreground">{linkedRecipe?.name}</span>
+                  <Badge variant="secondary" className="text-xs">read-only</Badge>
+                </div>
+                <div className="rounded-md border divide-y">
+                  {inheritedComponents.map((comp, i) => (
+                    <div key={i} className="flex items-center justify-between px-3 py-2 text-sm" data-testid={`row-inherited-${i}`}>
+                      <span className="text-foreground">{comp.name}</span>
+                      <span className="text-muted-foreground tabular-nums">{comp.qty}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {hasLinkedRecipe && !showInherited && watchRecipeId !== (existingItem?.recipeId ?? "") && (
+              <p className="text-xs text-muted-foreground">
+                Save this prep item to see the inherited ingredients from the linked recipe.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Ingredients */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
-            <CardTitle className="text-base">Ingredients</CardTitle>
+            <div>
+              <CardTitle className="text-base">Additional Ingredients</CardTitle>
+              {hasLinkedRecipe && (
+                <p className="text-xs text-muted-foreground mt-0.5">These supplement the linked recipe's ingredients in pull-list totals.</p>
+              )}
+            </div>
             <Button type="button" size="sm" variant="outline" onClick={() => appendIngredient({ sourceType: "inventory_item", sourceId: "", quantity: 1, unitId: "" })} data-testid="button-add-ingredient">
               <Plus className="h-4 w-4 mr-1" /> Add Ingredient
             </Button>
           </CardHeader>
           <CardContent className="space-y-3">
             {ingredientFields.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No ingredients yet. Add one above.</p>
+              <p className="text-sm text-muted-foreground">
+                {hasLinkedRecipe
+                  ? "No additional ingredients. Ingredients from the linked recipe will be used."
+                  : "No ingredients yet. Add one above."}
+              </p>
             ) : (
               ingredientFields.map((field, index) => {
                 const sourceType = form.watch(`ingredients.${index}.sourceType`);

@@ -1,6 +1,6 @@
 # Overview
 
-FNB Cost Pro is an inventory management and recipe costing system designed for food service businesses. Its primary goal is to boost profitability and operational efficiency by providing precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and detailed variance reporting. The system aims to minimize waste, optimize profit margins, offer real-time inventory estimates, streamline vendor interactions, and accurately control food costs, thereby supporting informed decision-making and business growth.
+FNB Cost Pro is an inventory management and recipe costing system designed for food service businesses. It aims to enhance profitability and operational efficiency through precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and detailed variance reporting. The system focuses on minimizing waste, optimizing profit margins, providing real-time inventory estimates, streamlining vendor interactions, and accurately controlling food costs to support informed business decisions and growth.
 
 # User Preferences
 
@@ -15,6 +15,7 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 - Store Locations: Inventory items require assignment to at least one store location during creation.
 - Storage Locations: Inventory items can be associated with multiple storage locations; at least one is required. Storage Locations page features drag-and-drop reordering. Inventory count displays respect storage location sortOrder.
 - Recipe `canBeIngredient`: Recipes include a `canBeIngredient` checkbox field (0/1 in DB) to mark if they can be used as ingredients in other recipes.
+- Prep Chart Recipe Linkage & Pull List: `prep_items.recipeId` nullable FK → `recipes.id`. When a prep item is linked to a `canBeIngredient` recipe, the recipe's components are shown as read-only inherited ingredients in the Prep Item Builder. The Prep Chart generate endpoint enriches each chart line with `requiredIngredients` (ingredient qty × recommendedBatches, sourced from linked recipe's components or the prep item's own ingredients). The Prep Chart UI shows a "Requires" column per line and a "Pull List" toggle view that aggregates all required ingredients across all chart lines grouped by ingredient. Schema version v025.
 - Category Filtering in Recipe Builder: Categories include a `showAsIngredient` field (0/1 in DB) controlling whether items in this category appear in the recipe builder's ingredient selection.
 - Category Soft-Delete Protection: Categories use soft-delete only (`isActive` column, integer 0/1). DELETE endpoint sets `isActive=0`; a `POST /api/categories/:id/restore` endpoint reactivates. `GET /api/categories` returns only active; `?includeInactive=true` returns all. Database-level FK constraint (`inventory_items_category_id_fk`) with `ON DELETE SET NULL` prevents orphaned items if a hard delete ever reaches the DB. Default category set expanded to 11 categories: Produce, Dairy, Proteins, Seafood, Frozen, Walk-In, Dry/Pantry, Bread/Dough, Spices & Seasonings, Beverages, Cleaning & Supplies. Item count shown as a badge on each category. Inactive categories collapsible section at bottom of page.
 - Recipe Cost Calculation Fix: Ingredient prices must be converted to base unit prices before multiplication.
@@ -57,12 +58,12 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 - **Database Services**: Neon serverless PostgreSQL.
 - **Real-time Communication**: `ws` library (WebSockets).
 - **Image Processing**: Sharp library.
-- **Object Storage & File Uploads**: Replit native object storage (production) and local filesystem (development) handled by `ObjectUploader` component for recipe photos and menu scan images.
+- **Object Storage & File Uploads**: Replit native object storage (production) and local filesystem (development).
 - **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods order guides.
 - **QuickBooks Online Integration**: `intuit-oauth` package for OAuth 2.0.
 - **Stripe Integration**: Subscription billing using Stripe Checkout + Webhooks.
 - **Email Service**: SMTP2GO.
 - **Background Image System**: Unsplash.
 - **AI Chat**: OpenAI GPT-4o-mini via `openai` npm package.
-- **AI Recipe Image Scan**: GPT-4o vision via `server/services/recipeScanner.ts`.
+- **AI Recipe Image Scan**: GPT-4o vision.
 - **AI CSV Inventory Import**: GPT-4o-mini for column mapping.

@@ -13745,7 +13745,32 @@ Human Handoff:
       if (!item) return res.status(404).json({ error: "Prep item not found" });
       const ingredients = await storage.getPrepItemIngredients(item.id, companyId);
       const usages = await storage.getMenuItemPrepUsages(item.id, companyId);
-      res.json({ ...item, ingredients, usages });
+
+      // If linked to a base recipe, include the recipe info and its components for the builder UI
+      let linkedRecipe: { id: string; name: string; yieldQty: number | null; yieldUnit: string | null } | null = null;
+      let inheritedComponents: Array<{ componentId: string; componentType: string; qty: number; unitId: string; name: string }> = [];
+      if (item.recipeId) {
+        const recipe = await storage.getRecipe(item.recipeId, companyId);
+        if (recipe) {
+          linkedRecipe = { id: recipe.id, name: recipe.name, yieldQty: recipe.yieldQty ?? null, yieldUnit: recipe.yieldUnit ?? null };
+          const components = await storage.getRecipeComponents(recipe.id);
+          const allInvItems = await storage.getInventoryItems(undefined, undefined, companyId);
+          const invItemMap = new Map(allInvItems.map(i => [i.id, i.name]));
+          const allRecipes = await storage.getRecipes(companyId);
+          const recipeMap = new Map(allRecipes.map(r => [r.id, r.name]));
+          inheritedComponents = components.map(c => ({
+            componentId: c.componentId,
+            componentType: c.componentType,
+            qty: c.qty,
+            unitId: c.unitId,
+            name: c.missingItemName ?? (c.componentType === "inventory_item"
+              ? (invItemMap.get(c.componentId) ?? c.componentId)
+              : (recipeMap.get(c.componentId) ?? c.componentId)),
+          }));
+        }
+      }
+
+      res.json({ ...item, ingredients, usages, linkedRecipe, inheritedComponents });
     } catch (err) {
       console.error("GET /api/prep-items/:id error:", err);
       res.status(500).json({ error: "Internal server error" });
@@ -14093,7 +14118,55 @@ Human Handoff:
         bufferPercent: bufferPercent != null ? Number(bufferPercent) : 10,
         weeksLookback: weeksLookback != null ? Number(weeksLookback) : 4,
       });
-      res.json(result);
+
+      // Enrich lines with required ingredients (ingredient qty × recommended batches)
+      interface RequiredIngredient { name: string; qty: number; unit: string | null; sourceType: string }
+      const allPrepItems = await storage.getPrepItems(companyId);
+      const prepItemMap = new Map(allPrepItems.map(p => [p.id, p]));
+      const allInvItems = await storage.getInventoryItems(undefined, undefined, companyId);
+      const invItemNameMap = new Map(allInvItems.map(i => [i.id, i.name]));
+      const prepItemNameMap = new Map(allPrepItems.map(p => [p.id, p.name]));
+      const units = await storage.getUnits();
+      const unitAbbrevMap = new Map(units.map(u => [u.id, u.abbreviation ?? u.name]));
+
+      // Preload all ingredient data for the prep items in this chart
+      const lineItemIds = [...new Set(result.lines.map(l => l.prepItemId))];
+      const ingredientsByPrepItem = new Map<string, RequiredIngredient[]>();
+      await Promise.all(lineItemIds.map(async (prepItemId) => {
+        const pi = prepItemMap.get(prepItemId);
+        if (!pi) return;
+        const batches = result.lines.find(l => l.prepItemId === prepItemId)?.recommendedBatches ?? 0;
+        if (batches === 0) { ingredientsByPrepItem.set(prepItemId, []); return; }
+
+        let required: RequiredIngredient[] = [];
+        if (pi.recipeId) {
+          // Ingredients come from the linked recipe's components
+          const components = await storage.getRecipeComponents(pi.recipeId);
+          required = components.map(c => {
+            const name = c.missingItemName ?? (c.componentType === "inventory_item"
+              ? (invItemNameMap.get(c.componentId) ?? "Unknown")
+              : (prepItemNameMap.get(c.componentId) ?? "Unknown"));
+            return { name, qty: c.qty * batches, unit: unitAbbrevMap.get(c.unitId) ?? null, sourceType: c.componentType };
+          });
+        } else {
+          // Ingredients come from prep_item_ingredients
+          const ings = await storage.getPrepItemIngredients(prepItemId, companyId);
+          required = ings.map(ing => {
+            const name = ing.sourceType === "inventory_item"
+              ? (invItemNameMap.get(ing.sourceId) ?? "Unknown")
+              : (prepItemNameMap.get(ing.sourceId) ?? "Unknown");
+            return { name, qty: ing.quantity * batches, unit: ing.unitId ? (unitAbbrevMap.get(ing.unitId) ?? null) : null, sourceType: ing.sourceType };
+          });
+        }
+        ingredientsByPrepItem.set(prepItemId, required);
+      }));
+
+      const enrichedLines = result.lines.map(line => ({
+        ...line,
+        requiredIngredients: ingredientsByPrepItem.get(line.prepItemId) ?? [],
+      }));
+
+      res.json({ ...result, lines: enrichedLines });
     } catch (err) {
       console.error("POST /api/prep-chart/generate error:", err);
       res.status(500).json({ error: "Internal server error" });
