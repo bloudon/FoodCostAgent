@@ -1566,7 +1566,7 @@ function RecipeBuilderContent() {
                       ? "Build your recipe, then save to automatically link it to your menu item"
                       : (
                         <>
-                          <span className="hidden md:inline">Drag ingredients from the left to build your recipe</span>
+                          <span className="hidden md:inline">Drag ingredients from the right to build your recipe</span>
                           <span className="md:hidden">Tap an ingredient below to add it to your recipe</span>
                         </>
                       )
@@ -1621,8 +1621,8 @@ function RecipeBuilderContent() {
         {/* Main content */}
         <div className="flex-1 md:overflow-hidden overflow-y-auto">
           <div className="flex flex-col gap-4 p-4 md:h-full md:grid md:grid-cols-12 md:gap-6 md:p-6">
-            {/* Left panel - Source items (shows below recipe form on mobile) */}
-            <div className="order-2 md:order-1 md:col-span-4 flex flex-col gap-2 md:overflow-hidden">
+            {/* Right panel - Source items (shows below recipe form on mobile) */}
+            <div className="order-2 md:order-2 md:col-span-4 flex flex-col gap-2 md:overflow-hidden">
               {/* Mobile collapsible toggle */}
               <button
                 className="md:hidden flex items-center justify-between w-full py-2.5 px-3 border rounded-lg bg-muted/30 text-left"
@@ -1717,8 +1717,8 @@ function RecipeBuilderContent() {
               </div>{/* closes collapsible wrapper */}
             </div>
 
-            {/* Right panel - Recipe canvas (shows first on mobile) */}
-            <div className="order-1 md:order-2 md:col-span-8 flex flex-col gap-4 md:overflow-y-auto">
+            {/* Left panel - Recipe canvas (shows first on mobile) */}
+            <div className="order-1 md:order-1 md:col-span-8 flex flex-col gap-4 md:overflow-y-auto">
               {/* Recipe metadata - compact */}
               <Card className="flex-shrink-0">
                 <CardContent className="pt-4 pb-3 space-y-3">
@@ -1855,7 +1855,7 @@ function RecipeBuilderContent() {
                       <ChefHat className="h-12 w-12 text-muted-foreground mb-4" />
                       <h3 className="text-lg font-semibold mb-1">No ingredients yet</h3>
                       <p className="text-muted-foreground mb-2">
-                        Drag items from the left panel or click the + button to add
+                        Drag items from the right panel or click the + button to add
                       </p>
                       <p className="text-sm text-muted-foreground mb-4">
                         Drop items here to get started
