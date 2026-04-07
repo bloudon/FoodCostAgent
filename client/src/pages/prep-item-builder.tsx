@@ -283,7 +283,7 @@ function PrepItemBuilderContent() {
                 return (
                   <div key={field.id} className="grid grid-cols-12 gap-2 items-center" data-testid={`row-ingredient-${index}`}>
                     <div className="col-span-3">
-                      <Select value={form.watch(`ingredients.${index}.sourceType`)} onValueChange={(v) => { form.setValue(`ingredients.${index}.sourceType`, v as any); form.setValue(`ingredients.${index}.sourceId`, ""); }}>
+                      <Select value={form.watch(`ingredients.${index}.sourceType`)} onValueChange={(v) => { form.setValue(`ingredients.${index}.sourceType`, v as "inventory_item" | "prep_item"); form.setValue(`ingredients.${index}.sourceId`, ""); }}>
                         <SelectTrigger className="text-xs">
                           <SelectValue />
                         </SelectTrigger>

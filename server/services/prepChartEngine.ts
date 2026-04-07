@@ -56,19 +56,24 @@ export async function generatePrepChart(opts: GenerateChartOptions): Promise<Pre
     .from(dailyMenuItemSales)
     .where(salesCondition);
 
-  // Filter to same day-of-week and aggregate avg qty per menu item
-  const menuItemQtyMap: Map<string, { total: number; weeks: number }> = new Map();
+  // Filter to same day-of-week, aggregate total qty and track distinct matching dates per menu item
+  // Key: menuItemId -> { totalQty, matchingDates: Set<dateString> }
+  const menuItemQtyMap: Map<string, { total: number; matchingDates: Set<string> }> = new Map();
   for (const row of salesRows) {
     if (row.salesDate.getDay() !== targetDow) continue;
-    const existing = menuItemQtyMap.get(row.menuItemId) ?? { total: 0, weeks: 0 };
+    const dateKey = row.salesDate.toISOString().slice(0, 10);
+    const existing = menuItemQtyMap.get(row.menuItemId) ?? { total: 0, matchingDates: new Set<string>() };
     existing.total += row.qtySold;
-    existing.weeks += 1;
+    existing.matchingDates.add(dateKey);
     menuItemQtyMap.set(row.menuItemId, existing);
   }
 
   const avgQtyByMenuItemId: Map<string, number> = new Map();
-  for (const [menuItemId, { total, weeks }] of menuItemQtyMap.entries()) {
-    avgQtyByMenuItemId.set(menuItemId, weeks > 0 ? total / weeks : 0);
+  for (const [menuItemId, { total, matchingDates }] of menuItemQtyMap.entries()) {
+    // Average over distinct matching dates (weeks) rather than row count
+    // This prevents multi-daypart rows on the same date from inflating denominator
+    const distinctDates = matchingDates.size;
+    avgQtyByMenuItemId.set(menuItemId, distinctDates > 0 ? total / distinctDates : 0);
   }
 
   // ------------------------------------------------------------------
@@ -197,8 +202,15 @@ export async function generatePrepChart(opts: GenerateChartOptions): Promise<Pre
         `${bufferStr} · on hand: ${onHandQty.toFixed(1)} · net: ${netNeeded.toFixed(1)} → ${recommendedBatches} batch${recommendedBatches !== 1 ? "es" : ""}`;
     }
 
-    // Confidence: based on how many weeks of data we have
-    const dataWeeks = drivingItems.length > 0 ? Math.min(weeksLookback, Math.max(1, salesRows.filter(r => drivingItems.includes(r.menuItemId)).length)) : 0;
+    // Confidence: fraction of expected historical weeks that actually had data for this prep item's drivers
+    // Count distinct matching dates across all driving menu items
+    const driverDateSet = new Set<string>();
+    for (const row of salesRows) {
+      if (row.salesDate.getDay() === targetDow && drivingItems.includes(row.menuItemId)) {
+        driverDateSet.add(row.salesDate.toISOString().slice(0, 10));
+      }
+    }
+    const dataWeeks = driverDateSet.size;
     const confidenceScore = dataWeeks > 0 ? Math.min(1, dataWeeks / weeksLookback) : 0;
 
     lines.push({

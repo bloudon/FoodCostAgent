@@ -13752,16 +13752,50 @@ Human Handoff:
     }
   });
 
+  interface PrepItemIngredientInput {
+    id?: string;
+    sourceType: "inventory_item" | "prep_item";
+    sourceId: string;
+    quantity: number;
+    unitId: string | null;
+    sortOrder?: number;
+  }
+
+  interface PrepItemUsageInput {
+    id?: string;
+    menuItemId: string;
+    quantityPerSale: number;
+    unitId: string | null;
+  }
+
   app.post("/api/prep-items", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
-      const { ingredients = [], usages = [], ...itemData } = req.body;
+      const { ingredients = [], usages = [], ...itemData } = req.body as {
+        ingredients?: PrepItemIngredientInput[];
+        usages?: PrepItemUsageInput[];
+        [key: string]: unknown;
+      };
       const item = await storage.createPrepItem({ ...itemData, companyId });
       if (ingredients.length > 0) {
-        await storage.replaceAllPrepItemIngredients(item.id, companyId, ingredients.map((ing: any, i: number) => ({ ...ing, prepItemId: item.id, companyId, sortOrder: i })));
+        await storage.replaceAllPrepItemIngredients(item.id, companyId, ingredients.map((ing, i) => ({
+          prepItemId: item.id,
+          companyId,
+          sourceType: ing.sourceType,
+          sourceId: ing.sourceId,
+          quantity: ing.quantity,
+          unitId: ing.unitId ?? null,
+          sortOrder: i,
+        })));
       }
       if (usages.length > 0) {
-        await storage.replaceAllMenuItemPrepUsages(item.id, companyId, usages.map((u: any) => ({ ...u, prepItemId: item.id, companyId })));
+        await storage.replaceAllMenuItemPrepUsages(item.id, companyId, usages.map((u) => ({
+          prepItemId: item.id,
+          companyId,
+          menuItemId: u.menuItemId,
+          quantityPerSale: u.quantityPerSale,
+          unitId: u.unitId ?? null,
+        })));
       }
       const full = await storage.getPrepItem(item.id, companyId);
       const savedIngredients = await storage.getPrepItemIngredients(item.id, companyId);
@@ -13777,14 +13811,32 @@ Human Handoff:
     try {
       const companyId = req.user!.companyId!;
       const { id } = req.params;
-      const { ingredients, usages, ...updateData } = req.body;
+      const { ingredients, usages, ...updateData } = req.body as {
+        ingredients?: PrepItemIngredientInput[];
+        usages?: PrepItemUsageInput[];
+        [key: string]: unknown;
+      };
       const updated = await storage.updatePrepItem(id, companyId, updateData);
       if (!updated) return res.status(404).json({ error: "Prep item not found" });
       if (ingredients !== undefined) {
-        await storage.replaceAllPrepItemIngredients(id, companyId, ingredients.map((ing: any, i: number) => ({ ...ing, prepItemId: id, companyId, sortOrder: i })));
+        await storage.replaceAllPrepItemIngredients(id, companyId, ingredients.map((ing, i) => ({
+          prepItemId: id,
+          companyId,
+          sourceType: ing.sourceType,
+          sourceId: ing.sourceId,
+          quantity: ing.quantity,
+          unitId: ing.unitId ?? null,
+          sortOrder: i,
+        })));
       }
       if (usages !== undefined) {
-        await storage.replaceAllMenuItemPrepUsages(id, companyId, usages.map((u: any) => ({ ...u, prepItemId: id, companyId })));
+        await storage.replaceAllMenuItemPrepUsages(id, companyId, usages.map((u) => ({
+          prepItemId: id,
+          companyId,
+          menuItemId: u.menuItemId,
+          quantityPerSale: u.quantityPerSale,
+          unitId: u.unitId ?? null,
+        })));
       }
       const savedIngredients = await storage.getPrepItemIngredients(id, companyId);
       const savedUsages = await storage.getMenuItemPrepUsages(id, companyId);
