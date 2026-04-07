@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
@@ -21,9 +21,21 @@ function StationsContent() {
   const [newName, setNewName] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [localOrder, setLocalOrder] = useState<string[]>([]);
+  const dragIndex = useRef<number | null>(null);
 
   const { data: stations = [], isLoading } = useQuery<Station[]>({
     queryKey: ["/api/stations"],
+    select: (data) => {
+      // Keep local order if we have one, otherwise use server order
+      if (localOrder.length > 0) {
+        const map = new Map(data.map(s => [s.id, s]));
+        const ordered = localOrder.map(id => map.get(id)).filter(Boolean) as Station[];
+        const extra = data.filter(s => !localOrder.includes(s.id));
+        return [...ordered, ...extra];
+      }
+      return data;
+    },
   });
 
   const createMutation = useMutation({
@@ -34,6 +46,7 @@ function StationsContent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/stations"] });
       setNewName("");
+      setLocalOrder([]);
       toast({ title: "Station created" });
     },
     onError: () => toast({ title: "Failed to create station", variant: "destructive" }),
@@ -52,6 +65,20 @@ function StationsContent() {
     onError: () => toast({ title: "Failed to update station", variant: "destructive" }),
   });
 
+  const reorderMutation = useMutation({
+    mutationFn: async (orderedIds: string[]) => {
+      const res = await apiRequest("PATCH", "/api/stations/reorder", { orderedIds });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/stations"] });
+    },
+    onError: () => {
+      setLocalOrder([]);
+      toast({ title: "Failed to reorder", variant: "destructive" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await apiRequest("DELETE", `/api/stations/${id}`);
@@ -59,6 +86,7 @@ function StationsContent() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/stations"] });
+      setLocalOrder([]);
       toast({ title: "Station deleted" });
     },
     onError: () => toast({ title: "Failed to delete station", variant: "destructive" }),
@@ -79,12 +107,37 @@ function StationsContent() {
     setEditName(s.name);
   };
 
+  // Drag-to-reorder handlers
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    dragIndex.current = index;
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragIndex.current === null || dragIndex.current === index) return;
+
+    const newList = [...stations];
+    const [moved] = newList.splice(dragIndex.current, 1);
+    newList.splice(index, 0, moved);
+    dragIndex.current = index;
+    setLocalOrder(newList.map(s => s.id));
+  };
+
+  const handleDrop = () => {
+    if (localOrder.length > 0) {
+      reorderMutation.mutate(localOrder);
+    }
+    dragIndex.current = null;
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-semibold" data-testid="heading-stations">Kitchen Stations</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Define your kitchen stations (Grill, Cold Prep, Fryer, etc.). Stations are used to group prep items on the prep chart.
+          Define your kitchen stations (Grill, Cold Prep, Fryer, etc.). Drag to reorder. Stations group prep items on the prep chart.
         </p>
       </div>
 
@@ -119,9 +172,20 @@ function StationsContent() {
             <p className="text-sm text-muted-foreground py-4 text-center">No stations yet. Add one above.</p>
           ) : (
             <ul className="divide-y" data-testid="list-stations">
-              {stations.map((s) => (
-                <li key={s.id} className="flex items-center gap-3 py-3" data-testid={`row-station-${s.id}`}>
-                  <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+              {stations.map((s, index) => (
+                <li
+                  key={s.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDrop={handleDrop}
+                  className="flex items-center gap-3 py-3 cursor-default"
+                  data-testid={`row-station-${s.id}`}
+                >
+                  <GripVertical
+                    className="h-4 w-4 text-muted-foreground shrink-0 cursor-grab"
+                    data-testid={`drag-handle-station-${s.id}`}
+                  />
                   {editId === s.id ? (
                     <>
                       <Input

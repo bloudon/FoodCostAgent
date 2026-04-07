@@ -7,10 +7,8 @@ import { useForm, useFieldArray } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Plus, Trash2, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { TierGate } from "@/components/tier-gate";
@@ -21,6 +19,36 @@ interface Unit { id: string; name: string; abbreviation: string }
 interface InventoryItem { id: string; name: string }
 interface PrepItemOption { id: string; name: string }
 interface MenuItem { id: string; name: string }
+
+interface ApiIngredient {
+  id: string;
+  sourceType: "inventory_item" | "prep_item";
+  sourceId: string;
+  quantity: number;
+  unitId: string | null;
+  sortOrder: number;
+}
+
+interface ApiUsage {
+  id: string;
+  menuItemId: string;
+  quantityPerSale: number;
+  unitId: string | null;
+}
+
+interface ApiPrepItem {
+  id: string;
+  name: string;
+  outputUnit: string;
+  outputQtyPerBatch: number;
+  shelfLifeHours: number;
+  prepLeadMinutes: number;
+  stationId: string | null;
+  yieldPercent: number;
+  active: number;
+  ingredients: ApiIngredient[];
+  usages: ApiUsage[];
+}
 
 interface Ingredient {
   id?: string;
@@ -64,7 +92,7 @@ function PrepItemBuilderContent() {
   const { data: prepItemsAll = [] } = useQuery<PrepItemOption[]>({ queryKey: ["/api/prep-items"] });
   const { data: menuItemsData = [] } = useQuery<MenuItem[]>({ queryKey: ["/api/menu-items"] });
 
-  const { data: existingItem, isLoading } = useQuery<any>({
+  const { data: existingItem, isLoading } = useQuery<ApiPrepItem>({
     queryKey: ["/api/prep-items", prepItemId],
     enabled: !!prepItemId,
   });
@@ -105,14 +133,14 @@ function PrepItemBuilderContent() {
         stationId: existingItem.stationId ?? "",
         yieldPercent: existingItem.yieldPercent ?? 100,
         active: existingItem.active ?? 1,
-        ingredients: (existingItem.ingredients ?? []).map((ing: any) => ({
+        ingredients: (existingItem.ingredients ?? []).map((ing: ApiIngredient) => ({
           id: ing.id,
           sourceType: ing.sourceType,
           sourceId: ing.sourceId,
           quantity: ing.quantity,
           unitId: ing.unitId ?? "",
         })),
-        usages: (existingItem.usages ?? []).map((u: any) => ({
+        usages: (existingItem.usages ?? []).map((u: ApiUsage) => ({
           id: u.id,
           menuItemId: u.menuItemId,
           quantityPerSale: u.quantityPerSale,

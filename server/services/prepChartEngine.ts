@@ -1,7 +1,7 @@
 import { db } from "../db";
 import { storage } from "../storage";
 import { dailyMenuItemSales, menuItemPrepUsages, prepOnHand, dayparts } from "@shared/schema";
-import { eq, and, gte, lte, isNull, gt } from "drizzle-orm";
+import { eq, and, gte, lte, gt } from "drizzle-orm";
 import type { InsertPrepChartRun, InsertPrepChartLine, PrepChartRun, PrepChartLine } from "@shared/schema";
 
 export interface GenerateChartOptions {
@@ -36,6 +36,16 @@ export async function generatePrepChart(opts: GenerateChartOptions): Promise<Pre
   const lookbackStart = new Date(businessDate);
   lookbackStart.setDate(lookbackStart.getDate() - weeksLookback * 7);
 
+  const baseConditions = and(
+    eq(dailyMenuItemSales.companyId, companyId),
+    eq(dailyMenuItemSales.storeId, storeId),
+    gte(dailyMenuItemSales.salesDate, lookbackStart),
+    lte(dailyMenuItemSales.salesDate, businessDate),
+  );
+  const salesCondition = daypartId
+    ? and(baseConditions, eq(dailyMenuItemSales.daypartId, daypartId))
+    : baseConditions;
+
   const salesRows = await db
     .select({
       menuItemId: dailyMenuItemSales.menuItemId,
@@ -44,15 +54,7 @@ export async function generatePrepChart(opts: GenerateChartOptions): Promise<Pre
       salesDate: dailyMenuItemSales.salesDate,
     })
     .from(dailyMenuItemSales)
-    .where(
-      and(
-        eq(dailyMenuItemSales.companyId, companyId),
-        eq(dailyMenuItemSales.storeId, storeId),
-        gte(dailyMenuItemSales.salesDate, lookbackStart),
-        lte(dailyMenuItemSales.salesDate, businessDate),
-        daypartId ? eq(dailyMenuItemSales.daypartId, daypartId) : isNull(dailyMenuItemSales.daypartId),
-      )
-    );
+    .where(salesCondition);
 
   // Filter to same day-of-week and aggregate avg qty per menu item
   const menuItemQtyMap: Map<string, { total: number; weeks: number }> = new Map();

@@ -566,7 +566,7 @@ export interface IStorage {
   replaceAllMenuItemPrepUsages(prepItemId: string, companyId: string, usages: InsertMenuItemPrepUsage[]): Promise<MenuItemPrepUsage[]>;
 
   // Prep Chart — Production Records
-  getPrepProductionRecords(companyId: string, storeId?: string, prepItemId?: string): Promise<PrepProductionRecord[]>;
+  getPrepProductionRecords(companyId: string, storeId?: string, prepItemId?: string, startDate?: Date, endDate?: Date): Promise<PrepProductionRecord[]>;
   createPrepProductionRecord(record: InsertPrepProductionRecord): Promise<PrepProductionRecord>;
 
   // Prep Chart — On Hand
@@ -4134,14 +4134,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Prep Production Records
-  async getPrepProductionRecords(companyId: string, storeId?: string, prepItemId?: string): Promise<PrepProductionRecord[]> {
+  async getPrepProductionRecords(companyId: string, storeId?: string, prepItemId?: string, startDate?: Date, endDate?: Date): Promise<PrepProductionRecord[]> {
     const conditions = [eq(prepProductionRecords.companyId, companyId)];
     if (storeId) conditions.push(eq(prepProductionRecords.storeId, storeId));
     if (prepItemId) conditions.push(eq(prepProductionRecords.prepItemId, prepItemId));
+    if (startDate) conditions.push(gte(prepProductionRecords.producedAt, startDate));
+    if (endDate) conditions.push(lte(prepProductionRecords.producedAt, endDate));
     return db.select().from(prepProductionRecords)
       .where(and(...conditions))
       .orderBy(desc(prepProductionRecords.producedAt))
-      .limit(200);
+      .limit(500);
   }
 
   async createPrepProductionRecord(record: InsertPrepProductionRecord): Promise<PrepProductionRecord> {

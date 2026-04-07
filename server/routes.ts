@@ -13806,6 +13806,74 @@ Human Handoff:
     }
   });
 
+  // Prep Item Ingredients (standalone CRUD)
+  app.get("/api/prep-item-ingredients", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { prepItemId } = req.query as Record<string, string>;
+      if (!prepItemId) return res.status(400).json({ error: "prepItemId is required" });
+      const ingredients = await storage.getPrepItemIngredients(prepItemId, companyId);
+      res.json(ingredients);
+    } catch (err) {
+      console.error("GET /api/prep-item-ingredients error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/prep-item-ingredients", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { prepItemId, sourceType, sourceId, quantity, unitId, sortOrder } = req.body as {
+        prepItemId: string;
+        sourceType: "inventory_item" | "prep_item";
+        sourceId: string;
+        quantity: number;
+        unitId?: string;
+        sortOrder?: number;
+      };
+      if (!prepItemId || !sourceType || !sourceId || quantity == null) {
+        return res.status(400).json({ error: "prepItemId, sourceType, sourceId, and quantity are required" });
+      }
+      const ingredient = await storage.createPrepItemIngredient({
+        companyId,
+        prepItemId,
+        sourceType,
+        sourceId,
+        quantity: Number(quantity),
+        unitId: unitId ?? null,
+        sortOrder: sortOrder ?? 0,
+      });
+      res.json(ingredient);
+    } catch (err) {
+      console.error("POST /api/prep-item-ingredients error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/prep-item-ingredients/:id", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { id } = req.params;
+      const updated = await storage.updatePrepItemIngredient(id, companyId, req.body);
+      if (!updated) return res.status(404).json({ error: "Ingredient not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/prep-item-ingredients/:id error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/prep-item-ingredients/:id", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      await storage.deletePrepItemIngredient(req.params.id, companyId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/prep-item-ingredients/:id error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Menu Item Prep Usages (standalone CRUD)
   app.get("/api/menu-item-prep-usages", requireAuth, requireTier("pro"), async (req, res) => {
     try {
@@ -13819,6 +13887,32 @@ Human Handoff:
       }
       res.status(400).json({ error: "prepItemId or menuItemId is required" });
     } catch (err) {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/menu-item-prep-usages", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { prepItemId, menuItemId, quantityPerSale, unitId } = req.body as {
+        prepItemId: string;
+        menuItemId: string;
+        quantityPerSale: number;
+        unitId?: string;
+      };
+      if (!prepItemId || !menuItemId || quantityPerSale == null) {
+        return res.status(400).json({ error: "prepItemId, menuItemId, and quantityPerSale are required" });
+      }
+      const created = await storage.createMenuItemPrepUsage({
+        companyId,
+        prepItemId,
+        menuItemId,
+        quantityPerSale: Number(quantityPerSale),
+        unitId: unitId ?? null,
+      });
+      res.json(created);
+    } catch (err) {
+      console.error("POST /api/menu-item-prep-usages error:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -13837,8 +13931,14 @@ Human Handoff:
   app.get("/api/prep-production-records", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
-      const { storeId, prepItemId } = req.query as Record<string, string>;
-      const records = await storage.getPrepProductionRecords(companyId, storeId, prepItemId);
+      const { storeId, prepItemId, startDate, endDate } = req.query as Record<string, string>;
+      const records = await storage.getPrepProductionRecords(
+        companyId,
+        storeId,
+        prepItemId,
+        startDate ? new Date(startDate) : undefined,
+        endDate ? new Date(endDate) : undefined,
+      );
       res.json(records);
     } catch (err) {
       console.error("GET /api/prep-production-records error:", err);
