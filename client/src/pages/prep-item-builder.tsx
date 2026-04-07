@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Save, Link2, Link2Off, BookOpen } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Save, Link2, Link2Off, BookOpen, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { TierGate } from "@/components/tier-gate";
 import { Link } from "wouter";
@@ -112,9 +112,15 @@ function PrepItemBuilderContent() {
   const { data: inventoryItems = [] } = useQuery<InventoryItem[]>({ queryKey: ["/api/inventory-items"] });
   const { data: prepItemsAll = [] } = useQuery<PrepItemOption[]>({ queryKey: ["/api/prep-items"] });
   const { data: menuItemsData = [] } = useQuery<MenuItem[]>({ queryKey: ["/api/menu-items"] });
-  const { data: allRecipes = [] } = useQuery<RecipeOption[]>({ queryKey: ["/api/recipes"] });
-
-  const baseRecipes = allRecipes.filter(r => r.canBeIngredient === 1);
+  // Fetch only canBeIngredient=1 recipes from the server
+  const { data: baseRecipes = [] } = useQuery<RecipeOption[]>({
+    queryKey: ["/api/recipes", { canBeIngredient: 1 }],
+    queryFn: async () => {
+      const res = await fetch("/api/recipes?canBeIngredient=1", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch base recipes");
+      return res.json();
+    },
+  });
 
   const { data: existingItem, isLoading } = useQuery<ApiPrepItem>({
     queryKey: ["/api/prep-items", prepItemId],
@@ -177,14 +183,16 @@ function PrepItemBuilderContent() {
   }, [existingItem]);
 
   const watchRecipeId = form.watch("recipeId");
+  const recipeLinked = !!watchRecipeId;
   const linkedRecipe = existingItem?.linkedRecipe ?? null;
   const inheritedComponents = existingItem?.inheritedComponents ?? [];
 
-  // When a recipe is selected in the dropdown for the first time (new form), auto-populate fields
+  // When a recipe is selected for the first time, auto-populate output fields
   const handleRecipeLink = (recipeId: string) => {
-    form.setValue("recipeId", recipeId === "__none__" ? "" : recipeId);
-    if (recipeId && recipeId !== "__none__") {
-      const recipe = baseRecipes.find(r => r.id === recipeId);
+    const newId = recipeId === "__none__" ? "" : recipeId;
+    form.setValue("recipeId", newId);
+    if (newId) {
+      const recipe = baseRecipes.find(r => r.id === newId);
       if (recipe) {
         if (recipe.yieldUnit) form.setValue("outputUnit", recipe.yieldUnit);
         if (recipe.yieldQty) form.setValue("outputQtyPerBatch", recipe.yieldQty);
@@ -202,7 +210,8 @@ function PrepItemBuilderContent() {
         yieldPercent: Number(values.yieldPercent),
         stationId: values.stationId || null,
         recipeId: values.recipeId || null,
-        ingredients: values.ingredients.map((ing, i) => ({
+        // When recipe is linked, ingredients are from the recipe (not stored in prep_item_ingredients)
+        ingredients: recipeLinked ? [] : values.ingredients.map((ing, i) => ({
           ...ing,
           quantity: Number(ing.quantity),
           unitId: ing.unitId || null,
@@ -240,11 +249,8 @@ function PrepItemBuilderContent() {
 
   const watchStationId = form.watch("stationId");
 
-  // Determine if a recipe is currently linked
-  const hasLinkedRecipe = !!watchRecipeId;
-  // Show inherited components from the API if the recipe is already saved on the item
-  // For a new linkage not yet saved, just show the dropdown selection
-  const showInherited = hasLinkedRecipe && inheritedComponents.length > 0 && watchRecipeId === (existingItem?.recipeId ?? "");
+  // Show inherited components from the API when the recipe is the same as what's saved
+  const showInherited = recipeLinked && inheritedComponents.length > 0 && watchRecipeId === (existingItem?.recipeId ?? "");
 
   return (
     <div className="p-6 space-y-6 max-w-3xl pb-24">
@@ -324,10 +330,10 @@ function PrepItemBuilderContent() {
                 Link to Base Recipe
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Optionally link to a recipe marked as "Can Be Ingredient" to inherit its ingredient list for pull-list calculations.
+                Link to a recipe marked "Can Be Ingredient" to use its ingredient list for pull-list calculations. When linked, ingredients come exclusively from the recipe.
               </p>
             </div>
-            {hasLinkedRecipe && (
+            {recipeLinked && (
               <Button type="button" size="sm" variant="ghost" onClick={() => form.setValue("recipeId", "")} data-testid="button-unlink-recipe">
                 <Link2Off className="h-4 w-4 mr-1" /> Unlink
               </Button>
@@ -359,7 +365,7 @@ function PrepItemBuilderContent() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Link2 className="h-3 w-3" />
-                  Ingredients inherited from <span className="font-medium text-foreground">{linkedRecipe?.name}</span>
+                  Ingredients from <span className="font-medium text-foreground">{linkedRecipe?.name}</span>
                   <Badge variant="secondary" className="text-xs">read-only</Badge>
                 </div>
                 <div className="rounded-md border divide-y">
@@ -373,7 +379,7 @@ function PrepItemBuilderContent() {
               </div>
             )}
 
-            {hasLinkedRecipe && !showInherited && watchRecipeId !== (existingItem?.recipeId ?? "") && (
+            {recipeLinked && !showInherited && watchRecipeId !== (existingItem?.recipeId ?? "") && (
               <p className="text-xs text-muted-foreground">
                 Save this prep item to see the inherited ingredients from the linked recipe.
               </p>
@@ -381,80 +387,81 @@ function PrepItemBuilderContent() {
           </CardContent>
         </Card>
 
-        {/* Ingredients */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
-            <div>
-              <CardTitle className="text-base">Additional Ingredients</CardTitle>
-              {hasLinkedRecipe && (
-                <p className="text-xs text-muted-foreground mt-0.5">These supplement the linked recipe's ingredients in pull-list totals.</p>
+        {/* Ingredients — only shown when NO recipe is linked */}
+        {!recipeLinked && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+              <CardTitle className="text-base">Ingredients</CardTitle>
+              <Button type="button" size="sm" variant="outline" onClick={() => appendIngredient({ sourceType: "inventory_item", sourceId: "", quantity: 1, unitId: "" })} data-testid="button-add-ingredient">
+                <Plus className="h-4 w-4 mr-1" /> Add Ingredient
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {ingredientFields.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No ingredients yet. Add one above, or link a base recipe above to inherit its ingredients.</p>
+              ) : (
+                ingredientFields.map((field, index) => {
+                  const sourceType = form.watch(`ingredients.${index}.sourceType`);
+                  return (
+                    <div key={field.id} className="grid grid-cols-12 gap-2 items-center" data-testid={`row-ingredient-${index}`}>
+                      <div className="col-span-3">
+                        <Select value={form.watch(`ingredients.${index}.sourceType`)} onValueChange={(v) => { form.setValue(`ingredients.${index}.sourceType`, v as "inventory_item" | "prep_item"); form.setValue(`ingredients.${index}.sourceId`, ""); }}>
+                          <SelectTrigger className="text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="inventory_item">Inventory</SelectItem>
+                            <SelectItem value="prep_item">Prep Item</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="col-span-4">
+                        <Select value={form.watch(`ingredients.${index}.sourceId`)} onValueChange={(v) => form.setValue(`ingredients.${index}.sourceId`, v)}>
+                          <SelectTrigger className="text-xs">
+                            <SelectValue placeholder="Select…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {sourceType === "inventory_item"
+                              ? inventoryItems.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)
+                              : otherPrepItems.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)
+                            }
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="col-span-2">
+                        <Input type="number" step="any" {...form.register(`ingredients.${index}.quantity`)} placeholder="Qty" className="text-xs" />
+                      </div>
+                      <div className="col-span-2">
+                        <Select value={form.watch(`ingredients.${index}.unitId`)} onValueChange={(v) => form.setValue(`ingredients.${index}.unitId`, v === "__none__" ? "" : v)}>
+                          <SelectTrigger className="text-xs">
+                            <SelectValue placeholder="Unit" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">—</SelectItem>
+                            {units.map(u => <SelectItem key={u.id} value={u.id}>{u.abbreviation || u.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="col-span-1 flex justify-end">
+                        <Button type="button" size="icon" variant="ghost" onClick={() => removeIngredient(index)} data-testid={`button-remove-ingredient-${index}`}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
               )}
-            </div>
-            <Button type="button" size="sm" variant="outline" onClick={() => appendIngredient({ sourceType: "inventory_item", sourceId: "", quantity: 1, unitId: "" })} data-testid="button-add-ingredient">
-              <Plus className="h-4 w-4 mr-1" /> Add Ingredient
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {ingredientFields.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {hasLinkedRecipe
-                  ? "No additional ingredients. Ingredients from the linked recipe will be used."
-                  : "No ingredients yet. Add one above."}
-              </p>
-            ) : (
-              ingredientFields.map((field, index) => {
-                const sourceType = form.watch(`ingredients.${index}.sourceType`);
-                return (
-                  <div key={field.id} className="grid grid-cols-12 gap-2 items-center" data-testid={`row-ingredient-${index}`}>
-                    <div className="col-span-3">
-                      <Select value={form.watch(`ingredients.${index}.sourceType`)} onValueChange={(v) => { form.setValue(`ingredients.${index}.sourceType`, v as "inventory_item" | "prep_item"); form.setValue(`ingredients.${index}.sourceId`, ""); }}>
-                        <SelectTrigger className="text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="inventory_item">Inventory</SelectItem>
-                          <SelectItem value="prep_item">Prep Item</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="col-span-4">
-                      <Select value={form.watch(`ingredients.${index}.sourceId`)} onValueChange={(v) => form.setValue(`ingredients.${index}.sourceId`, v)}>
-                        <SelectTrigger className="text-xs">
-                          <SelectValue placeholder="Select…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {sourceType === "inventory_item"
-                            ? inventoryItems.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)
-                            : otherPrepItems.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)
-                          }
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="col-span-2">
-                      <Input type="number" step="any" {...form.register(`ingredients.${index}.quantity`)} placeholder="Qty" className="text-xs" />
-                    </div>
-                    <div className="col-span-2">
-                      <Select value={form.watch(`ingredients.${index}.unitId`)} onValueChange={(v) => form.setValue(`ingredients.${index}.unitId`, v === "__none__" ? "" : v)}>
-                        <SelectTrigger className="text-xs">
-                          <SelectValue placeholder="Unit" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">—</SelectItem>
-                          {units.map(u => <SelectItem key={u.id} value={u.id}>{u.abbreviation || u.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="col-span-1 flex justify-end">
-                      <Button type="button" size="icon" variant="ghost" onClick={() => removeIngredient(index)} data-testid={`button-remove-ingredient-${index}`}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Locked ingredients notice when recipe IS linked */}
+        {recipeLinked && showInherited && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground rounded-md border px-4 py-3" data-testid="notice-ingredients-locked">
+            <Lock className="h-4 w-4 shrink-0" />
+            <span>Ingredient editing is disabled while a base recipe is linked. Unlink the recipe above to edit ingredients manually.</span>
+          </div>
+        )}
 
         {/* Menu Item Usages */}
         <Card>

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ClipboardList, RefreshCw, CheckCircle2, ShoppingBasket } from "lucide-react";
+import { ClipboardList, RefreshCw, CheckCircle2, ShoppingBasket, Tag } from "lucide-react";
 import { TierGate } from "@/components/tier-gate";
 import { useStoreContext } from "@/hooks/use-store-context";
 import { format } from "date-fns";
@@ -17,7 +17,7 @@ interface Daypart { id: string; name: string; startTime: string | null }
 interface Station { id: string; name: string }
 interface PrepItem { id: string; name: string; outputUnit: string; outputQtyPerBatch: number }
 
-interface RequiredIngredient { name: string; qty: number; unit: string | null; sourceType: string }
+interface RequiredIngredient { name: string; qty: number; unit: string | null; sourceType: string; category: string | null }
 
 interface ChartLine {
   id: string;
@@ -48,9 +48,16 @@ interface PullListRow {
   name: string;
   totalQty: number;
   unit: string | null;
+  category: string | null;
 }
 
-function buildPullList(lines: ChartLine[]): PullListRow[] {
+interface PullListGroup {
+  category: string;
+  rows: PullListRow[];
+}
+
+function buildPullList(lines: ChartLine[]): PullListGroup[] {
+  // Aggregate ingredient totals keyed by name+unit
   const map = new Map<string, PullListRow>();
   for (const line of lines) {
     for (const ing of line.requiredIngredients ?? []) {
@@ -60,11 +67,30 @@ function buildPullList(lines: ChartLine[]): PullListRow[] {
       if (existing) {
         existing.totalQty += ing.qty;
       } else {
-        map.set(key, { name: ing.name, totalQty: ing.qty, unit: ing.unit });
+        map.set(key, { name: ing.name, totalQty: ing.qty, unit: ing.unit, category: ing.category });
       }
     }
   }
-  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+  // Group by category
+  const groupMap = new Map<string, PullListRow[]>();
+  for (const row of map.values()) {
+    const cat = row.category ?? "Uncategorized";
+    const group = groupMap.get(cat) ?? [];
+    group.push(row);
+    groupMap.set(cat, group);
+  }
+
+  // Sort groups: categories alphabetically, "Uncategorized" last
+  const groups: PullListGroup[] = Array.from(groupMap.entries())
+    .map(([category, rows]) => ({ category, rows: rows.sort((a, b) => a.name.localeCompare(b.name)) }))
+    .sort((a, b) => {
+      if (a.category === "Uncategorized") return 1;
+      if (b.category === "Uncategorized") return -1;
+      return a.category.localeCompare(b.category);
+    });
+
+  return groups;
 }
 
 function PrepChartContent() {
@@ -99,8 +125,8 @@ function PrepChartContent() {
     },
   });
 
-  const pullList = chartResult ? buildPullList(chartResult.lines) : [];
-  const hasPullList = pullList.length > 0;
+  const pullListGroups = chartResult ? buildPullList(chartResult.lines) : [];
+  const hasPullList = pullListGroups.length > 0;
 
   return (
     <div className="p-6 space-y-6 max-w-6xl">
@@ -205,42 +231,42 @@ function PrepChartContent() {
               </CardContent>
             </Card>
           ) : view === "pulllist" ? (
-            /* Pull List View */
+            /* Pull List View — grouped by category */
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <ShoppingBasket className="h-4 w-4 text-muted-foreground" />
                   Pull List
                 </CardTitle>
-                <p className="text-xs text-muted-foreground">All raw ingredients needed across all prep items for this chart, aggregated by item.</p>
+                <p className="text-xs text-muted-foreground">Raw ingredients needed across all prep items, grouped by category.</p>
               </CardHeader>
               <CardContent className="p-0">
-                {pullList.length === 0 ? (
+                {pullListGroups.length === 0 ? (
                   <div className="py-8 text-center text-muted-foreground text-sm px-6">
                     No ingredients found. Link prep items to recipes or add ingredients to prep items to generate a pull list.
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left" data-testid="section-pull-list">
-                      <thead>
-                        <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
-                          <th className="py-2 px-4 font-medium">Ingredient</th>
-                          <th className="py-2 px-4 font-medium text-right">Total Qty</th>
-                          <th className="py-2 px-4 font-medium">Unit</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pullList.map((row, i) => (
-                          <tr key={i} className="border-b last:border-b-0 hover:bg-muted/20" data-testid={`row-pull-list-${i}`}>
-                            <td className="py-3 px-4 font-medium text-sm">{row.name}</td>
-                            <td className="py-3 px-4 text-sm text-right tabular-nums">
-                              {row.totalQty % 1 === 0 ? row.totalQty.toFixed(0) : row.totalQty.toFixed(2)}
-                            </td>
-                            <td className="py-3 px-4 text-sm text-muted-foreground">{row.unit ?? "—"}</td>
-                          </tr>
+                  <div className="overflow-x-auto" data-testid="section-pull-list">
+                    {pullListGroups.map((group, gi) => (
+                      <div key={gi}>
+                        {/* Category header row */}
+                        <div className="flex items-center gap-2 px-4 py-2 bg-muted/40 border-b" data-testid={`pull-list-category-${gi}`}>
+                          <Tag className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{group.category}</span>
+                        </div>
+                        {group.rows.map((row, ri) => (
+                          <div key={ri} className="flex items-center justify-between px-4 py-2.5 border-b last:border-b-0 hover:bg-muted/20" data-testid={`row-pull-list-${gi}-${ri}`}>
+                            <span className="font-medium text-sm">{row.name}</span>
+                            <div className="flex items-center gap-2 text-sm text-right">
+                              <span className="tabular-nums font-semibold">
+                                {row.totalQty % 1 === 0 ? row.totalQty.toFixed(0) : row.totalQty.toFixed(2)}
+                              </span>
+                              {row.unit && <span className="text-muted-foreground">{row.unit}</span>}
+                            </div>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>

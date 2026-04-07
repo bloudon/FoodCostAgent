@@ -6347,12 +6347,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/recipes", requireAuth, requireTier("basic"), async (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const companyId = (req as any).companyId;
-    
-    // Try to get from cache first
+    const canBeIngredientFilter = req.query.canBeIngredient === "1" || req.query.canBeIngredient === "true";
+
+    // Try to get from cache first (cache key is the same for all; filter applied after)
     const cacheKey = `recipes:costs:${companyId}`;
     const cached = await cache.get<any[]>(cacheKey);
     if (cached) {
-      return res.json(cached);
+      const result = canBeIngredientFilter ? cached.filter(r => r.canBeIngredient === 1) : cached;
+      return res.json(result);
     }
     
     // Calculate costs with preloaded data for efficiency
@@ -6396,7 +6398,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Cache for 5 minutes (300 seconds)
     await cache.set(cacheKey, recipesWithCosts, 300);
     
-    res.json(recipesWithCosts);
+    const result = canBeIngredientFilter ? recipesWithCosts.filter(r => r.canBeIngredient === 1) : recipesWithCosts;
+    res.json(result);
   });
 
   // GET /api/recipes/missing-ingredients — list recipes that have missing components
@@ -14120,14 +14123,18 @@ Human Handoff:
       });
 
       // Enrich lines with required ingredients (ingredient qty × recommended batches)
-      interface RequiredIngredient { name: string; qty: number; unit: string | null; sourceType: string }
-      const allPrepItems = await storage.getPrepItems(companyId);
+      interface RequiredIngredient { name: string; qty: number; unit: string | null; sourceType: string; category: string | null }
+      const [allPrepItems, allInvItems, chartUnits, allCategories] = await Promise.all([
+        storage.getPrepItems(companyId),
+        storage.getInventoryItems(undefined, undefined, companyId),
+        storage.getUnits(),
+        storage.getCategories(companyId),
+      ]);
       const prepItemMap = new Map(allPrepItems.map(p => [p.id, p]));
-      const allInvItems = await storage.getInventoryItems(undefined, undefined, companyId);
-      const invItemNameMap = new Map(allInvItems.map(i => [i.id, i.name]));
+      const invItemMap = new Map(allInvItems.map(i => [i.id, i]));
       const prepItemNameMap = new Map(allPrepItems.map(p => [p.id, p.name]));
-      const units = await storage.getUnits();
-      const unitAbbrevMap = new Map(units.map(u => [u.id, u.abbreviation ?? u.name]));
+      const unitAbbrevMap = new Map(chartUnits.map(u => [u.id, u.abbreviation ?? u.name]));
+      const categoryNameMap = new Map(allCategories.map(c => [c.id, c.name]));
 
       // Preload all ingredient data for the prep items in this chart
       const lineItemIds = [...new Set(result.lines.map(l => l.prepItemId))];
@@ -14140,22 +14147,22 @@ Human Handoff:
 
         let required: RequiredIngredient[] = [];
         if (pi.recipeId) {
-          // Ingredients come from the linked recipe's components
+          // Ingredients come exclusively from the linked recipe's components
           const components = await storage.getRecipeComponents(pi.recipeId);
           required = components.map(c => {
-            const name = c.missingItemName ?? (c.componentType === "inventory_item"
-              ? (invItemNameMap.get(c.componentId) ?? "Unknown")
-              : (prepItemNameMap.get(c.componentId) ?? "Unknown"));
-            return { name, qty: c.qty * batches, unit: unitAbbrevMap.get(c.unitId) ?? null, sourceType: c.componentType };
+            const invItem = c.componentType === "inventory_item" ? invItemMap.get(c.componentId) : undefined;
+            const name = c.missingItemName ?? (invItem ? invItem.name : (prepItemNameMap.get(c.componentId) ?? "Unknown"));
+            const category = invItem?.categoryId ? (categoryNameMap.get(invItem.categoryId) ?? null) : null;
+            return { name, qty: c.qty * batches, unit: unitAbbrevMap.get(c.unitId) ?? null, sourceType: c.componentType, category };
           });
         } else {
-          // Ingredients come from prep_item_ingredients
+          // Ingredients come exclusively from prep_item_ingredients
           const ings = await storage.getPrepItemIngredients(prepItemId, companyId);
           required = ings.map(ing => {
-            const name = ing.sourceType === "inventory_item"
-              ? (invItemNameMap.get(ing.sourceId) ?? "Unknown")
-              : (prepItemNameMap.get(ing.sourceId) ?? "Unknown");
-            return { name, qty: ing.quantity * batches, unit: ing.unitId ? (unitAbbrevMap.get(ing.unitId) ?? null) : null, sourceType: ing.sourceType };
+            const invItem = ing.sourceType === "inventory_item" ? invItemMap.get(ing.sourceId) : undefined;
+            const name = invItem ? invItem.name : (prepItemNameMap.get(ing.sourceId) ?? "Unknown");
+            const category = invItem?.categoryId ? (categoryNameMap.get(invItem.categoryId) ?? null) : null;
+            return { name, qty: ing.quantity * batches, unit: ing.unitId ? (unitAbbrevMap.get(ing.unitId) ?? null) : null, sourceType: ing.sourceType, category };
           });
         }
         ingredientsByPrepItem.set(prepItemId, required);

@@ -675,6 +675,16 @@ BEGIN
     -- Task #66: Add recipe_id FK to prep_items for canBeIngredient recipe linkage
     ALTER TABLE prep_items ADD COLUMN IF NOT EXISTS recipe_id varchar;
 
+    -- FK constraint: prep_items.recipe_id → recipes.id (ON DELETE SET NULL)
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.table_constraints
+      WHERE constraint_name = 'prep_items_recipe_id_fk' AND table_name = 'prep_items'
+    ) THEN
+      ALTER TABLE prep_items
+        ADD CONSTRAINT prep_items_recipe_id_fk
+        FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE SET NULL;
+    END IF;
+
     INSERT INTO _migration_log (version, description)
       VALUES ('v025', 'Task #66: Add recipe_id FK to prep_items for recipe linkage & pull list');
   END IF;

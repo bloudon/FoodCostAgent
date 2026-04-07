@@ -1,6 +1,6 @@
 # Overview
 
-FNB Cost Pro is an inventory management and recipe costing system designed for food service businesses. It aims to enhance profitability and operational efficiency through precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and detailed variance reporting. The system focuses on minimizing waste, optimizing profit margins, providing real-time inventory estimates, streamlining vendor interactions, and accurately controlling food costs to support informed business decisions and growth.
+FNB Cost Pro is an inventory management and recipe costing system for food service businesses. Its primary goal is to boost profitability and operational efficiency by offering precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and detailed variance reporting. The system aims to minimize waste, optimize profit margins, provide real-time inventory estimates, streamline vendor interactions, and accurately control food costs, supporting informed business decisions and growth.
 
 # User Preferences
 
@@ -50,7 +50,7 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 - **Technical Implementations**: Micro-unit precision for inventory calculations, comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), multi-tenant QuickBooks integration, intelligent vendor order guide import, real-time recipe cost calculation with caching, dynamic estimated on-hand inventory with automated cache invalidation, detailed TFC (Theoretical Food Cost) variance reporting, and single-timezone date handling.
 - **System Design Choices**: Strict multi-tenancy principles, secure OAuth using HMAC-SHA256, extensive server-side validation, robust vendor relationship management.
 - **Vendor-Store Assignment Model**: Vendors are company-level entities; `store_vendors` join table controls store access. Order guides can be assigned to multiple stores via `order_guide_stores` join table.
-- **Subscription Tier System**: Four-tier model (Free, Basic, Pro, Enterprise) stored on `companies` table. Backend uses `requireTier(minTier)` middleware; frontend uses `useTier()` hook and `TierGate` component. Enterprise tier uses a lead form flow.
+- **Subscription Tier System**: Four-tier model (Free, Basic, Pro, Enterprise) stored on `companies` table. Backend uses `requireTier(minTier)` middleware; frontend uses `useTier()` hook and `TierGate` component.
 - **Marketing Website**: Hostname-based routing (`fnbcostpro.com` for marketing, `app.fnbcostpro.com` for the app) managed by the same Express server.
 
 # External Dependencies
