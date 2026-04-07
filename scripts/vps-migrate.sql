@@ -550,3 +550,121 @@ DO $$ BEGIN
       VALUES ('v023', 'Task #64: detected_vendor_name on order_guides for receipt scan vendor pre-fill');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v024 — Task #65: Prep Chart module (Pro tier)
+-- Creates 8 new tables for the production planning / prep chart module:
+-- stations, prep_items, prep_item_ingredients, menu_item_prep_usages,
+-- prep_production_records, prep_on_hand, prep_chart_runs, prep_chart_lines.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v024') THEN
+
+    CREATE TABLE IF NOT EXISTS stations (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      name text NOT NULL,
+      sort_order integer NOT NULL DEFAULT 0,
+      active integer NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS prep_items (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      name text NOT NULL,
+      output_unit text NOT NULL DEFAULT 'each',
+      output_qty_per_batch real NOT NULL DEFAULT 1,
+      shelf_life_hours real NOT NULL DEFAULT 24,
+      prep_lead_minutes integer NOT NULL DEFAULT 30,
+      station_id varchar,
+      yield_percent real NOT NULL DEFAULT 100,
+      active integer NOT NULL DEFAULT 1,
+      created_at timestamp NOT NULL DEFAULT NOW(),
+      updated_at timestamp NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS prep_items_company_idx ON prep_items(company_id);
+
+    CREATE TABLE IF NOT EXISTS prep_item_ingredients (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      prep_item_id varchar NOT NULL,
+      source_type text NOT NULL,
+      source_id varchar NOT NULL,
+      quantity real NOT NULL,
+      unit_id varchar,
+      sort_order integer NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS prep_item_ingredients_prep_item_idx ON prep_item_ingredients(prep_item_id);
+
+    CREATE TABLE IF NOT EXISTS menu_item_prep_usages (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      menu_item_id varchar NOT NULL,
+      prep_item_id varchar NOT NULL,
+      quantity_per_sale real NOT NULL DEFAULT 1,
+      unit_id varchar,
+      UNIQUE(company_id, menu_item_id, prep_item_id)
+    );
+    CREATE INDEX IF NOT EXISTS menu_item_prep_usages_menu_item_idx ON menu_item_prep_usages(menu_item_id);
+    CREATE INDEX IF NOT EXISTS menu_item_prep_usages_prep_item_idx ON menu_item_prep_usages(prep_item_id);
+
+    CREATE TABLE IF NOT EXISTS prep_production_records (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      store_id varchar NOT NULL,
+      prep_item_id varchar NOT NULL,
+      quantity_produced real NOT NULL,
+      batch_count real NOT NULL DEFAULT 1,
+      produced_at timestamp NOT NULL DEFAULT NOW(),
+      produced_by varchar,
+      notes text
+    );
+    CREATE INDEX IF NOT EXISTS prep_production_company_store_idx ON prep_production_records(company_id, store_id);
+
+    CREATE TABLE IF NOT EXISTS prep_on_hand (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      store_id varchar NOT NULL,
+      prep_item_id varchar NOT NULL,
+      quantity_on_hand real NOT NULL,
+      prepared_at timestamp NOT NULL,
+      expires_at timestamp NOT NULL,
+      location_id varchar,
+      created_at timestamp NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS prep_on_hand_company_store_idx ON prep_on_hand(company_id, store_id);
+    CREATE INDEX IF NOT EXISTS prep_on_hand_expires_at_idx ON prep_on_hand(expires_at);
+
+    CREATE TABLE IF NOT EXISTS prep_chart_runs (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      store_id varchar NOT NULL,
+      business_date timestamp NOT NULL,
+      daypart_id varchar,
+      generated_at timestamp NOT NULL DEFAULT NOW(),
+      based_on_mode text NOT NULL DEFAULT 'history',
+      buffer_percent real NOT NULL DEFAULT 10,
+      weeks_lookback integer NOT NULL DEFAULT 4
+    );
+    CREATE INDEX IF NOT EXISTS prep_chart_runs_company_store_date_idx ON prep_chart_runs(company_id, store_id, business_date);
+
+    CREATE TABLE IF NOT EXISTS prep_chart_lines (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      prep_chart_run_id varchar NOT NULL,
+      company_id varchar NOT NULL,
+      prep_item_id varchar NOT NULL,
+      station_id varchar,
+      forecast_qty real NOT NULL DEFAULT 0,
+      on_hand_qty real NOT NULL DEFAULT 0,
+      recommended_qty real NOT NULL DEFAULT 0,
+      recommended_batches integer NOT NULL DEFAULT 0,
+      due_time timestamp,
+      confidence_score real,
+      reasoning_summary text
+    );
+    CREATE INDEX IF NOT EXISTS prep_chart_lines_run_idx ON prep_chart_lines(prep_chart_run_id);
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v024', 'Task #65: Prep Chart module — 8 new tables for production planning (Pro tier)');
+  END IF;
+END $$;

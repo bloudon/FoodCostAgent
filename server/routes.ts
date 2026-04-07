@@ -13662,6 +13662,311 @@ Human Handoff:
     }
   });
 
+  // ============ PREP CHART MODULE (Pro tier) ============
+
+  // Stations
+  app.get("/api/stations", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const stationsList = await storage.getStations(companyId);
+      res.json(stationsList);
+    } catch (err) {
+      console.error("GET /api/stations error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/stations", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { name } = req.body as { name: string };
+      if (!name?.trim()) return res.status(400).json({ error: "Name is required" });
+      const station = await storage.createStation({ companyId, name: name.trim(), sortOrder: 0, active: 1 });
+      res.json(station);
+    } catch (err) {
+      console.error("POST /api/stations error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/stations/reorder", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { orderedIds } = req.body as { orderedIds: string[] };
+      if (!Array.isArray(orderedIds)) return res.status(400).json({ error: "orderedIds must be an array" });
+      await storage.reorderStations(companyId, orderedIds);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("PATCH /api/stations/reorder error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/stations/:id", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { id } = req.params;
+      const updated = await storage.updateStation(id, companyId, req.body);
+      if (!updated) return res.status(404).json({ error: "Station not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/stations/:id error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/stations/:id", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      await storage.deleteStation(req.params.id, companyId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/stations/:id error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Prep Items
+  app.get("/api/prep-items", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const items = await storage.getPrepItems(companyId);
+      res.json(items);
+    } catch (err) {
+      console.error("GET /api/prep-items error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/prep-items/:id", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const item = await storage.getPrepItem(req.params.id, companyId);
+      if (!item) return res.status(404).json({ error: "Prep item not found" });
+      const ingredients = await storage.getPrepItemIngredients(item.id, companyId);
+      const usages = await storage.getMenuItemPrepUsages(item.id, companyId);
+      res.json({ ...item, ingredients, usages });
+    } catch (err) {
+      console.error("GET /api/prep-items/:id error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/prep-items", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { ingredients = [], usages = [], ...itemData } = req.body;
+      const item = await storage.createPrepItem({ ...itemData, companyId });
+      if (ingredients.length > 0) {
+        await storage.replaceAllPrepItemIngredients(item.id, companyId, ingredients.map((ing: any, i: number) => ({ ...ing, prepItemId: item.id, companyId, sortOrder: i })));
+      }
+      if (usages.length > 0) {
+        await storage.replaceAllMenuItemPrepUsages(item.id, companyId, usages.map((u: any) => ({ ...u, prepItemId: item.id, companyId })));
+      }
+      const full = await storage.getPrepItem(item.id, companyId);
+      const savedIngredients = await storage.getPrepItemIngredients(item.id, companyId);
+      const savedUsages = await storage.getMenuItemPrepUsages(item.id, companyId);
+      res.json({ ...full, ingredients: savedIngredients, usages: savedUsages });
+    } catch (err) {
+      console.error("POST /api/prep-items error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/prep-items/:id", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { id } = req.params;
+      const { ingredients, usages, ...updateData } = req.body;
+      const updated = await storage.updatePrepItem(id, companyId, updateData);
+      if (!updated) return res.status(404).json({ error: "Prep item not found" });
+      if (ingredients !== undefined) {
+        await storage.replaceAllPrepItemIngredients(id, companyId, ingredients.map((ing: any, i: number) => ({ ...ing, prepItemId: id, companyId, sortOrder: i })));
+      }
+      if (usages !== undefined) {
+        await storage.replaceAllMenuItemPrepUsages(id, companyId, usages.map((u: any) => ({ ...u, prepItemId: id, companyId })));
+      }
+      const savedIngredients = await storage.getPrepItemIngredients(id, companyId);
+      const savedUsages = await storage.getMenuItemPrepUsages(id, companyId);
+      res.json({ ...updated, ingredients: savedIngredients, usages: savedUsages });
+    } catch (err) {
+      console.error("PATCH /api/prep-items/:id error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/prep-items/:id", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      await storage.deletePrepItem(req.params.id, companyId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/prep-items/:id error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Menu Item Prep Usages (standalone CRUD)
+  app.get("/api/menu-item-prep-usages", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { prepItemId, menuItemId } = req.query as Record<string, string>;
+      if (prepItemId) {
+        return res.json(await storage.getMenuItemPrepUsages(prepItemId, companyId));
+      }
+      if (menuItemId) {
+        return res.json(await storage.getMenuItemPrepUsagesByMenuItem(menuItemId, companyId));
+      }
+      res.status(400).json({ error: "prepItemId or menuItemId is required" });
+    } catch (err) {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/menu-item-prep-usages/:id", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      await storage.deleteMenuItemPrepUsage(req.params.id, companyId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Prep Production Records
+  app.get("/api/prep-production-records", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { storeId, prepItemId } = req.query as Record<string, string>;
+      const records = await storage.getPrepProductionRecords(companyId, storeId, prepItemId);
+      res.json(records);
+    } catch (err) {
+      console.error("GET /api/prep-production-records error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/prep-production-records", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const userId = req.user!.id;
+      const { prepItemId, storeId, quantityProduced, batchCount, notes, producedAt } = req.body;
+      if (!prepItemId || !storeId || quantityProduced == null) {
+        return res.status(400).json({ error: "prepItemId, storeId, and quantityProduced are required" });
+      }
+      const record = await storage.createPrepProductionRecord({
+        companyId,
+        prepItemId,
+        storeId,
+        quantityProduced: Number(quantityProduced),
+        batchCount: Number(batchCount ?? 1),
+        producedBy: userId,
+        notes: notes ?? null,
+        producedAt: producedAt ? new Date(producedAt) : new Date(),
+      });
+      res.json(record);
+    } catch (err) {
+      console.error("POST /api/prep-production-records error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Prep On Hand
+  app.get("/api/prep-on-hand", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { storeId, prepItemId } = req.query as Record<string, string>;
+      if (!storeId) return res.status(400).json({ error: "storeId is required" });
+      const rows = await storage.getPrepOnHand(companyId, storeId, prepItemId);
+      res.json(rows);
+    } catch (err) {
+      console.error("GET /api/prep-on-hand error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/prep-on-hand", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { prepItemId, storeId, quantityOnHand, preparedAt, locationId } = req.body;
+      if (!prepItemId || !storeId || quantityOnHand == null) {
+        return res.status(400).json({ error: "prepItemId, storeId, and quantityOnHand are required" });
+      }
+      // Look up shelfLifeHours from the prep item to compute expiresAt
+      const prepItem = await storage.getPrepItem(prepItemId, companyId);
+      if (!prepItem) return res.status(404).json({ error: "Prep item not found" });
+      const preparedDate = preparedAt ? new Date(preparedAt) : new Date();
+      const expiresAt = new Date(preparedDate.getTime() + prepItem.shelfLifeHours * 60 * 60 * 1000);
+      const entry = await storage.createPrepOnHand({
+        companyId,
+        prepItemId,
+        storeId,
+        quantityOnHand: Number(quantityOnHand),
+        preparedAt: preparedDate,
+        expiresAt,
+        locationId: locationId ?? null,
+      });
+      res.json(entry);
+    } catch (err) {
+      console.error("POST /api/prep-on-hand error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/prep-on-hand/:id", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      await storage.deletePrepOnHand(req.params.id, companyId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/prep-on-hand/:id error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Prep Chart — Generate
+  app.post("/api/prep-chart/generate", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { storeId, businessDate, daypartId, bufferPercent, weeksLookback } = req.body;
+      if (!storeId || !businessDate) {
+        return res.status(400).json({ error: "storeId and businessDate are required" });
+      }
+      const { generatePrepChart } = await import("./services/prepChartEngine");
+      const result = await generatePrepChart({
+        companyId,
+        storeId,
+        businessDate: new Date(businessDate),
+        daypartId: daypartId || undefined,
+        bufferPercent: bufferPercent != null ? Number(bufferPercent) : 10,
+        weeksLookback: weeksLookback != null ? Number(weeksLookback) : 4,
+      });
+      res.json(result);
+    } catch (err) {
+      console.error("POST /api/prep-chart/generate error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/prep-chart/runs", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = req.user!.companyId!;
+      const { storeId, businessDate, daypartId } = req.query as Record<string, string>;
+      if (!storeId || !businessDate) {
+        return res.status(400).json({ error: "storeId and businessDate are required" });
+      }
+      const run = await storage.getLatestPrepChartRun(
+        companyId, storeId, new Date(businessDate), daypartId || undefined
+      );
+      if (!run) return res.json(null);
+      const lines = await storage.getPrepChartLines(run.id, companyId);
+      res.json({ run, lines });
+    } catch (err) {
+      console.error("GET /api/prep-chart/runs error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

@@ -19,6 +19,8 @@ import {
   LogOut,
   Ruler,
   ChevronRight,
+  Layers,
+  Thermometer,
 } from "lucide-react";
 import {
   Sidebar,
@@ -107,6 +109,17 @@ const mainNavSections: NavSection[] = [
     items: [
       { title: "Sales Import", url: "/tfc/sales-import", icon: Upload, requiredFeature: "pos_import" },
       { title: "Variance Report", url: "/tfc/variance", icon: BarChart3, requiredFeature: "tfc_variance" },
+    ],
+  },
+  {
+    title: "Kitchen",
+    icon: Thermometer,
+    items: [
+      { title: "Prep Chart", url: "/prep-chart", icon: ClipboardList, requiredFeature: "prep_chart" },
+      { title: "Prep Items", url: "/prep-chart/items", icon: Layers, requiredFeature: "prep_chart" },
+      { title: "On Hand", url: "/prep-chart/on-hand", icon: Thermometer, requiredFeature: "prep_chart" },
+      { title: "Production Log", url: "/prep-chart/production", icon: ChefHat, requiredFeature: "prep_chart" },
+      { title: "Stations", url: "/prep-chart/stations", icon: Store, requiredFeature: "prep_chart" },
     ],
   },
 ];

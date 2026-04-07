@@ -58,6 +58,14 @@ import {
   quickbooksTokenLogs, type QuickBooksTokenLog, type InsertQuickBooksTokenLog,
   onboardingProgress, type OnboardingProgress, type InsertOnboardingProgress,
   menuItemSizes, type MenuItemSize, type InsertMenuItemSize,
+  stations, type Station, type InsertStation,
+  prepItems, type PrepItem, type InsertPrepItem,
+  prepItemIngredients, type PrepItemIngredient, type InsertPrepItemIngredient,
+  menuItemPrepUsages, type MenuItemPrepUsage, type InsertMenuItemPrepUsage,
+  prepProductionRecords, type PrepProductionRecord, type InsertPrepProductionRecord,
+  prepOnHand, type PrepOnHand, type InsertPrepOnHand,
+  prepChartRuns, type PrepChartRun, type InsertPrepChartRun,
+  prepChartLines, type PrepChartLine, type InsertPrepChartLine,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -527,6 +535,53 @@ export interface IStorage {
   createOnboardingProgress(progress: InsertOnboardingProgress): Promise<OnboardingProgress>;
   updateOnboardingProgress(companyId: string, updates: Partial<OnboardingProgress>): Promise<OnboardingProgress | undefined>;
   completeOnboarding(companyId: string): Promise<OnboardingProgress | undefined>;
+
+  // Prep Chart — Stations
+  getStations(companyId: string): Promise<Station[]>;
+  getStation(id: string, companyId: string): Promise<Station | undefined>;
+  createStation(station: InsertStation): Promise<Station>;
+  updateStation(id: string, companyId: string, updates: Partial<Station>): Promise<Station | undefined>;
+  deleteStation(id: string, companyId: string): Promise<void>;
+  reorderStations(companyId: string, orderedIds: string[]): Promise<void>;
+
+  // Prep Chart — Prep Items
+  getPrepItems(companyId: string): Promise<PrepItem[]>;
+  getPrepItem(id: string, companyId: string): Promise<PrepItem | undefined>;
+  createPrepItem(item: InsertPrepItem): Promise<PrepItem>;
+  updatePrepItem(id: string, companyId: string, updates: Partial<PrepItem>): Promise<PrepItem | undefined>;
+  deletePrepItem(id: string, companyId: string): Promise<void>;
+
+  // Prep Chart — Prep Item Ingredients
+  getPrepItemIngredients(prepItemId: string, companyId: string): Promise<PrepItemIngredient[]>;
+  createPrepItemIngredient(ingredient: InsertPrepItemIngredient): Promise<PrepItemIngredient>;
+  updatePrepItemIngredient(id: string, companyId: string, updates: Partial<PrepItemIngredient>): Promise<PrepItemIngredient | undefined>;
+  deletePrepItemIngredient(id: string, companyId: string): Promise<void>;
+  replaceAllPrepItemIngredients(prepItemId: string, companyId: string, ingredients: InsertPrepItemIngredient[]): Promise<PrepItemIngredient[]>;
+
+  // Prep Chart — Menu Item Prep Usages
+  getMenuItemPrepUsages(prepItemId: string, companyId: string): Promise<MenuItemPrepUsage[]>;
+  getMenuItemPrepUsagesByMenuItem(menuItemId: string, companyId: string): Promise<MenuItemPrepUsage[]>;
+  createMenuItemPrepUsage(usage: InsertMenuItemPrepUsage): Promise<MenuItemPrepUsage>;
+  deleteMenuItemPrepUsage(id: string, companyId: string): Promise<void>;
+  replaceAllMenuItemPrepUsages(prepItemId: string, companyId: string, usages: InsertMenuItemPrepUsage[]): Promise<MenuItemPrepUsage[]>;
+
+  // Prep Chart — Production Records
+  getPrepProductionRecords(companyId: string, storeId?: string, prepItemId?: string): Promise<PrepProductionRecord[]>;
+  createPrepProductionRecord(record: InsertPrepProductionRecord): Promise<PrepProductionRecord>;
+
+  // Prep Chart — On Hand
+  getPrepOnHand(companyId: string, storeId: string, prepItemId?: string): Promise<PrepOnHand[]>;
+  createPrepOnHand(entry: InsertPrepOnHand): Promise<PrepOnHand>;
+  deletePrepOnHand(id: string, companyId: string): Promise<void>;
+  getTotalOnHandQty(prepItemId: string, storeId: string, companyId: string): Promise<number>;
+
+  // Prep Chart — Chart Runs & Lines
+  getPrepChartRuns(companyId: string, storeId: string, businessDate?: Date): Promise<PrepChartRun[]>;
+  getLatestPrepChartRun(companyId: string, storeId: string, businessDate: Date, daypartId?: string): Promise<PrepChartRun | undefined>;
+  createPrepChartRun(run: InsertPrepChartRun): Promise<PrepChartRun>;
+  getPrepChartLines(runId: string, companyId: string): Promise<PrepChartLine[]>;
+  createPrepChartLines(lines: InsertPrepChartLine[]): Promise<PrepChartLine[]>;
+  deletePrepChartLines(runId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3950,6 +4005,235 @@ export class DatabaseStorage implements IStorage {
       .where(eq(onboardingProgress.companyId, companyId))
       .returning();
     return completed || undefined;
+  }
+
+  // ============ PREP CHART MODULE ============
+
+  // Stations
+  async getStations(companyId: string): Promise<Station[]> {
+    return db.select().from(stations)
+      .where(eq(stations.companyId, companyId))
+      .orderBy(asc(stations.sortOrder), asc(stations.name));
+  }
+
+  async getStation(id: string, companyId: string): Promise<Station | undefined> {
+    const [s] = await db.select().from(stations)
+      .where(and(eq(stations.id, id), eq(stations.companyId, companyId)));
+    return s || undefined;
+  }
+
+  async createStation(station: InsertStation): Promise<Station> {
+    const [s] = await db.insert(stations).values(station).returning();
+    return s;
+  }
+
+  async updateStation(id: string, companyId: string, updates: Partial<Station>): Promise<Station | undefined> {
+    const [s] = await db.update(stations).set(updates)
+      .where(and(eq(stations.id, id), eq(stations.companyId, companyId)))
+      .returning();
+    return s || undefined;
+  }
+
+  async deleteStation(id: string, companyId: string): Promise<void> {
+    await db.delete(stations).where(and(eq(stations.id, id), eq(stations.companyId, companyId)));
+  }
+
+  async reorderStations(companyId: string, orderedIds: string[]): Promise<void> {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await db.update(stations)
+        .set({ sortOrder: i })
+        .where(and(eq(stations.id, orderedIds[i]), eq(stations.companyId, companyId)));
+    }
+  }
+
+  // Prep Items
+  async getPrepItems(companyId: string): Promise<PrepItem[]> {
+    return db.select().from(prepItems)
+      .where(eq(prepItems.companyId, companyId))
+      .orderBy(asc(prepItems.name));
+  }
+
+  async getPrepItem(id: string, companyId: string): Promise<PrepItem | undefined> {
+    const [p] = await db.select().from(prepItems)
+      .where(and(eq(prepItems.id, id), eq(prepItems.companyId, companyId)));
+    return p || undefined;
+  }
+
+  async createPrepItem(item: InsertPrepItem): Promise<PrepItem> {
+    const [p] = await db.insert(prepItems).values(item).returning();
+    return p;
+  }
+
+  async updatePrepItem(id: string, companyId: string, updates: Partial<PrepItem>): Promise<PrepItem | undefined> {
+    const [p] = await db.update(prepItems)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(prepItems.id, id), eq(prepItems.companyId, companyId)))
+      .returning();
+    return p || undefined;
+  }
+
+  async deletePrepItem(id: string, companyId: string): Promise<void> {
+    await db.delete(prepItemIngredients).where(and(eq(prepItemIngredients.prepItemId, id), eq(prepItemIngredients.companyId, companyId)));
+    await db.delete(menuItemPrepUsages).where(and(eq(menuItemPrepUsages.prepItemId, id), eq(menuItemPrepUsages.companyId, companyId)));
+    await db.delete(prepItems).where(and(eq(prepItems.id, id), eq(prepItems.companyId, companyId)));
+  }
+
+  // Prep Item Ingredients
+  async getPrepItemIngredients(prepItemId: string, companyId: string): Promise<PrepItemIngredient[]> {
+    return db.select().from(prepItemIngredients)
+      .where(and(eq(prepItemIngredients.prepItemId, prepItemId), eq(prepItemIngredients.companyId, companyId)))
+      .orderBy(asc(prepItemIngredients.sortOrder));
+  }
+
+  async createPrepItemIngredient(ingredient: InsertPrepItemIngredient): Promise<PrepItemIngredient> {
+    const [i] = await db.insert(prepItemIngredients).values(ingredient).returning();
+    return i;
+  }
+
+  async updatePrepItemIngredient(id: string, companyId: string, updates: Partial<PrepItemIngredient>): Promise<PrepItemIngredient | undefined> {
+    const [i] = await db.update(prepItemIngredients).set(updates)
+      .where(and(eq(prepItemIngredients.id, id), eq(prepItemIngredients.companyId, companyId)))
+      .returning();
+    return i || undefined;
+  }
+
+  async deletePrepItemIngredient(id: string, companyId: string): Promise<void> {
+    await db.delete(prepItemIngredients).where(and(eq(prepItemIngredients.id, id), eq(prepItemIngredients.companyId, companyId)));
+  }
+
+  async replaceAllPrepItemIngredients(prepItemId: string, companyId: string, ingredients: InsertPrepItemIngredient[]): Promise<PrepItemIngredient[]> {
+    await db.delete(prepItemIngredients).where(and(eq(prepItemIngredients.prepItemId, prepItemId), eq(prepItemIngredients.companyId, companyId)));
+    if (ingredients.length === 0) return [];
+    return db.insert(prepItemIngredients).values(ingredients).returning();
+  }
+
+  // Menu Item Prep Usages
+  async getMenuItemPrepUsages(prepItemId: string, companyId: string): Promise<MenuItemPrepUsage[]> {
+    return db.select().from(menuItemPrepUsages)
+      .where(and(eq(menuItemPrepUsages.prepItemId, prepItemId), eq(menuItemPrepUsages.companyId, companyId)));
+  }
+
+  async getMenuItemPrepUsagesByMenuItem(menuItemId: string, companyId: string): Promise<MenuItemPrepUsage[]> {
+    return db.select().from(menuItemPrepUsages)
+      .where(and(eq(menuItemPrepUsages.menuItemId, menuItemId), eq(menuItemPrepUsages.companyId, companyId)));
+  }
+
+  async createMenuItemPrepUsage(usage: InsertMenuItemPrepUsage): Promise<MenuItemPrepUsage> {
+    const [u] = await db.insert(menuItemPrepUsages).values(usage).returning();
+    return u;
+  }
+
+  async deleteMenuItemPrepUsage(id: string, companyId: string): Promise<void> {
+    await db.delete(menuItemPrepUsages).where(and(eq(menuItemPrepUsages.id, id), eq(menuItemPrepUsages.companyId, companyId)));
+  }
+
+  async replaceAllMenuItemPrepUsages(prepItemId: string, companyId: string, usages: InsertMenuItemPrepUsage[]): Promise<MenuItemPrepUsage[]> {
+    await db.delete(menuItemPrepUsages).where(and(eq(menuItemPrepUsages.prepItemId, prepItemId), eq(menuItemPrepUsages.companyId, companyId)));
+    if (usages.length === 0) return [];
+    return db.insert(menuItemPrepUsages).values(usages).returning();
+  }
+
+  // Prep Production Records
+  async getPrepProductionRecords(companyId: string, storeId?: string, prepItemId?: string): Promise<PrepProductionRecord[]> {
+    const conditions = [eq(prepProductionRecords.companyId, companyId)];
+    if (storeId) conditions.push(eq(prepProductionRecords.storeId, storeId));
+    if (prepItemId) conditions.push(eq(prepProductionRecords.prepItemId, prepItemId));
+    return db.select().from(prepProductionRecords)
+      .where(and(...conditions))
+      .orderBy(desc(prepProductionRecords.producedAt))
+      .limit(200);
+  }
+
+  async createPrepProductionRecord(record: InsertPrepProductionRecord): Promise<PrepProductionRecord> {
+    const [r] = await db.insert(prepProductionRecords).values(record).returning();
+    return r;
+  }
+
+  // Prep On Hand
+  async getPrepOnHand(companyId: string, storeId: string, prepItemId?: string): Promise<PrepOnHand[]> {
+    const conditions = [
+      eq(prepOnHand.companyId, companyId),
+      eq(prepOnHand.storeId, storeId),
+      gt(prepOnHand.expiresAt, new Date()),
+    ];
+    if (prepItemId) conditions.push(eq(prepOnHand.prepItemId, prepItemId));
+    return db.select().from(prepOnHand)
+      .where(and(...conditions))
+      .orderBy(asc(prepOnHand.expiresAt));
+  }
+
+  async createPrepOnHand(entry: InsertPrepOnHand): Promise<PrepOnHand> {
+    const [e] = await db.insert(prepOnHand).values(entry).returning();
+    return e;
+  }
+
+  async deletePrepOnHand(id: string, companyId: string): Promise<void> {
+    await db.delete(prepOnHand).where(and(eq(prepOnHand.id, id), eq(prepOnHand.companyId, companyId)));
+  }
+
+  async getTotalOnHandQty(prepItemId: string, storeId: string, companyId: string): Promise<number> {
+    const rows = await db.select({ qty: prepOnHand.quantityOnHand })
+      .from(prepOnHand)
+      .where(and(
+        eq(prepOnHand.prepItemId, prepItemId),
+        eq(prepOnHand.storeId, storeId),
+        eq(prepOnHand.companyId, companyId),
+        gt(prepOnHand.expiresAt, new Date()),
+      ));
+    return rows.reduce((sum, r) => sum + (r.qty ?? 0), 0);
+  }
+
+  // Prep Chart Runs & Lines
+  async getPrepChartRuns(companyId: string, storeId: string, businessDate?: Date): Promise<PrepChartRun[]> {
+    const conditions = [eq(prepChartRuns.companyId, companyId), eq(prepChartRuns.storeId, storeId)];
+    if (businessDate) {
+      const start = new Date(businessDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(businessDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(gte(prepChartRuns.businessDate, start), lte(prepChartRuns.businessDate, end));
+    }
+    return db.select().from(prepChartRuns).where(and(...conditions)).orderBy(desc(prepChartRuns.generatedAt));
+  }
+
+  async getLatestPrepChartRun(companyId: string, storeId: string, businessDate: Date, daypartId?: string): Promise<PrepChartRun | undefined> {
+    const start = new Date(businessDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(businessDate);
+    end.setHours(23, 59, 59, 999);
+    const conditions = [
+      eq(prepChartRuns.companyId, companyId),
+      eq(prepChartRuns.storeId, storeId),
+      gte(prepChartRuns.businessDate, start),
+      lte(prepChartRuns.businessDate, end),
+    ];
+    if (daypartId) conditions.push(eq(prepChartRuns.daypartId, daypartId));
+    else conditions.push(isNull(prepChartRuns.daypartId));
+    const [run] = await db.select().from(prepChartRuns)
+      .where(and(...conditions))
+      .orderBy(desc(prepChartRuns.generatedAt))
+      .limit(1);
+    return run || undefined;
+  }
+
+  async createPrepChartRun(run: InsertPrepChartRun): Promise<PrepChartRun> {
+    const [r] = await db.insert(prepChartRuns).values(run).returning();
+    return r;
+  }
+
+  async getPrepChartLines(runId: string, companyId: string): Promise<PrepChartLine[]> {
+    return db.select().from(prepChartLines)
+      .where(and(eq(prepChartLines.prepChartRunId, runId), eq(prepChartLines.companyId, companyId)))
+      .orderBy(asc(prepChartLines.stationId));
+  }
+
+  async createPrepChartLines(lines: InsertPrepChartLine[]): Promise<PrepChartLine[]> {
+    if (lines.length === 0) return [];
+    return db.insert(prepChartLines).values(lines).returning();
+  }
+
+  async deletePrepChartLines(runId: string): Promise<void> {
+    await db.delete(prepChartLines).where(eq(prepChartLines.prepChartRunId, runId));
   }
 }
 

@@ -27,7 +27,8 @@ export type Feature =
   | "order_reminders"
   | "custom_security_levels"
   | "enterprise_analytics"
-  | "ai_assistant";
+  | "ai_assistant"
+  | "prep_chart";
 
 const FEATURE_MIN_TIER: Record<Feature, Tier> = {
   order_reminders: "free",
@@ -42,6 +43,7 @@ const FEATURE_MIN_TIER: Record<Feature, Tier> = {
   cross_shop_vendor_pricing: "pro",
   unlimited_locations: "pro",
   custom_security_levels: "pro",
+  prep_chart: "pro",
   enterprise_analytics: "enterprise",
   ai_assistant: "basic",
 };

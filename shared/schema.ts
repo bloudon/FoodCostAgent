@@ -1389,4 +1389,157 @@ export const chatCorrections = pgTable("chat_corrections", {
 
 export const insertChatCorrectionSchema = createInsertSchema(chatCorrections).omit({ id: true, createdAt: true });
 export type InsertChatCorrection = z.infer<typeof insertChatCorrectionSchema>;
+
+// ============ PREP CHART MODULE (Pro tier) ============
+
+// Stations — kitchen production areas (Grill, Cold Prep, Fryer, etc.)
+export const stations = pgTable("stations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: integer("active").notNull().default(1),
+});
+
+export const insertStationSchema = createInsertSchema(stations).omit({ id: true });
+export type InsertStation = z.infer<typeof insertStationSchema>;
+export type Station = typeof stations.$inferSelect;
+
+// Prep Items — batch-produced kitchen outputs with shelf-life and lead-time
+export const prepItems = pgTable("prep_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(),
+  outputUnit: text("output_unit").notNull().default("each"), // unit label for output (oz, lb, each, cup…)
+  outputQtyPerBatch: real("output_qty_per_batch").notNull().default(1), // qty produced per batch
+  shelfLifeHours: real("shelf_life_hours").notNull().default(24), // hours before it expires
+  prepLeadMinutes: integer("prep_lead_minutes").notNull().default(30), // minutes needed to produce
+  stationId: varchar("station_id"), // FK → stations (nullable)
+  yieldPercent: real("yield_percent").notNull().default(100),
+  active: integer("active").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  companyIdx: index("prep_items_company_idx").on(table.companyId),
+}));
+
+export const insertPrepItemSchema = createInsertSchema(prepItems).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPrepItem = z.infer<typeof insertPrepItemSchema>;
+export type PrepItem = typeof prepItems.$inferSelect;
+
+// Prep Item Ingredients — what goes into a prep item (raw inventory or another prep item)
+export const prepItemIngredients = pgTable("prep_item_ingredients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  prepItemId: varchar("prep_item_id").notNull(), // parent prep item
+  sourceType: text("source_type").notNull(), // 'inventory_item' or 'prep_item'
+  sourceId: varchar("source_id").notNull(), // ID in the referenced table
+  quantity: real("quantity").notNull(),
+  unitId: varchar("unit_id"), // nullable — references units.id
+  sortOrder: integer("sort_order").notNull().default(0),
+}, (table) => ({
+  prepItemIdx: index("prep_item_ingredients_prep_item_idx").on(table.prepItemId),
+}));
+
+export const insertPrepItemIngredientSchema = createInsertSchema(prepItemIngredients).omit({ id: true });
+export type InsertPrepItemIngredient = z.infer<typeof insertPrepItemIngredientSchema>;
+export type PrepItemIngredient = typeof prepItemIngredients.$inferSelect;
+
+// Menu Item Prep Usages — how much of a prep item is consumed per menu item sold
+export const menuItemPrepUsages = pgTable("menu_item_prep_usages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  menuItemId: varchar("menu_item_id").notNull(),
+  prepItemId: varchar("prep_item_id").notNull(),
+  quantityPerSale: real("quantity_per_sale").notNull().default(1), // qty of prep item used per 1 menu item sold
+  unitId: varchar("unit_id"), // nullable — references units.id
+}, (table) => ({
+  menuItemIdx: index("menu_item_prep_usages_menu_item_idx").on(table.menuItemId),
+  prepItemIdx: index("menu_item_prep_usages_prep_item_idx").on(table.prepItemId),
+  uniqueLink: unique().on(table.companyId, table.menuItemId, table.prepItemId),
+}));
+
+export const insertMenuItemPrepUsageSchema = createInsertSchema(menuItemPrepUsages).omit({ id: true });
+export type InsertMenuItemPrepUsage = z.infer<typeof insertMenuItemPrepUsageSchema>;
+export type MenuItemPrepUsage = typeof menuItemPrepUsages.$inferSelect;
+
+// Prep Production Records — log of completed production runs
+export const prepProductionRecords = pgTable("prep_production_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id").notNull(),
+  prepItemId: varchar("prep_item_id").notNull(),
+  quantityProduced: real("quantity_produced").notNull(),
+  batchCount: real("batch_count").notNull().default(1),
+  producedAt: timestamp("produced_at").notNull().defaultNow(),
+  producedBy: varchar("produced_by"), // userId (nullable)
+  notes: text("notes"),
+}, (table) => ({
+  companyStoreIdx: index("prep_production_company_store_idx").on(table.companyId, table.storeId),
+}));
+
+export const insertPrepProductionRecordSchema = createInsertSchema(prepProductionRecords).omit({ id: true });
+export type InsertPrepProductionRecord = z.infer<typeof insertPrepProductionRecordSchema>;
+export type PrepProductionRecord = typeof prepProductionRecords.$inferSelect;
+
+// Prep On Hand — current available prep stock (expires based on shelf_life_hours)
+export const prepOnHand = pgTable("prep_on_hand", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id").notNull(),
+  prepItemId: varchar("prep_item_id").notNull(),
+  quantityOnHand: real("quantity_on_hand").notNull(),
+  preparedAt: timestamp("prepared_at").notNull(),
+  expiresAt: timestamp("expires_at").notNull(), // computed: preparedAt + shelfLifeHours
+  locationId: varchar("location_id"), // nullable — storage location ID
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  companyStoreIdx: index("prep_on_hand_company_store_idx").on(table.companyId, table.storeId),
+  expiresAtIdx: index("prep_on_hand_expires_at_idx").on(table.expiresAt),
+}));
+
+export const insertPrepOnHandSchema = createInsertSchema(prepOnHand).omit({ id: true, createdAt: true });
+export type InsertPrepOnHand = z.infer<typeof insertPrepOnHandSchema>;
+export type PrepOnHand = typeof prepOnHand.$inferSelect;
+
+// Prep Chart Runs — generated recommendation snapshots
+export const prepChartRuns = pgTable("prep_chart_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id").notNull(),
+  businessDate: timestamp("business_date").notNull(), // the date being planned for
+  daypartId: varchar("daypart_id"), // nullable = all-day
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+  basedOnMode: text("based_on_mode").notNull().default("history"), // 'history' | 'hybrid'
+  bufferPercent: real("buffer_percent").notNull().default(10),
+  weeksLookback: integer("weeks_lookback").notNull().default(4),
+}, (table) => ({
+  companyStoreDateIdx: index("prep_chart_runs_company_store_date_idx").on(table.companyId, table.storeId, table.businessDate),
+}));
+
+export const insertPrepChartRunSchema = createInsertSchema(prepChartRuns).omit({ id: true, generatedAt: true });
+export type InsertPrepChartRun = z.infer<typeof insertPrepChartRunSchema>;
+export type PrepChartRun = typeof prepChartRuns.$inferSelect;
+
+// Prep Chart Lines — individual item recommendations within a run
+export const prepChartLines = pgTable("prep_chart_lines", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  prepChartRunId: varchar("prep_chart_run_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  prepItemId: varchar("prep_item_id").notNull(),
+  stationId: varchar("station_id"), // nullable
+  forecastQty: real("forecast_qty").notNull().default(0),
+  onHandQty: real("on_hand_qty").notNull().default(0),
+  recommendedQty: real("recommended_qty").notNull().default(0),
+  recommendedBatches: integer("recommended_batches").notNull().default(0),
+  dueTime: timestamp("due_time"), // nullable — when prep should be done by
+  confidenceScore: real("confidence_score"), // nullable 0–1
+  reasoningSummary: text("reasoning_summary"), // human-readable explanation
+}, (table) => ({
+  runIdx: index("prep_chart_lines_run_idx").on(table.prepChartRunId),
+}));
+
+export const insertPrepChartLineSchema = createInsertSchema(prepChartLines).omit({ id: true });
+export type InsertPrepChartLine = z.infer<typeof insertPrepChartLineSchema>;
+export type PrepChartLine = typeof prepChartLines.$inferSelect;
 export type ChatCorrection = typeof chatCorrections.$inferSelect;

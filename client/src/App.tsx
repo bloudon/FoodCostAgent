@@ -64,6 +64,12 @@ import EnterpriseInquiry from "@/pages/enterprise-inquiry";
 import EnterpriseOnboarding from "@/pages/enterprise-onboarding";
 import AdminBackgrounds from "@/pages/admin-backgrounds";
 import AdminUsers from "@/pages/admin-users";
+import PrepChart from "@/pages/prep-chart";
+import PrepChartItems from "@/pages/prep-chart-items";
+import PrepItemBuilder from "@/pages/prep-item-builder";
+import PrepChartStations from "@/pages/prep-chart-stations";
+import PrepChartOnHand from "@/pages/prep-chart-on-hand";
+import PrepChartProduction from "@/pages/prep-chart-production";
 import { ChatPanel } from "@/components/chat-panel";
 import WebsiteHome from "@/pages/website/home";
 import WebsiteFeatures from "@/pages/website/features";
@@ -288,6 +294,13 @@ function ProtectedLayoutContent() {
               <Route path="/settings" component={Settings} />
               <Route path="/admin/backgrounds" component={AdminBackgrounds} />
               <Route path="/admin/users" component={AdminUsers} />
+              <Route path="/prep-chart" component={PrepChart} />
+              <Route path="/prep-chart/items/new" component={PrepItemBuilder} />
+              <Route path="/prep-chart/items/:id" component={PrepItemBuilder} />
+              <Route path="/prep-chart/items" component={PrepChartItems} />
+              <Route path="/prep-chart/stations" component={PrepChartStations} />
+              <Route path="/prep-chart/on-hand" component={PrepChartOnHand} />
+              <Route path="/prep-chart/production" component={PrepChartProduction} />
               <Route component={NotFound} />
             </Switch>
           </main>
