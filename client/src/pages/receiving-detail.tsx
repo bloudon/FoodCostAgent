@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Save, PackageCheck, Search, RotateCcw } from "lucide-react";
+import { ArrowLeft, Save, PackageCheck, Search, RotateCcw, Package, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +70,7 @@ type DraftReceipt = {
   status: string;
   storageLocationId: string | null;
   receivedAt: string;
+  receiveByUnit: number; // 1 = unit mode, 0 = case mode
 };
 
 type ReceiptLine = {
@@ -109,6 +110,7 @@ export default function ReceivingDetail() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [draftReceiptId, setDraftReceiptId] = useState<string | null>(null);
+  const [receiveByUnit, setReceiveByUnit] = useState<boolean>(false);
   
   // Track received quantities for each PO line (in units, not cases)
   const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
@@ -132,6 +134,7 @@ export default function ReceivingDetail() {
     queryKey: [`/api/purchase-orders/${poId}`],
   });
 
+
   // Build consistent query key for receipt data (used for both fetch and invalidation)
   const receiptQueryKey = receiptIdParam 
     ? [`/api/receipts/draft/${poId}?receiptId=${receiptIdParam}`] 
@@ -150,6 +153,8 @@ export default function ReceivingDetail() {
   useEffect(() => {
     if (draftReceiptData?.receipt && purchaseOrder?.lines) {
       setDraftReceiptId(draftReceiptData.receipt.id);
+      // Initialize the receive-by-unit mode from the persisted receipt value
+      setReceiveByUnit(draftReceiptData.receipt.receiveByUnit === 1);
 
       // Build complete received quantities and prices objects
       const allQtys: Record<string, number> = {};
@@ -182,6 +187,15 @@ export default function ReceivingDetail() {
       setSavedLines(savedSet);
     }
   }, [draftReceiptData, purchaseOrder]);
+
+  const updateReceiveModeMutation = useMutation({
+    mutationFn: async ({ receiptId, receiveByUnit }: { receiptId: string; receiveByUnit: number }) => {
+      return await apiRequest("PATCH", `/api/receipts/${receiptId}/receive-mode`, { receiveByUnit });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: receiptQueryKey });
+    },
+  });
 
   const saveLineMutation = useMutation({
     mutationFn: async (data: { receiptId: string; vendorItemId: string; receivedQty: number; unitId: string; pricePerUnit: number }) => {
@@ -521,6 +535,48 @@ export default function ReceivingDetail() {
                 Expected: {formatDateString(purchaseOrder.expectedDate)}
               </p>
             )}
+            {!isReadOnly && (
+              <div className="flex items-center gap-2 mt-3">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={receiveByUnit ? "default" : "outline"}
+                  onClick={() => {
+                    setReceiveByUnit(true);
+                    if (draftReceiptId) {
+                      updateReceiveModeMutation.mutate({ receiptId: draftReceiptId, receiveByUnit: 1 });
+                    }
+                  }}
+                  data-testid="button-receive-by-unit"
+                >
+                  <Hash className="h-3 w-3 mr-1" />
+                  By Unit
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={!receiveByUnit ? "default" : "outline"}
+                  onClick={() => {
+                    setReceiveByUnit(false);
+                    if (draftReceiptId) {
+                      updateReceiveModeMutation.mutate({ receiptId: draftReceiptId, receiveByUnit: 0 });
+                    }
+                  }}
+                  data-testid="button-receive-by-case"
+                >
+                  <Package className="h-3 w-3 mr-1" />
+                  By Case
+                </Button>
+                {receiveByUnit && (
+                  <span className="text-xs text-muted-foreground">Quantities are individual units; case math is skipped</span>
+                )}
+              </div>
+            )}
+            {isReadOnly && receiveByUnit && (
+              <Badge variant="secondary" className="mt-2" data-testid="badge-received-by-unit">
+                Received by Unit
+              </Badge>
+            )}
           </div>
           <div className="flex flex-col items-end gap-1">
             <div 
@@ -553,10 +609,12 @@ export default function ReceivingDetail() {
                 </p>
               </div>
               <div className="flex gap-4">
-                <div className="text-right">
-                  <div className="text-sm text-muted-foreground">Total Cases</div>
-                  <div className="text-2xl font-bold" data-testid="text-total-cases">{totalCases}</div>
-                </div>
+                {!receiveByUnit && (
+                  <div className="text-right">
+                    <div className="text-sm text-muted-foreground">Total Cases</div>
+                    <div className="text-2xl font-bold" data-testid="text-total-cases">{totalCases}</div>
+                  </div>
+                )}
                 <div className="text-right">
                   <div className="text-sm text-muted-foreground">Total Items</div>
                   <div className="text-2xl font-bold">{totalItems}</div>
@@ -605,11 +663,11 @@ export default function ReceivingDetail() {
                   <TableRow>
                     <TableHead>Item</TableHead>
                     <TableHead>SKU</TableHead>
-                    <TableHead className="text-right">Cases Ordered</TableHead>
-                    <TableHead className="text-right">Case Size</TableHead>
-                    <TableHead className="text-right">Case Price</TableHead>
-                    <TableHead className="text-right">Unit Total</TableHead>
-                    <TableHead className="text-right">Units Received</TableHead>
+                    {!receiveByUnit && <TableHead className="text-right">Cases Ordered</TableHead>}
+                    {!receiveByUnit && <TableHead className="text-right">Case Size</TableHead>}
+                    {!receiveByUnit && <TableHead className="text-right">Case Price</TableHead>}
+                    <TableHead className="text-right">{receiveByUnit ? "Units Ordered" : "Unit Total"}</TableHead>
+                    <TableHead className="text-right">{receiveByUnit ? "Units Received" : "Units Received"}</TableHead>
                     <TableHead>Unit</TableHead>
                     <TableHead className="text-right">Unit Price</TableHead>
                     <TableHead className="text-right">Total</TableHead>
@@ -619,7 +677,7 @@ export default function ReceivingDetail() {
                 <TableBody>
                   {filteredLines.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center text-muted-foreground">
+                      <TableCell colSpan={receiveByUnit ? 8 : 11} className="text-center text-muted-foreground">
                         No items found
                       </TableCell>
                     </TableRow>
@@ -653,15 +711,21 @@ export default function ReceivingDetail() {
                             )}
                           </TableCell>
                           <TableCell className="text-muted-foreground">{line.vendorSku || '-'}</TableCell>
-                          <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-cases-ordered-${line.id}`}>
-                            {line.caseQuantity && line.caseQuantity > 0 ? line.caseQuantity.toFixed(0) : '-'}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-case-size-${line.id}`}>
-                            {line.caseQuantity && line.caseQuantity > 0 ? line.caseSize.toFixed(0) : '-'}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-case-price-${line.id}`}>
-                            {casePrice !== null ? `$${casePrice.toFixed(2)}` : '-'}
-                          </TableCell>
+                          {!receiveByUnit && (
+                            <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-cases-ordered-${line.id}`}>
+                              {line.caseQuantity && line.caseQuantity > 0 ? line.caseQuantity.toFixed(0) : '-'}
+                            </TableCell>
+                          )}
+                          {!receiveByUnit && (
+                            <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-case-size-${line.id}`}>
+                              {line.caseQuantity && line.caseQuantity > 0 ? line.caseSize.toFixed(0) : '-'}
+                            </TableCell>
+                          )}
+                          {!receiveByUnit && (
+                            <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-case-price-${line.id}`}>
+                              {casePrice !== null ? `$${casePrice.toFixed(2)}` : '-'}
+                            </TableCell>
+                          )}
                           <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-unit-total-${line.id}`}>
                             {line.orderedQty.toFixed(2)}
                           </TableCell>

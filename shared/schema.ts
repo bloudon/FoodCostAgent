@@ -407,6 +407,7 @@ export const vendors = pgTable("vendors", {
   sourceOfTruth: text("source_of_truth").notNull().default("manual"), // "quickbooks" or "manual" - indicates which system manages core fields
   lastSyncAt: timestamp("last_sync_at"), // Timestamp of last sync from QuickBooks
   syncStatus: text("sync_status"), // "synced", "conflict", "error", "pending", null for manual vendors
+  receiveByUnit: integer("receive_by_unit").notNull().default(0), // 1 = default to receiving by unit (not by case)
 });
 
 export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true }).extend({
@@ -415,6 +416,7 @@ export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true })
   leadDaysAhead: z.number().int().min(0).max(30).optional(),
   active: z.number().int().min(0).max(1).default(1).optional(),
   requires1099: z.number().int().min(0).max(1).default(0).optional(),
+  receiveByUnit: z.number().int().min(0).max(1).default(0).optional(),
   creditLimit: z.number().min(0).optional(),
   certifications: z.array(z.string()).optional(),
   qbVendorId: z.string().optional(),
@@ -622,13 +624,16 @@ export const receipts = pgTable("receipts", {
   status: text("status").notNull().default("draft"), // draft, completed
   receivedAt: timestamp("received_at").notNull().defaultNow(),
   receivedBy: varchar("received_by"), // User who received/completed the order
+  receiveByUnit: integer("receive_by_unit").notNull().default(0), // 1 = quantities are individual units (no case math)
 }, (table) => ({
   // Optimize receipt queries by company, store, and date
   companyStoreReceivedIdx: index("receipts_company_store_received_idx").on(table.companyId, table.storeId, table.receivedAt),
   poIdIdx: index("receipts_po_id_idx").on(table.purchaseOrderId),
 }));
 
-export const insertReceiptSchema = createInsertSchema(receipts).omit({ id: true, receivedAt: true, receivedBy: true });
+export const insertReceiptSchema = createInsertSchema(receipts).omit({ id: true, receivedAt: true, receivedBy: true }).extend({
+  receiveByUnit: z.number().int().min(0).max(1).default(0).optional(),
+});
 export type InsertReceipt = z.infer<typeof insertReceiptSchema>;
 export type Receipt = typeof receipts.$inferSelect;
 

@@ -224,6 +224,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  (async function migrateReceiveByUnit() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'vendor_receive_by_unit'`
+      );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
+      if (!existing) {
+        await db.execute(sql`
+          ALTER TABLE vendors ADD COLUMN IF NOT EXISTS receive_by_unit INTEGER NOT NULL DEFAULT 0;
+        `);
+        // Automatically flag existing Misc Grocery vendors as receiveByUnit
+        await db.execute(sql`
+          UPDATE vendors SET receive_by_unit = 1 WHERE LOWER(name) LIKE '%misc grocery%';
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('vendor_receive_by_unit')`
+        );
+        console.log("[Migration] Applied vendor_receive_by_unit");
+      } else {
+        console.log("[Migration] Already applied (vendor_receive_by_unit)");
+      }
+    } catch (err) {
+      console.error("[Migration] vendor_receive_by_unit error:", err);
+    }
+  })();
+
+  (async function migrateReceiptReceiveByUnit() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'receipt_receive_by_unit'`
+      );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
+      if (!existing) {
+        await db.execute(sql`
+          ALTER TABLE receipts ADD COLUMN IF NOT EXISTS receive_by_unit INTEGER NOT NULL DEFAULT 0;
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('receipt_receive_by_unit')`
+        );
+        console.log("[Migration] Applied receipt_receive_by_unit");
+      } else {
+        console.log("[Migration] Already applied (receipt_receive_by_unit)");
+      }
+    } catch (err) {
+      console.error("[Migration] receipt_receive_by_unit error:", err);
+    }
+  })();
+
   (async function migrateContainerSizeHierarchy() {
     try {
       await db.execute(sql`
@@ -3135,11 +3195,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Vendor not found" });
       }
       
-      // Protect "Misc Grocery" vendor from deletion
+      // Protect "Misc Grocery" vendor from deletion (legacy system vendor)
       const isMiscGrocery = existing.name?.toLowerCase().includes('misc grocery') || false;
       if (isMiscGrocery) {
         return res.status(400).json({ 
-          error: "Cannot delete Misc Grocery vendor. This is a system vendor used for unit-based ordering." 
+          error: "Cannot delete the Misc Grocery vendor. Disable it instead, or update its name if you need a different receive-by-unit vendor." 
         });
       }
       
@@ -9006,12 +9066,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ error: "Purchase order not found" });
         }
         
+        // Inherit receiveByUnit from the vendor's default setting
+        const vendor = await storage.getVendor(po.vendorId);
+        const vendorReceiveByUnit = vendor?.receiveByUnit ?? 0;
+        
         // Create new draft receipt only if no receipt exists
         const newReceipt = await storage.createReceipt({
           companyId: po.companyId,
           storeId: po.storeId,
           purchaseOrderId: poId,
           status: "draft",
+          receiveByUnit: vendorReceiveByUnit,
         });
         res.json({ receipt: newReceipt, lines: [] });
       }
@@ -9056,6 +9121,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateReceipt(req.params.id, { storageLocationId });
       const receipt = await storage.getReceipt(req.params.id);
       res.json(receipt);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Update receipt receive-by-unit mode
+  app.patch("/api/receipts/:id/receive-mode", requireAuth, async (req, res) => {
+    try {
+      const { receiveByUnit } = z.object({ receiveByUnit: z.number().int().min(0).max(1) }).parse(req.body);
+      const receipt = await storage.getReceipt(req.params.id);
+      if (!receipt) return res.status(404).json({ error: "Receipt not found" });
+      if (receipt.companyId !== (req as any).companyId) return res.status(403).json({ error: "Access denied" });
+      if (receipt.status !== "draft") return res.status(400).json({ error: "Cannot change mode on a completed receipt" });
+      await storage.updateReceipt(req.params.id, { receiveByUnit });
+      const updated = await storage.getReceipt(req.params.id);
+      res.json(updated);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

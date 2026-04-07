@@ -163,6 +163,7 @@ export default function Vendors() {
       active: 1,
       taxId: "",
       requires1099: 0,
+      receiveByUnit: 0,
       paymentTerms: "",
       creditLimit: undefined,
       certifications: [],
@@ -418,6 +419,7 @@ export default function Vendors() {
       active: 1,
       taxId: "",
       requires1099: 0,
+      receiveByUnit: 0,
       paymentTerms: "",
       creditLimit: undefined,
       certifications: [],
@@ -438,6 +440,7 @@ export default function Vendors() {
       active: vendor.active ?? 1,
       taxId: vendor.taxId || "",
       requires1099: vendor.requires1099 ?? 0,
+      receiveByUnit: vendor.receiveByUnit ?? 0,
       paymentTerms: vendor.paymentTerms || "",
       creditLimit: vendor.creditLimit ?? undefined,
       certifications: vendor.certifications || [],
@@ -939,6 +942,30 @@ export default function Vendors() {
                 )}
               />
               
+              <FormField
+                control={form.control}
+                name="receiveByUnit"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value === 1}
+                        onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
+                        data-testid="checkbox-receive-by-unit"
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel className="font-normal cursor-pointer">
+                        Receive by Unit (default)
+                      </FormLabel>
+                      <FormDescription>
+                        When enabled, the receiving screen defaults to unit-level quantities instead of cases. Case math is bypassed.
+                      </FormDescription>
+                    </div>
+                  </FormItem>
+                )}
+              />
+
               <div className="pt-4 border-t">
                 <h4 className="text-sm font-semibold mb-4">Compliance & Accounting</h4>
                 
