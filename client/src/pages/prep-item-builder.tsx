@@ -184,10 +184,32 @@ function PrepItemBuilderContent() {
 
   const watchRecipeId = form.watch("recipeId");
   const recipeLinked = !!watchRecipeId;
-  const linkedRecipe = existingItem?.linkedRecipe ?? null;
-  const inheritedComponents = existingItem?.inheritedComponents ?? [];
 
-  // When a recipe is selected for the first time, auto-populate output fields
+  // Fetch selected recipe details (for immediate component preview and auto-populate)
+  const { data: selectedRecipeData } = useQuery<{
+    id: string; name: string; yieldQty: number | null; yieldUnit: string | null;
+    components: Array<{ componentId: string; componentType: string; qty: number; unitId: string; name: string; unitName: string }>;
+  }>({
+    queryKey: ["/api/recipes", watchRecipeId, "details"],
+    enabled: !!watchRecipeId,
+    queryFn: async () => {
+      const res = await fetch(`/api/recipes/${watchRecipeId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch recipe");
+      return res.json();
+    },
+  });
+
+  // Use live recipe data (always from API, whether newly selected or already saved)
+  const previewComponents = selectedRecipeData?.components ?? (existingItem?.inheritedComponents?.map(c => ({
+    componentId: c.componentId,
+    componentType: c.componentType,
+    qty: c.qty,
+    unitId: c.unitId,
+    name: c.name,
+    unitName: "",
+  })) ?? []);
+
+  // When a recipe is selected, auto-populate output fields
   const handleRecipeLink = (recipeId: string) => {
     const newId = recipeId === "__none__" ? "" : recipeId;
     form.setValue("recipeId", newId);
@@ -199,6 +221,8 @@ function PrepItemBuilderContent() {
       }
     }
   };
+
+  const showInherited = recipeLinked && previewComponents.length > 0;
 
   const saveMutation = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -248,9 +272,6 @@ function PrepItemBuilderContent() {
   }
 
   const watchStationId = form.watch("stationId");
-
-  // Show inherited components from the API when the recipe is the same as what's saved
-  const showInherited = recipeLinked && inheritedComponents.length > 0 && watchRecipeId === (existingItem?.recipeId ?? "");
 
   return (
     <div className="p-6 space-y-6 max-w-3xl pb-24">
@@ -365,23 +386,26 @@ function PrepItemBuilderContent() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Link2 className="h-3 w-3" />
-                  Ingredients from <span className="font-medium text-foreground">{linkedRecipe?.name}</span>
+                  Ingredients from <span className="font-medium text-foreground">{selectedRecipeData?.name ?? "linked recipe"}</span>
                   <Badge variant="secondary" className="text-xs">read-only</Badge>
                 </div>
                 <div className="rounded-md border divide-y">
-                  {inheritedComponents.map((comp, i) => (
+                  {previewComponents.map((comp, i) => (
                     <div key={i} className="flex items-center justify-between px-3 py-2 text-sm" data-testid={`row-inherited-${i}`}>
                       <span className="text-foreground">{comp.name}</span>
-                      <span className="text-muted-foreground tabular-nums">{comp.qty}</span>
+                      <div className="flex items-center gap-1 text-muted-foreground tabular-nums">
+                        <span>{typeof comp.qty === "number" ? (comp.qty % 1 === 0 ? comp.qty : comp.qty.toFixed(2)) : comp.qty}</span>
+                        {comp.unitName && <span>{comp.unitName}</span>}
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {recipeLinked && !showInherited && watchRecipeId !== (existingItem?.recipeId ?? "") && (
+            {recipeLinked && !showInherited && (
               <p className="text-xs text-muted-foreground">
-                Save this prep item to see the inherited ingredients from the linked recipe.
+                Loading ingredients from linked recipe…
               </p>
             )}
           </CardContent>
@@ -456,7 +480,7 @@ function PrepItemBuilderContent() {
         )}
 
         {/* Locked ingredients notice when recipe IS linked */}
-        {recipeLinked && showInherited && (
+        {recipeLinked && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground rounded-md border px-4 py-3" data-testid="notice-ingredients-locked">
             <Lock className="h-4 w-4 shrink-0" />
             <span>Ingredient editing is disabled while a base recipe is linked. Unlink the recipe above to edit ingredients manually.</span>

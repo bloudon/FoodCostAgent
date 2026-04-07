@@ -169,9 +169,12 @@ export async function generatePrepChart(opts: GenerateChartOptions): Promise<Pre
 
     const buffer = forecastQty * (bufferPercent / 100);
     const netNeeded = Math.max(0, forecastQty - onHandQty + buffer);
-    const batchQty = prepItem.outputQtyPerBatch > 0 ? prepItem.outputQtyPerBatch : 1;
-    const recommendedBatches = Math.ceil(netNeeded / batchQty);
-    const recommendedQty = recommendedBatches * batchQty;
+    const grossBatchQty = prepItem.outputQtyPerBatch > 0 ? prepItem.outputQtyPerBatch : 1;
+    const yieldFraction = (prepItem.yieldPercent > 0) ? prepItem.yieldPercent / 100 : 1;
+    const effectiveBatchQty = grossBatchQty * yieldFraction;
+    const safeBatchQty = effectiveBatchQty > 0 ? effectiveBatchQty : 1;
+    const recommendedBatches = Math.ceil(netNeeded / safeBatchQty);
+    const recommendedQty = recommendedBatches * grossBatchQty;
 
     // Due time: daypart start minus prep lead minutes
     let dueTime: Date | null = null;

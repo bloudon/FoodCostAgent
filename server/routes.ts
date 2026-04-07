@@ -13804,6 +13804,13 @@ Human Handoff:
         usages?: PrepItemUsageInput[];
         [key: string]: unknown;
       };
+      // Validate recipeId: must belong to same company and have canBeIngredient=1
+      if (itemData.recipeId) {
+        const linkedRecipe = await storage.getRecipe(itemData.recipeId as string, companyId);
+        if (!linkedRecipe || !linkedRecipe.canBeIngredient) {
+          return res.status(400).json({ error: "Invalid recipeId: recipe not found or not marked as an ingredient" });
+        }
+      }
       const item = await storage.createPrepItem({ ...itemData, companyId });
       if (ingredients.length > 0) {
         await storage.replaceAllPrepItemIngredients(item.id, companyId, ingredients.map((ing, i) => ({
@@ -13844,6 +13851,13 @@ Human Handoff:
         usages?: PrepItemUsageInput[];
         [key: string]: unknown;
       };
+      // Validate recipeId: must belong to same company and have canBeIngredient=1
+      if (updateData.recipeId) {
+        const linkedRecipe = await storage.getRecipe(updateData.recipeId as string, companyId);
+        if (!linkedRecipe || !linkedRecipe.canBeIngredient) {
+          return res.status(400).json({ error: "Invalid recipeId: recipe not found or not marked as an ingredient" });
+        }
+      }
       const updated = await storage.updatePrepItem(id, companyId, updateData);
       if (!updated) return res.status(404).json({ error: "Prep item not found" });
       if (ingredients !== undefined) {
