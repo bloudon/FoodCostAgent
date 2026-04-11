@@ -20,7 +20,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -312,6 +312,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (err) {
       console.error("[Migration] container_size_hierarchy error:", err);
+    }
+  })();
+
+  (async function migrateMobileDashboardColumns() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'mobile_dashboard_columns'`
+      );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
+      if (!existing) {
+        await db.execute(sql`
+          ALTER TABLE inventory_counts ADD COLUMN IF NOT EXISTS name TEXT;
+          ALTER TABLE shelf_scan_sessions ADD COLUMN IF NOT EXISTS inventory_count_id VARCHAR;
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('mobile_dashboard_columns')`
+        );
+        console.log("[Migration] Applied mobile_dashboard_columns");
+      } else {
+        console.log("[Migration] Already applied (mobile_dashboard_columns)");
+      }
+    } catch (err) {
+      console.error("[Migration] mobile_dashboard_columns error:", err);
     }
   })();
 
@@ -14382,10 +14411,23 @@ Human Handoff:
         // Persist the scan session — required for audit trail
         const userId = (req as any).user?.id ?? null;
         const storeId = (req.body?.storeId as string) || null;
+
+        // Optional session linking: validate that sessionId belongs to this company
+        let inventoryCountId: string | null = null;
+        const sessionIdParam = (req.body?.sessionId as string) || null;
+        if (sessionIdParam) {
+          const count = await storage.getInventoryCount(sessionIdParam);
+          if (!count || count.companyId !== companyId) {
+            return res.status(400).json({ error: "Invalid sessionId: not found or not accessible" });
+          }
+          inventoryCountId = sessionIdParam;
+        }
+
         await storage.createShelfScanSession({
           companyId,
           storeId,
           userId,
+          inventoryCountId,
           frameCount: merged.frameCount,
           itemCount: merged.items.length,
           items: merged.items,
@@ -14437,6 +14479,116 @@ Human Handoff:
     } catch (error: any) {
       console.error("[GET /api/shelf-scan-sessions/:id]", error);
       return res.status(500).json({ error: "Failed to load session" });
+    }
+  });
+
+  /**
+   * GET /api/mobile/dashboard
+   * Returns { businessName, locationName, recentScans[] } for the mobile home screen.
+   * locationName is null when the user has no assigned store.
+   * recentScans lists the last 10 sweep scans (newest first) with optional sessionId/sessionName.
+   */
+  app.get("/api/mobile/dashboard", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+      const userId = (req as any).user?.id;
+
+      // Resolve businessName from company
+      const company = await storage.getCompany(companyId);
+      const businessName = company?.name ?? null;
+
+      // Resolve locationName from the user's first assigned store
+      let locationName: string | null = null;
+      if (userId) {
+        const userStoreAssignments = await storage.getUserStores(userId);
+        if (userStoreAssignments.length > 0) {
+          const storeRecord = await storage.getCompanyStore(userStoreAssignments[0].storeId);
+          locationName = storeRecord?.name ?? null;
+        }
+      }
+
+      // Fetch recent scans for this user within the company
+      const rawScans = userId
+        ? await storage.getRecentShelfScanSessions(userId, companyId, 10)
+        : [];
+
+      // Enrich scans with sessionName from linked inventory count
+      const recentScans = await Promise.all(
+        rawScans.map(async (scan) => {
+          let sessionName: string | null = null;
+          if (scan.inventoryCountId) {
+            const ic = await storage.getInventoryCount(scan.inventoryCountId);
+            // Defensive company check to ensure cross-tenant isolation
+            if (ic && ic.companyId === companyId) {
+              sessionName = ic.name ?? ic.countDate.toISOString().slice(0, 10);
+            }
+          }
+          return {
+            id: scan.id,
+            createdAt: scan.createdAt,
+            frameCount: scan.frameCount,
+            itemCount: scan.itemCount,
+            sessionId: scan.inventoryCountId ?? null,
+            sessionName,
+          };
+        })
+      );
+
+      return res.json({ businessName, locationName, recentScans });
+    } catch (error: any) {
+      console.error("[GET /api/mobile/dashboard]", error);
+      return res.status(500).json({ error: "Failed to load dashboard" });
+    }
+  });
+
+  /**
+   * GET /api/mobile/sessions/active
+   * Returns open (not-yet-applied) inventory count sessions for the authenticated
+   * user's company/store, each with id, name, startedAt, and scanCount.
+   * Returns [] when none are open, 401 when unauthenticated.
+   */
+  app.get("/api/mobile/sessions/active", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+      const userId = (req as any).user?.id;
+
+      // Optionally scope to the user's first store
+      let storeId: string | undefined;
+      if (userId) {
+        const userStoreAssignments = await storage.getUserStores(userId);
+        if (userStoreAssignments.length > 0) {
+          storeId = userStoreAssignments[0].storeId;
+        }
+      }
+
+      const activeCounts = await storage.getActiveInventoryCounts(companyId, storeId);
+
+      // For each session, count how many shelf_scan_sessions are linked (company-scoped for tenant safety)
+      const sessions = await Promise.all(
+        activeCounts.map(async (ic) => {
+          const linked = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(shelfScanSessions)
+            .where(and(
+              eq(shelfScanSessions.inventoryCountId, ic.id),
+              eq(shelfScanSessions.companyId, companyId)
+            ));
+          const scanCount = linked[0]?.count ?? 0;
+          return {
+            id: ic.id,
+            name: ic.name ?? ic.countDate.toISOString().slice(0, 10),
+            startedAt: ic.countedAt,
+            scanCount,
+          };
+        })
+      );
+
+      return res.json(sessions);
+    } catch (error: any) {
+      console.error("[GET /api/mobile/sessions/active]", error);
+      return res.status(500).json({ error: "Failed to load active sessions" });
     }
   });
 

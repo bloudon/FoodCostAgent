@@ -588,6 +588,10 @@ export interface IStorage {
   createShelfScanSession(session: InsertShelfScanSession): Promise<ShelfScanSession>;
   getShelfScanSessions(companyId: string, storeId?: string): Promise<ShelfScanSession[]>;
   getShelfScanSession(id: string, companyId: string): Promise<ShelfScanSession | undefined>;
+  getRecentShelfScanSessions(userId: string, companyId: string, limit?: number): Promise<ShelfScanSession[]>;
+
+  // Mobile Dashboard & Active Sessions
+  getActiveInventoryCounts(companyId: string, storeId?: string): Promise<InventoryCount[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4263,6 +4267,28 @@ export class DatabaseStorage implements IStorage {
     const [s] = await db.select().from(shelfScanSessions)
       .where(and(eq(shelfScanSessions.id, id), eq(shelfScanSessions.companyId, companyId)));
     return s || undefined;
+  }
+
+  async getRecentShelfScanSessions(userId: string, companyId: string, limit = 10): Promise<ShelfScanSession[]> {
+    const conditions = [
+      eq(shelfScanSessions.companyId, companyId),
+      eq(shelfScanSessions.userId, userId),
+    ];
+    return db.select().from(shelfScanSessions)
+      .where(and(...conditions))
+      .orderBy(desc(shelfScanSessions.createdAt))
+      .limit(limit);
+  }
+
+  async getActiveInventoryCounts(companyId: string, storeId?: string): Promise<InventoryCount[]> {
+    const conditions = [
+      eq(inventoryCounts.companyId, companyId),
+      eq(inventoryCounts.applied, 0),
+    ];
+    if (storeId) conditions.push(eq(inventoryCounts.storeId, storeId));
+    return db.select().from(inventoryCounts)
+      .where(and(...conditions))
+      .orderBy(desc(inventoryCounts.countedAt));
   }
 }
 

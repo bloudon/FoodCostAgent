@@ -534,6 +534,7 @@ export const inventoryCounts = pgTable("inventory_counts", {
   countDate: timestamp("count_date").notNull(), // Official inventory date (stored as local midnight)
   countedAt: timestamp("counted_at").notNull().defaultNow(), // When the count session was created (local time)
   userId: varchar("user_id").notNull(),
+  name: text("name"), // Optional display name for the session; falls back to countDate when null
   note: text("note"),
   applied: integer("applied").notNull().default(0), // 0 = not applied, 1 = applied to on-hand quantities
   appliedAt: timestamp("applied_at"), // When the count was applied (local time)
@@ -1560,6 +1561,7 @@ export const shelfScanSessions = pgTable("shelf_scan_sessions", {
   companyId: varchar("company_id").notNull(),
   storeId: varchar("store_id"),
   userId: varchar("user_id"),
+  inventoryCountId: varchar("inventory_count_id"), // Optional FK to inventory_counts for session linking
   createdAt: timestamp("created_at").notNull().defaultNow(),
   frameCount: integer("frame_count").notNull().default(0),
   itemCount: integer("item_count").notNull().default(0),
