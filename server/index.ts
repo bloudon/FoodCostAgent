@@ -113,6 +113,11 @@ async function runStartupMigrations() {
           inner_pack_size = 1
       WHERE inner_pack_size IS NOT NULL AND inner_pack_size != 1
     `);
+    // Task #69: source column on auth_sessions to track mobile vs web logins
+    await db.execute(sql`ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS source varchar DEFAULT 'web'`);
+    // Task #70: name on inventory_counts + inventory_count_id on shelf_scan_sessions
+    await db.execute(sql`ALTER TABLE inventory_counts ADD COLUMN IF NOT EXISTS name text`);
+    await db.execute(sql`ALTER TABLE shelf_scan_sessions ADD COLUMN IF NOT EXISTS inventory_count_id varchar`);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);
