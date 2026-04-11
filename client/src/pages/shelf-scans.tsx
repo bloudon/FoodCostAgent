@@ -214,8 +214,8 @@ export default function ShelfScans() {
             <Camera className="h-12 w-12 opacity-30" />
             <div className="text-center">
               <p className="font-medium text-base">No scan sessions yet</p>
-              <p className="text-sm mt-1">
-                Sweep-scan sessions captured from the mobile app will appear here.
+              <p className="text-sm mt-1 max-w-sm">
+                Open the FNB Cost Pro mobile app, navigate to "Sweep Scan", take 1–5 shelf photos, and submit. Each completed scan will appear here automatically.
               </p>
             </div>
           </CardContent>

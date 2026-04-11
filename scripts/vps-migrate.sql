@@ -706,7 +706,7 @@ BEGIN
       item_count integer NOT NULL DEFAULT 0,
       items jsonb NOT NULL DEFAULT '[]',
       notes jsonb NOT NULL DEFAULT '[]',
-      status varchar NOT NULL DEFAULT 'complete'
+      status varchar NOT NULL DEFAULT 'completed'
     );
     CREATE INDEX IF NOT EXISTS shelf_scan_sessions_company_idx ON shelf_scan_sessions (company_id);
     CREATE INDEX IF NOT EXISTS shelf_scan_sessions_created_at_idx ON shelf_scan_sessions (created_at);

@@ -1562,9 +1562,9 @@ export const shelfScanSessions = pgTable("shelf_scan_sessions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   frameCount: integer("frame_count").notNull().default(0),
   itemCount: integer("item_count").notNull().default(0),
-  items: jsonb("items").notNull().default([]),
-  notes: jsonb("notes").notNull().default([]),
-  status: varchar("status").notNull().default("complete"),
+  items: jsonb("items").notNull().default([]).$type<Array<{ name: string; quantity: number; unit: string; confidence: string }>>(),
+  notes: jsonb("notes").notNull().default([]).$type<string[]>(),
+  status: varchar("status").notNull().default("completed"),
 }, (table) => ({
   companyIdx: index("shelf_scan_sessions_company_idx").on(table.companyId),
   createdAtIdx: index("shelf_scan_sessions_created_at_idx").on(table.createdAt),

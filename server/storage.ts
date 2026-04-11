@@ -4255,7 +4255,8 @@ export class DatabaseStorage implements IStorage {
     if (storeId) conditions.push(eq(shelfScanSessions.storeId, storeId));
     return db.select().from(shelfScanSessions)
       .where(and(...conditions))
-      .orderBy(desc(shelfScanSessions.createdAt));
+      .orderBy(desc(shelfScanSessions.createdAt))
+      .limit(50);
   }
 
   async getShelfScanSession(id: string, companyId: string): Promise<ShelfScanSession | undefined> {

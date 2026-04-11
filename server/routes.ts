@@ -14379,9 +14379,9 @@ Human Handoff:
             userId: userId || null,
             frameCount: merged.frameCount,
             itemCount: merged.items.length,
-            items: merged.items as any,
-            notes: merged.notes as any,
-            status: "complete",
+            items: merged.items,
+            notes: merged.notes,
+            status: "completed",
           });
         } catch (persistErr) {
           console.error("[SweepScan] Failed to persist session:", persistErr);
