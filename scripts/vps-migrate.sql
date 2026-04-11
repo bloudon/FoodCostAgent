@@ -689,3 +689,29 @@ BEGIN
       VALUES ('v025', 'Task #66: Add recipe_id FK to prep_items for recipe linkage & pull list');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v026 — Task #68: Shelf Scan Sessions table
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v026') THEN
+    CREATE TABLE IF NOT EXISTS shelf_scan_sessions (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      store_id varchar,
+      user_id varchar,
+      created_at timestamp NOT NULL DEFAULT now(),
+      frame_count integer NOT NULL DEFAULT 0,
+      item_count integer NOT NULL DEFAULT 0,
+      items jsonb NOT NULL DEFAULT '[]',
+      notes jsonb NOT NULL DEFAULT '[]',
+      status varchar NOT NULL DEFAULT 'complete'
+    );
+    CREATE INDEX IF NOT EXISTS shelf_scan_sessions_company_idx ON shelf_scan_sessions (company_id);
+    CREATE INDEX IF NOT EXISTS shelf_scan_sessions_created_at_idx ON shelf_scan_sessions (created_at);
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v026', 'Task #68: Shelf Scan Sessions table for mobile sweep-scan persistence');
+  END IF;
+END $$;

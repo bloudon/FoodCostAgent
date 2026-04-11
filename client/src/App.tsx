@@ -70,6 +70,7 @@ import PrepItemBuilder from "@/pages/prep-item-builder";
 import PrepChartStations from "@/pages/prep-chart-stations";
 import PrepChartOnHand from "@/pages/prep-chart-on-hand";
 import PrepChartProduction from "@/pages/prep-chart-production";
+import ShelfScans from "@/pages/shelf-scans";
 import { ChatPanel } from "@/components/chat-panel";
 import WebsiteHome from "@/pages/website/home";
 import WebsiteFeatures from "@/pages/website/features";
@@ -301,6 +302,7 @@ function ProtectedLayoutContent() {
               <Route path="/prep-chart/stations" component={PrepChartStations} />
               <Route path="/prep-chart/on-hand" component={PrepChartOnHand} />
               <Route path="/prep-chart/production" component={PrepChartProduction} />
+              <Route path="/shelf-scans" component={ShelfScans} />
               <Route component={NotFound} />
             </Switch>
           </main>

@@ -1551,3 +1551,25 @@ export const insertPrepChartLineSchema = createInsertSchema(prepChartLines).omit
 export type InsertPrepChartLine = z.infer<typeof insertPrepChartLineSchema>;
 export type PrepChartLine = typeof prepChartLines.$inferSelect;
 export type ChatCorrection = typeof chatCorrections.$inferSelect;
+
+// ===== Shelf Scan Sessions =====
+// Persisted records of mobile sweep-scan runs
+export const shelfScanSessions = pgTable("shelf_scan_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id"),
+  userId: varchar("user_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  frameCount: integer("frame_count").notNull().default(0),
+  itemCount: integer("item_count").notNull().default(0),
+  items: jsonb("items").notNull().default([]),
+  notes: jsonb("notes").notNull().default([]),
+  status: varchar("status").notNull().default("complete"),
+}, (table) => ({
+  companyIdx: index("shelf_scan_sessions_company_idx").on(table.companyId),
+  createdAtIdx: index("shelf_scan_sessions_created_at_idx").on(table.createdAt),
+}));
+
+export const insertShelfScanSessionSchema = createInsertSchema(shelfScanSessions).omit({ id: true, createdAt: true });
+export type InsertShelfScanSession = z.infer<typeof insertShelfScanSessionSchema>;
+export type ShelfScanSession = typeof shelfScanSessions.$inferSelect;

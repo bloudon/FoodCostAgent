@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Layers,
   Thermometer,
+  ScanLine,
 } from "lucide-react";
 import {
   Sidebar,
@@ -91,6 +92,7 @@ const mainNavSections: NavSection[] = [
       { title: "Inventory Items", url: "/inventory-items", icon: Warehouse },
       { title: "Categories", url: "/categories", icon: Tag },
       { title: "Inventory Sessions", url: "/inventory-sessions", icon: ClipboardList, requiredFeature: "power_inventory" },
+      { title: "Shelf Scans", url: "/shelf-scans", icon: ScanLine },
       { title: "Waste Entry", url: "/waste", icon: Trash2 },
     ],
   },

@@ -14369,6 +14369,25 @@ Human Handoff:
         const frameResults = await Promise.all(scanPromises);
         const merged = mergeShelfScanResults(frameResults);
 
+        // Persist the scan session
+        const userId = (req as any).userId;
+        const storeId = (req.body?.storeId as string) || undefined;
+        try {
+          await storage.createShelfScanSession({
+            companyId,
+            storeId: storeId || null,
+            userId: userId || null,
+            frameCount: merged.frameCount,
+            itemCount: merged.items.length,
+            items: merged.items as any,
+            notes: merged.notes as any,
+            status: "complete",
+          });
+        } catch (persistErr) {
+          console.error("[SweepScan] Failed to persist session:", persistErr);
+          // Do not fail the response — scan result still returned to the client
+        }
+
         return res.json({
           items: merged.items,
           frameCount: merged.frameCount,
@@ -14380,6 +14399,41 @@ Human Handoff:
       }
     }
   );
+
+  /**
+   * GET /api/shelf-scan-sessions
+   * Returns all sweep-scan sessions for the authenticated user's company.
+   * Optional query param: ?storeId=<uuid>
+   */
+  app.get("/api/shelf-scan-sessions", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+      const storeId = req.query.storeId as string | undefined;
+      const sessions = await storage.getShelfScanSessions(companyId, storeId);
+      return res.json(sessions);
+    } catch (error: any) {
+      console.error("[GET /api/shelf-scan-sessions]", error);
+      return res.status(500).json({ error: "Failed to load scan sessions" });
+    }
+  });
+
+  /**
+   * GET /api/shelf-scan-sessions/:id
+   * Returns a single sweep-scan session by ID.
+   */
+  app.get("/api/shelf-scan-sessions/:id", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+      const session = await storage.getShelfScanSession(req.params.id, companyId);
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      return res.json(session);
+    } catch (error: any) {
+      console.error("[GET /api/shelf-scan-sessions/:id]", error);
+      return res.status(500).json({ error: "Failed to load session" });
+    }
+  });
 
   /**
    * POST /api/mobile/login

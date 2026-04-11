@@ -1,6 +1,6 @@
 # Overview
 
-FNB Cost Pro is an inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance profitability and operational efficiency through precise unit conversions, nested recipe management, POS sales integration, and comprehensive variance reporting. The system aims to minimize waste, optimize profit margins, provide real-time inventory estimates, streamline vendor interactions, and control food costs. The long-term vision is to become a leading solution for food cost management in the restaurant industry, empowering businesses with financial control and operational excellence.
+FNB Cost Pro is an inventory management and recipe costing system for food service businesses. It aims to boost profitability and operational efficiency through precise unit conversions, multi-level nested recipe management, POS sales data integration, and comprehensive variance reporting. The system focuses on minimizing waste, optimizing profit margins, providing real-time inventory insights, streamlining vendor interactions, and maintaining strict control over food costs, with the goal of becoming a leading solution in the restaurant industry.
 
 # User Preferences
 
@@ -15,9 +15,9 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 - Store Locations: Inventory items require assignment to at least one store location during creation.
 - Storage Locations: Inventory items can be associated with multiple storage locations; at least one is required. Storage Locations page features drag-and-drop reordering. Inventory count displays respect storage location sortOrder.
 - Recipe `canBeIngredient`: Recipes include a `canBeIngredient` checkbox field (0/1 in DB) to mark if they can be used as ingredients in other recipes.
-- Prep Chart Recipe Linkage & Pull List: `prep_items.recipeId` nullable FK → `recipes.id`. When a prep item is linked to a `canBeIngredient` recipe, the recipe's components are shown as read-only inherited ingredients in the Prep Item Builder. The Prep Chart generate endpoint enriches each chart line with `requiredIngredients` (ingredient qty × recommendedBatches, sourced from linked recipe's components or the prep item's own ingredients). The Prep Chart UI shows a "Requires" column per line and a "Pull List" toggle view that aggregates all required ingredients across all chart lines grouped by ingredient. Schema version v025.
+- Prep Chart Recipe Linkage & Pull List: When a prep item is linked to a `canBeIngredient` recipe, the recipe's components are shown as read-only inherited ingredients in the Prep Item Builder. The Prep Chart generate endpoint enriches each chart line with `requiredIngredients` (ingredient qty × recommendedBatches, sourced from linked recipe's components or the prep item's own ingredients). The Prep Chart UI shows a "Requires" column per line and a "Pull List" toggle view that aggregates all required ingredients across all chart lines grouped by ingredient.
 - Category Filtering in Recipe Builder: Categories include a `showAsIngredient` field (0/1 in DB) controlling whether items in this category appear in the recipe builder's ingredient selection.
-- Category Soft-Delete Protection: Categories use soft-delete only (`isActive` column, integer 0/1). DELETE endpoint sets `isActive=0`; a `POST /api/categories/:id/restore` endpoint reactivates. `GET /api/categories` returns only active; `?includeInactive=true` returns all. Database-level FK constraint (`inventory_items_category_id_fk`) with `ON DELETE SET NULL` prevents orphaned items if a hard delete ever reaches the DB. Default category set expanded to 11 categories: Produce, Dairy, Proteins, Seafood, Frozen, Walk-In, Dry/Pantry, Bread/Dough, Spices & Seasonings, Beverages, Cleaning & Supplies. Item count shown as a badge on each category. Inactive categories collapsible section at bottom of page.
+- Category Soft-Delete Protection: Categories use soft-delete only (`isActive` column, integer 0/1). `DELETE` endpoint sets `isActive=0`; a `POST /api/categories/:id/restore` endpoint reactivates. `GET /api/categories` returns only active; `?includeInactive=true` returns all. Database-level FK constraint (`inventory_items_category_id_fk`) with `ON DELETE SET NULL` prevents orphaned items if a hard delete ever reaches the DB. Default category set expanded to 11 categories: Produce, Dairy, Proteins, Seafood, Frozen, Walk-In, Dry/Pantry, Bread/Dough, Spices & Seasonings, Beverages, Cleaning & Supplies. Item count shown as a badge on each category. Inactive categories collapsible section at bottom of page.
 - Recipe Cost Calculation Fix: Ingredient prices must be converted to base unit prices before multiplication.
 - Recipe Company Isolation: Implement comprehensive company-level isolation for recipes and recipe components.
 - Recipe Cost Recalculation on Inventory Price Changes: Automatically recalculate all affected recipes when an inventory item's price changes, including nested recipes, ensuring recalculation in dependency order.
@@ -42,29 +42,29 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 
 # System Architecture
 
--   **Frontend**: React 18 SPA with TypeScript, Vite, `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
--   **Backend**: Node.js (TypeScript) with Express.js and Zod for data validation.
--   **Database**: PostgreSQL with Drizzle ORM.
--   **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation at the company level.
--   **UI/UX Decisions**: Mobile-first design, intuitive interfaces, dynamic dashboards, consistent color-coding, conditional UI rendering, and optimized layouts.
--   **Technical Implementations**: Micro-unit precision calculations, comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), multi-tenant QuickBooks integration, intelligent vendor order guide import, real-time recipe cost calculation with caching, dynamic estimated on-hand inventory with automated cache invalidation, detailed Theoretical Food Cost (TFC) variance reporting, and single-timezone date handling.
--   **System Design Choices**: Strict multi-tenancy, secure OAuth using HMAC-SHA256, extensive server-side validation, robust vendor relationship management, and a subscription tier system.
--   **Vendor-Store Assignment Model**: Vendors are company-level, with a `store_vendors` join table for store access. Order guides can be assigned to multiple stores via `order_guide_stores`.
--   **Subscription Tier System**: Four-tier model (Free, Basic, Pro, Enterprise) on the `companies` table, enforced by backend middleware (`requireTier(minTier)`) and frontend components (`useTier()`, `TierGate`).
--   **Marketing Website**: Hostname-based routing (`fnbcostpro.com` for marketing, `app.fnbcostpro.com` for the app) is managed by the same Express server.
+- **Frontend**: React 18 SPA with TypeScript, Vite, `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
+- **Backend**: Node.js (TypeScript) with Express.js and Zod for data validation.
+- **Database**: PostgreSQL with Drizzle ORM.
+- **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation at the company level.
+- **UI/UX Decisions**: Mobile-first design, intuitive interfaces, dynamic dashboards, consistent color-coding, conditional UI rendering, and optimized layouts.
+- **Technical Implementations**: Micro-unit precision calculations, comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), multi-tenant QuickBooks integration, intelligent vendor order guide import, real-time recipe cost calculation with caching, dynamic estimated on-hand inventory with automated cache invalidation, detailed Theoretical Food Cost (TFC) variance reporting, and single-timezone date handling.
+- **System Design Choices**: Strict multi-tenancy, secure OAuth using HMAC-SHA256, extensive server-side validation, robust vendor relationship management, and a subscription tier system.
+- **Vendor-Store Assignment Model**: Vendors are company-level, with a `store_vendors` join table for store access. Order guides can be assigned to multiple stores via `order_guide_stores`.
+- **Subscription Tier System**: Four-tier model (Free, Basic, Pro, Enterprise) on the `companies` table, enforced by backend middleware (`requireTier(minTier)`) and frontend components (`useTier()`, `TierGate`).
+- **Marketing Website**: Hostname-based routing (`fnbcostpro.com` for marketing, `app.fnbcostpro.com` for the app) is managed by the same Express server.
 
 # External Dependencies
 
--   **Database Services**: Neon serverless PostgreSQL.
--   **Real-time Communication**: `ws` library (WebSockets).
--   **Image Processing**: Sharp library.
--   **Object Storage & File Uploads**: Replit native object storage.
--   **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods order guides.
--   **QuickBooks Online Integration**: `intuit-oauth` package for OAuth 2.0.
--   **Stripe Integration**: Subscription billing using Stripe Checkout + Webhooks.
--   **Email Service**: SMTP2GO.
--   **Background Image System**: Unsplash.
--   **AI Chat**: OpenAI GPT-4o-mini via `openai` npm package.
--   **AI Recipe Image Scan**: GPT-4o Vision.
--   **AI CSV Inventory Import**: GPT-4o-mini for column mapping.
--   **Mobile API**: Dedicated endpoints for native mobile clients (Expo app) for login and shelf image processing via GPT-4o Vision.
+- **Database Services**: Neon serverless PostgreSQL.
+- **Real-time Communication**: `ws` library (WebSockets).
+- **Image Processing**: Sharp library.
+- **Object Storage & File Uploads**: Replit native object storage.
+- **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods order guides.
+- **QuickBooks Online Integration**: `intuit-oauth` package for OAuth 2.0.
+- **Stripe Integration**: Subscription billing using Stripe Checkout + Webhooks.
+- **Email Service**: SMTP2GO.
+- **Background Image System**: Unsplash.
+- **AI Chat**: OpenAI GPT-4o-mini via `openai` npm package.
+- **AI Recipe Image Scan**: GPT-4o Vision.
+- **AI CSV Inventory Import**: GPT-4o-mini for column mapping.
+- **Mobile API**: Dedicated endpoints for native mobile clients (Expo app) for login and shelf image processing via GPT-4o Vision.

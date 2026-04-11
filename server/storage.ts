@@ -66,6 +66,7 @@ import {
   prepOnHand, type PrepOnHand, type InsertPrepOnHand,
   prepChartRuns, type PrepChartRun, type InsertPrepChartRun,
   prepChartLines, type PrepChartLine, type InsertPrepChartLine,
+  shelfScanSessions, type ShelfScanSession, type InsertShelfScanSession,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -582,6 +583,11 @@ export interface IStorage {
   getPrepChartLines(runId: string, companyId: string): Promise<PrepChartLine[]>;
   createPrepChartLines(lines: InsertPrepChartLine[]): Promise<PrepChartLine[]>;
   deletePrepChartLines(runId: string): Promise<void>;
+
+  // Shelf Scan Sessions
+  createShelfScanSession(session: InsertShelfScanSession): Promise<ShelfScanSession>;
+  getShelfScanSessions(companyId: string, storeId?: string): Promise<ShelfScanSession[]>;
+  getShelfScanSession(id: string, companyId: string): Promise<ShelfScanSession | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4236,6 +4242,26 @@ export class DatabaseStorage implements IStorage {
 
   async deletePrepChartLines(runId: string): Promise<void> {
     await db.delete(prepChartLines).where(eq(prepChartLines.prepChartRunId, runId));
+  }
+
+  // ===== Shelf Scan Sessions =====
+  async createShelfScanSession(session: InsertShelfScanSession): Promise<ShelfScanSession> {
+    const [s] = await db.insert(shelfScanSessions).values(session).returning();
+    return s;
+  }
+
+  async getShelfScanSessions(companyId: string, storeId?: string): Promise<ShelfScanSession[]> {
+    const conditions = [eq(shelfScanSessions.companyId, companyId)];
+    if (storeId) conditions.push(eq(shelfScanSessions.storeId, storeId));
+    return db.select().from(shelfScanSessions)
+      .where(and(...conditions))
+      .orderBy(desc(shelfScanSessions.createdAt));
+  }
+
+  async getShelfScanSession(id: string, companyId: string): Promise<ShelfScanSession | undefined> {
+    const [s] = await db.select().from(shelfScanSessions)
+      .where(and(eq(shelfScanSessions.id, id), eq(shelfScanSessions.companyId, companyId)));
+    return s || undefined;
   }
 }
 
