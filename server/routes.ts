@@ -14445,7 +14445,7 @@ Human Handoff:
 
       const user = await storage.getUserByEmail(email.toLowerCase().trim());
       if (!user) return res.status(401).json({ error: "Invalid email or password" });
-      if (!user.isActive) return res.status(403).json({ error: "Account not activated" });
+      if (user.active !== 1) return res.status(403).json({ error: "Account not activated" });
 
       const valid = await verifyPassword(password, user.passwordHash || "");
       if (!valid) return res.status(401).json({ error: "Invalid email or password" });
