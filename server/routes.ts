@@ -14300,6 +14300,127 @@ Human Handoff:
     }
   });
 
+  // ============ MOBILE API ============
+
+  /**
+   * POST /api/mobile/sweep-scan
+   * Accepts 1-5 shelf/storage images as multipart/form-data field "images".
+   * Each image is sent to GPT-4o Vision in parallel; results are merged and
+   * de-duplicated before returning a single unified item list.
+   *
+   * Auth: supports both session cookie AND Authorization: Bearer <token>
+   * (so native mobile clients can pass the session token in the header).
+   *
+   * Body fields (multipart):
+   *   images   — up to 5 image files (JPG, PNG, WebP)
+   *   storeId  — optional store UUID to associate the scan with
+   *
+   * Response:
+   *   { items: ShelfItem[], frameCount: number, notes: string[] }
+   */
+  const sweepUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 15 * 1024 * 1024, files: 5 },
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith("image/")) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only image files are allowed"));
+      }
+    },
+  });
+
+  app.post(
+    "/api/mobile/sweep-scan",
+    requireAuth,
+    sweepUpload.array("images", 5),
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId;
+        if (!companyId) {
+          return res.status(403).json({ error: "Company context required" });
+        }
+
+        const files = req.files as Express.Multer.File[];
+        if (!files || files.length === 0) {
+          return res.status(400).json({ error: "At least one image is required. Send files in the 'images' field." });
+        }
+
+        function detectMime(buf: Buffer): string | null {
+          if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+          if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
+          if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+              buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
+          return null;
+        }
+
+        const { scanShelfImage, mergeShelfScanResults } = await import('./services/shelfScanner');
+
+        // Process all frames in parallel
+        const scanPromises = files.map(async (file, idx) => {
+          const mime = detectMime(file.buffer) || file.mimetype;
+          if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) {
+            console.warn(`[SweepScan] Frame ${idx + 1} has unsupported mime type ${mime}, skipping`);
+            return { items: [], notes: `Frame ${idx + 1} skipped: unsupported image type` };
+          }
+          return scanShelfImage(file.buffer, mime);
+        });
+
+        const frameResults = await Promise.all(scanPromises);
+        const merged = mergeShelfScanResults(frameResults);
+
+        return res.json({
+          items: merged.items,
+          frameCount: merged.frameCount,
+          notes: merged.notes,
+        });
+      } catch (error: any) {
+        console.error("[POST /api/mobile/sweep-scan]", error);
+        return res.status(500).json({ error: "Sweep scan failed", details: error.message });
+      }
+    }
+  );
+
+  /**
+   * POST /api/mobile/login
+   * Mobile-friendly login that returns the session token in the JSON body
+   * (in addition to setting the cookie) so the mobile app can store it and
+   * send it as Authorization: Bearer <token> on subsequent requests.
+   */
+  app.post("/api/mobile/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email and password are required" });
+      }
+
+      const user = await storage.getUserByEmail(email.toLowerCase().trim());
+      if (!user) return res.status(401).json({ error: "Invalid email or password" });
+      if (!user.isActive) return res.status(403).json({ error: "Account not activated" });
+
+      const valid = await verifyPassword(password, user.passwordHash || "");
+      if (!valid) return res.status(401).json({ error: "Invalid email or password" });
+
+      const token = await createSession(
+        user.id,
+        req.headers["user-agent"],
+        req.ip
+      );
+
+      res.cookie("session", token, sessionCookieOptions());
+      return res.json({
+        token,
+        userId: user.id,
+        companyId: user.companyId,
+        email: user.email,
+        name: user.name,
+      });
+    } catch (error: any) {
+      console.error("[POST /api/mobile/login]", error);
+      return res.status(500).json({ error: "Login failed" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

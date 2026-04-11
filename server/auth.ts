@@ -81,8 +81,10 @@ export async function createSession(userId: string, userAgent?: string, ip?: str
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   // PRIORITY 1: Check for cookie-based username/password session first
-  // This takes precedence over SSO to allow global_admin login to override SSO sessions
-  const token = req.cookies?.session;
+  // Also accepts Authorization: Bearer <token> for mobile clients using the same session token
+  const authHeader = req.headers?.authorization;
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+  const token = req.cookies?.session || bearerToken;
   
   if (token) {
     const tokenHash = createHash("sha256").update(token).digest("hex");

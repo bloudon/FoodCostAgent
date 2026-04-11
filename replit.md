@@ -1,6 +1,6 @@
 # Overview
 
-FNB Cost Pro is an inventory management and recipe costing system for food service businesses. Its primary goal is to boost profitability and operational efficiency by offering precise unit conversions, comprehensive nested recipe management, integration with POS sales data, and detailed variance reporting. The system aims to minimize waste, optimize profit margins, provide real-time inventory estimates, streamline vendor interactions, and accurately control food costs, supporting informed business decisions and growth.
+FNB Cost Pro is an inventory management and recipe costing system for food service businesses. It aims to boost profitability and efficiency through precise unit conversions, nested recipe management, POS sales integration, and detailed variance reporting. The system minimizes waste, optimizes profit margins, provides real-time inventory estimates, streamlines vendor interactions, and controls food costs for informed decision-making and growth. The vision is to become the leading solution for food cost management in the restaurant industry, empowering businesses to achieve financial control and operational excellence.
 
 # User Preferences
 
@@ -42,28 +42,29 @@ FNB Cost Pro is an inventory management and recipe costing system for food servi
 
 # System Architecture
 
-- **Frontend**: Mobile-first React 18 SPA with TypeScript, Vite, `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing.
-- **Backend**: Node.js (TypeScript) with Express.js and Zod for data validation.
-- **Database**: PostgreSQL with Drizzle ORM.
-- **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation.
-- **UI/UX Decisions**: Mobile-first design, intuitive recipe creation, dynamic dashboards with filterable tables, consistent color-coded status badges, conditional UI rendering, smooth scrolling, and optimized inventory count layouts.
-- **Technical Implementations**: Micro-unit precision for inventory calculations, comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), multi-tenant QuickBooks integration, intelligent vendor order guide import, real-time recipe cost calculation with caching, dynamic estimated on-hand inventory with automated cache invalidation, detailed TFC (Theoretical Food Cost) variance reporting, and single-timezone date handling.
-- **System Design Choices**: Strict multi-tenancy principles, secure OAuth using HMAC-SHA256, extensive server-side validation, robust vendor relationship management.
-- **Vendor-Store Assignment Model**: Vendors are company-level entities; `store_vendors` join table controls store access. Order guides can be assigned to multiple stores via `order_guide_stores` join table.
-- **Subscription Tier System**: Four-tier model (Free, Basic, Pro, Enterprise) stored on `companies` table. Backend uses `requireTier(minTier)` middleware; frontend uses `useTier()` hook and `TierGate` component.
-- **Marketing Website**: Hostname-based routing (`fnbcostpro.com` for marketing, `app.fnbcostpro.com` for the app) managed by the same Express server.
+-   **Frontend**: React 18 SPA with TypeScript, Vite, `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing, supporting a mobile-first design.
+-   **Backend**: Node.js (TypeScript) with Express.js and Zod for data validation.
+-   **Database**: PostgreSQL with Drizzle ORM.
+-   **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation at the company level.
+-   **UI/UX Decisions**: Mobile-first approach, intuitive interfaces, dynamic dashboards, consistent color-coding, conditional UI rendering, and optimized layouts.
+-   **Technical Implementations**: Micro-unit precision calculations, comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), multi-tenant QuickBooks integration, intelligent vendor order guide import, real-time recipe cost calculation with caching, dynamic estimated on-hand inventory with automated cache invalidation, detailed Theoretical Food Cost (TFC) variance reporting, and single-timezone date handling.
+-   **System Design Choices**: Strict multi-tenancy, secure OAuth using HMAC-SHA256, extensive server-side validation, robust vendor relationship management, and subscription tier system.
+-   **Vendor-Store Assignment Model**: Vendors are company-level, with a `store_vendors` join table for store access. Order guides can be assigned to multiple stores via `order_guide_stores`.
+-   **Subscription Tier System**: Four-tier model (Free, Basic, Pro, Enterprise) on the `companies` table, enforced by backend middleware (`requireTier(minTier)`) and frontend components (`useTier()`, `TierGate`).
+-   **Marketing Website**: Hostname-based routing (`fnbcostpro.com` for marketing, `app.fnbcostpro.com` for the app) is managed by the same Express server.
 
 # External Dependencies
 
-- **Database Services**: Neon serverless PostgreSQL.
-- **Real-time Communication**: `ws` library (WebSockets).
-- **Image Processing**: Sharp library.
-- **Object Storage & File Uploads**: Replit native object storage (production) and local filesystem (development).
-- **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods order guides.
-- **QuickBooks Online Integration**: `intuit-oauth` package for OAuth 2.0.
-- **Stripe Integration**: Subscription billing using Stripe Checkout + Webhooks.
-- **Email Service**: SMTP2GO.
-- **Background Image System**: Unsplash.
-- **AI Chat**: OpenAI GPT-4o-mini via `openai` npm package.
-- **AI Recipe Image Scan**: GPT-4o vision.
-- **AI CSV Inventory Import**: GPT-4o-mini for column mapping.
+-   **Database Services**: Neon serverless PostgreSQL.
+-   **Real-time Communication**: `ws` library (WebSockets).
+-   **Image Processing**: Sharp library.
+-   **Object Storage & File Uploads**: Replit native object storage (production) and local filesystem (development).
+-   **Vendor Integrations**: Custom adapters for Sysco, GFS, and US Foods order guides.
+-   **QuickBooks Online Integration**: `intuit-oauth` package for OAuth 2.0.
+-   **Stripe Integration**: Subscription billing using Stripe Checkout + Webhooks.
+-   **Email Service**: SMTP2GO.
+-   **Background Image System**: Unsplash.
+-   **AI Chat**: OpenAI GPT-4o-mini via `openai` npm package.
+-   **AI Recipe Image Scan**: GPT-4o vision.
+-   **AI CSV Inventory Import**: GPT-4o-mini for column mapping.
+-   **Mobile API**: Dedicated endpoints for native mobile clients (Expo app) for login and shelf image processing via GPT-4o Vision.
