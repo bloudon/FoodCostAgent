@@ -5,7 +5,7 @@ import {
   Building2, MapPin, Plus, Settings2, UserCircle, Trash2, AlertTriangle,
   Users, CreditCard, Clock, MailWarning, RefreshCw, Activity,
   ChevronDown, ChevronUp, Wand2, MessageSquare, CheckCircle, XCircle,
-  Pencil,
+  Pencil, Smartphone,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +47,7 @@ type AdminStats = {
   pendingSignups: number;
   activeUsers: number;
   activeSessions: number;
+  mobileUsers: number;
 };
 
 type OrphanedSignup = {
@@ -444,7 +445,7 @@ export default function Companies() {
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         <StatCard
           icon={<Building2 className="h-5 w-5 text-primary" />}
           label="Companies"
@@ -470,6 +471,12 @@ export default function Companies() {
           label="Active Now (30m)"
           value={adminStats?.activeSessions ?? "—"}
           testId="card-stat-active-sessions"
+        />
+        <StatCard
+          icon={<Smartphone className="h-5 w-5 text-blue-500" />}
+          label="Mobile Users"
+          value={adminStats?.mobileUsers ?? "—"}
+          testId="card-stat-mobile-users"
         />
       </div>
 

@@ -11107,6 +11107,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           gt(authSessions.lastActiveAt, thirtyMinAgo)
         ));
 
+      const [mobileUsersRow] = await db
+        .select({ count: sql<number>`count(distinct ${authSessions.userId})` })
+        .from(authSessions)
+        .where(and(
+          eq(authSessions.source, "mobile"),
+          gt(authSessions.expiresAt, now),
+          isNull(authSessions.revokedAt)
+        ));
+
       const { getActiveUserCount } = await import("./auth");
       const inMemoryCount = getActiveUserCount();
       const dbSessionCount = Number(activeSessionsRow?.count || 0);
@@ -11116,6 +11125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pendingSignups: Number(pendingSignupsRow?.count || 0),
         activeUsers: Number(activeUsersRow?.count || 0),
         activeSessions: Math.max(dbSessionCount, inMemoryCount),
+        mobileUsers: Number(mobileUsersRow?.count || 0),
       });
     } catch (error) {
       console.error("Admin stats error:", error);
@@ -14453,7 +14463,8 @@ Human Handoff:
       const token = await createSession(
         user.id,
         req.headers["user-agent"],
-        req.ip
+        req.ip,
+        "mobile"
       );
 
       res.cookie("session", token, sessionCookieOptions());

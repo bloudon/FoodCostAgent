@@ -55,7 +55,7 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 /**
  * Create an authentication session
  */
-export async function createSession(userId: string, userAgent?: string, ip?: string) {
+export async function createSession(userId: string, userAgent?: string, ip?: string, source: string = "web") {
   const { token, tokenHash } = generateToken();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + SESSION_DURATION_DAYS);
@@ -66,6 +66,7 @@ export async function createSession(userId: string, userAgent?: string, ip?: str
     expiresAt,
     userAgent,
     ipAddress: ip,
+    source,
   });
 
   // Cache the session for fast lookups (Phase 2 optimization)

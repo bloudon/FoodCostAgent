@@ -715,3 +715,16 @@ BEGIN
       VALUES ('v026', 'Task #68: Shelf Scan Sessions table for mobile sweep-scan persistence');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v027 — Task #69: Add source column to auth_sessions for mobile tracking
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v027') THEN
+    ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS source varchar DEFAULT 'web';
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v027', 'Task #69: Add source column to auth_sessions to track mobile vs web logins');
+  END IF;
+END $$;

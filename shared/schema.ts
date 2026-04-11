@@ -171,6 +171,7 @@ export const authSessions = pgTable("auth_sessions", {
   userAgent: text("user_agent"),
   ipAddress: text("ip_address"),
   selectedCompanyId: varchar("selected_company_id"),
+  source: varchar("source").default("web"),
 }, (table) => ({
   userIdIdx: index("auth_sessions_user_id_idx").on(table.userId),
   expiresAtIdx: index("auth_sessions_expires_at_idx").on(table.expiresAt),
