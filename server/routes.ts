@@ -14369,24 +14369,19 @@ Human Handoff:
         const frameResults = await Promise.all(scanPromises);
         const merged = mergeShelfScanResults(frameResults);
 
-        // Persist the scan session
-        const userId = (req as any).userId;
-        const storeId = (req.body?.storeId as string) || undefined;
-        try {
-          await storage.createShelfScanSession({
-            companyId,
-            storeId: storeId || null,
-            userId: userId || null,
-            frameCount: merged.frameCount,
-            itemCount: merged.items.length,
-            items: merged.items,
-            notes: merged.notes,
-            status: "completed",
-          });
-        } catch (persistErr) {
-          console.error("[SweepScan] Failed to persist session:", persistErr);
-          // Do not fail the response — scan result still returned to the client
-        }
+        // Persist the scan session — required for audit trail
+        const userId = (req as any).user?.id ?? null;
+        const storeId = (req.body?.storeId as string) || null;
+        await storage.createShelfScanSession({
+          companyId,
+          storeId,
+          userId,
+          frameCount: merged.frameCount,
+          itemCount: merged.items.length,
+          items: merged.items,
+          notes: merged.notes,
+          status: "completed",
+        });
 
         return res.json({
           items: merged.items,
