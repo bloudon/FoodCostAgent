@@ -14766,6 +14766,384 @@ Human Handoff:
   });
 
   /**
+   * GET /api/mobile/stores
+   * Returns the list of stores the authenticated user is assigned to.
+   * Used by the mobile app to let the user pick a store when starting a new
+   * inventory session and they have multiple assignments.
+   */
+  app.get("/api/mobile/stores", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+      const userId = (req as any).user?.id;
+      if (!userId) return res.status(401).json({ error: "User not found" });
+
+      const userStoreAssignments = await storage.getUserStores(userId);
+      const stores = await Promise.all(
+        userStoreAssignments.map(async (a) => {
+          const store = await storage.getCompanyStore(a.storeId);
+          if (!store || store.companyId !== companyId) return null;
+          return { id: store.id, name: store.name };
+        })
+      );
+
+      return res.json(stores.filter(Boolean));
+    } catch (error: any) {
+      console.error("[GET /api/mobile/stores]", error);
+      return res.status(500).json({ error: "Failed to load stores" });
+    }
+  });
+
+  /**
+   * POST /api/mobile/sessions
+   * Creates a new inventory count session, auto-populates count lines for every
+   * active inventory item assigned to the requested store (one line per storage
+   * location per item), and returns { id, name, storeId, lineCount }.
+   *
+   * Body: { storeId: string, name?: string }
+   */
+  app.post("/api/mobile/sessions", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+      const userId = (req as any).user?.id;
+      if (!userId) return res.status(401).json({ error: "User not found" });
+
+      const { storeId, name } = req.body;
+      if (!storeId) return res.status(400).json({ error: "storeId is required" });
+
+      // Validate store belongs to this company
+      const store = await storage.getCompanyStore(storeId);
+      if (!store || store.companyId !== companyId) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+
+      // Build today's date at UTC midnight (matches insertInventoryCountSchema transformation)
+      const now = new Date();
+      const countDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+      const count = await storage.createInventoryCount({
+        companyId,
+        storeId,
+        countDate,
+        userId,
+        name: name ?? null,
+        applied: 0,
+        isPowerSession: 0,
+      });
+
+      // Auto-populate count lines for all active items assigned to this store
+      // (same logic as POST /api/inventory-counts on the web)
+      const activeItemsQuery = await db
+        .select({ inventoryItem: inventoryItems })
+        .from(inventoryItems)
+        .innerJoin(
+          storeInventoryItems,
+          and(
+            eq(storeInventoryItems.inventoryItemId, inventoryItems.id),
+            eq(storeInventoryItems.storeId, count.storeId)
+          )
+        )
+        .where(
+          and(
+            eq(inventoryItems.companyId, count.companyId),
+            eq(inventoryItems.active, 1),
+            eq(storeInventoryItems.active, 1)
+          )
+        );
+
+      const activeItems = activeItemsQuery.map(r => r.inventoryItem);
+      const itemIds = activeItems.map(i => i.id);
+
+      let lineCount = 0;
+      if (itemIds.length > 0) {
+        const itemLocationsQuery = await db
+          .select({
+            inventoryItemId: inventoryItemLocations.inventoryItemId,
+            storageLocationId: inventoryItemLocations.storageLocationId,
+          })
+          .from(inventoryItemLocations)
+          .innerJoin(
+            storageLocations,
+            eq(inventoryItemLocations.storageLocationId, storageLocations.id)
+          )
+          .where(
+            and(
+              inArray(inventoryItemLocations.inventoryItemId, itemIds),
+              eq(storageLocations.companyId, count.companyId)
+            )
+          );
+
+        const itemLocationsMap = new Map<string, typeof itemLocationsQuery>();
+        for (const loc of itemLocationsQuery) {
+          const existing = itemLocationsMap.get(loc.inventoryItemId) ?? [];
+          existing.push(loc);
+          itemLocationsMap.set(loc.inventoryItemId, existing);
+        }
+
+        for (const item of activeItems) {
+          const locs = itemLocationsMap.get(item.id) ?? [];
+          if (locs.length === 0) continue;
+          for (const loc of locs) {
+            await storage.createInventoryCountLine({
+              inventoryCountId: count.id,
+              inventoryItemId: item.id,
+              storageLocationId: loc.storageLocationId,
+              qty: 0,
+              unitId: item.unitId,
+              unitCost: item.pricePerUnit,
+              userId,
+            });
+            lineCount++;
+          }
+        }
+      }
+
+      return res.status(201).json({
+        id: count.id,
+        name: count.name ?? count.countDate.toISOString().slice(0, 10),
+        storeId: count.storeId,
+        lineCount,
+      });
+    } catch (error: any) {
+      console.error("[POST /api/mobile/sessions]", error);
+      return res.status(500).json({ error: "Failed to create session" });
+    }
+  });
+
+  /**
+   * GET /api/mobile/sessions/:id/lines
+   * Returns all count lines for a session in a format suited to a live counting
+   * UI.  Each line includes item metadata (name, unit, case/container sizes) and
+   * the current breakdown quantities (caseQty, containerQty, looseUnits, qty).
+   * Lines are sorted by locationSortOrder ASC then itemName ASC.
+   */
+  app.get("/api/mobile/sessions/:id/lines", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+
+      const count = await storage.getInventoryCount(req.params.id);
+      if (!count || count.companyId !== companyId) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      const rows = await db
+        .select({
+          lineId: inventoryCountLines.id,
+          inventoryItemId: inventoryCountLines.inventoryItemId,
+          qty: inventoryCountLines.qty,
+          caseQty: inventoryCountLines.caseQty,
+          containerQty: inventoryCountLines.containerQty,
+          looseUnits: inventoryCountLines.looseUnits,
+          unitCost: inventoryCountLines.unitCost,
+          itemName: inventoryItems.name,
+          caseSize: inventoryItems.caseSize,
+          containerSize: inventoryItems.containerSize,
+          casePkgCount: inventoryItems.casePkgCount,
+          categoryName: categories.name,
+          locationId: storageLocations.id,
+          locationName: storageLocations.name,
+          locationSortOrder: storageLocations.sortOrder,
+          unitAbbr: unitsTable.abbreviation,
+          itemCategoryId: inventoryItems.categoryId,
+        })
+        .from(inventoryCountLines)
+        .leftJoin(inventoryItems, eq(inventoryCountLines.inventoryItemId, inventoryItems.id))
+        .leftJoin(categories, eq(inventoryItems.categoryId, categories.id))
+        .leftJoin(storageLocations, eq(inventoryCountLines.storageLocationId, storageLocations.id))
+        .leftJoin(unitsTable, eq(inventoryCountLines.unitId, unitsTable.id))
+        .where(eq(inventoryCountLines.inventoryCountId, count.id))
+        .orderBy(storageLocations.sortOrder, inventoryItems.name);
+
+      return res.json(
+        rows.map(r => ({
+          lineId: r.lineId,
+          inventoryItemId: r.inventoryItemId,
+          itemName: r.itemName ?? "Unknown Item",
+          categoryName: r.categoryName ?? "Uncategorized",
+          locationId: r.locationId ?? null,
+          locationName: r.locationName ?? "Unknown Location",
+          locationSortOrder: r.locationSortOrder ?? 0,
+          unitAbbr: r.unitAbbr ?? "",
+          caseSize: r.caseSize ?? null,
+          containerSize: r.containerSize ?? null,
+          casePkgCount: r.casePkgCount ?? null,
+          qty: r.qty ?? 0,
+          caseQty: r.caseQty ?? null,
+          containerQty: r.containerQty ?? null,
+          looseUnits: r.looseUnits ?? null,
+          unitCost: r.unitCost ?? 0,
+        }))
+      );
+    } catch (error: any) {
+      console.error("[GET /api/mobile/sessions/:id/lines]", error);
+      return res.status(500).json({ error: "Failed to load session lines" });
+    }
+  });
+
+  /**
+   * PATCH /api/mobile/sessions/:id/lines/:lineId
+   * Updates a single count line.  Accepts:
+   *   - qty (number)   — direct quantity override; clears case breakdown fields
+   *   - caseQty / containerQty / looseUnits — three-level breakdown; server
+   *     recalculates qty identically to the web PATCH /api/inventory-count-lines/:id
+   * Returns 403 if the session is already applied (locked).
+   */
+  app.patch("/api/mobile/sessions/:id/lines/:lineId", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+
+      // Validate session ownership
+      const count = await storage.getInventoryCount(req.params.id);
+      if (!count || count.companyId !== companyId) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      if ((count as any).applied === 1) {
+        return res.status(403).json({ error: "Session is already applied and cannot be edited" });
+      }
+
+      const existingLine = await storage.getInventoryCountLine(req.params.lineId);
+      if (!existingLine || existingLine.inventoryCountId !== count.id) {
+        return res.status(404).json({ error: "Count line not found" });
+      }
+
+      const { qty, caseQty, containerQty, looseUnits } = req.body;
+      const updates: any = {};
+
+      if (caseQty != null || containerQty != null || looseUnits != null) {
+        const cQty = caseQty ?? existingLine.caseQty ?? 0;
+        const cnQty = containerQty ?? existingLine.containerQty ?? 0;
+        const lUnits = looseUnits ?? existingLine.looseUnits ?? 0;
+
+        if (cQty < 0) return res.status(400).json({ error: "Case quantity cannot be negative" });
+        if (cnQty < 0) return res.status(400).json({ error: "Container quantity cannot be negative" });
+        if (lUnits < 0) return res.status(400).json({ error: "Loose units cannot be negative" });
+
+        updates.caseQty = cQty;
+        updates.containerQty = cnQty;
+        updates.looseUnits = lUnits;
+
+        const item = await storage.getInventoryItem(existingLine.inventoryItemId);
+        if (item && item.containerSize && item.casePkgCount) {
+          updates.qty = (cQty * item.casePkgCount * item.containerSize) + (cnQty * item.containerSize) + lUnits;
+        } else {
+          const caseSize = item?.caseSize ?? 0;
+          updates.qty = (cQty * caseSize) + lUnits;
+        }
+      } else if (qty != null) {
+        if (qty < 0) return res.status(400).json({ error: "Quantity cannot be negative" });
+        updates.qty = qty;
+        updates.caseQty = null;
+        updates.containerQty = null;
+        updates.looseUnits = null;
+      } else {
+        return res.status(400).json({ error: "Provide qty or at least one of caseQty, containerQty, looseUnits" });
+      }
+
+      const updatedLine = await storage.updateInventoryCountLine(req.params.lineId, updates);
+      return res.json(updatedLine);
+    } catch (error: any) {
+      console.error("[PATCH /api/mobile/sessions/:id/lines/:lineId]", error);
+      return res.status(500).json({ error: "Failed to update count line" });
+    }
+  });
+
+  /**
+   * POST /api/mobile/sessions/:id/apply
+   * Applies (completes) an inventory count session:
+   *   1. Sums all line quantities per inventory item across storage locations.
+   *   2. Updates store_inventory_items.onHandQty for each item (transactional).
+   *   3. Marks the session applied=1 and locks it (canEdit=0).
+   * Returns 400 if already applied or if there are no lines.
+   */
+  app.post("/api/mobile/sessions/:id/apply", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+      const userId = (req as any).user?.id;
+
+      const count = await storage.getInventoryCount(req.params.id);
+      if (!count || count.companyId !== companyId) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      if ((count as any).applied === 1) {
+        return res.status(400).json({ error: "This inventory count has already been applied" });
+      }
+
+      const lines = await storage.getInventoryCountLines(count.id);
+      if (lines.length === 0) {
+        return res.status(400).json({ error: "Cannot apply empty inventory count" });
+      }
+
+      // Sum quantities per inventory item across all storage locations
+      const itemTotals = new Map<string, number>();
+      for (const line of lines) {
+        itemTotals.set(line.inventoryItemId, (itemTotals.get(line.inventoryItemId) ?? 0) + line.qty);
+      }
+
+      await withTransaction(async (tx) => {
+        for (const [inventoryItemId, totalQty] of itemTotals.entries()) {
+          const [existing] = await tx
+            .select()
+            .from(storeInventoryItems)
+            .where(
+              and(
+                eq(storeInventoryItems.companyId, count.companyId),
+                eq(storeInventoryItems.storeId, count.storeId),
+                eq(storeInventoryItems.inventoryItemId, inventoryItemId)
+              )
+            )
+            .limit(1);
+
+          if (existing) {
+            await tx
+              .update(storeInventoryItems)
+              .set({ onHandQty: totalQty, updatedAt: new Date() })
+              .where(
+                and(
+                  eq(storeInventoryItems.companyId, count.companyId),
+                  eq(storeInventoryItems.storeId, count.storeId),
+                  eq(storeInventoryItems.inventoryItemId, inventoryItemId)
+                )
+              );
+          } else {
+            await tx.insert(storeInventoryItems).values({
+              companyId: count.companyId,
+              storeId: count.storeId,
+              inventoryItemId,
+              onHandQty: totalQty,
+              active: 1,
+            });
+          }
+        }
+
+        const appliedAt = new Date();
+        await tx
+          .update(inventoryCounts)
+          .set({ applied: 1, appliedAt, appliedBy: userId ?? null })
+          .where(
+            and(
+              eq(inventoryCounts.id, count.id),
+              eq(inventoryCounts.companyId, count.companyId)
+            )
+          );
+      });
+
+      const updated = await storage.getInventoryCount(count.id);
+      return res.json({
+        success: true,
+        id: updated?.id ?? count.id,
+        appliedAt: (updated as any)?.appliedAt ?? null,
+      });
+    } catch (error: any) {
+      console.error("[POST /api/mobile/sessions/:id/apply]", error);
+      return res.status(500).json({ error: "Failed to apply session" });
+    }
+  });
+
+  /**
    * POST /api/mobile/login
    * Mobile-friendly login that returns the session token in the JSON body
    * (in addition to setting the cookie) so the mobile app can store it and
