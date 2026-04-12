@@ -68,6 +68,7 @@ export default function InventoryItemCreate() {
   const [containerDisplaySize, setContainerDisplaySize] = useState("");
   const [containerUnitId, setContainerUnitId] = useState("");
   const [barcode, setBarcode] = useState("");
+  const [casePrice, setCasePrice] = useState("0");
   const [pricePerUnit, setPricePerUnit] = useState("0");
   const [yieldPercent, setYieldPercent] = useState("95");
   const [parLevel, setParLevel] = useState("");
@@ -146,12 +147,6 @@ export default function InventoryItemCreate() {
     }
   }, [stores, selectedStores.length]);
 
-  useEffect(() => {
-    if (locations && locations.length > 0 && selectedLocations.length === 0) {
-      setSelectedLocations(locations.map(l => l.id));
-    }
-  }, [locations, selectedLocations.length]);
-
   // Set first selected location as primary
   useEffect(() => {
     if (selectedLocations.length > 0 && !primaryLocationId) {
@@ -174,6 +169,32 @@ export default function InventoryItemCreate() {
     // Guard: reject cross-kind conversions (e.g., oz → gallon)
     if (baseUnit.kind !== cUnit.kind) return null;
     return parsedContainerDisplaySize * (cUnit.toBaseRatio / baseUnit.toBaseRatio);
+  };
+
+  // Bidirectional price handlers — editing one recalculates the other
+  const handleCasePriceChange = (val: string) => {
+    setCasePrice(val);
+    const cp = parseFloat(val);
+    if (!isNaN(cp) && parsedCaseSize > 0) {
+      setPricePerUnit((cp / parsedCaseSize).toFixed(4));
+    }
+  };
+
+  const handleUnitPriceChange = (val: string) => {
+    setPricePerUnit(val);
+    const up = parseFloat(val);
+    if (!isNaN(up)) {
+      setCasePrice((up * parsedCaseSize).toFixed(2));
+    }
+  };
+
+  const handleCaseSizeChange = (val: string) => {
+    setCaseSize(val);
+    const size = parseFloat(val);
+    const up = parseFloat(pricePerUnit);
+    if (!isNaN(size) && size > 0 && !isNaN(up)) {
+      setCasePrice((up * size).toFixed(2));
+    }
   };
 
   const createMutation = useMutation({
@@ -463,7 +484,7 @@ export default function InventoryItemCreate() {
                         type="number"
                         step="0.01"
                         value={caseSize}
-                        onChange={(e) => setCaseSize(e.target.value)}
+                        onChange={(e) => handleCaseSizeChange(e.target.value)}
                         placeholder="e.g., 40"
                         className="flex-1"
                         data-testid="input-case-size"
@@ -589,17 +610,33 @@ export default function InventoryItemCreate() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="pricePerUnit">Price per Unit ($)</Label>
-                <Input
-                  id="pricePerUnit"
-                  type="number"
-                  step="0.01"
-                  value={pricePerUnit}
-                  onChange={(e) => setPricePerUnit(e.target.value)}
-                  data-testid="input-price-per-unit"
-                />
-                <p className="text-sm text-muted-foreground">
-                  Case cost will be calculated as: ${(parseFloat(pricePerUnit) * parsedCaseSize).toFixed(2)}
+                <Label>Pricing</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="casePrice" className="text-xs">Case Price ($)</Label>
+                    <Input
+                      id="casePrice"
+                      type="number"
+                      step="0.01"
+                      value={casePrice}
+                      onChange={(e) => handleCasePriceChange(e.target.value)}
+                      data-testid="input-case-price"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="pricePerUnit" className="text-xs">Unit Price ($)</Label>
+                    <Input
+                      id="pricePerUnit"
+                      type="number"
+                      step="0.0001"
+                      value={pricePerUnit}
+                      onChange={(e) => handleUnitPriceChange(e.target.value)}
+                      data-testid="input-price-per-unit"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Enter either price — the other will be calculated automatically.
                 </p>
               </div>
 
