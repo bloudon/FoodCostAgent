@@ -14793,18 +14793,68 @@ Human Handoff:
           )
         );
 
-      if (allLines.length === 0) {
-        return res.status(404).json({ error: "No count line found for this item in this session" });
-      }
-
-      // If multiple lines (item in multiple locations) narrow by locationId when provided
-      let targetLine = allLines[0];
-      if (locationIdFilter) {
-        const located = allLines.find(l => l.storageLocationId === locationIdFilter);
-        if (!located) {
-          return res.status(404).json({ error: "No count line found for this item at the specified location" });
+      // Helper: create a missing count line on-the-fly (upsert behaviour)
+      const createMissingLine = async (resolvedLocationId: string) => {
+        const item = await storage.getInventoryItem(req.params.itemId);
+        if (!item || item.companyId !== companyId) {
+          return null;
         }
-        targetLine = located;
+        return storage.createInventoryCountLine({
+          inventoryCountId: count.id,
+          inventoryItemId: item.id,
+          storageLocationId: resolvedLocationId,
+          qty: 0,
+          unitId: item.unitId,
+          unitCost: item.pricePerUnit ?? 0,
+          userId,
+        });
+      };
+
+      let targetLine: typeof allLines[0];
+
+      if (allLines.length === 0) {
+        // No lines at all — determine the storage location and create one
+        let resolvedLocationId = locationIdFilter;
+        if (!resolvedLocationId) {
+          // Pick the item's first assigned storage location
+          const [firstLoc] = await db
+            .select({ storageLocationId: inventoryItemLocations.storageLocationId })
+            .from(inventoryItemLocations)
+            .innerJoin(storageLocations, eq(inventoryItemLocations.storageLocationId, storageLocations.id))
+            .where(
+              and(
+                eq(inventoryItemLocations.inventoryItemId, req.params.itemId),
+                eq(storageLocations.companyId, companyId),
+              )
+            )
+            .limit(1);
+          if (!firstLoc) {
+            return res.status(400).json({ error: "Item has no storage location assigned — cannot create count line" });
+          }
+          resolvedLocationId = firstLoc.storageLocationId;
+        }
+        const newLine = await createMissingLine(resolvedLocationId);
+        if (!newLine) {
+          return res.status(404).json({ error: "Item not found in inventory" });
+        }
+        targetLine = newLine;
+      } else {
+        // Lines exist — narrow by locationId if provided
+        if (locationIdFilter) {
+          const located = allLines.find(l => l.storageLocationId === locationIdFilter);
+          if (located) {
+            targetLine = located;
+          } else {
+            // Item counted in other locations but not this one yet — create for this location
+            const newLine = await createMissingLine(locationIdFilter);
+            if (!newLine) {
+              return res.status(404).json({ error: "Item not found in inventory" });
+            }
+            targetLine = newLine;
+          }
+        } else {
+          targetLine = allLines[0];
+        }
       }
 
       // Accept "count" as an alias for "qty" (mobile app field name)
