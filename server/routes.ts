@@ -14436,13 +14436,24 @@ Human Handoff:
         const userId = (req as any).user?.id ?? null;
         const storeId = (req.body?.storeId as string) || null;
 
+        // Enforce store-assignment when storeId is supplied
+        if (storeId && userId) {
+          if (!(await mobileUserCanAccessStore(userId, storeId))) {
+            return res.status(403).json({ error: "Not assigned to this store" });
+          }
+        }
+
         // Optional session linking: validate that sessionId belongs to this company
+        // and that the caller is assigned to the session's store
         let inventoryCountId: string | null = null;
         const sessionIdParam = (req.body?.sessionId as string) || null;
         if (sessionIdParam) {
           const count = await storage.getInventoryCount(sessionIdParam);
           if (!count || count.companyId !== companyId) {
             return res.status(400).json({ error: "Invalid sessionId: not found or not accessible" });
+          }
+          if (userId && !(await mobileUserCanAccessStore(userId, count.storeId))) {
+            return res.status(403).json({ error: "Not assigned to the store for this session" });
           }
           inventoryCountId = sessionIdParam;
         }
@@ -14459,8 +14470,16 @@ Human Handoff:
           status: "completed",
         });
 
+        // Response: primary contract uses estimatedQty (mobile spec);
+        // quantity/unit/confidence retained for backward-compat with web consumers.
         return res.json({
-          items: merged.items,
+          items: merged.items.map(item => ({
+            name: item.name,
+            estimatedQty: item.quantity,
+            quantity: item.quantity,
+            unit: item.unit,
+            confidence: item.confidence,
+          })),
           frameCount: merged.frameCount,
           notes: merged.notes,
           context: { itemId, categoryId, locationId },
@@ -14734,9 +14753,12 @@ Human Handoff:
 
       // If multiple lines (item in multiple locations) narrow by locationId when provided
       let targetLine = allLines[0];
-      if (allLines.length > 1 && locationIdFilter) {
+      if (locationIdFilter) {
         const located = allLines.find(l => l.storageLocationId === locationIdFilter);
-        if (located) targetLine = located;
+        if (!located) {
+          return res.status(404).json({ error: "No count line found for this item at the specified location" });
+        }
+        targetLine = located;
       }
 
       const { qty, caseQty, containerQty, looseUnits } = req.body;
