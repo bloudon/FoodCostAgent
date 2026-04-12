@@ -20,7 +20,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -14547,6 +14547,8 @@ Human Handoff:
    * Returns open (not-yet-applied) inventory count sessions for the authenticated
    * user's company/store, each with id, name, startedAt, and scanCount.
    * Returns [] when none are open, 401 when unauthenticated.
+   * IMPORTANT: must be registered before /sessions/:id so Express doesn't treat
+   * "active" as a dynamic :id value.
    */
   app.get("/api/mobile/sessions/active", requireAuth, async (req, res) => {
     try {
@@ -14589,6 +14591,168 @@ Human Handoff:
     } catch (error: any) {
       console.error("[GET /api/mobile/sessions/active]", error);
       return res.status(500).json({ error: "Failed to load active sessions" });
+    }
+  });
+
+  /**
+   * GET /api/mobile/sessions/:id/items
+   * Returns line items for a session, optionally filtered by ?categoryId= or ?locationId=.
+   * Returns 404 if the session doesn't belong to the authenticated user's company.
+   * Registered before /sessions/:id to ensure the 3-segment path resolves correctly.
+   */
+  app.get("/api/mobile/sessions/:id/items", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+
+      const count = await storage.getInventoryCount(req.params.id);
+      if (!count || count.companyId !== companyId) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      const categoryIdFilter = req.query.categoryId as string | undefined;
+      const locationIdFilter = req.query.locationId as string | undefined;
+
+      const rows = await db
+        .select({
+          lineId: inventoryCountLines.id,
+          qty: inventoryCountLines.qty,
+          unitCost: inventoryCountLines.unitCost,
+          itemName: inventoryItems.name,
+          categoryId: categories.id,
+          categoryName: categories.name,
+          locationId: storageLocations.id,
+          locationName: storageLocations.name,
+          unitAbbr: unitsTable.abbreviation,
+          itemCategoryId: inventoryItems.categoryId,
+        })
+        .from(inventoryCountLines)
+        .leftJoin(inventoryItems, eq(inventoryCountLines.inventoryItemId, inventoryItems.id))
+        .leftJoin(categories, eq(inventoryItems.categoryId, categories.id))
+        .leftJoin(storageLocations, eq(inventoryCountLines.storageLocationId, storageLocations.id))
+        .leftJoin(unitsTable, eq(inventoryCountLines.unitId, unitsTable.id))
+        .where(eq(inventoryCountLines.inventoryCountId, count.id));
+
+      // Apply optional filters in JS (avoids complex conditional Drizzle WHERE clauses)
+      let filtered = rows;
+      if (categoryIdFilter) {
+        filtered = filtered.filter(r => (r.itemCategoryId ?? null) === categoryIdFilter);
+      }
+      if (locationIdFilter) {
+        filtered = filtered.filter(r => r.locationId === locationIdFilter);
+      }
+
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+
+      return res.json(
+        filtered.map(r => ({
+          id: r.lineId,
+          name: r.itemName ?? "Unknown Item",
+          quantity: r.qty ?? 0,
+          unit: r.unitAbbr ?? "",
+          value: round2((r.qty ?? 0) * (r.unitCost ?? 0)),
+          categoryName: r.categoryName ?? "Uncategorized",
+          locationName: r.locationName ?? "Unknown Location",
+        }))
+      );
+    } catch (error: any) {
+      console.error("[GET /api/mobile/sessions/:id/items]", error);
+      return res.status(500).json({ error: "Failed to load session items" });
+    }
+  });
+
+  /**
+   * GET /api/mobile/sessions/:id
+   * Returns a summary of one inventory count session: totals, category breakdown,
+   * and storage-location breakdown. Returns 404 if not found or wrong company.
+   * IMPORTANT: registered after /sessions/active and /sessions/:id/items so those
+   * static/longer paths take priority in Express route matching.
+   */
+  app.get("/api/mobile/sessions/:id", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+
+      const count = await storage.getInventoryCount(req.params.id);
+      if (!count || count.companyId !== companyId) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Single join query — all the data we need in one round-trip
+      const rows = await db
+        .select({
+          lineId: inventoryCountLines.id,
+          qty: inventoryCountLines.qty,
+          unitCost: inventoryCountLines.unitCost,
+          itemId: inventoryItems.id,
+          categoryId: categories.id,
+          categoryName: categories.name,
+          locationId: storageLocations.id,
+          locationName: storageLocations.name,
+        })
+        .from(inventoryCountLines)
+        .leftJoin(inventoryItems, eq(inventoryCountLines.inventoryItemId, inventoryItems.id))
+        .leftJoin(categories, eq(inventoryItems.categoryId, categories.id))
+        .leftJoin(storageLocations, eq(inventoryCountLines.storageLocationId, storageLocations.id))
+        .where(eq(inventoryCountLines.inventoryCountId, count.id));
+
+      // Aggregate totals
+      let totalValue = 0;
+      const categoryMap = new Map<string, { id: string | null; name: string; itemCount: number; value: number }>();
+      const locationMap = new Map<string, { id: string; name: string; itemCount: number; value: number }>();
+
+      for (const row of rows) {
+        const lineValue = (row.qty ?? 0) * (row.unitCost ?? 0);
+        totalValue += lineValue;
+
+        // Category grouping (null categoryId → "Uncategorized")
+        const catKey = row.categoryId ?? "__none__";
+        const catEntry = categoryMap.get(catKey) ?? {
+          id: row.categoryId ?? null,
+          name: row.categoryName ?? "Uncategorized",
+          itemCount: 0,
+          value: 0,
+        };
+        catEntry.itemCount += 1;
+        catEntry.value += lineValue;
+        categoryMap.set(catKey, catEntry);
+
+        // Location grouping
+        if (row.locationId) {
+          const locEntry = locationMap.get(row.locationId) ?? {
+            id: row.locationId,
+            name: row.locationName ?? row.locationId,
+            itemCount: 0,
+            value: 0,
+          };
+          locEntry.itemCount += 1;
+          locEntry.value += lineValue;
+          locationMap.set(row.locationId, locEntry);
+        }
+      }
+
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+
+      const categories_ = Array.from(categoryMap.values())
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(c => ({ ...c, value: round2(c.value) }));
+
+      const locations_ = Array.from(locationMap.values())
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(l => ({ ...l, value: round2(l.value) }));
+
+      return res.json({
+        id: count.id,
+        name: count.name ?? count.countDate.toISOString().slice(0, 10),
+        startedAt: count.countedAt,
+        totalItems: rows.length,
+        totalValue: round2(totalValue),
+        categories: categories_,
+        locations: locations_,
+      });
+    } catch (error: any) {
+      console.error("[GET /api/mobile/sessions/:id]", error);
+      return res.status(500).json({ error: "Failed to load session detail" });
     }
   });
 
