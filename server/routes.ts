@@ -14402,11 +14402,50 @@ Human Handoff:
         const categoryId = (req.body?.categoryId as string) || null;
         const locationId = (req.body?.locationId as string) || null;
 
+        // Resolve names from DB to enrich the GPT prompt with human-readable context
+        let resolvedItemName: string | null = null;
+        let resolvedCategoryName: string | null = null;
+        let resolvedLocationName: string | null = null;
+
+        if (itemId) {
+          const item = await db.query.inventoryItems.findFirst({
+            where: and(eq(inventoryItems.id, itemId), eq(inventoryItems.companyId, companyId)),
+            columns: { name: true },
+          });
+          if (item) resolvedItemName = item.name;
+        }
+        if (categoryId) {
+          const cat = await db.query.categories.findFirst({
+            where: and(eq(categories.id, categoryId), eq(categories.companyId, companyId)),
+            columns: { name: true },
+          });
+          if (cat) resolvedCategoryName = cat.name;
+        }
+        if (locationId) {
+          const loc = await db.query.storageLocations.findFirst({
+            where: and(eq(storageLocations.id, locationId), eq(storageLocations.companyId, companyId)),
+            columns: { name: true },
+          });
+          if (loc) resolvedLocationName = loc.name;
+        }
+
         // Build a context hint that will be appended to the OpenAI user message
         const contextParts: string[] = [];
-        if (locationId) contextParts.push("Focus specifically on items stored in this location area.");
-        if (categoryId) contextParts.push("Focus on items belonging to the specified ingredient category.");
-        if (itemId)     contextParts.push("You are scanning for a specific inventory item — report its visible quantity as accurately as possible.");
+        if (resolvedLocationName) {
+          contextParts.push(`Focus specifically on items stored in the "${resolvedLocationName}" storage area.`);
+        } else if (locationId) {
+          contextParts.push("Focus specifically on items stored in this location area.");
+        }
+        if (resolvedCategoryName) {
+          contextParts.push(`Focus on items belonging to the "${resolvedCategoryName}" ingredient category.`);
+        } else if (categoryId) {
+          contextParts.push("Focus on items belonging to the specified ingredient category.");
+        }
+        if (resolvedItemName) {
+          contextParts.push(`You are scanning for the inventory item named "${resolvedItemName}" — report its visible quantity as accurately as possible.`);
+        } else if (itemId) {
+          contextParts.push("You are scanning for a specific inventory item — report its visible quantity as accurately as possible.");
+        }
         const contextHint = contextParts.length > 0 ? contextParts.join(" ") : undefined;
 
         function detectMime(buf: Buffer): string | null {
@@ -14661,6 +14700,8 @@ Human Handoff:
     try {
       const companyId = (req as any).companyId;
       if (!companyId) return res.status(403).json({ error: "Company context required" });
+      const userId = (req as any).user?.id;
+      if (!userId) return res.status(401).json({ error: "User not found" });
 
       const result = await getMobileSessionInventory(
         req.params.id, companyId,
@@ -14668,6 +14709,11 @@ Human Handoff:
         req.query.locationId as string | undefined,
       );
       if (!result) return res.status(404).json({ error: "Session not found" });
+
+      // Enforce store-assignment (same guard as /inventory)
+      if (!(await mobileUserCanAccessStore(userId, result.count.storeId))) {
+        return res.status(403).json({ error: "Not assigned to this store" });
+      }
 
       return res.json(result.items);
     } catch (error: any) {
