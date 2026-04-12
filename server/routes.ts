@@ -14807,7 +14807,9 @@ Human Handoff:
         targetLine = located;
       }
 
-      const { qty, caseQty, containerQty, looseUnits } = req.body;
+      // Accept "count" as an alias for "qty" (mobile app field name)
+      const { qty: rawQty, count: rawCount, caseQty, containerQty, looseUnits } = req.body;
+      const qty = rawQty ?? rawCount;
       const updates: any = {};
 
       if (caseQty != null || containerQty != null || looseUnits != null) {
@@ -14837,7 +14839,7 @@ Human Handoff:
         updates.containerQty = null;
         updates.looseUnits = null;
       } else {
-        return res.status(400).json({ error: "Provide qty or at least one of caseQty, containerQty, looseUnits" });
+        return res.status(400).json({ error: "Provide qty (or count) or at least one of caseQty, containerQty, looseUnits" });
       }
 
       const updatedLine = await storage.updateInventoryCountLine(targetLine.id, updates);
@@ -15273,7 +15275,9 @@ Human Handoff:
         return res.status(404).json({ error: "Count line not found" });
       }
 
-      const { qty, caseQty, containerQty, looseUnits } = req.body;
+      // Accept "count" as an alias for "qty" (mobile app field name)
+      const { qty: rawQty, count: rawCount, caseQty, containerQty, looseUnits } = req.body;
+      const qty = rawQty ?? rawCount;
       const updates: any = {};
 
       if (caseQty != null || containerQty != null || looseUnits != null) {
@@ -15303,7 +15307,7 @@ Human Handoff:
         updates.containerQty = null;
         updates.looseUnits = null;
       } else {
-        return res.status(400).json({ error: "Provide qty or at least one of caseQty, containerQty, looseUnits" });
+        return res.status(400).json({ error: "Provide qty (or count) or at least one of caseQty, containerQty, looseUnits" });
       }
 
       const updatedLine = await storage.updateInventoryCountLine(req.params.lineId, updates);
