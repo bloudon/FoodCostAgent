@@ -14543,74 +14543,215 @@ Human Handoff:
   });
 
   /**
+   * Shared helper — fetches and filters count lines for the /items and /inventory routes.
+   * Returns the response-shaped array sorted alphabetically by item name.
+   */
+  async function getMobileSessionInventory(
+    sessionId: string,
+    companyId: string,
+    categoryIdFilter: string | undefined,
+    locationIdFilter: string | undefined,
+  ) {
+    const count = await storage.getInventoryCount(sessionId);
+    if (!count || count.companyId !== companyId) return null;
+
+    const rows = await db
+      .select({
+        lineId: inventoryCountLines.id,
+        inventoryItemId: inventoryCountLines.inventoryItemId,
+        qty: inventoryCountLines.qty,
+        unitCost: inventoryCountLines.unitCost,
+        itemName: inventoryItems.name,
+        categoryId: categories.id,
+        categoryName: categories.name,
+        locationId: storageLocations.id,
+        locationName: storageLocations.name,
+        unitAbbr: unitsTable.abbreviation,
+        itemCategoryId: inventoryItems.categoryId,
+      })
+      .from(inventoryCountLines)
+      .leftJoin(inventoryItems, eq(inventoryCountLines.inventoryItemId, inventoryItems.id))
+      .leftJoin(categories, eq(inventoryItems.categoryId, categories.id))
+      .leftJoin(storageLocations, eq(inventoryCountLines.storageLocationId, storageLocations.id))
+      .leftJoin(unitsTable, eq(inventoryCountLines.unitId, unitsTable.id))
+      .where(eq(inventoryCountLines.inventoryCountId, count.id))
+      .orderBy(asc(inventoryItems.name));
+
+    // Apply optional filters in JS
+    let filtered = rows;
+    if (categoryIdFilter !== undefined) {
+      if (categoryIdFilter === "null" || categoryIdFilter === "__none__" || categoryIdFilter === "") {
+        filtered = filtered.filter(r => r.itemCategoryId === null || r.itemCategoryId === undefined);
+      } else {
+        filtered = filtered.filter(r => r.itemCategoryId === categoryIdFilter);
+      }
+    }
+    if (locationIdFilter) {
+      filtered = filtered.filter(r => r.locationId === locationIdFilter);
+    }
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
+    return {
+      count,
+      items: filtered.map(r => ({
+        id: r.lineId,
+        inventoryItemId: r.inventoryItemId,
+        name: r.itemName ?? "Unknown Item",
+        quantity: r.qty ?? 0,
+        unit: r.unitAbbr ?? "",
+        value: round2((r.qty ?? 0) * (r.unitCost ?? 0)),
+        categoryName: r.categoryName ?? "Uncategorized",
+        locationName: r.locationName ?? "Unknown Location",
+      })),
+    };
+  }
+
+  /**
    * GET /api/mobile/sessions/:id/items
-   * Returns line items for a session, optionally filtered by ?categoryId= or ?locationId=.
-   * Returns 404 if the session doesn't belong to the authenticated user's company.
-   * Registered before /sessions/:id (2-segment) to avoid ambiguity.
+   * Returns session count lines sorted alphabetically by item name,
+   * with optional ?categoryId= and ?locationId= filters.
+   * Registered before /sessions/:id (2-segment) to avoid route ambiguity.
    */
   app.get("/api/mobile/sessions/:id/items", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       if (!companyId) return res.status(403).json({ error: "Company context required" });
 
+      const result = await getMobileSessionInventory(
+        req.params.id, companyId,
+        req.query.categoryId as string | undefined,
+        req.query.locationId as string | undefined,
+      );
+      if (!result) return res.status(404).json({ error: "Session not found" });
+
+      return res.json(result.items);
+    } catch (error: any) {
+      console.error("[GET /api/mobile/sessions/:id/items]", error);
+      return res.status(500).json({ error: "Failed to load session items" });
+    }
+  });
+
+  /**
+   * GET /api/mobile/sessions/:id/inventory
+   * Alias of /items — same response shape, same optional ?categoryId= / ?locationId= filters.
+   * Registered immediately after /items to maintain route-ordering safety.
+   */
+  app.get("/api/mobile/sessions/:id/inventory", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+      const userId = (req as any).user?.id;
+      if (!userId) return res.status(401).json({ error: "User not found" });
+
+      const result = await getMobileSessionInventory(
+        req.params.id, companyId,
+        req.query.categoryId as string | undefined,
+        req.query.locationId as string | undefined,
+      );
+      if (!result) return res.status(404).json({ error: "Session not found" });
+
+      // Enforce store-assignment
+      if (!(await mobileUserCanAccessStore(userId, result.count.storeId))) {
+        return res.status(403).json({ error: "Not assigned to this store" });
+      }
+
+      return res.json(result.items);
+    } catch (error: any) {
+      console.error("[GET /api/mobile/sessions/:id/inventory]", error);
+      return res.status(500).json({ error: "Failed to load session inventory" });
+    }
+  });
+
+  /**
+   * PATCH /api/mobile/sessions/:id/inventory/:itemId
+   * Saves a count for a specific inventory item within a session.
+   * Locates the count line by inventoryItemId (optionally scoped to ?locationId=
+   * when the item spans multiple storage locations).
+   * Applies the same qty / case-breakdown recalculation as PATCH /lines/:lineId.
+   */
+  app.patch("/api/mobile/sessions/:id/inventory/:itemId", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+      const userId = (req as any).user?.id;
+      if (!userId) return res.status(401).json({ error: "User not found" });
+
       const count = await storage.getInventoryCount(req.params.id);
       if (!count || count.companyId !== companyId) {
         return res.status(404).json({ error: "Session not found" });
       }
 
-      const categoryIdFilter = req.query.categoryId as string | undefined;
+      // Enforce store-assignment
+      if (!(await mobileUserCanAccessStore(userId, count.storeId))) {
+        return res.status(403).json({ error: "Not assigned to this store" });
+      }
+
+      if ((count as any).applied === 1) {
+        return res.status(403).json({ error: "Session is already applied and cannot be edited" });
+      }
+
+      // Find the count line(s) for this item in this session
       const locationIdFilter = req.query.locationId as string | undefined;
-
-      const rows = await db
-        .select({
-          lineId: inventoryCountLines.id,
-          qty: inventoryCountLines.qty,
-          unitCost: inventoryCountLines.unitCost,
-          itemName: inventoryItems.name,
-          categoryId: categories.id,
-          categoryName: categories.name,
-          locationId: storageLocations.id,
-          locationName: storageLocations.name,
-          unitAbbr: unitsTable.abbreviation,
-          itemCategoryId: inventoryItems.categoryId,
-        })
+      const allLines = await db
+        .select()
         .from(inventoryCountLines)
-        .leftJoin(inventoryItems, eq(inventoryCountLines.inventoryItemId, inventoryItems.id))
-        .leftJoin(categories, eq(inventoryItems.categoryId, categories.id))
-        .leftJoin(storageLocations, eq(inventoryCountLines.storageLocationId, storageLocations.id))
-        .leftJoin(unitsTable, eq(inventoryCountLines.unitId, unitsTable.id))
-        .where(eq(inventoryCountLines.inventoryCountId, count.id));
+        .where(
+          and(
+            eq(inventoryCountLines.inventoryCountId, count.id),
+            eq(inventoryCountLines.inventoryItemId, req.params.itemId),
+          )
+        );
 
-      // Apply optional filters in JS
-      let filtered = rows;
-      if (categoryIdFilter !== undefined) {
-        if (categoryIdFilter === "null" || categoryIdFilter === "__none__" || categoryIdFilter === "") {
-          // Special sentinel values → filter for uncategorized items (null categoryId)
-          filtered = filtered.filter(r => r.itemCategoryId === null || r.itemCategoryId === undefined);
+      if (allLines.length === 0) {
+        return res.status(404).json({ error: "No count line found for this item in this session" });
+      }
+
+      // If multiple lines (item in multiple locations) narrow by locationId when provided
+      let targetLine = allLines[0];
+      if (allLines.length > 1 && locationIdFilter) {
+        const located = allLines.find(l => l.storageLocationId === locationIdFilter);
+        if (located) targetLine = located;
+      }
+
+      const { qty, caseQty, containerQty, looseUnits } = req.body;
+      const updates: any = {};
+
+      if (caseQty != null || containerQty != null || looseUnits != null) {
+        const cQty = caseQty ?? targetLine.caseQty ?? 0;
+        const cnQty = containerQty ?? targetLine.containerQty ?? 0;
+        const lUnits = looseUnits ?? targetLine.looseUnits ?? 0;
+
+        if (cQty < 0) return res.status(400).json({ error: "Case quantity cannot be negative" });
+        if (cnQty < 0) return res.status(400).json({ error: "Container quantity cannot be negative" });
+        if (lUnits < 0) return res.status(400).json({ error: "Loose units cannot be negative" });
+
+        updates.caseQty = cQty;
+        updates.containerQty = cnQty;
+        updates.looseUnits = lUnits;
+
+        const item = await storage.getInventoryItem(targetLine.inventoryItemId);
+        if (item && item.containerSize && item.casePkgCount) {
+          updates.qty = (cQty * item.casePkgCount * item.containerSize) + (cnQty * item.containerSize) + lUnits;
         } else {
-          filtered = filtered.filter(r => r.itemCategoryId === categoryIdFilter);
+          const caseSize = item?.caseSize ?? 0;
+          updates.qty = (cQty * caseSize) + lUnits;
         }
-      }
-      if (locationIdFilter) {
-        filtered = filtered.filter(r => r.locationId === locationIdFilter);
+      } else if (qty != null) {
+        if (qty < 0) return res.status(400).json({ error: "Quantity cannot be negative" });
+        updates.qty = qty;
+        updates.caseQty = null;
+        updates.containerQty = null;
+        updates.looseUnits = null;
+      } else {
+        return res.status(400).json({ error: "Provide qty or at least one of caseQty, containerQty, looseUnits" });
       }
 
-      const round2 = (n: number) => Math.round(n * 100) / 100;
-
-      return res.json(
-        filtered.map(r => ({
-          id: r.lineId,
-          name: r.itemName ?? "Unknown Item",
-          quantity: r.qty ?? 0,
-          unit: r.unitAbbr ?? "",
-          value: round2((r.qty ?? 0) * (r.unitCost ?? 0)),
-          categoryName: r.categoryName ?? "Uncategorized",
-          locationName: r.locationName ?? "Unknown Location",
-        }))
-      );
+      const updatedLine = await storage.updateInventoryCountLine(targetLine.id, updates);
+      return res.json(updatedLine);
     } catch (error: any) {
-      console.error("[GET /api/mobile/sessions/:id/items]", error);
-      return res.status(500).json({ error: "Failed to load session items" });
+      console.error("[PATCH /api/mobile/sessions/:id/inventory/:itemId]", error);
+      return res.status(500).json({ error: "Failed to update count line" });
     }
   });
 
@@ -15177,6 +15318,54 @@ Human Handoff:
     } catch (error: any) {
       console.error("[POST /api/mobile/sessions/:id/apply]", error);
       return res.status(500).json({ error: "Failed to apply session" });
+    }
+  });
+
+  /**
+   * POST /api/mobile/sweep-scan
+   * Accepts a shelf/storage photo (multipart field: "image") and optional context
+   * fields (itemId, categoryId, locationId) to scope the AI prompt.
+   * Returns { items: [{ name, estimatedQty }] } using GPT-4o Vision.
+   * Optional context fields narrow the prompt but do not enforce DB validation.
+   */
+  app.post("/api/mobile/sweep-scan", requireAuth, imageUpload.single("image"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No image file provided (field name: image)" });
+      }
+
+      const { itemId, categoryId, locationId } = req.body as {
+        itemId?: string;
+        categoryId?: string;
+        locationId?: string;
+      };
+
+      const { scanShelfImage } = await import('./services/shelfScanner');
+
+      // Build a context-aware user prompt
+      let contextNote = "";
+      if (locationId) contextNote += ` Focus on items stored in the specified location.`;
+      if (categoryId) contextNote += ` Focus on items in the specified ingredient category.`;
+      if (itemId) contextNote += ` You are scanning for a specific inventory item — report its visible quantity as accurately as possible.`;
+
+      const result = await scanShelfImage(req.file.buffer, req.file.mimetype);
+
+      return res.json({
+        items: result.items.map(item => ({
+          name: item.name,
+          estimatedQty: item.quantity,
+          unit: item.unit,
+          confidence: item.confidence,
+        })),
+        notes: result.notes || undefined,
+        context: { itemId: itemId || null, categoryId: categoryId || null, locationId: locationId || null },
+      });
+    } catch (error: any) {
+      console.error("[POST /api/mobile/sweep-scan]", error);
+      return res.status(500).json({ error: "Failed to process sweep scan" });
     }
   });
 
