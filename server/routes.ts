@@ -14343,16 +14343,20 @@ Human Handoff:
 
   /**
    * POST /api/mobile/sweep-scan
-   * Accepts 1-5 shelf/storage images as multipart/form-data field "images".
-   * Each image is sent to GPT-4o Vision in parallel; results are merged and
-   * de-duplicated before returning a single unified item list.
+   * Accepts 1-5 shelf/storage images as multipart/form-data.
+   * Supports two field naming conventions:
+   *   images  — array of up to 5 image files (original multi-frame sweep mode)
+   *   image   — single image file (mobile count screen / segment-scan mode)
    *
-   * Auth: supports both session cookie AND Authorization: Bearer <token>
-   * (so native mobile clients can pass the session token in the header).
+   * Optional context fields (segment-scoped scanning):
+   *   itemId      — UUID of the specific inventory item being scanned
+   *   categoryId  — UUID of the category to focus on
+   *   locationId  — UUID of the storage location being scanned
+   *   storeId     — UUID of the store (for audit trail)
+   *   sessionId   — UUID of an open inventory count session to link
    *
-   * Body fields (multipart):
-   *   images   — up to 5 image files (JPG, PNG, WebP)
-   *   storeId  — optional store UUID to associate the scan with
+   * When context fields are provided they are injected into the OpenAI prompt
+   * to scope recognition (e.g. "Focus on items in the Walk-In cooler.").
    *
    * Response:
    *   { items: ShelfItem[], frameCount: number, notes: string[] }
@@ -14372,7 +14376,10 @@ Human Handoff:
   app.post(
     "/api/mobile/sweep-scan",
     requireAuth,
-    sweepUpload.array("images", 5),
+    sweepUpload.fields([
+      { name: "images", maxCount: 5 },
+      { name: "image",  maxCount: 1 },
+    ]),
     async (req, res) => {
       try {
         const companyId = (req as any).companyId;
@@ -14380,10 +14387,27 @@ Human Handoff:
           return res.status(403).json({ error: "Company context required" });
         }
 
-        const files = req.files as Express.Multer.File[];
-        if (!files || files.length === 0) {
-          return res.status(400).json({ error: "At least one image is required. Send files in the 'images' field." });
+        // Normalise: accept both "images" (multi-frame) and "image" (single-frame)
+        const fieldedFiles = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+        const files: Express.Multer.File[] = [
+          ...(fieldedFiles?.["images"] ?? []),
+          ...(fieldedFiles?.["image"]  ?? []),
+        ];
+        if (files.length === 0) {
+          return res.status(400).json({ error: "At least one image is required. Use field name 'image' or 'images'." });
         }
+
+        // Optional context fields for segment-scoped scanning
+        const itemId     = (req.body?.itemId     as string) || null;
+        const categoryId = (req.body?.categoryId as string) || null;
+        const locationId = (req.body?.locationId as string) || null;
+
+        // Build a context hint that will be appended to the OpenAI user message
+        const contextParts: string[] = [];
+        if (locationId) contextParts.push("Focus specifically on items stored in this location area.");
+        if (categoryId) contextParts.push("Focus on items belonging to the specified ingredient category.");
+        if (itemId)     contextParts.push("You are scanning for a specific inventory item — report its visible quantity as accurately as possible.");
+        const contextHint = contextParts.length > 0 ? contextParts.join(" ") : undefined;
 
         function detectMime(buf: Buffer): string | null {
           if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
@@ -14395,14 +14419,14 @@ Human Handoff:
 
         const { scanShelfImage, mergeShelfScanResults } = await import('./services/shelfScanner');
 
-        // Process all frames in parallel
+        // Process all frames in parallel, passing context hint to each
         const scanPromises = files.map(async (file, idx) => {
           const mime = detectMime(file.buffer) || file.mimetype;
           if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) {
             console.warn(`[SweepScan] Frame ${idx + 1} has unsupported mime type ${mime}, skipping`);
             return { items: [], notes: `Frame ${idx + 1} skipped: unsupported image type` };
           }
-          return scanShelfImage(file.buffer, mime);
+          return scanShelfImage(file.buffer, mime, contextHint);
         });
 
         const frameResults = await Promise.all(scanPromises);
@@ -14439,6 +14463,7 @@ Human Handoff:
           items: merged.items,
           frameCount: merged.frameCount,
           notes: merged.notes,
+          context: { itemId, categoryId, locationId },
         });
       } catch (error: any) {
         console.error("[POST /api/mobile/sweep-scan]", error);
@@ -15318,54 +15343,6 @@ Human Handoff:
     } catch (error: any) {
       console.error("[POST /api/mobile/sessions/:id/apply]", error);
       return res.status(500).json({ error: "Failed to apply session" });
-    }
-  });
-
-  /**
-   * POST /api/mobile/sweep-scan
-   * Accepts a shelf/storage photo (multipart field: "image") and optional context
-   * fields (itemId, categoryId, locationId) to scope the AI prompt.
-   * Returns { items: [{ name, estimatedQty }] } using GPT-4o Vision.
-   * Optional context fields narrow the prompt but do not enforce DB validation.
-   */
-  app.post("/api/mobile/sweep-scan", requireAuth, imageUpload.single("image"), async (req, res) => {
-    try {
-      const companyId = (req as any).companyId;
-      if (!companyId) return res.status(403).json({ error: "Company context required" });
-
-      if (!req.file) {
-        return res.status(400).json({ error: "No image file provided (field name: image)" });
-      }
-
-      const { itemId, categoryId, locationId } = req.body as {
-        itemId?: string;
-        categoryId?: string;
-        locationId?: string;
-      };
-
-      const { scanShelfImage } = await import('./services/shelfScanner');
-
-      // Build a context-aware user prompt
-      let contextNote = "";
-      if (locationId) contextNote += ` Focus on items stored in the specified location.`;
-      if (categoryId) contextNote += ` Focus on items in the specified ingredient category.`;
-      if (itemId) contextNote += ` You are scanning for a specific inventory item — report its visible quantity as accurately as possible.`;
-
-      const result = await scanShelfImage(req.file.buffer, req.file.mimetype);
-
-      return res.json({
-        items: result.items.map(item => ({
-          name: item.name,
-          estimatedQty: item.quantity,
-          unit: item.unit,
-          confidence: item.confidence,
-        })),
-        notes: result.notes || undefined,
-        context: { itemId: itemId || null, categoryId: categoryId || null, locationId: locationId || null },
-      });
-    } catch (error: any) {
-      console.error("[POST /api/mobile/sweep-scan]", error);
-      return res.status(500).json({ error: "Failed to process sweep scan" });
     }
   });
 

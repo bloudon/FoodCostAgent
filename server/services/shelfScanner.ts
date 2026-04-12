@@ -17,13 +17,26 @@ export interface ShelfScanResult {
 /**
  * Sends a single shelf/storage image to GPT-4o Vision and extracts visible inventory items.
  * Designed to be called in parallel for multi-frame sweep mode.
+ *
+ * @param imageBuffer  Raw image bytes
+ * @param mimeType     MIME type (image/jpeg, image/png, image/webp)
+ * @param contextHint  Optional free-text hint injected into the user message to scope recognition
+ *                     (e.g. "Focus on items in the Dry Storage location." or "You are counting
+ *                     Olive Oil — report its quantity as accurately as possible.")
  */
-export async function scanShelfImage(imageBuffer: Buffer, mimeType: string): Promise<ShelfScanResult> {
+export async function scanShelfImage(
+  imageBuffer: Buffer,
+  mimeType: string,
+  contextHint?: string,
+): Promise<ShelfScanResult> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not configured.');
   }
 
   const base64 = imageBuffer.toString('base64');
+  const userText = contextHint
+    ? `Please identify all inventory items visible on this shelf. ${contextHint}`
+    : 'Please identify all inventory items visible on this shelf.';
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
@@ -67,7 +80,7 @@ Rules:
           },
           {
             type: 'text',
-            text: 'Please identify all inventory items visible on this shelf.',
+            text: userText,
           },
         ],
       },
