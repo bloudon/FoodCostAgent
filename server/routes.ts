@@ -14829,9 +14829,19 @@ Human Handoff:
             )
             .limit(1);
           if (!firstLoc) {
-            return res.status(400).json({ error: "Item has no storage location assigned — cannot create count line" });
+            // Item has no location assignment — fall back to any location in the company
+            const [anyLoc] = await db
+              .select({ id: storageLocations.id })
+              .from(storageLocations)
+              .where(eq(storageLocations.companyId, companyId))
+              .limit(1);
+            if (!anyLoc) {
+              return res.status(400).json({ error: "No storage locations exist for this company" });
+            }
+            resolvedLocationId = anyLoc.id;
+          } else {
+            resolvedLocationId = firstLoc.storageLocationId;
           }
-          resolvedLocationId = firstLoc.storageLocationId;
         }
         const newLine = await createMissingLine(resolvedLocationId);
         if (!newLine) {
