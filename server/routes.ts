@@ -14938,6 +14938,7 @@ Human Handoff:
       const companyId = (req as any).companyId;
       if (!companyId) return res.status(403).json({ error: "Company context required" });
       const userId = (req as any).user?.id;
+      if (!userId) return res.status(401).json({ error: "User not found" });
 
       const count = await storage.getInventoryCount(req.params.id);
       if (!count || count.companyId !== companyId) {
@@ -14945,7 +14946,7 @@ Human Handoff:
       }
 
       // Enforce store-assignment: user must be assigned to the session's store
-      if (userId && !(await mobileUserCanAccessStore(userId, count.storeId))) {
+      if (!(await mobileUserCanAccessStore(userId, count.storeId))) {
         return res.status(403).json({ error: "Not assigned to this store" });
       }
 
@@ -15016,6 +15017,7 @@ Human Handoff:
       const companyId = (req as any).companyId;
       if (!companyId) return res.status(403).json({ error: "Company context required" });
       const userId = (req as any).user?.id;
+      if (!userId) return res.status(401).json({ error: "User not found" });
 
       // Validate session ownership
       const count = await storage.getInventoryCount(req.params.id);
@@ -15024,7 +15026,7 @@ Human Handoff:
       }
 
       // Enforce store-assignment: user must be assigned to the session's store
-      if (userId && !(await mobileUserCanAccessStore(userId, count.storeId))) {
+      if (!(await mobileUserCanAccessStore(userId, count.storeId))) {
         return res.status(403).json({ error: "Not assigned to this store" });
       }
 
@@ -15091,6 +15093,7 @@ Human Handoff:
       const companyId = (req as any).companyId;
       if (!companyId) return res.status(403).json({ error: "Company context required" });
       const userId = (req as any).user?.id;
+      if (!userId) return res.status(401).json({ error: "User not found" });
 
       const count = await storage.getInventoryCount(req.params.id);
       if (!count || count.companyId !== companyId) {
@@ -15098,7 +15101,7 @@ Human Handoff:
       }
 
       // Enforce store-assignment: user must be assigned to the session's store
-      if (userId && !(await mobileUserCanAccessStore(userId, count.storeId))) {
+      if (!(await mobileUserCanAccessStore(userId, count.storeId))) {
         return res.status(403).json({ error: "Not assigned to this store" });
       }
 
@@ -15156,7 +15159,7 @@ Human Handoff:
         const appliedAt = new Date();
         await tx
           .update(inventoryCounts)
-          .set({ applied: 1, appliedAt, appliedBy: userId ?? null })
+          .set({ applied: 1, appliedAt, appliedBy: userId ?? null, canEdit: 0 })
           .where(
             and(
               eq(inventoryCounts.id, count.id),
