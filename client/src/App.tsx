@@ -11,6 +11,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from "@/com
 import pkgJson from "../../package.json";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { StoreProvider } from "@/hooks/use-store-context";
+import { useEmbedded } from "@/hooks/use-embedded";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import InventorySessions from "@/pages/inventory-sessions";
@@ -197,6 +198,7 @@ function AppTopBar() {
 function ProtectedLayoutContent() {
   const { user } = useAuth();
   const [location] = useLocation();
+  const isEmbedded = useEmbedded();
 
   const isGlobalAdmin = user?.role === "global_admin";
 
@@ -242,6 +244,21 @@ function ProtectedLayoutContent() {
         <Route path="/reset-password" component={ResetPassword} />
         <Route path="/accept-invitation/:token" component={AcceptInvitation} />
       </Switch>
+    );
+  }
+
+  if (isEmbedded) {
+    return (
+      <main className="h-screen overflow-auto">
+        <Switch>
+          <Route path="/" component={Dashboard} />
+          <Route path="/inventory-sessions" component={InventorySessions} />
+          <Route path="/inventory-count" component={InventoryCount} />
+          <Route path="/count/:id" component={CountSession} />
+          <Route path="/item-count/:id" component={ItemCount} />
+          <Route component={NotFound} />
+        </Switch>
+      </main>
     );
   }
 

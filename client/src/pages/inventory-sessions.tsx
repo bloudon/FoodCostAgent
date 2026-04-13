@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Calendar as CalendarIcon, Trash2, Star, RotateCcw } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Trash2, Star, RotateCcw, ChevronRight } from "lucide-react";
+import { useEmbedded } from "@/hooks/use-embedded";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
   Table,
@@ -52,6 +53,66 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { useState } from "react";
 import type { Company, CompanyStore } from "@shared/schema";
+
+function SessionCard({ count }: any) {
+  const { toast } = useToast();
+  const { data: countLines } = useQuery<any[]>({
+    queryKey: ["/api/inventory-count-lines", count.id],
+  });
+  const storeName = count.storeName || 'Unknown Store';
+  const countDate = new Date(count.countDate || count.countedAt);
+  const totalValue = countLines?.reduce((sum: number, line: any) => sum + (line.qty * (line.unitCost || 0)), 0) || 0;
+  const [, setLocation] = useLocation();
+
+  const deleteSessionMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/inventory-counts/${count.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      toast({ title: "Session deleted" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete session", variant: "destructive" });
+    },
+  });
+
+  return (
+    <div
+      className="flex items-center gap-3 px-4 py-3 border-b last:border-b-0 hover-elevate cursor-pointer active:bg-muted/30"
+      data-testid={`card-session-${count.id}`}
+      onClick={() => setLocation(`/count/${count.id}`)}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          {count.isPowerSession === 1 && (
+            <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500 shrink-0" />
+          )}
+          <span className="font-semibold text-sm">{format(countDate, "PPP")}</span>
+        </div>
+        <div className="text-xs text-muted-foreground truncate">{storeName}</div>
+        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+          <span>{countLines?.length ?? 0} items</span>
+          <span>·</span>
+          <span className="font-mono font-medium text-foreground">${totalValue.toFixed(2)}</span>
+          {count.note && <><span>·</span><span className="truncate max-w-[120px] inline-block">{count.note}</span></>}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={(e) => { e.stopPropagation(); deleteSessionMutation.mutate(); }}
+          disabled={deleteSessionMutation.isPending}
+          data-testid={`button-delete-session-mobile-${count.id}`}
+        >
+          <Trash2 className="h-4 w-4 text-destructive" />
+        </Button>
+        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+      </div>
+    </div>
+  );
+}
 
 function SessionRow({ count, inventoryItems, stores, index }: any) {
   const { toast } = useToast();
@@ -153,6 +214,7 @@ export default function InventorySessions() {
   const [, setLocation] = useLocation();
   const { hasFeature } = useTier();
   const canUsePowerInventory = hasFeature("power_inventory");
+  const isEmbedded = useEmbedded();
   // Pre-select store from URL ?store= param (set when navigating back from a count session)
   const initialStoreId = new URLSearchParams(window.location.search).get("store") || "all";
   const [selectedStoreId, setSelectedStoreId] = useState<string>(initialStoreId);
@@ -328,25 +390,26 @@ export default function InventorySessions() {
 
   return (
     <TierGate feature="power_inventory">
-    <div className="p-8">
-      <div className="mb-8">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex-1">
-            <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-sessions-title">
-              Inventory Sessions {company && `(${company.name})`}
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              View all inventory count sessions or start a new count
-            </p>
+    <div className={isEmbedded ? "p-4" : "p-4 sm:p-8"}>
+      <div className="mb-4 sm:mb-8">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex-1 min-w-0">
+            {!isEmbedded && (
+              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight truncate" data-testid="text-sessions-title">
+                Inventory Sessions
+              </h1>
+            )}
+            {isEmbedded && (
+              <h1 className="text-xl font-semibold tracking-tight" data-testid="text-sessions-title">
+                Count Sessions
+              </h1>
+            )}
           </div>
-          <div className="flex items-center gap-4">
-            {stores.length === 1 ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-md border bg-muted/50" data-testid="text-single-store">
-                <span className="text-sm font-medium">{stores[0].name}</span>
-              </div>
-            ) : (
+          <div className="flex items-center gap-2 sm:gap-4">
+            {stores.length > 1 && (
               <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-                <SelectTrigger className="w-[200px]" data-testid="select-store-filter">
+                <SelectTrigger className="w-[140px] sm:w-[200px]" data-testid="select-store-filter">
                   <SelectValue placeholder="All Stores" />
                 </SelectTrigger>
                 <SelectContent>
@@ -367,12 +430,17 @@ export default function InventorySessions() {
               onClick={handleStartNewCount}
               disabled={createSessionMutation.isPending}
               data-testid="button-start-new-session"
+              size={isEmbedded ? "sm" : "default"}
             >
-              <Plus className="h-4 w-4 mr-2" />
-              Start New Count
+              <Plus className="h-4 w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Start New Count</span>
+              <span className="sm:hidden">New Count</span>
             </Button>
           </div>
         </div>
+        {!isEmbedded && stores.length === 1 && (
+          <div className="mt-2 text-sm text-muted-foreground">{stores[0].name}</div>
+        )}
       </div>
 
       {/* Zero Baseline Initialization Card - shows for stores without any completed counts */}
@@ -521,44 +589,57 @@ export default function InventorySessions() {
       </Dialog>
 
       <Card>
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <CalendarIcon className="h-5 w-5 text-muted-foreground" />
-            <CardTitle>All Count Sessions</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
+        {!isEmbedded && (
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <CalendarIcon className="h-5 w-5 text-muted-foreground" />
+              <CardTitle>All Count Sessions</CardTitle>
+            </div>
+          </CardHeader>
+        )}
+        <CardContent className={isEmbedded ? "p-0" : undefined}>
           {countsLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
+            <div className="space-y-2 p-4">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
             </div>
           ) : sortedCounts && sortedCounts.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead>Inventory Date</TableHead>
-                  <TableHead>Store</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead className="text-right">Items</TableHead>
-                  <TableHead className="text-right">Total Value</TableHead>
-                  <TableHead>Note</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedCounts.map((count, index) => (
-                  <SessionRow 
-                    key={count.id} 
-                    count={count}
-                    inventoryItems={inventoryItems}
-                    stores={stores}
-                    index={index}
-                  />
+            <>
+              {/* Mobile card list — visible on small screens */}
+              <div className="sm:hidden" data-testid="sessions-card-list">
+                {sortedCounts.map((count: any) => (
+                  <SessionCard key={count.id} count={count} />
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+              {/* Desktop table — hidden on small screens */}
+              <div className="hidden sm:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead>Inventory Date</TableHead>
+                      <TableHead>Store</TableHead>
+                      <TableHead>User</TableHead>
+                      <TableHead className="text-right">Items</TableHead>
+                      <TableHead className="text-right">Total Value</TableHead>
+                      <TableHead>Note</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedCounts.map((count: any, index: number) => (
+                      <SessionRow 
+                        key={count.id} 
+                        count={count}
+                        inventoryItems={inventoryItems}
+                        stores={stores}
+                        index={index}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               <p className="mb-4">No inventory count sessions found</p>
