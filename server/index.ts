@@ -117,6 +117,24 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS source varchar DEFAULT 'web'`);
     // Task #70: name on inventory_counts + inventory_count_id on shelf_scan_sessions
     await db.execute(sql`ALTER TABLE inventory_counts ADD COLUMN IF NOT EXISTS name text`);
+    // Ensure shelf_scan_sessions exists before altering it (VPS may be missing this table)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS shelf_scan_sessions (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id varchar NOT NULL,
+        store_id varchar,
+        user_id varchar,
+        inventory_count_id varchar,
+        created_at timestamp NOT NULL DEFAULT now(),
+        frame_count integer NOT NULL DEFAULT 0,
+        item_count integer NOT NULL DEFAULT 0,
+        items jsonb NOT NULL DEFAULT '[]',
+        notes jsonb NOT NULL DEFAULT '[]',
+        status varchar NOT NULL DEFAULT 'completed'
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS shelf_scan_sessions_company_idx ON shelf_scan_sessions (company_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS shelf_scan_sessions_created_at_idx ON shelf_scan_sessions (created_at)`);
     await db.execute(sql`ALTER TABLE shelf_scan_sessions ADD COLUMN IF NOT EXISTS inventory_count_id varchar`);
     console.log('✅ Startup migrations applied');
   } catch (err) {

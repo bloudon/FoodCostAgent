@@ -14376,10 +14376,7 @@ Human Handoff:
   app.post(
     "/api/mobile/sweep-scan",
     requireAuth,
-    sweepUpload.fields([
-      { name: "images", maxCount: 5 },
-      { name: "image",  maxCount: 1 },
-    ]),
+    sweepUpload.any(),
     async (req, res) => {
       try {
         const companyId = (req as any).companyId;
@@ -14387,12 +14384,8 @@ Human Handoff:
           return res.status(403).json({ error: "Company context required" });
         }
 
-        // Normalise: accept both "images" (multi-frame) and "image" (single-frame)
-        const fieldedFiles = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
-        const files: Express.Multer.File[] = [
-          ...(fieldedFiles?.["images"] ?? []),
-          ...(fieldedFiles?.["image"]  ?? []),
-        ];
+        // Accept any field name — Expo RN sends files under whatever name the app uses
+        const files: Express.Multer.File[] = (req.files as Express.Multer.File[]) ?? [];
         if (files.length === 0) {
           return res.status(400).json({ error: "At least one image is required. Use field name 'image' or 'images'." });
         }
