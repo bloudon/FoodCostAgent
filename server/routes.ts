@@ -14671,13 +14671,14 @@ Human Handoff:
     return {
       count,
       items: filtered.map(r => ({
-        id: r.lineId,
+        id: r.lineId,               // count line ID — use this for PATCH /lines/:lineId
         inventoryItemId: r.inventoryItemId,
         name: r.itemName ?? "Unknown Item",
         quantity: r.qty ?? 0,
         unit: r.unitAbbr ?? "",
         value: round2((r.qty ?? 0) * (r.unitCost ?? 0)),
         categoryName: r.categoryName ?? "Uncategorized",
+        locationId: r.locationId ?? null,
         locationName: r.locationName ?? "Unknown Location",
       })),
     };
