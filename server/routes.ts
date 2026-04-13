@@ -14924,6 +14924,14 @@ Human Handoff:
         return res.status(404).json({ error: "Session not found" });
       }
 
+      // Resolve store name for the header subtitle
+      const store = count.storeId
+        ? await db.query.companyStores.findFirst({
+            where: eq(companyStores.id, count.storeId),
+            columns: { name: true },
+          })
+        : null;
+
       // Single join query — all the data we need in one round-trip
       const rows = await db
         .select({
@@ -14993,6 +15001,9 @@ Human Handoff:
         id: count.id,
         name: count.name ?? count.countDate.toISOString().slice(0, 10),
         startedAt: count.countedAt,
+        storeId: count.storeId ?? null,
+        storeName: store?.name ?? null,
+        applied: (count as any).applied === 1 || (count as any).applied === true,
         totalItems: rows.length,
         totalValue: round2(totalValue),
         categories: categories_,
