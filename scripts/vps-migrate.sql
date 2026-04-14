@@ -757,3 +757,15 @@ BEGIN
       VALUES ('v028', 'Ensure shelf_scan_sessions table + inventory_count_id column exist');
   END IF;
 END $$;
+
+-- v029 — Add is_tare_weight_category column to categories table
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v029') THEN
+    ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_tare_weight_category integer NOT NULL DEFAULT 0;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v029', 'Add is_tare_weight_category column to categories for tare weight counting mode');
+  END IF;
+END $$;
