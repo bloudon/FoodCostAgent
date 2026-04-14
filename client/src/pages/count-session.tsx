@@ -797,7 +797,7 @@ export default function CountSession() {
   const isReadOnly = count && (count.canEdit === false || count.applied === 1);
   
   return (
-    <div className="p-4 sm:p-8">
+    <div className="p-4 sm:p-8 overflow-x-hidden">
       <div className="mb-4 sm:mb-8">
         <Link href={sourceCountId ? `/count/${sourceCountId}` : "/inventory-sessions"}>
           <Button variant="ghost" className="mb-4" data-testid="button-back">
@@ -1024,20 +1024,11 @@ export default function CountSession() {
 
       {/* Count Lines Table */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between gap-4 flex-wrap">
+        <CardHeader className="gap-3">
+          {/* Row 1: Title + optional status */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle>Items</CardTitle>
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search items..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9 w-[200px]"
-                  data-testid="input-search-count-lines"
-                />
-              </div>
+            <div className="flex items-center gap-2 flex-wrap">
               {(selectedCategory !== "all" || selectedLocation !== "all" || selectedItemId !== "all" || search) && (
                 <Button
                   variant="outline"
@@ -1051,46 +1042,56 @@ export default function CountSession() {
                   data-testid="button-clear-filters"
                 >
                   <X className="h-4 w-4 mr-1" />
-                  Clear Filters
+                  Clear
                 </Button>
               )}
               {selectedItemId !== "all" && (
-                <div className="text-sm text-muted-foreground">
-                  Showing: <span className="font-medium">{filteredLines[0]?.inventoryItem?.name || 'Unknown Item'}</span>
+                <div className="text-sm text-muted-foreground truncate max-w-[160px]">
+                  <span className="font-medium">{filteredLines[0]?.inventoryItem?.name || 'Unknown Item'}</span>
                 </div>
               )}
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Label className="text-sm text-muted-foreground">View:</Label>
-                  <Button
-                    variant={groupBy === "location" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setGroupBy("location")}
-                    data-testid="button-group-location"
-                  >
-                    <Layers className="h-4 w-4 mr-1" />
-                    Location
-                  </Button>
-                  <Button
-                    variant={groupBy === "category" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setGroupBy("category")}
-                    data-testid="button-group-category"
-                  >
-                    <Package className="h-4 w-4 mr-1" />
-                    Category
-                  </Button>
-                  <Button
-                    variant={groupBy === "all-entries" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setGroupBy("all-entries")}
-                    data-testid="button-group-all-entries"
-                  >
-                    <ArrowUpDown className="h-4 w-4 mr-1" />
-                    All Entries
-                  </Button>
-                </div>
-              </div>
+            </div>
+          </div>
+          {/* Row 2: Search + View toggle */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search items..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 w-full"
+                data-testid="input-search-count-lines"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                variant={groupBy === "location" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setGroupBy("location")}
+                data-testid="button-group-location"
+              >
+                <Layers className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">Location</span>
+              </Button>
+              <Button
+                variant={groupBy === "category" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setGroupBy("category")}
+                data-testid="button-group-category"
+              >
+                <Package className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">Category</span>
+              </Button>
+              <Button
+                variant={groupBy === "all-entries" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setGroupBy("all-entries")}
+                data-testid="button-group-all-entries"
+              >
+                <ArrowUpDown className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">All Entries</span>
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -1154,10 +1155,10 @@ export default function CountSession() {
                                 <SortIcon col="location" />
                               </button>
                             </TableHead>
-                            <TableHead className="text-right">Cases</TableHead>
-                            <TableHead className="text-right">Containers</TableHead>
-                            <TableHead className="text-right">Loose Units</TableHead>
-                            <TableHead className="text-right">Total Qty</TableHead>
+                            <TableHead className="hidden sm:table-cell text-right">Cases</TableHead>
+                            <TableHead className="hidden sm:table-cell text-right">Containers</TableHead>
+                            <TableHead className="hidden sm:table-cell text-right">Loose Units</TableHead>
+                            <TableHead className="text-right">Qty</TableHead>
                             <TableHead className="text-right">Value</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -1175,13 +1176,13 @@ export default function CountSession() {
                                 <TableCell className="text-muted-foreground" data-testid={`text-entry-location-${line.id}`}>
                                   {locationName}
                                 </TableCell>
-                                <TableCell className="text-right font-mono" data-testid={`text-entry-cases-${line.id}`}>
+                                <TableCell className="hidden sm:table-cell text-right font-mono" data-testid={`text-entry-cases-${line.id}`}>
                                   {line.caseQty != null ? line.caseQty : <span className="text-muted-foreground">—</span>}
                                 </TableCell>
-                                <TableCell className="text-right font-mono" data-testid={`text-entry-containers-${line.id}`}>
+                                <TableCell className="hidden sm:table-cell text-right font-mono" data-testid={`text-entry-containers-${line.id}`}>
                                   {line.containerQty != null ? line.containerQty : <span className="text-muted-foreground">—</span>}
                                 </TableCell>
-                                <TableCell className="text-right font-mono" data-testid={`text-entry-loose-${line.id}`}>
+                                <TableCell className="hidden sm:table-cell text-right font-mono" data-testid={`text-entry-loose-${line.id}`}>
                                   {line.looseUnits != null ? line.looseUnits : <span className="text-muted-foreground">—</span>}
                                 </TableCell>
                                 <TableCell className="text-right font-mono font-semibold" data-testid={`text-entry-qty-${line.id}`}>
