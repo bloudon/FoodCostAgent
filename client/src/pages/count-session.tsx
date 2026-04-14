@@ -357,12 +357,13 @@ export default function CountSession() {
   }, []);
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; qty: number; caseQty?: number | null; containerQty?: number | null; looseUnits?: number | null }) => {
+    mutationFn: async (data: { id: string; qty: number; caseQty?: number | null; containerQty?: number | null; looseUnits?: number | null; accumulate?: boolean }) => {
       return apiRequest("PATCH", `/api/inventory-count-lines/${data.id}`, { 
         qty: data.qty,
         caseQty: data.caseQty,
         containerQty: data.containerQty,
-        looseUnits: data.looseUnits
+        looseUnits: data.looseUnits,
+        accumulate: data.accumulate ?? false,
       });
     },
     onSuccess: () => {
@@ -1511,7 +1512,7 @@ export default function CountSession() {
                                                     onKeyDown={e => {
                                                       if (e.key === 'Enter') {
                                                         const addAmt = parseFloat(addMoreQty) || 0;
-                                                        updateMutation.mutate({ id: line.id, qty: line.qty + addAmt });
+                                                        updateMutation.mutate({ id: line.id, qty: line.qty + addAmt, accumulate: true });
                                                         setAddingToLineId(null);
                                                         setAddMoreQty("");
                                                       } else if (e.key === 'Escape') {
@@ -1527,7 +1528,7 @@ export default function CountSession() {
                                                     className="h-9 w-9 shrink-0"
                                                     onClick={() => {
                                                       const addAmt = parseFloat(addMoreQty) || 0;
-                                                      updateMutation.mutate({ id: line.id, qty: line.qty + addAmt });
+                                                      updateMutation.mutate({ id: line.id, qty: line.qty + addAmt, accumulate: true });
                                                       setAddingToLineId(null);
                                                       setAddMoreQty("");
                                                     }}
@@ -1610,6 +1611,22 @@ export default function CountSession() {
                                             Prev: <span className="font-mono">{previousQty.toFixed(2)}</span> {formatUnitName(unitName)}
                                           </div>
                                         </Link>
+                                      )}
+                                      {line.entries && line.entries.length > 1 && (
+                                        <div className="mt-1.5 border-t pt-1.5" data-testid={`entry-history-${line.id}`}>
+                                          <div className="text-xs text-muted-foreground mb-0.5 font-medium">Count history</div>
+                                          <div className="flex flex-col gap-0.5">
+                                            {line.entries.map((entry: any) => (
+                                              <div key={entry.id} className="flex items-center gap-2 text-xs text-muted-foreground" data-testid={`entry-row-${entry.id}`}>
+                                                <span className="font-mono font-semibold text-foreground">{entry.qty > 0 ? `+${entry.qty}` : entry.qty}</span>
+                                                {entry.userName && <span className="text-muted-foreground">by {entry.userName}</span>}
+                                                <span className="ml-auto text-muted-foreground/60">
+                                                  {new Date(entry.enteredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
                                       )}
                                     </div>
                                   );

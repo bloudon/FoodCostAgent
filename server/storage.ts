@@ -23,6 +23,7 @@ import {
   recipeComponents, type RecipeComponent, type InsertRecipeComponent,
   inventoryCounts, type InventoryCount, type InsertInventoryCount,
   inventoryCountLines, type InventoryCountLine, type InsertInventoryCountLine,
+  inventoryCountEntries, type InventoryCountEntry, type InsertInventoryCountEntry,
   purchaseOrders, type PurchaseOrder, type InsertPurchaseOrder,
   poLines, type POLine, type InsertPOLine,
   receipts, type Receipt, type InsertReceipt,
@@ -237,6 +238,11 @@ export interface IStorage {
   createInventoryCountLine(line: InsertInventoryCountLine): Promise<InventoryCountLine>;
   updateInventoryCountLine(id: string, line: Partial<InventoryCountLine>): Promise<InventoryCountLine | undefined>;
   deleteInventoryCountLine(id: string): Promise<void>;
+
+  // Inventory Count Entries
+  createInventoryCountEntry(entry: InsertInventoryCountEntry): Promise<InventoryCountEntry>;
+  getEntriesForLines(lineIds: string[]): Promise<InventoryCountEntry[]>;
+  deleteEntriesForLine(lineId: string): Promise<void>;
 
   // Item Usage Calculation
   getItemUsageBetweenCounts(storeId: string, previousCountId: string, currentCountId: string): Promise<Array<{
@@ -1908,6 +1914,23 @@ export class DatabaseStorage implements IStorage {
 
   async deleteInventoryCountLine(id: string): Promise<void> {
     await db.delete(inventoryCountLines).where(eq(inventoryCountLines.id, id));
+  }
+
+  // Inventory Count Entries
+  async createInventoryCountEntry(entry: InsertInventoryCountEntry): Promise<InventoryCountEntry> {
+    const [created] = await db.insert(inventoryCountEntries).values(entry).returning();
+    return created;
+  }
+
+  async getEntriesForLines(lineIds: string[]): Promise<InventoryCountEntry[]> {
+    if (lineIds.length === 0) return [];
+    return db.select().from(inventoryCountEntries)
+      .where(inArray(inventoryCountEntries.inventoryCountLineId, lineIds))
+      .orderBy(asc(inventoryCountEntries.enteredAt));
+  }
+
+  async deleteEntriesForLine(lineId: string): Promise<void> {
+    await db.delete(inventoryCountEntries).where(eq(inventoryCountEntries.inventoryCountLineId, lineId));
   }
 
   // Item Usage Calculation

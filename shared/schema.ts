@@ -580,6 +580,24 @@ export const insertInventoryCountLineSchema = createInsertSchema(inventoryCountL
 export type InsertInventoryCountLine = z.infer<typeof insertInventoryCountLineSchema>;
 export type InventoryCountLine = typeof inventoryCountLines.$inferSelect;
 
+// Inventory Count Entries — individual count additions within a single line
+export const inventoryCountEntries = pgTable("inventory_count_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  inventoryCountLineId: varchar("inventory_count_line_id").notNull(),
+  qty: real("qty").notNull(),
+  userId: varchar("user_id"),
+  enteredAt: timestamp("entered_at").defaultNow(),
+}, (table) => ({
+  lineIdIdx: index("inventory_count_entries_line_id_idx").on(table.inventoryCountLineId),
+}));
+
+export const insertInventoryCountEntrySchema = createInsertSchema(inventoryCountEntries).omit({
+  id: true,
+  enteredAt: true,
+});
+export type InsertInventoryCountEntry = z.infer<typeof insertInventoryCountEntrySchema>;
+export type InventoryCountEntry = typeof inventoryCountEntries.$inferSelect;
+
 // Purchase Orders
 export const purchaseOrders = pgTable("purchase_orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -148,6 +148,20 @@ async function runStartupMigrations() {
         END IF;
       END $$
     `);
+    // Task #78: inventory_count_entries — sub-entry history per count line
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS inventory_count_entries (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        inventory_count_line_id varchar NOT NULL,
+        qty real NOT NULL,
+        user_id varchar,
+        entered_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS inventory_count_entries_line_id_idx
+      ON inventory_count_entries (inventory_count_line_id)
+    `);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

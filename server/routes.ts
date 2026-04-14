@@ -20,7 +20,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -7593,7 +7593,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
     const categories = await storage.getCategories(companyId);
     const storageLocations = await storage.getStorageLocations(companyId);
-    
+
+    // Task #78: fetch all entries for all lines in one query, then join with users for names
+    const lineIds = lines.map(l => l.id);
+    const allEntries = await storage.getEntriesForLines(lineIds);
+    // Fetch user names for entries that have a userId
+    const entryUserIds = [...new Set(allEntries.map(e => e.userId).filter(Boolean))] as string[];
+    let entryUsers: { id: string; firstName: string | null; lastName: string | null }[] = [];
+    if (entryUserIds.length > 0) {
+      entryUsers = await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName })
+        .from(users)
+        .where(inArray(users.id, entryUserIds));
+    }
+    const entryUserMap = new Map(entryUsers.map(u => [u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Unknown']));
+
     const enriched = lines.map(line => {
       const unit = units.find(u => u.id === line.unitId);
       const item = inventoryItems.find(i => i.id === line.inventoryItemId);
@@ -7607,13 +7620,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storageLocationId: line.storageLocationId, // Use the location from the count line
         storageLocationName: storageLocation?.name || null
       } : null;
+
+      const entries = allEntries
+        .filter(e => e.inventoryCountLineId === line.id)
+        .map(e => ({
+          id: e.id,
+          qty: e.qty,
+          enteredAt: e.enteredAt,
+          userName: e.userId ? (entryUserMap.get(e.userId) || 'Unknown') : null,
+        }));
       
       return {
         ...line,
         unitName: unit?.name || "unit",
         unitAbbreviation: unit?.abbreviation || "unit",
         inventoryItem: enrichedItem,
-        storageLocationName: storageLocation?.name || null
+        storageLocationName: storageLocation?.name || null,
+        entries,
       };
     });
     
@@ -7668,8 +7691,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const line = await storage.createInventoryCountLine(lineData);
 
-      // Note: Inventory counts record what was counted, they don't update inventory levels
-      // Inventory adjustments should be done separately if needed
+      // Task #78: write the first entry record for this line
+      await storage.createInventoryCountEntry({
+        inventoryCountLineId: line.id,
+        qty: line.qty,
+        userId: user?.id ?? null,
+      });
 
       res.status(201).json(line);
     } catch (error: any) {
@@ -7679,7 +7706,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/inventory-count-lines/:id", requireAuth, async (req, res) => {
     try {
-      const lineData = insertInventoryCountLineSchema.partial().parse(req.body);
+      const accumulate = req.body.accumulate === true;
+      const { accumulate: _drop, ...bodyWithoutAccumulate } = req.body;
+      const lineData = insertInventoryCountLineSchema.partial().parse(bodyWithoutAccumulate);
       const existingLine = await storage.getInventoryCountLine(req.params.id);
       
       if (!existingLine) {
@@ -7757,8 +7786,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const updatedLine = await storage.updateInventoryCountLine(req.params.id, updates);
 
-      // Note: Inventory counts record what was counted, they don't update inventory levels
-      // Inventory adjustments should be done separately if needed
+      // Task #78: write entry record(s) for audit trail
+      if (updatedLine) {
+        const patchUser = (req as any).user;
+        if (accumulate) {
+          // "+" accumulate: append a new entry for only the added qty
+          const addedQty = updatedLine.qty - (existingLine.qty ?? 0);
+          if (addedQty !== 0) {
+            await storage.createInventoryCountEntry({
+              inventoryCountLineId: updatedLine.id,
+              qty: addedQty,
+              userId: patchUser?.id ?? null,
+            });
+          }
+        } else {
+          // Direct edit: replace all entries with a single replacement entry
+          await storage.deleteEntriesForLine(updatedLine.id);
+          await storage.createInventoryCountEntry({
+            inventoryCountLineId: updatedLine.id,
+            qty: updatedLine.qty,
+            userId: patchUser?.id ?? null,
+          });
+        }
+      }
 
       res.json(updatedLine);
     } catch (error: any) {
@@ -7799,10 +7849,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Task #78: cascade delete entries before deleting the line
+      await storage.deleteEntriesForLine(req.params.id);
       await storage.deleteInventoryCountLine(req.params.id);
-      
-      // Note: Inventory counts record what was counted, they don't update inventory levels
-      // Inventory adjustments should be done separately if needed
       
       res.status(204).send();
     } catch (error: any) {

@@ -790,3 +790,26 @@ BEGIN
       VALUES ('v030', 'Rename is_tare_weight_category → is_catch_weight_category (catch weight = per-package weight tracking)');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v031 — Task #78: inventory_count_entries — sub-entry history per count line
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v031') THEN
+
+    CREATE TABLE IF NOT EXISTS inventory_count_entries (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      inventory_count_line_id varchar NOT NULL,
+      qty real NOT NULL,
+      user_id varchar,
+      entered_at timestamp NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS inventory_count_entries_line_id_idx
+      ON inventory_count_entries (inventory_count_line_id);
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v031', 'Task #78: inventory_count_entries table for sub-entry history per count line');
+  END IF;
+END $$;
