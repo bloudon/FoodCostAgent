@@ -53,14 +53,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/lib/auth-context";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import { useCompany } from "@/hooks/use-company";
 import { useStoreContext } from "@/hooks/use-store-context";
 import { useTier } from "@/hooks/use-tier";
 import { type Feature } from "@shared/tier-config";
-
-const logoImage = "/website-logo-dark.png";
 
 interface NavItem {
   title: string;
@@ -146,6 +145,8 @@ export function AppSidebar() {
   const { data: accessibleStores, isLoading: storesLoading } = useAccessibleStores();
   const { hasFeature } = useTier();
   const { state, isMobile, setOpenMobile } = useSidebar();
+  const { theme } = useTheme();
+  const logoImage = theme === "dark" ? "/website-logo-dark.png" : "/website-logo.png";
 
   const isStoreUser = user?.role === "store_user";
   const isGlobalAdmin = user?.role === "global_admin";
