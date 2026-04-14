@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2, ArrowUpDown, ArrowUpAZ, ArrowDownAZ } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2, ArrowUpDown, ArrowUpAZ, ArrowDownAZ, Plus, Check } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -246,6 +246,8 @@ export default function CountSession() {
   const [editingContainerQty, setEditingContainerQty] = useState<string>("");
   const [editingLooseUnits, setEditingLooseUnits] = useState<string>("");
   const [editingItem, setEditingItem] = useState<any | null>(null);
+  const [addingToLineId, setAddingToLineId] = useState<string | null>(null);
+  const [addMoreQty, setAddMoreQty] = useState<string>("");
   const [wasTabPressed, setWasTabPressed] = useState(false);
   const [itemEditForm, setItemEditForm] = useState({
     name: "",
@@ -1280,7 +1282,7 @@ export default function CountSession() {
                           <AccordionContent>
                             {groupBy === "category" ? (
                               // Category view: Group by item, show locations underneath
-                              <div className="space-y-4 p-4">
+                              <div className="space-y-2 p-2">
                                 {(() => {
                                   // Group lines by inventory item
                                   const itemGroups: Record<string, any[]> = {};
@@ -1434,7 +1436,7 @@ export default function CountSession() {
                               </div>
                             ) : (
                               // Location view: Compact layout similar to category view
-                              <div className="space-y-3 p-4">
+                              <div className="space-y-2 p-2">
                                 {lines.map((line, idx) => {
                                   const item = line.inventoryItem;
                                   const unitName = item?.unitName || 'unit';
@@ -1495,7 +1497,55 @@ export default function CountSession() {
                                         ) : (
                                           <>
                                             <div className="flex-1">
-                                              <CountQuantityEditor
+                                              {addingToLineId === line.id ? (
+                                                <div className="flex items-center gap-1.5">
+                                                  <span className="text-xs text-muted-foreground font-mono">{line.qty} +</span>
+                                                  <Input
+                                                    type="number"
+                                                    value={addMoreQty}
+                                                    onChange={e => setAddMoreQty(e.target.value)}
+                                                    className="h-9 text-base w-24"
+                                                    placeholder="0"
+                                                    autoFocus
+                                                    onKeyDown={e => {
+                                                      if (e.key === 'Enter') {
+                                                        const addAmt = parseFloat(addMoreQty) || 0;
+                                                        updateMutation.mutate({ id: line.id, qty: line.qty + addAmt });
+                                                        setAddingToLineId(null);
+                                                        setAddMoreQty("");
+                                                      } else if (e.key === 'Escape') {
+                                                        setAddingToLineId(null);
+                                                        setAddMoreQty("");
+                                                      }
+                                                    }}
+                                                    data-testid={`input-add-more-${line.id}`}
+                                                  />
+                                                  <Button
+                                                    size="icon"
+                                                    variant="default"
+                                                    className="h-9 w-9 shrink-0"
+                                                    onClick={() => {
+                                                      const addAmt = parseFloat(addMoreQty) || 0;
+                                                      updateMutation.mutate({ id: line.id, qty: line.qty + addAmt });
+                                                      setAddingToLineId(null);
+                                                      setAddMoreQty("");
+                                                    }}
+                                                    data-testid={`button-confirm-add-more-${line.id}`}
+                                                  >
+                                                    <Check className="h-4 w-4" />
+                                                  </Button>
+                                                  <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-9 w-9 shrink-0"
+                                                    onClick={() => { setAddingToLineId(null); setAddMoreQty(""); }}
+                                                    data-testid={`button-cancel-add-more-${line.id}`}
+                                                  >
+                                                    <X className="h-4 w-4" />
+                                                  </Button>
+                                                </div>
+                                              ) : (
+                                                <CountQuantityEditor
                                                 line={line}
                                                 item={item}
                                                 mode={mode}
@@ -1537,6 +1587,18 @@ export default function CountSession() {
                                             <div className="text-sm font-semibold font-mono shrink-0">
                                               = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
                                             </div>
+                                            {addingToLineId !== line.id && (
+                                              <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-9 w-9 shrink-0 text-muted-foreground"
+                                                onClick={() => { setAddingToLineId(line.id); setAddMoreQty(""); }}
+                                                title="Add to this count"
+                                                data-testid={`button-add-more-${line.id}`}
+                                              >
+                                                <Plus className="h-4 w-4" />
+                                              </Button>
+                                            )}
                                           </>
                                         )}
                                       </div>
