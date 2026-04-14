@@ -15511,12 +15511,16 @@ Human Handoff:
       );
 
       res.cookie("session", token, sessionCookieOptions());
+      const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ");
       return res.json({
         token,
         userId: user.id,
         companyId: user.companyId,
         email: user.email,
-        name: user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        name: fullName || user.email,
+        role: user.role,
       });
     } catch (error: any) {
       console.error("[POST /api/mobile/login]", error);
