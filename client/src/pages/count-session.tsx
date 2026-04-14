@@ -1583,6 +1583,7 @@ export default function CountSession() {
                                                   }
                                                 }}
                                               />
+                                              )}
                                             </div>
                                             <div className="text-sm font-semibold font-mono shrink-0">
                                               = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
