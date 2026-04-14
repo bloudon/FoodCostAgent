@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2, ArrowUpDown, ArrowUpAZ, ArrowDownAZ } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -219,7 +219,9 @@ export default function CountSession() {
   const filterItemId = urlParams.get('item');
   const sourceCountId = urlParams.get('from');
   
-  const [groupBy, setGroupBy] = useState<"location" | "category">("location"); // Toggle between location and category grouping
+  const [groupBy, setGroupBy] = useState<"location" | "category" | "all-entries">("location"); // Toggle between location, category grouping, and flat all-entries view
+  const [allEntriesSortCol, setAllEntriesSortCol] = useState<"item" | "location">("item");
+  const [allEntriesSortDir, setAllEntriesSortDir] = useState<"asc" | "desc">("asc");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [selectedItemId, setSelectedItemId] = useState<string>(filterItemId || "all");
@@ -1057,7 +1059,7 @@ export default function CountSession() {
               )}
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <Label className="text-sm text-muted-foreground">Group by:</Label>
+                  <Label className="text-sm text-muted-foreground">View:</Label>
                   <Button
                     variant={groupBy === "location" ? "default" : "outline"}
                     size="sm"
@@ -1076,6 +1078,15 @@ export default function CountSession() {
                     <Package className="h-4 w-4 mr-1" />
                     Category
                   </Button>
+                  <Button
+                    variant={groupBy === "all-entries" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setGroupBy("all-entries")}
+                    data-testid="button-group-all-entries"
+                  >
+                    <ArrowUpDown className="h-4 w-4 mr-1" />
+                    All Entries
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1083,7 +1094,114 @@ export default function CountSession() {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {filteredLines && filteredLines.length > 0 ? (
+            {groupBy === "all-entries" ? (
+              filteredLines && filteredLines.length > 0 ? (
+                (() => {
+                  const handleSortClick = (col: "item" | "location") => {
+                    if (allEntriesSortCol === col) {
+                      setAllEntriesSortDir(d => d === "asc" ? "desc" : "asc");
+                    } else {
+                      setAllEntriesSortCol(col);
+                      setAllEntriesSortDir("asc");
+                    }
+                  };
+
+                  const SortIcon = ({ col }: { col: "item" | "location" }) => {
+                    if (allEntriesSortCol !== col) return <ArrowUpDown className="h-3.5 w-3.5 ml-1 text-muted-foreground/50" />;
+                    return allEntriesSortDir === "asc"
+                      ? <ArrowUpAZ className="h-3.5 w-3.5 ml-1" />
+                      : <ArrowDownAZ className="h-3.5 w-3.5 ml-1" />;
+                  };
+
+                  const sorted = [...filteredLines].sort((a, b) => {
+                    let valA: string;
+                    let valB: string;
+                    if (allEntriesSortCol === "item") {
+                      valA = (a.inventoryItem?.name || "").toLowerCase();
+                      valB = (b.inventoryItem?.name || "").toLowerCase();
+                    } else {
+                      valA = (a.storageLocationName || storageLocations?.find(l => l.id === a.storageLocationId)?.name || "").toLowerCase();
+                      valB = (b.storageLocationName || storageLocations?.find(l => l.id === b.storageLocationId)?.name || "").toLowerCase();
+                    }
+                    const cmp = valA.localeCompare(valB);
+                    return allEntriesSortDir === "asc" ? cmp : -cmp;
+                  });
+
+                  return (
+                    <div className="overflow-x-auto">
+                      <Table data-testid="table-all-entries">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>
+                              <button
+                                className="flex items-center font-semibold hover:text-foreground transition-colors"
+                                onClick={() => handleSortClick("item")}
+                                data-testid="button-sort-item"
+                              >
+                                Item
+                                <SortIcon col="item" />
+                              </button>
+                            </TableHead>
+                            <TableHead>
+                              <button
+                                className="flex items-center font-semibold hover:text-foreground transition-colors"
+                                onClick={() => handleSortClick("location")}
+                                data-testid="button-sort-location"
+                              >
+                                Location
+                                <SortIcon col="location" />
+                              </button>
+                            </TableHead>
+                            <TableHead className="text-right">Cases</TableHead>
+                            <TableHead className="text-right">Containers</TableHead>
+                            <TableHead className="text-right">Loose Units</TableHead>
+                            <TableHead className="text-right">Total Qty</TableHead>
+                            <TableHead className="text-right">Value</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sorted.map((line) => {
+                            const item = line.inventoryItem;
+                            const locationName = line.storageLocationName || storageLocations?.find(l => l.id === line.storageLocationId)?.name || "Unknown";
+                            const lineValue = line.qty * (line.unitCost || 0);
+                            const unitAbbr = line.unitAbbreviation || item?.unitName || "";
+                            return (
+                              <TableRow key={line.id} data-testid={`row-entry-${line.id}`}>
+                                <TableCell className="font-medium" data-testid={`text-entry-item-${line.id}`}>
+                                  {item?.name || "Unknown"}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground" data-testid={`text-entry-location-${line.id}`}>
+                                  {locationName}
+                                </TableCell>
+                                <TableCell className="text-right font-mono" data-testid={`text-entry-cases-${line.id}`}>
+                                  {line.caseQty != null ? line.caseQty : <span className="text-muted-foreground">—</span>}
+                                </TableCell>
+                                <TableCell className="text-right font-mono" data-testid={`text-entry-containers-${line.id}`}>
+                                  {line.containerQty != null ? line.containerQty : <span className="text-muted-foreground">—</span>}
+                                </TableCell>
+                                <TableCell className="text-right font-mono" data-testid={`text-entry-loose-${line.id}`}>
+                                  {line.looseUnits != null ? line.looseUnits : <span className="text-muted-foreground">—</span>}
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-semibold" data-testid={`text-entry-qty-${line.id}`}>
+                                  {line.qty.toFixed(2)} <span className="text-muted-foreground font-normal text-xs">{unitAbbr}</span>
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-semibold" data-testid={`text-entry-value-${line.id}`}>
+                                  ${lineValue.toFixed(2)}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  No items to display
+                </div>
+              )
+            ) : filteredLines && filteredLines.length > 0 ? (
               (() => {
                 // Group by location or category based on groupBy state
                 const grouped: Record<string, any[]> = {};
