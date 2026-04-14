@@ -1,6 +1,6 @@
 # Overview
 
-FNB Cost Pro is an inventory management and recipe costing system designed for food service businesses. Its primary purpose is to enhance profitability and operational efficiency by providing precise unit conversions, supporting multi-level nested recipe management, integrating with POS sales data, and delivering comprehensive variance reporting. The system aims to minimize waste, optimize profit margins, offer real-time inventory insights, streamline vendor interactions, and maintain strict food cost control, positioning itself as a leading solution in the restaurant industry.
+FNB Cost Pro is an inventory management and recipe costing system designed for food service businesses. Its primary purpose is to enhance profitability and operational efficiency through features like precise unit conversions, multi-level nested recipe management, POS sales data integration, and comprehensive variance reporting. The system aims to minimize waste, optimize profit margins, provide real-time inventory insights, streamline vendor interactions, and maintain strict food cost control, aspiring to be a leading solution in the restaurant industry.
 
 # User Preferences
 
@@ -49,10 +49,9 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 - **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation at the company level.
 - **UI/UX Decisions**: Mobile-first design, intuitive interfaces, dynamic dashboards, consistent color-coding, conditional UI rendering, and optimized layouts.
 - **Technical Implementations**: Micro-unit precision calculations, comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), multi-tenant QuickBooks integration, intelligent vendor order guide import, real-time recipe cost calculation with caching, dynamic estimated on-hand inventory with automated cache invalidation, detailed Theoretical Food Cost (TFC) variance reporting, and single-timezone date handling.
-- **System Design Choices**: Strict multi-tenancy, secure OAuth using HMAC-SHA256, robust vendor relationship management, and a subscription tier system.
-- **Vendor-Store Assignment Model**: Vendors are company-level, with a `store_vendors` join table for store access. Order guides can be assigned to multiple stores via `order_guide_stores`.
-- **Subscription Tier System**: Four-tier model (Free, Basic, Pro, Enterprise) on the `companies` table, enforced by backend middleware (`requireTier(minTier)`) and frontend components (`useTier()`, `TierGate`).
-- **Marketing Website**: Hostname-based routing (`fnbcostpro.com` for marketing, `app.fnbcostpro.com` for the app) is managed by the same Express server.
+- **System Design Choices**: Strict multi-tenancy, secure OAuth using HMAC-SHA256, robust vendor relationship management, and a subscription tier system (Free, Basic, Pro, Enterprise).
+- **Vendor-Store Assignment Model**: Vendors are company-level; `store_vendors` join table for store access. Order guides assigned to multiple stores via `order_guide_stores`.
+- **Marketing Website**: Hostname-based routing (`fnbcostpro.com` for marketing, `app.fnbcostpro.com` for the app) managed by the same Express server.
 
 # External Dependencies
 
