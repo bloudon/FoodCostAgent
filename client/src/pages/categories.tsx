@@ -103,8 +103,8 @@ function SortableCategory({ category, onEdit, onDeactivate, hideDragHandle }: So
               <CardTitle className="text-lg" data-testid={`text-category-name-${category.id}`}>
                 {category.name}
               </CardTitle>
-              {!!category.isTareWeightCategory && !hideDragHandle && (
-                <Scale className="h-4 w-4 text-muted-foreground shrink-0" data-testid={`icon-tare-weight-${category.id}`} />
+              {!!category.isCatchWeightCategory && !hideDragHandle && (
+                <Scale className="h-4 w-4 text-muted-foreground shrink-0" data-testid={`icon-catch-weight-${category.id}`} />
               )}
               {category.itemCount > 0 && (
                 <Badge variant="secondary" data-testid={`badge-item-count-${category.id}`}>
@@ -211,7 +211,7 @@ export default function Categories() {
     defaultValues: {
       name: "",
       showAsIngredient: 1,
-      isTareWeightCategory: 0,
+      isCatchWeightCategory: 0,
       companyId: selectedCompanyId || "",
     },
   });
@@ -293,7 +293,7 @@ export default function Categories() {
     form.reset({
       name: category.name,
       showAsIngredient: category.showAsIngredient ?? 1,
-      isTareWeightCategory: category.isTareWeightCategory ?? 0,
+      isCatchWeightCategory: category.isCatchWeightCategory ?? 0,
       companyId: category.companyId || selectedCompanyId || "",
     });
   };
@@ -303,7 +303,7 @@ export default function Categories() {
     form.reset({
       name: "",
       showAsIngredient: 1,
-      isTareWeightCategory: 0,
+      isCatchWeightCategory: 0,
       companyId: selectedCompanyId || "",
     });
   };
@@ -378,7 +378,7 @@ export default function Categories() {
         <div className="mb-6 flex items-center gap-6 text-sm text-muted-foreground" data-testid="legend-categories">
           <div className="flex items-center gap-2">
             <Scale className="h-4 w-4" />
-            <span data-testid="text-tare-weight-legend">Tare weight category (case counting enabled)</span>
+            <span data-testid="text-catch-weight-legend">Catch weight category (items sold by actual per-package weight)</span>
           </div>
         </div>
       )}
@@ -562,20 +562,20 @@ export default function Categories() {
                   />
                   <FormField
                     control={form.control}
-                    name="isTareWeightCategory"
+                    name="isCatchWeightCategory"
                     render={({ field }) => (
                       <FormItem className="flex flex-row items-start space-x-3 space-y-0">
                         <FormControl>
                           <Checkbox
                             checked={field.value === 1}
                             onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
-                            data-testid="checkbox-tare-weight-category"
+                            data-testid="checkbox-catch-weight-category"
                           />
                         </FormControl>
                         <div className="space-y-1 leading-none">
-                          <FormLabel>Tare Weight Category</FormLabel>
+                          <FormLabel>Catch Weight Category</FormLabel>
                           <p className="text-sm text-muted-foreground">
-                            Enable case counting for items in this category
+                            Items are sold/tracked by actual per-package weight (meats, seafood, cheese)
                           </p>
                         </div>
                       </FormItem>

@@ -255,7 +255,7 @@ export const categories = pgTable("categories", {
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
   showAsIngredient: integer("show_as_ingredient").notNull().default(1), // 1 if items in this category can be used as ingredients
-  isTareWeightCategory: integer("is_tare_weight_category").notNull().default(0), // 1 if this is a tare weight category (enables case counting)
+  isCatchWeightCategory: integer("is_catch_weight_category").notNull().default(0), // 1 if this is a catch weight category (proteins sold/tracked by actual per-package weight)
   isActive: integer("is_active").notNull().default(1), // 1 = active, 0 = deactivated (soft delete)
 }, (table) => ({
   uniqueCompanyCategory: unique().on(table.companyId, table.name),

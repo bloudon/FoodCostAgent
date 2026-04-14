@@ -136,6 +136,18 @@ async function runStartupMigrations() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS shelf_scan_sessions_company_idx ON shelf_scan_sessions (company_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS shelf_scan_sessions_created_at_idx ON shelf_scan_sessions (created_at)`);
     await db.execute(sql`ALTER TABLE shelf_scan_sessions ADD COLUMN IF NOT EXISTS inventory_count_id varchar`);
+    // Task #75: Rename is_tare_weight_category → is_catch_weight_category (correct food-service terminology)
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'categories' AND column_name = 'is_tare_weight_category') THEN
+          ALTER TABLE categories RENAME COLUMN is_tare_weight_category TO is_catch_weight_category;
+        ELSIF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'categories' AND column_name = 'is_catch_weight_category') THEN
+          ALTER TABLE categories ADD COLUMN is_catch_weight_category integer NOT NULL DEFAULT 0;
+        END IF;
+      END $$
+    `);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

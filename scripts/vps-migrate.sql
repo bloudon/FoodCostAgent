@@ -759,6 +759,7 @@ BEGIN
 END $$;
 
 -- v029 — Add is_tare_weight_category column to categories table
+--        (renamed to is_catch_weight_category in v030)
 -- =============================================================================
 DO $$
 BEGIN
@@ -766,6 +767,26 @@ BEGIN
     ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_tare_weight_category integer NOT NULL DEFAULT 0;
 
     INSERT INTO _migration_log (version, description)
-      VALUES ('v029', 'Add is_tare_weight_category column to categories for tare weight counting mode');
+      VALUES ('v029', 'Add is_tare_weight_category column to categories (renamed to is_catch_weight_category in v030)');
+  END IF;
+END $$;
+
+-- v030 — Rename is_tare_weight_category → is_catch_weight_category
+--        Correct terminology: catch weight = per-package weight tracking for proteins/seafood/cheese
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v030') THEN
+    -- Only rename if the old column still exists (safe to run even if v029 was never applied)
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'categories' AND column_name = 'is_tare_weight_category') THEN
+      ALTER TABLE categories RENAME COLUMN is_tare_weight_category TO is_catch_weight_category;
+    ELSE
+      -- v029 was never applied, add the column with the correct name directly
+      ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_catch_weight_category integer NOT NULL DEFAULT 0;
+    END IF;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v030', 'Rename is_tare_weight_category → is_catch_weight_category (catch weight = per-package weight tracking)');
   END IF;
 END $$;

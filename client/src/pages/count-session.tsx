@@ -44,11 +44,11 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatUnitName } from "@/lib/utils";
 import type { Company, CompanyStore } from "@shared/schema";
 
-type CountMode = 'tare' | 'case' | 'simple';
+type CountMode = 'catch' | 'case' | 'simple';
 
 function getCountMode(category: any, location: any): CountMode {
-  if (category?.isTareWeightCategory === 1) {
-    return 'tare';
+  if (category?.isCatchWeightCategory === 1) {
+    return 'catch';
   }
   if (location?.allowCaseCounting === 1) {
     return 'case';
@@ -174,8 +174,8 @@ function CountQuantityEditor({
     );
   }
   
-  // Both 'tare' and 'simple' modes show a single quantity field
-  // Tare weight categories use regular qty field for accurate scale measurements
+  // Both 'catch' and 'simple' modes show a single quantity field
+  // Catch weight categories use a direct qty field for accurate scale measurements
   return (
     <Input
       type="number"
