@@ -1,6 +1,6 @@
 # Overview
 
-FNB Cost Pro is an inventory management and recipe costing system for food service businesses. It aims to improve profitability and operational efficiency through features like precise unit conversions, multi-level nested recipe costing, POS sales data integration, and comprehensive variance reporting. The system focuses on minimizing waste, optimizing profit margins, providing real-time inventory insights, streamlining vendor interactions, and enforcing food cost control to be a leading solution in the restaurant industry.
+FNB Cost Pro is an inventory management and recipe costing system for food service businesses. It aims to boost profitability and operational efficiency through features like precise unit conversions, multi-level nested recipe costing, POS sales data integration, and comprehensive variance reporting. The project's vision is to minimize waste, optimize profit margins, provide real-time inventory insights, streamline vendor interactions, and enforce robust food cost control, establishing itself as a leading solution in the restaurant industry.
 
 # User Preferences
 
