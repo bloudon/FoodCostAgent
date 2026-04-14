@@ -803,32 +803,33 @@ export default function CountSession() {
           </Button>
         </Link>
         
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
           <div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight" data-testid="text-session-title">
-                Count Session <span className="hidden sm:inline">Details</span> {company && store && <span className="text-lg sm:text-2xl">({company.name} - {store.name})</span>}
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl sm:text-3xl font-semibold tracking-tight" data-testid="text-session-title">
+                Count Session
               </h1>
+              {company && store && (
+                <span className="text-sm sm:text-xl text-muted-foreground font-normal">
+                  {store.name}
+                </span>
+              )}
               {count?.isPowerSession === 1 && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 text-sm font-medium" data-testid="badge-power-session">
-                  <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 text-xs font-medium" data-testid="badge-power-session">
+                  <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
                   Power Count
                 </span>
               )}
             </div>
-            <p className="text-sm sm:text-base text-muted-foreground mt-2">
+            <p className="text-xs sm:text-sm text-muted-foreground mt-1">
               {countDate?.toLocaleDateString()} {countDate?.toLocaleTimeString()}
-              {count?.isPowerSession === 1 && " • Only power items included"}
+              {count?.isPowerSession === 1 && " • Power items only"}
             </p>
-            {!isReadOnly ? (
-              <p className="text-sm text-muted-foreground mt-1">
-                Click on a quantity to edit. Use filters below to view items by category or location.
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground mt-1">
-                This is a historical count session. Use filters below to view items by category or location.
-              </p>
-            )}
+            <p className="hidden sm:block text-sm text-muted-foreground mt-0.5">
+              {!isReadOnly
+                ? "Click a quantity to edit. Use filters to view items by category or location."
+                : "Historical count (read-only). Use filters to view items by category or location."}
+            </p>
           </div>
         </div>
       </div>
@@ -861,39 +862,42 @@ export default function CountSession() {
 
       {/* Mini Dashboard - Sticky Stats Bar */}
       <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-4 sm:mb-8 -mx-4 sm:-mx-8 px-4 sm:px-8 py-2 sm:py-3">
-        <div className="flex items-center gap-2 sm:gap-4">
-          <div className="flex items-center gap-2 flex-1">
-            <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground hidden sm:block shrink-0" />
-            <div>
-              <div className="text-xs sm:text-sm text-muted-foreground">Value</div>
-              <div className="text-sm sm:text-lg font-bold font-mono" data-testid="text-dashboard-total-value">
-                ${totalValue.toFixed(2)}
+        <div className="flex items-center gap-3 sm:gap-4">
+          {/* Stats — grouped so they shrink together before buttons get squeezed */}
+          <div className="flex items-center gap-3 sm:gap-5 flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <DollarSign className="h-4 w-4 text-muted-foreground hidden sm:block" />
+              <div>
+                <div className="text-xs text-muted-foreground leading-none mb-0.5">Value</div>
+                <div className="text-sm font-bold font-mono leading-none" data-testid="text-dashboard-total-value">
+                  ${totalValue.toFixed(2)}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2 flex-1">
-            <Package className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground hidden sm:block shrink-0" />
-            <div>
-              <div className="text-xs sm:text-sm text-muted-foreground">Items</div>
-              <div className="text-sm sm:text-lg font-bold font-mono" data-testid="text-dashboard-total-items">
-                {totalItems}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Package className="h-4 w-4 text-muted-foreground hidden sm:block" />
+              <div>
+                <div className="text-xs text-muted-foreground leading-none mb-0.5">Items</div>
+                <div className="text-sm font-bold font-mono leading-none" data-testid="text-dashboard-total-items">
+                  {totalItems}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2 flex-1">
-            <Layers className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground hidden sm:block shrink-0" />
-            <div>
-              <div className="text-xs sm:text-sm text-muted-foreground">Categories</div>
-              <div className="text-sm sm:text-lg font-bold font-mono" data-testid="text-dashboard-categories">
-                {displayedCategories}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Layers className="h-4 w-4 text-muted-foreground hidden sm:block" />
+              <div>
+                <div className="text-xs text-muted-foreground leading-none mb-0.5">Cat.</div>
+                <div className="text-sm font-bold font-mono leading-none" data-testid="text-dashboard-categories">
+                  {displayedCategories}
+                </div>
               </div>
             </div>
           </div>
 
           {!isReadOnly && count && count.applied === 0 && (
-            <div className="flex items-center gap-2 shrink-0 ml-2">
+            <div className="flex items-center gap-1.5 shrink-0">
               <Button
                 onClick={() => applyCountMutation.mutate()}
                 disabled={applyCountMutation.isPending}
@@ -901,12 +905,9 @@ export default function CountSession() {
                 size="sm"
                 data-testid="button-apply-count"
               >
-                <Package className="h-4 w-4 mr-1 sm:mr-2" />
-                <span className="sm:hidden">
-                  {applyCountMutation.isPending ? "Applying..." : "Apply"}
-                </span>
+                <Package className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">
-                  {applyCountMutation.isPending ? "Applying..." : "Apply Count to Inventory"}
+                  {applyCountMutation.isPending ? "Applying..." : "Apply Count"}
                 </span>
               </Button>
               <Button
@@ -916,13 +917,8 @@ export default function CountSession() {
                 size="sm"
                 data-testid="button-complete-count"
               >
-                <CheckCircle2 className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">
-                  {lockCountMutation.isPending ? "Completing..." : "Complete Count"}
-                </span>
-                <span className="sm:hidden">
-                  {lockCountMutation.isPending ? "..." : "Done"}
-                </span>
+                <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                {lockCountMutation.isPending ? "..." : "Done"}
               </Button>
             </div>
           )}
@@ -930,21 +926,21 @@ export default function CountSession() {
       </div>
 
       {/* Category Totals */}
-      <Card className="mb-8">
+      <Card className="mb-4 sm:mb-8">
         <Accordion type="single" collapsible>
           <AccordionItem value="categories" className="border-0">
-            <AccordionTrigger className="px-6 pt-6 pb-2 hover:no-underline" tabIndex={-1}>
-              <div className="flex flex-col items-start gap-1">
-                <CardTitle>Categories</CardTitle>
-                <p className="text-sm text-muted-foreground font-normal">Click a category to filter items below</p>
+            <AccordionTrigger className="px-4 pt-3 pb-2 hover:no-underline" tabIndex={-1}>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm sm:text-base">Categories</span>
+                <span className="text-xs text-muted-foreground font-normal hidden sm:inline">— tap to filter</span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="px-6 pb-6">
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <AccordionContent className="px-4 pb-4">
+              <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
                 {Object.entries(categoryTotals).filter(([_, data]: [string, any]) => data.items > 0).map(([category, data]: [string, any]) => (
                   <div 
                     key={category} 
-                    className={`border rounded-lg p-4 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
+                    className={`border rounded-md p-2.5 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
                       selectedCategory === category ? 'bg-accent border-accent-border' : ''
                     }`}
                     onClick={() => {
@@ -959,16 +955,10 @@ export default function CountSession() {
                     tabIndex={-1}
                     data-testid={`card-category-${category.toLowerCase().replace(/\s+/g, '-')}`}
                   >
-                    <div className="font-semibold mb-2">{category}</div>
-                    <div className="space-y-1 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Items:</span>
-                        <span className="font-mono">{data.items}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Value:</span>
-                        <span className="font-mono font-semibold">${data.value.toFixed(2)}</span>
-                      </div>
+                    <div className="font-medium text-sm truncate">{category}</div>
+                    <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                      <span>{data.items} items</span>
+                      <span className="font-mono font-semibold text-foreground">${data.value.toFixed(2)}</span>
                     </div>
                   </div>
                 ))}
@@ -979,17 +969,17 @@ export default function CountSession() {
       </Card>
 
       {/* Location Totals */}
-      <Card className="mb-8">
+      <Card className="mb-4 sm:mb-8">
         <Accordion type="single" collapsible>
           <AccordionItem value="locations" className="border-0">
-            <AccordionTrigger className="px-6 pt-6 pb-2 hover:no-underline" tabIndex={-1}>
-              <div className="flex flex-col items-start gap-1">
-                <CardTitle>Locations</CardTitle>
-                <p className="text-sm text-muted-foreground font-normal">Click a location to filter items below</p>
+            <AccordionTrigger className="px-4 pt-3 pb-2 hover:no-underline" tabIndex={-1}>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm sm:text-base">Locations</span>
+                <span className="text-xs text-muted-foreground font-normal hidden sm:inline">— tap to filter</span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="px-6 pb-6">
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <AccordionContent className="px-4 pb-4">
+              <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
                 {Object.entries(locationTotals)
                   .filter(([_, data]: [string, any]) => data.items > 0)
                   .sort((a, b) => {
@@ -1000,7 +990,7 @@ export default function CountSession() {
                   .map(([locationId, data]: [string, any]) => (
                   <div 
                     key={locationId} 
-                    className={`border rounded-lg p-4 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
+                    className={`border rounded-md p-2.5 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
                       selectedLocation === locationId ? 'bg-accent border-accent-border' : ''
                     }`}
                     onClick={() => {
@@ -1015,16 +1005,10 @@ export default function CountSession() {
                     tabIndex={-1}
                     data-testid={`card-location-${data.name.toLowerCase().replace(/\s+/g, '-')}`}
                   >
-                    <div className="font-semibold mb-2">{data.name}</div>
-                    <div className="space-y-1 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Items:</span>
-                        <span className="font-mono">{data.items}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Value:</span>
-                        <span className="font-mono font-semibold">${data.value.toFixed(2)}</span>
-                      </div>
+                    <div className="font-medium text-sm truncate">{data.name}</div>
+                    <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                      <span>{data.items} items</span>
+                      <span className="font-mono font-semibold text-foreground">${data.value.toFixed(2)}</span>
                     </div>
                   </div>
                 ))}
@@ -1349,62 +1333,50 @@ export default function CountSession() {
                                   const previousQty = previousLine?.qty || 0;
                                   
                                   return (
-                                    <div key={line.id} className="border rounded-lg p-3 space-y-2" data-testid={`item-input-${line.id}`}>
-                                      {/* Item Info Header */}
-                                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 pb-2 border-b">
-                                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 flex-1">
+                                    <div key={line.id} className="border rounded-md p-2.5 space-y-1.5" data-testid={`item-input-${line.id}`}>
+                                      {/* Item Info Header — always horizontal */}
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
                                           {isReadOnly ? (
-                                            <div className="font-medium" data-testid={`text-item-name-${line.inventoryItemId}`}>
+                                            <div className="font-medium text-sm leading-snug" data-testid={`text-item-name-${line.inventoryItemId}`}>
                                               {item?.name || 'Unknown'}
                                             </div>
                                           ) : (
                                             <button
                                               onClick={() => handleOpenItemEdit(item)}
-                                              className="text-left hover:underline font-medium"
+                                              className="text-left hover:underline font-medium text-sm leading-snug w-full"
                                               tabIndex={-1}
                                               data-testid={`button-edit-item-${line.inventoryItemId}`}
                                             >
                                               {item?.name || 'Unknown'}
                                             </button>
                                           )}
-                                          <div className="flex items-center gap-2 sm:gap-4 text-sm text-muted-foreground flex-wrap">
+                                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5 flex-wrap">
                                             <span>{item?.category || 'Uncategorized'}</span>
                                             {mode === 'case' && item?.caseSize && (
-                                              <span>Case: {item.caseSize} {unitAbbr}</span>
+                                              <span>· Case: {item.caseSize} {unitAbbr}</span>
                                             )}
                                           </div>
                                         </div>
-                                        <div className="flex items-center gap-3 sm:gap-6 text-sm flex-wrap">
-                                          <div className="font-mono whitespace-nowrap">
-                                            ${(line.unitCost || 0).toFixed(2)} / {unitAbbr}
-                                          </div>
-                                          {previousQty > 0 && previousCountId && (
-                                            <Link href={`/count/${previousCountId}?from=${countId}&item=${line.inventoryItemId}`}>
-                                              <div className="text-muted-foreground hover:underline cursor-pointer whitespace-nowrap hidden sm:block" data-testid={`link-previous-${line.id}`}>
-                                                Prev: <span className="font-mono">{previousQty.toFixed(2)}</span> {formatUnitName(unitName)}
-                                              </div>
-                                            </Link>
-                                          )}
+                                        <div className="text-xs font-mono text-muted-foreground whitespace-nowrap shrink-0 pt-0.5">
+                                          ${(line.unitCost || 0).toFixed(2)}/{unitAbbr}
                                         </div>
                                       </div>
                                       
-                                      {/* Quantity Input */}
-                                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                                        <label className="text-sm text-muted-foreground sm:w-20">
-                                          Qty:
-                                        </label>
-                                        <div className="flex items-center gap-3 flex-1">
-                                          {isReadOnly ? (
-                                            <>
-                                              <div className="w-32 h-9 flex items-center font-mono font-semibold" data-testid={`text-qty-${line.id}`}>
-                                                {line.qty}
-                                              </div>
-                                              <div className="flex-1 text-right text-base font-semibold font-mono text-muted-foreground">
-                                                = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
-                                              </div>
-                                            </>
-                                          ) : (
-                                            <>
+                                      {/* Quantity Input — no "Qty:" label, value shown inline */}
+                                      <div className="flex items-center gap-2">
+                                        {isReadOnly ? (
+                                          <>
+                                            <div className="flex-1 h-9 flex items-center font-mono font-semibold text-sm" data-testid={`text-qty-${line.id}`}>
+                                              {line.qty} {unitAbbr}
+                                            </div>
+                                            <div className="text-sm font-semibold font-mono">
+                                              = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                            </div>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <div className="flex-1">
                                               <CountQuantityEditor
                                                 line={line}
                                                 item={item}
@@ -1428,7 +1400,6 @@ export default function CountSession() {
                                                   if (e.key === 'Enter') {
                                                     e.preventDefault();
                                                     handleSaveEdit(line.id, mode, item);
-                                                    // Focus next input if available
                                                     if (idx < lines.length - 1) {
                                                       const nextLine = lines[idx + 1];
                                                       setTimeout(() => {
@@ -1444,13 +1415,20 @@ export default function CountSession() {
                                                   }
                                                 }}
                                               />
-                                              <div className="flex-1 text-right text-base font-semibold font-mono text-muted-foreground">
-                                                = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
-                                              </div>
-                                            </>
-                                          )}
-                                        </div>
+                                            </div>
+                                            <div className="text-sm font-semibold font-mono shrink-0">
+                                              = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                            </div>
+                                          </>
+                                        )}
                                       </div>
+                                      {previousQty > 0 && previousCountId && (
+                                        <Link href={`/count/${previousCountId}?from=${countId}&item=${line.inventoryItemId}`}>
+                                          <div className="text-xs text-muted-foreground hover:underline cursor-pointer" data-testid={`link-previous-${line.id}`}>
+                                            Prev: <span className="font-mono">{previousQty.toFixed(2)}</span> {formatUnitName(unitName)}
+                                          </div>
+                                        </Link>
+                                      )}
                                     </div>
                                   );
                                 })}
