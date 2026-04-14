@@ -1,11 +1,12 @@
 import { useState, useEffect, Fragment } from "react";
+import { formatDistanceToNow } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation as useWouterLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2, ArrowUpDown, ArrowUpAZ, ArrowDownAZ, Plus, Check } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2, ArrowUpDown, ArrowUpAZ, ArrowDownAZ, Plus, Check, ChevronDown } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -207,6 +208,38 @@ function generateAnchorId(prefix: string, value: string): string {
     return ((acc << 5) - acc) + char.charCodeAt(0);
   }, 0);
   return `${prefix}-${sanitized}-${Math.abs(hash)}`;
+}
+
+function EntryHistory({ entries }: { entries: any[] }) {
+  const [open, setOpen] = useState(false);
+  if (!entries || entries.length <= 1) return null;
+  return (
+    <div className="mt-1.5" data-testid="entry-history-toggle">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        data-testid="button-toggle-entry-history"
+      >
+        <ChevronDown className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {entries.length} entries
+      </button>
+      {open && (
+        <div className="mt-1 border-t pt-1.5 flex flex-col gap-0.5">
+          {entries.map((entry: any) => (
+            <div key={entry.id} className="flex items-center gap-2 text-xs text-muted-foreground" data-testid={`entry-row-${entry.id}`}>
+              <span className="font-mono font-semibold text-foreground">
+                {entry.qty > 0 ? `+${entry.qty}` : entry.qty}
+              </span>
+              {entry.userName && <span>by {entry.userName}</span>}
+              <span className="ml-auto text-muted-foreground/60">
+                {formatDistanceToNow(new Date(entry.enteredAt), { addSuffix: true })}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function CountSession() {
@@ -1416,6 +1449,9 @@ export default function CountSession() {
                                                   </div>
                                                 </>
                                               )}
+                                              <div className="sm:col-span-3">
+                                                <EntryHistory entries={line.entries || []} />
+                                              </div>
                                             </div>
                                             );
                                           })}
@@ -1612,22 +1648,7 @@ export default function CountSession() {
                                           </div>
                                         </Link>
                                       )}
-                                      {line.entries && line.entries.length > 1 && (
-                                        <div className="mt-1.5 border-t pt-1.5" data-testid={`entry-history-${line.id}`}>
-                                          <div className="text-xs text-muted-foreground mb-0.5 font-medium">Count history</div>
-                                          <div className="flex flex-col gap-0.5">
-                                            {line.entries.map((entry: any) => (
-                                              <div key={entry.id} className="flex items-center gap-2 text-xs text-muted-foreground" data-testid={`entry-row-${entry.id}`}>
-                                                <span className="font-mono font-semibold text-foreground">{entry.qty > 0 ? `+${entry.qty}` : entry.qty}</span>
-                                                {entry.userName && <span className="text-muted-foreground">by {entry.userName}</span>}
-                                                <span className="ml-auto text-muted-foreground/60">
-                                                  {new Date(entry.enteredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                </span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      )}
+                                      <EntryHistory entries={line.entries || []} />
                                     </div>
                                   );
                                 })}
