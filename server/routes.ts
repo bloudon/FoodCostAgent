@@ -7735,7 +7735,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/inventory-count-lines/:id", requireAuth, async (req, res) => {
     try {
       const accumulate = req.body.accumulate === true;
-      const { accumulate: _drop, ...bodyWithoutAccumulate } = req.body;
+      // addQty: atomic server-side increment (avoids stale-state from client arithmetic)
+      const addQty: number | undefined = req.body.addQty != null ? Number(req.body.addQty) : undefined;
+      const { accumulate: _drop, addQty: _dropAddQty, ...bodyWithoutAccumulate } = req.body;
       const lineData = insertInventoryCountLineSchema.partial().parse(bodyWithoutAccumulate);
       const existingLine = await storage.getInventoryCountLine(req.params.id);
       
@@ -7802,6 +7804,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             updates.qty = (caseQty * caseSize) + looseUnits;
           }
         }
+      } else if (addQty != null) {
+        // Atomic server-side increment: add to the current DB qty, never trusting the client's copy
+        const newQty = (existingLine.qty ?? 0) + addQty;
+        if (newQty < 0) {
+          return res.status(400).json({ error: "Quantity cannot be negative" });
+        }
+        updates.qty = newQty;
+        updates.caseQty = null;
+        updates.containerQty = null;
+        updates.looseUnits = null;
       } else if (updates.qty != null) {
         // Regular qty update - clear case counting fields
         if (updates.qty < 0) {
@@ -7819,7 +7831,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const patchUser = (req as any).user;
         if (accumulate) {
           // "+" accumulate: append a new entry for only the added qty
-          const addedQty = updatedLine.qty - (existingLine.qty ?? 0);
+          // When addQty was used, addedQty == addQty exactly (no stale-state risk)
+          const addedQty = addQty != null ? addQty : updatedLine.qty - (existingLine.qty ?? 0);
           if (addedQty !== 0) {
             await storage.createInventoryCountEntry({
               inventoryCountLineId: updatedLine.id,
@@ -15494,9 +15507,11 @@ Human Handoff:
       }
 
       // Accept "count" as an alias for "qty" (mobile app field name)
-      const { qty: rawQty, count: rawCount, caseQty, containerQty, looseUnits } = req.body;
+      const { qty: rawQty, count: rawCount, addQty: rawAddQty, caseQty, containerQty, looseUnits } = req.body;
       const qty = rawQty ?? rawCount;
+      const addQty: number | undefined = rawAddQty != null ? Number(rawAddQty) : undefined;
       const updates: any = {};
+      let addedQty: number | null = null; // for entry audit trail
 
       if (caseQty != null || containerQty != null || looseUnits != null) {
         const cQty = caseQty ?? existingLine.caseQty ?? 0;
@@ -15518,17 +15533,52 @@ Human Handoff:
           const caseSize = item?.caseSize ?? 0;
           updates.qty = (cQty * caseSize) + lUnits;
         }
+        // case-breakdown edits replace the entry
+        addedQty = null;
+      } else if (addQty != null) {
+        // Atomic server-side increment — avoids stale-state from client arithmetic
+        const newQty = (existingLine.qty ?? 0) + addQty;
+        if (newQty < 0) return res.status(400).json({ error: "Quantity cannot be negative" });
+        updates.qty = newQty;
+        updates.caseQty = null;
+        updates.containerQty = null;
+        updates.looseUnits = null;
+        addedQty = addQty; // record exactly what was added
       } else if (qty != null) {
         if (qty < 0) return res.status(400).json({ error: "Quantity cannot be negative" });
         updates.qty = qty;
         updates.caseQty = null;
         updates.containerQty = null;
         updates.looseUnits = null;
+        addedQty = null; // direct set — will replace entries below
       } else {
-        return res.status(400).json({ error: "Provide qty (or count) or at least one of caseQty, containerQty, looseUnits" });
+        return res.status(400).json({ error: "Provide qty (or count), addQty, or at least one of caseQty, containerQty, looseUnits" });
       }
 
       const updatedLine = await storage.updateInventoryCountLine(req.params.lineId, updates);
+
+      // Write audit entry record(s)
+      if (updatedLine) {
+        if (addedQty != null) {
+          // Accumulate mode: append a new entry for just the increment
+          if (addedQty !== 0) {
+            await storage.createInventoryCountEntry({
+              inventoryCountLineId: updatedLine.id,
+              qty: addedQty,
+              userId,
+            });
+          }
+        } else {
+          // Direct set: replace all entries with a single record
+          await storage.deleteEntriesForLine(updatedLine.id);
+          await storage.createInventoryCountEntry({
+            inventoryCountLineId: updatedLine.id,
+            qty: updatedLine.qty,
+            userId,
+          });
+        }
+      }
+
       return res.json(updatedLine);
     } catch (error: any) {
       console.error("[PATCH /api/mobile/sessions/:id/lines/:lineId]", error);

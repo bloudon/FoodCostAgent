@@ -1542,7 +1542,7 @@ export default function CountSession() {
                                                     onKeyDown={e => {
                                                       if (e.key === 'Enter') {
                                                         const addAmt = parseFloat(addMoreQty) || 0;
-                                                        updateMutation.mutate({ id: line.id, qty: line.qty + addAmt, accumulate: true });
+                                                        updateMutation.mutate({ id: line.id, addQty: addAmt, accumulate: true });
                                                         setAddingToLineId(null);
                                                         setAddMoreQty("");
                                                       } else if (e.key === 'Escape') {
@@ -1558,7 +1558,7 @@ export default function CountSession() {
                                                     className="h-9 w-9 shrink-0"
                                                     onClick={() => {
                                                       const addAmt = parseFloat(addMoreQty) || 0;
-                                                      updateMutation.mutate({ id: line.id, qty: line.qty + addAmt, accumulate: true });
+                                                      updateMutation.mutate({ id: line.id, addQty: addAmt, accumulate: true });
                                                       setAddingToLineId(null);
                                                       setAddMoreQty("");
                                                     }}
