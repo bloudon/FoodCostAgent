@@ -736,7 +736,7 @@ export default function RecipeImport() {
               <div>
                 <h2 className="text-lg font-semibold">Recipe Created</h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {linkedToMenuItem
+                  {(linkedToMenuItem || urlMenuItemId)
                     ? `${formatRecipeName(recipeName)} has been added to your recipe library and linked to the menu item.`
                     : `${formatRecipeName(recipeName)} has been added to your recipe library.`}
                 </p>
