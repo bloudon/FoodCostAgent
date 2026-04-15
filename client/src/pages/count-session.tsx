@@ -831,8 +831,8 @@ export default function CountSession() {
   const isReadOnly = count && (count.canEdit === false || count.applied === 1);
   
   return (
-    <div className="p-4 sm:p-8 overflow-x-hidden">
-      <div className="mb-4 sm:mb-8">
+    <div className="py-4 px-0 sm:p-8 overflow-x-hidden">
+      <div className="mb-4 sm:mb-8 px-4 sm:px-0">
         <Link href={sourceCountId ? `/count/${sourceCountId}` : "/inventory-sessions"}>
           <Button variant="ghost" className="mb-4" data-testid="button-back">
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -899,7 +899,7 @@ export default function CountSession() {
       )}
 
       {/* Mini Dashboard - Sticky Stats Bar */}
-      <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-4 sm:mb-8 -mx-4 sm:-mx-8 px-4 sm:px-8 py-2 sm:py-3">
+      <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-4 sm:mb-8 sm:-mx-8 px-4 sm:px-8 py-2 sm:py-3">
         <div className="flex items-center gap-3 sm:gap-4">
           {/* Stats — grouped so they shrink together before buttons get squeezed */}
           <div className="flex items-center gap-3 sm:gap-5 flex-1 min-w-0">
