@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Calendar as CalendarIcon, Trash2, Star, RotateCcw, ChevronRight } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Trash2, Star, RotateCcw, ChevronRight, Lock } from "lucide-react";
 import { useEmbedded } from "@/hooks/use-embedded";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
@@ -168,11 +168,15 @@ function SessionRow({ count, inventoryItems, stores, index }: any) {
             {count.isPowerSession === 1 && (
               <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" data-testid={`icon-power-${count.id}`} />
             )}
+            {count.applied === 1 && (
+              <Lock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" data-testid={`icon-locked-${count.id}`} />
+            )}
             {format(countDate, "PPP")}
           </div>
           <div className="text-xs text-muted-foreground">
             Created {format(createdAt, "p")}
             {count.isPowerSession === 1 && " • Power Count"}
+            {count.applied === 1 && " • Locked"}
           </div>
         </Link>
       </TableCell>
@@ -200,10 +204,11 @@ function SessionRow({ count, inventoryItems, stores, index }: any) {
             variant="ghost"
             size="sm"
             onClick={handleDelete}
-            disabled={deleteSessionMutation.isPending}
+            disabled={deleteSessionMutation.isPending || count.applied === 1}
+            title={count.applied === 1 ? "Unlock the session before deleting" : undefined}
             data-testid={`button-delete-session-${count.id}`}
           >
-            <Trash2 className="h-4 w-4 text-destructive" />
+            <Trash2 className={`h-4 w-4 ${count.applied === 1 ? "text-muted-foreground" : "text-destructive"}`} />
           </Button>
         </div>
       </TableCell>
