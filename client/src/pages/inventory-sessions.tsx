@@ -163,16 +163,18 @@ function SessionRow({ count, inventoryItems, stores, index }: any) {
   return (
     <TableRow data-testid={`row-session-${count.id}`} className={rowClass}>
       <TableCell>
-        <div className="font-medium flex items-center gap-2">
-          {count.isPowerSession === 1 && (
-            <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" data-testid={`icon-power-${count.id}`} />
-          )}
-          {format(countDate, "PPP")}
-        </div>
-        <div className="text-xs text-muted-foreground">
-          Created {format(createdAt, "p")}
-          {count.isPowerSession === 1 && " • Power Count"}
-        </div>
+        <Link href={`/count/${count.id}`} className="hover:underline">
+          <div className="font-medium flex items-center gap-2">
+            {count.isPowerSession === 1 && (
+              <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" data-testid={`icon-power-${count.id}`} />
+            )}
+            {format(countDate, "PPP")}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Created {format(createdAt, "p")}
+            {count.isPowerSession === 1 && " • Power Count"}
+          </div>
+        </Link>
       </TableCell>
       <TableCell data-testid={`text-store-${count.id}`}>{storeName}</TableCell>
       <TableCell>{count.userName || "System"}</TableCell>
