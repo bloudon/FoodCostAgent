@@ -6807,7 +6807,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sizeName: sizeName.trim(),
       });
 
-      // Clone all components with scaled quantities
+      // Clone all components with scaled quantities, preserving missingItemName for unlinked items
       for (const comp of sourceComponents) {
         await storage.createRecipeComponent({
           recipeId: clonedRecipe.id,
@@ -6816,6 +6816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           qty: comp.qty * scaleFactor,
           unitId: comp.unitId,
           sortOrder: comp.sortOrder,
+          missingItemName: comp.missingItemName ?? null,
         });
       }
 
@@ -6898,8 +6899,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = insertRecipeComponentSchema.parse(req.body);
       
-      // Verify component reference belongs to same company
-      if (data.componentType === "inventory_item") {
+      // Verify component reference belongs to same company.
+      // Exception: if missingItemName is set, the componentId is a placeholder UUID
+      // that intentionally doesn't exist in inventory — allow it through.
+      const isMissingItemPlaceholder = data.componentType === "inventory_item" && !!data.missingItemName;
+      if (data.componentType === "inventory_item" && !isMissingItemPlaceholder) {
         const item = await storage.getInventoryItem(data.componentId);
         if (!item || item.companyId !== (req as any).companyId) {
           return res.status(404).json({ error: "Inventory item not found" });

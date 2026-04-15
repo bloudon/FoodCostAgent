@@ -1258,6 +1258,12 @@ function RecipeBuilderContent() {
           compData.yieldOverride = comp.yieldOverride;
         }
 
+        // Preserve the original ingredient name for unlinked missing items so it
+        // survives save/re-save cycles instead of being silently wiped to null
+        if (comp.missingItem && comp.name && comp.name !== "Unknown" && comp.name !== "Unknown item") {
+          compData.missingItemName = comp.name;
+        }
+
         return apiRequest("POST", "/api/recipe-components", compData);
       });
 
