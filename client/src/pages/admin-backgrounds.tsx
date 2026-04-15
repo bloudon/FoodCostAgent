@@ -9,7 +9,7 @@ import { ObjectUploader } from "@/components/ObjectUploader";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Eye, EyeOff, Trash2, Plus, ArrowUp, ArrowDown, Link, Upload, Loader2, ImageIcon, Star
+  Eye, EyeOff, Trash2, Plus, ArrowUp, ArrowDown, Link, Upload, Loader2, ImageIcon, Star, Smartphone
 } from "lucide-react";
 import {
   Tooltip, TooltipContent, TooltipTrigger,
@@ -27,6 +27,7 @@ interface BgImage {
   sortOrder: number;
   isActive: number;
   isFreeBackground: number;
+  isMobileAvailable: number;
   createdAt: string;
 }
 
@@ -110,6 +111,16 @@ export default function AdminBackgrounds() {
       toast({ title: "Free tier background updated" });
     },
     onError: () => toast({ title: "Failed to update free tier background", variant: "destructive" }),
+  });
+
+  const mobileAvailableMutation = useMutation({
+    mutationFn: async ({ id, isMobileAvailable }: { id: string; isMobileAvailable: number }) =>
+      apiRequest("PATCH", `/api/admin/background-images/${id}`, { isMobileAvailable }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/background-images"] });
+      toast({ title: "Mobile availability updated" });
+    },
+    onError: () => toast({ title: "Failed to update mobile availability", variant: "destructive" }),
   });
 
   if (!user || user.role !== "global_admin") {
@@ -236,7 +247,13 @@ export default function AdminBackgrounds() {
                   className="w-full h-full object-cover"
                   loading="lazy"
                 />
-                <div className="absolute top-2 right-2 flex gap-1">
+                <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+                  {img.isMobileAvailable === 1 && (
+                    <Badge variant="secondary" className="text-xs bg-blue-600 text-white">
+                      <Smartphone className="h-3 w-3 mr-1" />
+                      Mobile
+                    </Badge>
+                  )}
                   {img.isFreeBackground === 1 && (
                     <Badge variant="destructive" className="text-xs">
                       <Star className="h-3 w-3 mr-1" />
@@ -295,6 +312,26 @@ export default function AdminBackgrounds() {
                         <Button
                           size="icon"
                           variant="ghost"
+                          className={`toggle-elevate ${img.isMobileAvailable === 1 ? "toggle-elevated" : ""}`}
+                          onClick={() => mobileAvailableMutation.mutate({
+                            id: img.id,
+                            isMobileAvailable: img.isMobileAvailable === 1 ? 0 : 1,
+                          })}
+                          disabled={mobileAvailableMutation.isPending}
+                          data-testid={`button-mobile-bg-${img.id}`}
+                        >
+                          <Smartphone className={`h-4 w-4 ${img.isMobileAvailable === 1 ? "text-blue-500" : ""}`} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {img.isMobileAvailable === 1 ? "Remove from mobile app" : "Make available to mobile app"}
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
                           className={`toggle-elevate ${img.isFreeBackground === 1 ? "toggle-elevated" : ""}`}
                           onClick={() => freeBackgroundMutation.mutate({
                             id: img.id,
@@ -346,10 +383,11 @@ export default function AdminBackgrounds() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Images are shown in the carousel in the order listed above. Use the up/down arrows to rearrange. 
-            Hidden images are excluded from the carousel but kept for easy re-enabling. 
-            Paid-tier companies can override the carousel with a single brand background image set from their company profile. 
-            Use the star icon to designate one image as the free-tier background -- free accounts will see only that image instead of the full carousel.
+            Images are shown in the carousel in the order listed above. Use the up/down arrows to rearrange.
+            Hidden images are excluded from the carousel but kept for easy re-enabling.
+            Paid-tier companies can override the carousel with a single brand background image set from their company profile.
+            Use the star icon to designate one image as the free-tier background — free accounts will see only that image instead of the full carousel.
+            Use the phone icon to make an image available to the mobile app via <code className="text-xs font-mono">GET /api/mobile/background-images</code>.
           </p>
         </CardContent>
       </Card>

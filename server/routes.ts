@@ -400,6 +400,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/mobile/background-images — no auth required
+  // Returns active images flagged for mobile use, ordered by sortOrder.
+  // Shape: { images: [{ id, url, label }] }
+  app.get("/api/mobile/background-images", async (req, res) => {
+    try {
+      const images = await db.select()
+        .from(backgroundImages)
+        .where(and(eq(backgroundImages.isActive, 1), eq(backgroundImages.isMobileAvailable, 1)))
+        .orderBy(asc(backgroundImages.sortOrder), asc(backgroundImages.createdAt));
+
+      return res.json({
+        images: images.map((img) => ({
+          id: img.id,
+          url: img.objectPath ?? img.externalUrl,
+          label: img.label,
+        })),
+      });
+    } catch (err) {
+      console.error("GET /api/mobile/background-images error:", err);
+      return res.status(500).json({ error: "Failed to fetch mobile background images" });
+    }
+  });
+
   // GET /api/admin/background-images — global admin only
   app.get("/api/admin/background-images", requireAuth, async (req, res) => {
     const user = (req as any).user;
@@ -464,6 +487,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         label: z.string().optional(),
         sortOrder: z.number().int().optional(),
         isActive: z.number().int().min(0).max(1).optional(),
+        isMobileAvailable: z.number().int().min(0).max(1).optional(),
         externalUrl: z.string().nullable().optional(),
         objectPath: z.string().nullable().optional(),
       }).parse(req.body);

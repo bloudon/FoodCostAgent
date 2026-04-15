@@ -1339,6 +1339,7 @@ export const backgroundImages = pgTable("background_images", {
   sortOrder: integer("sort_order").notNull().default(0),
   isActive: integer("is_active").notNull().default(1), // 1 = active, 0 = inactive
   isFreeBackground: integer("is_free_background").notNull().default(0), // 1 = designated free-tier background
+  isMobileAvailable: integer("is_mobile_available").notNull().default(0), // 1 = included in mobile app backgrounds
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
