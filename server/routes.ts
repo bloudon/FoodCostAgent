@@ -15074,7 +15074,10 @@ Human Handoff:
   /**
    * GET /api/mobile/sessions/active
    * Returns open (not-yet-applied) inventory count sessions for the authenticated
-   * user's company/store, each with id, name, startedAt, and scanCount.
+   * user's company/store, ordered newest-first, each enriched with:
+   *   id, name, startedAt, scanCount, totalItems, totalValue,
+   *   locations[] (id, name, itemCount, value, sortOrder),
+   *   categories[] (id, name, itemCount, value)
    * Returns [] when none are open, 401 when unauthenticated.
    * Registered after /sessions/:id which passes through via next() when id==="active".
    */
@@ -15095,22 +15098,92 @@ Human Handoff:
 
       const activeCounts = await storage.getActiveInventoryCounts(companyId, storeId);
 
-      // For each session, count how many shelf_scan_sessions are linked (company-scoped for tenant safety)
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+
+      // Enrich each session with scan count + location/category aggregations in parallel
       const sessions = await Promise.all(
         activeCounts.map(async (ic) => {
-          const linked = await db
-            .select({ count: sql<number>`count(*)::int` })
-            .from(shelfScanSessions)
-            .where(and(
-              eq(shelfScanSessions.inventoryCountId, ic.id),
-              eq(shelfScanSessions.companyId, companyId)
-            ));
-          const scanCount = linked[0]?.count ?? 0;
+          // Scan count + count-line aggregation run concurrently
+          const [linkedResult, rows] = await Promise.all([
+            db
+              .select({ count: sql<number>`count(*)::int` })
+              .from(shelfScanSessions)
+              .where(and(
+                eq(shelfScanSessions.inventoryCountId, ic.id),
+                eq(shelfScanSessions.companyId, companyId)
+              )),
+            db
+              .select({
+                qty: inventoryCountLines.qty,
+                unitCost: inventoryCountLines.unitCost,
+                itemId: inventoryItems.id,
+                categoryId: categories.id,
+                categoryName: categories.name,
+                locationId: storageLocations.id,
+                locationName: storageLocations.name,
+                locationSortOrder: storageLocations.sortOrder,
+              })
+              .from(inventoryCountLines)
+              .leftJoin(inventoryItems, eq(inventoryCountLines.inventoryItemId, inventoryItems.id))
+              .leftJoin(categories, eq(inventoryItems.categoryId, categories.id))
+              .leftJoin(storageLocations, eq(inventoryCountLines.storageLocationId, storageLocations.id))
+              .where(eq(inventoryCountLines.inventoryCountId, ic.id)),
+          ]);
+
+          const scanCount = linkedResult[0]?.count ?? 0;
+
+          // Aggregate totals and group by location / category
+          let totalValue = 0;
+          const locationMap = new Map<string, { id: string; name: string; sortOrder: number; itemCount: number; value: number }>();
+          const categoryMap = new Map<string, { id: string | null; name: string; itemCount: number; value: number }>();
+
+          for (const row of rows) {
+            const lineValue = (row.qty ?? 0) * (row.unitCost ?? 0);
+            totalValue += lineValue;
+
+            if (row.locationId) {
+              const loc = locationMap.get(row.locationId) ?? {
+                id: row.locationId,
+                name: row.locationName ?? row.locationId,
+                sortOrder: row.locationSortOrder ?? 0,
+                itemCount: 0,
+                value: 0,
+              };
+              loc.itemCount += 1;
+              loc.value += lineValue;
+              locationMap.set(row.locationId, loc);
+            }
+
+            const catKey = row.categoryId ?? "__none__";
+            const cat = categoryMap.get(catKey) ?? {
+              id: row.categoryId ?? null,
+              name: row.categoryName ?? "Uncategorized",
+              itemCount: 0,
+              value: 0,
+            };
+            cat.itemCount += 1;
+            cat.value += lineValue;
+            categoryMap.set(catKey, cat);
+          }
+
+          const locations = Array.from(locationMap.values())
+            .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name))
+            .map(l => ({ id: l.id, name: l.name, itemCount: l.itemCount, value: round2(l.value) }));
+
+          const cats = Array.from(categoryMap.values())
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map(c => ({ id: c.id, name: c.name, itemCount: c.itemCount, value: round2(c.value) }));
+
           return {
             id: ic.id,
             name: ic.name ?? ic.countDate.toISOString().slice(0, 10),
             startedAt: ic.countedAt,
+            isPowerSession: ic.isPowerSession === 1,
             scanCount,
+            totalItems: rows.length,
+            totalValue: round2(totalValue),
+            locations,
+            categories: cats,
           };
         })
       );
