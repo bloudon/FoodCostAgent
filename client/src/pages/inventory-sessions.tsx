@@ -88,6 +88,9 @@ function SessionCard({ count }: any) {
           {count.isPowerSession === 1 && (
             <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500 shrink-0" />
           )}
+          {count.applied === 1 && (
+            <Lock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" data-testid={`icon-locked-mobile-${count.id}`} />
+          )}
           <span className="font-semibold text-sm">{format(countDate, "PPP")}</span>
         </div>
         <div className="text-xs text-muted-foreground truncate">{storeName}</div>
@@ -96,6 +99,7 @@ function SessionCard({ count }: any) {
           <span>·</span>
           <span className="font-mono font-medium text-foreground">${totalValue.toFixed(2)}</span>
           {count.note && <><span>·</span><span className="truncate max-w-[120px] inline-block">{count.note}</span></>}
+          {count.applied === 1 && <><span>·</span><span className="text-emerald-600 dark:text-emerald-400 font-medium">Locked</span></>}
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
@@ -103,10 +107,11 @@ function SessionCard({ count }: any) {
           variant="ghost"
           size="icon"
           onClick={(e) => { e.stopPropagation(); deleteSessionMutation.mutate(); }}
-          disabled={deleteSessionMutation.isPending}
+          disabled={deleteSessionMutation.isPending || count.applied === 1}
+          title={count.applied === 1 ? "Unlock session before deleting" : undefined}
           data-testid={`button-delete-session-mobile-${count.id}`}
         >
-          <Trash2 className="h-4 w-4 text-destructive" />
+          <Trash2 className={`h-4 w-4 ${count.applied === 1 ? "text-muted-foreground" : "text-destructive"}`} />
         </Button>
         <ChevronRight className="h-4 w-4 text-muted-foreground" />
       </div>

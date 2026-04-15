@@ -14540,6 +14540,9 @@ Human Handoff:
           if (userId && !(await mobileUserCanAccessStore(userId, count.storeId))) {
             return res.status(403).json({ error: "Not assigned to the store for this session" });
           }
+          if ((count as any).applied === 1) {
+            return res.status(403).json({ error: "Session is locked and cannot accept new scans" });
+          }
           inventoryCountId = sessionIdParam;
         }
 
