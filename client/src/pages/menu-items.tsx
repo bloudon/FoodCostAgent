@@ -1770,6 +1770,24 @@ export default function MenuItemsPage() {
                           </SelectContent>
                         </Select>
                         <FormMessage />
+                        {!field.value && editingItem && (
+                          <button
+                            type="button"
+                            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+                            onClick={() => {
+                              const name = editForm.getValues("name") || editingItem.name || "";
+                              const params = new URLSearchParams();
+                              params.set("menuItemId", editingItem.id);
+                              if (name) params.set("recipeName", name);
+                              setEditDialogOpen(false);
+                              navigate(`/recipe-import?${params.toString()}`);
+                            }}
+                            data-testid="button-scan-recipe-from-photo"
+                          >
+                            <Camera className="h-3.5 w-3.5" />
+                            Scan recipe from photo
+                          </button>
+                        )}
                       </FormItem>
                     )}
                   />

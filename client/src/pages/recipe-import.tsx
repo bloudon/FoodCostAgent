@@ -215,11 +215,13 @@ export default function RecipeImport() {
 
   const searchParams = new URLSearchParams(search);
   const urlSessionId = searchParams.get('sessionId') || '';
+  const urlMenuItemId = searchParams.get('menuItemId') || '';
+  const urlRecipeName = searchParams.get('recipeName') || '';
 
   const [step, setStep] = useState<1 | 2 | 'done'>(urlSessionId ? 2 : 1);
   const [sessionId, setSessionId] = useState<string>(urlSessionId);
 
-  const [recipeName, setRecipeName] = useState('');
+  const [recipeName, setRecipeName] = useState(urlRecipeName);
   const [yieldQty, setYieldQty] = useState<number>(1);
   const [yieldUnit, setYieldUnit] = useState('');
   const [canBeIngredient, setCanBeIngredient] = useState(false);
@@ -227,6 +229,7 @@ export default function RecipeImport() {
   const [instructions, setInstructions] = useState('');
 
   const [createdRecipeId, setCreatedRecipeId] = useState<string | null>(null);
+  const [linkedToMenuItem, setLinkedToMenuItem] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -272,6 +275,8 @@ export default function RecipeImport() {
     if (sessionId) {
       const params = new URLSearchParams();
       params.set('sessionId', sessionId);
+      if (urlMenuItemId) params.set('menuItemId', urlMenuItemId);
+      if (urlRecipeName) params.set('recipeName', urlRecipeName);
       navigate(`/recipe-import?${params.toString()}`, { replace: true });
     }
   }, [sessionId]);
@@ -342,11 +347,23 @@ export default function RecipeImport() {
       });
       return res.json() as Promise<{ recipeId: string; recipeName: string; componentsCreated: number; skippedIngredients: number; alreadyApproved?: boolean }>;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setCreatedRecipeId(data.recipeId);
-      setStep('done');
       queryClient.invalidateQueries({ queryKey: ['/api/recipes'] });
       queryClient.invalidateQueries({ queryKey: ['/api/recipes/missing-ingredients'] });
+
+      // Auto-link the new recipe to the originating menu item when navigated from the edit dialog
+      if (urlMenuItemId && data.recipeId) {
+        try {
+          await apiRequest('POST', `/api/menu-items/${urlMenuItemId}/link-recipe`, { recipeId: data.recipeId });
+          queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
+          setLinkedToMenuItem(true);
+        } catch {
+          toast({ title: 'Link Failed', description: 'Recipe was created but could not be linked to the menu item.', variant: 'destructive' });
+        }
+      }
+
+      setStep('done');
       if (data.alreadyApproved) {
         toast({
           title: 'Recipe Already Created',
@@ -719,7 +736,9 @@ export default function RecipeImport() {
               <div>
                 <h2 className="text-lg font-semibold">Recipe Created</h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {formatRecipeName(recipeName)} has been added to your recipe library.
+                  {linkedToMenuItem
+                    ? `${formatRecipeName(recipeName)} has been added to your recipe library and linked to the menu item.`
+                    : `${formatRecipeName(recipeName)} has been added to your recipe library.`}
                 </p>
               </div>
               <div className="flex flex-col gap-2">
@@ -735,11 +754,19 @@ export default function RecipeImport() {
                     Scan Another Recipe
                   </Link>
                 </Button>
-                <Button variant="ghost" asChild data-testid="button-back-to-recipes">
-                  <Link href="/recipes">
-                    Back to Recipes
-                  </Link>
-                </Button>
+                {urlMenuItemId ? (
+                  <Button variant="ghost" asChild data-testid="button-back-to-menu-items">
+                    <Link href="/menu-items">
+                      Back to Menu Items
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button variant="ghost" asChild data-testid="button-back-to-recipes">
+                    <Link href="/recipes">
+                      Back to Recipes
+                    </Link>
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
