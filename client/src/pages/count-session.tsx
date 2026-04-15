@@ -1058,11 +1058,20 @@ export default function CountSession() {
 
       {/* Count Lines Table */}
       <Card>
-        <CardHeader className="gap-3">
-          {/* Row 1: Title + optional status */}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <CardTitle>Items</CardTitle>
-            <div className="flex items-center gap-2 flex-wrap">
+        <CardHeader className="gap-2 pb-3">
+          {/* Single row: Search + filter icons + clear */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search items..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 w-full h-11"
+                data-testid="input-search-count-lines"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
               {(selectedCategory !== "all" || selectedLocation !== "all" || selectedItemId !== "all" || search) && (
                 <Button
                   variant="outline"
@@ -1079,26 +1088,6 @@ export default function CountSession() {
                   Clear
                 </Button>
               )}
-              {selectedItemId !== "all" && (
-                <div className="text-sm text-muted-foreground truncate max-w-[160px]">
-                  <span className="font-medium">{filteredLines[0]?.inventoryItem?.name || 'Unknown Item'}</span>
-                </div>
-              )}
-            </div>
-          </div>
-          {/* Row 2: Search + View toggle */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search items..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 w-full"
-                data-testid="input-search-count-lines"
-              />
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
               <Button
                 variant={groupBy === "location" ? "default" : "outline"}
                 size="sm"
@@ -1128,6 +1117,11 @@ export default function CountSession() {
               </Button>
             </div>
           </div>
+          {selectedItemId !== "all" && (
+            <div className="text-sm text-muted-foreground truncate max-w-[200px]">
+              <span className="font-medium">{filteredLines[0]?.inventoryItem?.name || 'Unknown Item'}</span>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
