@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw, Wrench, AlertTriangle } from "lucide-react";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw, Wrench, AlertTriangle, Pencil } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -52,6 +52,20 @@ export default function Settings() {
   const [selectedVendorsForSync, setSelectedVendorsForSync] = useState<Set<string>>(new Set());
   const [posProvider, setPosProvider] = useState<string>("none");
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+  const [editStoreDialogOpen, setEditStoreDialogOpen] = useState(false);
+  const [editingStore, setEditingStore] = useState<CompanyStore | null>(null);
+  const [storeForm, setStoreForm] = useState({
+    name: "",
+    code: "",
+    phone: "",
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    timezone: "",
+    status: "active",
+  });
 
   const { data: company, isLoading: companyLoading } = useQuery<Company>({
     queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}`] : [],
@@ -145,6 +159,23 @@ export default function Settings() {
         description: "Failed to update company information",
         variant: "destructive",
       });
+    },
+  });
+
+  const updateStoreMutation = useMutation({
+    mutationFn: async (data: { id: string; [key: string]: any }) => {
+      const { id, ...payload } = data;
+      return await apiRequest("PATCH", `/api/stores/${id}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/stores"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/accessible-stores"] });
+      setEditStoreDialogOpen(false);
+      setEditingStore(null);
+      toast({ title: "Store updated", description: "Store information saved." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save store information.", variant: "destructive" });
     },
   });
 
@@ -659,12 +690,37 @@ export default function Settings() {
                           )}
                         </div>
                       </div>
-                      <Badge
-                        variant={store.status === "active" ? "default" : "secondary"}
-                        data-testid={`badge-store-status-${store.id}`}
-                      >
-                        {store.status}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={store.status === "active" ? "default" : "secondary"}
+                          data-testid={`badge-store-status-${store.id}`}
+                        >
+                          {store.status}
+                        </Badge>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          data-testid={`button-edit-store-${store.id}`}
+                          onClick={() => {
+                            setEditingStore(store);
+                            setStoreForm({
+                              name: store.name || "",
+                              code: store.code || "",
+                              phone: store.phone || "",
+                              addressLine1: store.addressLine1 || "",
+                              addressLine2: store.addressLine2 || "",
+                              city: store.city || "",
+                              state: store.state || "",
+                              postalCode: store.postalCode || "",
+                              timezone: store.timezone || "",
+                              status: store.status || "active",
+                            });
+                            setEditStoreDialogOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1453,6 +1509,153 @@ export default function Settings() {
           <MaintenanceTab />
         </TabsContent>
       </Tabs>
+
+      {/* Edit Store Dialog */}
+      <Dialog open={editStoreDialogOpen} onOpenChange={(open) => { setEditStoreDialogOpen(open); if (!open) setEditingStore(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Store</DialogTitle>
+            <DialogDescription>Update the details for this store location.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="store-name">Store Name *</Label>
+                <Input
+                  id="store-name"
+                  value={storeForm.name}
+                  onChange={(e) => setStoreForm(f => ({ ...f, name: e.target.value }))}
+                  data-testid="input-store-name"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="store-code">Store Code *</Label>
+                <Input
+                  id="store-code"
+                  value={storeForm.code}
+                  onChange={(e) => setStoreForm(f => ({ ...f, code: e.target.value }))}
+                  data-testid="input-store-code"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="store-phone">Phone</Label>
+              <Input
+                id="store-phone"
+                value={storeForm.phone}
+                onChange={(e) => setStoreForm(f => ({ ...f, phone: e.target.value }))}
+                placeholder="e.g. (555) 555-5555"
+                data-testid="input-store-phone"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="store-address1">Address Line 1</Label>
+              <Input
+                id="store-address1"
+                value={storeForm.addressLine1}
+                onChange={(e) => setStoreForm(f => ({ ...f, addressLine1: e.target.value }))}
+                data-testid="input-store-address1"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="store-address2">Address Line 2</Label>
+              <Input
+                id="store-address2"
+                value={storeForm.addressLine2}
+                onChange={(e) => setStoreForm(f => ({ ...f, addressLine2: e.target.value }))}
+                placeholder="Suite, unit, etc."
+                data-testid="input-store-address2"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="store-city">City</Label>
+                <Input
+                  id="store-city"
+                  value={storeForm.city}
+                  onChange={(e) => setStoreForm(f => ({ ...f, city: e.target.value }))}
+                  data-testid="input-store-city"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="store-state">State</Label>
+                <Input
+                  id="store-state"
+                  value={storeForm.state}
+                  onChange={(e) => setStoreForm(f => ({ ...f, state: e.target.value }))}
+                  placeholder="e.g. CA"
+                  data-testid="input-store-state"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="store-zip">Postal Code</Label>
+                <Input
+                  id="store-zip"
+                  value={storeForm.postalCode}
+                  onChange={(e) => setStoreForm(f => ({ ...f, postalCode: e.target.value }))}
+                  data-testid="input-store-postal-code"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="store-timezone">Timezone</Label>
+                <Select
+                  value={storeForm.timezone || "America/New_York"}
+                  onValueChange={(val) => setStoreForm(f => ({ ...f, timezone: val }))}
+                >
+                  <SelectTrigger id="store-timezone" data-testid="select-store-timezone">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="America/New_York">Eastern (ET)</SelectItem>
+                    <SelectItem value="America/Chicago">Central (CT)</SelectItem>
+                    <SelectItem value="America/Denver">Mountain (MT)</SelectItem>
+                    <SelectItem value="America/Los_Angeles">Pacific (PT)</SelectItem>
+                    <SelectItem value="America/Anchorage">Alaska (AKT)</SelectItem>
+                    <SelectItem value="Pacific/Honolulu">Hawaii (HT)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="store-status">Status</Label>
+                <Select
+                  value={storeForm.status}
+                  onValueChange={(val) => setStoreForm(f => ({ ...f, status: val }))}
+                >
+                  <SelectTrigger id="store-status" data-testid="select-store-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="closed">Closed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setEditStoreDialogOpen(false); setEditingStore(null); }}
+              data-testid="button-cancel-store-edit"
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!storeForm.name.trim() || !storeForm.code.trim() || updateStoreMutation.isPending}
+              onClick={() => {
+                if (!editingStore) return;
+                updateStoreMutation.mutate({ id: editingStore.id, ...storeForm });
+              }}
+              data-testid="button-save-store"
+            >
+              {updateStoreMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
