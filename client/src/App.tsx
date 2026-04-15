@@ -17,6 +17,7 @@ import Dashboard from "@/pages/dashboard";
 import InventorySessions from "@/pages/inventory-sessions";
 import InventoryCount from "@/pages/inventory-count";
 import CountSession from "@/pages/count-session";
+import NewCountSession from "@/pages/new-count-session";
 import ItemCount from "@/pages/item-count";
 import InventoryItems from "@/pages/inventory-items";
 import InventoryItemDetail from "@/pages/inventory-item-detail";
@@ -253,6 +254,7 @@ function ProtectedLayoutContent() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/inventory-sessions" component={InventorySessions} />
+          <Route path="/new-count" component={NewCountSession} />
           <Route path="/inventory-count" component={InventoryCount} />
           <Route path="/count/:id" component={CountSession} />
           <Route path="/item-count/:id" component={ItemCount} />
@@ -283,6 +285,7 @@ function ProtectedLayoutContent() {
               <Route path="/menu-items" component={MenuItems} />
               <Route path="/menu-import" component={MenuImport} />
               <Route path="/inventory-sessions" component={InventorySessions} />
+              <Route path="/new-count" component={NewCountSession} />
               <Route path="/inventory-count" component={InventoryCount} />
               <Route path="/count/:id" component={CountSession} />
               <Route path="/item-count/:id" component={ItemCount} />
