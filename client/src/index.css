@@ -17,39 +17,39 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
 
-  --background: 0deg 33.33% 98.82%;
+  --background: 38 30% 98.5%;
 
   --foreground: 0deg 0% 32.94%;
 
-  --border: 194.63deg 100% 16.08%;
+  --border: 142 12% 83%;
 
-  --card: 0 0% 98%;
+  --card: 38 20% 98%;
 
   --card-foreground: 240 10% 4%;
 
-  --card-border: 240 6% 94%;
+  --card-border: 38 10% 90%;
 
-  --sidebar: 240 5% 96%;
+  --sidebar: 142 10% 95%;
 
   --sidebar-foreground: 240 10% 4%;
 
-  --sidebar-border: 240 6% 92%;
+  --sidebar-border: 142 10% 88%;
 
   --sidebar-primary: 217 91% 60%;
 
   --sidebar-primary-foreground: 0 0% 100%;
 
-  --sidebar-accent: 240 5% 92%;
+  --sidebar-accent: 142 22% 87%;
 
   --sidebar-accent-foreground: 240 10% 4%;
 
   --sidebar-ring: 217 91% 60%;
 
-  --popover: 240 5% 94%;
+  --popover: 38 15% 95%;
 
   --popover-foreground: 240 10% 4%;
 
-  --popover-border: 240 6% 90%;
+  --popover-border: 142 10% 88%;
 
   /* Header/Menu: Slate Blue Grey */
   --primary: 194.63deg 100% 16.08%;
@@ -65,11 +65,11 @@
 
   --secondary-foreground: 0deg 0% 32.94%;
 
-  --muted: 208deg 27.27% 89.22%;
+  --muted: 142 14% 90%;
 
   --muted-foreground: 240deg 4.9% 40%;
 
-  --accent: 240deg 7.32% 91.96%;
+  --accent: 38 22% 93%;
 
   --accent-foreground: 194.63deg 100% 16.08%;
 
@@ -149,25 +149,25 @@
 
   --foreground: 0 0% 98%;
 
-  --border: 240 4% 16%;
+  --border: 142 6% 18%;
 
   --card: 240 6% 10%;
 
   --card-foreground: 0 0% 98%;
 
-  --card-border: 240 4% 14%;
+  --card-border: 142 5% 15%;
 
-  --sidebar: 240 5% 8%;
+  --sidebar: 142 6% 9%;
 
   --sidebar-foreground: 0 0% 98%;
 
-  --sidebar-border: 240 4% 12%;
+  --sidebar-border: 142 5% 13%;
 
   --sidebar-primary: 217 91% 65%;
 
   --sidebar-primary-foreground: 0 0% 100%;
 
-  --sidebar-accent: 240 4% 14%;
+  --sidebar-accent: 142 8% 15%;
 
   --sidebar-accent-foreground: 0 0% 98%;
 
@@ -177,7 +177,7 @@
 
   --popover-foreground: 0 0% 98%;
 
-  --popover-border: 240 4% 16%;
+  --popover-border: 142 5% 17%;
 
   /* Header/Menu: Slate Blue Grey (Dark Mode) */
   --primary: 215 20% 52%;
@@ -193,11 +193,11 @@
 
   --secondary-foreground: 0 0% 98%;
 
-  --muted: 240 4% 18%;
+  --muted: 142 5% 19%;
 
   --muted-foreground: 240 5% 64%;
 
-  --accent: 240 4% 16%;
+  --accent: 38 6% 17%;
 
   --accent-foreground: 0 0% 98%;
 
