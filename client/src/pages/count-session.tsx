@@ -246,7 +246,7 @@ function EntryHistory({ entries, isCatchWeight, unitAbbr }: { entries: any[]; is
                   = {entry.runningTotal.toFixed(2)} {unit}
                 </span>
               )}
-              {entry.userName && <span>by {entry.userName}</span>}
+              {entry.userName && <span>by {entry.userName.split(' ').map((n: string) => n[0]).join('').toUpperCase()}</span>}
               <span className="ml-auto text-muted-foreground/60">
                 {formatDistanceToNow(new Date(entry.enteredAt), { addSuffix: true })}
               </span>
