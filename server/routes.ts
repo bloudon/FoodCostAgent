@@ -13733,6 +13733,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn("Failed to fetch recipe snapshot for chat:", recErr);
       }
 
+      // Fetch menu item context for personalized AI context (keyword-matched or top 10 by food cost %)
+      let menuItemContextBlock = "";
+      try {
+        const menuItemsSnapshotResult = await db.execute(
+          sql`SELECT mi.id, mi.name, mi.price, r.name as recipe_name, r.computed_cost
+              FROM menu_items mi
+              LEFT JOIN recipes r ON mi.recipe_id = r.id
+              WHERE mi.company_id = ${companyId} AND mi.active = 1 AND mi.price > 0
+              ORDER BY mi.name ASC
+              LIMIT 300`
+        );
+        const allMenuItems = ((menuItemsSnapshotResult as any).rows || menuItemsSnapshotResult) as Array<{
+          id: string; name: string; price: string | null;
+          recipe_name: string | null; computed_cost: string | null;
+        }>;
+
+        if (allMenuItems.length > 0) {
+          const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const matchedMenuItems = allMenuItems
+            .filter(item => {
+              const pattern = new RegExp(`(?<![a-z])${escapeRegex(item.name.toLowerCase())}(?![a-z])`);
+              return pattern.test(allUserText);
+            })
+            .slice(0, 10);
+
+          const formatMenuItem = (item: { name: string; price: string | null; recipe_name: string | null; computed_cost: string | null }) => {
+            const price = item.price ? `$${Number(item.price).toFixed(2)}` : "no price";
+            const recipe = item.recipe_name ? item.recipe_name : "no linked recipe";
+            let fcPct = "";
+            if (item.price && item.computed_cost && Number(item.price) > 0) {
+              const pct = (Number(item.computed_cost) / Number(item.price)) * 100;
+              fcPct = `, food cost: ${pct.toFixed(1)}%`;
+            }
+            return `  - ${item.name}: sale price ${price}${fcPct}, recipe: ${recipe}`;
+          };
+
+          if (matchedMenuItems.length > 0) {
+            const lines = matchedMenuItems.map(formatMenuItem);
+            menuItemContextBlock = `\nMenu items mentioned in this conversation (${companyName}'s actual data):\n${lines.join("\n")}`;
+          } else {
+            // Fall back to top 10 by worst food cost % (highest food cost = worst margin)
+            const withFcp = allMenuItems
+              .filter(item => item.price && item.computed_cost && Number(item.price) > 0)
+              .map(item => ({
+                ...item,
+                foodCostPct: (Number(item.computed_cost) / Number(item.price)) * 100,
+              }))
+              .sort((a, b) => b.foodCostPct - a.foodCostPct)
+              .slice(0, 10);
+            if (withFcp.length > 0) {
+              const lines = withFcp.map(formatMenuItem);
+              menuItemContextBlock = `\nMenu item snapshot — ${companyName}'s top ${withFcp.length} items by highest food cost %:\n${lines.join("\n")}`;
+            } else {
+              // No costed menu items — just show first 10 by name
+              const top10 = allMenuItems.slice(0, 10);
+              const lines = top10.map(formatMenuItem);
+              menuItemContextBlock = `\nMenu item snapshot — ${companyName}'s menu items (${top10.length} shown):\n${lines.join("\n")}`;
+            }
+          }
+        }
+      } catch (menuErr) {
+        console.warn("Failed to fetch menu item snapshot for chat:", menuErr);
+      }
+
       let tfcSummary = "";
       const tierHierarchy = ["free", "basic", "pro", "enterprise"];
       const tierIndex = tierHierarchy.indexOf(tier);
@@ -13831,7 +13895,7 @@ PLAN TIER FEATURES — be precise about what each tier includes; never invent re
 Current account data:
 - Plan: ${tier}
 - ${storeCount} store location(s), ${vendorCount} vendor(s), ${itemCount} inventory items, ${recipeCount} recipes
-- Top items by cost: ${topItemsSummary}${tfcSummary}${inventoryContextBlock}${recipeContextBlock}
+- Top items by cost: ${topItemsSummary}${tfcSummary}${inventoryContextBlock}${recipeContextBlock}${menuItemContextBlock}
 ${isNewAccount ? `
 IMPORTANT — This is a brand-new account with no data yet. Shift your role to onboarding guide. Help them get set up step by step in this recommended order:
 1. Add a store location (Gear icon → Locations)
