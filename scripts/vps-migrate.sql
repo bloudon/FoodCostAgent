@@ -813,3 +813,39 @@ BEGIN
       VALUES ('v031', 'Task #78: inventory_count_entries table for sub-entry history per count line');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v032 — Scope menu_items PLU/SKU uniqueness to company level
+--        Old constraint was globally unique across all companies (wrong for SaaS).
+--        New constraint: unique per company — same PLU can exist in different companies.
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v032') THEN
+
+    -- Drop old global unique constraint if it exists
+    IF EXISTS (
+      SELECT 1 FROM information_schema.table_constraints
+      WHERE table_name = 'menu_items'
+        AND constraint_name = 'menu_items_plu_sku_unique'
+        AND constraint_type = 'UNIQUE'
+    ) THEN
+      ALTER TABLE menu_items DROP CONSTRAINT menu_items_plu_sku_unique;
+    END IF;
+
+    -- Add per-company unique constraint if not already present
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.table_constraints
+      WHERE table_name = 'menu_items'
+        AND constraint_name = 'menu_items_company_id_plu_sku_unique'
+        AND constraint_type = 'UNIQUE'
+    ) THEN
+      ALTER TABLE menu_items
+        ADD CONSTRAINT menu_items_company_id_plu_sku_unique
+        UNIQUE (company_id, plu_sku);
+    END IF;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v032', 'Scope menu_items PLU/SKU uniqueness to company level (company_id + plu_sku)');
+  END IF;
+END $$;
