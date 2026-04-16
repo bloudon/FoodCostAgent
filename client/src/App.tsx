@@ -12,6 +12,7 @@ import pkgJson from "../../package.json";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { StoreProvider } from "@/hooks/use-store-context";
 import { useEmbedded } from "@/hooks/use-embedded";
+import { useCompany } from "@/hooks/use-company";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import InventorySessions from "@/pages/inventory-sessions";
@@ -186,12 +187,21 @@ function ProtectedLayout() {
 /** Renders the top bar inside SidebarInset so useSidebar() is in scope. */
 function AppTopBar() {
   const { isMobile } = useSidebar();
+  const { company } = useCompany();
   return (
     <div className="sticky top-0 z-50 flex h-12 items-center border-b px-4 bg-background gap-3">
       <SidebarTrigger
         data-testid={isMobile ? "button-mobile-menu" : "button-main-menu"}
       />
       <img src="/website-logo.png" alt="FNB Cost Pro" className="h-7 w-auto md:hidden" />
+      {company?.name && (
+        <span
+          className="hidden md:block text-sm font-medium text-muted-foreground truncate"
+          data-testid="text-topbar-company-name"
+        >
+          {company.name}
+        </span>
+      )}
     </div>
   );
 }
