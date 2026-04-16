@@ -13642,6 +13642,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn("Failed to fetch inventory snapshot for chat:", invErr);
       }
 
+      // Fetch recipe snapshot for personalized AI context (keyword-matched or top 10 by cost)
+      let recipeContextBlock = "";
+      try {
+        const recipesSnapshotResult = await db.execute(
+          sql`SELECT r.id, r.name, r.computed_cost, r.yield_qty, u.name as yield_unit_name
+              FROM recipes r
+              LEFT JOIN units u ON r.yield_unit_id = u.id
+              WHERE r.company_id = ${companyId} AND r.is_active = 1 AND (r.is_placeholder = 0 OR r.is_placeholder IS NULL)
+              ORDER BY r.computed_cost DESC NULLS LAST
+              LIMIT 300`
+        );
+        const allRecipes = ((recipesSnapshotResult as any).rows || recipesSnapshotResult) as Array<{
+          id: string; name: string; computed_cost: string | null;
+          yield_qty: string | null; yield_unit_name: string | null;
+        }>;
+
+        if (allRecipes.length > 0) {
+          const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const matchedRecipes = allRecipes
+            .filter(recipe => {
+              const pattern = new RegExp(`(?<![a-z])${escapeRegex(recipe.name.toLowerCase())}(?![a-z])`);
+              return pattern.test(allUserText);
+            })
+            .slice(0, 5);
+
+          if (matchedRecipes.length > 0) {
+            // Fetch ingredients for each matched recipe and format detailed blocks
+            const detailedBlocks: string[] = [];
+            for (const recipe of matchedRecipes) {
+              const ingredientsResult = await db.execute(
+                sql`SELECT rc.qty,
+                           COALESCE(ii.name, r2.name, rc.missing_item_name) as ingredient_name,
+                           u.name as unit_name,
+                           ii.price_per_unit,
+                           rc.component_type,
+                           COALESCE(rc.yield_override, ii.yield_percent) as effective_yield,
+                           r2.computed_cost as sub_recipe_cost,
+                           r2.yield_qty as sub_recipe_yield_qty
+                    FROM recipe_components rc
+                    LEFT JOIN inventory_items ii ON rc.component_id = ii.id AND rc.component_type = 'inventory_item'
+                    LEFT JOIN recipes r2 ON rc.component_id = r2.id AND rc.component_type = 'recipe'
+                    LEFT JOIN units u ON rc.unit_id = u.id
+                    WHERE rc.recipe_id = ${recipe.id}
+                    ORDER BY rc.sort_order ASC
+                    LIMIT 20`
+              );
+              const ingredients = ((ingredientsResult as any).rows || ingredientsResult) as Array<{
+                qty: string | null; ingredient_name: string | null; unit_name: string | null;
+                price_per_unit: string | null; component_type: string | null; effective_yield: string | null;
+                sub_recipe_cost: string | null; sub_recipe_yield_qty: string | null;
+              }>;
+
+              const cost = recipe.computed_cost ? `$${Number(recipe.computed_cost).toFixed(4)}` : "not costed";
+              const yieldStr = recipe.yield_qty ? `${Number(recipe.yield_qty)} ${recipe.yield_unit_name || "units"}` : "";
+              const header = `Recipe: ${recipe.name} — total cost: ${cost}${yieldStr ? `, yield: ${yieldStr}` : ""}`;
+
+              const ingredientLines = ingredients.map(ing => {
+                const qty = ing.qty ? Number(ing.qty).toFixed(3).replace(/\.?0+$/, "") : "?";
+                const unit = ing.unit_name || "";
+                const name = ing.ingredient_name || "Unknown";
+                // For inventory items use price_per_unit; for sub-recipes derive cost-per-unit from computed_cost/yield_qty
+                let linePrice: string | null = null;
+                if (ing.price_per_unit && ing.qty) {
+                  linePrice = `$${(Number(ing.price_per_unit) * Number(ing.qty)).toFixed(4)}`;
+                } else if (ing.sub_recipe_cost && ing.sub_recipe_yield_qty && ing.qty && Number(ing.sub_recipe_yield_qty) > 0) {
+                  const cpUnit = Number(ing.sub_recipe_cost) / Number(ing.sub_recipe_yield_qty);
+                  linePrice = `$${(cpUnit * Number(ing.qty)).toFixed(4)}`;
+                }
+                const yld = ing.effective_yield ? ` (yield ${Number(ing.effective_yield).toFixed(0)}%)` : "";
+                return `    - ${qty} ${unit} ${name}${yld}${linePrice ? ` → ${linePrice}` : ""}`;
+              });
+
+              detailedBlocks.push(`  ${header}\n${ingredientLines.join("\n")}`);
+            }
+
+            recipeContextBlock = `\nRecipes mentioned in this conversation (${companyName}'s actual data):\n${detailedBlocks.join("\n")}`;
+          } else {
+            // Fall back to compact list of top 10 most expensive recipes
+            const top10 = allRecipes.slice(0, 10);
+            const lines = top10.map(r => {
+              const cost = r.computed_cost ? `$${Number(r.computed_cost).toFixed(4)}` : "not costed";
+              const yieldStr = r.yield_qty ? ` / ${Number(r.yield_qty)} ${r.yield_unit_name || "units"}` : "";
+              return `  - ${r.name}: ${cost}${yieldStr}`;
+            });
+            recipeContextBlock = `\nRecipe snapshot — ${companyName}'s top ${top10.length} recipes by cost:\n${lines.join("\n")}`;
+          }
+        }
+      } catch (recErr) {
+        console.warn("Failed to fetch recipe snapshot for chat:", recErr);
+      }
+
       let tfcSummary = "";
       const tierHierarchy = ["free", "basic", "pro", "enterprise"];
       const tierIndex = tierHierarchy.indexOf(tier);
@@ -13740,7 +13831,7 @@ PLAN TIER FEATURES — be precise about what each tier includes; never invent re
 Current account data:
 - Plan: ${tier}
 - ${storeCount} store location(s), ${vendorCount} vendor(s), ${itemCount} inventory items, ${recipeCount} recipes
-- Top items by cost: ${topItemsSummary}${tfcSummary}${inventoryContextBlock}
+- Top items by cost: ${topItemsSummary}${tfcSummary}${inventoryContextBlock}${recipeContextBlock}
 ${isNewAccount ? `
 IMPORTANT — This is a brand-new account with no data yet. Shift your role to onboarding guide. Help them get set up step by step in this recommended order:
 1. Add a store location (Gear icon → Locations)
