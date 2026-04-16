@@ -13797,6 +13797,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn("Failed to fetch menu item snapshot for chat:", menuErr);
       }
 
+      // Fetch waste log snapshot for personalized AI context (keyword-matched or top 10 by cost)
+      let wasteContextBlock = "";
+      try {
+        const wasteSnapshotResult = await db.execute(
+          sql`SELECT
+                COALESCE(ii.name, mi.name, 'Unknown') as item_name,
+                wl.waste_type,
+                SUM(wl.qty) as total_qty,
+                SUM(wl.total_value) as total_cost,
+                u.name as unit_name
+              FROM waste_logs wl
+              LEFT JOIN inventory_items ii ON wl.inventory_item_id = ii.id AND wl.waste_type = 'inventory'
+              LEFT JOIN menu_items mi ON wl.menu_item_id = mi.id AND wl.waste_type = 'menu_item'
+              LEFT JOIN units u ON ii.unit_id = u.id
+              WHERE wl.company_id = ${companyId}
+                AND wl.wasted_at >= NOW() - INTERVAL '30 days'
+              GROUP BY COALESCE(ii.name, mi.name, 'Unknown'), wl.waste_type, u.name
+              ORDER BY total_cost DESC
+              LIMIT 100`
+        );
+        const allWasteItems = ((wasteSnapshotResult as any).rows || wasteSnapshotResult) as Array<{
+          item_name: string; waste_type: string; total_qty: string | null;
+          total_cost: string | null; unit_name: string | null;
+        }>;
+
+        if (allWasteItems.length > 0) {
+          const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const matchedWasteItems = allWasteItems
+            .filter(item => {
+              const pattern = new RegExp(`(?<![a-z])${escapeRegex(item.item_name.toLowerCase())}(?![a-z])`);
+              return pattern.test(allUserText);
+            })
+            .slice(0, 20);
+
+          const wasteItemsToInclude = matchedWasteItems.length > 0 ? matchedWasteItems : allWasteItems.slice(0, 10);
+
+          const wasteLines = wasteItemsToInclude.map(item => {
+            const qty = item.total_qty ? Number(item.total_qty).toFixed(2).replace(/\.?0+$/, "") : "?";
+            const unit = item.unit_name ? ` ${item.unit_name}` : (item.waste_type === "menu_item" ? " servings" : "");
+            const cost = item.total_cost ? `$${Number(item.total_cost).toFixed(2)}` : "$0.00";
+            return `  - ${item.item_name}: ${qty}${unit} wasted, estimated cost ${cost}`;
+          });
+
+          const wasteHeader = matchedWasteItems.length > 0
+            ? `Waste log entries for items mentioned in this conversation — last 30 days (${companyName}'s actual data):`
+            : `Waste log snapshot — ${companyName}'s top ${wasteItemsToInclude.length} most-wasted items by cost (last 30 days):`;
+
+          wasteContextBlock = `\n${wasteHeader}\n${wasteLines.join("\n")}`;
+        }
+      } catch (wasteErr) {
+        console.warn("Failed to fetch waste log snapshot for chat:", wasteErr);
+      }
+
       let tfcSummary = "";
       const tierHierarchy = ["free", "basic", "pro", "enterprise"];
       const tierIndex = tierHierarchy.indexOf(tier);
@@ -13895,7 +13948,7 @@ PLAN TIER FEATURES — be precise about what each tier includes; never invent re
 Current account data:
 - Plan: ${tier}
 - ${storeCount} store location(s), ${vendorCount} vendor(s), ${itemCount} inventory items, ${recipeCount} recipes
-- Top items by cost: ${topItemsSummary}${tfcSummary}${inventoryContextBlock}${recipeContextBlock}${menuItemContextBlock}
+- Top items by cost: ${topItemsSummary}${tfcSummary}${inventoryContextBlock}${recipeContextBlock}${menuItemContextBlock}${wasteContextBlock}
 ${isNewAccount ? `
 IMPORTANT — This is a brand-new account with no data yet. Shift your role to onboarding guide. Help them get set up step by step in this recommended order:
 1. Add a store location (Gear icon → Locations)
