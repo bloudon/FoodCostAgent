@@ -1895,12 +1895,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     let subscriptionTier: string | null = null;
+    let companyName: string | null = null;
     const effectiveCompanyId = user.role === "global_admin"
       ? selectedCompanyId
       : (user.companyId || null);
     if (effectiveCompanyId) {
       const company = await storage.getCompany(effectiveCompanyId);
       subscriptionTier = company?.subscriptionTier || "free";
+      companyName = company?.name || null;
     }
 
     res.json({ 
@@ -1908,6 +1910,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       email: user.email, 
       role: user.role, 
       companyId: user.companyId,
+      companyName,
       firstName: user.firstName,
       lastName: user.lastName,
       ssoProvider: user.ssoProvider,

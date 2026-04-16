@@ -6,6 +6,7 @@ import type { User } from "@shared/schema";
 type AuthUser = User & {
   selectedCompanyId?: string | null;
   subscriptionTier?: string | null;
+  companyName?: string | null;
 };
 
 type AuthContextType = {
