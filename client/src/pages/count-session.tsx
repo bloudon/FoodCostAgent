@@ -424,9 +424,10 @@ export default function CountSession() {
   }, []);
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; qty: number; caseQty?: number | null; containerQty?: number | null; looseUnits?: number | null; accumulate?: boolean }) => {
+    mutationFn: async (data: { id: string; qty?: number; addQty?: number; caseQty?: number | null; containerQty?: number | null; looseUnits?: number | null; accumulate?: boolean }) => {
       return apiRequest("PATCH", `/api/inventory-count-lines/${data.id}`, { 
         qty: data.qty,
+        addQty: data.addQty,
         caseQty: data.caseQty,
         containerQty: data.containerQty,
         looseUnits: data.looseUnits,
