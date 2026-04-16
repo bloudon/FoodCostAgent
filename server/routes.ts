@@ -13690,6 +13690,56 @@ IMPORTANT — This is a brand-new account with no data yet. Shift your role to o
 6. Add menu items and link to recipes (hamburger menu → Menu Items)
 Be encouraging and guide them to the right section for their next step.` : ""}
 
+INVENTORY SETUP GUIDANCE — how to configure items correctly:
+
+Core concepts:
+- "Unit" on an inventory item = the BASE unit used in recipes and for on-hand tracking.
+- "Case size" = how many of those base units come in each purchase (case, tray, jug, bag, etc.).
+- Unit price is auto-calculated: case price ÷ case size.
+- Yield % = usable portion after trim/waste. Effective recipe cost = unit price ÷ (yield ÷ 100). Example: a $0.10/slice item at 90% yield costs $0.111 in recipes.
+
+Three approaches for multi-unit items — always recommend Option 1 first:
+
+Option 1 — Set the recipe unit as the base unit (simplest, recommended):
+  Example — White Bread: recipes use Slices, 1 loaf = 25 slices, buy trays of 4 loaves.
+  - Unit = Slice; Case size = 4 × 25 = 100; Case price = tray price; Yield = 90.
+  - App auto-calculates unit price = tray price ÷ 100 (cost per slice).
+  - In Recipes: add "White Bread" with qty in Slices — yield is applied automatically.
+
+Option 2 — Purchase unit as base + Unit Conversion (use only when the operator also tracks par/reorder in the purchase unit):
+  - Unit = Loaf; Case size = 4 (loaves per tray); Yield = 90.
+  - Add Unit Conversion: Gear icon → Settings → Unit Conversions → From: Loaf → To: Slice → Factor: 25.
+  - Recipes use "Slice"; the app converts to Loaves for costing.
+
+Option 3 — Single-unit items (most common — no conversion needed):
+  - Buy by lb/oz/gallon and use by lb/oz/gallon. Just set Yield %.
+
+Common F&B scenarios and recommended unit + yield:
+- Bread (used by slice): Unit = Slice; Case size = loaves × slices/loaf; Yield 90–95%
+- Bone-in proteins (chicken leg, ribs): Unit = lb; Yield 65–80%
+- Boneless proteins (chicken breast, ground beef): Unit = lb; Yield 90–95%
+- Produce (lettuce, tomatoes, onions): Unit = lb; Yield 70–85%
+- Liquor / spirits (poured by oz): Unit = oz; Case size: 750mL = 25.4 oz, 1L = 33.8 oz; Yield 100%
+- Block cheese (used by oz): Unit = oz; Case size = lbs per block × 16; Yield 90–95%
+- Sauce / dressing jug (used by oz): Unit = oz; Case size = gallons × 128; Yield 100%
+- Eggs (flat of 30): Unit = Each; Case size = 30; Yield 90%
+- Pre-portioned items, canned goods: Yield 100% (no waste)
+
+Yield calculation tip: Yield = (usable portion ÷ purchased portion) × 100. Example: buy 10 lb chicken, trim to 8 lb usable → yield = 80%. For bread, 2–3 end/heel slices per loaf are usually discarded → 90% is a safe starting point.
+
+Step-by-step walkthrough for setting up a new inventory item:
+1. Hamburger menu → Inventory Items → Add Item
+2. Name the item (e.g., "White Bread – Sliced")
+3. Unit: choose or create the recipe unit (e.g., Slice)
+4. Yield: enter 90 (means 90%); Category: Bread/Dough; assign at least one Store Location; Save
+5. On the item detail page, open the Purchasing section to add a vendor item:
+   - Vendor: select the supplier; Case price: price per tray/order
+   - Case size: total base units per order (e.g., 4 loaves × 25 slices = 100)
+   - The app auto-calculates unit price (cost per slice)
+6. In Recipes, add this item with qty in Slices — yield adjusts the cost automatically.
+
+When a user asks how to set up an item, ask clarifying questions if needed: "What unit do your recipes call for?" and "How do you receive/purchase it — by the case, tray, jug, each?" Recommend Option 1 unless they specifically need to track par/reorder by the purchase unit.
+
 Guidelines:
 - Give specific, actionable advice based on their data when possible
 - Keep answers concise (2-4 paragraphs max)
