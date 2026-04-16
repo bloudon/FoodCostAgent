@@ -14617,6 +14617,113 @@ Human Handoff:
   );
 
   /**
+   * POST /api/mobile/catch-weight-scan
+   * Reads a single USDA/packer case or package label image and extracts the
+   * net weight printed on it.  Used by the mobile app when counting catch-weight
+   * proteins: the user photographs the label on each case or bag and the server
+   * returns the printed weight so the app can auto-fill the "+weight" field.
+   *
+   * Body (multipart/form-data):
+   *   image      — single label photo (required)
+   *   itemId     — UUID of the inventory item being counted (optional, improves accuracy)
+   *   lineId     — UUID of the count line to update (optional)
+   *   sessionId  — UUID of the open count session (optional, for audit trail)
+   *   applyToLine — "true" to atomically add the extracted netWeight to the line via addQty
+   *
+   * Response:
+   *   { netWeight, weightUnit, packageCount, weightPerPackage, productName, confidence, rawText }
+   *   If applyToLine=true and lineId+sessionId are valid, also returns { lineUpdated: true, newQty }
+   */
+  app.post(
+    "/api/mobile/catch-weight-scan",
+    requireAuth,
+    sweepUpload.any(),
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId;
+        if (!companyId) return res.status(403).json({ error: "Company context required" });
+        const userId = (req as any).user?.id;
+
+        const files: Express.Multer.File[] = (req.files as Express.Multer.File[]) ?? [];
+        if (files.length === 0) {
+          return res.status(400).json({ error: "An image is required. Use field name 'image'." });
+        }
+        const file = files[0];
+
+        function detectMime(buf: Buffer): string | null {
+          if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+          if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50) return "image/png";
+          if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46) return "image/webp";
+          return null;
+        }
+
+        const mime = detectMime(file.buffer) || file.mimetype;
+        if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) {
+          return res.status(400).json({ error: "Unsupported image type. Use JPEG, PNG, or WebP." });
+        }
+
+        // Resolve optional context
+        const itemId    = (req.body?.itemId    as string) || null;
+        const lineId    = (req.body?.lineId    as string) || null;
+        const sessionId = (req.body?.sessionId as string) || null;
+        const applyToLine = req.body?.applyToLine === "true" || req.body?.applyToLine === true;
+
+        let expectedName: string | undefined;
+        if (itemId) {
+          const item = await db.query.inventoryItems.findFirst({
+            where: and(eq(inventoryItems.id, itemId), eq(inventoryItems.companyId, companyId)),
+            columns: { name: true },
+          });
+          if (item) expectedName = item.name;
+        }
+
+        const { scanCatchWeightLabel } = await import('./services/shelfScanner');
+        const result = await scanCatchWeightLabel(file.buffer, mime, expectedName);
+
+        // Optionally apply the extracted weight directly to the count line
+        let lineUpdated = false;
+        let newQty: number | null = null;
+
+        if (applyToLine && lineId && sessionId && result.netWeight != null) {
+          // Validate session ownership and lock status
+          const count = await storage.getInventoryCount(sessionId);
+          if (count && count.companyId === companyId && (count as any).applied !== 1) {
+            if (!userId || (await mobileUserCanAccessStore(userId, count.storeId))) {
+              const existingLine = await storage.getInventoryCountLine(lineId);
+              if (existingLine && existingLine.inventoryCountId === count.id) {
+                const addedWeight = result.netWeight;
+                const updatedLine = await storage.updateInventoryCountLine(lineId, {
+                  qty: (existingLine.qty ?? 0) + addedWeight,
+                  caseQty: null,
+                  containerQty: null,
+                  looseUnits: null,
+                });
+                if (updatedLine) {
+                  await storage.createInventoryCountEntry({
+                    inventoryCountLineId: lineId,
+                    qty: addedWeight,
+                    userId: userId ?? null,
+                  });
+                  lineUpdated = true;
+                  newQty = updatedLine.qty;
+                }
+              }
+            }
+          }
+        }
+
+        return res.json({
+          ...result,
+          ...(applyToLine ? { lineUpdated, newQty } : {}),
+        });
+      } catch (error: any) {
+        console.error("[POST /api/mobile/catch-weight-scan]", error);
+        return res.status(500).json({ error: "Catch weight scan failed", details: error.message });
+      }
+    }
+  );
+
+  /**
    * GET /api/shelf-scan-sessions
    * Returns all sweep-scan sessions for the authenticated user's company.
    * Optional query param: ?storeId=<uuid>
@@ -14733,6 +14840,7 @@ Human Handoff:
         itemName: inventoryItems.name,
         categoryId: categories.id,
         categoryName: categories.name,
+        isCatchWeightCategory: categories.isCatchWeightCategory,
         locationId: storageLocations.id,
         locationName: storageLocations.name,
         unitAbbr: unitsTable.abbreviation,
@@ -14771,6 +14879,7 @@ Human Handoff:
         unit: r.unitAbbr ?? "",
         value: round2((r.qty ?? 0) * (r.unitCost ?? 0)),
         categoryName: r.categoryName ?? "Uncategorized",
+        isCatchWeightCategory: (r.isCatchWeightCategory ?? 0) === 1,
         locationId: r.locationId ?? null,
         locationName: r.locationName ?? "Unknown Location",
       })),
@@ -15431,6 +15540,7 @@ Human Handoff:
           containerSize: inventoryItems.containerSize,
           casePkgCount: inventoryItems.casePkgCount,
           categoryName: categories.name,
+          isCatchWeightCategory: categories.isCatchWeightCategory,
           locationId: storageLocations.id,
           locationName: storageLocations.name,
           locationSortOrder: storageLocations.sortOrder,
@@ -15451,6 +15561,7 @@ Human Handoff:
           inventoryItemId: r.inventoryItemId,
           itemName: r.itemName ?? "Unknown Item",
           categoryName: r.categoryName ?? "Uncategorized",
+          isCatchWeightCategory: (r.isCatchWeightCategory ?? 0) === 1,
           locationId: r.locationId ?? null,
           locationName: r.locationName ?? "Unknown Location",
           locationSortOrder: r.locationSortOrder ?? 0,
@@ -15683,6 +15794,93 @@ Human Handoff:
     } catch (error: any) {
       console.error("[POST /api/mobile/sessions/:id/apply]", error);
       return res.status(500).json({ error: "Failed to apply session" });
+    }
+  });
+
+  /**
+   * POST /api/mobile/sessions/:id/apply-scan
+   * Bulk-applies sweep-scan results to count lines within a session.
+   * The mobile app sends this after the user reviews AI-identified items,
+   * matches them to known count lines, and confirms quantities.
+   *
+   * Body:
+   *   {
+   *     lines: [{ lineId: string, qty: number }],
+   *     mode: "add" | "set"   // "add" = addQty accumulate (default), "set" = direct replace
+   *   }
+   *
+   * Returns: { updated: number, lines: [{ lineId, newQty }] }
+   */
+  app.post("/api/mobile/sessions/:id/apply-scan", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(403).json({ error: "Company context required" });
+      const userId = (req as any).user?.id;
+      if (!userId) return res.status(401).json({ error: "User not found" });
+
+      const count = await storage.getInventoryCount(req.params.id);
+      if (!count || count.companyId !== companyId) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      if (!(await mobileUserCanAccessStore(userId, count.storeId))) {
+        return res.status(403).json({ error: "Not assigned to this store" });
+      }
+      if ((count as any).applied === 1) {
+        return res.status(403).json({ error: "Session is locked" });
+      }
+
+      const { lines: lineUpdates, mode = "add" } = req.body;
+      if (!Array.isArray(lineUpdates) || lineUpdates.length === 0) {
+        return res.status(400).json({ error: "lines array is required and must not be empty" });
+      }
+
+      const results: { lineId: string; newQty: number }[] = [];
+
+      for (const update of lineUpdates) {
+        const { lineId, qty } = update;
+        if (!lineId || qty == null || isNaN(Number(qty))) continue;
+
+        const existingLine = await storage.getInventoryCountLine(lineId);
+        if (!existingLine || existingLine.inventoryCountId !== count.id) continue;
+        if (Number(qty) < 0) continue;
+
+        let newQty: number;
+        if (mode === "set") {
+          newQty = Number(qty);
+        } else {
+          // "add" mode — atomic server-side increment (same as addQty)
+          newQty = (existingLine.qty ?? 0) + Number(qty);
+        }
+
+        const updatedLine = await storage.updateInventoryCountLine(lineId, {
+          qty: newQty,
+          caseQty: null,
+          containerQty: null,
+          looseUnits: null,
+        });
+
+        if (updatedLine) {
+          // Write audit entry
+          const addedQty = mode === "set" ? newQty : Number(qty);
+          if (addedQty !== 0) {
+            if (mode === "set") {
+              // Direct set: replace entries
+              await storage.deleteEntriesForLine(lineId);
+            }
+            await storage.createInventoryCountEntry({
+              inventoryCountLineId: lineId,
+              qty: mode === "set" ? newQty : Number(qty),
+              userId,
+            });
+          }
+          results.push({ lineId, newQty: updatedLine.qty });
+        }
+      }
+
+      return res.json({ updated: results.length, lines: results });
+    } catch (error: any) {
+      console.error("[POST /api/mobile/sessions/:id/apply-scan]", error);
+      return res.status(500).json({ error: "Failed to apply scan results" });
     }
   });
 

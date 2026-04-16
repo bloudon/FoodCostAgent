@@ -108,6 +108,125 @@ Rules:
   }
 }
 
+// ─── Catch-Weight Label Scanner ───────────────────────────────────────────────
+
+export interface CatchWeightLabelResult {
+  /** Net weight extracted from the label, in the label's stated unit */
+  netWeight: number | null;
+  /** Unit as printed on the label (e.g. "lbs", "kg") */
+  weightUnit: string | null;
+  /** Number of pieces/packages if printed on the label */
+  packageCount: number | null;
+  /** Per-package weight if calculable or directly printed */
+  weightPerPackage: number | null;
+  /** Item or product name as read from the label */
+  productName: string | null;
+  confidence: 'high' | 'medium' | 'low';
+  /** Raw text the model extracted from the label */
+  rawText: string;
+}
+
+/**
+ * Reads a single USDA/packer case or catch-weight label image and extracts
+ * the net weight, package count, and any printed per-package weight.
+ *
+ * @param imageBuffer   Raw image bytes
+ * @param mimeType      MIME type (image/jpeg, image/png, image/webp)
+ * @param expectedName  Optional inventory item name to help resolve ambiguous labels
+ */
+export async function scanCatchWeightLabel(
+  imageBuffer: Buffer,
+  mimeType: string,
+  expectedName?: string,
+): Promise<CatchWeightLabelResult> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured.');
+  }
+
+  const base64 = imageBuffer.toString('base64');
+  const hint = expectedName
+    ? `We are counting "${expectedName}". Extract the weight information from the label in this image.`
+    : 'Extract the weight information from the label in this image.';
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `You are a catch-weight label reader for food-service inventory management.
+Your job is to look at a photo of a USDA/packer case sticker, hang-tag, or printed label on a meat, seafood, or protein package and extract weight information precisely.
+
+Extract the following fields:
+- netWeight: the net weight number printed on the label (e.g., 12.47 for "12.47 lbs")
+- weightUnit: the unit printed ("lbs", "kg", "oz", etc.)
+- packageCount: number of pieces or individual packages inside the case (e.g., 6 for "6 pieces")
+- weightPerPackage: per-piece/per-package weight if printed (e.g., 2.08 for "2.08 lbs/pc")
+- productName: product or item name as printed on the label
+- confidence: "high" if all fields are clearly legible, "medium" if some are inferred, "low" if mostly guessing
+- rawText: all text you can read from the label, as a comma-separated list
+
+Rules:
+- Only report numbers you can actually read; set a field to null if it is not visible or not printed
+- Prioritise the largest/clearest weight number visible — that is typically the net weight
+- If only total net weight is shown (no per-piece), set packageCount and weightPerPackage to null
+- Respond ONLY with a JSON object, no markdown, no explanation:
+{
+  "netWeight": 12.47,
+  "weightUnit": "lbs",
+  "packageCount": 6,
+  "weightPerPackage": 2.08,
+  "productName": "Chicken Breast Trimmed",
+  "confidence": "high",
+  "rawText": "CHICKEN BREAST TRIMMED, NET WT 12.47 LBS, 6 PC, 2.08 LBS/PC"
+}`,
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:${mimeType};base64,${base64}`,
+              detail: 'high',
+            },
+          },
+          { type: 'text', text: hint },
+        ],
+      },
+    ],
+    max_tokens: 512,
+    response_format: { type: 'json_object' },
+  });
+
+  const raw = response.choices[0]?.message?.content || '{}';
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      netWeight: parsed.netWeight != null ? Number(parsed.netWeight) : null,
+      weightUnit: parsed.weightUnit ? String(parsed.weightUnit) : null,
+      packageCount: parsed.packageCount != null ? Number(parsed.packageCount) : null,
+      weightPerPackage: parsed.weightPerPackage != null ? Number(parsed.weightPerPackage) : null,
+      productName: parsed.productName ? String(parsed.productName).trim() : null,
+      confidence: ['high', 'medium', 'low'].includes(parsed.confidence)
+        ? parsed.confidence
+        : 'medium',
+      rawText: String(parsed.rawText || '').trim(),
+    };
+  } catch {
+    return {
+      netWeight: null,
+      weightUnit: null,
+      packageCount: null,
+      weightPerPackage: null,
+      productName: null,
+      confidence: 'low',
+      rawText: '',
+    };
+  }
+}
+
+// ─── Shelf Sweep Merge ─────────────────────────────────────────────────────────
+
 /**
  * Merges results from multiple shelf scan frames.
  * Items with the same name (case-insensitive, normalised) have their quantities summed.

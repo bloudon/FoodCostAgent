@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2, ArrowUpDown, ArrowUpAZ, ArrowDownAZ, Plus, Check, ChevronDown } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2, ArrowUpDown, ArrowUpAZ, ArrowDownAZ, Plus, Check, ChevronDown, Scale } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import {
   Accordion,
   AccordionContent,
@@ -1339,6 +1340,8 @@ export default function CountSession() {
                                     
                                     const unitName = item?.unitName || 'unit';
                                     const unitAbbr = firstLine.unitAbbreviation || 'unit';
+                                    const catData = categoriesData?.find(c => c.id === item?.categoryId);
+                                    const isCatchWeight = (catData as any)?.isCatchWeightCategory === 1;
                                     
                                     return (
                                       <div key={itemId} className="border rounded-lg p-3 space-y-3" data-testid={`item-group-${itemId}`}>
@@ -1358,6 +1361,12 @@ export default function CountSession() {
                                               >
                                                 {item?.name || 'Unknown'}
                                               </button>
+                                            )}
+                                            {isCatchWeight && (
+                                              <Badge variant="outline" className="mt-0.5 text-xs py-0 px-1.5 gap-0.5 text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700">
+                                                <Scale className="h-2.5 w-2.5" />
+                                                Catch Weight
+                                              </Badge>
                                             )}
                                           </div>
                                           <div className="flex items-center gap-3 sm:gap-6 text-sm">
@@ -1505,6 +1514,12 @@ export default function CountSession() {
                                           )}
                                           <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5 flex-wrap">
                                             <span>{item?.category || 'Uncategorized'}</span>
+                                            {mode === 'catch' && (
+                                              <Badge variant="outline" className="text-xs py-0 px-1.5 gap-0.5 text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700">
+                                                <Scale className="h-2.5 w-2.5" />
+                                                Catch Weight
+                                              </Badge>
+                                            )}
                                             {mode === 'case' && item?.caseSize && (
                                               <span>· Case: {item.caseSize} {unitAbbr}</span>
                                             )}
@@ -1530,14 +1545,21 @@ export default function CountSession() {
                                           <>
                                             <div className="flex-1">
                                               {addingToLineId === line.id ? (
-                                                <div className="flex items-center gap-1.5">
-                                                  <span className="text-xs text-muted-foreground font-mono">{line.qty} +</span>
+                                                <div className="flex flex-col gap-1">
+                                                  {mode === 'catch' && (
+                                                    <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                                      <Scale className="h-3 w-3" />
+                                                      Enter package weight ({unitAbbr})
+                                                    </span>
+                                                  )}
+                                                  <div className="flex items-center gap-1.5">
+                                                  <span className="text-xs text-muted-foreground font-mono">{line.qty} {unitAbbr} +</span>
                                                   <Input
                                                     type="number"
                                                     value={addMoreQty}
                                                     onChange={e => setAddMoreQty(e.target.value)}
                                                     className="h-9 text-base w-24"
-                                                    placeholder="0"
+                                                    placeholder={mode === 'catch' ? `0.00 ${unitAbbr}` : "0"}
                                                     autoFocus
                                                     onKeyDown={e => {
                                                       if (e.key === 'Enter') {
@@ -1575,6 +1597,7 @@ export default function CountSession() {
                                                   >
                                                     <X className="h-4 w-4" />
                                                   </Button>
+                                                  </div>
                                                 </div>
                                               ) : (
                                                 <CountQuantityEditor
