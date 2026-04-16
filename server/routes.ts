@@ -8421,12 +8421,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Count not found" });
       }
 
-      // Get counts from the same company and store, and find the one immediately before this one
-      // Use countDate (official inventory date) not countedAt (session creation time)
+      // Get counts from the same company and store, and find the one immediately before this one.
+      // Primary sort: countDate (official inventory date); tiebreaker: countedAt (session creation time).
+      // This handles same-day sessions where countDate is identical (both stored as local midnight).
       const allCounts = await storage.getInventoryCounts(currentCount.companyId, currentCount.storeId);
+      const currentDate = new Date(currentCount.countDate).getTime();
+      const currentCreated = new Date(currentCount.countedAt).getTime();
       const previousCount = allCounts
-        .filter(c => new Date(c.countDate) < new Date(currentCount.countDate))
-        .sort((a, b) => new Date(b.countDate).getTime() - new Date(a.countDate).getTime())[0];
+        .filter(c => {
+          if (c.id === currentCount.id) return false;
+          const cDate = new Date(c.countDate).getTime();
+          if (cDate < currentDate) return true;
+          // Same calendar date — use session creation time as tiebreaker
+          if (cDate === currentDate) {
+            return new Date(c.countedAt).getTime() < currentCreated;
+          }
+          return false;
+        })
+        .sort((a, b) => {
+          const dateDiff = new Date(b.countDate).getTime() - new Date(a.countDate).getTime();
+          if (dateDiff !== 0) return dateDiff;
+          return new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime();
+        })[0];
 
       if (!previousCount) {
         return res.json({ previousCountId: null, lines: [] }); // No previous count exists
