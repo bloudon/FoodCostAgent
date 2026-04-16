@@ -13822,6 +13822,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           total_cost: string | null; unit_name: string | null;
         }>;
 
+        // Fetch totals for current and prior 30-day windows for trend comparison
+        const wasteTotalsResult = await db.execute(
+          sql`SELECT
+                SUM(CASE WHEN wl.wasted_at >= NOW() - INTERVAL '30 days' THEN wl.total_value ELSE 0 END) as current_total,
+                SUM(CASE WHEN wl.wasted_at >= NOW() - INTERVAL '60 days' AND wl.wasted_at < NOW() - INTERVAL '30 days' THEN wl.total_value ELSE 0 END) as prior_total
+              FROM waste_logs wl
+              WHERE wl.company_id = ${companyId}
+                AND wl.wasted_at >= NOW() - INTERVAL '60 days'`
+        );
+        const wasteTotalsRow = (((wasteTotalsResult as any).rows || wasteTotalsResult)[0] || {}) as {
+          current_total: string | null; prior_total: string | null;
+        };
+        const currentTotal = wasteTotalsRow.current_total ? Number(wasteTotalsRow.current_total) : 0;
+        const priorTotal = wasteTotalsRow.prior_total ? Number(wasteTotalsRow.prior_total) : 0;
+
+        let wasteTrendLine = "";
+        if (currentTotal > 0 || priorTotal > 0) {
+          const currentFmt = `$${currentTotal.toFixed(2)}`;
+          const priorFmt = `$${priorTotal.toFixed(2)}`;
+          if (priorTotal > 0) {
+            const pctChange = ((currentTotal - priorTotal) / priorTotal) * 100;
+            const sign = pctChange >= 0 ? "+" : "";
+            wasteTrendLine = `Total waste cost this month: ${currentFmt} vs ${priorFmt} last month (${sign}${pctChange.toFixed(0)}%)`;
+          } else {
+            wasteTrendLine = `Total waste cost this month: ${currentFmt} (no data for prior 30-day period)`;
+          }
+        }
+
         if (allWasteItems.length > 0) {
           const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           const matchedWasteItems = allWasteItems
@@ -13844,7 +13872,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ? `Waste log entries for items mentioned in this conversation — last 30 days (${companyName}'s actual data):`
             : `Waste log snapshot — ${companyName}'s top ${wasteItemsToInclude.length} most-wasted items by cost (last 30 days):`;
 
-          wasteContextBlock = `\n${wasteHeader}\n${wasteLines.join("\n")}`;
+          wasteContextBlock = `\n${wasteTrendLine ? wasteTrendLine + "\n" : ""}${wasteHeader}\n${wasteLines.join("\n")}`;
+        } else if (wasteTrendLine) {
+          wasteContextBlock = `\n${wasteTrendLine}`;
         }
       } catch (wasteErr) {
         console.warn("Failed to fetch waste log snapshot for chat:", wasteErr);
