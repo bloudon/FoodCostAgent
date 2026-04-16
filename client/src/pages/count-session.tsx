@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation as useWouterLocation } from "wouter";
@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2, ArrowUpDown, ArrowUpAZ, ArrowDownAZ, Plus, Check, ChevronDown, Scale } from "lucide-react";
+import { ArrowLeft, Camera, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2, ArrowUpDown, ArrowUpAZ, ArrowDownAZ, Plus, Check, ChevronDown, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   Accordion,
@@ -211,9 +211,18 @@ function generateAnchorId(prefix: string, value: string): string {
   return `${prefix}-${sanitized}-${Math.abs(hash)}`;
 }
 
-function EntryHistory({ entries }: { entries: any[] }) {
+function EntryHistory({ entries, isCatchWeight, unitAbbr }: { entries: any[]; isCatchWeight?: boolean; unitAbbr?: string }) {
   const [open, setOpen] = useState(false);
   if (!entries || entries.length <= 1) return null;
+
+  const unit = unitAbbr || 'unit';
+
+  let runningTotal = 0;
+  const entriesWithTotals = entries.map((entry: any) => {
+    runningTotal += entry.qty;
+    return { ...entry, runningTotal };
+  });
+
   return (
     <div className="mt-1.5" data-testid="entry-history-toggle">
       <button
@@ -222,15 +231,21 @@ function EntryHistory({ entries }: { entries: any[] }) {
         data-testid="button-toggle-entry-history"
       >
         <ChevronDown className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
-        {entries.length} entries
+        {isCatchWeight ? `${entries.length} packages` : `${entries.length} entries`}
       </button>
       {open && (
         <div className="mt-1 border-t pt-1.5 flex flex-col gap-0.5">
-          {entries.map((entry: any) => (
+          {entriesWithTotals.map((entry: any) => (
             <div key={entry.id} className="flex items-center gap-2 text-xs text-muted-foreground" data-testid={`entry-row-${entry.id}`}>
               <span className="font-mono font-semibold text-foreground">
                 {entry.qty > 0 ? `+${entry.qty}` : entry.qty}
+                {isCatchWeight && <span className="font-normal text-muted-foreground"> {unit}</span>}
               </span>
+              {isCatchWeight && (
+                <span className="font-mono text-muted-foreground/80" data-testid={`entry-running-total-${entry.id}`}>
+                  = {entry.runningTotal.toFixed(2)} {unit}
+                </span>
+              )}
               {entry.userName && <span>by {entry.userName}</span>}
               <span className="ml-auto text-muted-foreground/60">
                 {formatDistanceToNow(new Date(entry.enteredAt), { addSuffix: true })}
@@ -282,6 +297,9 @@ export default function CountSession() {
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [addingToLineId, setAddingToLineId] = useState<string | null>(null);
   const [addMoreQty, setAddMoreQty] = useState<string>("");
+  const [hasCamera, setHasCamera] = useState(false);
+  const [scanningLineId, setScanningLineId] = useState<string | null>(null);
+  const scanFileInputRef = useRef<HTMLInputElement>(null);
   const [wasTabPressed, setWasTabPressed] = useState(false);
   const [itemEditForm, setItemEditForm] = useState({
     name: "",
@@ -388,6 +406,21 @@ export default function CountSession() {
       }
       window.removeEventListener('scroll', handleScroll);
     };
+  }, []);
+
+  useEffect(() => {
+    if (!navigator.mediaDevices) return;
+    // Optimistically enable when mediaDevices exists — enumerateDevices can
+    // under-report videoinput on mobile Safari before permission is granted.
+    setHasCamera(true);
+    if (!navigator.mediaDevices.enumerateDevices) return;
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+      // Only hide the button when we can definitively confirm no camera is present
+      // (non-empty device list with zero videoinput entries).
+      if (devices.length > 0 && !devices.some(d => d.kind === 'videoinput')) {
+        setHasCamera(false);
+      }
+    }).catch(() => {});
   }, []);
 
   const updateMutation = useMutation({
@@ -582,6 +615,40 @@ export default function CountSession() {
     }
 
     updateItemMutation.mutate(updates);
+  };
+
+  const handleScanFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const lineId = addingToLineId;
+    if (!file || !lineId) return;
+    setScanningLineId(lineId);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      formData.append("lineId", lineId);
+      const res = await fetch("/api/mobile/catch-weight-scan", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+      const data = await res.json();
+      const weight = data.weightPerPackage ?? data.netWeight;
+      if (weight != null) {
+        setAddMoreQty(String(weight));
+        toast({ title: "Label scanned", description: `Detected weight: ${weight} ${data.weightUnit ?? ""}`.trim() });
+      } else {
+        toast({ title: "Could not read weight", description: "No weight found on the label.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Scan failed", description: err.message, variant: "destructive" });
+    } finally {
+      setScanningLineId(null);
+      if (scanFileInputRef.current) scanFileInputRef.current.value = "";
+    }
   };
 
   const applyCountMutation = useMutation({
@@ -1453,7 +1520,7 @@ export default function CountSession() {
                                                 </>
                                               )}
                                               <div className="sm:col-span-3">
-                                                <EntryHistory entries={line.entries || []} />
+                                                <EntryHistory entries={line.entries || []} isCatchWeight={mode === 'catch'} unitAbbr={unitAbbr} />
                                               </div>
                                             </div>
                                             );
@@ -1547,10 +1614,32 @@ export default function CountSession() {
                                               {addingToLineId === line.id ? (
                                                 <div className="flex flex-col gap-1">
                                                   {mode === 'catch' && (
-                                                    <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                                                      <Scale className="h-3 w-3" />
-                                                      Enter package weight ({unitAbbr})
-                                                    </span>
+                                                    <div className="flex items-center justify-between gap-2">
+                                                      <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                                        <Scale className="h-3 w-3" />
+                                                        Enter package weight ({unitAbbr})
+                                                        {(line.entries?.length ?? 0) > 0 && (
+                                                          <span className="ml-1 text-muted-foreground" data-testid={`text-package-count-${line.id}`}>
+                                                            &mdash; {line.entries.length} package{line.entries.length !== 1 ? 's' : ''} entered
+                                                          </span>
+                                                        )}
+                                                      </span>
+                                                      {hasCamera && (
+                                                        <Button
+                                                          size="sm"
+                                                          variant="outline"
+                                                          className="h-7 gap-1 text-xs shrink-0"
+                                                          disabled={scanningLineId === line.id}
+                                                          onClick={() => {
+                                                            scanFileInputRef.current?.click();
+                                                          }}
+                                                          data-testid={`button-scan-label-${line.id}`}
+                                                        >
+                                                          <Camera className="h-3 w-3" />
+                                                          {scanningLineId === line.id ? "Scanning…" : "Scan Label"}
+                                                        </Button>
+                                                      )}
+                                                    </div>
                                                   )}
                                                   <div className="flex items-center gap-1.5">
                                                   <span className="text-xs text-muted-foreground font-mono">{line.qty} {unitAbbr} +</span>
@@ -1665,7 +1754,7 @@ export default function CountSession() {
                                           </div>
                                         </Link>
                                       )}
-                                      <EntryHistory entries={line.entries || []} />
+                                      <EntryHistory entries={line.entries || []} isCatchWeight={mode === 'catch'} unitAbbr={unitAbbr} />
                                     </div>
                                   );
                                 })}
@@ -1686,6 +1775,17 @@ export default function CountSession() {
           </div>
         </CardContent>
       </Card>
+
+      <input
+        ref={scanFileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        aria-hidden
+        onChange={handleScanFileChange}
+        data-testid="input-scan-label-file"
+      />
 
       <Dialog open={!!editingItem} onOpenChange={(open) => !open && handleCloseItemEdit()}>
         <DialogContent className="max-w-2xl" data-testid="dialog-edit-item">
