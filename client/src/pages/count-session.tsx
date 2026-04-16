@@ -266,20 +266,21 @@ export default function CountSession() {
   // Get URL search parameters for filtering and navigation
   const urlParams = new URLSearchParams(window.location.search);
   const filterItemId = urlParams.get('item');
+  const filterLocationId = urlParams.get('location');
   const sourceCountId = urlParams.get('from');
   
   const [groupBy, setGroupBy] = useState<"location" | "category" | "all-entries">("location"); // Toggle between location, category grouping, and flat all-entries view
   const [allEntriesSortCol, setAllEntriesSortCol] = useState<"item" | "location">("item");
   const [allEntriesSortDir, setAllEntriesSortDir] = useState<"asc" | "desc">("asc");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [selectedLocation, setSelectedLocation] = useState<string>("all");
+  const [selectedLocation, setSelectedLocation] = useState<string>(filterLocationId || "all");
   const [selectedItemId, setSelectedItemId] = useState<string>(filterItemId || "all");
   const [search, setSearch] = useState("");
   const [openAccordionSections, setOpenAccordionSections] = useState<string[]>([]);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   
-  // Update filter when URL parameters change
+  // Update filters when URL parameters change
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const itemFilter = params.get('item');
@@ -287,6 +288,10 @@ export default function CountSession() {
       setSelectedItemId(itemFilter);
     } else {
       setSelectedItemId("all");
+    }
+    const locationFilter = params.get('location');
+    if (locationFilter) {
+      setSelectedLocation(locationFilter);
     }
   }, [window.location.search]);
   

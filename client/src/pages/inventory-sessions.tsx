@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Calendar as CalendarIcon, Trash2, Star, RotateCcw, ChevronRight, Lock } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Trash2, Star, RotateCcw, ChevronRight, Lock, MapPin } from "lucide-react";
 import { useEmbedded } from "@/hooks/use-embedded";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
@@ -56,6 +56,7 @@ import type { Company, CompanyStore } from "@shared/schema";
 
 function SessionCard({ count }: any) {
   const { toast } = useToast();
+  const isEmbedded = useEmbedded();
   const { data: countLines } = useQuery<any[]>({
     queryKey: ["/api/inventory-count-lines", count.id],
   });
@@ -63,6 +64,24 @@ function SessionCard({ count }: any) {
   const countDate = new Date(count.countDate || count.countedAt);
   const totalValue = countLines?.reduce((sum: number, line: any) => sum + (line.qty * (line.unitCost || 0)), 0) || 0;
   const [, setLocation] = useLocation();
+
+  // Build location summary rows from count lines
+  const locationRows: { id: string; name: string; value: number; counted: number; total: number }[] = [];
+  if (countLines) {
+    const locMap = new Map<string, { id: string; name: string; value: number; counted: number; total: number }>();
+    for (const line of countLines) {
+      const locId = line.storageLocationId || line.inventoryItem?.storageLocationId || "unknown";
+      const locName = line.storageLocationName || line.inventoryItem?.storageLocationName || "Unknown Location";
+      if (!locMap.has(locId)) {
+        locMap.set(locId, { id: locId, name: locName, value: 0, counted: 0, total: 0 });
+      }
+      const entry = locMap.get(locId)!;
+      entry.value += (line.qty || 0) * (line.unitCost || 0);
+      entry.total += 1;
+      if ((line.qty || 0) > 0) entry.counted += 1;
+    }
+    locationRows.push(...Array.from(locMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
+  }
 
   const deleteSessionMutation = useMutation({
     mutationFn: async () => {
@@ -77,44 +96,80 @@ function SessionCard({ count }: any) {
     },
   });
 
+  const sessionUrl = (locationId?: string) => {
+    const base = `/count/${count.id}`;
+    const qs = new URLSearchParams();
+    if (isEmbedded) qs.set("embedded", "true");
+    if (locationId) qs.set("location", locationId);
+    const q = qs.toString();
+    return q ? `${base}?${q}` : base;
+  };
+
   return (
     <div
-      className="flex items-center gap-3 px-4 py-3 border-b last:border-b-0 hover-elevate cursor-pointer active:bg-muted/30"
+      className="border-b last:border-b-0"
       data-testid={`card-session-${count.id}`}
-      onClick={() => setLocation(`/count/${count.id}`)}
     >
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          {count.isPowerSession === 1 && (
-            <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500 shrink-0" />
-          )}
-          {count.applied === 1 && (
-            <Lock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" data-testid={`icon-locked-mobile-${count.id}`} />
-          )}
-          <span className="font-semibold text-sm">{format(countDate, "PPP")}</span>
+      {/* Session header row */}
+      <div
+        className="flex items-center gap-3 px-4 py-3 hover-elevate cursor-pointer"
+        onClick={() => setLocation(sessionUrl())}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            {count.isPowerSession === 1 && (
+              <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500 shrink-0" />
+            )}
+            {count.applied === 1 && (
+              <Lock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" data-testid={`icon-locked-mobile-${count.id}`} />
+            )}
+            <span className="font-semibold text-sm">{format(countDate, "PPP")}</span>
+          </div>
+          <div className="text-xs text-muted-foreground truncate">{storeName}</div>
+          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+            <span>{countLines?.length ?? 0} items</span>
+            <span>·</span>
+            <span className="font-mono font-medium text-foreground">${totalValue.toFixed(2)}</span>
+            {count.note && <><span>·</span><span className="truncate max-w-[120px] inline-block">{count.note}</span></>}
+            {count.applied === 1 && <><span>·</span><span className="text-emerald-600 dark:text-emerald-400 font-medium">Locked</span></>}
+          </div>
         </div>
-        <div className="text-xs text-muted-foreground truncate">{storeName}</div>
-        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-          <span>{countLines?.length ?? 0} items</span>
-          <span>·</span>
-          <span className="font-mono font-medium text-foreground">${totalValue.toFixed(2)}</span>
-          {count.note && <><span>·</span><span className="truncate max-w-[120px] inline-block">{count.note}</span></>}
-          {count.applied === 1 && <><span>·</span><span className="text-emerald-600 dark:text-emerald-400 font-medium">Locked</span></>}
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => { e.stopPropagation(); deleteSessionMutation.mutate(); }}
+            disabled={deleteSessionMutation.isPending || count.applied === 1}
+            title={count.applied === 1 ? "Unlock session before deleting" : undefined}
+            data-testid={`button-delete-session-mobile-${count.id}`}
+          >
+            <Trash2 className={`h-4 w-4 ${count.applied === 1 ? "text-muted-foreground" : "text-destructive"}`} />
+          </Button>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </div>
       </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={(e) => { e.stopPropagation(); deleteSessionMutation.mutate(); }}
-          disabled={deleteSessionMutation.isPending || count.applied === 1}
-          title={count.applied === 1 ? "Unlock session before deleting" : undefined}
-          data-testid={`button-delete-session-mobile-${count.id}`}
-        >
-          <Trash2 className={`h-4 w-4 ${count.applied === 1 ? "text-muted-foreground" : "text-destructive"}`} />
-        </Button>
-        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-      </div>
+
+      {/* Location rows — each is a direct link to that location in the session */}
+      {locationRows.length > 0 && (
+        <div className="border-t bg-muted/30">
+          {locationRows.map((loc) => (
+            <div
+              key={loc.id}
+              className="flex items-center gap-2 px-6 py-2 hover-elevate cursor-pointer border-b last:border-b-0"
+              data-testid={`link-session-location-${count.id}-${loc.id}`}
+              onClick={() => setLocation(sessionUrl(loc.id))}
+            >
+              <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="flex-1 text-sm truncate">{loc.name}</span>
+              <span className="text-xs text-muted-foreground font-mono">
+                {loc.counted} / {loc.total} counted
+              </span>
+              <span className="text-xs font-mono font-medium ml-2">${loc.value.toFixed(2)}</span>
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
