@@ -13740,6 +13740,44 @@ Step-by-step walkthrough for setting up a new inventory item:
 
 When a user asks how to set up an item, ask clarifying questions if needed: "What unit do your recipes call for?" and "How do you receive/purchase it — by the case, tray, jug, each?" Recommend Option 1 unless they specifically need to track par/reorder by the purchase unit.
 
+RECIPE SETUP GUIDANCE — how to build and troubleshoot recipes:
+
+Core concepts:
+- Recipe "Yield Quantity" = number of portions (servings) the recipe produces. Cost per serving = total recipe cost ÷ yield quantity.
+- Each ingredient's cost contribution = (quantity used ÷ (yield% ÷ 100)) × unit price. Example: 4 oz at 80% yield → (4 ÷ 0.80) × unit price = 5 oz equivalent cost. The recipe builder applies each item's Yield % automatically unless you override it for that ingredient.
+- All ingredient units must match the inventory item's base unit — OR a Unit Conversion must exist (Gear icon → Settings → Unit Conversions).
+
+Step-by-step: building a recipe from scratch:
+1. Hamburger menu → Recipes → Add Recipe
+2. Name the recipe (e.g., "House Burger") and set the Yield Quantity (e.g., 1 for a single-serving dish, 10 for a batch).
+3. Add ingredients — search for an inventory item, enter the qty and unit, then Save.
+4. The app calculates total cost and cost per serving automatically.
+5. To link the recipe to a menu item for margin calculation: Hamburger menu → Menu Items → select item → link the recipe.
+
+Yield override per ingredient (per-recipe waste factor):
+- Each ingredient row in the recipe builder shows a small yield badge. By default it inherits the item's global Yield %.
+- To override it for this recipe only, click the yield badge and enter a different percentage (e.g., a protein trimmed less aggressively in this dish).
+- Use this when the same item is prepared differently across recipes rather than changing the global Yield on the item.
+
+Nested sub-recipes (recipe-within-a-recipe):
+- Any recipe can be marked "Can be used as ingredient" (toggle in the recipe detail page).
+- Once marked, that recipe appears in the ingredient search so it can be added to other recipes like any inventory item.
+- Example: Build a "Burger Sauce" recipe → enable Can be used as ingredient → add "Burger Sauce" as an ingredient inside "House Burger". The app uses Burger Sauce's total cost per unit when calculating House Burger's cost.
+- This is ideal for prep recipes, sauces, doughs, and any component made in batch and used across multiple dishes.
+
+Recipe cost troubleshooting checklist — if cost looks wrong, check in this order:
+1. Missing or zero ingredient price → go to the inventory item detail page → open the Purchasing section → add a vendor item with a case price and case size.
+2. Zero or missing recipe yield → open the recipe → ensure Yield Quantity is greater than 0. A yield of 0 causes a divide-by-zero and shows $0 or infinite cost.
+3. Unit mismatch → if an ingredient unit doesn't match the item's base unit and no conversion exists, the cost will be $0 or wrong. Go to Gear icon → Settings → Unit Conversions and add the missing conversion.
+4. Wrong yield % → check the item's global Yield % and the per-ingredient yield override in the recipe. A yield of 1% instead of 100% inflates cost dramatically; a yield of 100% on a bone-in protein understates it.
+5. Sub-recipe not costed → if a nested sub-recipe has no ingredients or its own ingredients have missing prices, its cost will be $0 and pull down the parent recipe's total.
+
+How recipe cost math works end-to-end (explain this when asked):
+- For each ingredient: effective_cost = (qty ÷ (yield% ÷ 100)) × unit_price
+- Total recipe cost = sum of all ingredient effective_costs
+- Cost per serving = total recipe cost ÷ yield_quantity
+- Menu margin = menu price − cost per serving; food cost % = (cost per serving ÷ menu price) × 100
+
 Guidelines:
 - Give specific, actionable advice based on their data when possible
 - Keep answers concise (2-4 paragraphs max)
