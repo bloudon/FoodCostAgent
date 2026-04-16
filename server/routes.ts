@@ -13581,6 +13581,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? topItems.map(i => `${i.name}: $${Number(i.price_per_unit).toFixed(2)}/${i.unit_name || "unit"}`).join(", ")
         : "No priced items yet";
 
+      // Fetch inventory snapshot for personalized AI context (keyword-matched or top 50)
+      // Combine all user messages in the conversation for matching so item references in
+      // earlier turns are also detected, not just the most recent message.
+      const allUserText = messages
+        .filter(m => m.role === "user")
+        .map(m => m.content)
+        .join(" ")
+        .toLowerCase();
+
+      let inventoryContextBlock = "";
+      try {
+        // Fetch all company items (up to 500) so keyword matching works across the full inventory,
+        // not just the most expensive items. Results are ordered by price DESC so that the
+        // no-match fallback (sliced to top 50) reflects the highest-cost items.
+        const inventorySnapshotResult = await db.execute(
+          sql`SELECT ii.name, u.name as unit_name, ii.yield_percent, ii.price_per_unit, c.name as category_name
+              FROM inventory_items ii
+              LEFT JOIN units u ON ii.unit_id = u.id
+              LEFT JOIN categories c ON ii.category_id = c.id
+              WHERE ii.company_id = ${companyId}
+              ORDER BY ii.price_per_unit DESC NULLS LAST
+              LIMIT 500`
+        );
+        const allInventoryItems = ((inventorySnapshotResult as any).rows || inventorySnapshotResult) as Array<{
+          name: string; unit_name: string | null; yield_percent: string | null;
+          price_per_unit: string | null; category_name: string | null;
+        }>;
+
+        if (allInventoryItems.length > 0) {
+          // Keyword match across ALL fetched items using full conversation text.
+          // Uses word-boundary regex to avoid false positives (e.g. "oil" matching "boiling").
+          // Capped at 50 to keep prompt size bounded.
+          const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const matchedItems = allInventoryItems
+            .filter(item => {
+              const pattern = new RegExp(`(?<![a-z])${escapeRegex(item.name.toLowerCase())}(?![a-z])`);
+              return pattern.test(allUserText);
+            })
+            .slice(0, 50);
+          // If matches found, use them; otherwise fall back to the top 50 by cost
+          const itemsToInclude = matchedItems.length > 0 ? matchedItems : allInventoryItems.slice(0, 50);
+
+          const lines = itemsToInclude.map(item => {
+            const price = item.price_per_unit ? `$${Number(item.price_per_unit).toFixed(4)}` : "no price set";
+            const unit = item.unit_name || "unit";
+            const yld = item.yield_percent ? `yield ${Number(item.yield_percent).toFixed(0)}%` : null;
+            const cat = item.category_name || null;
+            const extras = [yld, cat].filter(Boolean).join(", ");
+            return `  - ${item.name}: ${price}/${unit}${extras ? ` (${extras})` : ""}`;
+          });
+
+          const header = matchedItems.length > 0
+            ? `Inventory items mentioned in this conversation (${companyName}'s actual data):`
+            : `Inventory snapshot — ${companyName}'s top ${itemsToInclude.length} items by cost:`;
+
+          inventoryContextBlock = `\n${header}\n${lines.join("\n")}`;
+        }
+      } catch (invErr) {
+        console.warn("Failed to fetch inventory snapshot for chat:", invErr);
+      }
+
       let tfcSummary = "";
       const tierHierarchy = ["free", "basic", "pro", "enterprise"];
       const tierIndex = tierHierarchy.indexOf(tier);
@@ -13679,7 +13740,7 @@ PLAN TIER FEATURES — be precise about what each tier includes; never invent re
 Current account data:
 - Plan: ${tier}
 - ${storeCount} store location(s), ${vendorCount} vendor(s), ${itemCount} inventory items, ${recipeCount} recipes
-- Top items by cost: ${topItemsSummary}${tfcSummary}
+- Top items by cost: ${topItemsSummary}${tfcSummary}${inventoryContextBlock}
 ${isNewAccount ? `
 IMPORTANT — This is a brand-new account with no data yet. Shift your role to onboarding guide. Help them get set up step by step in this recommended order:
 1. Add a store location (Gear icon → Locations)
@@ -13780,6 +13841,7 @@ How recipe cost math works end-to-end (explain this when asked):
 
 Guidelines:
 - Give specific, actionable advice based on their data when possible
+- INVENTORY DATA: When an inventory snapshot is provided in "Current account data", use it to give item-specific advice. Reference actual item names, units, prices, yield percentages, and categories from the snapshot. If a user asks about a specific item and it appears in the snapshot, cite its exact details (e.g. "I can see your Chicken Thighs are set up in lb at $3.2500/lb with 85% yield"). If an item they mention is not in the snapshot, acknowledge you don't see it in their inventory.
 - Keep answers concise (2-4 paragraphs max)
 - Always name the exact app section to navigate to, not generic instructions
 - Focus on food cost control, waste reduction, recipe optimization, and purchasing strategies
