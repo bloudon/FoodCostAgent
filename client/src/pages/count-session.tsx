@@ -1503,6 +1503,7 @@ export default function CountSession() {
                                                     onKeyDown={(e) => {
                                                       if (e.key === 'Enter') {
                                                         e.preventDefault();
+                                                        setEditingLineId(null); // clear BEFORE save so onBlur guard skips duplicate
                                                         handleSaveEdit(line.id, mode, item);
                                                         // Focus next input if available
                                                         if (idx < itemLines.length - 1) {
@@ -1658,6 +1659,8 @@ export default function CountSession() {
                                                     autoFocus
                                                     onKeyDown={e => {
                                                       if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        if (updateMutation.isPending) return;
                                                         const addAmt = parseFloat(addMoreQty) || 0;
                                                         updateMutation.mutate({ id: line.id, addQty: addAmt, accumulate: true });
                                                         setAddingToLineId(null);
@@ -1673,7 +1676,9 @@ export default function CountSession() {
                                                     size="icon"
                                                     variant="default"
                                                     className="h-9 w-9 shrink-0"
+                                                    disabled={updateMutation.isPending}
                                                     onClick={() => {
+                                                      if (updateMutation.isPending) return;
                                                       const addAmt = parseFloat(addMoreQty) || 0;
                                                       updateMutation.mutate({ id: line.id, addQty: addAmt, accumulate: true });
                                                       setAddingToLineId(null);
@@ -1717,6 +1722,7 @@ export default function CountSession() {
                                                 onKeyDown={(e) => {
                                                   if (e.key === 'Enter') {
                                                     e.preventDefault();
+                                                    setEditingLineId(null); // clear BEFORE save so onBlur guard skips duplicate
                                                     handleSaveEdit(line.id, mode, item);
                                                     if (idx < lines.length - 1) {
                                                       const nextLine = lines[idx + 1];

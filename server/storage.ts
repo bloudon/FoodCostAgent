@@ -237,6 +237,7 @@ export interface IStorage {
   getInventoryCountLine(id: string): Promise<InventoryCountLine | undefined>;
   createInventoryCountLine(line: InsertInventoryCountLine): Promise<InventoryCountLine>;
   updateInventoryCountLine(id: string, line: Partial<InventoryCountLine>): Promise<InventoryCountLine | undefined>;
+  atomicIncrementCountLineQty(id: string, addQty: number, userId: string | null): Promise<{ line: InventoryCountLine; entryQty: number } | undefined>;
   deleteInventoryCountLine(id: string): Promise<void>;
 
   // Inventory Count Entries
@@ -1910,6 +1911,30 @@ export class DatabaseStorage implements IStorage {
       .where(eq(inventoryCountLines.id, id))
       .returning();
     return line || undefined;
+  }
+
+  async atomicIncrementCountLineQty(id: string, addQty: number, userId: string | null): Promise<{ line: InventoryCountLine; entryQty: number } | undefined> {
+    return db.transaction(async (tx) => {
+      const [updatedLine] = await tx
+        .update(inventoryCountLines)
+        .set({
+          qty: sql`COALESCE(${inventoryCountLines.qty}, 0) + ${addQty}`,
+          caseQty: null,
+          containerQty: null,
+          looseUnits: null,
+        })
+        .where(eq(inventoryCountLines.id, id))
+        .returning();
+      if (!updatedLine) return undefined;
+      if (addQty !== 0) {
+        await tx.insert(inventoryCountEntries).values({
+          inventoryCountLineId: id,
+          qty: addQty,
+          userId,
+        });
+      }
+      return { line: updatedLine, entryQty: addQty };
+    });
   }
 
   async deleteInventoryCountLine(id: string): Promise<void> {

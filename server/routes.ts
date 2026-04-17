@@ -7808,15 +7808,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       } else if (addQty != null) {
-        // Atomic server-side increment: add to the current DB qty, never trusting the client's copy
-        const newQty = (existingLine.qty ?? 0) + addQty;
-        if (newQty < 0) {
+        // Soft pre-flight check (real enforcement is in the atomic SQL)
+        if ((existingLine.qty ?? 0) + addQty < 0) {
           return res.status(400).json({ error: "Quantity cannot be negative" });
         }
-        updates.qty = newQty;
-        updates.caseQty = null;
-        updates.containerQty = null;
-        updates.looseUnits = null;
+        // Atomic SQL increment + entry creation in one serialised transaction —
+        // prevents duplicate entries from concurrent / double-fire requests.
+        const patchUser = (req as any).user;
+        const result = await storage.atomicIncrementCountLineQty(req.params.id, addQty, patchUser?.id ?? null);
+        return res.json(result?.line);
       } else if (updates.qty != null) {
         // Regular qty update - clear case counting fields
         if (updates.qty < 0) {
@@ -7829,29 +7829,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const updatedLine = await storage.updateInventoryCountLine(req.params.id, updates);
 
-      // Task #78: write entry record(s) for audit trail
+      // Task #78: write entry record(s) for audit trail (direct-set paths only — addQty path returns above)
       if (updatedLine) {
         const patchUser = (req as any).user;
-        if (accumulate) {
-          // "+" accumulate: append a new entry for only the added qty
-          // When addQty was used, addedQty == addQty exactly (no stale-state risk)
-          const addedQty = addQty != null ? addQty : updatedLine.qty - (existingLine.qty ?? 0);
-          if (addedQty !== 0) {
-            await storage.createInventoryCountEntry({
-              inventoryCountLineId: updatedLine.id,
-              qty: addedQty,
-              userId: patchUser?.id ?? null,
-            });
-          }
-        } else {
-          // Direct edit: replace all entries with a single replacement entry
-          await storage.deleteEntriesForLine(updatedLine.id);
-          await storage.createInventoryCountEntry({
-            inventoryCountLineId: updatedLine.id,
-            qty: updatedLine.qty,
-            userId: patchUser?.id ?? null,
-          });
-        }
+        // Direct edit: replace all entries with a single replacement entry
+        await storage.deleteEntriesForLine(updatedLine.id);
+        await storage.createInventoryCountEntry({
+          inventoryCountLineId: updatedLine.id,
+          qty: updatedLine.qty,
+          userId: patchUser?.id ?? null,
+        });
       }
 
       res.json(updatedLine);
@@ -15099,20 +15086,10 @@ Human Handoff:
               const existingLine = await storage.getInventoryCountLine(lineId);
               if (existingLine && existingLine.inventoryCountId === count.id) {
                 const addedWeight = result.netWeight;
-                const updatedLine = await storage.updateInventoryCountLine(lineId, {
-                  qty: (existingLine.qty ?? 0) + addedWeight,
-                  caseQty: null,
-                  containerQty: null,
-                  looseUnits: null,
-                });
-                if (updatedLine) {
-                  await storage.createInventoryCountEntry({
-                    inventoryCountLineId: lineId,
-                    qty: addedWeight,
-                    userId: userId ?? null,
-                  });
+                const atomicResult = await storage.atomicIncrementCountLineQty(lineId, addedWeight, userId ?? null);
+                if (atomicResult) {
                   lineUpdated = true;
-                  newQty = updatedLine.qty;
+                  newQty = atomicResult.line.qty;
                 }
               }
             }
@@ -16054,14 +16031,12 @@ Human Handoff:
         // case-breakdown edits replace the entry
         addedQty = null;
       } else if (addQty != null) {
-        // Atomic server-side increment — avoids stale-state from client arithmetic
-        const newQty = (existingLine.qty ?? 0) + addQty;
-        if (newQty < 0) return res.status(400).json({ error: "Quantity cannot be negative" });
-        updates.qty = newQty;
-        updates.caseQty = null;
-        updates.containerQty = null;
-        updates.looseUnits = null;
-        addedQty = addQty; // record exactly what was added
+        // Soft pre-flight check (real enforcement is in the atomic SQL)
+        if ((existingLine.qty ?? 0) + addQty < 0) return res.status(400).json({ error: "Quantity cannot be negative" });
+        // Atomic SQL increment + entry creation in one serialised transaction —
+        // prevents duplicate entries from concurrent / double-fire requests.
+        const result = await storage.atomicIncrementCountLineQty(req.params.lineId, addQty, userId ?? null);
+        return res.json(result?.line);
       } else if (qty != null) {
         if (qty < 0) return res.status(400).json({ error: "Quantity cannot be negative" });
         updates.qty = qty;
@@ -16075,26 +16050,15 @@ Human Handoff:
 
       const updatedLine = await storage.updateInventoryCountLine(req.params.lineId, updates);
 
-      // Write audit entry record(s)
+      // Write audit entry record(s) — direct-set paths only (addQty returns above)
       if (updatedLine) {
-        if (addedQty != null) {
-          // Accumulate mode: append a new entry for just the increment
-          if (addedQty !== 0) {
-            await storage.createInventoryCountEntry({
-              inventoryCountLineId: updatedLine.id,
-              qty: addedQty,
-              userId,
-            });
-          }
-        } else {
-          // Direct set: replace all entries with a single record
-          await storage.deleteEntriesForLine(updatedLine.id);
-          await storage.createInventoryCountEntry({
-            inventoryCountLineId: updatedLine.id,
-            qty: updatedLine.qty,
-            userId,
-          });
-        }
+        // Direct set: replace all entries with a single record
+        await storage.deleteEntriesForLine(updatedLine.id);
+        await storage.createInventoryCountEntry({
+          inventoryCountLineId: updatedLine.id,
+          qty: updatedLine.qty,
+          userId,
+        });
       }
 
       return res.json(updatedLine);
