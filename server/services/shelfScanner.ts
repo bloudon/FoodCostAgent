@@ -66,6 +66,7 @@ Rules:
 - Do not guess items that are not visible
 - If a shelf is empty or no items are recognizable, return an empty items array
 - Product labels take priority — if you can read the label, use that exact name
+- For sealed protein packages (meat, poultry, seafood) that show a NET WT, NET WEIGHT, or NW field on a retail or butcher/thermal weight label, use the printed net weight as qty and set unit to "lbs". Do NOT count package units (e.g. do not return qty 1 unit "pack"). Example: a label showing "NET WT 2.68 LB" should produce qty 2.68 unit "lbs".
 - Respond ONLY with the JSON object, no markdown, no explanation`,
       },
       {
