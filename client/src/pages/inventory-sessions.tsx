@@ -49,7 +49,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { cn } from "@/lib/utils";
+import { cn, parseCountDate } from "@/lib/utils";
 import { format } from "date-fns";
 import { useState } from "react";
 import type { Company, CompanyStore } from "@shared/schema";
@@ -61,7 +61,7 @@ function SessionCard({ count }: any) {
     queryKey: ["/api/inventory-count-lines", count.id],
   });
   const storeName = count.storeName || 'Unknown Store';
-  const countDate = new Date(count.countDate || count.countedAt);
+  const countDate = count.countDate ? parseCountDate(count.countDate) : new Date(count.countedAt);
   const totalValue = countLines?.reduce((sum: number, line: any) => sum + (line.qty * (line.unitCost || 0)), 0) || 0;
   const [, setLocation] = useLocation();
 
@@ -184,7 +184,7 @@ function SessionRow({ count, inventoryItems, stores, index }: any) {
   // Use storeName from count data (includes store name even if user doesn't have access)
   const storeName = count.storeName || 'Unknown Store';
   // Fallback to countedAt for legacy records without countDate
-  const countDate = new Date(count.countDate || count.countedAt);
+  const countDate = count.countDate ? parseCountDate(count.countDate) : new Date(count.countedAt);
   const createdAt = new Date(count.countedAt);
 
   const deleteSessionMutation = useMutation({

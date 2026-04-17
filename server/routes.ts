@@ -15779,7 +15779,7 @@ Human Handoff:
       const userId = (req as any).user?.id;
       if (!userId) return res.status(401).json({ error: "User not found" });
 
-      const { storeId, name } = req.body;
+      const { storeId, name, countDate: countDateParam } = req.body;
       if (!storeId) return res.status(400).json({ error: "storeId is required" });
 
       // Validate store belongs to this company
@@ -15793,9 +15793,17 @@ Human Handoff:
         return res.status(403).json({ error: "Not assigned to this store" });
       }
 
-      // Build today's date at UTC midnight (matches insertInventoryCountSchema transformation)
-      const now = new Date();
-      const countDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      // Prefer the client-supplied date (YYYY-MM-DD in the user's local timezone) so that
+      // users in UTC-offset timezones get the correct calendar day rather than server UTC date.
+      // Fall back to server UTC date when the app doesn't send countDate.
+      let countDate: Date;
+      if (countDateParam && /^\d{4}-\d{2}-\d{2}$/.test(countDateParam)) {
+        const [y, m, d] = countDateParam.split('-').map(Number);
+        countDate = new Date(Date.UTC(y, m - 1, d));
+      } else {
+        const now = new Date();
+        countDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      }
 
       const count = await storage.createInventoryCount({
         companyId,

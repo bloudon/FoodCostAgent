@@ -33,6 +33,19 @@ export function formatRecipeName(recipeName: string | undefined): string {
   return recipeName.charAt(0).toUpperCase() + recipeName.slice(1);
 }
 
+/**
+ * Parse a countDate value returned from the API.
+ * countDate is stored as UTC midnight (e.g. 2026-04-17T00:00:00.000Z).
+ * Using new Date() directly shifts it to the previous evening in US timezones.
+ * This extracts the UTC date components and creates a local-midnight Date so
+ * format() / toLocaleDateString() show the correct calendar day.
+ */
+export function parseCountDate(raw: string | null | undefined): Date {
+  if (!raw) return new Date();
+  const d = new Date(raw);
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
 export function formatDateString(dateString: string | null | undefined): string {
   if (!dateString) return '-';
   

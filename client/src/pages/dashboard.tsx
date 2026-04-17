@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { SetupMilestoneTracker } from "@/components/setup-milestone-tracker";
 import { useStoreContext } from "@/hooks/use-store-context";
 import { useAuth } from "@/lib/auth-context";
+import { parseCountDate } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 
@@ -826,7 +827,7 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1">
                         <p className="text-sm text-muted-foreground mb-1">
-                          {new Date(mostRecentCount.countDate).toLocaleDateString()} • {recentCountLines?.length || 0} items
+                          {parseCountDate(mostRecentCount.countDate).toLocaleDateString()} • {recentCountLines?.length || 0} items
                         </p>
                         <p className="text-2xl font-semibold font-mono" data-testid="text-recent-count-value">
                           ${recentCountValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
