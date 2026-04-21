@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, Fragment } from "react";
-import { formatDistanceToNow } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation as useWouterLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -211,6 +210,25 @@ function generateAnchorId(prefix: string, value: string): string {
   return `${prefix}-${sanitized}-${Math.abs(hash)}`;
 }
 
+function compactRelativeTime(date: Date): string {
+  const t = date.getTime();
+  if (Number.isNaN(t)) return '—';
+  const diffMs = Math.max(0, Date.now() - t);
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return '<1m';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay <= 30) return `${diffDay}d`;
+  return '>30d';
+}
+
+function getInitials(fullName: string): string {
+  return fullName.split(' ').map(n => n[0]).filter(Boolean).join('').toUpperCase().slice(0, 3);
+}
+
 function EntryHistory({ entries, isCatchWeight, unitAbbr }: { entries: any[]; isCatchWeight?: boolean; unitAbbr?: string }) {
   const [open, setOpen] = useState(false);
   if (!entries || entries.length <= 1) return null;
@@ -223,6 +241,13 @@ function EntryHistory({ entries, isCatchWeight, unitAbbr }: { entries: any[]; is
     return { ...entry, runningTotal };
   });
 
+  // Fixed grid columns so each row aligns vertically across rows.
+  // Catch weight: qty | running total | by-initials | time
+  // Otherwise:    qty | by-initials | time
+  const gridCols = isCatchWeight
+    ? 'grid-cols-[5rem_5.5rem_2rem_1fr]'
+    : 'grid-cols-[4rem_2rem_1fr]';
+
   return (
     <div className="mt-1.5" data-testid="entry-history-toggle">
       <button
@@ -234,24 +259,34 @@ function EntryHistory({ entries, isCatchWeight, unitAbbr }: { entries: any[]; is
         {isCatchWeight ? `${entries.length} packages` : `${entries.length} entries`}
       </button>
       {open && (
-        <div className="mt-1 border-t pt-1.5 flex flex-col gap-0.5">
-          {entriesWithTotals.map((entry: any) => (
-            <div key={entry.id} className="flex items-center gap-2 text-xs text-muted-foreground" data-testid={`entry-row-${entry.id}`}>
-              <span className="font-mono font-semibold text-foreground">
-                {entry.qty > 0 ? `+${entry.qty}` : entry.qty}
-                {isCatchWeight && <span className="font-normal text-muted-foreground"> {unit}</span>}
-              </span>
-              {isCatchWeight && (
-                <span className="font-mono text-muted-foreground/80" data-testid={`entry-running-total-${entry.id}`}>
-                  = {entry.runningTotal.toFixed(2)} {unit}
+        <div className={`mt-1 border-t pt-1.5 grid gap-x-2 gap-y-0.5 text-xs items-baseline ${gridCols}`}>
+          {entriesWithTotals.map((entry: any) => {
+            const qtyStr = entry.qty > 0 ? `+${entry.qty}` : `${entry.qty}`;
+            return (
+              <Fragment key={entry.id}>
+                <span
+                  className="font-mono font-semibold text-foreground tabular-nums whitespace-nowrap overflow-hidden text-ellipsis"
+                  data-testid={`entry-row-${entry.id}`}
+                >
+                  {isCatchWeight ? `${qtyStr} ${unit}` : qtyStr}
                 </span>
-              )}
-              {entry.userName && <span>by {entry.userName.split(' ').map((n: string) => n[0]).join('').toUpperCase()}</span>}
-              <span className="ml-auto text-muted-foreground/60">
-                {formatDistanceToNow(new Date(entry.enteredAt), { addSuffix: true })}
-              </span>
-            </div>
-          ))}
+                {isCatchWeight && (
+                  <span
+                    className="font-mono text-muted-foreground/80 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis"
+                    data-testid={`entry-running-total-${entry.id}`}
+                  >
+                    = {entry.runningTotal.toFixed(2)} {unit}
+                  </span>
+                )}
+                <span className="text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
+                  {entry.userName ? getInitials(entry.userName) : ''}
+                </span>
+                <span className="text-muted-foreground/60 whitespace-nowrap tabular-nums text-right">
+                  {compactRelativeTime(new Date(entry.enteredAt))}
+                </span>
+              </Fragment>
+            );
+          })}
         </div>
       )}
     </div>
