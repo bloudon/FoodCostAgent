@@ -242,11 +242,11 @@ function EntryHistory({ entries, isCatchWeight, unitAbbr }: { entries: any[]; is
   });
 
   // Fixed grid columns so each row aligns vertically across rows.
-  // Catch weight: qty | running total | by-initials | time
-  // Otherwise:    qty | by-initials | time
+  // Catch weight: qty | running total | "by XX" | time
+  // Otherwise:    qty | "by XX" | time
   const gridCols = isCatchWeight
-    ? 'grid-cols-[5rem_5.5rem_2rem_1fr]'
-    : 'grid-cols-[4rem_2rem_1fr]';
+    ? 'grid-cols-[5rem_5.5rem_3rem_1fr]'
+    : 'grid-cols-[4rem_3rem_1fr]';
 
   return (
     <div className="mt-1.5" data-testid="entry-history-toggle">
@@ -261,7 +261,8 @@ function EntryHistory({ entries, isCatchWeight, unitAbbr }: { entries: any[]; is
       {open && (
         <div className={`mt-1 border-t pt-1.5 grid gap-x-2 gap-y-0.5 text-xs items-baseline ${gridCols}`}>
           {entriesWithTotals.map((entry: any) => {
-            const qtyStr = entry.qty > 0 ? `+${entry.qty}` : `${entry.qty}`;
+            const qtyDisplay = isCatchWeight ? entry.qty.toFixed(2) : `${entry.qty}`;
+            const qtyStr = entry.qty > 0 ? `+${qtyDisplay}` : qtyDisplay;
             return (
               <Fragment key={entry.id}>
                 <span
@@ -279,7 +280,7 @@ function EntryHistory({ entries, isCatchWeight, unitAbbr }: { entries: any[]; is
                   </span>
                 )}
                 <span className="text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
-                  {entry.userName ? getInitials(entry.userName) : ''}
+                  {entry.userName ? `by ${getInitials(entry.userName)}` : ''}
                 </span>
                 <span className="text-muted-foreground/60 whitespace-nowrap tabular-nums text-right">
                   {compactRelativeTime(new Date(entry.enteredAt))}
