@@ -1,5 +1,6 @@
 import { storage } from "../storage";
 import type { TheoreticalUsageRun, TheoreticalUsageLine, DailyMenuItemSales } from "@shared/schema";
+import { getEffectiveUnitCost, type CostingMethodCarrier } from "../lib/costing";
 
 interface TheoreticalUsageInput {
   companyId: string;
@@ -57,6 +58,7 @@ export class TheoreticalUsageService {
 
     try {
       const ingredientUsageMap = new Map<string, IngredientUsage>();
+      const company = await storage.getCompany(companyId);
 
       for (const sale of salesData) {
         if (sale.qtySold <= 0) continue;
@@ -76,7 +78,8 @@ export class TheoreticalUsageService {
           new Set(),
           menuItem.id,
           menuItem.name,
-          sale.qtySold
+          sale.qtySold,
+          company,
         );
 
         for (const ingredient of ingredients) {
@@ -130,7 +133,8 @@ export class TheoreticalUsageService {
     visited: Set<string>,
     menuItemId: string,
     menuItemName: string,
-    actualSaleQty: number
+    actualSaleQty: number,
+    company?: CostingMethodCarrier | null,
   ): Promise<IngredientUsage[]> {
     if (visited.has(recipeId)) {
       return [];
@@ -163,7 +167,7 @@ export class TheoreticalUsageService {
 
         // Note: Recipe quantities already account for yield (they specify "as purchased" amounts)
         // Do NOT apply yield percentage here, as that would double-count waste
-        const cost = baseQty * item.pricePerUnit;
+        const cost = baseQty * getEffectiveUnitCost(item, company);
 
         ingredients.push({
           inventoryItemId: item.id,
@@ -185,7 +189,8 @@ export class TheoreticalUsageService {
           localVisited,
           menuItemId,
           menuItemName,
-          actualSaleQty
+          actualSaleQty,
+          company,
         );
         ingredients.push(...nestedIngredients);
       }

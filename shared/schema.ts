@@ -21,6 +21,7 @@ export const companies = pgTable("companies", {
   posProvider: text("pos_provider"), // POS provider: thrive, toast, hungerrush, clover, other, none
   tccAccountId: text("tcc_account_id"), // The Chef's Companion (Thrive POS) account ID - only required for Thrive POS users
   preferredUnitSystem: text("preferred_unit_system").notNull().default("imperial"), // imperial, metric, or both
+  costingMethod: text("costing_method").notNull().default("last_cost"), // last_cost or wac
   status: text("status").notNull().default("active"), // active, inactive, suspended
   // Branding
   brandImagePath: text("brand_image_path"), // Company brand background override (replaces global carousel)

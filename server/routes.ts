@@ -13,6 +13,7 @@ import { TheoreticalUsageService } from "./services/theoreticalUsage";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
+import { getEffectiveUnitCost, type CostingMethodCarrier } from "./lib/costing";
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
 import { createSession, requireAuth, optionalAuth, requireTier, verifyPassword, hashPassword } from "./auth";
@@ -6973,7 +6974,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const enriched = await Promise.all(
       components.map(async (comp) => {
         const unit = units.find((u) => u.id === comp.unitId);
-        const componentCost = await calculateComponentCost(comp);
+        const componentCost = await calculateComponentCost(comp, (req as any).companyId);
         
         if (comp.componentType === "inventory_item") {
           const item = inventoryItems.find((i) => i.id === comp.componentId);
@@ -7941,6 +7942,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const activeItems = activeItemsQuery.map(row => row.inventoryItem);
 
+      // Resolve costing method once so unit-cost snapshots honor company preference
+      const countCompany = await storage.getCompany(count.companyId);
+
       // Batch fetch storage locations for all items, filtering by company
       const itemIds = activeItems.map(item => item.id);
       
@@ -7986,7 +7990,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             storageLocationId: location.storageLocationId,
             qty: 0,
             unitId: item.unitId,
-            unitCost: item.pricePerUnit, // Snapshot the current price
+            unitCost: getEffectiveUnitCost(item, countCompany), // Snapshot the current effective price (Last Cost or WAC per company setting)
             userId: countInput.userId,
           };
 
@@ -8318,6 +8322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Create count lines with qty = 0 for all items
+      const baselineCompany = await storage.getCompany(companyId);
       let linesCreated = 0;
       for (const item of activeItems) {
         const locations = itemLocationsMap.get(item.id) || [];
@@ -8331,7 +8336,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             storageLocationId,
             qty: 0,
             unitId: item.unitId,
-            unitCost: item.pricePerUnit,
+            unitCost: getEffectiveUnitCost(item, baselineCompany),
             userId: user.id,
           });
           linesCreated++;
@@ -10314,24 +10319,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ VARIANCE REPORT ============
-  app.get("/api/reports/variance", async (req, res) => {
+  app.get("/api/reports/variance", requireAuth, async (req, res) => {
     try {
       const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
       const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
-      const companyId = req.query.companyId as string | undefined;
       const storeId = req.query.storeId as string | undefined;
 
-      const theoreticalUsage = await calculateTheoreticalUsage(startDate, endDate);
+      // Always scope variance to the caller's company (multi-tenant isolation)
+      const callingUser = await storage.getUser(req.user!.id);
+      const companyId = callingUser?.companyId || undefined;
+      const company = companyId ? await storage.getCompany(companyId) : null;
+
+      const theoreticalUsage = await calculateTheoreticalUsage(startDate, endDate, companyId);
       const actualUsage = await calculateActualUsage(startDate, endDate, companyId, storeId);
 
-      // Get actual inventory items to access id and pricePerUnit
-      const inventoryItems = await storage.getInventoryItems();
-      
-      // Create a map of item names to their details for aggregation
-      const itemMap = new Map<string, { ids: string[], name: string, pricePerUnit: number }>();
+      // Get actual inventory items (company-scoped) to access id and effective unit cost
+      const allItems = await storage.getInventoryItems();
+      const inventoryItems = companyId
+        ? allItems.filter((it: any) => it.companyId === companyId)
+        : allItems;
+
+      // Create a map of item names to their details for aggregation. Use the
+      // company's costing method (last_cost vs WAC) so variance dollars track
+      // the same cost basis as the rest of the app.
+      const itemMap = new Map<string, { ids: string[], name: string, unitCost: number }>();
       for (const item of inventoryItems) {
+        const unitCost = getEffectiveUnitCost(item, company);
         if (!itemMap.has(item.name)) {
-          itemMap.set(item.name, { ids: [item.id], name: item.name, pricePerUnit: item.pricePerUnit });
+          itemMap.set(item.name, { ids: [item.id], name: item.name, unitCost });
         } else {
           itemMap.get(item.name)!.ids.push(item.id);
         }
@@ -10342,7 +10357,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const theoretical = itemData.ids.reduce((sum, id) => sum + (theoreticalUsage[id] || 0), 0);
         const actual = itemData.ids.reduce((sum, id) => sum + (actualUsage[id] || 0), 0);
         const varianceUnits = actual - theoretical;
-        const varianceCost = varianceUnits * itemData.pricePerUnit; // price per base unit × units
+        const varianceCost = varianceUnits * itemData.unitCost; // effective price per base unit × units
         const variancePercent = theoretical > 0 ? (varianceUnits / theoretical) * 100 : 0;
 
         return {
@@ -10534,8 +10549,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ error: "Inventory item not found" });
         }
         
-        // Calculate value
-        const totalValue = data.qty * (item.pricePerUnit || 0);
+        // Calculate value using company costing method (Last Cost vs WAC)
+        const wasteCompany = await storage.getCompany(req.companyId!);
+        const totalValue = data.qty * getEffectiveUnitCost(item, wasteCompany);
         
         // Create waste log with calculated value
         const wasteLog = await storage.createWasteLog({
@@ -11137,7 +11153,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     // Check each menu item's recipe for the affected inventory item (including sub-recipes)
     for (const menuItem of menuItems) {
-      const itemImpact = await calculateInventoryItemImpactInRecipe(menuItem.recipeId, inventoryItemId);
+      const itemImpact = await calculateInventoryItemImpactInRecipe(menuItem.recipeId, inventoryItemId, inventoryItem.companyId);
       
       if (!itemImpact.usesItem) continue;
       
@@ -11452,6 +11468,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Company not found" });
       }
       
+      res.json(company);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // PATCH /api/companies/:id/costing-method — set company costing method (Last Cost vs WAC)
+  // Allowed for owner/company_admin (own company) or global_admin. Triggers full recipe recalculation.
+  app.patch("/api/companies/:id/costing-method", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const isAdminRole = user?.role === "global_admin" || user?.role === "company_admin" || user?.role === "owner";
+    if (!isAdminRole) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    if (user?.role !== "global_admin" && user?.companyId !== req.params.id) {
+      return res.status(403).json({ error: "Can only update your own company" });
+    }
+
+    try {
+      const { costingMethod } = z.object({
+        costingMethod: z.enum(["last_cost", "wac"]),
+      }).parse(req.body);
+
+      const company = await storage.updateCompany(req.params.id, { costingMethod });
+      if (!company) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      // Recalculate every recipe so cached computedCost reflects the new method.
+      // Use topological order (children before parents) for nested recipes.
+      const allRecipes = await storage.getRecipes(req.params.id);
+      const componentsByRecipe = new Map<string, any[]>();
+      for (const r of allRecipes) {
+        componentsByRecipe.set(r.id, await storage.getRecipeComponents(r.id));
+      }
+
+      // Build child-first topological order across ALL recipes for this company
+      const visited = new Set<string>();
+      const sorted: string[] = [];
+      const visit = (recipeId: string) => {
+        if (visited.has(recipeId)) return;
+        visited.add(recipeId);
+        const comps = componentsByRecipe.get(recipeId) || [];
+        for (const c of comps) {
+          if (c.componentType === "recipe" && componentsByRecipe.has(c.componentId)) {
+            visit(c.componentId);
+          }
+        }
+        sorted.push(recipeId);
+      };
+      for (const r of allRecipes) visit(r.id);
+
+      const memo = new Map<string, number>();
+      for (const recipeId of sorted) {
+        const newCost = await calculateRecipeCost(recipeId, { company }, memo);
+        await storage.updateRecipe(recipeId, { computedCost: newCost });
+      }
+      await cacheInvalidator.invalidateRecipes(req.params.id);
+
       res.json(company);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -15379,13 +15454,14 @@ Human Handoff:
         if (!item || item.companyId !== companyId) {
           return null;
         }
+        const lineCompany = await storage.getCompany(companyId);
         return storage.createInventoryCountLine({
           inventoryCountId: count.id,
           inventoryItemId: item.id,
           storageLocationId: resolvedLocationId,
           qty: 0,
           unitId: item.unitId,
-          unitCost: item.pricePerUnit ?? 0,
+          unitCost: getEffectiveUnitCost(item, lineCompany),
           userId,
         });
       };
@@ -15864,6 +15940,8 @@ Human Handoff:
           itemLocationsMap.set(loc.inventoryItemId, existing);
         }
 
+        const mobileCountCompany = await storage.getCompany(count.companyId);
+
         for (const item of activeItems) {
           const locs = itemLocationsMap.get(item.id) ?? [];
           if (locs.length === 0) continue;
@@ -15874,7 +15952,7 @@ Human Handoff:
               storageLocationId: loc.storageLocationId,
               qty: 0,
               unitId: item.unitId,
-              unitCost: item.pricePerUnit,
+              unitCost: getEffectiveUnitCost(item, mobileCountCompany),
               userId,
             });
             lineCount++;
@@ -16384,10 +16462,11 @@ async function createPlaceholderRecipe(companyId: string, menuItemName: string, 
   return recipe.id;
 }
 
-async function calculateComponentCost(comp: any): Promise<number> {
+async function calculateComponentCost(comp: any, companyId?: string): Promise<number> {
   const units = await storage.getUnits();
-  const inventoryItems = await storage.getInventoryItems();
+  const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
   const unitConversions = await storage.getUnitConversions();
+  const company = companyId ? await storage.getCompany(companyId) : null;
 
   if (comp.componentType === "inventory_item") {
     const item = inventoryItems.find((i) => i.id === comp.componentId);
@@ -16436,7 +16515,8 @@ async function calculateComponentCost(comp: any): Promise<number> {
       ? comp.yieldOverride 
       : item.yieldPercent;
     const yieldFactor = yieldPercent / 100;
-    const effectiveCost = yieldFactor > 0 ? item.pricePerUnit / yieldFactor : item.pricePerUnit;
+    const itemUnitCost = getEffectiveUnitCost(item, company);
+    const effectiveCost = yieldFactor > 0 ? itemUnitCost / yieldFactor : itemUnitCost;
 
     return convertedQty * effectiveCost;
     
@@ -16558,6 +16638,7 @@ async function calculateRecipeCost(
     components?: Map<string, RecipeComponent[]>;
     units?: Unit[];
     inventoryItems?: InventoryItem[];
+    company?: CostingMethodCarrier | null;
   },
   memo?: Map<string, number>
 ): Promise<number> {
@@ -16576,7 +16657,13 @@ async function calculateRecipeCost(
   const units = preloadedData?.units || await storage.getUnits();
   const inventoryItems = preloadedData?.inventoryItems || await storage.getInventoryItems(undefined, undefined, recipe.companyId);
   const components = preloadedData?.components?.get(recipeId) || await storage.getRecipeComponents(recipeId);
-  
+  // Resolve company once so getEffectiveUnitCost honors the costing method
+  const company = preloadedData?.company !== undefined
+    ? preloadedData.company
+    : await storage.getCompany(recipe.companyId);
+  // Forward the resolved company to nested sub-recipe calls
+  const nestedPreload = { ...(preloadedData || {}), company };
+
   let totalCost = 0;
 
   for (const comp of components) {
@@ -16586,9 +16673,10 @@ async function calculateRecipeCost(
     if (comp.componentType === "inventory_item") {
       const item = inventoryItems.find((i) => i.id === comp.componentId);
       if (item) {
-        // Convert item's pricePerUnit to price per base unit
+        // Resolve unit cost based on the company's preferred costing method
+        const itemUnitCost = getEffectiveUnitCost(item, company);
         const itemUnit = units.find((u) => u.id === item.unitId);
-        const itemPricePerBaseUnit = itemUnit ? item.pricePerUnit / itemUnit.toBaseRatio : item.pricePerUnit;
+        const itemPricePerBaseUnit = itemUnit ? itemUnitCost / itemUnit.toBaseRatio : itemUnitCost;
         // Adjust for yield percentage to get effective cost (e.g., $3/lb at 70% yield = $4.29/lb effective)
         // Use component's yieldOverride if set, otherwise item's default yieldPercent
         const yieldPercent = comp.yieldOverride !== null && comp.yieldOverride !== undefined 
@@ -16601,7 +16689,7 @@ async function calculateRecipeCost(
     } else if (comp.componentType === "recipe") {
       const subRecipe = preloadedData?.recipes?.get(comp.componentId) || await storage.getRecipe(comp.componentId);
       if (subRecipe) {
-        const subRecipeCost = await calculateRecipeCost(comp.componentId, preloadedData, memo);
+        const subRecipeCost = await calculateRecipeCost(comp.componentId, nestedPreload, memo);
         // Convert sub-recipe's yield to cost per unit, then scale by quantity needed
         const subRecipeYieldUnit = units.find(u => u.id === subRecipe.yieldUnitId);
         const subRecipeYieldQty = subRecipeYieldUnit ? subRecipe.yieldQty * subRecipeYieldUnit.toBaseRatio : subRecipe.yieldQty;
@@ -16619,10 +16707,11 @@ async function calculateRecipeCost(
   return totalCost;
 }
 
-async function calculateInventoryItemImpactInRecipe(recipeId: string, targetItemId: string): Promise<{ usesItem: boolean, qty: number, costContribution: number }> {
+async function calculateInventoryItemImpactInRecipe(recipeId: string, targetItemId: string, companyId?: string): Promise<{ usesItem: boolean, qty: number, costContribution: number }> {
   const components = await storage.getRecipeComponents(recipeId);
   const units = await storage.getUnits();
-  const inventoryItems = await storage.getInventoryItems();
+  const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
+  const company = companyId ? await storage.getCompany(companyId) : null;
   
   let totalQty = 0;
   let totalCostContribution = 0;
@@ -16635,9 +16724,10 @@ async function calculateInventoryItemImpactInRecipe(recipeId: string, targetItem
       const item = inventoryItems.find((i) => i.id === targetItemId);
       if (item) {
         totalQty += qty;
-        // Convert item's pricePerUnit to price per base unit
+        // Use the company's preferred unit cost (Last Cost vs WAC)
+        const itemUnitCost = getEffectiveUnitCost(item, company);
         const itemUnit = units.find((u) => u.id === item.unitId);
-        const itemPricePerBaseUnit = itemUnit ? item.pricePerUnit / itemUnit.toBaseRatio : item.pricePerUnit;
+        const itemPricePerBaseUnit = itemUnit ? itemUnitCost / itemUnit.toBaseRatio : itemUnitCost;
         // Adjust for yield percentage to get effective cost
         // Use component's yieldOverride if set, otherwise item's default yieldPercent
         const yieldPercent = comp.yieldOverride !== null && comp.yieldOverride !== undefined 
@@ -16650,7 +16740,7 @@ async function calculateInventoryItemImpactInRecipe(recipeId: string, targetItem
     } else if (comp.componentType === "recipe") {
       const subRecipe = await storage.getRecipe(comp.componentId);
       if (subRecipe) {
-        const subImpact = await calculateInventoryItemImpactInRecipe(comp.componentId, targetItemId);
+        const subImpact = await calculateInventoryItemImpactInRecipe(comp.componentId, targetItemId, companyId);
         if (subImpact.usesItem) {
           // Scale sub-recipe usage by yield ratio
           const subRecipeYieldUnit = units.find(u => u.id === subRecipe.yieldUnitId);
@@ -16676,10 +16766,17 @@ async function calculateInventoryItemImpactInRecipe(recipeId: string, targetItem
 
 async function calculateTheoreticalUsage(
   startDate?: Date,
-  endDate?: Date
+  endDate?: Date,
+  companyId?: string
 ): Promise<Record<string, number>> {
-  const sales = await storage.getPOSSales(startDate, endDate);
-  const menuItems = await storage.getMenuItems();
+  const allSales = await storage.getPOSSales(startDate, endDate);
+  const sales = companyId
+    ? allSales.filter((s: any) => s.companyId === companyId)
+    : allSales;
+  const allMenuItems = await storage.getMenuItems();
+  const menuItems = companyId
+    ? allMenuItems.filter((mi: any) => mi.companyId === companyId)
+    : allMenuItems;
   const usage: Record<string, number> = {};
 
   for (const sale of sales) {

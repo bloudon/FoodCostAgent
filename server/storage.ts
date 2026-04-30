@@ -2120,6 +2120,7 @@ export class DatabaseStorage implements IStorage {
         categoryId: inventoryItems.categoryId,
         unitId: inventoryItems.unitId,
         unitName: units.name,
+        pricePerUnit: inventoryItems.pricePerUnit,
         avgCostPerUnit: inventoryItems.avgCostPerUnit,
       })
       .from(inventoryItems)
@@ -2127,6 +2128,13 @@ export class DatabaseStorage implements IStorage {
       .where(inArray(inventoryItems.id, Array.from(allItemIds)));
 
     const itemDetailsMap = new Map(itemDetails.map(item => [item.id, item]));
+
+    // Resolve company costing method (Last Cost vs WAC) once for this report
+    const [companyForCosting] = await db
+      .select({ costingMethod: companies.costingMethod })
+      .from(companies)
+      .where(eq(companies.id, companyId));
+    const costingMethod = companyForCosting?.costingMethod === "wac" ? "wac" : "last_cost";
 
     // Calculate usage for each item
     const usageData = Array.from(allItemIds).map(itemId => {
@@ -2155,7 +2163,9 @@ export class DatabaseStorage implements IStorage {
         usage,
         unitId: item?.unitId || '',
         unitName: item?.unitName || 'unit',
-        pricePerUnit: item?.avgCostPerUnit || 0,
+        pricePerUnit: (costingMethod === "wac"
+          ? (item?.avgCostPerUnit || item?.pricePerUnit || 0)
+          : (item?.pricePerUnit || 0)),
         isNegativeUsage,
         previousCountId,
         currentCountId,

@@ -849,3 +849,23 @@ BEGIN
       VALUES ('v032', 'Scope menu_items PLU/SKU uniqueness to company level (company_id + plu_sku)');
   END IF;
 END $$;
+
+-- v033 — Task #106: Costing Method toggle (Last Cost vs Weighted Average Cost)
+-- Adds companies.costing_method column. Defaults to 'last_cost' so existing
+-- companies retain current behavior. UI exposes a toggle in Company Settings.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v033') THEN
+
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'companies' AND column_name = 'costing_method'
+    ) THEN
+      ALTER TABLE companies
+        ADD COLUMN costing_method text NOT NULL DEFAULT 'last_cost';
+    END IF;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v033', 'Task #106: Add companies.costing_method (last_cost | wac)');
+  END IF;
+END $$;

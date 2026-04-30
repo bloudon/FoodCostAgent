@@ -51,7 +51,12 @@ export default function Settings() {
   const [isVendorSyncDialogOpen, setIsVendorSyncDialogOpen] = useState(false);
   const [selectedVendorsForSync, setSelectedVendorsForSync] = useState<Set<string>>(new Set());
   const [posProvider, setPosProvider] = useState<string>("none");
-  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+  // Global admins switch companies via /companies (writes localStorage).
+  // Regular users (owner / company_admin / staff) implicitly operate on their
+  // own company, so fall back to their session companyId when localStorage
+  // hasn't been populated.
+  const lsSelectedCompanyId =
+    typeof window !== "undefined" ? localStorage.getItem("selectedCompanyId") : null;
   const [editStoreDialogOpen, setEditStoreDialogOpen] = useState(false);
   const [editingStore, setEditingStore] = useState<CompanyStore | null>(null);
   const [storeForm, setStoreForm] = useState({
@@ -67,6 +72,14 @@ export default function Settings() {
     status: "active",
   });
 
+  // Fetch current user with SSO info (used as a fallback source of companyId
+  // for non-admin users who never visit /companies to set localStorage).
+  const { data: currentUser } = useQuery<any>({
+    queryKey: ["/api/auth/me"],
+  });
+
+  const selectedCompanyId = lsSelectedCompanyId || currentUser?.companyId || null;
+
   const { data: company, isLoading: companyLoading } = useQuery<Company>({
     queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}`] : [],
     enabled: !!selectedCompanyId,
@@ -80,11 +93,6 @@ export default function Settings() {
 
   const { data: systemPrefs, isLoading: prefsLoading } = useQuery<SystemPreferences>({
     queryKey: ["/api/system-preferences"],
-  });
-
-  // Fetch current user with SSO info
-  const { data: currentUser } = useQuery<any>({
-    queryKey: ["/api/auth/me"],
   });
 
   // QuickBooks connection status
@@ -157,6 +165,32 @@ export default function Settings() {
       toast({
         title: "Error",
         description: "Failed to update company information",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateCostingMethodMutation = useMutation({
+    mutationFn: async (costingMethod: "last_cost" | "wac") => {
+      if (!selectedCompanyId) throw new Error("No company selected");
+      return await apiRequest("PATCH", `/api/companies/${selectedCompanyId}/costing-method`, { costingMethod });
+    },
+    onSuccess: () => {
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/companies/${selectedCompanyId}`] });
+      }
+      // Recipe costs were just recalculated server-side; refresh recipe-related caches.
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      toast({
+        title: "Costing method updated",
+        description: "Recipe costs have been recalculated using the new method.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update costing method",
         variant: "destructive",
       });
     },
@@ -647,6 +681,48 @@ export default function Settings() {
                   </Button>
                 </div>
               </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Costing Method</CardTitle>
+              <CardDescription>
+                Choose how ingredient costs are valued throughout the app — recipe costing, on-hand
+                value, count snapshots, theoretical food cost, and variance reports all honor this
+                setting. Switching will recalculate every recipe.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 max-w-md">
+                <Label htmlFor="company-costing-method">Inventory Costing Method</Label>
+                <Select
+                  value={(company?.costingMethod === "wac" ? "wac" : "last_cost") as string}
+                  onValueChange={(value) => {
+                    if (value !== "last_cost" && value !== "wac") return;
+                    if (value === (company?.costingMethod ?? "last_cost")) return;
+                    updateCostingMethodMutation.mutate(value);
+                  }}
+                  disabled={updateCostingMethodMutation.isPending || companyLoading}
+                >
+                  <SelectTrigger id="company-costing-method" data-testid="select-costing-method">
+                    <SelectValue placeholder="Select costing method..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="last_cost" data-testid="option-costing-last-cost">
+                      Last Cost (most recent purchase price)
+                    </SelectItem>
+                    <SelectItem value="wac" data-testid="option-costing-wac">
+                      Weighted Average Cost (WAC)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {updateCostingMethodMutation.isPending
+                    ? "Recalculating recipe costs..."
+                    : "Default is Last Cost. WAC blends every receipt of an item, smoothing out price spikes."}
+                </p>
+              </div>
             </CardContent>
           </Card>
 
