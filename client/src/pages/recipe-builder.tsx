@@ -49,6 +49,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Table,
   TableBody,
   TableCell,
@@ -121,6 +126,7 @@ function InlineIngredientRow({
   onDelete,
   onAddToInventory,
   onLinkToExisting,
+  isUncostable = false,
 }: {
   component: ComponentWithDetails;
   units: Unit[] | undefined;
@@ -131,6 +137,7 @@ function InlineIngredientRow({
   onDelete: () => void;
   onAddToInventory?: (component: ComponentWithDetails) => void;
   onLinkToExisting?: (component: ComponentWithDetails) => void;
+  isUncostable?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: component.id });
@@ -300,11 +307,22 @@ function InlineIngredientRow({
     );
   }
 
+  // The inventory item this row points at (used for the "fix this" deep-link
+  // baked into the unit-warning tooltip).
+  const inventoryItemForRow =
+    component.componentType === "inventory_item"
+      ? inventoryItems?.find((i) => i.id === component.componentId)
+      : undefined;
+
   return (
-    <div 
-      ref={setNodeRef} 
-      style={style} 
-      className="border rounded-lg px-3 py-2 bg-card"
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={
+        isUncostable
+          ? "border rounded-lg px-3 py-2 bg-amber-50/60 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800"
+          : "border rounded-lg px-3 py-2 bg-card"
+      }
       data-testid={`row-ingredient-${component.id}`}
     >
       {/* Responsive grid: compact on mobile, full columns on desktop */}
@@ -349,19 +367,61 @@ function InlineIngredientRow({
           data-testid={`input-qty-${component.id}`}
         />
 
-        {/* Unit selector */}
-        <Select value={component.unitId} onValueChange={handleUnitChange}>
-          <SelectTrigger className="h-8 text-sm" data-testid={`select-unit-${component.id}`}>
-            <SelectValue placeholder="Unit" />
-          </SelectTrigger>
-          <SelectContent>
-            {getCompatibleUnitList().map((unit) => (
-              <SelectItem key={unit.id} value={unit.id}>
-                {formatUnitName(unit.name)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Unit selector + uncostable warning badge */}
+        <div className="flex items-center gap-1 min-w-0">
+          <Select value={component.unitId} onValueChange={handleUnitChange}>
+            <SelectTrigger
+              className={
+                isUncostable
+                  ? "h-8 text-sm border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-300"
+                  : "h-8 text-sm"
+              }
+              data-testid={`select-unit-${component.id}`}
+            >
+              <SelectValue placeholder="Unit" />
+            </SelectTrigger>
+            <SelectContent>
+              {getCompatibleUnitList().map((unit) => (
+                <SelectItem key={unit.id} value={unit.id}>
+                  {formatUnitName(unit.name)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {isUncostable && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {inventoryItemForRow ? (
+                  <Link
+                    href={`/inventory-items/${inventoryItemForRow.id}#recipe-units`}
+                    className="shrink-0 inline-flex items-center justify-center h-6 w-6 rounded-md hover-elevate active-elevate-2"
+                    data-testid={`badge-uncostable-${component.id}`}
+                  >
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  </Link>
+                ) : (
+                  <span
+                    className="shrink-0 inline-flex items-center justify-center h-6 w-6"
+                    data-testid={`badge-uncostable-${component.id}`}
+                  >
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  </span>
+                )}
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs text-xs">
+                This unit can't be converted to{" "}
+                <span className="font-medium">
+                  {inventoryItemForRow?.unitName || "the item's inventory unit"}
+                </span>
+                {inventoryItemForRow ? (
+                  <>, so this line is excluded from the recipe cost. Open the item's Recipe Units tab to add a conversion factor.</>
+                ) : (
+                  <>, so this line is excluded from the recipe cost.</>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
 
         {/* Yield override - desktop only */}
         {component.componentType === "inventory_item" ? (
@@ -660,6 +720,51 @@ function RecipeBuilderContent() {
     if (!editDialogOpen) setShowAllUnitsEdit(false);
   }, [editDialogOpen]);
 
+  // Mirror server's `convertToInventoryUnits` so we can detect components
+  // whose unit can no longer be converted into the inventory item's unit
+  // (e.g. a "each" recipe call against a per-LB item with no Recipe Unit row).
+  // Returns the qty expressed in the item's inventory unit, or null when
+  // there's no path. Returning null tells the cost engine to skip the line
+  // rather than silently miscost it.
+  const convertCompQtyToInventoryUnits = (
+    comp: ComponentWithDetails,
+    item: InventoryItem
+  ): number | null => {
+    const fromUnit = units?.find((u) => u.id === comp.unitId);
+    if (!fromUnit) return null;
+    if (fromUnit.id === item.unitId) return comp.qty;
+    const override = companyRecipeUnits?.find(
+      (u) =>
+        u.inventoryItemId === item.id &&
+        u.unitId === fromUnit.id &&
+        u.isIssueUnit === 0
+    );
+    if (override && override.qtyPerInventoryUnit > 0) {
+      return comp.qty / override.qtyPerInventoryUnit;
+    }
+    const itemUnit = units?.find((u) => u.id === item.unitId);
+    if (
+      itemUnit &&
+      fromUnit.kind === itemUnit.kind &&
+      itemUnit.toBaseRatio > 0 &&
+      fromUnit.toBaseRatio > 0
+    ) {
+      return (comp.qty * fromUnit.toBaseRatio) / itemUnit.toBaseRatio;
+    }
+    return null;
+  };
+
+  // True when an inventory component can't be converted into its item's
+  // inventory unit. Drives the row warning badge + recipe summary banner.
+  // Missing items use their own warning UI and aren't flagged here.
+  const isComponentUncostable = (comp: ComponentWithDetails): boolean => {
+    if (comp.missingItem) return false;
+    if (comp.componentType !== "inventory_item") return false;
+    const item = inventoryItems?.find((i) => i.id === comp.componentId);
+    if (!item) return false;
+    return convertCompQtyToInventoryUnits(comp, item) === null;
+  };
+
   // Calculate component cost
   const calculateComponentCost = (comp: ComponentWithDetails): number => {
     const unit = units?.find((u) => u.id === comp.unitId);
@@ -668,17 +773,19 @@ function RecipeBuilderContent() {
     if (comp.componentType === "inventory_item") {
       const item = inventoryItems?.find((i) => i.id === comp.componentId);
       if (item) {
-        // Convert item's pricePerUnit to price per base unit
-        const itemUnit = units?.find((u) => u.id === item.unitId);
-        const itemPricePerBaseUnit = itemUnit 
-          ? item.pricePerUnit / itemUnit.toBaseRatio 
-          : item.pricePerUnit;
+        // Bail out if there's no conversion path — the server will skip this
+        // line, so the displayed cost should reflect $0 here too instead of
+        // a misleading non-zero number.
+        const qtyInInvUnit = convertCompQtyToInventoryUnits(comp, item);
+        if (qtyInInvUnit === null) return 0;
+        // Use the item's per-inventory-unit price (no kind-conversion math
+        // needed once qty is already expressed in the inventory unit).
         // Adjust for yield percentage to get effective cost (e.g., $3/lb at 70% yield = $4.29/lb effective)
         // Use component's yieldOverride if set, otherwise item's default yieldPercent
         const yieldPercent = comp.yieldOverride != null ? comp.yieldOverride : item.yieldPercent;
         const yieldFactor = yieldPercent / 100;
-        const effectiveCost = yieldFactor > 0 ? itemPricePerBaseUnit / yieldFactor : itemPricePerBaseUnit;
-        return qtyInBaseUnits * effectiveCost;
+        const effectiveCost = yieldFactor > 0 ? item.pricePerUnit / yieldFactor : item.pricePerUnit;
+        return qtyInInvUnit * effectiveCost;
       }
     } else if (comp.componentType === "recipe") {
       const subRecipe = recipes?.find((r) => r.id === comp.componentId);
@@ -696,6 +803,10 @@ function RecipeBuilderContent() {
 
   // Calculate total recipe cost
   const totalCost = components.reduce((sum, comp) => sum + comp.cost, 0);
+
+  // Components whose unit can't be converted to the item's inventory unit.
+  // Surfaced via a banner above the ingredients list and a per-row badge.
+  const uncostableComponents = components.filter(isComponentUncostable);
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -1511,9 +1622,9 @@ function RecipeBuilderContent() {
 
       setComponents(componentsWithDetails);
     }
-  }, [isNew, recipe, recipeComponents, inventoryItems, recipes, units]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isNew, recipe, recipeComponents, inventoryItems, recipes, units, companyRecipeUnits]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update component costs when inventory items or recipes change (e.g., after editing an item)
+  // Update component costs when inventory items, recipes, units, or per-item recipe units change
   useEffect(() => {
     if (components.length > 0 && inventoryItems && recipes) {
       const updatedComponents = components.map((comp) => {
@@ -1531,7 +1642,7 @@ function RecipeBuilderContent() {
         setComponents(updatedComponents);
       }
     }
-  }, [inventoryItems, recipes]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [inventoryItems, recipes, units, companyRecipeUnits]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load selected stores when editing
   useEffect(() => {
@@ -1912,6 +2023,55 @@ function RecipeBuilderContent() {
                   )}
                 </CardHeader>
                 <CardContent className="flex-1 overflow-auto">
+                  {/* Banner: components whose unit can't be costed. Each
+                      affected name links to its inventory item's Recipe
+                      Units tab so the user can add a conversion factor. */}
+                  {uncostableComponents.length > 0 && (
+                    <div
+                      className="mb-3 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2"
+                      data-testid="banner-uncostable-components"
+                    >
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0 text-xs">
+                          <p className="font-medium text-amber-800 dark:text-amber-300">
+                            {uncostableComponents.length === 1
+                              ? "1 ingredient is excluded from this recipe's cost"
+                              : `${uncostableComponents.length} ingredients are excluded from this recipe's cost`}
+                          </p>
+                          <p className="mt-0.5 text-amber-700 dark:text-amber-400">
+                            Their unit can't be converted into the inventory unit. Add a
+                            Recipe Unit conversion for each item below to include them.
+                          </p>
+                          <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                            {uncostableComponents.map((c) => {
+                              const item =
+                                c.componentType === "inventory_item"
+                                  ? inventoryItems?.find((i) => i.id === c.componentId)
+                                  : undefined;
+                              return (
+                                <li key={c.id}>
+                                  {item ? (
+                                    <Link
+                                      href={`/inventory-items/${item.id}#recipe-units`}
+                                      className="underline text-amber-800 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-200"
+                                      data-testid={`link-uncostable-${c.id}`}
+                                    >
+                                      {c.name} ({c.unitName})
+                                    </Link>
+                                  ) : (
+                                    <span data-testid={`text-uncostable-${c.id}`}>
+                                      {c.name} ({c.unitName})
+                                    </span>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {components.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed rounded-lg bg-muted/20">
                       <ChefHat className="h-12 w-12 text-muted-foreground mb-4" />
@@ -1990,6 +2150,7 @@ function RecipeBuilderContent() {
                             onDelete={() => handleDeleteIngredient(component.id)}
                             onAddToInventory={handleOpenAddToInventory}
                             onLinkToExisting={handleOpenLinkToExisting}
+                            isUncostable={isComponentUncostable(component)}
                           />
                         ))}
                       </div>

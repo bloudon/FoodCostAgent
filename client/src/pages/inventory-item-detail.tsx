@@ -548,6 +548,33 @@ export default function InventoryItemDetail() {
   const [selectedContainerUnitId, setSelectedContainerUnitId] = useState<string>("");
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+
+  // Tab selection driven by URL hash so other pages can deep-link
+  // (e.g. recipe builder warnings link to `/inventory-items/<id>#recipe-units`).
+  const allowedTabs = ["pack-breakdown", "recipe-units", "issue-units"] as const;
+  type UnitsTab = (typeof allowedTabs)[number];
+  const readTabFromHash = (): UnitsTab => {
+    if (typeof window === "undefined") return "pack-breakdown";
+    const raw = window.location.hash.replace(/^#/, "");
+    return (allowedTabs as readonly string[]).includes(raw)
+      ? (raw as UnitsTab)
+      : "pack-breakdown";
+  };
+  const [unitsTab, setUnitsTab] = useState<UnitsTab>(readTabFromHash);
+  useEffect(() => {
+    const onHash = () => setUnitsTab(readTabFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  const handleUnitsTabChange = (next: string) => {
+    if (!(allowedTabs as readonly string[]).includes(next)) return;
+    setUnitsTab(next as UnitsTab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.hash = next;
+      window.history.replaceState(null, "", url.toString());
+    }
+  };
   
   // Vendor item inline edit state (keyed by vendor item id, or "new" for add row)
   const [vendorRowEdits, setVendorRowEdits] = useState<Record<string, {
@@ -1952,7 +1979,7 @@ export default function InventoryItemDetail() {
                     </div>
 
                     <div className="rounded-md border p-4">
-                      <Tabs defaultValue="pack-breakdown">
+                      <Tabs value={unitsTab} onValueChange={handleUnitsTabChange}>
                         <TabsList className="mb-3" data-testid="tabs-units">
                           <TabsTrigger value="pack-breakdown" data-testid="tab-pack-breakdown">Pack Breakdown</TabsTrigger>
                           <TabsTrigger value="recipe-units" data-testid="tab-recipe-units">Recipe Units</TabsTrigger>
