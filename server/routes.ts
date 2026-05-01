@@ -11515,9 +11515,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Pre-compute every recipe's new cost using the *target* method BEFORE
       // persisting the company flip. If any recipe cost computation throws,
-      // we abort with a 500 and the company method stays on its old value
-      // — no partial state. Only after every recipe cost is computed do we
-      // commit (company update + recipe updates) sequentially.
+      // we abort and the company method stays on its old value — no partial
+      // state. Only after every recipe cost is computed do we commit
+      // (company update + recipe updates) atomically inside one transaction.
       const targetCompany = { ...existingCompany, costingMethod };
 
       const allRecipes = await storage.getRecipes(req.params.id);
@@ -11527,20 +11527,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Build child-first topological order across ALL recipes for this company
+      // using an explicit (iterative) DFS so a deep recipe graph cannot blow
+      // the JS call stack, and detect cycles up-front (a recipe transitively
+      // depending on itself via canBeIngredient) so the recalc fails cleanly
+      // with the offending recipe ids rather than mis-ordering the recompute.
+      type Frame = { id: string; childIdx: number };
       const visited = new Set<string>();
+      const onStack = new Set<string>();
       const sorted: string[] = [];
-      const visit = (recipeId: string) => {
-        if (visited.has(recipeId)) return;
-        visited.add(recipeId);
+      let cycleIds: string[] | null = null;
+
+      const childRecipeIdsOf = (recipeId: string): string[] => {
         const comps = componentsByRecipe.get(recipeId) || [];
+        const out: string[] = [];
         for (const c of comps) {
           if (c.componentType === "recipe" && componentsByRecipe.has(c.componentId)) {
-            visit(c.componentId);
+            out.push(c.componentId);
           }
         }
-        sorted.push(recipeId);
+        return out;
       };
-      for (const r of allRecipes) visit(r.id);
+
+      for (const root of allRecipes) {
+        if (visited.has(root.id)) continue;
+        const stack: Frame[] = [{ id: root.id, childIdx: 0 }];
+        onStack.add(root.id);
+        while (stack.length > 0) {
+          const top = stack[stack.length - 1];
+          const children = childRecipeIdsOf(top.id);
+          if (top.childIdx < children.length) {
+            const childId = children[top.childIdx++];
+            if (onStack.has(childId)) {
+              // Cycle: collect the offending recipe ids from the current path
+              const startIdx = stack.findIndex((f) => f.id === childId);
+              cycleIds = stack.slice(startIdx).map((f) => f.id).concat(childId);
+              break;
+            }
+            if (!visited.has(childId)) {
+              stack.push({ id: childId, childIdx: 0 });
+              onStack.add(childId);
+            }
+          } else {
+            visited.add(top.id);
+            onStack.delete(top.id);
+            sorted.push(top.id);
+            stack.pop();
+          }
+        }
+        if (cycleIds) break;
+      }
+
+      if (cycleIds) {
+        const uniqueCycle = Array.from(new Set(cycleIds));
+        return res.status(409).json({
+          error: `Recipe cycle detected — costing recalculation aborted. Recipes in cycle: ${uniqueCycle.join(", ")}`,
+          cycleRecipeIds: uniqueCycle,
+        });
+      }
 
       const memo = new Map<string, number>();
       const newCosts = new Map<string, number>();
@@ -11549,21 +11592,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         newCosts.set(recipeId, newCost);
       }
 
-      // All recipe costs computed successfully — now commit.
-      const company = await storage.updateCompany(req.params.id, { costingMethod });
-      if (!company) {
-        return res.status(404).json({ error: "Company not found" });
-      }
-      for (const [recipeId, newCost] of newCosts) {
-        await storage.updateRecipe(recipeId, { computedCost: newCost });
-      }
+      // All recipe costs computed successfully — now commit company flip and
+      // recipe updates atomically. If any recipe write fails, the entire
+      // transaction rolls back and the company costing method stays on its
+      // old value.
+      const company = await db.transaction(async (tx) => {
+        const [updatedCompany] = await tx
+          .update(companiesTable)
+          .set({ costingMethod })
+          .where(eq(companiesTable.id, req.params.id))
+          .returning();
+        if (!updatedCompany) {
+          throw new Error("Company not found");
+        }
+        for (const [recipeId, newCost] of newCosts) {
+          await tx
+            .update(recipes)
+            .set({ computedCost: newCost })
+            .where(eq(recipes.id, recipeId));
+        }
+        return updatedCompany;
+      });
+
       await cacheInvalidator.invalidateRecipes(req.params.id);
       // Inventory list/detail responses include a derived effectiveUnitCost
       // computed from the company's costing method, so the cached enriched
       // payload must be invalidated when that method flips.
       await cacheInvalidator.invalidateInventory(req.params.id);
 
-      res.json(company);
+      res.json({ ...company, recipesRecalculated: newCosts.size });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

@@ -173,9 +173,10 @@ export default function Settings() {
   const updateCostingMethodMutation = useMutation({
     mutationFn: async (costingMethod: "last_cost" | "weighted_average") => {
       if (!selectedCompanyId) throw new Error("No company selected");
-      return await apiRequest("PATCH", `/api/companies/${selectedCompanyId}/costing-method`, { costingMethod });
+      const res = await apiRequest("PATCH", `/api/companies/${selectedCompanyId}/costing-method`, { costingMethod });
+      return await res.json() as { recipesRecalculated?: number };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       if (selectedCompanyId) {
         queryClient.invalidateQueries({ queryKey: [`/api/companies/${selectedCompanyId}`] });
       }
@@ -189,15 +190,21 @@ export default function Settings() {
       // that depend on the costing method.
       queryClient.invalidateQueries({ queryKey: ["/api/tfc/usage-runs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/variance"] });
+      const count = typeof data?.recipesRecalculated === "number" ? data.recipesRecalculated : null;
       toast({
         title: "Costing method updated",
-        description: "Recipe costs have been recalculated using the new method.",
+        description: count !== null
+          ? `Recalculated ${count} recipe${count === 1 ? "" : "s"} using the new method.`
+          : "Recipe costs have been recalculated using the new method.",
       });
     },
-    onError: () => {
+    onError: (error: Error) => {
+      // Server returns plain `error` strings; for cycle errors the message
+      // already includes the offending recipe ids (see /costing-method 409
+      // handler in server/routes.ts).
       toast({
-        title: "Error",
-        description: "Failed to update costing method",
+        title: "Failed to update costing method",
+        description: error?.message || "Please try again.",
         variant: "destructive",
       });
     },
