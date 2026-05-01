@@ -14,6 +14,7 @@ import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "
 import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
 import { getEffectiveUnitCost, type CostingMethodCarrier } from "./lib/costing";
+import { convertToInventoryUnits, autoSeedRecipeUnitsForItem } from "./lib/recipeUnits";
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
 import { createSession, requireAuth, optionalAuth, requireTier, verifyPassword, hashPassword } from "./auth";
@@ -56,6 +57,9 @@ import {
   insertInvitationSchema,
   insertQuickBooksVendorMappingSchema,
   type RecipeComponent,
+  type InventoryItemUnit,
+  type Unit,
+  inventoryItemUnits as inventoryItemUnitsTable,
 } from "@shared/schema";
 
 // Helper: session cookie options — shares domain across subdomains in production
@@ -2847,7 +2851,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get compatible units for a given unit (same kind: weight/volume/count)
   app.get("/api/units/compatible", requireAuth, async (req, res) => {
-    const { unitId } = req.query;
+    const { unitId, inventoryItemId } = req.query as { unitId?: string; inventoryItemId?: string };
     
     if (!unitId || typeof unitId !== 'string') {
       return res.status(400).json({ error: "unitId query parameter is required" });
@@ -2919,6 +2923,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (company.preferredUnitSystem === 'both' || !u.system) return true;
       return u.system === company.preferredUnitSystem;
     });
+
+    // Per-item Recipe Unit whitelist: when an inventoryItemId is supplied,
+    // union the whitelisted units onto the same-kind list. Imperial/metric and
+    // count units mingle freely here — that's the whole point of per-item
+    // factors.
+    if (inventoryItemId && typeof inventoryItemId === 'string') {
+      const item = await storage.getInventoryItem(inventoryItemId);
+      if (item && item.companyId === companyId) {
+        const perItem = await storage.getInventoryItemUnits(inventoryItemId);
+        const whitelistedRecipeUnitIds = new Set(
+          perItem.filter((u) => u.isIssueUnit === 0).map((u) => u.unitId)
+        );
+        const have = new Set(compatibleUnits.map((u) => u.id));
+        for (const u of units) {
+          if (whitelistedRecipeUnitIds.has(u.id) && !have.has(u.id)) {
+            compatibleUnits.push(u);
+          }
+        }
+      }
+    }
 
     res.json(compatibleUnits);
   });
@@ -5924,6 +5948,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // Auto-seed Recipe Unit rows from the pack breakdown so the recipe
+      // builder dropdown "just works" the moment the item is created
+      try {
+        await autoSeedRecipeUnitsForItem(item);
+      } catch (seedErr: any) {
+        console.warn(`[recipe-units] auto-seed failed for ${item.id}:`, seedErr?.message || seedErr);
+      }
+
       // Invalidate cache after creation
       await cacheInvalidator.invalidateInventory(companyId, item.id);
       cacheLog(`INVALIDATE inventory after create (${companyId}, ${item.id})`);
@@ -6062,6 +6094,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.setInventoryItemLocations(req.params.id, locationIds, primaryLocationId);
       }
       
+      // Re-run idempotent Recipe Unit seeding when pack fields change. The
+      // helper never overwrites existing rows so user-edited values are safe.
+      const packFieldsChanged =
+        updates.unitId !== undefined ||
+        updates.caseSize !== undefined ||
+        updates.containerSize !== undefined ||
+        updates.containerLabel !== undefined ||
+        updates.casePkgCount !== undefined;
+      if (packFieldsChanged && item) {
+        try {
+          await autoSeedRecipeUnitsForItem(item);
+        } catch (seedErr: any) {
+          console.warn(`[recipe-units] auto-seed failed for ${item.id}:`, seedErr?.message || seedErr);
+        }
+      }
+
       // If price or yield changed, recalculate costs for all affected recipes (including nested dependencies)
       const priceChanged = updates.pricePerUnit !== undefined && updates.pricePerUnit !== currentItem.pricePerUnit;
       const yieldChanged = updates.yieldPercent !== undefined && updates.yieldPercent !== currentItem.yieldPercent;
@@ -6090,6 +6138,169 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/inventory-items/:id/locations", async (req, res) => {
     const locations = await storage.getInventoryItemLocations(req.params.id);
     res.json(locations);
+  });
+
+  // ============ INVENTORY ITEM RECIPE / ISSUE UNITS ============
+
+  // GET company-wide list — used by the recipe builder to filter the unit
+  // dropdown for every component without N+1 round-trips. Lives off
+  // `/api/inventory-item-units` (no `:id`) to avoid the route-pattern clash
+  // with `GET /api/inventory-items/:id`.
+  app.get("/api/inventory-item-units", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const all = await storage.getInventoryItemUnitsForCompany(companyId);
+      res.json(all);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET — list rows. Query `?type=issue` filters to Issue Units (used by
+  // counts/transfers); default returns Recipe Units (used by recipe builder).
+  app.get("/api/inventory-items/:id/recipe-units", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const item = await storage.getInventoryItem(req.params.id);
+      if (!item || item.companyId !== companyId) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      const all = await storage.getInventoryItemUnits(req.params.id);
+      const wantIssue = req.query.type === "issue";
+      const filtered = all.filter((u) => (wantIssue ? u.isIssueUnit === 1 : u.isIssueUnit === 0));
+      res.json(filtered);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST — add a unit to the whitelist for this item
+  app.post("/api/inventory-items/:id/recipe-units", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const item = await storage.getInventoryItem(req.params.id);
+      if (!item || item.companyId !== companyId) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      const bodySchema = z.object({
+        unitId: z.string().uuid(),
+        qtyPerInventoryUnit: z.number().positive(),
+        isIssueUnit: z.union([z.literal(0), z.literal(1)]).optional().default(0),
+        sortOrder: z.number().int().nonnegative().optional().default(0),
+      });
+      const parsed = bodySchema.parse(req.body);
+      const row = await storage.createInventoryItemUnit({
+        companyId,
+        inventoryItemId: req.params.id,
+        unitId: parsed.unitId,
+        qtyPerInventoryUnit: parsed.qtyPerInventoryUnit,
+        isIssueUnit: parsed.isIssueUnit,
+        sortOrder: parsed.sortOrder,
+      });
+      // Recalculate downstream recipes — adding a unit may unlock previously
+      // incompatible components, so costs that returned 0 may now have value
+      const affected = await findAffectedRecipesByInventoryItem(req.params.id, companyId);
+      for (const recipeId of affected) {
+        const newCost = await calculateRecipeCost(recipeId);
+        await storage.updateRecipe(recipeId, { computedCost: newCost });
+      }
+      await cacheInvalidator.invalidateRecipes(companyId);
+      await cacheInvalidator.invalidateInventory(companyId, req.params.id);
+      res.status(201).json(row);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // PATCH — edit factor / sort / role
+  app.patch("/api/inventory-items/:id/recipe-units/:unitRowId", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const item = await storage.getInventoryItem(req.params.id);
+      if (!item || item.companyId !== companyId) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      const bodySchema = z.object({
+        qtyPerInventoryUnit: z.number().positive().optional(),
+        isIssueUnit: z.union([z.literal(0), z.literal(1)]).optional(),
+        sortOrder: z.number().int().nonnegative().optional(),
+      });
+      const updates = bodySchema.parse(req.body);
+      // Verify the row belongs to this item before updating
+      const existing = await storage.getInventoryItemUnits(req.params.id);
+      const target = existing.find((u) => u.id === req.params.unitRowId);
+      if (!target) {
+        return res.status(404).json({ error: "Unit row not found" });
+      }
+      const row = await storage.updateInventoryItemUnit(req.params.unitRowId, updates);
+      // Cascade recalc when the factor changed (sort/role moves don't affect cost)
+      if (updates.qtyPerInventoryUnit !== undefined) {
+        const affected = await findAffectedRecipesByInventoryItem(req.params.id, companyId);
+        for (const recipeId of affected) {
+          const newCost = await calculateRecipeCost(recipeId);
+          await storage.updateRecipe(recipeId, { computedCost: newCost });
+        }
+        await cacheInvalidator.invalidateRecipes(companyId);
+      }
+      await cacheInvalidator.invalidateInventory(companyId, req.params.id);
+      res.json(row);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // DELETE — remove a unit from the whitelist
+  app.delete("/api/inventory-items/:id/recipe-units/:unitRowId", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const item = await storage.getInventoryItem(req.params.id);
+      if (!item || item.companyId !== companyId) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      const existing = await storage.getInventoryItemUnits(req.params.id);
+      const target = existing.find((u) => u.id === req.params.unitRowId);
+      if (!target) {
+        return res.status(404).json({ error: "Unit row not found" });
+      }
+      await storage.deleteInventoryItemUnit(req.params.unitRowId);
+      // Removing a whitelisted unit can break existing recipe components — kick
+      // off the cascade so computedCost reflects reality
+      const affected = await findAffectedRecipesByInventoryItem(req.params.id, companyId);
+      for (const recipeId of affected) {
+        const newCost = await calculateRecipeCost(recipeId);
+        await storage.updateRecipe(recipeId, { computedCost: newCost });
+      }
+      await cacheInvalidator.invalidateRecipes(companyId);
+      await cacheInvalidator.invalidateInventory(companyId, req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // POST reorder — accepts { orderedIds: string[], type?: "recipe"|"issue" }
+  app.post("/api/inventory-items/:id/recipe-units/reorder", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const item = await storage.getInventoryItem(req.params.id);
+      if (!item || item.companyId !== companyId) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      const bodySchema = z.object({
+        orderedIds: z.array(z.string().uuid()),
+        type: z.enum(["recipe", "issue"]).optional().default("recipe"),
+      });
+      const { orderedIds, type } = bodySchema.parse(req.body);
+      await storage.reorderInventoryItemUnits(
+        req.params.id,
+        type === "issue" ? 1 : 0,
+        orderedIds
+      );
+      await cacheInvalidator.invalidateInventory(companyId, req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
   });
 
   app.get("/api/inventory-items/:id/vendor-items", requireAuth, async (req, res) => {
@@ -6505,12 +6716,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Create recipe map for quick lookup
     const recipeMap = new Map(recipes.map(r => [r.id, r]));
     
-    // Prepare preloaded data
+    // Prepare preloaded data — include per-item recipe-unit factors so the
+    // cost engine can apply item-specific overrides without per-component
+    // round-trips
+    const allInvItemUnits = await storage.getInventoryItemUnitsForCompany(companyId);
+    const inventoryItemUnitsMap = new Map<string, InventoryItemUnit[]>();
+    for (const u of allInvItemUnits) {
+      const list = inventoryItemUnitsMap.get(u.inventoryItemId) || [];
+      list.push(u);
+      inventoryItemUnitsMap.set(u.inventoryItemId, list);
+    }
+
     const preloadedData = {
       recipes: recipeMap,
       components: allComponents,
       units,
-      inventoryItems
+      inventoryItems,
+      inventoryItemUnits: inventoryItemUnitsMap,
     };
     
     // Calculate all recipe costs with shared memo
@@ -16731,6 +16953,7 @@ async function calculateRecipeCost(
     components?: Map<string, RecipeComponent[]>;
     units?: Unit[];
     inventoryItems?: InventoryItem[];
+    inventoryItemUnits?: Map<string, InventoryItemUnit[]>;
     company?: CostingMethodCarrier | null;
   },
   memo?: Map<string, number>
@@ -16761,25 +16984,37 @@ async function calculateRecipeCost(
 
   for (const comp of components) {
     const unit = units.find((u) => u.id === comp.unitId);
-    const qty = unit ? comp.qty * unit.toBaseRatio : comp.qty;
 
     if (comp.componentType === "inventory_item") {
       const item = inventoryItems.find((i) => i.id === comp.componentId);
       if (item) {
-        // Resolve unit cost based on the company's preferred costing method
+        // Resolve per-item recipe-unit overrides (preloaded or fetched lazily)
+        let perItemUnits = preloadedData?.inventoryItemUnits?.get(item.id);
+        if (!perItemUnits) {
+          perItemUnits = await storage.getInventoryItemUnits(item.id);
+        }
+        // Convert recipe qty into the item's inventory unit. Item-specific
+        // factors win over the global same-kind toBaseRatio path.
+        const qtyInInvUnit = convertToInventoryUnits(comp.qty, unit, item, units, perItemUnits);
+        if (qtyInInvUnit === null) {
+          // Incompatible units → contribute nothing rather than silently
+          // miscost. The recipe builder filters dropdown options to prevent
+          // this from happening at data-entry time.
+          continue;
+        }
+        // itemUnitCost is already expressed per inventory unit
         const itemUnitCost = getEffectiveUnitCost(item, company);
-        const itemUnit = units.find((u) => u.id === item.unitId);
-        const itemPricePerBaseUnit = itemUnit ? itemUnitCost / itemUnit.toBaseRatio : itemUnitCost;
         // Adjust for yield percentage to get effective cost (e.g., $3/lb at 70% yield = $4.29/lb effective)
         // Use component's yieldOverride if set, otherwise item's default yieldPercent
         const yieldPercent = comp.yieldOverride !== null && comp.yieldOverride !== undefined 
           ? comp.yieldOverride 
           : item.yieldPercent;
         const yieldFactor = yieldPercent / 100;
-        const effectiveCost = yieldFactor > 0 ? itemPricePerBaseUnit / yieldFactor : itemPricePerBaseUnit;
-        totalCost += qty * effectiveCost;
+        const effectiveCost = yieldFactor > 0 ? itemUnitCost / yieldFactor : itemUnitCost;
+        totalCost += qtyInInvUnit * effectiveCost;
       }
     } else if (comp.componentType === "recipe") {
+      const qty = unit ? comp.qty * unit.toBaseRatio : comp.qty;
       const subRecipe = preloadedData?.recipes?.get(comp.componentId) || await storage.getRecipe(comp.componentId);
       if (subRecipe) {
         const subRecipeCost = await calculateRecipeCost(comp.componentId, nestedPreload, memo);
@@ -16816,19 +17051,22 @@ async function calculateInventoryItemImpactInRecipe(recipeId: string, targetItem
     if (comp.componentType === "inventory_item" && comp.componentId === targetItemId) {
       const item = inventoryItems.find((i) => i.id === targetItemId);
       if (item) {
-        totalQty += qty;
-        // Use the company's preferred unit cost (Last Cost vs WAC)
+        // Honor per-item recipe-unit factors when present
+        const perItemUnits = await storage.getInventoryItemUnits(item.id);
+        const qtyInInvUnit = convertToInventoryUnits(comp.qty, unit, item, units, perItemUnits);
+        if (qtyInInvUnit === null) continue;
+        totalQty += qtyInInvUnit;
+        // Use the company's preferred unit cost (Last Cost vs WAC) — already
+        // expressed per inventory unit
         const itemUnitCost = getEffectiveUnitCost(item, company);
-        const itemUnit = units.find((u) => u.id === item.unitId);
-        const itemPricePerBaseUnit = itemUnit ? itemUnitCost / itemUnit.toBaseRatio : itemUnitCost;
         // Adjust for yield percentage to get effective cost
         // Use component's yieldOverride if set, otherwise item's default yieldPercent
         const yieldPercent = comp.yieldOverride !== null && comp.yieldOverride !== undefined 
           ? comp.yieldOverride 
           : item.yieldPercent;
         const yieldFactor = yieldPercent / 100;
-        const effectiveCost = yieldFactor > 0 ? itemPricePerBaseUnit / yieldFactor : itemPricePerBaseUnit;
-        totalCostContribution += qty * effectiveCost;
+        const effectiveCost = yieldFactor > 0 ? itemUnitCost / yieldFactor : itemUnitCost;
+        totalCostContribution += qtyInInvUnit * effectiveCost;
       }
     } else if (comp.componentType === "recipe") {
       const subRecipe = await storage.getRecipe(comp.componentId);

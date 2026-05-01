@@ -13,6 +13,7 @@ import {
   units, type Unit, type InsertUnit,
   unitConversions, type UnitConversion, type InsertUnitConversion,
   inventoryItems, type InventoryItem, type InsertInventoryItem,
+  inventoryItemUnits, type InventoryItemUnit, type InsertInventoryItemUnit,
   inventoryItemLocations, type InventoryItemLocation, type InsertInventoryItemLocation,
   inventoryItemPriceHistory, type InventoryItemPriceHistory, type InsertInventoryItemPriceHistory,
   storeInventoryItems, type StoreInventoryItem, type InsertStoreInventoryItem,
@@ -165,6 +166,14 @@ export interface IStorage {
   getInventoryItemLocations(inventoryItemId: string): Promise<InventoryItemLocation[]>;
   getInventoryItemLocationsBatch(inventoryItemIds: string[]): Promise<Map<string, InventoryItemLocation[]>>;
   setInventoryItemLocations(inventoryItemId: string, locationIds: string[], primaryLocationId?: string): Promise<void>;
+
+  // Inventory Item Units (per-item Recipe / Issue Units)
+  getInventoryItemUnits(inventoryItemId: string): Promise<InventoryItemUnit[]>;
+  getInventoryItemUnitsForCompany(companyId: string): Promise<InventoryItemUnit[]>;
+  createInventoryItemUnit(unit: InsertInventoryItemUnit): Promise<InventoryItemUnit>;
+  updateInventoryItemUnit(id: string, updates: Partial<InventoryItemUnit>): Promise<InventoryItemUnit | undefined>;
+  deleteInventoryItemUnit(id: string): Promise<void>;
+  reorderInventoryItemUnits(inventoryItemId: string, isIssueUnit: number, orderedIds: string[]): Promise<void>;
 
   // Store Inventory Items
   getStoreInventoryItem(storeId: string, inventoryItemId: string): Promise<StoreInventoryItem | undefined>;
@@ -1340,6 +1349,62 @@ export class DatabaseStorage implements IStorage {
           isPrimary: locationId === primary ? 1 : 0
         }))
       );
+    }
+  }
+
+  // Inventory Item Units (per-item Recipe / Issue Units)
+  async getInventoryItemUnits(inventoryItemId: string): Promise<InventoryItemUnit[]> {
+    return db
+      .select()
+      .from(inventoryItemUnits)
+      .where(eq(inventoryItemUnits.inventoryItemId, inventoryItemId))
+      .orderBy(asc(inventoryItemUnits.isIssueUnit), asc(inventoryItemUnits.sortOrder));
+  }
+
+  async getInventoryItemUnitsForCompany(companyId: string): Promise<InventoryItemUnit[]> {
+    return db
+      .select()
+      .from(inventoryItemUnits)
+      .where(eq(inventoryItemUnits.companyId, companyId));
+  }
+
+  async createInventoryItemUnit(insertUnit: InsertInventoryItemUnit): Promise<InventoryItemUnit> {
+    const [row] = await db.insert(inventoryItemUnits).values(insertUnit).returning();
+    return row;
+  }
+
+  async updateInventoryItemUnit(
+    id: string,
+    updates: Partial<InventoryItemUnit>
+  ): Promise<InventoryItemUnit | undefined> {
+    const [row] = await db
+      .update(inventoryItemUnits)
+      .set(updates)
+      .where(eq(inventoryItemUnits.id, id))
+      .returning();
+    return row || undefined;
+  }
+
+  async deleteInventoryItemUnit(id: string): Promise<void> {
+    await db.delete(inventoryItemUnits).where(eq(inventoryItemUnits.id, id));
+  }
+
+  async reorderInventoryItemUnits(
+    inventoryItemId: string,
+    isIssueUnit: number,
+    orderedIds: string[]
+  ): Promise<void> {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await db
+        .update(inventoryItemUnits)
+        .set({ sortOrder: i })
+        .where(
+          and(
+            eq(inventoryItemUnits.id, orderedIds[i]),
+            eq(inventoryItemUnits.inventoryItemId, inventoryItemId),
+            eq(inventoryItemUnits.isIssueUnit, isIssueUnit)
+          )
+        );
     }
   }
 

@@ -886,3 +886,47 @@ BEGIN
       VALUES ('v034', 'Task #106: standardize companies.costing_method value wac -> weighted_average');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v035 — Task #109: inventory_item_units table for per-item Recipe Units
+-- (custom unit conversions). One row per (item, unit, isIssueUnit) tuple. The
+-- conversion factor is anchored to the item's inventory unit so that
+-- qty_per_inventory_unit answers "how many of THIS unit are in 1 inventory unit
+-- of this item?" Recipe lookups consult these rows first; same-kind units fall
+-- through to the global units.to_base_ratio math.
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v035') THEN
+
+    CREATE TABLE IF NOT EXISTS inventory_item_units (
+      id                       varchar     PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id               varchar     NOT NULL,
+      inventory_item_id        varchar     NOT NULL,
+      unit_id                  varchar     NOT NULL,
+      qty_per_inventory_unit   real        NOT NULL,
+      is_issue_unit            integer     NOT NULL DEFAULT 0,
+      sort_order               integer     NOT NULL DEFAULT 0,
+      created_at               timestamptz NOT NULL DEFAULT now()
+    );
+
+    -- One row per (item, unit, isIssueUnit) — recipe and issue rows can coexist
+    -- for the same unit but only one of each.
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+       WHERE conname = 'inventory_item_units_item_unit_kind_unique'
+    ) THEN
+      ALTER TABLE inventory_item_units
+        ADD CONSTRAINT inventory_item_units_item_unit_kind_unique
+        UNIQUE (inventory_item_id, unit_id, is_issue_unit);
+    END IF;
+
+    CREATE INDEX IF NOT EXISTS inventory_item_units_item_idx
+      ON inventory_item_units (inventory_item_id);
+    CREATE INDEX IF NOT EXISTS inventory_item_units_company_idx
+      ON inventory_item_units (company_id);
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v035', 'Task #109: inventory_item_units table for per-item Recipe Units');
+  END IF;
+END $$;

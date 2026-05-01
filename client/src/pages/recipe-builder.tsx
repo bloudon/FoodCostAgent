@@ -82,7 +82,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { CostingMethodBadge } from "@/components/costing-method-badge";
-import type { Recipe, RecipeComponent, Category, InventoryItem as BaseInventoryItem, Unit as BaseUnit } from "@shared/schema";
+import type { Recipe, RecipeComponent, Category, InventoryItem as BaseInventoryItem, Unit as BaseUnit, InventoryItemUnit } from "@shared/schema";
 
 // Extended types for API responses with joined fields
 type InventoryItem = BaseInventoryItem & {
@@ -610,12 +610,22 @@ function RecipeBuilderContent() {
     enabled: !isNew && !!id,
   });
 
-  // Fetch compatible units for add dialog
+  // Per-item Recipe Unit whitelist for the whole company (one query, used by
+  // the inline rows and the dialogs to filter the unit dropdown).
+  const { data: companyRecipeUnits } = useQuery<InventoryItemUnit[]>({
+    queryKey: ["/api/inventory-item-units"],
+  });
+
+  // Fetch compatible units for add dialog (same-kind ∪ per-item whitelist when
+  // pendingItem is an inventory item)
+  const pendingInvItemId = pendingItem?.type === "inventory_item" ? pendingItem.id : null;
   const { data: compatibleUnitsForAdd } = useQuery<Unit[]>({
-    queryKey: ["/api/units/compatible", baseUnitIdForAdd],
+    queryKey: ["/api/units/compatible", baseUnitIdForAdd, pendingInvItemId],
     queryFn: async () => {
       if (!baseUnitIdForAdd) return [];
-      const response = await fetch(`/api/units/compatible?unitId=${baseUnitIdForAdd}`);
+      const params = new URLSearchParams({ unitId: baseUnitIdForAdd });
+      if (pendingInvItemId) params.set("inventoryItemId", pendingInvItemId);
+      const response = await fetch(`/api/units/compatible?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to fetch compatible units');
       return response.json();
     },
@@ -623,16 +633,32 @@ function RecipeBuilderContent() {
   });
 
   // Fetch compatible units for edit dialog
+  const editInvItemId = editingComponent?.componentType === "inventory_item"
+    ? editingComponent.componentId
+    : null;
   const { data: compatibleUnitsForEdit } = useQuery<Unit[]>({
-    queryKey: ["/api/units/compatible", baseUnitIdForEdit],
+    queryKey: ["/api/units/compatible", baseUnitIdForEdit, editInvItemId],
     queryFn: async () => {
       if (!baseUnitIdForEdit) return [];
-      const response = await fetch(`/api/units/compatible?unitId=${baseUnitIdForEdit}`);
+      const params = new URLSearchParams({ unitId: baseUnitIdForEdit });
+      if (editInvItemId) params.set("inventoryItemId", editInvItemId);
+      const response = await fetch(`/api/units/compatible?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to fetch compatible units');
       return response.json();
     },
     enabled: !!baseUnitIdForEdit && editDialogOpen,
   });
+
+  // "Show all" escape hatches — flip to true to bypass the per-item / same-kind
+  // filter and let the user pick from the entire units catalog.
+  const [showAllUnitsAdd, setShowAllUnitsAdd] = useState(false);
+  const [showAllUnitsEdit, setShowAllUnitsEdit] = useState(false);
+  useEffect(() => {
+    if (!showAddDialog) setShowAllUnitsAdd(false);
+  }, [showAddDialog]);
+  useEffect(() => {
+    if (!editDialogOpen) setShowAllUnitsEdit(false);
+  }, [editDialogOpen]);
 
   // Calculate component cost
   const calculateComponentCost = (comp: ComponentWithDetails): number => {
@@ -946,13 +972,18 @@ function RecipeBuilderContent() {
     setComponents(updatedComponents);
   };
 
-  // Get compatible units for a specific component (for inline editing)
+  // Get compatible units for a specific component (for inline editing).
+  // Combines: same-kind units (existing behavior) plus the per-item Recipe
+  // Unit whitelist for inventory items. Sub-recipes only use same-kind because
+  // they don't have a per-item override mechanism today.
   const getCompatibleUnitsForComponent = (component: ComponentWithDetails): Unit[] => {
     let baseUnitId: string | undefined;
-    
+    let inventoryItemId: string | undefined;
+
     if (component.componentType === "inventory_item") {
       const item = inventoryItems?.find(i => i.id === component.componentId);
       baseUnitId = item?.unitId;
+      inventoryItemId = component.componentId;
     } else if (component.componentType === "recipe") {
       const recipe = recipes?.find(r => r.id === component.componentId);
       baseUnitId = recipe?.yieldUnitId;
@@ -960,12 +991,26 @@ function RecipeBuilderContent() {
 
     if (!baseUnitId || !units) return units || [];
 
-    // Get the base unit to determine its kind (mass, volume, count)
     const baseUnit = units.find(u => u.id === baseUnitId);
     if (!baseUnit) return units;
 
-    // Filter to units of the same kind
-    return units.filter(u => u.kind === baseUnit.kind);
+    const result = new Map<string, Unit>();
+    for (const u of units) {
+      if (u.kind === baseUnit.kind) result.set(u.id, u);
+    }
+
+    if (inventoryItemId && companyRecipeUnits) {
+      const whitelistedIds = new Set(
+        companyRecipeUnits
+          .filter((row) => row.inventoryItemId === inventoryItemId && row.isIssueUnit === 0)
+          .map((row) => row.unitId)
+      );
+      for (const u of units) {
+        if (whitelistedIds.has(u.id)) result.set(u.id, u);
+      }
+    }
+
+    return Array.from(result.values());
   };
 
   // Edit inventory item handlers
@@ -2084,13 +2129,28 @@ function RecipeBuilderContent() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Unit</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm font-medium">Unit</label>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover-elevate active-elevate-2 px-2 py-1 rounded-md"
+                  onClick={() => setShowAllUnitsAdd((v) => !v)}
+                  data-testid="button-toggle-show-all-units-add"
+                >
+                  {showAllUnitsAdd ? "Show whitelisted" : "Show all"}
+                </button>
+              </div>
               <Select value={dialogUnitId} onValueChange={setDialogUnitId}>
                 <SelectTrigger data-testid="select-dialog-unit">
                   <SelectValue placeholder="Select unit" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(compatibleUnitsForAdd?.length ? compatibleUnitsForAdd : units)?.map((unit) => (
+                  {(showAllUnitsAdd
+                    ? units
+                    : compatibleUnitsForAdd?.length
+                      ? compatibleUnitsForAdd
+                      : units
+                  )?.map((unit) => (
                     <SelectItem key={unit.id} value={unit.id}>
                       {formatUnitName(unit.name)}
                     </SelectItem>
@@ -2132,13 +2192,28 @@ function RecipeBuilderContent() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Unit</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm font-medium">Unit</label>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover-elevate active-elevate-2 px-2 py-1 rounded-md"
+                  onClick={() => setShowAllUnitsEdit((v) => !v)}
+                  data-testid="button-toggle-show-all-units-edit"
+                >
+                  {showAllUnitsEdit ? "Show whitelisted" : "Show all"}
+                </button>
+              </div>
               <Select value={editUnitId} onValueChange={setEditUnitId}>
                 <SelectTrigger data-testid="select-edit-unit">
                   <SelectValue placeholder="Select unit" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(compatibleUnitsForEdit?.length ? compatibleUnitsForEdit : units)?.map((unit) => (
+                  {(showAllUnitsEdit
+                    ? units
+                    : compatibleUnitsForEdit?.length
+                      ? compatibleUnitsForEdit
+                      : units
+                  )?.map((unit) => (
                     <SelectItem key={unit.id} value={unit.id}>
                       {formatUnitName(unit.name)}
                     </SelectItem>

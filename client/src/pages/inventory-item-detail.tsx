@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,7 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
 import { useState, useEffect } from "react";
-import type { SystemPreferences } from "@shared/schema";
+import type { SystemPreferences, InventoryItemUnit } from "@shared/schema";
 
 type InventoryItem = {
   id: string;
@@ -113,6 +114,265 @@ type VendorItem = {
     name: string;
   } | null;
 };
+
+// Per-item Recipe / Issue unit list. Renders the unit whitelist for the given
+// item, with inline add (unit + factor), edit (factor only), and delete.
+// `kind` switches between Recipe Units (isIssueUnit=0) and Issue Units (=1).
+function RecipeUnitsList({
+  itemId,
+  itemUnitId,
+  itemUnitAbbrev,
+  units,
+  kind,
+}: {
+  itemId: string;
+  itemUnitId: string | null | undefined;
+  itemUnitAbbrev: string;
+  units: Unit[] | undefined;
+  kind: "recipe" | "issue";
+}) {
+  const { toast } = useToast();
+  const queryParam = kind === "issue" ? "?type=issue" : "";
+  const queryKey = ["/api/inventory-items", itemId, "recipe-units", kind] as const;
+
+  const { data: rows, isLoading } = useQuery<InventoryItemUnit[]>({
+    queryKey,
+    queryFn: async () => {
+      const res = await fetch(`/api/inventory-items/${itemId}/recipe-units${queryParam}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+    enabled: !!itemId,
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey });
+    queryClient.invalidateQueries({ queryKey: ["/api/inventory-item-units"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+  };
+
+  const createMutation = useMutation({
+    mutationFn: async (body: { unitId: string; qtyPerInventoryUnit: number }) => {
+      return apiRequest("POST", `/api/inventory-items/${itemId}/recipe-units`, {
+        ...body,
+        isIssueUnit: kind === "issue" ? 1 : 0,
+      });
+    },
+    onSuccess: () => {
+      invalidate();
+      setNewUnitId("");
+      setNewQty("");
+      toast({ title: "Unit added" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not add unit", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ rowId, qtyPerInventoryUnit }: { rowId: string; qtyPerInventoryUnit: number }) => {
+      return apiRequest("PATCH", `/api/inventory-items/${itemId}/recipe-units/${rowId}`, {
+        qtyPerInventoryUnit,
+      });
+    },
+    onSuccess: () => {
+      invalidate();
+      setEditingId(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not save", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (rowId: string) => {
+      return apiRequest("DELETE", `/api/inventory-items/${itemId}/recipe-units/${rowId}`);
+    },
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Unit removed" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not remove", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const [newUnitId, setNewUnitId] = useState<string>("");
+  const [newQty, setNewQty] = useState<string>("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editQty, setEditQty] = useState<string>("");
+
+  const handleAdd = () => {
+    const qty = parseFloat(newQty);
+    if (!newUnitId || !(qty > 0)) {
+      toast({
+        title: "Missing fields",
+        description: "Pick a unit and enter a positive qty per inventory unit.",
+        variant: "destructive",
+      });
+      return;
+    }
+    createMutation.mutate({ unitId: newUnitId, qtyPerInventoryUnit: qty });
+  };
+
+  // Hide units already in this list to avoid uniqueness violations
+  const usedUnitIds = new Set((rows ?? []).map((r) => r.unitId));
+  const unitOptions = (units ?? []).filter((u) => !usedUnitIds.has(u.id));
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-sm font-semibold">
+          {kind === "issue" ? "Issue / Transfer Units" : "Recipe Units"}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {kind === "issue"
+            ? "Units allowed for transfers and issues for this item."
+            : "Units the recipe builder will offer for this ingredient."}
+        </p>
+      </div>
+
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-xs text-muted-foreground">
+            <th className="pb-2 text-left font-medium">Unit</th>
+            <th className="pb-2 text-left font-medium">Qty per 1 {itemUnitAbbrev || "inventory unit"}</th>
+            <th className="w-24 pb-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {isLoading && (
+            <tr>
+              <td colSpan={3} className="py-3 text-muted-foreground">Loading…</td>
+            </tr>
+          )}
+          {!isLoading && rows && rows.length === 0 && (
+            <tr>
+              <td colSpan={3} className="py-3 text-muted-foreground">No units configured.</td>
+            </tr>
+          )}
+          {rows?.map((row) => {
+            const unit = units?.find((u) => u.id === row.unitId);
+            const isEditing = editingId === row.id;
+            return (
+              <tr key={row.id} className="border-b last:border-b-0" data-testid={`row-recipe-unit-${row.id}`}>
+                <td className="py-1.5 pr-3">{unit ? formatUnitName(unit.name) : row.unitId}</td>
+                <td className="py-1.5 pr-3">
+                  {isEditing ? (
+                    <Input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={editQty}
+                      onChange={(e) => setEditQty(e.target.value)}
+                      className="h-8 w-28"
+                      data-testid={`input-edit-qty-${row.id}`}
+                    />
+                  ) : (
+                    <span className="text-muted-foreground">{row.qtyPerInventoryUnit}</span>
+                  )}
+                </td>
+                <td className="py-1.5">
+                  <div className="flex items-center gap-1">
+                    {isEditing ? (
+                      <>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            const qty = parseFloat(editQty);
+                            if (qty > 0) {
+                              updateMutation.mutate({ rowId: row.id, qtyPerInventoryUnit: qty });
+                            }
+                          }}
+                          data-testid={`button-save-${row.id}`}
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setEditingId(null)}
+                          data-testid={`button-cancel-${row.id}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditingId(row.id);
+                            setEditQty(String(row.qtyPerInventoryUnit));
+                          }}
+                          data-testid={`button-edit-${row.id}`}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => deleteMutation.mutate(row.id)}
+                          disabled={deleteMutation.isPending}
+                          data-testid={`button-delete-${row.id}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div className="flex flex-wrap items-end gap-2 border-t pt-3">
+        <div className="space-y-1">
+          <Label className="text-xs">Unit</Label>
+          <Select value={newUnitId} onValueChange={setNewUnitId}>
+            <SelectTrigger className="h-9 w-40" data-testid={`select-new-unit-${kind}`}>
+              <SelectValue placeholder="Pick a unit" />
+            </SelectTrigger>
+            <SelectContent>
+              {unitOptions.map((u) => (
+                <SelectItem key={u.id} value={u.id}>
+                  {formatUnitName(u.name)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Qty per 1 {itemUnitAbbrev || "inv unit"}</Label>
+          <Input
+            type="number"
+            step="any"
+            min="0"
+            value={newQty}
+            onChange={(e) => setNewQty(e.target.value)}
+            className="h-9 w-32"
+            placeholder="e.g., 16"
+            data-testid={`input-new-qty-${kind}`}
+          />
+        </div>
+        <Button
+          onClick={handleAdd}
+          disabled={createMutation.isPending || !newUnitId || !newQty}
+          data-testid={`button-add-recipe-unit-${kind}`}
+        >
+          <Plus className="h-4 w-4" />
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function InventoryItemDetail() {
   const { id } = useParams();
@@ -1536,11 +1796,18 @@ export default function InventoryItemDetail() {
                       </div>
                     </div>
 
-                    <div className="space-y-3 rounded-md border p-4">
-                      <div>
-                        <p className="text-sm font-semibold">Breakdown (optional)</p>
-                        <p className="text-xs text-muted-foreground">Define pack sizes that convert into the inventory unit.</p>
-                      </div>
+                    <div className="rounded-md border p-4">
+                      <Tabs defaultValue="pack-breakdown">
+                        <TabsList className="mb-3" data-testid="tabs-units">
+                          <TabsTrigger value="pack-breakdown" data-testid="tab-pack-breakdown">Pack Breakdown</TabsTrigger>
+                          <TabsTrigger value="recipe-units" data-testid="tab-recipe-units">Recipe Units</TabsTrigger>
+                          <TabsTrigger value="issue-units" data-testid="tab-issue-units">Issue Units</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="pack-breakdown" className="space-y-3">
+                          <div>
+                            <p className="text-sm font-semibold">Breakdown (optional)</p>
+                            <p className="text-xs text-muted-foreground">Define pack sizes that convert into the inventory unit.</p>
+                          </div>
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b text-xs text-muted-foreground">
@@ -1642,6 +1909,26 @@ export default function InventoryItemDetail() {
                           Add Pack Size
                         </button>
                       )}
+                        </TabsContent>
+                        <TabsContent value="recipe-units">
+                          <RecipeUnitsList
+                            itemId={item.id}
+                            itemUnitId={item.unitId}
+                            itemUnitAbbrev={unit?.abbreviation || ""}
+                            units={units}
+                            kind="recipe"
+                          />
+                        </TabsContent>
+                        <TabsContent value="issue-units">
+                          <RecipeUnitsList
+                            itemId={item.id}
+                            itemUnitId={item.unitId}
+                            itemUnitAbbrev={unit?.abbreviation || ""}
+                            units={units}
+                            kind="issue"
+                          />
+                        </TabsContent>
+                      </Tabs>
                     </div>
                   </>
                 );

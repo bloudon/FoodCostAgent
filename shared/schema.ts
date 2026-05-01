@@ -335,6 +335,37 @@ export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
 
+// Inventory Item Units — per-item recipe/issue unit whitelist with item-specific
+// conversion factors. Lets recipes call for an apple in EA, LB, OZ, or CS even
+// though the inventory unit is, say, LB. Anchored to the inventory unit so that
+// `qtyPerInventoryUnit` answers the question "how many of THIS unit are in
+// 1 inventory unit of this item?" (e.g. for apples sold by the lb where 1 lb
+// equals 4 apples: EA row qtyPerInventoryUnit = 4; LB row = 1; OZ row = 16).
+export const inventoryItemUnits = pgTable("inventory_item_units", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
+  unitId: varchar("unit_id").notNull(),
+  qtyPerInventoryUnit: real("qty_per_inventory_unit").notNull(),
+  isIssueUnit: integer("is_issue_unit").notNull().default(0), // 1 = transfer/issue unit only, 0 = recipe unit
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  uniqueItemUnit: unique().on(table.inventoryItemId, table.unitId, table.isIssueUnit),
+  itemIdx: index("inventory_item_units_item_idx").on(table.inventoryItemId),
+  companyIdx: index("inventory_item_units_company_idx").on(table.companyId),
+}));
+
+export const insertInventoryItemUnitSchema = createInsertSchema(inventoryItemUnits)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    qtyPerInventoryUnit: z.number().positive("Qty must be greater than zero"),
+    isIssueUnit: z.number().int().min(0).max(1).optional().default(0),
+    sortOrder: z.number().int().optional().default(0),
+  });
+export type InsertInventoryItemUnit = z.infer<typeof insertInventoryItemUnitSchema>;
+export type InventoryItemUnit = typeof inventoryItemUnits.$inferSelect;
+
 // DEPRECATED: Inventory Item Locations (replaced by store_inventory_items.primaryLocationId)
 // This table references the legacy global storage_locations table and breaks tenant isolation
 // Location tracking is now handled at the store level via store_inventory_items table

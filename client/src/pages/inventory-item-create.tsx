@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Accordion,
   AccordionContent,
@@ -498,11 +499,18 @@ export default function InventoryItemCreate() {
               </div>
 
               {/* Breakdown */}
-              <div className="space-y-3 rounded-md border p-4">
-                <div>
-                  <p className="text-sm font-semibold">Breakdown (optional)</p>
-                  <p className="text-xs text-muted-foreground">Define pack sizes that convert into the inventory unit.</p>
-                </div>
+              <div className="rounded-md border p-4">
+                <Tabs defaultValue="pack-breakdown">
+                  <TabsList className="mb-3" data-testid="tabs-units">
+                    <TabsTrigger value="pack-breakdown" data-testid="tab-pack-breakdown">Pack Breakdown</TabsTrigger>
+                    <TabsTrigger value="recipe-units" data-testid="tab-recipe-units">Recipe Units</TabsTrigger>
+                    <TabsTrigger value="issue-units" data-testid="tab-issue-units">Issue Units</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="pack-breakdown" className="space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold">Breakdown (optional)</p>
+                      <p className="text-xs text-muted-foreground">Define pack sizes that convert into the inventory unit.</p>
+                    </div>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-xs text-muted-foreground">
@@ -607,6 +615,19 @@ export default function InventoryItemCreate() {
                     Add Pack Size
                   </button>
                 )}
+                  </TabsContent>
+                  <TabsContent value="recipe-units">
+                    <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground" data-testid="text-recipe-units-placeholder">
+                      Recipe units will be auto-seeded from the pack breakdown after the item is saved.
+                      Open the item to add or edit per-item Recipe Units.
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="issue-units">
+                    <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground" data-testid="text-issue-units-placeholder">
+                      Issue / transfer units can be configured after the item is saved.
+                    </div>
+                  </TabsContent>
+                </Tabs>
               </div>
 
               <div className="space-y-2">
