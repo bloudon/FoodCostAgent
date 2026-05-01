@@ -94,6 +94,7 @@ type VarianceResponse = {
 };
 
 import { TierGate } from "@/components/tier-gate";
+import { CostingMethodBadge } from "@/components/costing-method-badge";
 
 function TfcVarianceContent() {
   const { getEffectiveCompanyId } = useAuth();
@@ -185,9 +186,12 @@ function TfcVarianceContent() {
     <div className="p-4 sm:p-8">
       <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-variance-title">
-            Food Cost Variance
-          </h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-variance-title">
+              Food Cost Variance
+            </h1>
+            <CostingMethodBadge />
+          </div>
           <p className="text-muted-foreground mt-2">
             Compare theoretical vs. actual ingredient usage between inventory counts
           </p>

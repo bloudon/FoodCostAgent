@@ -40,6 +40,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatUnitName, formatDateString } from "@/lib/utils";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
+import { CostingMethodBadge } from "@/components/costing-method-badge";
 
 interface MilestonesResponse {
   milestones: { id: string; label: string; completed: boolean; path: string }[];
@@ -255,11 +256,12 @@ export default function InventoryItems() {
       <div className="p-4 space-y-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <Package className="h-6 w-6 text-muted-foreground" />
               <h1 className="text-2xl font-bold">
                 Inventory Items ({filteredItems.length})
               </h1>
+              <CostingMethodBadge />
             </div>
             {showOnboardingButtons && (
               <p className="text-muted-foreground mt-2">

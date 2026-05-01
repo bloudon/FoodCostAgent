@@ -81,6 +81,7 @@ import {
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { ObjectUploader } from "@/components/ObjectUploader";
+import { CostingMethodBadge } from "@/components/costing-method-badge";
 import type { Recipe, RecipeComponent, Category, InventoryItem as BaseInventoryItem, Unit as BaseUnit } from "@shared/schema";
 
 // Extended types for API responses with joined fields
@@ -1739,13 +1740,16 @@ function RecipeBuilderContent() {
                         data-testid="input-recipe-name"
                       />
                     </div>
-                    <div className="flex items-center justify-between sm:block sm:w-32 sm:text-right">
+                    <div className="flex items-center justify-between sm:block sm:w-40 sm:text-right">
                       <label className="text-sm font-medium text-muted-foreground">Total Cost:</label>
-                      <div
-                        className="text-xl sm:text-2xl font-bold text-primary"
-                        data-testid="text-total-cost"
-                      >
-                        ${totalCost.toFixed(2)}
+                      <div className="flex items-baseline gap-2 sm:justify-end flex-wrap">
+                        <div
+                          className="text-xl sm:text-2xl font-bold text-primary"
+                          data-testid="text-total-cost"
+                        >
+                          ${totalCost.toFixed(2)}
+                        </div>
+                        <CostingMethodBadge />
                       </div>
                     </div>
                   </div>

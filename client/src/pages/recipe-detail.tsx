@@ -1,4 +1,5 @@
 import { TierGate } from "@/components/tier-gate";
+import { CostingMethodBadge } from "@/components/costing-method-badge";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { useState } from "react";
@@ -167,8 +168,11 @@ function RecipeDetailContent() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold font-mono" data-testid="text-current-cost">
-              ${recipe.computedCost?.toFixed(2) || "0.00"}
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <div className="text-2xl font-bold font-mono" data-testid="text-current-cost">
+                ${recipe.computedCost?.toFixed(2) || "0.00"}
+              </div>
+              <CostingMethodBadge />
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Per {recipe.yieldQty} {getYieldUnitName()} yield

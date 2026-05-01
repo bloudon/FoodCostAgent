@@ -13,6 +13,7 @@ import {
 import { GroupedUnitOptions } from "@/components/grouped-unit-options";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
+import { CostingMethodBadge } from "@/components/costing-method-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1375,8 +1376,11 @@ export default function InventoryItemDetail() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label className="text-muted-foreground">Effective Cost (per {unit?.abbreviation || 'unit'})</Label>
-                <div className="text-3xl font-semibold" data-testid="text-effective-cost">
-                  ${(item.effectiveUnitCost ?? item.pricePerUnit)?.toFixed(2) || '0.00'}
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  <div className="text-3xl font-semibold" data-testid="text-effective-cost">
+                    ${(item.effectiveUnitCost ?? item.pricePerUnit)?.toFixed(2) || '0.00'}
+                  </div>
+                  <CostingMethodBadge />
                 </div>
                 <p className="text-xs text-muted-foreground">
                   This is the cost used for recipe costing and on-hand valuation, based on your company's costing method.
