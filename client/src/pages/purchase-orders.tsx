@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Package, Search, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { SortableTableHead, useTableSort, sortData } from "@/components/sortable-table-head";
 import {
   Select,
   SelectContent,
@@ -101,6 +102,23 @@ export default function PurchaseOrders() {
     return matchesSearch && matchesVendor && matchesStatus;
   }) || [];
 
+  const { sortField, sortDirection, handleSort } = useTableSort("createdAt", "desc");
+
+  const sortedOrders = useMemo(() =>
+    sortData(filteredOrders, sortField, sortDirection, (order, field) => {
+      switch (field) {
+        case "vendor": return order.vendorName;
+        case "createdAt": return order.createdAt;
+        case "expectedDate": return order.expectedDate ?? "";
+        case "lineCount": return order.lineCount;
+        case "totalAmount": return order.totalAmount;
+        case "status": return order.status;
+        default: return null;
+      }
+    }),
+    [filteredOrders, sortField, sortDirection]
+  );
+
   return (
     <div className="h-full overflow-auto">
       <div className="p-6 space-y-6">
@@ -176,17 +194,17 @@ export default function PurchaseOrders() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[150px]">PO Number</TableHead>
-                  <TableHead>Vendor</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Expected Date</TableHead>
-                  <TableHead className="text-right">Items</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead>Status</TableHead>
+                  <SortableTableHead field="vendor" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Vendor</SortableTableHead>
+                  <SortableTableHead field="createdAt" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Created</SortableTableHead>
+                  <SortableTableHead field="expectedDate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Expected Date</SortableTableHead>
+                  <SortableTableHead field="lineCount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right">Items</SortableTableHead>
+                  <SortableTableHead field="totalAmount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right">Total</SortableTableHead>
+                  <SortableTableHead field="status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Status</SortableTableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredOrders.map((order) => {
+                {sortedOrders.map((order) => {
                   const createdDate = new Date(order.createdAt);
                   const expectedDate = order.expectedDate ? new Date(order.expectedDate) : null;
 

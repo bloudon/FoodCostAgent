@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search, ChefHat, ChevronRight, MoreHorizontal, Trash2, EyeOff, Eye, AlertTriangle, Wrench, Archive, X, LinkIcon, ScanLine } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { SortableTableHead, useTableSort } from "@/components/sortable-table-head";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRecipeName } from "@/lib/utils";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
@@ -110,6 +111,8 @@ function RecipesContent() {
   const [showInactive, setShowInactive] = useState(false);
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
   const { toast } = useToast();
+
+  const { sortField, sortDirection, handleSort } = useTableSort("name");
 
   const { data: milestonesData } = useQuery<MilestonesResponse>({
     queryKey: ["/api/onboarding/milestones"],
@@ -327,6 +330,35 @@ function RecipesContent() {
     return groups;
   }, [recipes, searchQuery, showInactive]);
 
+  const sortedGroupedRecipes = useMemo(() => {
+    return [...groupedRecipes].sort((a, b) => {
+      let av: string | number;
+      let bv: string | number;
+      switch (sortField) {
+        case "name":
+          av = a.parent.name.toLowerCase();
+          bv = b.parent.name.toLowerCase();
+          break;
+        case "yield":
+          av = a.parent.yieldQty ?? 0;
+          bv = b.parent.yieldQty ?? 0;
+          break;
+        case "totalCost":
+          av = a.parent.computedCost ?? 0;
+          bv = b.parent.computedCost ?? 0;
+          break;
+        case "costPerServing":
+          av = a.parent.yieldQty > 0 ? a.parent.computedCost / a.parent.yieldQty : 0;
+          bv = b.parent.yieldQty > 0 ? b.parent.computedCost / b.parent.yieldQty : 0;
+          break;
+        default:
+          return 0;
+      }
+      const cmp = typeof av === "number" ? av - bv : av.localeCompare(bv);
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+  }, [groupedRecipes, sortField, sortDirection]);
+
   const toggleGroup = (parentId: string) => {
     setExpandedGroups(prev => {
       const next = new Set(prev);
@@ -435,12 +467,12 @@ function RecipesContent() {
             </div>
           </CardContent>
         </Card>
-      ) : groupedRecipes.length > 0 ? (
+      ) : sortedGroupedRecipes.length > 0 ? (
         <Card>
           <CardContent className="p-0">
             {/* Mobile card list */}
             <div className="sm:hidden divide-y">
-              {groupedRecipes.map((group) => (
+              {sortedGroupedRecipes.map((group) => (
                 <div key={group.parent.id} data-testid={`row-recipe-mobile-${group.parent.id}`}>
                   <div className="flex items-center px-4 py-3 gap-3">
                     <Link href={`/recipes/${group.parent.id}`} className="flex-1 min-w-0 block">
@@ -515,15 +547,15 @@ function RecipesContent() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Recipe Name</TableHead>
-                  <TableHead className="text-right hidden sm:table-cell">Yield</TableHead>
-                  <TableHead className="text-right hidden md:table-cell">Total Cost</TableHead>
-                  <TableHead className="text-right">Cost / Serving</TableHead>
+                  <SortableTableHead field="name" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Recipe Name</SortableTableHead>
+                  <SortableTableHead field="yield" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden sm:table-cell">Yield</SortableTableHead>
+                  <SortableTableHead field="totalCost" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden md:table-cell">Total Cost</SortableTableHead>
+                  <SortableTableHead field="costPerServing" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right">Cost / Serving</SortableTableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {groupedRecipes.map((group) => (
+                {sortedGroupedRecipes.map((group) => (
                   <Collapsible key={group.parent.id} asChild open={expandedGroups.has(group.parent.id)}>
                     <>
                       {/* Parent recipe row */}

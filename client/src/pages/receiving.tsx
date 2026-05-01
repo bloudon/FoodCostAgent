@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { SortableTableHead, useTableSort, sortData } from "@/components/sortable-table-head";
 import {
   Select,
   SelectContent,
@@ -68,9 +69,26 @@ export default function Receiving() {
     return matchesSearch && matchesVendor && matchesStatus;
   }) || [];
 
+  const { sortField, sortDirection, handleSort } = useTableSort("createdAt", "desc");
+
+  const sortedOrders = useMemo(() =>
+    sortData(filteredOrders, sortField, sortDirection, (order, field) => {
+      switch (field) {
+        case "vendor": return order.vendorName;
+        case "createdAt": return order.createdAt;
+        case "expectedDate": return order.expectedDate ?? "";
+        case "lineCount": return order.lineCount;
+        case "totalAmount": return order.totalAmount;
+        case "status": return order.status;
+        default: return null;
+      }
+    }),
+    [filteredOrders, sortField, sortDirection]
+  );
+
   // Separate pending/ordered from received
-  const pendingOrders = filteredOrders.filter(o => o.status === "pending" || o.status === "ordered");
-  const receivedOrders = filteredOrders.filter(o => o.status === "received");
+  const pendingOrders = sortedOrders.filter(o => o.status === "pending" || o.status === "ordered");
+  const receivedOrders = sortedOrders.filter(o => o.status === "received");
 
   return (
     <div className="h-full overflow-auto">
@@ -139,12 +157,12 @@ export default function Receiving() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>PO #</TableHead>
-                          <TableHead>Vendor</TableHead>
-                          <TableHead>Ordered</TableHead>
-                          <TableHead>Expected</TableHead>
-                          <TableHead className="text-right">Items</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                          <TableHead>Status</TableHead>
+                          <SortableTableHead field="vendor" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Vendor</SortableTableHead>
+                          <SortableTableHead field="createdAt" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Ordered</SortableTableHead>
+                          <SortableTableHead field="expectedDate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Expected</SortableTableHead>
+                          <SortableTableHead field="lineCount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right">Items</SortableTableHead>
+                          <SortableTableHead field="totalAmount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right">Amount</SortableTableHead>
+                          <SortableTableHead field="status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Status</SortableTableHead>
                           <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -197,12 +215,12 @@ export default function Receiving() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>PO #</TableHead>
-                          <TableHead>Vendor</TableHead>
-                          <TableHead>Ordered</TableHead>
-                          <TableHead>Expected</TableHead>
-                          <TableHead className="text-right">Items</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                          <TableHead>Status</TableHead>
+                          <SortableTableHead field="vendor" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Vendor</SortableTableHead>
+                          <SortableTableHead field="createdAt" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Ordered</SortableTableHead>
+                          <SortableTableHead field="expectedDate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Expected</SortableTableHead>
+                          <SortableTableHead field="lineCount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right">Items</SortableTableHead>
+                          <SortableTableHead field="totalAmount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right">Amount</SortableTableHead>
+                          <SortableTableHead field="status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Status</SortableTableHead>
                           <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>

@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Table,
   TableBody,
@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { SortableTableHead, useTableSort, sortData } from "@/components/sortable-table-head";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin, ScanLine, Loader2 } from "lucide-react";
 import { Link, useLocation } from "wouter";
@@ -406,6 +407,23 @@ export default function Vendors() {
     v.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const { sortField, sortDirection, handleSort } = useTableSort("name");
+
+  const sortedVendors = useMemo(() => {
+    const list = filteredVendors ?? [];
+    const productCountMap = new Map(
+      list.map(v => [v.id, vendorItems?.filter(vi => vi.vendorId === v.id).length ?? 0])
+    );
+    return sortData(list, sortField, sortDirection, (v, field) => {
+      switch (field) {
+        case "name": return v.name;
+        case "productCount": return productCountMap.get(v.id) ?? 0;
+        case "accountNumber": return v.accountNumber ?? "";
+        default: return null;
+      }
+    });
+  }, [filteredVendors, sortField, sortDirection, vendorItems]);
+
   const handleCreateClick = () => {
     setEditingVendor(null);
     form.reset({ 
@@ -612,9 +630,9 @@ export default function Vendors() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="min-w-[180px]">Vendor Name</TableHead>
-              <TableHead className="text-right hidden sm:table-cell">Products</TableHead>
-              <TableHead className="hidden md:table-cell">Account #</TableHead>
+              <SortableTableHead field="name" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="min-w-[180px]">Vendor Name</SortableTableHead>
+              <SortableTableHead field="productCount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden sm:table-cell">Products</SortableTableHead>
+              <SortableTableHead field="accountNumber" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="hidden md:table-cell">Account #</SortableTableHead>
               <TableHead className="hidden md:table-cell">Stores</TableHead>
               <TableHead className="hidden lg:table-cell">Order Guide</TableHead>
               <TableHead className="hidden lg:table-cell">Delivery Days</TableHead>
@@ -636,8 +654,8 @@ export default function Vendors() {
                   <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                 </TableRow>
               ))
-            ) : filteredVendors && filteredVendors.length > 0 ? (
-              filteredVendors.map((vendor) => {
+            ) : sortedVendors.length > 0 ? (
+              sortedVendors.map((vendor) => {
                 const isMiscGrocery = vendor.name?.toLowerCase().includes('misc grocery') || false;
                 
                 return (

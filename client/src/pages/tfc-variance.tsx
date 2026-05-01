@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { SortableTableHead, useTableSort } from "@/components/sortable-table-head";
 import { TheoreticalDetailDialog } from "@/components/theoretical-detail-dialog";
 import { ReceiptModal } from "@/components/receipt-modal";
 
@@ -107,6 +108,8 @@ function TfcVarianceContent() {
   const [selectedItemName, setSelectedItemName] = useState<string>("");
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [selectedPurchaseOrderId, setSelectedPurchaseOrderId] = useState<string | null>(null);
+
+  const { sortField: vSortField, sortDirection: vSortDir, handleSort: vHandleSort } = useTableSort("varianceCost", "desc");
   const [selectedVendorName, setSelectedVendorName] = useState<string>("");
   const [selectedExpectedDate, setSelectedExpectedDate] = useState<string>("");
 
@@ -181,6 +184,29 @@ function TfcVarianceContent() {
     const year = date.getFullYear().toString().slice(-2); // Last 2 digits
     return `${month}/${day}/${year}`;
   };
+
+  const sortedVarianceItems = useMemo(() => {
+    const items = varianceData?.items ?? [];
+    return [...items].sort((a, b) => {
+      let av: string | number;
+      let bv: string | number;
+      switch (vSortField) {
+        case "item": av = a.inventoryItemName.toLowerCase(); bv = b.inventoryItemName.toLowerCase(); break;
+        case "previousQty": av = a.previousQty; bv = b.previousQty; break;
+        case "receivedQty": av = a.receivedQty; bv = b.receivedQty; break;
+        case "currentQty": av = a.currentQty; bv = b.currentQty; break;
+        case "actualUsage": av = a.actualUsage; bv = b.actualUsage; break;
+        case "theoreticalUsage": av = a.theoreticalUsage; bv = b.theoreticalUsage; break;
+        case "varianceUnits": av = a.varianceUnits; bv = b.varianceUnits; break;
+        case "varianceCost": av = Math.abs(a.varianceCost); bv = Math.abs(b.varianceCost); break;
+        case "variancePercent": av = Math.abs(a.variancePercent); bv = Math.abs(b.variancePercent); break;
+        case "pricePerUnit": av = a.pricePerUnit; bv = b.pricePerUnit; break;
+        default: return 0;
+      }
+      const cmp = typeof av === "number" ? av - bv : av.localeCompare(bv);
+      return vSortDir === "asc" ? cmp : -cmp;
+    });
+  }, [varianceData, vSortField, vSortDir]);
 
   return (
     <div className="p-4 sm:p-8">
@@ -487,16 +513,16 @@ function TfcVarianceContent() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead className="text-right">Previous</TableHead>
-                      <TableHead className="text-right">Received</TableHead>
-                      <TableHead className="text-right">Current</TableHead>
-                      <TableHead className="text-right">Actual</TableHead>
-                      <TableHead className="text-right">Theoretical</TableHead>
-                      <TableHead className="text-right">Variance</TableHead>
-                      <TableHead className="text-right">Variance %</TableHead>
-                      <TableHead className="text-right">WAC</TableHead>
-                      <TableHead className="text-right">Cost Impact</TableHead>
+                      <SortableTableHead field="item" sortField={vSortField} sortDirection={vSortDir} onSort={vHandleSort}>Item</SortableTableHead>
+                      <SortableTableHead field="previousQty" sortField={vSortField} sortDirection={vSortDir} onSort={vHandleSort} className="text-right">Previous</SortableTableHead>
+                      <SortableTableHead field="receivedQty" sortField={vSortField} sortDirection={vSortDir} onSort={vHandleSort} className="text-right">Received</SortableTableHead>
+                      <SortableTableHead field="currentQty" sortField={vSortField} sortDirection={vSortDir} onSort={vHandleSort} className="text-right">Current</SortableTableHead>
+                      <SortableTableHead field="actualUsage" sortField={vSortField} sortDirection={vSortDir} onSort={vHandleSort} className="text-right">Actual</SortableTableHead>
+                      <SortableTableHead field="theoreticalUsage" sortField={vSortField} sortDirection={vSortDir} onSort={vHandleSort} className="text-right">Theoretical</SortableTableHead>
+                      <SortableTableHead field="varianceUnits" sortField={vSortField} sortDirection={vSortDir} onSort={vHandleSort} className="text-right">Variance</SortableTableHead>
+                      <SortableTableHead field="variancePercent" sortField={vSortField} sortDirection={vSortDir} onSort={vHandleSort} className="text-right">Variance %</SortableTableHead>
+                      <SortableTableHead field="pricePerUnit" sortField={vSortField} sortDirection={vSortDir} onSort={vHandleSort} className="text-right">WAC</SortableTableHead>
+                      <SortableTableHead field="varianceCost" sortField={vSortField} sortDirection={vSortDir} onSort={vHandleSort} className="text-right">Cost Impact</SortableTableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -508,9 +534,7 @@ function TfcVarianceContent() {
                       </TableRow>
                     ) : (
                       <>
-                        {varianceData.items
-                          .sort((a, b) => Math.abs(b.varianceCost) - Math.abs(a.varianceCost))
-                          .map((item) => (
+                        {sortedVarianceItems.map((item) => (
                             <TableRow key={item.inventoryItemId} data-testid={`row-variance-item-${item.inventoryItemId}`}>
                               <TableCell className="font-medium">
                                 {item.inventoryItemName}

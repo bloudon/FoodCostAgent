@@ -50,8 +50,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn, parseCountDate } from "@/lib/utils";
+import { SortableTableHead, useTableSort } from "@/components/sortable-table-head";
 import { format } from "date-fns";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { Company, CompanyStore } from "@shared/schema";
 
 function SessionCard({ count }: any) {
@@ -293,6 +294,7 @@ export default function InventorySessions() {
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [baselineConfirmOpen, setBaselineConfirmOpen] = useState(false);
   const [baselineStore, setBaselineStore] = useState<{ id: string; name: string } | null>(null);
+  const { sortField, sortDirection, handleSort } = useTableSort("countDate", "desc");
 
   // Get authenticated user to determine company ID
   const { data: user } = useQuery<any>({
@@ -443,10 +445,32 @@ export default function InventorySessions() {
     ? accessibleCounts 
     : accessibleCounts?.filter(count => count.storeId === selectedStoreId);
 
-  // Sort counts by date descending (clone array to avoid mutating cache)
-  const sortedCounts = filteredCounts ? [...filteredCounts].sort((a, b) => 
-    new Date(b.countDate || b.countedAt).getTime() - new Date(a.countDate || a.countedAt).getTime()
-  ) : [];
+  // Sort counts — driven by sortable column header state
+  const sortedCounts = useMemo(() => {
+    if (!filteredCounts) return [];
+    return [...filteredCounts].sort((a, b) => {
+      let av: string | number;
+      let bv: string | number;
+      switch (sortField) {
+        case "countDate":
+          av = new Date(a.countDate || a.countedAt).getTime();
+          bv = new Date(b.countDate || b.countedAt).getTime();
+          break;
+        case "storeName":
+          av = (a.storeName || "").toLowerCase();
+          bv = (b.storeName || "").toLowerCase();
+          break;
+        case "userName":
+          av = (a.userName || "").toLowerCase();
+          bv = (b.userName || "").toLowerCase();
+          break;
+        default:
+          return 0;
+      }
+      const cmp = typeof av === "number" ? av - bv : av.localeCompare(bv);
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+  }, [filteredCounts, sortField, sortDirection]);
 
   // Check which stores need baseline initialization (no applied counts)
   const storesNeedingBaseline = stores.filter(store => {
@@ -684,9 +708,9 @@ export default function InventorySessions() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead>Inventory Date</TableHead>
-                      <TableHead>Store</TableHead>
-                      <TableHead>User</TableHead>
+                      <SortableTableHead field="countDate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Inventory Date</SortableTableHead>
+                      <SortableTableHead field="storeName" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Store</SortableTableHead>
+                      <SortableTableHead field="userName" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>User</SortableTableHead>
                       <TableHead className="text-right">Items</TableHead>
                       <TableHead className="text-right">Total Value</TableHead>
                       <TableHead>Note</TableHead>

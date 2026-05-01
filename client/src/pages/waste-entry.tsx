@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import { formatUnitName } from "@/lib/utils";
+import { SortableTableHead, useTableSort } from "@/components/sortable-table-head";
 
 type WasteType = 'inventory' | 'menu_item' | null;
 
@@ -81,6 +82,7 @@ export default function WasteEntry() {
   
   const [startDate, setStartDate] = useState(defaultStartDate);
   const [endDate, setEndDate] = useState(defaultEndDate);
+  const { sortField: wSortField, sortDirection: wSortDir, handleSort: wHandleSort } = useTableSort("wastedAt", "desc");
 
   const { data: stores = [] } = useAccessibleStores();
   
@@ -109,6 +111,42 @@ export default function WasteEntry() {
       : undefined,
     enabled: !!selectedStoreId && !!startDate && !!endDate,
   });
+
+  const sortedWasteLogs = useMemo(() => {
+    return [...wasteLogs].sort((a, b) => {
+      let av: string | number;
+      let bv: string | number;
+      switch (wSortField) {
+        case "wastedAt":
+          av = new Date(a.wastedAt).getTime();
+          bv = new Date(b.wastedAt).getTime();
+          break;
+        case "item":
+          av = (a.inventoryItemName || a.menuItemName || "").toLowerCase();
+          bv = (b.inventoryItemName || b.menuItemName || "").toLowerCase();
+          break;
+        case "qty":
+          av = a.qty;
+          bv = b.qty;
+          break;
+        case "reasonCode":
+          av = a.reasonCode;
+          bv = b.reasonCode;
+          break;
+        case "totalValue":
+          av = a.totalValue;
+          bv = b.totalValue;
+          break;
+        default:
+          return 0;
+      }
+      const cmp = typeof av === "number" ? av - bv : av.localeCompare(bv);
+      return wSortDir === "asc" ? cmp : -cmp;
+    });
+  }, [wasteLogs, wSortField, wSortDir]);
+
+  const inventoryLogs = useMemo(() => sortedWasteLogs.filter(log => log.wasteType === 'inventory'), [sortedWasteLogs]);
+  const menuItemLogs = useMemo(() => sortedWasteLogs.filter(log => log.wasteType === 'menu_item'), [sortedWasteLogs]);
 
   // Set default store
   if (stores.length > 0 && !selectedStoreId) {
@@ -615,13 +653,6 @@ export default function WasteEntry() {
               {wasteLogs.length === 0 ? (
                 <p className="text-muted-foreground text-center py-8">No waste entries yet</p>
               ) : (() => {
-                const sortedLogs = wasteLogs.sort((a, b) => 
-                  new Date(b.wastedAt).getTime() - new Date(a.wastedAt).getTime()
-                );
-                
-                const inventoryLogs = sortedLogs.filter(log => log.wasteType === 'inventory');
-                const menuItemLogs = sortedLogs.filter(log => log.wasteType === 'menu_item');
-                
                 const inventorySubtotal = inventoryLogs.reduce((sum, log) => sum + log.totalValue, 0);
                 const menuItemSubtotal = menuItemLogs.reduce((sum, log) => sum + log.totalValue, 0);
                 const grandTotal = inventorySubtotal + menuItemSubtotal;
@@ -639,11 +670,11 @@ export default function WasteEntry() {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="hidden sm:table-cell">Date</TableHead>
-                              <TableHead>Item</TableHead>
-                              <TableHead className="text-right">Qty</TableHead>
-                              <TableHead className="hidden sm:table-cell">Reason</TableHead>
-                              <TableHead className="text-right">Value</TableHead>
+                              <SortableTableHead field="wastedAt" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort} className="hidden sm:table-cell">Date</SortableTableHead>
+                              <SortableTableHead field="item" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort}>Item</SortableTableHead>
+                              <SortableTableHead field="qty" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort} className="text-right">Qty</SortableTableHead>
+                              <SortableTableHead field="reasonCode" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort} className="hidden sm:table-cell">Reason</SortableTableHead>
+                              <SortableTableHead field="totalValue" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort} className="text-right">Value</SortableTableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -709,11 +740,11 @@ export default function WasteEntry() {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="hidden sm:table-cell">Date</TableHead>
-                              <TableHead>Item</TableHead>
-                              <TableHead className="text-right">Qty</TableHead>
-                              <TableHead className="hidden sm:table-cell">Reason</TableHead>
-                              <TableHead className="text-right">Value</TableHead>
+                              <SortableTableHead field="wastedAt" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort} className="hidden sm:table-cell">Date</SortableTableHead>
+                              <SortableTableHead field="item" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort}>Item</SortableTableHead>
+                              <SortableTableHead field="qty" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort} className="text-right">Qty</SortableTableHead>
+                              <SortableTableHead field="reasonCode" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort} className="hidden sm:table-cell">Reason</SortableTableHead>
+                              <SortableTableHead field="totalValue" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort} className="text-right">Value</SortableTableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>

@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ArrowLeftRight, Search, Plus, Trash2 } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useState, useMemo } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,7 @@ const statusColors: Record<string, string> = {
 };
 
 import { TierGate } from "@/components/tier-gate";
+import { SortableTableHead, useTableSort } from "@/components/sortable-table-head";
 
 function TransferOrdersContent() {
   const [search, setSearch] = useState("");
@@ -101,6 +102,8 @@ function TransferOrdersContent() {
     },
   });
 
+  const { sortField, sortDirection, handleSort } = useTableSort("expectedDate", "desc");
+
   const filteredOrders = transferOrders?.filter((order) => {
     const matchesSearch = order.fromStoreName?.toLowerCase().includes(search.toLowerCase()) ||
       order.toStoreName?.toLowerCase().includes(search.toLowerCase()) ||
@@ -111,6 +114,39 @@ function TransferOrdersContent() {
     const matchesStatus = selectedStatus === "all" || order.status === selectedStatus;
     return matchesSearch && matchesStore && matchesStatus;
   }) || [];
+
+  const sortedOrders = useMemo(() => {
+    return [...filteredOrders].sort((a, b) => {
+      let av: string | number;
+      let bv: string | number;
+      switch (sortField) {
+        case "expectedDate":
+          av = a.expectedDate ? new Date(a.expectedDate).getTime() : 0;
+          bv = b.expectedDate ? new Date(b.expectedDate).getTime() : 0;
+          break;
+        case "fromStore":
+          av = (a.fromStoreName ?? "").toLowerCase();
+          bv = (b.fromStoreName ?? "").toLowerCase();
+          break;
+        case "toStore":
+          av = (a.toStoreName ?? "").toLowerCase();
+          bv = (b.toStoreName ?? "").toLowerCase();
+          break;
+        case "status":
+          av = a.status;
+          bv = b.status;
+          break;
+        case "totalValue":
+          av = a.totalValue;
+          bv = b.totalValue;
+          break;
+        default:
+          return 0;
+      }
+      const cmp = typeof av === "number" ? av - bv : av.localeCompare(bv);
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+  }, [filteredOrders, sortField, sortDirection]);
 
   return (
     <div className="h-full overflow-auto">
@@ -186,16 +222,16 @@ function TransferOrdersContent() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50">
-                  <TableHead>Expected Date</TableHead>
-                  <TableHead>From Store</TableHead>
-                  <TableHead>To Store</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Value</TableHead>
+                  <SortableTableHead field="expectedDate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Expected Date</SortableTableHead>
+                  <SortableTableHead field="fromStore" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>From Store</SortableTableHead>
+                  <SortableTableHead field="toStore" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>To Store</SortableTableHead>
+                  <SortableTableHead field="status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Status</SortableTableHead>
+                  <SortableTableHead field="totalValue" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right">Value</SortableTableHead>
                   <TableHead className="text-right w-[80px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredOrders.map((order, index) => {
+                {sortedOrders.map((order, index) => {
                   const rowClass = index % 2 === 1 ? "bg-muted/30" : "";
                   return (
                     <Fragment key={order.id}>

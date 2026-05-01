@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star, Upload } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { SortableTableHead, useTableSort, sortData } from "@/components/sortable-table-head";
 import {
   Select,
   SelectContent,
@@ -236,7 +237,28 @@ export default function InventoryItems() {
     return matchesSearch && matchesLocation && matchesCategory && matchesActive;
   }) || [];
 
-  const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+  const { sortField, sortDirection, handleSort } = useTableSort("name");
+
+  const sortedItems = useMemo(() =>
+    sortData(filteredItems, sortField, sortDirection, (item, field) => {
+      switch (field) {
+        case "name": return item.name;
+        case "category": return item.category ?? "";
+        case "unit": return item.unit?.name ?? "";
+        case "par": return item.parLevel ?? null;
+        case "reorder": return item.reorderLevel ?? null;
+        case "cost": return item.effectiveUnitCost;
+        case "lastCost": return item.pricePerUnit;
+        case "wac": return item.avgCostPerUnit;
+        case "quantity": return item.onHandQty;
+        case "estOnHand": return estimatedOnHandMap.get(item.id) ?? null;
+        default: return null;
+      }
+    }),
+    [filteredItems, sortField, sortDirection, estimatedOnHandMap]
+  );
+
+  const totalPages = Math.ceil(sortedItems.length / itemsPerPage);
   
   // Clamp currentPage to valid range when filtered items change
   useEffect(() => {
@@ -245,11 +267,11 @@ export default function InventoryItems() {
     } else if (totalPages === 0 && currentPage !== 1) {
       setCurrentPage(1);
     }
-  }, [filteredItems.length, itemsPerPage, currentPage, totalPages]);
+  }, [sortedItems.length, itemsPerPage, currentPage, totalPages]);
 
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedItems = itemsPerPage === 9999 ? filteredItems : filteredItems.slice(startIndex, endIndex);
+  const paginatedItems = itemsPerPage === 9999 ? sortedItems : sortedItems.slice(startIndex, endIndex);
 
   return (
     <div className="h-full overflow-auto pb-16">
@@ -357,18 +379,18 @@ export default function InventoryItems() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[180px]">Item</TableHead>
+                  <SortableTableHead field="name" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="min-w-[180px]">Item</SortableTableHead>
                   <TableHead className="hidden sm:table-cell">Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Category</TableHead>
+                  <SortableTableHead field="category" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="hidden md:table-cell">Category</SortableTableHead>
                   <TableHead className="hidden lg:table-cell">Location</TableHead>
-                  <TableHead className="hidden sm:table-cell">Unit</TableHead>
-                  <TableHead className="text-right hidden xl:table-cell">Par</TableHead>
-                  <TableHead className="text-right hidden xl:table-cell">Reorder</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
-                  <TableHead className="text-right hidden lg:table-cell">Last Cost</TableHead>
-                  <TableHead className="text-right hidden lg:table-cell">Avg Cost (WAC)</TableHead>
-                  <TableHead className="text-right hidden md:table-cell">Quantity</TableHead>
-                  <TableHead className="text-right hidden md:table-cell">Est. On-Hand</TableHead>
+                  <SortableTableHead field="unit" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="hidden sm:table-cell">Unit</SortableTableHead>
+                  <SortableTableHead field="par" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden xl:table-cell">Par</SortableTableHead>
+                  <SortableTableHead field="reorder" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden xl:table-cell">Reorder</SortableTableHead>
+                  <SortableTableHead field="cost" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right">Cost</SortableTableHead>
+                  <SortableTableHead field="lastCost" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden lg:table-cell">Last Cost</SortableTableHead>
+                  <SortableTableHead field="wac" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden lg:table-cell">Avg Cost (WAC)</SortableTableHead>
+                  <SortableTableHead field="quantity" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden md:table-cell">Quantity</SortableTableHead>
+                  <SortableTableHead field="estOnHand" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden md:table-cell">Est. On-Hand</SortableTableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
