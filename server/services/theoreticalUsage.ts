@@ -1,6 +1,5 @@
 import { storage } from "../storage";
 import type { TheoreticalUsageRun, TheoreticalUsageLine, DailyMenuItemSales } from "@shared/schema";
-import { getEffectiveUnitCost, type CostingMethodCarrier } from "../lib/costing";
 
 interface TheoreticalUsageInput {
   companyId: string;
@@ -14,8 +13,12 @@ interface IngredientUsage {
   inventoryItemId: string;
   requiredQtyBaseUnit: number;
   baseUnitId: string;
-  costAtSale: number;    // headline cost per company's costing method (frozen at run time)
-  costAtSaleWac: number; // always WAC basis, regardless of selected method (frozen at run time)
+  // Two stable cost bases captured at run time so the run is frozen against
+  // future costing-method toggles AND the variance UI can always render a
+  // side-by-side Last vs WAC compare. The UI chooses which value to bold
+  // as the headline based on company.costingMethod at view time.
+  costAtSale: number;    // ALWAYS Last Cost basis (item.pricePerUnit)
+  costAtSaleWac: number; // ALWAYS WAC basis (item.avgCostPerUnit, last-cost fallback when 0)
   sourceMenuItems: Array<{
     menuItemId: string;
     menuItemName: string;
@@ -59,7 +62,6 @@ export class TheoreticalUsageService {
 
     try {
       const ingredientUsageMap = new Map<string, IngredientUsage>();
-      const company = await storage.getCompany(companyId);
 
       for (const sale of salesData) {
         if (sale.qtySold <= 0) continue;
@@ -80,7 +82,6 @@ export class TheoreticalUsageService {
           menuItem.id,
           menuItem.name,
           sale.qtySold,
-          company,
         );
 
         for (const ingredient of ingredients) {
@@ -109,19 +110,11 @@ export class TheoreticalUsageService {
         await storage.createTheoreticalUsageLines(usageLines);
       }
 
-      // Persist two run-header totals at calculation time, both immutable
-      // afterward (the per-line snapshot fields back them up):
-      //   - totalTheoreticalCost: the HEADLINE total per the company's
-      //     selected costing method at run creation time. This is what UI
-      //     surfaces (food cost %, run summaries) read directly. Frozen
-      //     to the method in effect when the run was calculated — flipping
-      //     the toggle later does NOT mutate this value.
-      //   - totalTheoreticalCostWAC: ALWAYS the WAC basis, regardless of
-      //     the selected method, so the variance report can render a
-      //     side-by-side compare even when Last Cost is the headline.
-      // Last Cost basis is recoverable per-line via theoretical_usage_lines
-      // when both differ; we keep the headline + WAC duo to fit the existing
-      // schema without a column add.
+      // Persist both stable cost bases on the run header. Both are frozen
+      // against future toggle changes — flipping the company costing method
+      // never mutates these values. The UI selects which one to surface as
+      // the headline (food cost %, summary) based on company.costingMethod
+      // at view time, while always rendering both for a side-by-side compare.
       const ingredientUsages = Array.from(ingredientUsageMap.values());
       const totalTheoreticalCost = ingredientUsages.reduce(
         (sum, u) => sum + u.costAtSale,
@@ -157,7 +150,6 @@ export class TheoreticalUsageService {
     menuItemId: string,
     menuItemName: string,
     actualSaleQty: number,
-    company?: CostingMethodCarrier | null,
   ): Promise<IngredientUsage[]> {
     if (visited.has(recipeId)) {
       return [];
@@ -189,19 +181,18 @@ export class TheoreticalUsageService {
         );
 
         // Note: Recipe quantities already account for yield (they specify "as purchased" amounts)
-        // Do NOT apply yield percentage here, as that would double-count waste
+        // Do NOT apply yield percentage here, as that would double-count waste.
         //
-        // Capture two cost bases at run time so the run is frozen against
-        // future toggle changes:
-        //   - costAtSale: headline cost per the company's selected costing
-        //     method (last_cost OR weighted_average) at run creation time.
-        //   - costAtSaleWac: always the WAC basis (avgCostPerUnit, with a
-        //     last-cost fallback when WAC is 0) so the variance report can
-        //     always render a side-by-side compare.
+        // Capture two stable cost bases at run time:
+        //   - cost (Last Cost basis): item.pricePerUnit
+        //   - costWac (WAC basis): item.avgCostPerUnit, falling back to
+        //     pricePerUnit when WAC is 0 (item never received).
+        // Both are frozen at run time so toggling the costing method later
+        // does not mutate historical run dollars.
         const lastCostUnit = Number(item.pricePerUnit) || 0;
         const wacUnit = Number(item.avgCostPerUnit) || 0;
         const wacEffectiveUnit = wacUnit > 0 ? wacUnit : lastCostUnit;
-        const cost = baseQty * getEffectiveUnitCost(item, company);
+        const cost = baseQty * lastCostUnit;
         const costWac = baseQty * wacEffectiveUnit;
 
         ingredients.push({
@@ -226,7 +217,6 @@ export class TheoreticalUsageService {
           menuItemId,
           menuItemName,
           actualSaleQty,
-          company,
         );
         ingredients.push(...nestedIngredients);
       }

@@ -10338,19 +10338,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
       const storeId = req.query.storeId as string | undefined;
 
-      // Always scope variance to the caller's company (multi-tenant isolation)
-      const callingUser = await storage.getUser(req.user!.id);
-      const companyId = callingUser?.companyId || undefined;
-      const company = companyId ? await storage.getCompany(companyId) : null;
+      // Multi-tenant isolation: always require a request-scoped companyId.
+      // For owner/company_admin this is their own company; for global_admin
+      // it comes from the active session's selectedCompanyId. Reject the
+      // request if we cannot bind to a single company — never aggregate
+      // across all tenants.
+      const companyId = (req as any).companyId as string | null | undefined;
+      if (!companyId) {
+        return res.status(400).json({ error: "No active company selected" });
+      }
+      const company = await storage.getCompany(companyId);
 
       const theoreticalUsage = await calculateTheoreticalUsage(startDate, endDate, companyId);
       const actualUsage = await calculateActualUsage(startDate, endDate, companyId, storeId);
 
-      // Get actual inventory items (company-scoped) to access id and effective unit cost
+      // Get inventory items scoped to this company.
       const allItems = await storage.getInventoryItems();
-      const inventoryItems = companyId
-        ? allItems.filter((it: any) => it.companyId === companyId)
-        : allItems;
+      const inventoryItems = allItems.filter((it: any) => it.companyId === companyId);
 
       // Create a map of item names to their details for aggregation. Use the
       // company's costing method (last_cost vs WAC) so variance dollars track

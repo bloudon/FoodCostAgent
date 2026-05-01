@@ -13,6 +13,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { useStoreContext } from "@/hooks/use-store-context";
+import { useAuth } from "@/lib/auth-context";
+
+interface CompanyMeta {
+  id: string;
+  costingMethod?: "last_cost" | "weighted_average" | null;
+}
 
 interface TheoreticalUsageRun {
   id: string;
@@ -60,6 +66,18 @@ function TfcSalesImportContent() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { selectedStoreId } = useStoreContext();
+  const { getEffectiveCompanyId } = useAuth();
+  const effectiveCompanyId = getEffectiveCompanyId();
+
+  // Fetch the active company so we can pick the correct headline cost basis.
+  const { data: activeCompany } = useQuery<CompanyMeta | null>({
+    queryKey: ["/api/companies", effectiveCompanyId],
+    enabled: !!effectiveCompanyId,
+  });
+  const isWac = activeCompany?.costingMethod === "weighted_average";
+  const headlineLabel = isWac ? "Weighted Avg" : "Last Cost";
+  const headlineTotal = (run: TheoreticalUsageRun) =>
+    isWac ? run.totalTheoreticalCostWAC : run.totalTheoreticalCost;
 
   // Fetch stores for display
   const { data: stores = [] } = useQuery<Array<{ id: string; name: string }>>({
@@ -413,19 +431,23 @@ function TfcSalesImportContent() {
                           </p>
                         </div>
                         <div>
-                          <p className="text-muted-foreground">Theoretical Cost</p>
+                          <p className="text-muted-foreground">Theoretical Cost ({headlineLabel})</p>
                           <p className="font-medium" data-testid="text-theoretical-cost">
-                            ${run.totalTheoreticalCost.toFixed(2)}
+                            ${headlineTotal(run).toFixed(2)}
+                          </p>
+                          <p className="text-xs text-muted-foreground" data-testid="text-theoretical-cost-alt">
+                            {isWac ? "Last Cost" : "Weighted Avg"}: $
+                            {(isWac ? run.totalTheoreticalCost : run.totalTheoreticalCostWAC).toFixed(2)}
                           </p>
                         </div>
                       </div>
                       {run.status === 'completed' && (
                         <div className="mt-2 pt-2 border-t">
                           <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">Food Cost %</span>
+                            <span className="text-muted-foreground">Food Cost % ({headlineLabel})</span>
                             <span className="font-semibold" data-testid="text-food-cost-pct">
-                              {run.totalRevenue > 0 
-                                ? ((run.totalTheoreticalCost / run.totalRevenue) * 100).toFixed(1)
+                              {run.totalRevenue > 0
+                                ? ((headlineTotal(run) / run.totalRevenue) * 100).toFixed(1)
                                 : '0.0'}%
                             </span>
                           </div>
@@ -484,8 +506,12 @@ function TfcSalesImportContent() {
                   <p className="font-medium">${runDetails.run.totalRevenue.toFixed(2)}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Theoretical Cost</p>
-                  <p className="font-medium">${runDetails.run.totalTheoreticalCost.toFixed(2)}</p>
+                  <p className="text-xs text-muted-foreground">Theoretical Cost ({headlineLabel})</p>
+                  <p className="font-medium">${headlineTotal(runDetails.run).toFixed(2)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {isWac ? "Last Cost" : "Weighted Avg"}: $
+                    {(isWac ? runDetails.run.totalTheoreticalCost : runDetails.run.totalTheoreticalCostWAC).toFixed(2)}
+                  </p>
                 </div>
               </div>
 
