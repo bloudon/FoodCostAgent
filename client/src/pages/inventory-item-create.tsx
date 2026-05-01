@@ -71,7 +71,7 @@ export default function InventoryItemCreate() {
   const [barcode, setBarcode] = useState("");
   const [casePrice, setCasePrice] = useState("0");
   const [pricePerUnit, setPricePerUnit] = useState("0");
-  const [yieldPercent, setYieldPercent] = useState("95");
+  const [yieldPercent, setYieldPercent] = useState("100");
   const [parLevel, setParLevel] = useState("");
   const [reorderLevel, setReorderLevel] = useState("");
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
@@ -215,7 +215,7 @@ export default function InventoryItemCreate() {
         barcode: barcode.trim() || null,
         pricePerUnit: parseFloat(pricePerUnit) || 0,
         storageLocationId: primaryLocationId,
-        yieldPercent: parseFloat(yieldPercent) || 95,
+        yieldPercent: parseFloat(yieldPercent) || 100,
         parLevel: parLevel.trim() !== "" ? parseFloat(parLevel.trim()) : null,
         reorderLevel: reorderLevel.trim() !== "" ? parseFloat(reorderLevel.trim()) : null,
         isPowerItem: isPowerItem ? 1 : 0,
@@ -671,12 +671,12 @@ export default function InventoryItemCreate() {
                   max="100"
                   value={yieldPercent}
                   onChange={(e) => setYieldPercent(e.target.value)}
-                  placeholder="95"
+                  placeholder="100"
                   required
                   data-testid="input-yield-percent"
                 />
                 <p className="text-sm text-muted-foreground">
-                  Usable percentage after trimming/waste. Default is 95%.
+                  Usable percentage after trimming/waste. Default is 100%.
                 </p>
               </div>
             </CardContent>

@@ -930,3 +930,20 @@ BEGIN
       VALUES ('v035', 'Task #109: inventory_item_units table for per-item Recipe Units');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v036 — Task #115: change inventory_items.yield_percent column default 95 -> 100
+-- Affects only NEW inserts that omit yield_percent. Existing rows are not
+-- modified.
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v036') THEN
+
+    ALTER TABLE inventory_items
+      ALTER COLUMN yield_percent SET DEFAULT 100;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v036', 'Task #115: change inventory_items.yield_percent default 95 -> 100');
+  END IF;
+END $$;

@@ -788,7 +788,7 @@ export default function InventoryItemDetail() {
           }
           updateMutation.mutate(updates);
         } else if (value === "" && field === "yieldPercent") {
-          updateMutation.mutate({ [field]: 95 });
+          updateMutation.mutate({ [field]: 100 });
         }
       } else {
         updateMutation.mutate({ [field]: value });
@@ -1883,8 +1883,8 @@ export default function InventoryItemDetail() {
                     step="0.1"
                     min="1"
                     max="100"
-                    value={getFieldValue("yieldPercent", item.yieldPercent ?? 95)}
-                    placeholder="95"
+                    value={getFieldValue("yieldPercent", item.yieldPercent ?? 100)}
+                    placeholder="100"
                     onChange={(e) => handleFieldChange("yieldPercent", e.target.value)}
                     onBlur={() => handleFieldBlur("yieldPercent")}
                     disabled={updateMutation.isPending}
@@ -1893,7 +1893,7 @@ export default function InventoryItemDetail() {
                   />
                   <div className="flex items-center px-3 text-muted-foreground">%</div>
                 </div>
-                <p className="text-xs text-muted-foreground">Usable percentage after trimming/waste. Default is 95%.</p>
+                <p className="text-xs text-muted-foreground">Usable percentage after trimming/waste. Default is 100%.</p>
               </div>
 
               {/* Purchasing */}

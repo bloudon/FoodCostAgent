@@ -310,7 +310,7 @@ export const inventoryItems = pgTable("inventory_items", {
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
   pricePerUnit: real("price_per_unit").notNull().default(0), // most recent price per base unit (last cost method)
   avgCostPerUnit: real("avg_cost_per_unit").notNull().default(0), // weighted average cost per base unit
-  yieldPercent: real("yield_percent").notNull().default(95), // usable yield percentage after trimming/waste (0-100), defaults to 95%
+  yieldPercent: real("yield_percent").notNull().default(100), // usable yield percentage after trimming/waste (0-100), defaults to 100%
   parLevel: real("par_level"), // default target inventory level (can be overridden at store level)
   reorderLevel: real("reorder_level"), // default reorder level (can be overridden at store level)
   imageUrl: text("image_url"),
@@ -326,7 +326,7 @@ export const inventoryItems = pgTable("inventory_items", {
 export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({ id: true, updatedAt: true }).extend({
   categoryId: z.string().nullable().optional(),
   unitId: z.string().min(1, "Unit is required"),
-  yieldPercent: z.number().min(1).max(100).default(95),
+  yieldPercent: z.number().min(1).max(100).default(100),
   containerSize: z.number().positive().nullable().optional(),
   containerLabel: z.string().nullable().optional(),
   containerUnitId: z.string().nullable().optional(),
