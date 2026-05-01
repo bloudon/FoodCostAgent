@@ -238,11 +238,30 @@ function InlineIngredientRow({
     }
   };
 
-  // Get compatible units - for the component's base item
+  // "Show all" escape hatch: when toggled on, lets advanced users pick a unit
+  // outside the convertible whitelist (e.g. so they can intentionally add a
+  // per-item Recipe Unit conversion later). Mirrors the dialog behavior.
+  const [showAllUnitsInline, setShowAllUnitsInline] = useState(false);
+
+  // Get the unit list shown in the row's Select. Defaults to the convertible
+  // whitelist, falls back to all units when "Show all" is on or when there's
+  // no whitelist available (e.g. while units are still loading).
   const getCompatibleUnitList = () => {
+    if (showAllUnitsInline) return units || [];
     if (compatibleUnits?.length) return compatibleUnits;
     return units || [];
   };
+
+  // If the component's currently saved unit isn't in the convertible list
+  // (legacy bad data), surface it in the dropdown anyway so the Select can
+  // render its current value rather than appearing empty.
+  const unitListForSelect = (() => {
+    const list = getCompatibleUnitList();
+    if (!component.unitId) return list;
+    if (list.some((u) => u.id === component.unitId)) return list;
+    const current = units?.find((u) => u.id === component.unitId);
+    return current ? [...list, current] : list;
+  })();
 
   if (component.missingItem) {
     return (
@@ -381,11 +400,41 @@ function InlineIngredientRow({
               <SelectValue placeholder="Unit" />
             </SelectTrigger>
             <SelectContent>
-              {getCompatibleUnitList().map((unit) => (
+              {unitListForSelect.map((unit) => (
                 <SelectItem key={unit.id} value={unit.id}>
                   {formatUnitName(unit.name)}
                 </SelectItem>
               ))}
+              {/* Inline "Show all" escape hatch — matches the add/edit dialog
+                  pattern (showAllUnitsAdd / showAllUnitsEdit) so power users
+                  can intentionally pick a unit outside the convertible list
+                  (e.g. before adding a per-item Recipe Unit conversion). */}
+              <div className="border-t mt-1 pt-1 px-2 pb-1">
+                <button
+                  type="button"
+                  className="w-full text-left text-xs text-muted-foreground hover-elevate active-elevate-2 px-2 py-1 rounded-md"
+                  onMouseDown={(e) => {
+                    // Prevent the Select from closing/selecting before we
+                    // toggle the list contents (pointer path).
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowAllUnitsInline((v) => !v);
+                  }}
+                  onKeyDown={(e) => {
+                    // Keyboard path — Radix Select swallows clicks here, so
+                    // explicitly handle Enter/Space to keep the toggle
+                    // accessible to keyboard-only users.
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowAllUnitsInline((v) => !v);
+                    }
+                  }}
+                  data-testid={`button-toggle-show-all-units-${component.id}`}
+                >
+                  {showAllUnitsInline ? "Show compatible only" : "Show all units"}
+                </button>
+              </div>
             </SelectContent>
           </Select>
           {isUncostable && (
@@ -1084,9 +1133,12 @@ function RecipeBuilderContent() {
   };
 
   // Get compatible units for a specific component (for inline editing).
-  // Combines: same-kind units (existing behavior) plus the per-item Recipe
-  // Unit whitelist for inventory items. Sub-recipes only use same-kind because
-  // they don't have a per-item override mechanism today.
+  // Mirrors `convertToInventoryUnits` so the dropdown only surfaces units the
+  // cost engine can actually convert: the inventory unit itself, per-item
+  // Recipe Unit overrides (qtyPerInventoryUnit > 0, isIssueUnit = 0), and
+  // same-kind units that have a non-zero toBaseRatio on both sides.
+  // Sub-recipes only use same-kind because they don't have a per-item
+  // override mechanism today.
   const getCompatibleUnitsForComponent = (component: ComponentWithDetails): Unit[] => {
     let baseUnitId: string | undefined;
     let inventoryItemId: string | undefined;
@@ -1107,12 +1159,21 @@ function RecipeBuilderContent() {
 
     const result = new Map<string, Unit>();
 
+    // The inventory/yield unit itself is always convertible (trivial case).
+    result.set(baseUnit.id, baseUnit);
+
     // Whitelisted per-item Recipe Units come first, in the user-defined
     // sortOrder, so the dropdown surfaces the user's preferred unit at the
-    // top of its kind group (Map preserves insertion order).
+    // top of its kind group (Map preserves insertion order). Only rows with
+    // a positive qtyPerInventoryUnit can actually be converted.
     if (inventoryItemId && companyRecipeUnits) {
       const orderedWhitelist = companyRecipeUnits
-        .filter((row) => row.inventoryItemId === inventoryItemId && row.isIssueUnit === 0)
+        .filter(
+          (row) =>
+            row.inventoryItemId === inventoryItemId &&
+            row.isIssueUnit === 0 &&
+            row.qtyPerInventoryUnit > 0
+        )
         .slice()
         .sort((a, b) => a.sortOrder - b.sortOrder);
       for (const row of orderedWhitelist) {
@@ -1121,10 +1182,17 @@ function RecipeBuilderContent() {
       }
     }
 
-    // Then fill in the remaining same-kind units in master order.
-    for (const u of units) {
-      if (u.kind === baseUnit.kind && !result.has(u.id)) {
-        result.set(u.id, u);
+    // Then fill in remaining same-kind units in master order — but only the
+    // ones the toBaseRatio path can actually convert (both sides > 0).
+    if (baseUnit.toBaseRatio > 0) {
+      for (const u of units) {
+        if (
+          u.kind === baseUnit.kind &&
+          u.toBaseRatio > 0 &&
+          !result.has(u.id)
+        ) {
+          result.set(u.id, u);
+        }
       }
     }
 
