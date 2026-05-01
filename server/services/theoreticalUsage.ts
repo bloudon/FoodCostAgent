@@ -1,5 +1,6 @@
 import { storage } from "../storage";
 import type { TheoreticalUsageRun, TheoreticalUsageLine, DailyMenuItemSales } from "@shared/schema";
+import { getEffectiveUnitCost, type CostingMethodCarrier } from "../lib/costing";
 
 interface TheoreticalUsageInput {
   companyId: string;
@@ -13,12 +14,17 @@ interface IngredientUsage {
   inventoryItemId: string;
   requiredQtyBaseUnit: number;
   baseUnitId: string;
-  // Two stable cost bases captured at run time so the run is frozen against
-  // future costing-method toggles AND the variance UI can always render a
-  // side-by-side Last vs WAC compare. The UI chooses which value to bold
-  // as the headline based on company.costingMethod at view time.
-  costAtSale: number;    // ALWAYS Last Cost basis (item.pricePerUnit)
-  costAtSaleWac: number; // ALWAYS WAC basis (item.avgCostPerUnit, last-cost fallback when 0)
+  // Two cost bases captured at run time, both frozen against future toggle
+  // changes:
+  //   - costAtSale: HEADLINE basis per the company's selected costing method
+  //     at run creation time (via getEffectiveUnitCost). Used for the run
+  //     summary and food-cost % displayed in the UI. sum(costAtSale) ===
+  //     run header totalTheoreticalCost (internally consistent).
+  //   - costAtSaleWac: ALWAYS WAC basis (avgCostPerUnit, last-cost fallback
+  //     when 0) so totalTheoreticalCostWAC supports a side-by-side compare
+  //     against the headline.
+  costAtSale: number;
+  costAtSaleWac: number;
   sourceMenuItems: Array<{
     menuItemId: string;
     menuItemName: string;
@@ -62,6 +68,7 @@ export class TheoreticalUsageService {
 
     try {
       const ingredientUsageMap = new Map<string, IngredientUsage>();
+      const company = await storage.getCompany(companyId);
 
       for (const sale of salesData) {
         if (sale.qtySold <= 0) continue;
@@ -82,6 +89,7 @@ export class TheoreticalUsageService {
           menuItem.id,
           menuItem.name,
           sale.qtySold,
+          company,
         );
 
         for (const ingredient of ingredients) {
@@ -150,6 +158,7 @@ export class TheoreticalUsageService {
     menuItemId: string,
     menuItemName: string,
     actualSaleQty: number,
+    company?: CostingMethodCarrier | null,
   ): Promise<IngredientUsage[]> {
     if (visited.has(recipeId)) {
       return [];
@@ -183,16 +192,19 @@ export class TheoreticalUsageService {
         // Note: Recipe quantities already account for yield (they specify "as purchased" amounts)
         // Do NOT apply yield percentage here, as that would double-count waste.
         //
-        // Capture two stable cost bases at run time:
-        //   - cost (Last Cost basis): item.pricePerUnit
-        //   - costWac (WAC basis): item.avgCostPerUnit, falling back to
-        //     pricePerUnit when WAC is 0 (item never received).
-        // Both are frozen at run time so toggling the costing method later
-        // does not mutate historical run dollars.
+        // Capture two cost bases at run time, both frozen against future
+        // costing-method toggles:
+        //   - cost: HEADLINE basis per the company's selected costing method
+        //     at run creation time. Sum of `cost` over lines === run header
+        //     totalTheoreticalCost (internally consistent for the food
+        //     cost % displayed in the UI).
+        //   - costWac: ALWAYS WAC basis (avgCostPerUnit, falling back to
+        //     pricePerUnit when WAC is 0) so the run header
+        //     totalTheoreticalCostWAC supports a side-by-side compare.
         const lastCostUnit = Number(item.pricePerUnit) || 0;
         const wacUnit = Number(item.avgCostPerUnit) || 0;
         const wacEffectiveUnit = wacUnit > 0 ? wacUnit : lastCostUnit;
-        const cost = baseQty * lastCostUnit;
+        const cost = baseQty * getEffectiveUnitCost(item, company);
         const costWac = baseQty * wacEffectiveUnit;
 
         ingredients.push({
@@ -217,6 +229,7 @@ export class TheoreticalUsageService {
           menuItemId,
           menuItemName,
           actualSaleQty,
+          company,
         );
         ingredients.push(...nestedIngredients);
       }
