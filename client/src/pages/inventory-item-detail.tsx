@@ -139,7 +139,7 @@ type VendorItem = {
 function formatReciprocal(qtyPerInventoryUnit: number): string {
   if (!qtyPerInventoryUnit || qtyPerInventoryUnit <= 0) return "—";
   const v = 1 / qtyPerInventoryUnit;
-  return parseFloat(v.toPrecision(6)).toString();
+  return parseFloat(v.toPrecision(4)).toString();
 }
 
 // A single draggable row inside RecipeUnitsList. Drag is disabled while the row
@@ -481,9 +481,6 @@ function RecipeUnitsList({
     grouped[k] = filteredUnits.filter((u) => u.kind === k);
   });
 
-  const pendingUnit = pendingUnitId ? (units ?? []).find((u) => u.id === pendingUnitId) : null;
-  const pendingIsAutoConvert = pendingUnit ? pendingUnit.kind === itemUnitKind : false;
-
   const descriptionText =
     kind === "issue"
       ? "Choose which units can be used when transferring or issuing this item. Standard same-kind units (oz, g, kg for a lb item) convert automatically."
@@ -734,7 +731,7 @@ function RecipeUnitsList({
                                     </Button>
                                   </div>
                                   <p className="text-xs text-muted-foreground">
-                                    Example: "1 each = 0.375 lb" means 1 portion costs the same as 0.375 {itemUnitAbbrev} of this item.
+                                    Example: "1 {formatUnitName(u.name)} = 0.375 {itemUnitAbbrev || "inv unit"}" means 1 portion costs the same as 0.375 {itemUnitAbbrev || "inventory unit"} of this item.
                                   </p>
                                 </div>
                               )}
