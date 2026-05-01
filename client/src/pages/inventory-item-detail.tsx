@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useStoreContext } from "@/hooks/use-store-context";
-import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X, GripVertical } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X, GripVertical, ChevronDown, ChevronRight, Search } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -39,6 +39,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -132,11 +133,22 @@ type VendorItem = {
   } | null;
 };
 
+// Format the human-readable "1 [unit] = X [inv unit]" value for display.
+// qtyPerInventoryUnit stores how many recipe-units fit in 1 inventory unit,
+// so the display value is the reciprocal.
+function formatReciprocal(qtyPerInventoryUnit: number): string {
+  if (!qtyPerInventoryUnit || qtyPerInventoryUnit <= 0) return "—";
+  const v = 1 / qtyPerInventoryUnit;
+  return parseFloat(v.toPrecision(6)).toString();
+}
+
 // A single draggable row inside RecipeUnitsList. Drag is disabled while the row
 // is being edited so the controls remain easy to interact with.
+// Quantity is displayed as "1 [unit] = X [invUnitAbbrev]" (human direction).
 function SortableRecipeUnitRow({
   row,
   unit,
+  invUnitAbbrev,
   isEditing,
   editQty,
   setEditQty,
@@ -148,6 +160,7 @@ function SortableRecipeUnitRow({
 }: {
   row: InventoryItemUnit;
   unit: Unit | undefined;
+  invUnitAbbrev: string;
   isEditing: boolean;
   editQty: string;
   setEditQty: (v: string) => void;
@@ -172,6 +185,8 @@ function SortableRecipeUnitRow({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const unitName = unit ? formatUnitName(unit.name) : row.unitId;
+
   return (
     <tr
       ref={setNodeRef}
@@ -192,20 +207,27 @@ function SortableRecipeUnitRow({
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </button>
       </td>
-      <td className="py-1.5 pr-3">{unit ? formatUnitName(unit.name) : row.unitId}</td>
+      <td className="py-1.5 pr-3 font-medium text-sm">{unitName}</td>
       <td className="py-1.5 pr-3">
         {isEditing ? (
-          <Input
-            type="number"
-            step="any"
-            min="0"
-            value={editQty}
-            onChange={(e) => setEditQty(e.target.value)}
-            className="h-8 w-28"
-            data-testid={`input-edit-qty-${row.id}`}
-          />
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">1 {unitName} =</span>
+            <Input
+              type="number"
+              step="any"
+              min="0"
+              value={editQty}
+              onChange={(e) => setEditQty(e.target.value)}
+              className="h-8 w-24"
+              data-testid={`input-edit-qty-${row.id}`}
+              autoFocus
+            />
+            <span className="text-xs text-muted-foreground">{invUnitAbbrev}</span>
+          </div>
         ) : (
-          <span className="text-muted-foreground">{row.qtyPerInventoryUnit}</span>
+          <span className="text-muted-foreground text-sm">
+            {formatReciprocal(row.qtyPerInventoryUnit)} {invUnitAbbrev}
+          </span>
         )}
       </td>
       <td className="py-1.5">
@@ -256,20 +278,22 @@ function SortableRecipeUnitRow({
   );
 }
 
-// Per-item Recipe / Issue unit list. Renders the unit whitelist for the given
-// item, with inline add (unit + factor), edit (factor only), delete, and
-// drag-and-drop reordering. `kind` switches between Recipe Units (isIssueUnit=0)
-// and Issue Units (=1).
+// Per-item Recipe / Issue unit list. Redesigned with:
+// - Intuitive qty direction: "1 [unit] = X [inv unit]" instead of "X per inv unit"
+// - Auto-converted units info section (same-kind units that need no entry)
+// - Browse & add panel with grouped, searchable list of all global units
 function RecipeUnitsList({
   itemId,
   itemUnitId,
   itemUnitAbbrev,
+  itemUnitKind,
   units,
   kind,
 }: {
   itemId: string;
   itemUnitId: string | null | undefined;
   itemUnitAbbrev: string;
+  itemUnitKind: string;
   units: Unit[] | undefined;
   kind: "recipe" | "issue";
 }) {
@@ -304,8 +328,8 @@ function RecipeUnitsList({
     },
     onSuccess: () => {
       invalidate();
-      setNewUnitId("");
-      setNewQty("");
+      setPendingUnitId(null);
+      setPendingQty("");
       toast({ title: "Unit added" });
     },
     onError: (err: any) => {
@@ -349,7 +373,6 @@ function RecipeUnitsList({
       });
     },
     onMutate: async (orderedIds: string[]) => {
-      // Cancel any in-flight refetch so it doesn't overwrite our optimistic update.
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<InventoryItemUnit[]>(queryKey);
       if (previous) {
@@ -386,46 +409,133 @@ function RecipeUnitsList({
     const oldIndex = rows.findIndex((r) => r.id === active.id);
     const newIndex = rows.findIndex((r) => r.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
-
     const newOrder = arrayMove(rows, oldIndex, newIndex);
     reorderMutation.mutate(newOrder.map((r) => r.id));
   };
 
-  const [newUnitId, setNewUnitId] = useState<string>("");
-  const [newQty, setNewQty] = useState<string>("");
+  // Editing existing rows
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editQty, setEditQty] = useState<string>("");
 
+  // Browse panel state
+  const [showBrowse, setShowBrowse] = useState(false);
+  const [browseSearch, setBrowseSearch] = useState("");
+  const [pendingUnitId, setPendingUnitId] = useState<string | null>(null);
+  const [pendingQty, setPendingQty] = useState("");
+
+  // Auto-converts collapsible
+  const [showAutoConverts, setShowAutoConverts] = useState(false);
+
   const handleAdd = () => {
-    const qty = parseFloat(newQty);
-    if (!newUnitId || !(qty > 0)) {
+    const entered = parseFloat(pendingQty);
+    if (!pendingUnitId || !(entered > 0)) {
       toast({
-        title: "Missing fields",
-        description: "Pick a unit and enter a positive qty per inventory unit.",
+        title: "Enter a value",
+        description: `Type how many ${itemUnitAbbrev || "inv units"} 1 of this unit equals.`,
         variant: "destructive",
       });
       return;
     }
-    createMutation.mutate({ unitId: newUnitId, qtyPerInventoryUnit: qty });
+    // Store the reciprocal: qtyPerInventoryUnit = 1 / entered
+    createMutation.mutate({ unitId: pendingUnitId, qtyPerInventoryUnit: 1 / entered });
   };
 
-  // Hide units already in this list to avoid uniqueness violations
   const usedUnitIds = new Set((rows ?? []).map((r) => r.unitId));
-  const unitOptions = (units ?? []).filter((u) => !usedUnitIds.has(u.id));
+
+  // Same-kind units auto-convert via global toBaseRatio — no entry needed
+  const autoConvertUnits = (units ?? []).filter(
+    (u) => u.kind === itemUnitKind && u.id !== itemUnitId
+  );
+
+  // All units not yet in the list, available to browse
+  const availableUnits = (units ?? []).filter((u) => !usedUnitIds.has(u.id));
+
+  // Filter by search
+  const filteredUnits = browseSearch.trim()
+    ? availableUnits.filter(
+        (u) =>
+          u.name.toLowerCase().includes(browseSearch.toLowerCase()) ||
+          u.abbreviation.toLowerCase().includes(browseSearch.toLowerCase())
+      )
+    : availableUnits;
+
+  // Group by kind for the browse panel
+  const kindOrder = ["weight", "volume", "count"];
+  const kindLabels: Record<string, string> = {
+    weight: "Weight",
+    volume: "Volume",
+    count: "Count / Portion",
+  };
+  const grouped = kindOrder.reduce(
+    (acc, k) => {
+      acc[k] = filteredUnits.filter((u) => u.kind === k);
+      return acc;
+    },
+    {} as Record<string, Unit[]>
+  );
+  // Catch any other kinds not in kindOrder
+  const otherKinds = [...new Set(filteredUnits.map((u) => u.kind))].filter(
+    (k) => !kindOrder.includes(k)
+  );
+  otherKinds.forEach((k) => {
+    grouped[k] = filteredUnits.filter((u) => u.kind === k);
+  });
+
+  const pendingUnit = pendingUnitId ? (units ?? []).find((u) => u.id === pendingUnitId) : null;
+  const pendingIsAutoConvert = pendingUnit ? pendingUnit.kind === itemUnitKind : false;
+
+  const descriptionText =
+    kind === "issue"
+      ? "Choose which units can be used when transferring or issuing this item. Standard same-kind units (oz, g, kg for a lb item) convert automatically."
+      : "Choose which units recipes can use for this ingredient. Standard same-kind units (oz, g, kg for a lb item) convert automatically — only add others for cross-kind portions like \"each\" or \"case\".";
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {/* Header */}
       <div>
         <p className="text-sm font-semibold">
           {kind === "issue" ? "Issue / Transfer Units" : "Recipe Units"}
         </p>
-        <p className="text-xs text-muted-foreground">
-          {kind === "issue"
-            ? "Units allowed for transfers and issues for this item."
-            : "Units the recipe builder will offer for this ingredient."}
-        </p>
+        <p className="text-xs text-muted-foreground">{descriptionText}</p>
       </div>
 
+      {/* Auto-converted units info section */}
+      {autoConvertUnits.length > 0 && (
+        <Collapsible open={showAutoConverts} onOpenChange={setShowAutoConverts}>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover-elevate rounded px-1 py-0.5"
+              data-testid="button-toggle-auto-converts"
+            >
+              {showAutoConverts ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              <span>
+                {autoConvertUnits.length} unit{autoConvertUnits.length !== 1 ? "s" : ""} auto-convert (no entry needed)
+              </span>
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="mt-1.5 rounded-md border bg-muted/30 p-2.5 space-y-1.5">
+              <p className="text-xs text-muted-foreground">
+                These units share the same measurement type as <strong>{itemUnitAbbrev || "this item's unit"}</strong> and convert automatically using standard ratios. You only need to add them here if you want a <em>custom</em> conversion factor.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {autoConvertUnits.map((u) => (
+                  <Badge key={u.id} variant="secondary" className="text-xs font-normal">
+                    {formatUnitName(u.name)} ({u.abbreviation})
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      {/* Custom units table */}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -436,19 +546,23 @@ function RecipeUnitsList({
             <tr className="border-b text-xs text-muted-foreground">
               <th className="pb-2 w-8"></th>
               <th className="pb-2 text-left font-medium">Unit</th>
-              <th className="pb-2 text-left font-medium">Qty per 1 {itemUnitAbbrev || "inventory unit"}</th>
+              <th className="pb-2 text-left font-medium">
+                1 [unit] = ___ {itemUnitAbbrev || "inv unit"}
+              </th>
               <th className="w-24 pb-2"></th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={4} className="py-3 text-muted-foreground">Loading…</td>
+                <td colSpan={4} className="py-3 text-muted-foreground text-sm">Loading…</td>
               </tr>
             )}
             {!isLoading && rows && rows.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-3 text-muted-foreground">No units configured.</td>
+                <td colSpan={4} className="py-3 text-muted-foreground text-sm">
+                  No custom units yet. Use "Browse &amp; add units" below to add some.
+                </td>
               </tr>
             )}
             <SortableContext
@@ -463,18 +577,21 @@ function RecipeUnitsList({
                     key={row.id}
                     row={row}
                     unit={unit}
+                    invUnitAbbrev={itemUnitAbbrev}
                     isEditing={isEditing}
                     editQty={editQty}
                     setEditQty={setEditQty}
                     onStartEdit={() => {
                       setEditingId(row.id);
-                      setEditQty(String(row.qtyPerInventoryUnit));
+                      // Pre-fill with human-readable reciprocal
+                      setEditQty(formatReciprocal(row.qtyPerInventoryUnit));
                     }}
                     onCancelEdit={() => setEditingId(null)}
                     onSave={() => {
-                      const qty = parseFloat(editQty);
-                      if (qty > 0) {
-                        updateMutation.mutate({ rowId: row.id, qtyPerInventoryUnit: qty });
+                      const entered = parseFloat(editQty);
+                      if (entered > 0) {
+                        // Store reciprocal back as qtyPerInventoryUnit
+                        updateMutation.mutate({ rowId: row.id, qtyPerInventoryUnit: 1 / entered });
                       }
                     }}
                     onDelete={() => deleteMutation.mutate(row.id)}
@@ -487,43 +604,151 @@ function RecipeUnitsList({
         </table>
       </DndContext>
 
-      <div className="flex flex-wrap items-end gap-2 border-t pt-3">
-        <div className="space-y-1">
-          <Label className="text-xs">Unit</Label>
-          <Select value={newUnitId} onValueChange={setNewUnitId}>
-            <SelectTrigger className="h-9 w-40" data-testid={`select-new-unit-${kind}`}>
-              <SelectValue placeholder="Pick a unit" />
-            </SelectTrigger>
-            <SelectContent>
-              {unitOptions.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {formatUnitName(u.name)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Qty per 1 {itemUnitAbbrev || "inv unit"}</Label>
-          <Input
-            type="number"
-            step="any"
-            min="0"
-            value={newQty}
-            onChange={(e) => setNewQty(e.target.value)}
-            className="h-9 w-32"
-            placeholder="e.g., 16"
-            data-testid={`input-new-qty-${kind}`}
-          />
-        </div>
+      {/* Browse & add panel */}
+      <div className="border-t pt-3">
         <Button
-          onClick={handleAdd}
-          disabled={createMutation.isPending || !newUnitId || !newQty}
-          data-testid={`button-add-recipe-unit-${kind}`}
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setShowBrowse((v) => !v);
+            setBrowseSearch("");
+            setPendingUnitId(null);
+            setPendingQty("");
+          }}
+          data-testid={`button-browse-units-${kind}`}
         >
-          <Plus className="h-4 w-4" />
-          Add
+          <Plus className="h-3.5 w-3.5" />
+          {showBrowse ? "Close" : "Browse & add units"}
         </Button>
+
+        {showBrowse && (
+          <div className="mt-3 rounded-md border bg-muted/20 p-3 space-y-3">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={browseSearch}
+                onChange={(e) => {
+                  setBrowseSearch(e.target.value);
+                  setPendingUnitId(null);
+                  setPendingQty("");
+                }}
+                placeholder="Search units…"
+                className="h-8 pl-8 text-sm"
+                data-testid={`input-browse-search-${kind}`}
+              />
+            </div>
+
+            {/* Grouped unit list */}
+            {availableUnits.length === 0 ? (
+              <p className="text-xs text-muted-foreground">All available units are already added.</p>
+            ) : filteredUnits.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No units match your search.</p>
+            ) : (
+              <div className="space-y-3 max-h-72 overflow-y-auto">
+                {[...kindOrder, ...otherKinds].map((k) => {
+                  const groupUnits = grouped[k];
+                  if (!groupUnits || groupUnits.length === 0) return null;
+                  return (
+                    <div key={k}>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                        {kindLabels[k] ?? k}
+                      </p>
+                      <div className="space-y-0.5">
+                        {groupUnits.map((u) => {
+                          const isAutoConvert = u.kind === itemUnitKind;
+                          const isPending = pendingUnitId === u.id;
+                          return (
+                            <div key={u.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (isPending) {
+                                    setPendingUnitId(null);
+                                    setPendingQty("");
+                                  } else {
+                                    setPendingUnitId(u.id);
+                                    setPendingQty("");
+                                  }
+                                }}
+                                className={`w-full flex items-center justify-between gap-2 rounded px-2 py-1.5 text-sm text-left hover-elevate ${isPending ? "bg-accent/20" : ""}`}
+                                data-testid={`button-select-unit-${u.id}-${kind}`}
+                              >
+                                <span>
+                                  {formatUnitName(u.name)}{" "}
+                                  <span className="text-muted-foreground text-xs">({u.abbreviation})</span>
+                                </span>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {isAutoConvert && (
+                                    <Badge variant="secondary" className="text-xs font-normal py-0">
+                                      auto
+                                    </Badge>
+                                  )}
+                                  <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${isPending ? "rotate-90" : ""}`} />
+                                </div>
+                              </button>
+
+                              {/* Inline qty form for this unit */}
+                              {isPending && (
+                                <div className="mx-2 mb-1 mt-0.5 rounded-md border bg-background p-2.5 space-y-2">
+                                  {isAutoConvert && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                                      This unit already auto-converts using the standard ratio. Only add it here if you need a custom factor for this specific item.
+                                    </p>
+                                  )}
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                      1 {formatUnitName(u.name)} =
+                                    </span>
+                                    <Input
+                                      type="number"
+                                      step="any"
+                                      min="0"
+                                      value={pendingQty}
+                                      onChange={(e) => setPendingQty(e.target.value)}
+                                      placeholder={`e.g., ${u.kind === itemUnitKind ? "0.0625" : "0.375"}`}
+                                      className="h-8 w-28 text-sm"
+                                      data-testid={`input-pending-qty-${kind}`}
+                                      autoFocus
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") handleAdd();
+                                        if (e.key === "Escape") { setPendingUnitId(null); setPendingQty(""); }
+                                      }}
+                                    />
+                                    <span className="text-xs text-muted-foreground">{itemUnitAbbrev}</span>
+                                    <Button
+                                      size="sm"
+                                      onClick={handleAdd}
+                                      disabled={createMutation.isPending || !pendingQty}
+                                      data-testid={`button-add-recipe-unit-${kind}`}
+                                    >
+                                      <Check className="h-3.5 w-3.5" />
+                                      Add
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => { setPendingUnitId(null); setPendingQty(""); }}
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">
+                                    Example: "1 each = 0.375 lb" means 1 portion costs the same as 0.375 {itemUnitAbbrev} of this item.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2097,6 +2322,7 @@ export default function InventoryItemDetail() {
                             itemId={item.id}
                             itemUnitId={item.unitId}
                             itemUnitAbbrev={unit?.abbreviation || ""}
+                            itemUnitKind={unit?.kind || ""}
                             units={units}
                             kind="recipe"
                           />
@@ -2106,6 +2332,7 @@ export default function InventoryItemDetail() {
                             itemId={item.id}
                             itemUnitId={item.unitId}
                             itemUnitAbbrev={unit?.abbreviation || ""}
+                            itemUnitKind={unit?.kind || ""}
                             units={units}
                             kind="issue"
                           />
