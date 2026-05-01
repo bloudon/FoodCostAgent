@@ -55,6 +55,7 @@ import {
   insertCompanyStoreSchema,
   insertInvitationSchema,
   insertQuickBooksVendorMappingSchema,
+  type RecipeComponent,
 } from "@shared/schema";
 
 // Helper: session cookie options — shares domain across subdomains in production
@@ -5655,7 +5656,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pluSku: item.pluSku,
         pricePerUnit: item.pricePerUnit,
         avgCostPerUnit: item.avgCostPerUnit || item.pricePerUnit,
-        effectiveUnitCost: getEffectiveUnitCost(item, company as CostingMethodCarrier | null),
+        effectiveUnitCost: getEffectiveUnitCost(item, company ?? null),
         unitId: item.unitId,
         caseSize: item.caseSize,
         containerSize: item.containerSize,
@@ -5805,7 +5806,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const company = await storage.getCompany(companyId);
     const enriched = {
       ...item,
-      effectiveUnitCost: getEffectiveUnitCost(item, company as CostingMethodCarrier | null),
+      effectiveUnitCost: getEffectiveUnitCost(item, company ?? null),
     };
 
     // Store in cache
@@ -11503,15 +11504,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         costingMethod: z.enum(["last_cost", "weighted_average"]),
       }).parse(req.body);
 
-      const company = await storage.updateCompany(req.params.id, { costingMethod });
-      if (!company) {
+      const existingCompany = await storage.getCompany(req.params.id);
+      if (!existingCompany) {
         return res.status(404).json({ error: "Company not found" });
       }
 
-      // Recalculate every recipe so cached computedCost reflects the new method.
-      // Use topological order (children before parents) for nested recipes.
+      // Pre-compute every recipe's new cost using the *target* method BEFORE
+      // persisting the company flip. If any recipe cost computation throws,
+      // we abort with a 500 and the company method stays on its old value
+      // — no partial state. Only after every recipe cost is computed do we
+      // commit (company update + recipe updates) sequentially.
+      const targetCompany = { ...existingCompany, costingMethod };
+
       const allRecipes = await storage.getRecipes(req.params.id);
-      const componentsByRecipe = new Map<string, any[]>();
+      const componentsByRecipe = new Map<string, RecipeComponent[]>();
       for (const r of allRecipes) {
         componentsByRecipe.set(r.id, await storage.getRecipeComponents(r.id));
       }
@@ -11533,8 +11539,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const r of allRecipes) visit(r.id);
 
       const memo = new Map<string, number>();
+      const newCosts = new Map<string, number>();
       for (const recipeId of sorted) {
-        const newCost = await calculateRecipeCost(recipeId, { company }, memo);
+        const newCost = await calculateRecipeCost(recipeId, { company: targetCompany }, memo);
+        newCosts.set(recipeId, newCost);
+      }
+
+      // All recipe costs computed successfully — now commit.
+      const company = await storage.updateCompany(req.params.id, { costingMethod });
+      if (!company) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+      for (const [recipeId, newCost] of newCosts) {
         await storage.updateRecipe(recipeId, { computedCost: newCost });
       }
       await cacheInvalidator.invalidateRecipes(req.params.id);
