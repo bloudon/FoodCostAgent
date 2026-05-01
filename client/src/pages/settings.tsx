@@ -187,7 +187,7 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
       // Theoretical Food Cost / variance reports surface headline cost totals
       // that depend on the costing method.
-      queryClient.invalidateQueries({ queryKey: ["/api/theoretical-usage-runs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tfc/usage-runs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/variance"] });
       toast({
         title: "Costing method updated",
