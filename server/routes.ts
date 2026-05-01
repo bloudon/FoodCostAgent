@@ -5597,6 +5597,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     // Cache miss - fetch from database
     const items = await storage.getInventoryItems(locationId, storeId, companyId);
+
+    // Resolve company costing method once so on-hand valuation honors it.
+    const company = await storage.getCompany(companyId);
     
     // Enrich using Phase 1 caches
     const locations = await cache.getOrSet(
@@ -5652,6 +5655,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pluSku: item.pluSku,
         pricePerUnit: item.pricePerUnit,
         avgCostPerUnit: item.avgCostPerUnit || item.pricePerUnit,
+        effectiveUnitCost: getEffectiveUnitCost(item, company as CostingMethodCarrier | null),
         unitId: item.unitId,
         caseSize: item.caseSize,
         containerSize: item.containerSize,
@@ -5795,11 +5799,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (item.companyId !== companyId) {
       return res.status(403).json({ error: "Access denied to this inventory item" });
     }
-    
+
+    // Resolve effective unit cost per the company's costing method so the
+    // detail page can display the same headline value as the list view.
+    const company = await storage.getCompany(companyId);
+    const enriched = {
+      ...item,
+      effectiveUnitCost: getEffectiveUnitCost(item, company as CostingMethodCarrier | null),
+    };
+
     // Store in cache
-    await cache.set(cacheKey, item, CacheTTL.INVENTORY_ITEMS);
-    
-    res.json(item);
+    await cache.set(cacheKey, enriched, CacheTTL.INVENTORY_ITEMS);
+
+    res.json(enriched);
   });
 
   app.get("/api/inventory-items/:id/vendor-prices", requireAuth, async (req, res) => {
@@ -11488,7 +11500,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     try {
       const { costingMethod } = z.object({
-        costingMethod: z.enum(["last_cost", "wac"]),
+        costingMethod: z.enum(["last_cost", "weighted_average"]),
       }).parse(req.body);
 
       const company = await storage.updateCompany(req.params.id, { costingMethod });
@@ -11526,6 +11538,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateRecipe(recipeId, { computedCost: newCost });
       }
       await cacheInvalidator.invalidateRecipes(req.params.id);
+      // Inventory list/detail responses include a derived effectiveUnitCost
+      // computed from the company's costing method, so the cached enriched
+      // payload must be invalidated when that method flips.
+      await cacheInvalidator.invalidateInventory(req.params.id);
 
       res.json(company);
     } catch (error: any) {

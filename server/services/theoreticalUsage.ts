@@ -14,7 +14,9 @@ interface IngredientUsage {
   inventoryItemId: string;
   requiredQtyBaseUnit: number;
   baseUnitId: string;
-  costAtSale: number;
+  costAtSale: number;        // headline cost per company's costing method
+  costAtSaleLastCost: number; // always Last Cost basis (for dual-column variance)
+  costAtSaleWac: number;      // always WAC basis (for dual-column variance)
   sourceMenuItems: Array<{
     menuItemId: string;
     menuItemName: string;
@@ -87,6 +89,8 @@ export class TheoreticalUsageService {
           if (existing) {
             existing.requiredQtyBaseUnit += ingredient.requiredQtyBaseUnit;
             existing.costAtSale += ingredient.costAtSale;
+            existing.costAtSaleLastCost += ingredient.costAtSaleLastCost;
+            existing.costAtSaleWac += ingredient.costAtSaleWac;
             existing.sourceMenuItems.push(...ingredient.sourceMenuItems);
           } else {
             ingredientUsageMap.set(ingredient.inventoryItemId, ingredient);
@@ -107,13 +111,25 @@ export class TheoreticalUsageService {
         await storage.createTheoreticalUsageLines(usageLines);
       }
 
-      const totalTheoreticalCost = usageLines.reduce((sum, line) => sum + line.costAtSale, 0);
+      // Persist BOTH cost bases on the run so the variance report can always
+      // render Last Cost vs WAC side-by-side, regardless of which method the
+      // company has selected as its headline. We deliberately do NOT collapse
+      // these two values together — that would defeat the dual-column compare.
+      const ingredientUsages = Array.from(ingredientUsageMap.values());
+      const totalTheoreticalCostLastCost = ingredientUsages.reduce(
+        (sum, u) => sum + u.costAtSaleLastCost,
+        0,
+      );
+      const totalTheoreticalCostWAC = ingredientUsages.reduce(
+        (sum, u) => sum + u.costAtSaleWac,
+        0,
+      );
 
       const updatedRun = await storage.updateTheoreticalUsageRun(usageRun.id, companyId, {
         status: "completed",
         completedAt: new Date(),
-        totalTheoreticalCost,
-        totalTheoreticalCostWAC: totalTheoreticalCost,
+        totalTheoreticalCost: totalTheoreticalCostLastCost,
+        totalTheoreticalCostWAC,
       });
 
       return updatedRun || usageRun;
@@ -167,13 +183,27 @@ export class TheoreticalUsageService {
 
         // Note: Recipe quantities already account for yield (they specify "as purchased" amounts)
         // Do NOT apply yield percentage here, as that would double-count waste
+        //
+        // Compute three cost bases per ingredient:
+        //   - costAtSale: per the company's selected costing method (headline)
+        //   - costAtSaleLastCost: always Last Cost (pricePerUnit), regardless of toggle
+        //   - costAtSaleWac: always WAC (avgCostPerUnit), with Last-Cost fallback when WAC is 0
+        // The two pure bases let the variance report keep its side-by-side
+        // Last Cost vs WAC comparison no matter which method is selected.
+        const lastCostUnit = Number(item.pricePerUnit) || 0;
+        const wacUnit = Number(item.avgCostPerUnit) || 0;
+        const wacEffectiveUnit = wacUnit > 0 ? wacUnit : lastCostUnit;
         const cost = baseQty * getEffectiveUnitCost(item, company);
+        const costLastCost = baseQty * lastCostUnit;
+        const costWac = baseQty * wacEffectiveUnit;
 
         ingredients.push({
           inventoryItemId: item.id,
           requiredQtyBaseUnit: baseQty,
           baseUnitId: item.unitId,
           costAtSale: cost,
+          costAtSaleLastCost: costLastCost,
+          costAtSaleWac: costWac,
           sourceMenuItems: [{
             menuItemId,
             menuItemName,

@@ -2134,7 +2134,7 @@ export class DatabaseStorage implements IStorage {
       .select({ costingMethod: companies.costingMethod })
       .from(companies)
       .where(eq(companies.id, companyId));
-    const costingMethod = companyForCosting?.costingMethod === "wac" ? "wac" : "last_cost";
+    const costingMethod = companyForCosting?.costingMethod === "weighted_average" ? "weighted_average" : "last_cost";
 
     // Calculate usage for each item
     const usageData = Array.from(allItemIds).map(itemId => {
@@ -2163,7 +2163,7 @@ export class DatabaseStorage implements IStorage {
         usage,
         unitId: item?.unitId || '',
         unitName: item?.unitName || 'unit',
-        pricePerUnit: (costingMethod === "wac"
+        pricePerUnit: (costingMethod === "weighted_average"
           ? (item?.avgCostPerUnit || item?.pricePerUnit || 0)
           : (item?.pricePerUnit || 0)),
         isNegativeUsage,

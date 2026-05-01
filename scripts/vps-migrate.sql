@@ -866,6 +866,23 @@ BEGIN
     END IF;
 
     INSERT INTO _migration_log (version, description)
-      VALUES ('v033', 'Task #106: Add companies.costing_method (last_cost | wac)');
+      VALUES ('v033', 'Task #106: Add companies.costing_method (last_cost | weighted_average)');
+  END IF;
+END $$;
+
+-- v034 — Task #106 follow-up: rename costing_method value 'wac' to 'weighted_average'
+-- An earlier build of v033 used the short value 'wac'. We standardize on the
+-- spec value 'weighted_average' across schema, API, and migrations. This block
+-- migrates any rows that picked up the short value before the rename.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v034') THEN
+
+    UPDATE companies
+       SET costing_method = 'weighted_average'
+     WHERE costing_method = 'wac';
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v034', 'Task #106: standardize companies.costing_method value wac -> weighted_average');
   END IF;
 END $$;

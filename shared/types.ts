@@ -10,6 +10,7 @@ export interface EnrichedInventoryItem {
   pluSku: string | null;
   pricePerUnit: number;
   avgCostPerUnit: number;
+  effectiveUnitCost: number; // resolved per company costing method (last_cost or weighted_average)
   unitId: string;
   caseSize: number;
   containerSize: number | null;

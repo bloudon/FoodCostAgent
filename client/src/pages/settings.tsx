@@ -171,7 +171,7 @@ export default function Settings() {
   });
 
   const updateCostingMethodMutation = useMutation({
-    mutationFn: async (costingMethod: "last_cost" | "wac") => {
+    mutationFn: async (costingMethod: "last_cost" | "weighted_average") => {
       if (!selectedCompanyId) throw new Error("No company selected");
       return await apiRequest("PATCH", `/api/companies/${selectedCompanyId}/costing-method`, { costingMethod });
     },
@@ -697,9 +697,9 @@ export default function Settings() {
               <div className="space-y-2 max-w-md">
                 <Label htmlFor="company-costing-method">Inventory Costing Method</Label>
                 <Select
-                  value={(company?.costingMethod === "wac" ? "wac" : "last_cost") as string}
+                  value={(company?.costingMethod === "weighted_average" ? "weighted_average" : "last_cost") as string}
                   onValueChange={(value) => {
-                    if (value !== "last_cost" && value !== "wac") return;
+                    if (value !== "last_cost" && value !== "weighted_average") return;
                     if (value === (company?.costingMethod ?? "last_cost")) return;
                     updateCostingMethodMutation.mutate(value);
                   }}
@@ -712,7 +712,7 @@ export default function Settings() {
                     <SelectItem value="last_cost" data-testid="option-costing-last-cost">
                       Last Cost (most recent purchase price)
                     </SelectItem>
-                    <SelectItem value="wac" data-testid="option-costing-wac">
+                    <SelectItem value="weighted_average" data-testid="option-costing-weighted-average">
                       Weighted Average Cost (WAC)
                     </SelectItem>
                   </SelectContent>

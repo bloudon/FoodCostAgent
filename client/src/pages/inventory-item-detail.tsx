@@ -47,6 +47,7 @@ type InventoryItem = {
   active: number;
   pricePerUnit: number;
   avgCostPerUnit: number;
+  effectiveUnitCost?: number;
   caseSize: number;
   containerSize: number | null;
   containerLabel: string | null;
@@ -1372,16 +1373,25 @@ export default function InventoryItemDetail() {
               <CardDescription>Cost and pricing information</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">Effective Cost (per {unit?.abbreviation || 'unit'})</Label>
+                <div className="text-3xl font-semibold" data-testid="text-effective-cost">
+                  ${(item.effectiveUnitCost ?? item.pricePerUnit)?.toFixed(2) || '0.00'}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  This is the cost used for recipe costing and on-hand valuation, based on your company's costing method.
+                </p>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-muted-foreground">Last Cost (per {unit?.abbreviation || 'unit'})</Label>
-                  <div className="text-2xl font-semibold" data-testid="text-last-cost">
+                  <div className="text-2xl font-semibold text-muted-foreground" data-testid="text-last-cost">
                     ${item.pricePerUnit?.toFixed(2) || '0.00'}
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-muted-foreground">Avg Cost / WAC (per {unit?.abbreviation || 'unit'})</Label>
-                  <div className="text-2xl font-semibold" data-testid="text-avg-cost">
+                  <div className="text-2xl font-semibold text-muted-foreground" data-testid="text-avg-cost">
                     ${item.avgCostPerUnit?.toFixed(2) || '0.00'}
                   </div>
                 </div>

@@ -57,6 +57,7 @@ type InventoryItemDisplay = {
   pluSku: string;
   pricePerUnit: number;
   avgCostPerUnit: number;
+  effectiveUnitCost: number;
   unitId: string;
   caseSize: number;
   imageUrl: string | null;
@@ -361,7 +362,8 @@ export default function InventoryItems() {
                   <TableHead className="hidden sm:table-cell">Unit</TableHead>
                   <TableHead className="text-right hidden xl:table-cell">Par</TableHead>
                   <TableHead className="text-right hidden xl:table-cell">Reorder</TableHead>
-                  <TableHead className="text-right">Last Cost</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="text-right hidden lg:table-cell">Last Cost</TableHead>
                   <TableHead className="text-right hidden lg:table-cell">Avg Cost (WAC)</TableHead>
                   <TableHead className="text-right hidden md:table-cell">Quantity</TableHead>
                   <TableHead className="text-right hidden md:table-cell">Est. On-Hand</TableHead>
@@ -466,15 +468,22 @@ export default function InventoryItems() {
                       >
                         {item.reorderLevel ? item.reorderLevel.toFixed(1) : "-"}
                       </TableCell>
-                      <TableCell 
-                        className="text-right font-mono cursor-pointer"
+                      <TableCell
+                        className="text-right font-mono font-semibold cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                        data-testid={`cell-effective-cost-${item.id}`}
+                      >
+                        ${item.effectiveUnitCost ? item.effectiveUnitCost.toFixed(2) : (item.pricePerUnit ? item.pricePerUnit.toFixed(2) : '0.00')}
+                      </TableCell>
+                      <TableCell
+                        className="text-right font-mono cursor-pointer hidden lg:table-cell text-muted-foreground"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                         data-testid={`cell-last-cost-${item.id}`}
                       >
                         ${item.pricePerUnit ? item.pricePerUnit.toFixed(2) : '0.00'}
                       </TableCell>
-                      <TableCell 
-                        className="text-right font-mono cursor-pointer hidden lg:table-cell"
+                      <TableCell
+                        className="text-right font-mono cursor-pointer hidden lg:table-cell text-muted-foreground"
                         onClick={() => window.location.href = `/inventory-items/${item.id}`}
                         data-testid={`cell-avg-cost-${item.id}`}
                       >
