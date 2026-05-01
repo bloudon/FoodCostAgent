@@ -182,6 +182,13 @@ export default function Settings() {
       // Recipe costs were just recalculated server-side; refresh recipe-related caches.
       queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      // Inventory list/detail responses include `effectiveUnitCost` which is
+      // derived from the company's costing method, so they must be refetched.
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      // Theoretical Food Cost / variance reports surface headline cost totals
+      // that depend on the costing method.
+      queryClient.invalidateQueries({ queryKey: ["/api/theoretical-usage-runs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/variance"] });
       toast({
         title: "Costing method updated",
         description: "Recipe costs have been recalculated using the new method.",
