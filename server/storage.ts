@@ -2013,12 +2013,23 @@ export class DatabaseStorage implements IStorage {
       .where(eq(inventoryCountLines.inventoryCountId, previousCountId))
       .groupBy(inventoryCountLines.inventoryItemId, inventoryCountLines.unitId);
 
-    // Get all count lines for current count, aggregated by inventoryItemId
+    // Get all count lines for current count, aggregated by inventoryItemId.
+    // Also pull a quantity-weighted average of the FROZEN unitCost snapshot
+    // (captured when the count was taken) so the variance report is immune to
+    // later live-price drift, costing-method toggles, etc.
     const currentLines = await db
       .select({
         inventoryItemId: inventoryCountLines.inventoryItemId,
         totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
         unitId: inventoryCountLines.unitId,
+        // Quantity-weighted unit cost; falls back to plain MAX when total qty
+        // is 0 to avoid division-by-zero (zero-qty lines still carry a cost).
+        snapshotUnitCost: sql<number>`COALESCE(
+            CASE WHEN SUM(${inventoryCountLines.qty}) > 0
+              THEN SUM(${inventoryCountLines.qty} * ${inventoryCountLines.unitCost}) / SUM(${inventoryCountLines.qty})
+              ELSE MAX(${inventoryCountLines.unitCost})
+            END,
+          0)`.as('snapshot_unit_cost'),
       })
       .from(inventoryCountLines)
       .where(eq(inventoryCountLines.inventoryCountId, currentCountId))
@@ -2081,8 +2092,16 @@ export class DatabaseStorage implements IStorage {
       );
 
     // Create maps for easy lookup
-    const previousMap = new Map(previousLines.map(l => [l.inventoryItemId, { qty: l.totalQty, unitId: l.unitId }]));
-    const currentMap = new Map(currentLines.map(l => [l.inventoryItemId, { qty: l.totalQty, unitId: l.unitId }]));
+    const previousMap = new Map<string, { qty: number; unitId: string }>(
+      previousLines.map(l => [l.inventoryItemId, { qty: l.totalQty, unitId: l.unitId }])
+    );
+    const currentMap = new Map<string, { qty: number; unitId: string; snapshotUnitCost: number }>(
+      currentLines.map(l => [l.inventoryItemId, {
+        qty: l.totalQty,
+        unitId: l.unitId,
+        snapshotUnitCost: Number(l.snapshotUnitCost) || 0,
+      }])
+    );
     
     // Aggregate received items by inventory item with receipt IDs
     const receivedMap = new Map<string, { qty: number; receiptIds: Set<string> }>();
@@ -2129,7 +2148,8 @@ export class DatabaseStorage implements IStorage {
 
     const itemDetailsMap = new Map(itemDetails.map(item => [item.id, item]));
 
-    // Resolve company costing method (Last Cost vs WAC) once for this report
+    // Resolve company costing method (Last Cost vs WAC) once. Used only as a
+    // fallback when the count line snapshot cost is missing (legacy rows).
     const [companyForCosting] = await db
       .select({ costingMethod: companies.costingMethod })
       .from(companies)
@@ -2140,17 +2160,30 @@ export class DatabaseStorage implements IStorage {
     const usageData = Array.from(allItemIds).map(itemId => {
       const item = itemDetailsMap.get(itemId);
       const previousQty = previousMap.get(itemId)?.qty || 0;
-      const currentQty = currentMap.get(itemId)?.qty || 0;
+      const currentEntry = currentMap.get(itemId);
+      const currentQty = currentEntry?.qty || 0;
       const receivedData = receivedMap.get(itemId);
       const receivedQty = receivedData?.qty || 0;
       const receiptIds = receivedData ? Array.from(receivedData.receiptIds) : [];
       const transferredData = transferredMap.get(itemId);
       const transferredQty = transferredData?.qty || 0;
       const transferOrderIds = transferredData ? Array.from(transferredData.transferOrderIds) : [];
-      
+
       // Usage = Previous + Received - Transferred - Current
       const usage = (previousQty + receivedQty - transferredQty) - currentQty;
       const isNegativeUsage = usage < 0;
+
+      // Prefer the FROZEN unit cost captured on the current count's lines so
+      // historical variance dollars do not drift when the company toggles
+      // costing method or when the live item price changes after the count.
+      // Fall back to the live cost (resolved per the company's selected
+      // method) when the snapshot is missing — this happens for legacy count
+      // rows written before the snapshot column existed.
+      const snapshotCost = currentEntry?.snapshotUnitCost || 0;
+      const liveCost = costingMethod === "weighted_average"
+        ? (item?.avgCostPerUnit || item?.pricePerUnit || 0)
+        : (item?.pricePerUnit || 0);
+      const pricePerUnit = snapshotCost > 0 ? snapshotCost : liveCost;
 
       return {
         inventoryItemId: itemId,
@@ -2163,9 +2196,7 @@ export class DatabaseStorage implements IStorage {
         usage,
         unitId: item?.unitId || '',
         unitName: item?.unitName || 'unit',
-        pricePerUnit: (costingMethod === "weighted_average"
-          ? (item?.avgCostPerUnit || item?.pricePerUnit || 0)
-          : (item?.pricePerUnit || 0)),
+        pricePerUnit,
         isNegativeUsage,
         previousCountId,
         currentCountId,
