@@ -995,18 +995,25 @@ function RecipeBuilderContent() {
     if (!baseUnit) return units;
 
     const result = new Map<string, Unit>();
-    for (const u of units) {
-      if (u.kind === baseUnit.kind) result.set(u.id, u);
+
+    // Whitelisted per-item Recipe Units come first, in the user-defined
+    // sortOrder, so the dropdown surfaces the user's preferred unit at the
+    // top of its kind group (Map preserves insertion order).
+    if (inventoryItemId && companyRecipeUnits) {
+      const orderedWhitelist = companyRecipeUnits
+        .filter((row) => row.inventoryItemId === inventoryItemId && row.isIssueUnit === 0)
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder);
+      for (const row of orderedWhitelist) {
+        const u = units.find((x) => x.id === row.unitId);
+        if (u) result.set(u.id, u);
+      }
     }
 
-    if (inventoryItemId && companyRecipeUnits) {
-      const whitelistedIds = new Set(
-        companyRecipeUnits
-          .filter((row) => row.inventoryItemId === inventoryItemId && row.isIssueUnit === 0)
-          .map((row) => row.unitId)
-      );
-      for (const u of units) {
-        if (whitelistedIds.has(u.id)) result.set(u.id, u);
+    // Then fill in the remaining same-kind units in master order.
+    for (const u of units) {
+      if (u.kind === baseUnit.kind && !result.has(u.id)) {
+        result.set(u.id, u);
       }
     }
 

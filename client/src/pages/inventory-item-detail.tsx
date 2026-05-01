@@ -1,7 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useStoreContext } from "@/hooks/use-store-context";
-import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   Table,
   TableBody,
@@ -115,9 +132,134 @@ type VendorItem = {
   } | null;
 };
 
+// A single draggable row inside RecipeUnitsList. Drag is disabled while the row
+// is being edited so the controls remain easy to interact with.
+function SortableRecipeUnitRow({
+  row,
+  unit,
+  isEditing,
+  editQty,
+  setEditQty,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+  onDelete,
+  deletePending,
+}: {
+  row: InventoryItemUnit;
+  unit: Unit | undefined;
+  isEditing: boolean;
+  editQty: string;
+  setEditQty: (v: string) => void;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSave: () => void;
+  onDelete: () => void;
+  deletePending: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: row.id, disabled: isEditing });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className="border-b last:border-b-0"
+      data-testid={`row-recipe-unit-${row.id}`}
+    >
+      <td className="py-1.5 pr-2 w-8">
+        <button
+          type="button"
+          className="cursor-grab active:cursor-grabbing touch-none p-1 hover-elevate rounded disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={isEditing}
+          {...attributes}
+          {...listeners}
+          data-testid={`drag-handle-recipe-unit-${row.id}`}
+          aria-label="Drag to reorder"
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </button>
+      </td>
+      <td className="py-1.5 pr-3">{unit ? formatUnitName(unit.name) : row.unitId}</td>
+      <td className="py-1.5 pr-3">
+        {isEditing ? (
+          <Input
+            type="number"
+            step="any"
+            min="0"
+            value={editQty}
+            onChange={(e) => setEditQty(e.target.value)}
+            className="h-8 w-28"
+            data-testid={`input-edit-qty-${row.id}`}
+          />
+        ) : (
+          <span className="text-muted-foreground">{row.qtyPerInventoryUnit}</span>
+        )}
+      </td>
+      <td className="py-1.5">
+        <div className="flex items-center gap-1">
+          {isEditing ? (
+            <>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onSave}
+                data-testid={`button-save-${row.id}`}
+              >
+                <Check className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onCancelEdit}
+                data-testid={`button-cancel-${row.id}`}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onStartEdit}
+                data-testid={`button-edit-${row.id}`}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onDelete}
+                disabled={deletePending}
+                data-testid={`button-delete-${row.id}`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 // Per-item Recipe / Issue unit list. Renders the unit whitelist for the given
-// item, with inline add (unit + factor), edit (factor only), and delete.
-// `kind` switches between Recipe Units (isIssueUnit=0) and Issue Units (=1).
+// item, with inline add (unit + factor), edit (factor only), delete, and
+// drag-and-drop reordering. `kind` switches between Recipe Units (isIssueUnit=0)
+// and Issue Units (=1).
 function RecipeUnitsList({
   itemId,
   itemUnitId,
@@ -199,6 +341,56 @@ function RecipeUnitsList({
     },
   });
 
+  const reorderMutation = useMutation({
+    mutationFn: async (orderedIds: string[]) => {
+      return apiRequest("POST", `/api/inventory-items/${itemId}/recipe-units/reorder`, {
+        orderedIds,
+        type: kind,
+      });
+    },
+    onMutate: async (orderedIds: string[]) => {
+      // Cancel any in-flight refetch so it doesn't overwrite our optimistic update.
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<InventoryItemUnit[]>(queryKey);
+      if (previous) {
+        const byId = new Map(previous.map((r) => [r.id, r]));
+        const reordered = orderedIds
+          .map((id, i) => {
+            const r = byId.get(id);
+            return r ? { ...r, sortOrder: i } : null;
+          })
+          .filter((r): r is InventoryItemUnit => r !== null);
+        queryClient.setQueryData<InventoryItemUnit[]>(queryKey, reordered);
+      }
+      return { previous };
+    },
+    onError: (err: any, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKey, context.previous);
+      }
+      toast({ title: "Could not reorder", description: err?.message, variant: "destructive" });
+    },
+    onSettled: () => {
+      invalidate();
+    },
+  });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !rows) return;
+    const oldIndex = rows.findIndex((r) => r.id === active.id);
+    const newIndex = rows.findIndex((r) => r.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const newOrder = arrayMove(rows, oldIndex, newIndex);
+    reorderMutation.mutate(newOrder.map((r) => r.id));
+  };
+
   const [newUnitId, setNewUnitId] = useState<string>("");
   const [newQty, setNewQty] = useState<string>("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -234,103 +426,66 @@ function RecipeUnitsList({
         </p>
       </div>
 
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b text-xs text-muted-foreground">
-            <th className="pb-2 text-left font-medium">Unit</th>
-            <th className="pb-2 text-left font-medium">Qty per 1 {itemUnitAbbrev || "inventory unit"}</th>
-            <th className="w-24 pb-2"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {isLoading && (
-            <tr>
-              <td colSpan={3} className="py-3 text-muted-foreground">Loading…</td>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-xs text-muted-foreground">
+              <th className="pb-2 w-8"></th>
+              <th className="pb-2 text-left font-medium">Unit</th>
+              <th className="pb-2 text-left font-medium">Qty per 1 {itemUnitAbbrev || "inventory unit"}</th>
+              <th className="w-24 pb-2"></th>
             </tr>
-          )}
-          {!isLoading && rows && rows.length === 0 && (
-            <tr>
-              <td colSpan={3} className="py-3 text-muted-foreground">No units configured.</td>
-            </tr>
-          )}
-          {rows?.map((row) => {
-            const unit = units?.find((u) => u.id === row.unitId);
-            const isEditing = editingId === row.id;
-            return (
-              <tr key={row.id} className="border-b last:border-b-0" data-testid={`row-recipe-unit-${row.id}`}>
-                <td className="py-1.5 pr-3">{unit ? formatUnitName(unit.name) : row.unitId}</td>
-                <td className="py-1.5 pr-3">
-                  {isEditing ? (
-                    <Input
-                      type="number"
-                      step="any"
-                      min="0"
-                      value={editQty}
-                      onChange={(e) => setEditQty(e.target.value)}
-                      className="h-8 w-28"
-                      data-testid={`input-edit-qty-${row.id}`}
-                    />
-                  ) : (
-                    <span className="text-muted-foreground">{row.qtyPerInventoryUnit}</span>
-                  )}
-                </td>
-                <td className="py-1.5">
-                  <div className="flex items-center gap-1">
-                    {isEditing ? (
-                      <>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => {
-                            const qty = parseFloat(editQty);
-                            if (qty > 0) {
-                              updateMutation.mutate({ rowId: row.id, qtyPerInventoryUnit: qty });
-                            }
-                          }}
-                          data-testid={`button-save-${row.id}`}
-                        >
-                          <Check className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setEditingId(null)}
-                          data-testid={`button-cancel-${row.id}`}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => {
-                            setEditingId(row.id);
-                            setEditQty(String(row.qtyPerInventoryUnit));
-                          }}
-                          data-testid={`button-edit-${row.id}`}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => deleteMutation.mutate(row.id)}
-                          disabled={deleteMutation.isPending}
-                          data-testid={`button-delete-${row.id}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </td>
+          </thead>
+          <tbody>
+            {isLoading && (
+              <tr>
+                <td colSpan={4} className="py-3 text-muted-foreground">Loading…</td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            )}
+            {!isLoading && rows && rows.length === 0 && (
+              <tr>
+                <td colSpan={4} className="py-3 text-muted-foreground">No units configured.</td>
+              </tr>
+            )}
+            <SortableContext
+              items={(rows ?? []).map((r) => r.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {rows?.map((row) => {
+                const unit = units?.find((u) => u.id === row.unitId);
+                const isEditing = editingId === row.id;
+                return (
+                  <SortableRecipeUnitRow
+                    key={row.id}
+                    row={row}
+                    unit={unit}
+                    isEditing={isEditing}
+                    editQty={editQty}
+                    setEditQty={setEditQty}
+                    onStartEdit={() => {
+                      setEditingId(row.id);
+                      setEditQty(String(row.qtyPerInventoryUnit));
+                    }}
+                    onCancelEdit={() => setEditingId(null)}
+                    onSave={() => {
+                      const qty = parseFloat(editQty);
+                      if (qty > 0) {
+                        updateMutation.mutate({ rowId: row.id, qtyPerInventoryUnit: qty });
+                      }
+                    }}
+                    onDelete={() => deleteMutation.mutate(row.id)}
+                    deletePending={deleteMutation.isPending}
+                  />
+                );
+              })}
+            </SortableContext>
+          </tbody>
+        </table>
+      </DndContext>
 
       <div className="flex flex-wrap items-end gap-2 border-t pt-3">
         <div className="space-y-1">

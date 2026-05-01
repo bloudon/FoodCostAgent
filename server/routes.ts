@@ -2925,22 +2925,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
 
     // Per-item Recipe Unit whitelist: when an inventoryItemId is supplied,
-    // union the whitelisted units onto the same-kind list. Imperial/metric and
-    // count units mingle freely here — that's the whole point of per-item
-    // factors.
+    // surface the whitelisted units first in the user-defined sortOrder, then
+    // the rest of the same-kind compatible units. Imperial/metric and count
+    // units mingle freely here — that's the whole point of per-item factors.
     if (inventoryItemId && typeof inventoryItemId === 'string') {
       const item = await storage.getInventoryItem(inventoryItemId);
       if (item && item.companyId === companyId) {
+        // storage.getInventoryItemUnits already orders by isIssueUnit then sortOrder.
         const perItem = await storage.getInventoryItemUnits(inventoryItemId);
-        const whitelistedRecipeUnitIds = new Set(
-          perItem.filter((u) => u.isIssueUnit === 0).map((u) => u.unitId)
-        );
-        const have = new Set(compatibleUnits.map((u) => u.id));
-        for (const u of units) {
-          if (whitelistedRecipeUnitIds.has(u.id) && !have.has(u.id)) {
-            compatibleUnits.push(u);
-          }
-        }
+        const recipeWhitelist = perItem.filter((u) => u.isIssueUnit === 0);
+        const unitById = new Map(units.map((u) => [u.id, u] as const));
+        const orderedWhitelistUnits = recipeWhitelist
+          .map((row) => unitById.get(row.unitId))
+          .filter((u): u is typeof units[number] => Boolean(u));
+        const whitelistedIds = new Set(orderedWhitelistUnits.map((u) => u.id));
+        const remaining = compatibleUnits.filter((u) => !whitelistedIds.has(u.id));
+        const result = [...orderedWhitelistUnits, ...remaining];
+        return res.json(result);
       }
     }
 
@@ -6287,10 +6288,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Inventory item not found" });
       }
       const bodySchema = z.object({
-        orderedIds: z.array(z.string().uuid()),
+        // The inventory_item_units.id column is a varchar; existing rows may
+        // not all be UUIDs (legacy/seed data uses nanoid-style ids). Match the
+        // PATCH/DELETE handlers on the same resource and accept any non-empty
+        // string here — storage.reorderInventoryItemUnits scopes the update to
+        // the parent item so unknown ids are silently ignored.
+        orderedIds: z.array(z.string().min(1)),
         type: z.enum(["recipe", "issue"]).optional().default("recipe"),
       });
       const { orderedIds, type } = bodySchema.parse(req.body);
+      // Reject duplicate ids — repeated entries would assign ambiguous
+      // sortOrder values to the same row and corrupt the order.
+      if (new Set(orderedIds).size !== orderedIds.length) {
+        return res.status(400).json({ error: "orderedIds must not contain duplicates" });
+      }
       await storage.reorderInventoryItemUnits(
         req.params.id,
         type === "issue" ? 1 : 0,
