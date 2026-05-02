@@ -71,7 +71,6 @@ export default function WebsiteHome() {
         lang={lang}
       />
 
-      {/* ── Hero ──────────────────────────────────────────────── */}
       <section className="relative min-h-[90vh] flex items-center" data-testid="hero-section">
         <HeroBackground />
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
@@ -111,7 +110,6 @@ export default function WebsiteHome() {
         </div>
       </section>
 
-      {/* ── Stats bar ─────────────────────────────────────────── */}
       <section className="py-12 bg-gray-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
@@ -125,7 +123,6 @@ export default function WebsiteHome() {
         </div>
       </section>
 
-      {/* ── Features / How It Works ───────────────────────────── */}
       <section className="py-20 bg-white" id="features">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
@@ -161,7 +158,6 @@ export default function WebsiteHome() {
         </div>
       </section>
 
-      {/* ── ROI / Labor Savings ───────────────────────────────── */}
       <section className="py-20 bg-gray-900" id="roi" data-testid="roi-section">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
@@ -200,7 +196,6 @@ export default function WebsiteHome() {
         </div>
       </section>
 
-      {/* ── Recipe Costing ───────────────────────────────────── */}
       <section className="py-20 bg-gray-50" id="recipe-costing" data-testid="recipe-costing-section">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
@@ -240,7 +235,6 @@ export default function WebsiteHome() {
         </div>
       </section>
 
-      {/* ── How It Works ─────────────────────────────────────── */}
       <section className="py-20 bg-green-900" id="how-it-works">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
@@ -260,7 +254,6 @@ export default function WebsiteHome() {
         </div>
       </section>
 
-      {/* ── CTA Bottom ───────────────────────────────────────── */}
       <section className="py-20 bg-gray-50" id="cta-bottom">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">

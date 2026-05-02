@@ -72,6 +72,6 @@ export const TIER_COLORS: Record<Tier, string> = {
 };
 
 export function getTierLabel(tier: DbTier | null | undefined): string {
-  if (!tier || tier === "free") return "Free (Legacy)";
+  if (!tier || tier === "free") return "Legacy";
   return TIER_LABELS[tier] ?? tier;
 }

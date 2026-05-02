@@ -93,7 +93,6 @@ export default function WebsitePricing() {
         lang={lang}
       />
 
-      {/* ── Header ───────────────────────────────────────────── */}
       <section className="py-16 bg-gradient-to-b from-gray-900 to-gray-800 text-center">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <span className="inline-block text-xs font-semibold uppercase tracking-widest text-green-400 mb-4">
@@ -108,7 +107,6 @@ export default function WebsitePricing() {
         </div>
       </section>
 
-      {/* ── Multi-loc callout ─────────────────────────────────── */}
       {isMultiLoc && (
         <div className="bg-orange-50 border-b border-orange-200 py-4">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -120,7 +118,6 @@ export default function WebsitePricing() {
         </div>
       )}
 
-      {/* ── Plan Cards ───────────────────────────────────────── */}
       <section className="py-16 bg-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
 
@@ -255,7 +252,6 @@ export default function WebsitePricing() {
         </div>
       </section>
 
-      {/* ── Comparison Table ─────────────────────────────────── */}
       <section className="py-16 bg-gray-50">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading title={pricing.comparisonTitle} subtitle={pricing.comparisonSubtitle} />
@@ -263,7 +259,6 @@ export default function WebsitePricing() {
         </div>
       </section>
 
-      {/* ── FAQ ──────────────────────────────────────────────── */}
       <section className="py-16 bg-white">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading title={pricing.faqTitle} />
@@ -285,7 +280,6 @@ export default function WebsitePricing() {
         </div>
       </section>
 
-      {/* ── CTA ──────────────────────────────────────────────── */}
       <section className="py-16 bg-green-900 text-center">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-white mb-4">
@@ -293,8 +287,8 @@ export default function WebsitePricing() {
           </h2>
           <p className="text-green-200 mb-8 text-sm">
             {lang === "es"
-              ? "Acceso completo. Sin tarjeta de crédito. Cancela cuando quieras."
-              : "Full access from day one. No credit card required. Cancel anytime."}
+              ? "Acceso completo. Configuración con IA incluida. Cancela cuando quieras."
+              : "Full access from day one. AI-powered setup included. Cancel anytime."}
           </p>
           <CTAButton href={appLink("/signup")} large>
             {pricing.startFreeTrial}

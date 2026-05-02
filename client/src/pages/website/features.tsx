@@ -66,7 +66,6 @@ export default function WebsiteFeatures() {
         lang={lang}
       />
 
-      {/* ── Page Header ──────────────────────────────────────── */}
       <section className="py-16 bg-gradient-to-b from-gray-900 to-gray-800 text-white text-center">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <span className="inline-block text-xs font-semibold uppercase tracking-widest text-green-400 mb-4">
@@ -84,7 +83,6 @@ export default function WebsiteFeatures() {
         </div>
       </section>
 
-      {/* ── Three Photo-First Sections ───────────────────────── */}
       {hasNewSections && (
         <section className="bg-white">
           {feat.sections.map((section, sectionIdx) => {
@@ -141,7 +139,6 @@ export default function WebsiteFeatures() {
         </section>
       )}
 
-      {/* ── Feature Groups (detail list) ─────────────────────── */}
       <section className="py-20 bg-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-24">
           {feat.groups.map((group, i) => {
@@ -190,7 +187,6 @@ export default function WebsiteFeatures() {
         </div>
       </section>
 
-      {/* ── Tier Upgrade Path ────────────────────────────────── */}
       <section className="py-16 bg-gray-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
@@ -216,7 +212,6 @@ export default function WebsiteFeatures() {
         </div>
       </section>
 
-      {/* ── CTA ──────────────────────────────────────────────── */}
       <section className="py-20 bg-green-900 text-center">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-white mb-4">

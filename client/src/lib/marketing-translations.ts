@@ -42,12 +42,12 @@ export const translations = {
         "Point your camera at your menu, your recipe cards, your vendor invoices, your shelves — FnB Cost Pro does the rest. AI-powered setup and counting for restaurants, bars, and Food & Beverage businesses of every size.",
       ctaTrial: "Start Your 14-Day Free Trial",
       ctaPricing: "View Pricing",
-      trialNote: "14-day free trial. No credit card required to start.",
+      trialNote: "14-day free trial. Cancel anytime.",
       stats: [
         { value: "8 hrs", label: "Typical weekly data entry eliminated" },
         { value: "$300+", label: "Monthly labor savings for most operators" },
         { value: "3–5%", label: "Typical food cost reduction" },
-        { value: "14 days", label: "Free trial — no credit card needed" },
+        { value: "14 days", label: "Free trial — full access included" },
       ],
       roiLabel: "It Pays for Itself",
       roiTitle: "Stop Paying Someone to Type. Start Using Your Phone.",
@@ -157,7 +157,7 @@ export const translations = {
       ctaBottomContact: "Talk to Us",
       ctaChecklist: [
         "14-day free trial",
-        "No credit card required",
+        "Cancel anytime",
         "AI setup included from day one",
         "Cancel anytime",
       ],
@@ -176,7 +176,7 @@ export const translations = {
       badgesNote: "badges show which plan includes each feature",
       startFree: "Start Free Trial",
       upgradeTitle: "The Right Plan for Your Operation",
-      upgradeSubtitle: "Start with a 14-day trial. No credit card required.",
+      upgradeSubtitle: "Start with a 14-day trial. Cancel anytime.",
       upgradeFreeTitle: "",
       upgradeFreebody: "",
       upgradeStarterTitle: "Starter — One Location",
@@ -190,7 +190,7 @@ export const translations = {
         "Everything in Starter plus AI shelf scanning, invoice auto-matching, transfer orders between stores, cross-shop vendor pricing, QuickBooks export, and unlimited locations. Built for operators running more than one store.",
       ctaTitle: "Start Your 14-Day Free Trial",
       ctaSubtitle:
-        "Full access from day one. No credit card required. AI-powered setup included.",
+        "Full access from day one. AI-powered setup included. Cancel anytime.",
       getStartedFree: "Start Free Trial",
       tierLabels: { free: "Free", basic: "Starter", pro: "Pro" },
       sections: [
@@ -356,7 +356,7 @@ export const translations = {
       badge: "Simple, Transparent Pricing",
       headline: "A Plan for Every Operation",
       subheadline:
-        "All paid plans include AI setup scanning, live recipe costing, vendor order guides, and a 14-day free trial. No credit card required to start.",
+        "All paid plans include AI setup scanning, live recipe costing, vendor order guides, and a 14-day free trial. Cancel anytime.",
       termLabels: { monthly: "Monthly", annual: "Annual" },
       savings: { monthly: null, annual: "Save ~14%" },
       mostPopular: "Most Popular",
@@ -365,7 +365,7 @@ export const translations = {
       pricingUnavailable: "Pricing not available",
       startFreeTrial: "Start 14-Day Free Trial",
       contactSales: "Contact Sales",
-      noCardRequired: "No credit card required",
+      noCardRequired: "Cancel anytime",
       fourteenDayTrial: "14-day free trial included",
       tierNames: { free: "Free", basic: "Starter", pro: "Pro", enterprise: "Enterprise" },
       intervalLabels: { month: "month", year: "year", week: "week", day: "day" },
@@ -381,7 +381,7 @@ export const translations = {
       faqItems: [
         {
           q: "Is there a free plan?",
-          a: "There's no permanent free plan — but every paid plan comes with a 14-day free trial with full access. No credit card is required to start your trial.",
+          a: "There's no permanent free plan — but every paid plan comes with a 14-day free trial with full access. Cancel anytime.",
         },
         {
           q: "How fast does it pay for itself?",
@@ -871,7 +871,7 @@ export const translations = {
       pricingUnavailable: "Precio no disponible",
       startFreeTrial: "Iniciar prueba de 14 días",
       contactSales: "Contactar ventas",
-      noCardRequired: "Sin tarjeta de crédito",
+      noCardRequired: "Cancela cuando quieras",
       fourteenDayTrial: "Prueba gratuita de 14 días",
       tierNames: { free: "Gratis", basic: "Starter", pro: "Pro", enterprise: "Enterprise" },
       intervalLabels: { month: "mes", year: "año", week: "semana", day: "día" },

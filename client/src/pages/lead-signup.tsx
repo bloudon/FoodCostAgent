@@ -72,7 +72,7 @@ export default function LeadSignup() {
           </div>
           <CardTitle data-testid="text-signup-title">Start Your Free Beta</CardTitle>
           <CardDescription>
-            Create your account in seconds. No credit card required.
+            Create your account to start your 14-day trial.
           </CardDescription>
         </CardHeader>
         <CardContent>
