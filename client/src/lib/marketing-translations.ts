@@ -30,16 +30,16 @@ export const translations = {
     },
     home: {
       meta: {
-        title: "FnB Cost Pro — Photo-First Back of House Management for Restaurants",
+        title: "FnB Cost Pro — Restaurant Inventory Management & Back of House Software",
         description:
-          "FnB Cost Pro is photo-first back of house (BOH) management for restaurants. Scan menus, recipes, invoices, and shelves with your phone. No keyboard required.",
+          "FnB Cost Pro is restaurant inventory management and back of house (BOH) software for F&B operators. Track food costs, count stock, manage recipes, and scan vendor invoices — all from your phone.",
       },
       badge: "Picture This.",
       headline1: "Your whole kitchen.",
       headline2: "Just your phone.",
       headline3: "",
       subheadline:
-        "Picture this: your menu, your recipes, your vendor invoices — all in the system from a photo. No keyboard, no spreadsheets, no re-entry. Traditional software takes weeks to set up. FnB Cost Pro takes a day.",
+        "Picture this: your menu, your recipes, your vendor invoices, your restaurant inventory — all in the system from a photo. No keyboard, no spreadsheets, no re-entry. Traditional software takes weeks to set up. FnB Cost Pro takes a day.",
       ctaTrial: "Upload Your Menu Now",
       ctaPricing: "View Pricing",
       trialNote: "Full setup in under a day. 14-day free trial. Cancel anytime.",
@@ -165,9 +165,9 @@ export const translations = {
     },
     features: {
       meta: {
-        title: "Features — FnB Cost Pro Back of House Management Software for Restaurants",
+        title: "Features — FnB Cost Pro Restaurant Inventory Management & BOH Software",
         description:
-          "Explore FnB Cost Pro's photo-first back of house management features: scan menus, recipes, and invoices by photo, count shelves with your phone, and manage food cost across every location.",
+          "Explore FnB Cost Pro's restaurant inventory management and BOH features: scan menus, recipes, and invoices by photo, run physical inventory counts from your phone, and control food cost across every location.",
       },
       badge: "Photo-First. No Keyboard.",
       headline: "Your Kitchen Back of House — Run From Your Phone",
@@ -222,8 +222,8 @@ export const translations = {
           key: "count",
           label: "Count by Photo",
           badge: "Pro plan",
-          headline: "Replace the clipboard with your phone",
-          body: "Physical inventory counting is one of the most time-consuming tasks in any restaurant. FnB Cost Pro's Pro tier replaces the clipboard with your phone camera.",
+          headline: "Replace the inventory clipboard with your phone",
+          body: "Physical inventory counting is one of the most time-consuming tasks in any restaurant. FnB Cost Pro's Pro tier replaces the clipboard with your phone camera for faster, more accurate stock counts.",
           items: [
             {
               title: "Shelf Scan",
@@ -241,8 +241,8 @@ export const translations = {
           key: "manage",
           label: "Manage & Analyze",
           badge: "All paid plans",
-          headline: "Full cost control — always current, always accurate",
-          body: "Once your data is in, FnB Cost Pro keeps everything current automatically. Vendor price changes ripple through every recipe in seconds.",
+          headline: "Full inventory and cost control — always current, always accurate",
+          body: "Once your data is in, FnB Cost Pro keeps everything current automatically. Vendor price changes ripple through every recipe cost in seconds.",
           items: [
             {
               title: "Live Recipe Costing",
@@ -320,7 +320,7 @@ export const translations = {
         {
           title: "Count by Photo",
           description:
-            "Walk your shelves with your phone instead of a clipboard. Product labels are read and counts logged directly to your active inventory session.",
+            "Walk your shelves with your phone instead of a clipboard. Product labels are read and counts logged directly to your active restaurant inventory session.",
           features: [
             "Shelf scan: labels read and counts logged automatically",
             "Catch-weight scanning for proteins and by-weight items",
@@ -349,9 +349,9 @@ export const translations = {
     },
     pricing: {
       meta: {
-        title: "Pricing — FnB Cost Pro Restaurant Software Plans",
+        title: "Pricing — FnB Cost Pro Restaurant Inventory & Food Cost Software",
         description:
-          "Transparent pricing for FnB Cost Pro. Starter at $149/mo, Pro from $228/mo, Enterprise custom. 14-day free trial on all paid plans.",
+          "Simple, transparent pricing for restaurant inventory management and BOH software. Starter at $149/mo for one location, Pro from $228/mo for multi-location, Enterprise custom. 14-day free trial.",
       },
       badge: "Simple, Transparent Pricing",
       headline: "A Plan for Every Operation",
@@ -476,9 +476,9 @@ export const translations = {
     },
     about: {
       meta: {
-        title: "About FnB Cost Pro — Photo-First Restaurant Cost Control",
+        title: "About FnB Cost Pro — Restaurant Inventory & Back of House Management",
         description:
-          "FnB Cost Pro was built by F&B operators for F&B operators. We replaced the keyboard with a camera. Learn our story.",
+          "FnB Cost Pro is restaurant inventory management software built by F&B operators. We replaced the keyboard with a camera — run your entire back of house from your phone.",
       },
       badge: "Our Story",
       headline: "We Replaced the Keyboard with a Camera",
@@ -605,16 +605,16 @@ export const translations = {
     },
     home: {
       meta: {
-        title: "FnB Cost Pro — Gestión de Cocina Trasera (BOH) para Restaurantes",
+        title: "FnB Cost Pro — Gestión de Inventario para Restaurantes y Software BOH",
         description:
-          "FnB Cost Pro es la plataforma de gestión de cocina trasera (BOH) para restaurantes. Escanea menús, recetas, facturas y estantes con tu teléfono. Sin teclado.",
+          "FnB Cost Pro es el software de gestión de inventario para restaurantes y cocina trasera (BOH). Controla costos, cuenta stock y gestiona recetas — todo desde tu teléfono.",
       },
       badge: "Imagina esto.",
       headline1: "Tu cocina completa.",
       headline2: "Solo tu teléfono.",
       headline3: "",
       subheadline:
-        "Imagina esto: tu menú, tus recetas, tus facturas de proveedores — en el sistema desde una foto. Sin teclado, sin hojas de cálculo, sin reingreso. El software tradicional tarda semanas. FnB Cost Pro tarda un día.",
+        "Imagina esto: tu menú, tus recetas, tus facturas de proveedores, tu inventario del restaurante — en el sistema desde una foto. Sin teclado, sin hojas de cálculo, sin reingreso. El software tradicional tarda semanas. FnB Cost Pro tarda un día.",
       ctaTrial: "Sube tu menú ahora",
       ctaPricing: "Ver precios",
       trialNote: "Configuración completa en menos de un día. Prueba gratuita de 14 días. Cancela cuando quieras.",
@@ -740,9 +740,9 @@ export const translations = {
     },
     features: {
       meta: {
-        title: "Funciones — FnB Cost Pro Software de Gestión de Cocina Trasera para Restaurantes",
+        title: "Funciones — FnB Cost Pro Gestión de Inventario y Cocina Trasera para Restaurantes",
         description:
-          "Escanea menús, recetas y facturas por foto, cuenta estantes con tu teléfono y gestiona el costo de alimentos de tu cocina trasera en cada sucursal.",
+          "Explora las funciones de gestión de inventario para restaurantes de FnB Cost Pro: escaneo por foto, conteos de inventario desde el teléfono y control de costos en cada sucursal.",
       },
       badge: "Primero la foto. Sin teclado.",
       headline: "Tu cocina trasera — gestionada desde tu teléfono",
@@ -826,7 +826,7 @@ export const translations = {
         {
           title: "Cuenta con una foto",
           description:
-            "Camina por tus estantes con tu teléfono en lugar de un portapapeles. Las etiquetas se leen y los conteos se registran directamente en tu sesión de inventario.",
+            "Camina por tus estantes con tu teléfono en lugar de un portapapeles. Las etiquetas se leen y los conteos se registran directamente en tu sesión de inventario del restaurante — más rápido y sin errores de transcripción.",
           features: [
             "Escaneo de estantes: las etiquetas se leen y los conteos se registran",
             "Escaneo de peso-captura para proteínas",
@@ -855,9 +855,9 @@ export const translations = {
     },
     pricing: {
       meta: {
-        title: "Precios — Planes de FnB Cost Pro para Restaurantes",
+        title: "Precios — FnB Cost Pro Software de Inventario y Gestión para Restaurantes",
         description:
-          "Precios transparentes. Starter $149/mes, Pro desde $228/mes, Enterprise personalizado. Prueba gratuita de 14 días en todos los planes.",
+          "Precios transparentes para software de gestión de inventario para restaurantes. Starter $149/mes, Pro desde $228/mes para múltiples sucursales, Enterprise personalizado. Prueba gratuita de 14 días.",
       },
       badge: "Precios simples y transparentes",
       headline: "Un plan para cada operación",
@@ -982,9 +982,9 @@ export const translations = {
     },
     about: {
       meta: {
-        title: "Nosotros — FnB Cost Pro Control de Costos para Restaurantes Foto-Primero",
+        title: "Nosotros — FnB Cost Pro Gestión de Inventario y Cocina Trasera para Restaurantes",
         description:
-          "FnB Cost Pro fue creado por operadores de A&B para operadores de A&B. Reemplazamos el teclado con una cámara.",
+          "FnB Cost Pro es software de gestión de inventario para restaurantes creado por operadores de A&B. Reemplazamos el teclado con una cámara — gestiona tu cocina trasera desde tu teléfono.",
       },
       badge: "Nuestra historia",
       headline: "Reemplazamos el teclado con una cámara",
