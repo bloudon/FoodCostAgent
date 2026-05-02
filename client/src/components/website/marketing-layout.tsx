@@ -443,9 +443,10 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function SectionHeading({ label, title, subtitle }: { label?: string; title: string; subtitle?: string }) {
+export function SectionHeading({ label, title, subtitle, align = "center" }: { label?: string; title: string; subtitle?: string; align?: "center" | "left" }) {
+  const isCenter = align === "center";
   return (
-    <div className="text-center max-w-2xl mx-auto mb-12">
+    <div className={`mb-12 ${isCenter ? "text-center max-w-2xl mx-auto" : "text-left"}`}>
       {label && (
         <span className="inline-block text-xs font-semibold uppercase tracking-widest text-green-600 mb-3">
           {label}
