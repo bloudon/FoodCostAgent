@@ -16,7 +16,7 @@ export function TierGate({ feature, minTier, children, fallback }: TierGateProps
 
   if (isGlobalAdmin) return <>{children}</>;
 
-  const required = minTier || (feature ? featureMinTier(feature) : "free");
+  const required: Tier = minTier || (feature ? featureMinTier(feature) : "basic");
   const allowed = feature ? hasFeature(feature) : meetsMinimum(required);
 
   if (allowed) return <>{children}</>;

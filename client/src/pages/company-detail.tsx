@@ -27,7 +27,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/lib/auth-context";
-import { TIER_LABELS, TIERS, type Tier } from "@shared/tier-config";
+import { TIER_LABELS, getTierLabel, TIERS, type Tier, type DbTier } from "@shared/tier-config";
 
 export default function CompanyDetail() {
   const { id } = useParams<{ id: string }>();
@@ -281,10 +281,10 @@ export default function CompanyDetail() {
                     }
                     data-testid="badge-subscription-tier"
                   >
-                    {TIER_LABELS[(company.subscriptionTier as Tier) || "free"]}
+                    {getTierLabel(company.subscriptionTier as DbTier)}
                   </Badge>
                   <Select
-                    value={(company.subscriptionTier as Tier) || "free"}
+                    value={TIERS.includes(company.subscriptionTier as Tier) ? (company.subscriptionTier as Tier) : "basic"}
                     onValueChange={(value) => updateTierMutation.mutate({ tier: value })}
                   >
                     <SelectTrigger className="h-7 w-24 text-xs" data-testid="select-tier">

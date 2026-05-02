@@ -16,7 +16,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TIER_LABELS, type Tier, TIERS } from "@shared/tier-config";
+import { TIER_LABELS, getTierLabel, type Tier, type DbTier, TIERS } from "@shared/tier-config";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
@@ -908,7 +908,7 @@ export default function Companies() {
                       <Badge variant={company.status === "active" ? "default" : "secondary"} className="text-xs">
                         {company.status}
                       </Badge>
-                      <TierBadge tier={(company.subscriptionTier as Tier) || "free"} />
+                      <TierBadge tier={(company.subscriptionTier as DbTier) || "basic"} />
                     </div>
                   </div>
 
@@ -916,7 +916,7 @@ export default function Companies() {
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">Tier:</span>
                       <Select
-                        value={(company.subscriptionTier as Tier) || "free"}
+                        value={TIERS.includes(company.subscriptionTier as Tier) ? (company.subscriptionTier as Tier) : "basic"}
                         onValueChange={(value) => {
                           updateTierMutation.mutate({ companyId: company.id, tier: value });
                         }}
@@ -1120,11 +1120,11 @@ function StatCard({
   );
 }
 
-function TierBadge({ tier }: { tier: Tier }) {
+function TierBadge({ tier }: { tier: DbTier }) {
   const variant = tier === "pro" ? "destructive" : tier === "basic" ? "default" : "secondary";
   return (
     <Badge variant={variant} className="text-xs" data-testid={`badge-tier-${tier}`}>
-      {TIER_LABELS[tier]}
+      {getTierLabel(tier)}
     </Badge>
   );
 }

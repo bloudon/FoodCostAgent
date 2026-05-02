@@ -1,16 +1,19 @@
-export const TIERS = ["free", "basic", "pro", "enterprise"] as const;
+export const TIERS = ["basic", "pro", "enterprise"] as const;
 export type Tier = (typeof TIERS)[number];
 
-const TIER_RANK: Record<Tier, number> = {
+export type DbTier = Tier | "free";
+
+const TIER_RANK: Record<DbTier, number> = {
   free: 0,
   basic: 1,
   pro: 2,
   enterprise: 3,
 };
 
-export function tierMeetsMinimum(current: Tier | null | undefined, minimum: Tier): boolean {
-  if (!current || !TIERS.includes(current as Tier)) return false;
-  return TIER_RANK[current as Tier] >= TIER_RANK[minimum];
+export function tierMeetsMinimum(current: DbTier | null | undefined, minimum: Tier): boolean {
+  if (!current) return false;
+  const rank = TIER_RANK[current as DbTier] ?? 0;
+  return rank >= TIER_RANK[minimum];
 }
 
 export type Feature =
@@ -52,20 +55,23 @@ export function featureMinTier(feature: Feature): Tier {
   return FEATURE_MIN_TIER[feature];
 }
 
-export function hasFeature(currentTier: Tier | null | undefined, feature: Feature): boolean {
+export function hasFeature(currentTier: DbTier | null | undefined, feature: Feature): boolean {
   return tierMeetsMinimum(currentTier, FEATURE_MIN_TIER[feature]);
 }
 
 export const TIER_LABELS: Record<Tier, string> = {
-  free: "Free (Legacy)",
   basic: "Starter",
   pro: "Pro",
   enterprise: "Enterprise",
 };
 
 export const TIER_COLORS: Record<Tier, string> = {
-  free: "secondary",
   basic: "default",
   pro: "destructive",
   enterprise: "outline",
 };
+
+export function getTierLabel(tier: DbTier | null | undefined): string {
+  if (!tier || tier === "free") return "Free (Legacy)";
+  return TIER_LABELS[tier] ?? tier;
+}
