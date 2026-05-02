@@ -52,6 +52,24 @@ const GROUP_META: { icon: IconComponent; color: "green" | "orange" }[] = [
   { icon: Users, color: "green" },
 ];
 
+const GROUP_SCREENSHOTS: string[] = [
+  "/screenshots/inventory-management.png",
+  "/screenshots/recipe-costing.png",
+  "/screenshots/vendor-order-guides.png",
+  "/screenshots/food-cost-variance.png",
+  "/screenshots/inventory-counting.png",
+  "/screenshots/multi-location.png",
+];
+
+const GROUP_SCREENSHOT_ALTS: string[] = [
+  "FnB Cost Pro inventory management — set up your items from a photo",
+  "FnB Cost Pro live recipe costing — cost per portion updated automatically",
+  "FnB Cost Pro vendor order guides — Sysco, GFS, US Foods catalogs",
+  "FnB Cost Pro food cost variance report — theoretical vs actual",
+  "FnB Cost Pro inventory counting on mobile — scan shelves with your phone",
+  "FnB Cost Pro multi-location store management",
+];
+
 export default function WebsiteFeatures() {
   const { lang, t } = useLanguage();
   const feat = t.features;
@@ -180,7 +198,16 @@ export default function WebsiteFeatures() {
                     </div>
                   )}
                 </div>
-                <div className="flex-1 hidden lg:block" />
+                <div className="flex-1 hidden lg:flex items-center">
+                  <div className="w-full rounded-xl overflow-hidden shadow-xl border border-gray-200 bg-white">
+                    <img
+                      src={GROUP_SCREENSHOTS[i]}
+                      alt={GROUP_SCREENSHOT_ALTS[i]}
+                      className="w-full h-auto block"
+                      loading="lazy"
+                    />
+                  </div>
+                </div>
               </div>
             );
           })}
