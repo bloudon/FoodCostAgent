@@ -39,15 +39,15 @@ export const translations = {
       headline2: "Just your phone.",
       headline3: "",
       subheadline:
-        "Point your camera at your menu, your recipe cards, your vendor invoices, your shelves — FnB Cost Pro does the rest. AI-powered setup and counting for restaurants, bars, and Food & Beverage businesses of every size.",
-      ctaTrial: "Start Your 14-Day Free Trial",
+        "Traditional restaurant software takes weeks to set up. FnB Cost Pro onboards in a day — AI scans your menu, recipes, and invoices from photos so you can skip the keyboard entirely.",
+      ctaTrial: "Upload Your Menu Now",
       ctaPricing: "View Pricing",
-      trialNote: "14-day free trial. Cancel anytime.",
+      trialNote: "Full setup in under a day. 14-day free trial. Cancel anytime.",
       stats: [
         { value: "8 hrs", label: "Typical weekly data entry eliminated" },
         { value: "$300+", label: "Monthly labor savings for most operators" },
         { value: "3–5%", label: "Typical food cost reduction" },
-        { value: "14 days", label: "Free trial — full access included" },
+        { value: "1 day", label: "Typical full onboarding — vs. weeks for legacy software" },
       ],
       roiLabel: "It Pays for Itself",
       roiTitle: "Stop Paying Someone to Type. Start Using Your Phone.",
@@ -132,7 +132,7 @@ export const translations = {
       howItWorksLabel: "Setup That Actually Works",
       howItWorksTitle: "From Day One, AI Does the Heavy Lifting",
       howItWorksSubtitle:
-        "Traditional restaurant software takes weeks to set up. FnB Cost Pro takes an afternoon — because your phone does the data entry.",
+        "Traditional restaurant software takes weeks to set up. FnB Cost Pro takes a single day — because your phone does the data entry.",
       steps: [
         {
           num: "01",
@@ -153,13 +153,13 @@ export const translations = {
       ctaBottomTitle: "Replace Your Data Entry with a Photo",
       ctaBottomSubtitle:
         "Join F&B operators using FnB Cost Pro to eliminate manual entry, close the gap between theoretical and actual food cost, and finally run their back office from their phone.",
-      ctaBottomTrial: "Start Your 14-Day Free Trial",
+      ctaBottomTrial: "Upload Your Menu Now",
       ctaBottomContact: "Talk to Us",
       ctaChecklist: [
         "14-day free trial",
         "Cancel anytime",
         "AI setup included from day one",
-        "Cancel anytime",
+        "Full setup in under a day",
       ],
       stepLabel: "Step",
     },
@@ -181,10 +181,10 @@ export const translations = {
       upgradeFreebody: "",
       upgradeStarterTitle: "Starter — One Location",
       upgradeStarterBody:
-        "Everything you need to run one location: AI menu and recipe scanning, live recipe costing, vendor order guides, inventory counts, TFC variance reporting, and the AI kitchen assistant.",
+        "Everything you need to run one location: AI menu and recipe scanning, live recipe costing, vendor order guides, inventory counts, Theoretical Food Cost variance reporting, and the AI kitchen assistant.",
       upgradeBasicTitle: "Starter — Know Your Costs",
       upgradeBasicBody:
-        "AI-powered setup, live recipe costing, vendor order guides, TFC variance reporting, and the AI kitchen assistant. Everything you need to run a tight back office at one location.",
+        "AI-powered setup, live recipe costing, vendor order guides, Theoretical Food Cost variance reporting, and the AI kitchen assistant. Everything you need to run a tight back office at one location.",
       upgradeProTitle: "Pro — Multi-Location Control",
       upgradeProBody:
         "Everything in Starter plus AI shelf scanning, invoice auto-matching, transfer orders between stores, cross-shop vendor pricing, QuickBooks export, and unlimited locations. Built for operators running more than one store.",
@@ -249,7 +249,7 @@ export const translations = {
               desc: "Every recipe has a live food cost per portion that recalculates the moment a vendor price changes. Nested sub-recipes recalculate in the correct dependency order. No manual updates, ever.",
             },
             {
-              title: "TFC Variance Reporting",
+              title: "Theoretical Food Cost Variance Reporting",
               desc: "Theoretical Food Cost shows exactly what you should have spent based on what you sold. Compare it to what you actually spent and pinpoint waste, over-portioning, and shrinkage by category.",
             },
             {
@@ -305,9 +305,9 @@ export const translations = {
             "Cross-shop vendor pricing (Pro): Compare the same item across all your vendor order guides to find the best price automatically. QuickBooks export (Pro): Export received purchase orders directly to QuickBooks.",
         },
         {
-          title: "TFC Variance Reporting",
+          title: "Theoretical Food Cost Variance Reporting",
           description:
-            "Stop guessing where your food cost is going. TFC variance reporting shows exactly where the gap is between what you should spend and what you actually spend.",
+            "Stop guessing where your food cost is going. Theoretical Food Cost variance reporting shows exactly where the gap is between what you should spend and what you actually spend.",
           features: [
             "Theoretical Food Cost calculated from sales and recipes",
             "Works with most POS systems — no POS lock-in",
@@ -421,7 +421,7 @@ export const translations = {
         { label: "AI catch-weight scan", starter: false, pro: true, enterprise: true, proOnly: true },
         { label: "Live recipe costing", starter: true, pro: true, enterprise: true },
         { label: "Nested sub-recipes", starter: true, pro: true, enterprise: true },
-        { label: "TFC variance reporting", starter: true, pro: true, enterprise: true },
+        { label: "Theoretical Food Cost variance reporting", starter: true, pro: true, enterprise: true },
         { label: "POS sales data import", starter: true, pro: true, enterprise: "Multi-POS" },
         { label: "Vendor order guide imports", starter: true, pro: true, enterprise: true },
         { label: "Cross-shop vendor pricing", starter: false, pro: true, enterprise: true, proOnly: true },
@@ -443,7 +443,7 @@ export const translations = {
         "Live recipe costing with automatic price updates",
         "Nested sub-recipe support",
         "Vendor order guide imports (Sysco, GFS, US Foods)",
-        "TFC variance reporting",
+        "Theoretical Food Cost variance reporting",
         "POS sales data import",
         "Smart dashboard",
         "AI kitchen assistant",
@@ -514,7 +514,7 @@ export const translations = {
       whoItems: [
         {
           title: "Independent Restaurants",
-          body: "One location, owner-operated. You need food cost control without a full-time admin. FnB Cost Pro Starter gives you AI setup, live recipe costing, and TFC variance for $149/month.",
+          body: "One location, owner-operated. You need food cost control without a full-time admin. FnB Cost Pro Starter gives you AI setup, live recipe costing, and Theoretical Food Cost variance for $149/month.",
         },
         {
           title: "Multi-Unit Groups",
@@ -614,15 +614,15 @@ export const translations = {
       headline2: "Solo tu teléfono.",
       headline3: "",
       subheadline:
-        "Apunta tu cámara a tu menú, tus tarjetas de recetas, tus facturas de proveedores, tus estantes — FnB Cost Pro hace el resto. Configuración y conteo con IA para restaurantes de todo tipo.",
-      ctaTrial: "Iniciar prueba gratuita de 14 días",
+        "El software tradicional tarda semanas en configurarse. FnB Cost Pro se pone en marcha en un día — la IA escanea tu menú, recetas y facturas desde fotos para que nunca tengas que escribir nada.",
+      ctaTrial: "Sube tu menú ahora",
       ctaPricing: "Ver precios",
-      trialNote: "Prueba gratuita de 14 días. Sin tarjeta de crédito para comenzar.",
+      trialNote: "Configuración completa en menos de un día. Prueba gratuita de 14 días. Cancela cuando quieras.",
       stats: [
         { value: "8 hrs", label: "Entrada de datos semanal típica eliminada" },
         { value: "$300+", label: "Ahorro mensual en mano de obra para la mayoría" },
         { value: "3–5%", label: "Reducción típica del costo de alimentos" },
-        { value: "14 días", label: "Prueba gratuita — sin tarjeta de crédito" },
+        { value: "1 día", label: "Configuración completa típica — vs. semanas con software tradicional" },
       ],
       roiLabel: "Se paga solo",
       roiTitle: "Deja de pagar para escribir. Empieza a usar tu teléfono.",
@@ -707,7 +707,7 @@ export const translations = {
       howItWorksLabel: "Configuración que realmente funciona",
       howItWorksTitle: "Desde el primer día, la IA hace el trabajo pesado",
       howItWorksSubtitle:
-        "El software tradicional tarda semanas en configurarse. FnB Cost Pro tarda una tarde — porque tu teléfono hace la entrada de datos.",
+        "El software tradicional tarda semanas en configurarse. FnB Cost Pro tarda un solo día — porque tu teléfono hace la entrada de datos.",
       steps: [
         {
           num: "01",
@@ -728,13 +728,13 @@ export const translations = {
       ctaBottomTitle: "Reemplaza tu entrada de datos con una foto",
       ctaBottomSubtitle:
         "Únete a los operadores de A&B que usan FnB Cost Pro para eliminar la entrada manual y finalmente gestionar su cocina desde su teléfono.",
-      ctaBottomTrial: "Iniciar prueba gratuita de 14 días",
+      ctaBottomTrial: "Sube tu menú ahora",
       ctaBottomContact: "Contáctanos",
       ctaChecklist: [
         "Prueba gratuita de 14 días",
-        "Sin tarjeta de crédito",
-        "Configuración con IA incluida",
         "Cancela en cualquier momento",
+        "Configuración con IA incluida",
+        "Configuración completa en menos de un día",
       ],
       stepLabel: "Paso",
     },
@@ -756,10 +756,10 @@ export const translations = {
       upgradeFreebody: "",
       upgradeStarterTitle: "Starter — Una sucursal",
       upgradeStarterBody:
-        "Todo lo que necesitas para una sucursal: escaneo de menú y recetas con IA, costeo de recetas en vivo, guías de proveedores, conteos de inventario y reportes de varianza TFC.",
+        "Todo lo que necesitas para una sucursal: escaneo de menú y recetas con IA, costeo de recetas en vivo, guías de proveedores, conteos de inventario y reportes de varianza del Costo Teórico de Alimentos.",
       upgradeBasicTitle: "Starter — Conoce tus costos",
       upgradeBasicBody:
-        "Configuración con IA, costeo de recetas en vivo, guías de proveedores, reportes de varianza TFC y el asistente de cocina con IA.",
+        "Configuración con IA, costeo de recetas en vivo, guías de proveedores, reportes de varianza del Costo Teórico de Alimentos y el asistente de cocina con IA.",
       upgradeProTitle: "Pro — Control multi-sucursal",
       upgradeProBody:
         "Todo lo de Starter más escaneo de estantes con IA, órdenes de transferencia, comparación de precios entre proveedores, exportación a QuickBooks y sucursales ilimitadas.",
@@ -811,9 +811,9 @@ export const translations = {
             "Comparación de precios entre proveedores (Pro): Encuentra el mejor precio automáticamente. Exportación a QuickBooks (Pro).",
         },
         {
-          title: "Varianza TFC",
+          title: "Varianza del Costo Teórico de Alimentos",
           description:
-            "Deja de adivinar a dónde va tu costo de alimentos. Los reportes de varianza TFC muestran exactamente dónde está la brecha.",
+            "Deja de adivinar a dónde va tu costo de alimentos. Los reportes de varianza del Costo Teórico de Alimentos muestran exactamente dónde está la brecha.",
           features: [
             "Costo Teórico de Alimentos calculado desde ventas y recetas",
             "Funciona con la mayoría de sistemas POS",
@@ -927,7 +927,7 @@ export const translations = {
         { label: "Escaneo de peso-captura con IA", starter: false, pro: true, enterprise: true, proOnly: true },
         { label: "Costeo de recetas en vivo", starter: true, pro: true, enterprise: true },
         { label: "Sub-recetas anidadas", starter: true, pro: true, enterprise: true },
-        { label: "Reportes de varianza TFC", starter: true, pro: true, enterprise: true },
+        { label: "Reportes de varianza del Costo Teórico de Alimentos", starter: true, pro: true, enterprise: true },
         { label: "Importación de ventas POS", starter: true, pro: true, enterprise: "Multi-POS" },
         { label: "Guías de pedidos de proveedores", starter: true, pro: true, enterprise: true },
         { label: "Comparación de precios entre proveedores", starter: false, pro: true, enterprise: true, proOnly: true },
@@ -949,7 +949,7 @@ export const translations = {
         "Costeo de recetas en vivo",
         "Sub-recetas anidadas",
         "Guías de proveedores (Sysco, GFS, US Foods)",
-        "Reportes de varianza TFC",
+        "Reportes de varianza del Costo Teórico de Alimentos",
         "Importación de ventas POS",
         "Panel inteligente",
         "Asistente de cocina con IA",
