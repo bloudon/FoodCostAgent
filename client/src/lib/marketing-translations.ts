@@ -34,12 +34,12 @@ export const translations = {
         description:
           "FnB Cost Pro runs your kitchen back office from your phone. Scan menus, recipes, invoices, and shelves with your phone. No keyboard required.",
       },
-      badge: "Photo-First Kitchen Management",
+      badge: "Picture This.",
       headline1: "Your whole kitchen.",
       headline2: "Just your phone.",
       headline3: "",
       subheadline:
-        "Traditional restaurant software takes weeks to set up. FnB Cost Pro onboards in a day — just photograph your menu, recipes, and invoices to skip the keyboard entirely.",
+        "Picture this: your menu, your recipes, your vendor invoices — all in the system from a photo. No keyboard, no spreadsheets, no re-entry. Traditional software takes weeks to set up. FnB Cost Pro takes a day.",
       ctaTrial: "Upload Your Menu Now",
       ctaPricing: "View Pricing",
       trialNote: "Full setup in under a day. 14-day free trial. Cancel anytime.",
@@ -129,7 +129,7 @@ export const translations = {
           body: "Every recipe updates automatically when vendor prices change. Nested sub-recipes recalculate in the right order. Your costs are always accurate — not last month's guess.",
         },
       ],
-      howItWorksLabel: "Setup That Actually Works",
+      howItWorksLabel: "Picture This as Your New Routine",
       howItWorksTitle: "From Day One, Your Phone Does the Work",
       howItWorksSubtitle:
         "Traditional restaurant software takes weeks to set up. FnB Cost Pro takes a single day — because your phone does the data entry.",
@@ -609,12 +609,12 @@ export const translations = {
         description:
           "FnB Cost Pro gestiona tu cocina desde tu teléfono. Escanea menús, recetas, facturas y estantes con tu teléfono. Sin teclado.",
       },
-      badge: "Gestión de Cocina Foto-Primero",
+      badge: "Imagina esto.",
       headline1: "Tu cocina completa.",
       headline2: "Solo tu teléfono.",
       headline3: "",
       subheadline:
-        "El software tradicional tarda semanas en configurarse. FnB Cost Pro se pone en marcha en un día — solo fotografía tu menú, recetas y facturas para no usar el teclado.",
+        "Imagina esto: tu menú, tus recetas, tus facturas de proveedores — en el sistema desde una foto. Sin teclado, sin hojas de cálculo, sin reingreso. El software tradicional tarda semanas. FnB Cost Pro tarda un día.",
       ctaTrial: "Sube tu menú ahora",
       ctaPricing: "Ver precios",
       trialNote: "Configuración completa en menos de un día. Prueba gratuita de 14 días. Cancela cuando quieras.",
@@ -704,7 +704,7 @@ export const translations = {
           body: "Cada receta se actualiza automáticamente cuando cambian los precios de los proveedores. Las sub-recetas anidadas se recalculan en el orden correcto.",
         },
       ],
-      howItWorksLabel: "Configuración que realmente funciona",
+      howItWorksLabel: "Imagina esto como tu nueva rutina",
       howItWorksTitle: "Desde el primer día, tu teléfono hace el trabajo",
       howItWorksSubtitle:
         "El software tradicional tarda semanas en configurarse. FnB Cost Pro tarda un solo día — porque tu teléfono hace la entrada de datos.",
