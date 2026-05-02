@@ -198,39 +198,56 @@ export default function WebsiteHome() {
 
       <section className="py-20 bg-gray-50" id="recipe-costing" data-testid="recipe-costing-section">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <SectionHeading
-            label={home.recipeLabel}
-            title={home.recipeTitle}
-            subtitle={home.recipeSubtitle}
-          />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-4">
-            {home.recipeSteps.map((step, i) => {
-              const Icon = RECIPE_ICONS[i];
-              return (
-                <div
-                  key={step.num}
-                  className="bg-white rounded-xl border border-gray-200 p-8 text-center"
-                  data-testid={`recipe-step-${step.num}`}
-                >
-                  <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-5">
-                    <Icon className="h-6 w-6 text-orange-600" />
-                  </div>
-                  <div className="text-xs font-bold text-orange-500 uppercase tracking-widest mb-2">
-                    {home.stepLabel} {step.num}
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">{step.title}</h3>
-                  <p className="text-sm text-gray-500 leading-relaxed">{step.body}</p>
-                </div>
-              );
-            })}
-          </div>
-          <div className="text-center mt-10">
-            <p className="text-gray-500 mb-4 text-sm">{home.recipeNote}</p>
-            <Link href={lang === "es" ? "/es/pricing" : "/pricing"}>
-              <Button variant="outline" className="gap-1" data-testid="btn-recipe-pricing">
-                {home.seePlans} <ChevronRight className="h-4 w-4" />
-              </Button>
-            </Link>
+          <div className="flex flex-col lg:flex-row gap-12 items-center">
+            <div className="flex-1">
+              <SectionHeading
+                label={home.recipeLabel}
+                title={home.recipeTitle}
+                subtitle={home.recipeSubtitle}
+                align="left"
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-6 mt-6">
+                {home.recipeSteps.map((step, i) => {
+                  const Icon = RECIPE_ICONS[i];
+                  return (
+                    <div
+                      key={step.num}
+                      className="flex items-start gap-4"
+                      data-testid={`recipe-step-${step.num}`}
+                    >
+                      <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Icon className="h-5 w-5 text-orange-600" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-orange-500 uppercase tracking-widest mb-1">
+                          {home.stepLabel} {step.num}
+                        </div>
+                        <h3 className="text-base font-semibold text-gray-900 mb-1">{step.title}</h3>
+                        <p className="text-sm text-gray-500 leading-relaxed">{step.body}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-8">
+                <p className="text-gray-500 mb-4 text-sm">{home.recipeNote}</p>
+                <Link href={lang === "es" ? "/es/pricing" : "/pricing"}>
+                  <Button variant="outline" className="gap-1" data-testid="btn-recipe-pricing">
+                    {home.seePlans} <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+            <div className="flex-1 w-full">
+              <div className="rounded-xl overflow-hidden shadow-xl border border-gray-200 bg-white">
+                <img
+                  src="/screenshots/recipe-costing.png"
+                  alt="FnB Cost Pro recipe costing — live food cost per portion for every recipe"
+                  className="w-full h-auto block"
+                  loading="lazy"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
