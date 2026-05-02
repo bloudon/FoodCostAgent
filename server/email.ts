@@ -288,7 +288,7 @@ export async function sendContactEmail(opts: {
   const { name, email, company, message } = opts;
   const transport = createTransport();
   if (!transport) return;
-  const contactTo = process.env.CONTACT_EMAIL || "hello@fnbcostpro.com";
+  const contactTo = process.env.CONTACT_EMAIL || "info@fnbcostpro.com";
   try {
     await transport.sendMail({
       from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
