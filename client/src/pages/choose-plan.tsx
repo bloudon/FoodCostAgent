@@ -192,6 +192,7 @@ export default function ChoosePlan() {
                 <Building2 className="w-5 h-5 text-muted-foreground" />
                 <h2 className="text-lg font-bold">Starter</h2>
               </div>
+              <p className="text-xs text-green-600 dark:text-green-400 font-medium mb-3">{TRIAL_DAYS}-day free trial included</p>
 
               <div className="mb-4">
                 <div className="flex items-baseline gap-1">
@@ -249,6 +250,7 @@ export default function ChoosePlan() {
                 <Zap className="w-5 h-5 text-primary" />
                 <h2 className="text-lg font-bold">Pro</h2>
               </div>
+              <p className="text-xs text-green-600 dark:text-green-400 font-medium mb-3">{TRIAL_DAYS}-day free trial included</p>
 
               <div className="mb-1">
                 <div className="flex items-baseline gap-1">
