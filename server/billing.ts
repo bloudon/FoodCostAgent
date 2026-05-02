@@ -18,12 +18,15 @@ function getStripe(): Stripe {
   return _stripe;
 }
 
-const TRIAL_DAYS = 30;
+const TRIAL_DAYS = 14;
 
 const LOOKUP_KEY: Record<string, string> = {
   "basic:monthly": "fnb_basic_monthly",
   "basic:quarterly": "fnb_basic_quarterly",
   "basic:annual": "fnb_basic_annual",
+  "starter:monthly": "fnb_basic_monthly",
+  "starter:quarterly": "fnb_basic_quarterly",
+  "starter:annual": "fnb_basic_annual",
   "pro:monthly": "fnb_pro_monthly",
   "pro:quarterly": "fnb_pro_quarterly",
   "pro:annual": "fnb_pro_annual",
@@ -157,7 +160,8 @@ export async function stripeWebhook(req: Request, res: Response) {
 
         const stripeCustomerId = typeof session.customer === "string" ? session.customer : null;
         const stripeSubscriptionId = typeof session.subscription === "string" ? session.subscription : null;
-        const tier = session.metadata?.tier || null;
+        const rawTier = session.metadata?.tier || null;
+        const tier = rawTier === "starter" ? "basic" : rawTier;
         const term = session.metadata?.term || null;
 
         await db.update(companies)

@@ -1,12 +1,10 @@
 # Overview
 
-FNB Cost Pro is an inventory management and recipe costing system designed for food service businesses. Its primary goal is to enhance profitability and operational efficiency through accurate unit conversions, multi-level nested recipe costing, POS sales data integration, and comprehensive variance reporting. The project aims to minimize waste, optimize profit margins, provide real-time inventory insights, streamline vendor interactions, and establish robust food cost control within the restaurant industry.
+FNB Cost Pro is an AI-powered inventory management and recipe costing system for food service businesses. Its core purpose is to boost profitability and operational efficiency by utilizing photo-first data entry (menu, recipe, invoice, shelf scans), precise unit conversions, multi-level nested recipe costing, POS sales data integration, and comprehensive variance reporting. The project aims to reduce waste, optimize profit margins, offer real-time inventory insights, streamline vendor interactions, and establish strong food cost control within the restaurant industry.
 
 # User Preferences
 
 - Preferred communication style: Simple, everyday language.
-- Branding: FNB Cost Pro logo (white "FNB" text with green "cost pro" and bottle icon on black background) integrated across all pages.
-- Color Scheme: Header/menu uses slate blue grey (`--primary: 215 16% 47%`), buttons use orange accent (`--accent-button: 24 93% 50%`, hex `#f2690d`). Defined in `client/src/index.css` with dark mode variants.
 - Default Unit of Measure for Inventory Items: Pound should be the default unit when creating new inventory items.
 - Unit Abbreviation: "Pound" displays as "lb." throughout the UI.
 - Yield Field: Yield is stored as a percentage value (0-100).
@@ -48,7 +46,8 @@ FNB Cost Pro is an inventory management and recipe costing system designed for f
 - **Database**: PostgreSQL with Drizzle ORM.
 - **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation at the company level.
 - **Technical Implementations**: Micro-unit precision, comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), multi-tenant QuickBooks integration, intelligent vendor order guide import, real-time recipe cost calculation with caching, dynamic estimated on-hand inventory with automated cache invalidation, detailed Theoretical Food Cost (TFC) variance reporting, and single-timezone date handling.
-- **System Design Choices**: Strict multi-tenancy, secure OAuth using HMAC-SHA256, robust vendor relationship management, and a subscription tier system (Free, Basic, Pro, Enterprise). Vendors are managed at the company level, assigned to stores via a join table, and order guides can be assigned to multiple stores.
+- **System Design Choices**: Strict multi-tenancy, secure OAuth using HMAC-SHA256, robust vendor relationship management, and a subscription tier system (Starter, Pro, Enterprise). Vendors are managed at the company level, assigned to stores via a join table, and order guides can be assigned to multiple stores.
+- **UI/UX Decisions**: Branding utilizes the FNB Cost Pro logo (white "FNB" text with green "cost pro" and bottle icon on black background). Color scheme for header/menu is slate blue grey (`--primary: 215 16% 47%`), and buttons use an orange accent (`--accent-button: 24 93% 50%`, hex `#f2690d`), defined in `client/src/index.css` with dark mode variants.
 
 # External Dependencies
 

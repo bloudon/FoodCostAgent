@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ChevronRight, TrendingDown, BookOpen, Truck, BarChart3, Users, RefreshCw, CheckCircle, ClipboardList, Calculator, ListChecks } from "lucide-react";
+import {
+  ChevronRight, Camera, ScanLine, BarChart3, Users, RefreshCw, Truck,
+  CheckCircle, ClipboardList, Calculator, ListChecks, DollarSign, Clock, TrendingDown,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarketingLayout, MarketingHead, CTAButton, SectionHeading, appLink } from "@/components/website/marketing-layout";
 import { useLanguage } from "@/lib/language-context";
@@ -47,13 +50,14 @@ function HeroBackground() {
           <img src={photos[slotB]?.url} alt="" className={FADE} style={{ opacity: active === "b" ? 1 : 0 }} />
         </>
       )}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/55 to-black/70" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/60 to-black/75" />
     </div>
   );
 }
 
-const FEATURE_ICONS = [TrendingDown, BookOpen, Truck, BarChart3, Users, RefreshCw];
-const RECIPE_ICONS = [ClipboardList, Calculator, ListChecks];
+const FEATURE_ICONS = [Camera, ScanLine, BarChart3, Truck, Users, RefreshCw];
+const RECIPE_ICONS = [Camera, Calculator, ListChecks];
+const ROI_ICONS = [DollarSign, Clock, TrendingDown];
 
 export default function WebsiteHome() {
   const { lang, t } = useLanguage();
@@ -66,16 +70,17 @@ export default function WebsiteHome() {
         description={home.meta.description}
         lang={lang}
       />
-      <section className="relative min-h-[88vh] flex items-center" data-testid="hero-section">
+
+      {/* ── Hero ──────────────────────────────────────────────── */}
+      <section className="relative min-h-[90vh] flex items-center" data-testid="hero-section">
         <HeroBackground />
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
           <span className="inline-block bg-orange-500/20 text-orange-300 text-xs font-semibold uppercase tracking-widest px-4 py-1 rounded-full mb-6 border border-orange-500/30">
             {home.badge}
           </span>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-tight mb-6">
+          <h1 className="text-4xl sm:text-5xl lg:text-7xl font-extrabold text-white leading-tight mb-6">
             {home.headline1}<br />
-            <span className="text-orange-400">{home.headline2}</span><br />
-            {home.headline3}
+            <span className="text-orange-400">{home.headline2}</span>
           </h1>
           <p className="text-lg sm:text-xl text-gray-200 max-w-2xl mx-auto mb-10 leading-relaxed">
             {home.subheadline}
@@ -95,7 +100,7 @@ export default function WebsiteHome() {
               <Button
                 size="lg"
                 variant="outline"
-                className="text-white border-white/50 bg-white/10 backdrop-blur-sm text-base px-8 hover:bg-white/20"
+                className="text-white border-white/50 bg-white/10 backdrop-blur-sm text-base px-8"
                 data-testid="btn-hero-pricing"
               >
                 {home.ctaPricing}
@@ -106,11 +111,12 @@ export default function WebsiteHome() {
         </div>
       </section>
 
+      {/* ── Stats bar ─────────────────────────────────────────── */}
       <section className="py-12 bg-gray-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
             {home.stats.map((s, i) => (
-              <div key={i} data-testid={`stat-${s.value}`}>
+              <div key={i} data-testid={`stat-item-${i}`}>
                 <p className="text-3xl font-extrabold text-orange-400 mb-1">{s.value}</p>
                 <p className="text-sm text-gray-400">{s.label}</p>
               </div>
@@ -119,6 +125,7 @@ export default function WebsiteHome() {
         </div>
       </section>
 
+      {/* ── Features / How It Works ───────────────────────────── */}
       <section className="py-20 bg-white" id="features">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
@@ -133,7 +140,7 @@ export default function WebsiteHome() {
                 <div
                   key={f.title}
                   className="p-6 rounded-lg border border-gray-100 bg-gray-50 hover-elevate"
-                  data-testid={`feature-card-${f.title.toLowerCase().replace(/\s+/g, "-")}`}
+                  data-testid={`feature-card-${i}`}
                 >
                   <div className="w-11 h-11 rounded-lg bg-green-100 flex items-center justify-center mb-4">
                     <Icon className="h-5 w-5 text-green-700" />
@@ -154,6 +161,46 @@ export default function WebsiteHome() {
         </div>
       </section>
 
+      {/* ── ROI / Labor Savings ───────────────────────────────── */}
+      <section className="py-20 bg-gray-900" id="roi" data-testid="roi-section">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-400 mb-3">
+              {home.roiLabel}
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+              {home.roiTitle}
+            </h2>
+            <p className="text-gray-400 max-w-2xl mx-auto">
+              {home.roiSubtitle}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            {home.roiItems.map((item, i) => {
+              const Icon = ROI_ICONS[i];
+              return (
+                <div key={i} className="bg-gray-800 rounded-xl p-6" data-testid={`roi-item-${i}`}>
+                  <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center mb-4">
+                    <Icon className="h-5 w-5 text-orange-400" />
+                  </div>
+                  <h3 className="text-white font-semibold mb-2">{item.task}</h3>
+                  <p className="text-xs text-gray-500 mb-3 italic">Manual: {item.manual}</p>
+                  <p className="text-sm text-orange-300 font-medium mb-3">{item.saved}</p>
+                  <p className="text-sm text-gray-400 leading-relaxed">{item.how}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-6 text-center">
+            <p className="text-orange-300 font-semibold text-lg mb-2">{home.roiTotal}</p>
+            <p className="text-gray-400 text-sm">{home.roiNote}</p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Recipe Costing ───────────────────────────────────── */}
       <section className="py-20 bg-gray-50" id="recipe-costing" data-testid="recipe-costing-section">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
@@ -193,6 +240,7 @@ export default function WebsiteHome() {
         </div>
       </section>
 
+      {/* ── How It Works ─────────────────────────────────────── */}
       <section className="py-20 bg-green-900" id="how-it-works">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
@@ -212,6 +260,7 @@ export default function WebsiteHome() {
         </div>
       </section>
 
+      {/* ── CTA Bottom ───────────────────────────────────────── */}
       <section className="py-20 bg-gray-50" id="cta-bottom">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">

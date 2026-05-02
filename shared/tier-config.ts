@@ -58,7 +58,7 @@ export function hasFeature(currentTier: Tier | null | undefined, feature: Featur
 
 export const TIER_LABELS: Record<Tier, string> = {
   free: "Free",
-  basic: "Basic",
+  basic: "Starter",
   pro: "Pro",
   enterprise: "Enterprise",
 };
