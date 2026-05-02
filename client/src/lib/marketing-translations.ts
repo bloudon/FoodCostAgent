@@ -30,9 +30,9 @@ export const translations = {
     },
     home: {
       meta: {
-        title: "FnB Cost Pro — Photo-First Restaurant Food Cost Software",
+        title: "FnB Cost Pro — Photo-First Back of House Management for Restaurants",
         description:
-          "FnB Cost Pro runs your kitchen back office from your phone. Scan menus, recipes, invoices, and shelves with your phone. No keyboard required.",
+          "FnB Cost Pro is photo-first back of house (BOH) management for restaurants. Scan menus, recipes, invoices, and shelves with your phone. No keyboard required.",
       },
       badge: "Picture This.",
       headline1: "Your whole kitchen.",
@@ -165,12 +165,12 @@ export const translations = {
     },
     features: {
       meta: {
-        title: "Features — FnB Cost Pro Restaurant Food Cost Management Software",
+        title: "Features — FnB Cost Pro Back of House Management Software for Restaurants",
         description:
-          "Explore FnB Cost Pro's photo-first features: scan menus, recipes, and invoices by photo, count shelves with your phone, and manage food cost across every location.",
+          "Explore FnB Cost Pro's photo-first back of house management features: scan menus, recipes, and invoices by photo, count shelves with your phone, and manage food cost across every location.",
       },
       badge: "Photo-First. No Keyboard.",
-      headline: "Your Kitchen Back Office — Run From Your Phone",
+      headline: "Your Kitchen Back of House — Run From Your Phone",
       subheadline:
         "FnB Cost Pro eliminates keyboard data entry for restaurant operators. Point your camera at your menu, your recipes, your vendor invoices, your shelves. The app does the rest.",
       badgesNote: "badges show which plan includes each feature",
@@ -184,7 +184,7 @@ export const translations = {
         "Everything you need to run one location: menu and recipe scanning by photo, live recipe costing, vendor order guides, inventory counts, Theoretical Food Cost variance reporting, and the kitchen assistant.",
       upgradeBasicTitle: "Starter — Know Your Costs",
       upgradeBasicBody:
-        "Photo-based setup, live recipe costing, vendor order guides, Theoretical Food Cost variance reporting, and the kitchen assistant. Everything you need to run a tight back office at one location.",
+        "Photo-based setup, live recipe costing, vendor order guides, Theoretical Food Cost variance reporting, and the kitchen assistant. Everything you need to run a tight back of house at one location.",
       upgradeProTitle: "Pro — Multi-Location Control",
       upgradeProBody:
         "Everything in Starter plus shelf scanning by phone, invoice auto-matching, transfer orders between stores, cross-shop vendor pricing, QuickBooks export, and unlimited locations. Built for operators running more than one store.",
@@ -198,7 +198,7 @@ export const translations = {
           key: "setup",
           label: "Set Up by Photo",
           badge: "All paid plans",
-          headline: "Your entire back office — set up in an afternoon",
+          headline: "Your entire back of house — set up in an afternoon",
           body: "Traditional restaurant software requires weeks of manual data entry to get started. FnB Cost Pro reads your existing materials from photos and builds your system automatically.",
           items: [
             {
@@ -605,9 +605,9 @@ export const translations = {
     },
     home: {
       meta: {
-        title: "FnB Cost Pro — Software de Costos para Restaurantes Foto-Primero",
+        title: "FnB Cost Pro — Gestión de Cocina Trasera (BOH) para Restaurantes",
         description:
-          "FnB Cost Pro gestiona tu cocina desde tu teléfono. Escanea menús, recetas, facturas y estantes con tu teléfono. Sin teclado.",
+          "FnB Cost Pro es la plataforma de gestión de cocina trasera (BOH) para restaurantes. Escanea menús, recetas, facturas y estantes con tu teléfono. Sin teclado.",
       },
       badge: "Imagina esto.",
       headline1: "Tu cocina completa.",
@@ -740,9 +740,9 @@ export const translations = {
     },
     features: {
       meta: {
-        title: "Funciones — FnB Cost Pro Software de Gestión de Costos para Restaurantes",
+        title: "Funciones — FnB Cost Pro Software de Gestión de Cocina Trasera para Restaurantes",
         description:
-          "Escanea menús, recetas y facturas por foto, cuenta estantes con tu teléfono y gestiona el costo de alimentos en cada sucursal.",
+          "Escanea menús, recetas y facturas por foto, cuenta estantes con tu teléfono y gestiona el costo de alimentos de tu cocina trasera en cada sucursal.",
       },
       badge: "Primero la foto. Sin teclado.",
       headline: "Tu cocina trasera — gestionada desde tu teléfono",
