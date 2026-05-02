@@ -948,7 +948,7 @@ function BrandImageCard({ companyId, brandImagePath }: { companyId: string; bran
         <CardContent>
           <div className="flex items-center gap-3 p-4 rounded-md bg-muted/50 text-muted-foreground text-sm">
             <ImageIcon className="h-5 w-5 shrink-0" />
-            <span>Custom brand backgrounds are available on the Basic plan and above. Contact your administrator to upgrade.</span>
+            <span>Custom brand backgrounds are available on the Starter plan and above. Contact your administrator to upgrade.</span>
           </div>
         </CardContent>
       </Card>

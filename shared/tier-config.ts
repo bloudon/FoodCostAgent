@@ -9,8 +9,8 @@ const TIER_RANK: Record<Tier, number> = {
 };
 
 export function tierMeetsMinimum(current: Tier | null | undefined, minimum: Tier): boolean {
-  const effective: Tier = current && TIERS.includes(current as Tier) ? (current as Tier) : "free";
-  return TIER_RANK[effective] >= TIER_RANK[minimum];
+  if (!current || !TIERS.includes(current as Tier)) return false;
+  return TIER_RANK[current as Tier] >= TIER_RANK[minimum];
 }
 
 export type Feature =
@@ -31,7 +31,7 @@ export type Feature =
   | "prep_chart";
 
 const FEATURE_MIN_TIER: Record<Feature, Tier> = {
-  order_reminders: "free",
+  order_reminders: "basic",
   recipe_costing: "basic",
   brand_background: "basic",
   no_ads: "basic",
@@ -57,7 +57,7 @@ export function hasFeature(currentTier: Tier | null | undefined, feature: Featur
 }
 
 export const TIER_LABELS: Record<Tier, string> = {
-  free: "Free",
+  free: "Free (Legacy)",
   basic: "Starter",
   pro: "Pro",
   enterprise: "Enterprise",

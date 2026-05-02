@@ -5,17 +5,15 @@ import { Button } from "@/components/ui/button";
 import { MarketingLayout, MarketingHead, SectionHeading, CTAButton, appLink } from "@/components/website/marketing-layout";
 import { useLanguage } from "@/lib/language-context";
 import { Link } from "wouter";
+import { PRICING, type BillingTerm } from "@/lib/pricing-constants";
 
-// ── Static pricing constants ─────────────────────────────────────────────────
-const PRICING = {
-  starter: { monthly: 149, annual: 129 },
-  pro: {
-    monthly: { platform: 79, perStore: 149 },
-    annual: { platform: 69, perStore: 129 },
-  },
-} as const;
+type Term = BillingTerm;
 
-type Term = "monthly" | "annual";
+interface FeatureItem {
+  text: string;
+  proOnly?: boolean;
+  enterpriseOnly?: boolean;
+}
 
 export default function WebsitePricing() {
   const { lang, t } = useLanguage();
@@ -45,7 +43,7 @@ export default function WebsitePricing() {
       price: `$${starterPrice}`,
       priceLabel: `/${selectedTerm === "monthly" ? (lang === "es" ? "mes" : "month") : (lang === "es" ? "año" : "mo, billed annually")}`,
       priceSub: null,
-      features: pricing.starterFeatures.map((f) => ({ text: f })),
+      features: pricing.starterFeatures.map((f): FeatureItem => ({ text: f })),
       cta: pricing.startFreeTrial,
       ctaHref: appLink("/signup"),
       note: pricing.fourteenDayTrial,
@@ -59,8 +57,8 @@ export default function WebsitePricing() {
       price: `$${proTotalFirstStore}`,
       priceLabel: `/${selectedTerm === "monthly" ? (lang === "es" ? "mes" : "month") : (lang === "es" ? "año" : "mo, billed annually")}`,
       priceSub: `$${proP.platform} platform + $${proP.perStore}/location`,
-      features: pricing.proFeatures.map((f) =>
-        typeof f === "string" ? { text: f } : f
+      features: pricing.proFeatures.map((f): FeatureItem =>
+        typeof f === "string" ? { text: f } : (f as FeatureItem)
       ),
       cta: pricing.startFreeTrial,
       ctaHref: appLink("/signup"),
@@ -75,8 +73,8 @@ export default function WebsitePricing() {
       price: pricing.custom,
       priceLabel: "",
       priceSub: null,
-      features: pricing.enterpriseFeatures.map((f) =>
-        typeof f === "string" ? { text: f } : f
+      features: pricing.enterpriseFeatures.map((f): FeatureItem =>
+        typeof f === "string" ? { text: f } : (f as FeatureItem)
       ),
       cta: pricing.contactSales,
       ctaHref: lang === "es" ? "/es/contact" : "/contact",
@@ -228,12 +226,12 @@ export default function WebsitePricing() {
                       />
                       <span className="text-sm text-gray-600 flex items-center gap-1.5 flex-wrap">
                         {f.text}
-                        {"proOnly" in f && f.proOnly && (
+                        {f.proOnly && (
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-semibold text-orange-600 border-orange-300 bg-orange-50">
                             {proOnlyLabel}
                           </Badge>
                         )}
-                        {"enterpriseOnly" in f && f.enterpriseOnly && (
+                        {f.enterpriseOnly && (
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-semibold text-indigo-600 border-indigo-300 bg-indigo-50">
                             {enterpriseLabel}
                           </Badge>
@@ -307,18 +305,39 @@ export default function WebsitePricing() {
   );
 }
 
+interface TableHeaders {
+  feature: string;
+  starter?: string;
+  pro: string;
+  enterprise: string;
+  free?: string;
+  basic?: string;
+}
+
+interface TableRow {
+  label: string;
+  starter?: boolean | string;
+  pro?: boolean | string;
+  enterprise?: boolean | string;
+  free?: boolean | string;
+  basic?: boolean | string;
+  proOnly?: boolean;
+  enterpriseOnly?: boolean;
+}
+
 function ComparisonTable() {
   const { t } = useLanguage();
   const pricing = t.pricing;
 
-  const hasNewHeaders = "starter" in pricing.tableHeaders;
-  const headers = pricing.tableHeaders as any;
-  const hasNewRows = pricing.tableRows.length > 0 && "starter" in pricing.tableRows[0];
+  const headers = pricing.tableHeaders as unknown as TableHeaders;
+  const rows = pricing.tableRows as unknown as TableRow[];
+  const hasNewHeaders = "starter" in headers;
+  const hasNewRows = rows.length > 0 && "starter" in rows[0];
 
   const proOnlyLabel = pricing.proOnly;
   const enterpriseLabel = pricing.enterprise;
 
-  if (hasNewHeaders && hasNewRows) {
+  if (hasNewHeaders || hasNewRows) {
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-sm" data-testid="comparison-table">
@@ -331,7 +350,7 @@ function ComparisonTable() {
             </tr>
           </thead>
           <tbody>
-            {pricing.tableRows.map((row: any) => (
+            {rows.map((row) => (
               <tr key={row.label} className="border-b border-gray-100">
                 <td className="py-3 pr-4 text-gray-700">
                   <span className="flex items-center gap-1.5 flex-wrap">
@@ -370,40 +389,5 @@ function ComparisonTable() {
     );
   }
 
-  // Fallback for old translation shape (shouldn't reach here once translations are updated)
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm" data-testid="comparison-table">
-        <thead>
-          <tr className="border-b-2 border-gray-200">
-            <th className="text-left py-4 pr-4 font-semibold text-gray-900 w-1/4">{headers.feature}</th>
-            <th className="text-center py-4 px-3 font-semibold text-gray-900">{headers.starter}</th>
-            <th className="text-center py-4 px-3 font-semibold text-green-700 bg-green-50">{headers.pro}</th>
-            <th className="text-center py-4 px-3 font-semibold text-gray-900">{headers.enterprise}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {pricing.tableRows.map((row: any) => (
-            <tr key={row.label} className="border-b border-gray-100">
-              <td className="py-3 pr-4 text-gray-700">{row.label}</td>
-              {["starter", "pro", "enterprise"].map((col, colIdx) => {
-                const val = row[col];
-                return (
-                  <td key={col} className={`text-center py-3 px-3 ${colIdx === 1 ? "bg-green-50" : ""}`}>
-                    {val === true ? (
-                      <CheckCircle className="h-4 w-4 text-green-600 mx-auto" />
-                    ) : val === false ? (
-                      <X className="h-4 w-4 text-gray-300 mx-auto" />
-                    ) : (
-                      <span className="text-gray-600 text-xs">{String(val)}</span>
-                    )}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+  return null;
 }

@@ -11,19 +11,11 @@ import { useCompany } from "@/hooks/use-company";
 const logoImage = "/logo.png";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-
-// ── Static pricing constants ─────────────────────────────────────────────────
-const PRICING = {
-  starter: { monthly: 149, annual: 129 },
-  pro: {
-    monthly: { platform: 79, perStore: 149, total: 228 },
-    annual: { platform: 69, perStore: 129, total: 198 },
-  },
-} as const;
+import { PRICING, type BillingTerm } from "@/lib/pricing-constants";
 
 const TRIAL_DAYS = 14;
 
-type Term = "monthly" | "annual";
+type Term = BillingTerm;
 type AppTier = "basic" | "pro";  // internal DB values
 
 const TERM_LABELS: Record<Term, string> = {

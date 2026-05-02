@@ -13,7 +13,7 @@ function getStripe(): Stripe {
   if (!_stripe) {
     const key = process.env.STRIPE_SECRET_KEY;
     if (!key) throw new Error("STRIPE_SECRET_KEY is not configured on this server");
-    _stripe = new Stripe(key, { apiVersion: "2024-06-20" });
+    _stripe = new Stripe(key, { apiVersion: "2026-02-25.clover" });
   }
   return _stripe;
 }
@@ -226,13 +226,12 @@ export async function stripeWebhook(req: Request, res: Response) {
         if (wasTrialing && nowTerminalOrUnpaid) {
           await db.update(companies)
             .set({
-              subscriptionStatus: "active",
-              subscriptionTier: "free",
+              subscriptionStatus: "canceled",
               stripeSubscriptionId: null,
             })
             .where(eq(companies.stripeCustomerId, customerId));
 
-          console.log(`[Billing] customer.subscription.updated: trial expired, reverting to free tier customer=${customerId}`);
+          console.log(`[Billing] customer.subscription.updated: trial expired without payment, subscription canceled customer=${customerId}`);
         }
         break;
       }
@@ -254,13 +253,12 @@ export async function stripeWebhook(req: Request, res: Response) {
         if (endedDuringTrial) {
           await db.update(companies)
             .set({
-              subscriptionStatus: "active",
-              subscriptionTier: "free",
+              subscriptionStatus: "canceled",
               stripeSubscriptionId: null,
             })
             .where(eq(companies.stripeCustomerId, customerId));
 
-          console.log(`[Billing] customer.subscription.deleted: trial expired without payment, reverting to free tier customer=${customerId}`);
+          console.log(`[Billing] customer.subscription.deleted: trial ended without payment, subscription canceled customer=${customerId}`);
         } else {
           await db.update(companies)
             .set({

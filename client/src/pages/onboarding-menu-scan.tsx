@@ -419,7 +419,7 @@ export default function OnboardingMenuScan() {
               )}
 
               <p className="text-xs text-muted-foreground">
-                Tip: Upgrade to Basic to cost your menu items against your recipes and see real food cost percentages.
+                Tip: Upgrade to Starter to cost your menu items against your recipes and see real food cost percentages.
               </p>
 
               <div className="flex flex-col gap-2">

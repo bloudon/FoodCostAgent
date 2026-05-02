@@ -271,9 +271,9 @@ export function ChatPanel() {
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
                   <Lock className="h-6 w-6 text-muted-foreground" />
                 </div>
-                <h3 className="font-semibold" data-testid="text-chat-upgrade-title">Upgrade to Basic</h3>
+                <h3 className="font-semibold" data-testid="text-chat-upgrade-title">Upgrade to Starter</h3>
                 <p className="text-sm text-muted-foreground" data-testid="text-chat-upgrade-description">
-                  The AI assistant is available on the Basic plan and above. Get personalized cost management advice for your business.
+                  The AI assistant is available on the Starter plan and above. Get personalized cost management advice for your business.
                 </p>
                 <Link href="/choose-plan">
                   <Button className="bg-[#f2690d] hover:bg-[#d95a0b] text-white" data-testid="button-chat-upgrade">
