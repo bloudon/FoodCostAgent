@@ -287,8 +287,8 @@ export default function WebsitePricing() {
           </h2>
           <p className="text-green-200 mb-8 text-sm">
             {lang === "es"
-              ? "Acceso completo. Configuración con IA incluida. Cancela cuando quieras."
-              : "Full access from day one. AI-powered setup included. Cancel anytime."}
+              ? "Acceso completo. Configuración por foto incluida. Cancela cuando quieras."
+              : "Full access from day one. Photo setup included. Cancel anytime."}
           </p>
           <CTAButton href={appLink("/signup")} large>
             {pricing.startFreeTrial}

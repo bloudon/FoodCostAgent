@@ -15,7 +15,7 @@ export const translations = {
       signingOut: "Signing out…",
     },
     footer: {
-      tagline: "AI-powered inventory management and recipe costing for restaurants and Food & Beverage businesses.",
+      tagline: "Photo-first inventory management and recipe costing for restaurants and Food & Beverage businesses.",
       product: "Product",
       getStarted: "Get Started",
       getStartedFree: "Start Free Trial",
@@ -30,16 +30,16 @@ export const translations = {
     },
     home: {
       meta: {
-        title: "FnB Cost Pro — AI-Powered Restaurant Food Cost Software",
+        title: "FnB Cost Pro — Photo-First Restaurant Food Cost Software",
         description:
-          "FnB Cost Pro runs your kitchen back office from your phone. Scan menus, recipes, invoices, and shelves with AI. No keyboard required.",
+          "FnB Cost Pro runs your kitchen back office from your phone. Scan menus, recipes, invoices, and shelves with your phone. No keyboard required.",
       },
-      badge: "AI-Powered Kitchen Management",
+      badge: "Photo-First Kitchen Management",
       headline1: "Your whole kitchen.",
       headline2: "Just your phone.",
       headline3: "",
       subheadline:
-        "Traditional restaurant software takes weeks to set up. FnB Cost Pro onboards in a day — AI scans your menu, recipes, and invoices from photos so you can skip the keyboard entirely.",
+        "Traditional restaurant software takes weeks to set up. FnB Cost Pro onboards in a day — just photograph your menu, recipes, and invoices to skip the keyboard entirely.",
       ctaTrial: "Upload Your Menu Now",
       ctaPricing: "View Pricing",
       trialNote: "Full setup in under a day. 14-day free trial. Cancel anytime.",
@@ -83,11 +83,11 @@ export const translations = {
       features: [
         {
           title: "Set Up by Photo",
-          desc: "Photograph your printed menu and watch AI pull out every dish name, section, and price. Photograph a recipe card and get a costed recipe in seconds. Photograph a vendor invoice and have it matched to your inventory automatically.",
+          desc: "Photograph your printed menu and every dish name, section, and price is extracted automatically. Photograph a recipe card and get a costed recipe in seconds. Photograph a vendor invoice and have it matched to your inventory automatically.",
         },
         {
           title: "Count by Photo",
-          desc: "Walk your shelves with your phone. AI reads the labels, identifies items, and logs counts directly to your inventory session — no clipboards, no re-entry, no mistakes from reading handwritten sheets.",
+          desc: "Walk your shelves with your phone. Labels are read, items identified, and counts logged directly to your inventory session — no clipboards, no re-entry, no mistakes from reading handwritten sheets.",
         },
         {
           title: "Manage & Analyze",
@@ -116,7 +116,7 @@ export const translations = {
         {
           num: "1",
           title: "Photograph Your Recipe",
-          body: "Point your phone at any recipe card, printed menu, or handwritten note. Our AI extracts every ingredient — quantities, units, and all.",
+          body: "Point your phone at any recipe card, printed menu, or handwritten note. Every ingredient is read from the photo — quantities, units, and all.",
         },
         {
           num: "2",
@@ -130,14 +130,14 @@ export const translations = {
         },
       ],
       howItWorksLabel: "Setup That Actually Works",
-      howItWorksTitle: "From Day One, AI Does the Heavy Lifting",
+      howItWorksTitle: "From Day One, Your Phone Does the Work",
       howItWorksSubtitle:
         "Traditional restaurant software takes weeks to set up. FnB Cost Pro takes a single day — because your phone does the data entry.",
       steps: [
         {
           num: "01",
           title: "Scan Your Menu",
-          body: "Upload a photo of your printed menu. AI extracts every dish, section, and price and seeds your recipe library in minutes — not hours.",
+          body: "Upload a photo of your printed menu. Every dish, section, and price is extracted and seeds your recipe library in minutes — not hours.",
         },
         {
           num: "02",
@@ -158,21 +158,21 @@ export const translations = {
       ctaChecklist: [
         "14-day free trial",
         "Cancel anytime",
-        "AI setup included from day one",
+        "Photo setup from day one",
         "Full setup in under a day",
       ],
       stepLabel: "Step",
     },
     features: {
       meta: {
-        title: "Features — FnB Cost Pro AI Restaurant Management Software",
+        title: "Features — FnB Cost Pro Restaurant Food Cost Management Software",
         description:
-          "Explore FnB Cost Pro's AI-powered features: scan menus, recipes, and invoices by photo, count shelves with your phone, and manage food cost across every location.",
+          "Explore FnB Cost Pro's photo-first features: scan menus, recipes, and invoices by photo, count shelves with your phone, and manage food cost across every location.",
       },
-      badge: "Photo-First. AI-Powered.",
+      badge: "Photo-First. No Keyboard.",
       headline: "Your Kitchen Back Office — Run From Your Phone",
       subheadline:
-        "FnB Cost Pro eliminates keyboard data entry for restaurant operators. Point your camera at your menu, your recipes, your vendor invoices, your shelves. The AI does the rest.",
+        "FnB Cost Pro eliminates keyboard data entry for restaurant operators. Point your camera at your menu, your recipes, your vendor invoices, your shelves. The app does the rest.",
       badgesNote: "badges show which plan includes each feature",
       startFree: "Start Free Trial",
       upgradeTitle: "The Right Plan for Your Operation",
@@ -181,16 +181,16 @@ export const translations = {
       upgradeFreebody: "",
       upgradeStarterTitle: "Starter — One Location",
       upgradeStarterBody:
-        "Everything you need to run one location: AI menu and recipe scanning, live recipe costing, vendor order guides, inventory counts, Theoretical Food Cost variance reporting, and the AI kitchen assistant.",
+        "Everything you need to run one location: menu and recipe scanning by photo, live recipe costing, vendor order guides, inventory counts, Theoretical Food Cost variance reporting, and the kitchen assistant.",
       upgradeBasicTitle: "Starter — Know Your Costs",
       upgradeBasicBody:
-        "AI-powered setup, live recipe costing, vendor order guides, Theoretical Food Cost variance reporting, and the AI kitchen assistant. Everything you need to run a tight back office at one location.",
+        "Photo-based setup, live recipe costing, vendor order guides, Theoretical Food Cost variance reporting, and the kitchen assistant. Everything you need to run a tight back office at one location.",
       upgradeProTitle: "Pro — Multi-Location Control",
       upgradeProBody:
-        "Everything in Starter plus AI shelf scanning, invoice auto-matching, transfer orders between stores, cross-shop vendor pricing, QuickBooks export, and unlimited locations. Built for operators running more than one store.",
+        "Everything in Starter plus shelf scanning by phone, invoice auto-matching, transfer orders between stores, cross-shop vendor pricing, QuickBooks export, and unlimited locations. Built for operators running more than one store.",
       ctaTitle: "Start Your 14-Day Free Trial",
       ctaSubtitle:
-        "Full access from day one. AI-powered setup included. Cancel anytime.",
+        "Full access from day one. Photo setup included. Cancel anytime.",
       getStartedFree: "Start Free Trial",
       tierLabels: { free: "Free", basic: "Starter", pro: "Pro" },
       sections: [
@@ -199,21 +199,21 @@ export const translations = {
           label: "Set Up by Photo",
           badge: "All paid plans",
           headline: "Your entire back office — set up in an afternoon",
-          body: "Traditional restaurant software requires weeks of manual data entry to get started. FnB Cost Pro uses AI vision to read your existing materials and build your system from photos.",
+          body: "Traditional restaurant software requires weeks of manual data entry to get started. FnB Cost Pro reads your existing materials from photos and builds your system automatically.",
           items: [
             {
               title: "Menu Scan",
-              desc: "Photograph your printed menu — AI extracts every dish, section, and price. Your recipe library is seeded in minutes, not hours. Works with printed menus, PDF screenshots, handwritten specials.",
+              desc: "Photograph your printed menu — every dish, section, and price is extracted automatically. Your recipe library is seeded in minutes, not hours. Works with printed menus, PDF screenshots, handwritten specials.",
               stat: "A 50-item menu: ~2 minutes vs. 12–25 hours manually",
             },
             {
               title: "Recipe Scan",
-              desc: "Point your phone at any recipe card, index card, or printed cooking sheet. AI reads the ingredients, quantities, and units — then matches them to your inventory and calculates the food cost per portion automatically.",
+              desc: "Point your phone at any recipe card, index card, or printed cooking sheet. Ingredients, quantities, and units are read from the photo — then matched to your inventory and the food cost per portion calculated automatically.",
               stat: "Each recipe: seconds vs. 15–30 minutes manually",
             },
             {
               title: "Invoice Scan",
-              desc: "Photograph a vendor invoice and AI extracts every line item, matches it to your inventory items, and updates pricing automatically. No re-keying, no matching by hand.",
+              desc: "Photograph a vendor invoice and every line item is extracted, matched to your inventory items, and pricing updated automatically. No re-keying, no matching by hand.",
               stat: "Each delivery: ~30 seconds vs. 20 minutes manually",
             },
           ],
@@ -227,12 +227,12 @@ export const translations = {
           items: [
             {
               title: "Shelf Scan",
-              desc: "Walk your coolers, freezer, and dry storage with your phone. AI reads product labels, identifies inventory items, and logs counts directly to your active count session. No transfer to a sheet, no double-entry.",
+              desc: "Walk your coolers, freezer, and dry storage with your phone. Product labels are read, inventory items identified, and counts logged directly to your active count session. No transfer to a sheet, no double-entry.",
               stat: "Saves 50–75% of count time — $80–240/month for most operators",
             },
             {
               title: "Catch-Weight Scanning",
-              desc: "For proteins and items sold by weight, photograph the scale readout alongside the item and AI captures both the item identity and the exact weight in one step.",
+              desc: "For proteins and items sold by weight, photograph the scale readout alongside the item and both the item identity and the exact weight are captured in one step.",
               stat: "Eliminates the most error-prone part of a protein count",
             },
           ],
@@ -267,13 +267,13 @@ export const translations = {
         {
           title: "Set Up by Photo",
           description:
-            "Photograph your menu, recipe cards, and vendor invoices. AI extracts the data and builds your system automatically — no keyboard required.",
+            "Photograph your menu, recipe cards, and vendor invoices. Data is extracted from each photo and your system is built automatically — no keyboard required.",
           features: [
             "Menu scan: photograph your printed menu and seed your recipe library instantly",
             "Recipe scan: photograph recipe cards and get a costed recipe in seconds",
             "Invoice scan: photograph vendor invoices and have line items auto-matched to inventory",
             "Works with printed menus, PDFs, handwritten cards, and digital screenshots",
-            "AI extracts ingredients, quantities, units, and prices automatically",
+            "Ingredients, quantities, units, and prices extracted automatically",
           ],
         },
         {
@@ -320,9 +320,9 @@ export const translations = {
         {
           title: "Count by Photo",
           description:
-            "Walk your shelves with your phone instead of a clipboard. AI reads product labels and logs counts directly to your active inventory session.",
+            "Walk your shelves with your phone instead of a clipboard. Product labels are read and counts logged directly to your active inventory session.",
           features: [
-            "Shelf scan: AI reads labels and logs counts automatically",
+            "Shelf scan: labels read and counts logged automatically",
             "Catch-weight scanning for proteins and by-weight items",
             "Guided count sessions by storage location",
             "Count history with user accountability tracking",
@@ -356,7 +356,7 @@ export const translations = {
       badge: "Simple, Transparent Pricing",
       headline: "A Plan for Every Operation",
       subheadline:
-        "All paid plans include AI setup scanning, live recipe costing, vendor order guides, and a 14-day free trial. Cancel anytime.",
+        "All paid plans include photo-based setup, live recipe costing, vendor order guides, and a 14-day free trial. Cancel anytime.",
       termLabels: { monthly: "Monthly", annual: "Annual" },
       savings: { monthly: null, annual: "Save ~14%" },
       mostPopular: "Most Popular",
@@ -389,7 +389,7 @@ export const translations = {
         },
         {
           q: "What's included in the free trial?",
-          a: "Full access to all features in the plan you choose for 14 days. AI scanning, recipe costing, vendor order guides, everything. You won't be charged until the trial ends, and you can cancel any time before then.",
+          a: "Full access to all features in the plan you choose for 14 days. Photo scanning, recipe costing, vendor order guides, everything. You won't be charged until the trial ends, and you can cancel any time before then.",
         },
         {
           q: "How does Pro per-location billing work?",
@@ -397,7 +397,7 @@ export const translations = {
         },
         {
           q: "Do you charge setup fees?",
-          a: "No mandatory setup fees. AI-assisted onboarding is included in every plan. Optional white-glove onboarding is available if you want hands-on help: $299 for Starter, $999 for Pro multi-store.",
+          a: "No mandatory setup fees. Guided onboarding is included in every plan. Optional white-glove onboarding is available if you want hands-on help: $299 for Starter, $999 for Pro multi-store.",
         },
         {
           q: "What is the Enterprise plan?",
@@ -476,7 +476,7 @@ export const translations = {
     },
     about: {
       meta: {
-        title: "About FnB Cost Pro — AI-Powered Restaurant Cost Control",
+        title: "About FnB Cost Pro — Photo-First Restaurant Cost Control",
         description:
           "FnB Cost Pro was built by F&B operators for F&B operators. We replaced the keyboard with a camera. Learn our story.",
       },
@@ -488,7 +488,7 @@ export const translations = {
       mission1:
         "Food & Beverage is one of the most margin-sensitive industries in the world. A 1–2% shift in food cost can be the difference between a profitable month and a loss. Yet most F&B operators are spending 6–10 hours a week on data entry just to keep their cost data current.",
       mission2:
-        "We built FnB Cost Pro to change that. AI vision now handles what used to require hours of keyboard work — scanning your menu, reading your recipe cards, extracting your vendor invoices, counting your shelves. The operator points the camera. The software does the rest.",
+        "We built FnB Cost Pro to change that. Photo scanning now handles what used to require hours of keyboard work — scanning your menu, reading your recipe cards, extracting your vendor invoices, counting your shelves. The operator points the camera. The software does the rest.",
       mission3:
         "We believe every Food & Beverage operator — from a single-location restaurant to a multi-unit F&B group — deserves access to professional-grade food cost management that doesn't require a dedicated data-entry person to run it.",
       valuesLabel: "Our Values",
@@ -499,8 +499,8 @@ export const translations = {
           body: "Every feature in FnB Cost Pro was designed by people who have run kitchens. We know what it's like to count inventory at 11pm and re-key invoices at 7am. We built the tool we wished we had.",
         },
         {
-          title: "AI That Actually Saves Time",
-          body: "We don't use AI as a marketing word. Every AI feature in this product eliminates a real, time-consuming task: scanning menus, extracting recipe ingredients, reading vendor invoices, counting shelves. You should feel the time savings on day one.",
+          title: "Photo Scanning That Actually Saves Time",
+          body: "Every scan feature in this product eliminates a real, time-consuming task: reading your printed menu, extracting recipe ingredients from a card, pulling line items from a vendor invoice, counting shelves from a label. You should feel the time savings on day one.",
         },
         {
           title: "No Keyboard Required",
@@ -514,11 +514,11 @@ export const translations = {
       whoItems: [
         {
           title: "Independent Restaurants",
-          body: "One location, owner-operated. You need food cost control without a full-time admin. FnB Cost Pro Starter gives you AI setup, live recipe costing, and Theoretical Food Cost variance for $149/month.",
+          body: "One location, owner-operated. You need food cost control without a full-time admin. FnB Cost Pro Starter gives you photo setup, live recipe costing, and Theoretical Food Cost variance for $149/month.",
         },
         {
           title: "Multi-Unit Groups",
-          body: "Two locations or twenty. FnB Cost Pro Pro gives you per-store inventory, cross-location variance, transfer orders, and AI shelf scanning — billed per location so costs scale with your operation.",
+          body: "Two locations or twenty. FnB Cost Pro Pro gives you per-store inventory, cross-location variance, transfer orders, and shelf scanning by phone — billed per location so costs scale with your operation.",
         },
         {
           title: "Bars & Beverage Operations",
@@ -590,7 +590,7 @@ export const translations = {
       signingOut: "Cerrando sesión…",
     },
     footer: {
-      tagline: "Gestión de inventario con IA y costeo de recetas para restaurantes y negocios de Alimentos y Bebidas.",
+      tagline: "Gestión de inventario foto-primero y costeo de recetas para restaurantes y negocios de Alimentos y Bebidas.",
       product: "Producto",
       getStarted: "Comenzar",
       getStartedFree: "Iniciar prueba gratis",
@@ -605,16 +605,16 @@ export const translations = {
     },
     home: {
       meta: {
-        title: "FnB Cost Pro — Software de Costos para Restaurantes con IA",
+        title: "FnB Cost Pro — Software de Costos para Restaurantes Foto-Primero",
         description:
-          "FnB Cost Pro gestiona tu cocina desde tu teléfono. Escanea menús, recetas, facturas y estantes con IA. Sin teclado.",
+          "FnB Cost Pro gestiona tu cocina desde tu teléfono. Escanea menús, recetas, facturas y estantes con tu teléfono. Sin teclado.",
       },
-      badge: "Gestión de Cocina con IA",
+      badge: "Gestión de Cocina Foto-Primero",
       headline1: "Tu cocina completa.",
       headline2: "Solo tu teléfono.",
       headline3: "",
       subheadline:
-        "El software tradicional tarda semanas en configurarse. FnB Cost Pro se pone en marcha en un día — la IA escanea tu menú, recetas y facturas desde fotos para que nunca tengas que escribir nada.",
+        "El software tradicional tarda semanas en configurarse. FnB Cost Pro se pone en marcha en un día — solo fotografía tu menú, recetas y facturas para no usar el teclado.",
       ctaTrial: "Sube tu menú ahora",
       ctaPricing: "Ver precios",
       trialNote: "Configuración completa en menos de un día. Prueba gratuita de 14 días. Cancela cuando quieras.",
@@ -658,11 +658,11 @@ export const translations = {
       features: [
         {
           title: "Configura con una foto",
-          desc: "Fotografía tu menú impreso y la IA extrae cada plato. Fotografía una tarjeta de receta y obtén una receta con costos en segundos. Fotografía una factura de proveedor y tenla emparejada automáticamente.",
+          desc: "Fotografía tu menú impreso y cada plato es extraído automáticamente. Fotografía una tarjeta de receta y obtén una receta con costos en segundos. Fotografía una factura de proveedor y tenla emparejada automáticamente.",
         },
         {
           title: "Cuenta con una foto",
-          desc: "Camina por tus estantes con tu teléfono. La IA lee las etiquetas, identifica los artículos y registra los conteos directamente en tu sesión de inventario — sin portapapeles, sin reingreso.",
+          desc: "Camina por tus estantes con tu teléfono. Las etiquetas se leen, los artículos se identifican y los conteos se registran directamente en tu sesión de inventario — sin portapapeles, sin reingreso.",
         },
         {
           title: "Gestiona y analiza",
@@ -691,7 +691,7 @@ export const translations = {
         {
           num: "1",
           title: "Fotografía tu receta",
-          body: "Apunta tu teléfono a cualquier tarjeta de receta o nota impresa. Nuestra IA extrae cada ingrediente — cantidades, unidades y todo.",
+          body: "Apunta tu teléfono a cualquier tarjeta de receta o nota impresa. Cada ingrediente es leído de la foto — cantidades, unidades y todo.",
         },
         {
           num: "2",
@@ -705,14 +705,14 @@ export const translations = {
         },
       ],
       howItWorksLabel: "Configuración que realmente funciona",
-      howItWorksTitle: "Desde el primer día, la IA hace el trabajo pesado",
+      howItWorksTitle: "Desde el primer día, tu teléfono hace el trabajo",
       howItWorksSubtitle:
         "El software tradicional tarda semanas en configurarse. FnB Cost Pro tarda un solo día — porque tu teléfono hace la entrada de datos.",
       steps: [
         {
           num: "01",
           title: "Escanea tu menú",
-          body: "Sube una foto de tu menú impreso. La IA extrae cada plato, sección y precio y llena tu biblioteca de recetas en minutos.",
+          body: "Sube una foto de tu menú impreso. Cada plato, sección y precio es extraído y llena tu biblioteca de recetas en minutos.",
         },
         {
           num: "02",
@@ -733,21 +733,21 @@ export const translations = {
       ctaChecklist: [
         "Prueba gratuita de 14 días",
         "Cancela en cualquier momento",
-        "Configuración con IA incluida",
+        "Configuración por foto incluida",
         "Configuración completa en menos de un día",
       ],
       stepLabel: "Paso",
     },
     features: {
       meta: {
-        title: "Funciones — FnB Cost Pro Software de Gestión con IA para Restaurantes",
+        title: "Funciones — FnB Cost Pro Software de Gestión de Costos para Restaurantes",
         description:
           "Escanea menús, recetas y facturas por foto, cuenta estantes con tu teléfono y gestiona el costo de alimentos en cada sucursal.",
       },
-      badge: "Primero la foto. Impulsado por IA.",
+      badge: "Primero la foto. Sin teclado.",
       headline: "Tu cocina trasera — gestionada desde tu teléfono",
       subheadline:
-        "FnB Cost Pro elimina la entrada de datos por teclado. Apunta tu cámara a tu menú, recetas, facturas, estantes. La IA hace el resto.",
+        "FnB Cost Pro elimina la entrada de datos por teclado. Apunta tu cámara a tu menú, recetas, facturas, estantes. La app hace el resto.",
       badgesNote: "las insignias indican qué plan incluye cada función",
       startFree: "Iniciar prueba gratis",
       upgradeTitle: "El plan correcto para tu operación",
@@ -756,16 +756,16 @@ export const translations = {
       upgradeFreebody: "",
       upgradeStarterTitle: "Starter — Una sucursal",
       upgradeStarterBody:
-        "Todo lo que necesitas para una sucursal: escaneo de menú y recetas con IA, costeo de recetas en vivo, guías de proveedores, conteos de inventario y reportes de varianza del Costo Teórico de Alimentos.",
+        "Todo lo que necesitas para una sucursal: escaneo de menú y recetas por foto, costeo de recetas en vivo, guías de proveedores, conteos de inventario y reportes de varianza del Costo Teórico de Alimentos.",
       upgradeBasicTitle: "Starter — Conoce tus costos",
       upgradeBasicBody:
-        "Configuración con IA, costeo de recetas en vivo, guías de proveedores, reportes de varianza del Costo Teórico de Alimentos y el asistente de cocina con IA.",
+        "Configuración por foto, costeo de recetas en vivo, guías de proveedores, reportes de varianza del Costo Teórico de Alimentos y el asistente de cocina. Todo lo que necesitas para una sucursal.",
       upgradeProTitle: "Pro — Control multi-sucursal",
       upgradeProBody:
-        "Todo lo de Starter más escaneo de estantes con IA, órdenes de transferencia, comparación de precios entre proveedores, exportación a QuickBooks y sucursales ilimitadas.",
+        "Todo lo de Starter más escaneo de estantes por teléfono, órdenes de transferencia, comparación de precios entre proveedores, exportación a QuickBooks y sucursales ilimitadas.",
       ctaTitle: "Inicia tu prueba gratuita de 14 días",
       ctaSubtitle:
-        "Acceso completo desde el primer día. Sin tarjeta de crédito. Configuración con IA incluida.",
+        "Acceso completo desde el primer día. Configuración por foto incluida. Cancela cuando quieras.",
       getStartedFree: "Iniciar prueba gratis",
       tierLabels: { free: "Gratis", basic: "Starter", pro: "Pro" },
       sections: [],
@@ -773,13 +773,13 @@ export const translations = {
         {
           title: "Configura con una foto",
           description:
-            "Fotografía tu menú, tarjetas de recetas y facturas de proveedores. La IA extrae los datos y construye tu sistema automáticamente.",
+            "Fotografía tu menú, tarjetas de recetas y facturas de proveedores. Los datos se extraen de cada foto y tu sistema se construye automáticamente.",
           features: [
             "Escaneo de menú: fotografía tu menú impreso y llena tu biblioteca al instante",
             "Escaneo de recetas: fotografía tarjetas de recetas y obtén recetas costeadas en segundos",
             "Escaneo de facturas: fotografía facturas y auto-emparejar con inventario",
             "Funciona con menús impresos, PDFs, tarjetas escritas a mano y capturas digitales",
-            "La IA extrae ingredientes, cantidades, unidades y precios automáticamente",
+            "Ingredientes, cantidades, unidades y precios extraídos automáticamente",
           ],
         },
         {
@@ -826,9 +826,9 @@ export const translations = {
         {
           title: "Cuenta con una foto",
           description:
-            "Camina por tus estantes con tu teléfono en lugar de un portapapeles. La IA lee las etiquetas y registra los conteos automáticamente.",
+            "Camina por tus estantes con tu teléfono en lugar de un portapapeles. Las etiquetas se leen y los conteos se registran directamente en tu sesión de inventario.",
           features: [
-            "Escaneo de estantes: la IA lee etiquetas y registra conteos",
+            "Escaneo de estantes: las etiquetas se leen y los conteos se registran",
             "Escaneo de peso-captura para proteínas",
             "Sesiones de conteo guiadas por ubicación",
             "Historial de conteos con responsabilidad por usuario",
@@ -862,7 +862,7 @@ export const translations = {
       badge: "Precios simples y transparentes",
       headline: "Un plan para cada operación",
       subheadline:
-        "Todos los planes de pago incluyen escaneo con IA, costeo de recetas en vivo, guías de proveedores y prueba gratuita de 14 días.",
+        "Todos los planes de pago incluyen configuración por foto, costeo de recetas en vivo, guías de proveedores y prueba gratuita de 14 días.",
       termLabels: { monthly: "Mensual", annual: "Anual" },
       savings: { monthly: null, annual: "Ahorra ~14%" },
       mostPopular: "Más popular",
@@ -903,7 +903,7 @@ export const translations = {
         },
         {
           q: "¿Cobran cargos de configuración?",
-          a: "Sin cargos de configuración obligatorios. La incorporación asistida por IA está incluida en todos los planes. La incorporación personalizada es opcional: $299 para Starter, $999 para Pro multi-sucursal.",
+          a: "Sin cargos de configuración obligatorios. La incorporación guiada está incluida en todos los planes. La incorporación personalizada es opcional: $299 para Starter, $999 para Pro multi-sucursal.",
         },
         {
           q: "¿Qué es el plan Enterprise?",
@@ -982,7 +982,7 @@ export const translations = {
     },
     about: {
       meta: {
-        title: "Nosotros — FnB Cost Pro Control de Costos para Restaurantes con IA",
+        title: "Nosotros — FnB Cost Pro Control de Costos para Restaurantes Foto-Primero",
         description:
           "FnB Cost Pro fue creado por operadores de A&B para operadores de A&B. Reemplazamos el teclado con una cámara.",
       },
@@ -994,7 +994,7 @@ export const translations = {
       mission1:
         "Alimentos y Bebidas es una de las industrias más sensibles al margen del mundo. Un cambio del 1–2% en el costo de alimentos puede ser la diferencia entre un mes rentable y una pérdida. Sin embargo, la mayoría de los operadores pasan 6–10 horas a la semana en entrada de datos solo para mantener sus costos actualizados.",
       mission2:
-        "Creamos FnB Cost Pro para cambiar eso. La visión con IA ahora maneja lo que antes requería horas de trabajo de teclado — escanear tu menú, leer tus tarjetas de recetas, extraer tus facturas de proveedores, contar tus estantes. El operador apunta la cámara. El software hace el resto.",
+        "Creamos FnB Cost Pro para cambiar eso. El escaneo por foto ahora maneja lo que antes requería horas de trabajo de teclado — escanear tu menú, leer tus tarjetas de recetas, extraer tus facturas de proveedores, contar tus estantes. El operador apunta la cámara. El software hace el resto.",
       mission3:
         "Creemos que todo operador de A&B — desde un restaurante de una sola sucursal hasta un grupo multi-sucursal — merece acceso a una gestión profesional de costos de alimentos que no requiere una persona dedicada a la entrada de datos.",
       valuesLabel: "Nuestros valores",
@@ -1005,8 +1005,8 @@ export const translations = {
           body: "Cada función en FnB Cost Pro fue diseñada por personas que han gestionado cocinas. Sabemos lo que es contar inventario a las 11pm y reingresar facturas a las 7am. Creamos la herramienta que deseábamos tener.",
         },
         {
-          title: "IA que realmente ahorra tiempo",
-          body: "No usamos IA como palabra de marketing. Cada función de IA en este producto elimina una tarea real y que consume tiempo: escanear menús, extraer ingredientes, leer facturas, contar estantes. Deberías sentir el ahorro de tiempo desde el día uno.",
+          title: "Escaneo por foto que realmente ahorra tiempo",
+          body: "Cada función de escaneo en este producto elimina una tarea real y que consume tiempo: leer tu menú impreso, extraer ingredientes de una tarjeta de receta, obtener líneas de una factura de proveedor, contar estantes desde una etiqueta. Deberías sentir el ahorro de tiempo desde el día uno.",
         },
         {
           title: "Sin teclado requerido",
@@ -1020,11 +1020,11 @@ export const translations = {
       whoItems: [
         {
           title: "Restaurantes independientes",
-          body: "Una ubicación, operado por el propietario. Necesitas control de costos sin un administrador de tiempo completo. FnB Cost Pro Starter te da configuración con IA y costeo en vivo por $149/mes.",
+          body: "Una ubicación, operado por el propietario. Necesitas control de costos sin un administrador de tiempo completo. FnB Cost Pro Starter te da configuración por foto y costeo en vivo por $149/mes.",
         },
         {
           title: "Grupos multi-sucursal",
-          body: "Dos sucursales o veinte. FnB Cost Pro Pro te da inventario por tienda, varianza multi-sucursal, órdenes de transferencia y escaneo de estantes con IA.",
+          body: "Dos sucursales o veinte. FnB Cost Pro Pro te da inventario por tienda, varianza multi-sucursal, órdenes de transferencia y escaneo de estantes por teléfono.",
         },
         {
           title: "Bares y operaciones de bebidas",
