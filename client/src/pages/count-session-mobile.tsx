@@ -225,6 +225,23 @@ export default function CountSessionMobile() {
     return acc;
   }, {});
 
+  // Cost totals derived from cached count lines
+  const costByLoc = (countLines || []).reduce<Record<string, number>>(
+    (acc, l) => {
+      if ((l.qty || 0) > 0) {
+        const locId = l.inventoryItem?.storageLocationId || "unknown";
+        acc[locId] = (acc[locId] ?? 0) + l.qty * (l.unitCost || 0);
+      }
+      return acc;
+    },
+    {}
+  );
+  const sessionCostTotal = Object.values(costByLoc).reduce(
+    (sum, v) => sum + v,
+    0
+  );
+  const locationCostTotal = selectedLocId ? (costByLoc[selectedLocId] ?? 0) : 0;
+
   // Overall session completion
   const totalItems = countLines?.length ?? 0;
   const countedItems = (countLines || []).filter((l) => (l.qty || 0) > 0).length;
@@ -573,6 +590,29 @@ export default function CountSessionMobile() {
           );
         })}
       </div>
+
+      {/* ── Cost summary bar ── */}
+      {countedItems > 0 && (
+        <div
+          className="flex items-center justify-between px-4 py-1.5 bg-muted/40 border-b shrink-0"
+          data-testid="cost-summary-bar"
+        >
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground" data-testid="text-location-cost">
+              {sessionLocations.find((l) => l.id === selectedLocId)?.name ?? "Location"}:
+            </span>
+            <span className="font-mono font-semibold text-foreground tabular-nums" data-testid="value-location-cost">
+              ${locationCostTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span>Session total:</span>
+            <span className="font-mono font-semibold text-foreground tabular-nums" data-testid="value-session-cost">
+              ${sessionCostTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ── Item list ── */}
       <div className="flex-1 overflow-y-auto">
