@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import {
   Camera, ScanLine, FileText, BarChart3, Users, RefreshCw, Truck,
-  CheckCircle, ChevronRight, Clock, DollarSign,
+  CheckCircle, ChevronRight, Clock, DollarSign, MapPin, TrendingUp, QrCode, Smartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,23 @@ import { MarketingLayout, MarketingHead, CTAButton, SectionHeading, appLink } fr
 import { useLanguage } from "@/lib/language-context";
 
 type IconComponent = (props: { className?: string }) => JSX.Element;
+
+function PhoneFrame({ src, alt, caption, testId }: { src: string; alt: string; caption: string; testId: string }) {
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <div
+        className="relative bg-gray-900 rounded-[2.5rem] p-2.5 shadow-2xl w-[180px] sm:w-[200px]"
+        data-testid={testId}
+      >
+        <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-14 h-5 bg-gray-800 rounded-full z-10" />
+        <div className="rounded-[2rem] overflow-hidden bg-black">
+          <img src={src} alt={alt} className="w-full h-auto block" loading="lazy" />
+        </div>
+      </div>
+      <p className="text-xs text-gray-500 text-center font-medium">{caption}</p>
+    </div>
+  );
+}
 
 const SECTION_ICONS: Record<string, IconComponent[]> = {
   setup: [Camera, FileText, ScanLine],
@@ -214,7 +231,64 @@ export default function WebsiteFeatures() {
         </div>
       </section>
 
-      <section className="py-16 bg-gray-50">
+      <section className="py-20 bg-gray-50" data-testid="section-mobile-showcase">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-14">
+            <Badge variant="outline" className="text-green-700 bg-green-50 border-green-200 mb-4">
+              Inventory Companion App
+            </Badge>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4">
+              Count inventory from any device
+            </h2>
+            <p className="text-gray-500 max-w-2xl mx-auto leading-relaxed">
+              The Inventory Companion app puts scanning and counting in your team's hands on the floor. Desktop is great for reviewing reports and costs. And for logging waste, a tablet at the pass keeps it quick and simple.
+            </p>
+          </div>
+
+          <div className="flex flex-col lg:flex-row gap-10 items-center justify-center mb-14">
+            <div className="flex flex-wrap gap-8 items-end justify-center">
+              <PhoneFrame
+                src="/screenshots/mobile-count-session.jpg"
+                alt="FnB Cost Pro Inventory Companion — count session overview"
+                caption="Count session overview"
+                testId="phone-frame-count-session"
+              />
+              <PhoneFrame
+                src="/screenshots/mobile-count-items.jpg"
+                alt="FnB Cost Pro Inventory Companion — items grouped by storage location"
+                caption="Items grouped by location"
+                testId="phone-frame-count-items"
+              />
+              <PhoneFrame
+                src="/screenshots/mobile-waste-log.jpg"
+                alt="FnB Cost Pro waste log on a tablet or mobile browser"
+                caption="Waste log — great on a tablet"
+                testId="phone-frame-waste-log"
+              />
+            </div>
+
+            <div className="lg:max-w-xs w-full">
+              <ul className="space-y-5">
+                {[
+                  { icon: QrCode, text: "Scan barcodes with the Inventory Companion app — no extra hardware" },
+                  { icon: MapPin, text: "Items grouped by storage location so staff count aisle by aisle" },
+                  { icon: TrendingUp, text: "Running cost totals update as you enter each count" },
+                  { icon: Smartphone, text: "Desktop for reports and review, tablet for waste, phone for counts" },
+                ].map(({ icon: Icon, text }) => (
+                  <li key={text} className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-green-100 text-green-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <span className="text-gray-600 text-sm leading-relaxed">{text}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-16 bg-white">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
             title={feat.upgradeTitle}
