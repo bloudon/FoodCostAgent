@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, Fragment } from "react";
+import { useState, useEffect, useRef, Fragment, useCallback } from "react";
+import type { IScannerControls } from "@zxing/browser";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation as useWouterLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   ArrowLeft,
   CheckCircle2,
   Scale,
@@ -31,6 +38,9 @@ import {
   Package,
   MapPin,
   Lock,
+  ScanBarcode,
+  X,
+  Camera,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -146,6 +156,174 @@ function MobileEntryList({
   );
 }
 
+// ── Barcode Scanner Component ─────────────────────────────────────────────────
+function BarcodeScanner({
+  open,
+  onClose,
+  onDetected,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onDetected: (barcode: string) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+  const detectedRef = useRef(false);
+
+  const stopScanner = useCallback(() => {
+    if (controlsRef.current) {
+      try {
+        controlsRef.current.stop();
+      } catch (stopErr) {
+        console.warn("[BarcodeScanner] controls.stop() failed:", stopErr);
+      }
+      controlsRef.current = null;
+    }
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach((t) => t.stop());
+      videoRef.current.srcObject = null;
+    }
+    detectedRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      stopScanner();
+      setCameraError(null);
+      setIsStarting(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsStarting(true);
+    setCameraError(null);
+    detectedRef.current = false;
+
+    async function startScanner() {
+      try {
+        const { BrowserMultiFormatReader } = await import("@zxing/browser");
+        if (cancelled) return;
+
+        const reader = new BrowserMultiFormatReader();
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+        });
+
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        setIsStarting(false);
+
+        const controls = await reader.decodeFromStream(
+          stream,
+          videoRef.current ?? undefined,
+          (result) => {
+            if (result && !detectedRef.current) {
+              detectedRef.current = true;
+              onDetected(result.getText());
+            }
+          }
+        );
+        controlsRef.current = controls;
+      } catch (err: unknown) {
+        if (cancelled) return;
+        setIsStarting(false);
+        const errName = err instanceof Error ? err.name : "";
+        if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
+          setCameraError("Camera access denied. Please allow camera access and try again.");
+        } else if (errName === "NotFoundError" || errName === "DevicesNotFoundError") {
+          setCameraError("No camera found on this device.");
+        } else {
+          console.error("[BarcodeScanner] Camera start failed:", err);
+          setCameraError("Could not start camera. Please try again.");
+        }
+      }
+    }
+
+    startScanner();
+
+    return () => {
+      cancelled = true;
+      stopScanner();
+    };
+  }, [open, onDetected, stopScanner]);
+
+  const handleClose = () => {
+    stopScanner();
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+      <DialogContent className="p-0 gap-0 max-w-md w-full overflow-hidden rounded-xl">
+        <DialogHeader className="px-4 pt-4 pb-3 flex flex-row items-center gap-2">
+          <ScanBarcode className="h-5 w-5 text-primary shrink-0" />
+          <DialogTitle className="flex-1 text-base">Scan Barcode</DialogTitle>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={handleClose}
+            className="shrink-0"
+            data-testid="button-scanner-close"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+
+        <div className="relative bg-black" style={{ aspectRatio: "4/3" }}>
+          {cameraError ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+              <Camera className="h-10 w-10 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">{cameraError}</p>
+              <Button variant="outline" size="sm" onClick={handleClose}>
+                Dismiss
+              </Button>
+            </div>
+          ) : (
+            <>
+              <video
+                ref={videoRef}
+                className="w-full h-full object-cover"
+                muted
+                playsInline
+                data-testid="video-barcode-scanner"
+              />
+              {isStarting && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-white text-sm">Starting camera…</div>
+                </div>
+              )}
+              {/* Scan reticle */}
+              {!isStarting && !cameraError && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-56 h-32 border-2 border-white/70 rounded-md relative">
+                    <div className="absolute top-0 left-0 w-5 h-5 border-t-4 border-l-4 border-primary rounded-tl-sm" />
+                    <div className="absolute top-0 right-0 w-5 h-5 border-t-4 border-r-4 border-primary rounded-tr-sm" />
+                    <div className="absolute bottom-0 left-0 w-5 h-5 border-b-4 border-l-4 border-primary rounded-bl-sm" />
+                    <div className="absolute bottom-0 right-0 w-5 h-5 border-b-4 border-r-4 border-primary rounded-br-sm" />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="px-4 py-3 text-center">
+          <p className="text-xs text-muted-foreground">
+            Point the camera at a product barcode to jump to that item
+          </p>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function CountSessionMobile() {
   const params = useParams();
@@ -163,6 +341,10 @@ export default function CountSessionMobile() {
   const [sheetLooseUnits, setSheetLooseUnits] = useState("");
   // Apply confirmation
   const [showApplyDialog, setShowApplyDialog] = useState(false);
+  // Barcode scanner
+  const [showScanner, setShowScanner] = useState(false);
+  const [noMatchBarcode, setNoMatchBarcode] = useState<string | null>(null);
+  const [noMatchSuggestions, setNoMatchSuggestions] = useState<string[]>([]);
 
   const primaryInputRef = useRef<HTMLInputElement>(null);
 
@@ -501,6 +683,69 @@ export default function CountSessionMobile() {
     }
   }
 
+  // ── Barcode scan handler ───────────────────────────────────────────────────
+  const handleBarcodeDetected = useCallback(
+    (rawBarcode: string) => {
+      setShowScanner(false);
+
+      // Normalize: trim whitespace; also normalise leading-zero variants (UPC-A vs EAN-13)
+      const barcode = rawBarcode.trim();
+      const bareBarcode = barcode.replace(/^0+/, "");
+
+      if (!countLines || countLines.length === 0) {
+        setNoMatchSuggestions([]);
+        setNoMatchBarcode(barcode);
+        return;
+      }
+
+      // Search all count lines for a matching barcode on their inventory item.
+      // Try exact match first, then leading-zero-stripped fallback.
+      const matchedLine =
+        countLines.find(
+          (l) => l.inventoryItem?.barcode && l.inventoryItem.barcode.trim() === barcode
+        ) ??
+        countLines.find(
+          (l) =>
+            l.inventoryItem?.barcode &&
+            l.inventoryItem.barcode.trim().replace(/^0+/, "") === bareBarcode
+        );
+
+      if (matchedLine) {
+        // Switch to the item's location if needed
+        const itemLocId = matchedLine.inventoryItem?.storageLocationId || "unknown";
+        if (itemLocId !== selectedLocId) {
+          setSelectedLocId(itemLocId);
+        }
+        // Open the item's entry sheet (slight delay to allow location switch to render)
+        setTimeout(() => openSheet(matchedLine.id), 80);
+        toast({
+          title: `Found: ${matchedLine.inventoryItem?.name ?? "Item"}`,
+          description: "Entry sheet opened",
+        });
+      } else {
+        // Build candidate suggestions: items whose name or PLU/SKU contains parts of the
+        // barcode digits, or items that have no barcode yet (could be the right item).
+        const candidates = (countLines ?? [])
+          .filter((l) => {
+            const item = l.inventoryItem;
+            if (!item) return false;
+            // Fuzzy: pluSku contains barcode digits or barcode ends with pluSku
+            if (item.pluSku && barcode.endsWith(item.pluSku.trim())) return true;
+            // Surface items with no barcode set (staff may want to assign this one)
+            if (!item.barcode) return true;
+            return false;
+          })
+          .slice(0, 3)
+          .map((l) => l.inventoryItem?.name as string)
+          .filter(Boolean);
+
+        setNoMatchSuggestions(candidates);
+        setNoMatchBarcode(barcode);
+      }
+    },
+    [countLines, selectedLocId, openSheet, toast]
+  );
+
   const isReadOnly =
     count && (count.canEdit === false || count.applied === 1);
 
@@ -543,6 +788,18 @@ export default function CountSessionMobile() {
             {countedItems} / {totalItems} items counted
           </div>
         </div>
+        {!isReadOnly && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowScanner(true)}
+            className="shrink-0"
+            data-testid="button-mobile-scan-barcode"
+            title="Scan barcode"
+          >
+            <ScanBarcode className="h-5 w-5" />
+          </Button>
+        )}
         {isReadOnly ? (
           <Badge variant="outline" className="shrink-0 gap-1">
             <Lock className="h-3 w-3" />
@@ -904,6 +1161,74 @@ export default function CountSessionMobile() {
               data-testid="button-mobile-confirm-apply"
             >
               Apply Count
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Barcode Scanner ── */}
+      <BarcodeScanner
+        open={showScanner}
+        onClose={() => setShowScanner(false)}
+        onDetected={handleBarcodeDetected}
+      />
+
+      {/* ── No-match dialog ── */}
+      <AlertDialog
+        open={!!noMatchBarcode}
+        onOpenChange={(open) => { if (!open) { setNoMatchBarcode(null); setNoMatchSuggestions([]); } }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Barcode not found</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  No item in this count session has barcode{" "}
+                  <span className="font-mono font-semibold" data-testid="text-no-match-barcode">
+                    {noMatchBarcode}
+                  </span>.
+                </p>
+                {noMatchSuggestions.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium">Did you mean one of these?</p>
+                    <ul className="text-sm space-y-0.5 pl-3 list-disc">
+                      {noMatchSuggestions.map((name) => (
+                        <li key={name} className="font-medium" data-testid={`text-suggestion-${name}`}>
+                          {name}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-xs text-muted-foreground pt-1">
+                      Open that item in <strong>Inventory Items</strong> and enter this barcode to enable scanning.
+                    </p>
+                  </div>
+                )}
+                {noMatchSuggestions.length === 0 && (
+                  <p>
+                    To enable scan-to-item, open the item in{" "}
+                    <strong>Inventory Items</strong> and enter this barcode in the barcode field.
+                  </p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => { setNoMatchBarcode(null); setNoMatchSuggestions([]); }}
+              data-testid="button-no-match-dismiss"
+            >
+              Dismiss
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setNoMatchBarcode(null);
+                setNoMatchSuggestions([]);
+                setShowScanner(true);
+              }}
+              data-testid="button-no-match-scan-again"
+            >
+              Scan Again
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
