@@ -1,6 +1,6 @@
 import { TierGate } from "@/components/tier-gate";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, useParams, Link } from "wouter";
 import {
   DndContext,
@@ -69,6 +69,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatUnitName, formatRecipeName } from "@/lib/utils";
+import { getSuggestedConversionFactor } from "@/lib/unitConversions";
 import {
   ArrowLeft,
   Save,
@@ -165,6 +166,7 @@ function InlineIngredientRow({
   // Inline unit conversion popover state
   const [convPopoverOpen, setConvPopoverOpen] = useState(false);
   const [convFactor, setConvFactor] = useState("");
+  const [convFactorIsSuggested, setConvFactorIsSuggested] = useState(false);
 
   // Sync local state when component changes from outside (e.g., reorder, reload, save)
   // Only sync when the input is not focused to avoid overwriting user input
@@ -201,16 +203,6 @@ function InlineIngredientRow({
     (r) => r.unitId === component.unitId && r.isIssueUnit === 0
   );
 
-  // Sync input with existing value when popover opens or existing row loads
-  useEffect(() => {
-    if (convPopoverOpen) {
-      setConvFactor(
-        existingConvRow?.qtyPerInventoryUnit != null
-          ? String(existingConvRow.qtyPerInventoryUnit)
-          : ""
-      );
-    }
-  }, [convPopoverOpen, existingConvRow?.qtyPerInventoryUnit]);
 
   const saveConversionMutation = useMutation({
     mutationFn: async (qty: number) => {
@@ -346,6 +338,45 @@ function InlineIngredientRow({
     return current ? [...list, current] : list;
   })();
 
+  // Resolve inventory item and its unit name here — BEFORE the missingItem early
+  // return — so the useEffect below (and the ref it reads) are always called on
+  // every render regardless of the early-return path (Rules of Hooks).
+  const inventoryItemForRow =
+    component.componentType === "inventory_item"
+      ? inventoryItems?.find((i) => i.id === component.componentId)
+      : undefined;
+
+  // Keep as raw string so falsy fallbacks ("inventory unit", "unit") work correctly —
+  // formatUnitName("") returns "-" which is truthy and would suppress the fallbacks.
+  const inventoryUnitRaw: string | undefined = inventoryItemForRow
+    ? units?.find((u) => u.id === inventoryItemForRow.unitId)?.name
+    : undefined;
+
+  // Sync the conversion input when the popover opens or an existing saved row loads.
+  // For same-kind unit pairs (volume↔volume, weight↔weight) with no saved factor yet,
+  // pre-fill with the standard conversion factor from the lookup table.
+  // inventoryUnitRaw is declared above (before the early-return), so it is safe to
+  // include in the dependency array — no Temporal Dead Zone risk.
+  useEffect(() => {
+    if (convPopoverOpen) {
+      if (existingConvRow?.qtyPerInventoryUnit != null) {
+        setConvFactor(String(existingConvRow.qtyPerInventoryUnit));
+        setConvFactorIsSuggested(false);
+      } else {
+        const suggested = inventoryUnitRaw
+          ? getSuggestedConversionFactor(component.unitName, inventoryUnitRaw)
+          : null;
+        if (suggested !== null) {
+          setConvFactor(String(suggested));
+          setConvFactorIsSuggested(true);
+        } else {
+          setConvFactor("");
+          setConvFactorIsSuggested(false);
+        }
+      }
+    }
+  }, [convPopoverOpen, existingConvRow?.qtyPerInventoryUnit, component.unitName, inventoryUnitRaw]);
+
   if (component.missingItem) {
     return (
       <div
@@ -408,21 +439,6 @@ function InlineIngredientRow({
       </div>
     );
   }
-
-  // The inventory item this row points at (used for the "fix this" deep-link
-  // baked into the unit-warning tooltip).
-  const inventoryItemForRow =
-    component.componentType === "inventory_item"
-      ? inventoryItems?.find((i) => i.id === component.componentId)
-      : undefined;
-
-  // Resolve the inventory item's unit name from the units list (inventory items
-  // from the API only carry unitId, not a joined unitName).
-  // Keep as raw string so falsy fallbacks ("inventory unit", "unit") work correctly —
-  // formatUnitName("") returns "-" which is truthy and would suppress the fallbacks.
-  const inventoryUnitRaw: string | undefined = inventoryItemForRow
-    ? units?.find((u) => u.id === inventoryItemForRow.unitId)?.name
-    : undefined;
 
   return (
     <div
@@ -565,6 +581,7 @@ function InlineIngredientRow({
                       of <span className="font-medium">{component.name}</span>?
                     </p>
                   </div>
+                  <div className="space-y-1">
                   <div className="flex gap-2 items-center">
                     <Input
                       type="number"
@@ -572,7 +589,10 @@ function InlineIngredientRow({
                       min="0.001"
                       placeholder="e.g. 4"
                       value={convFactor}
-                      onChange={(e) => setConvFactor(e.target.value)}
+                      onChange={(e) => {
+                        setConvFactor(e.target.value);
+                        setConvFactorIsSuggested(false);
+                      }}
                       onKeyDown={(e) => e.key === "Enter" && handleSaveConversion()}
                       className="h-8 text-sm"
                       data-testid={`input-conv-factor-${component.id}`}
@@ -581,6 +601,12 @@ function InlineIngredientRow({
                     <span className="text-xs text-muted-foreground whitespace-nowrap">
                       {formatUnitName(component.unitName)} / {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "unit"}
                     </span>
+                  </div>
+                  {convFactorIsSuggested && (
+                    <p className="text-xs text-muted-foreground" data-testid={`text-conv-suggested-${component.id}`}>
+                      (suggested — verify for your ingredient)
+                    </p>
+                  )}
                   </div>
                   <div className="flex gap-2 justify-end">
                     <Button
