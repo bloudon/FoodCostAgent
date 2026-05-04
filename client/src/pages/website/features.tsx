@@ -265,6 +265,12 @@ export default function WebsiteFeatures() {
                 caption="Waste log — great on a tablet"
                 testId="phone-frame-waste-log"
               />
+              <PhoneFrame
+                src="/screenshots/mobile-recipe-builder.jpg"
+                alt="FnB Cost Pro recipe builder on mobile — build and cost recipes on the go"
+                caption="Recipe builder"
+                testId="phone-frame-recipe-builder"
+              />
             </div>
 
             <div className="lg:max-w-xs w-full">
