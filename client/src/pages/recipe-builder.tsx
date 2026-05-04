@@ -418,9 +418,11 @@ function InlineIngredientRow({
 
   // Resolve the inventory item's unit name from the units list (inventory items
   // from the API only carry unitId, not a joined unitName).
-  const inventoryUnitName = inventoryItemForRow
-    ? formatUnitName(units?.find((u) => u.id === inventoryItemForRow.unitId)?.name ?? "")
-    : "";
+  // Keep as raw string so falsy fallbacks ("inventory unit", "unit") work correctly —
+  // formatUnitName("") returns "-" which is truthy and would suppress the fallbacks.
+  const inventoryUnitRaw: string | undefined = inventoryItemForRow
+    ? units?.find((u) => u.id === inventoryItemForRow.unitId)?.name
+    : undefined;
 
   return (
     <div
@@ -544,7 +546,7 @@ function InlineIngredientRow({
                   Can't convert{" "}
                   <span className="font-medium">{formatUnitName(component.unitName)}</span> to{" "}
                   <span className="font-medium">
-                    {inventoryUnitName || "the item's inventory unit"}
+                    {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "the item's inventory unit"}
                   </span>
                   . Click to set a conversion factor.
                 </TooltipContent>
@@ -558,7 +560,7 @@ function InlineIngredientRow({
                       <span className="font-medium">{formatUnitName(component.unitName)}</span>{" "}
                       equal 1{" "}
                       <span className="font-medium">
-                        {inventoryUnitName || "inventory unit"}
+                        {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "inventory unit"}
                       </span>{" "}
                       of <span className="font-medium">{component.name}</span>?
                     </p>
@@ -577,7 +579,7 @@ function InlineIngredientRow({
                       autoFocus
                     />
                     <span className="text-xs text-muted-foreground whitespace-nowrap">
-                      {formatUnitName(component.unitName)} / {inventoryUnitName || "unit"}
+                      {formatUnitName(component.unitName)} / {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "unit"}
                     </span>
                   </div>
                   <div className="flex gap-2 justify-end">
