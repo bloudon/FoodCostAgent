@@ -8137,6 +8137,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/inventory-count-lines/:id/clear", requireAuth, async (req, res) => {
+    try {
+      const line = await storage.getInventoryCountLine(req.params.id);
+      if (!line) {
+        return res.status(404).json({ error: "Count line not found" });
+      }
+      const count = await storage.getInventoryCount(line.inventoryCountId);
+      if (!count) {
+        return res.status(404).json({ error: "Count session not found" });
+      }
+      const user = (req as any).user;
+      if (count.companyId !== user.companyId && user.role !== "global_admin") {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const allCounts = await storage.getInventoryCounts(count.companyId, count.storeId);
+      const sortedCounts = allCounts.sort((a, b) =>
+        new Date(b.countDate).getTime() - new Date(a.countDate).getTime()
+      );
+      const isLatest = sortedCounts.length > 0 && sortedCounts[0].id === count.id;
+      const isAdmin = user.role === "global_admin" || user.role === "company_admin";
+      if (!isAdmin && !isLatest) {
+        return res.status(403).json({ error: "Cannot edit historical inventory sessions." });
+      }
+      const updatedLine = await storage.clearCountLine(req.params.id);
+      if (!updatedLine) {
+        return res.status(404).json({ error: "Count line not found" });
+      }
+      res.json(updatedLine);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   app.delete("/api/inventory-count-entries/:entryId", requireAuth, async (req, res) => {
     try {
       const entry = await storage.getCountEntry(req.params.entryId);

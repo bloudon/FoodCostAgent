@@ -36,6 +36,16 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -229,8 +239,9 @@ function getInitials(fullName: string): string {
   return fullName.split(' ').map(n => n[0]).filter(Boolean).join('').toUpperCase().slice(0, 3);
 }
 
-function EntryHistory({ entries, isCatchWeight, unitAbbr, countId, readOnly }: { entries: any[]; isCatchWeight?: boolean; unitAbbr?: string; countId?: string; readOnly?: boolean }) {
+function EntryHistory({ entries, lineId, isCatchWeight, unitAbbr, countId, readOnly }: { entries: any[]; lineId?: string; isCatchWeight?: boolean; unitAbbr?: string; countId?: string; readOnly?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const { toast } = useToast();
 
   const deleteEntryMutation = useMutation({
@@ -244,6 +255,23 @@ function EntryHistory({ entries, isCatchWeight, unitAbbr, countId, readOnly }: {
     },
     onError: () => {
       toast({ title: "Failed to remove entry", variant: "destructive" });
+    },
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/inventory-count-lines/${lineId}/clear`);
+    },
+    onSuccess: () => {
+      if (countId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
+      }
+      setShowClearConfirm(false);
+      setOpen(false);
+    },
+    onError: () => {
+      toast({ title: "Failed to clear entries", variant: "destructive" });
+      setShowClearConfirm(false);
     },
   });
 
@@ -266,59 +294,95 @@ function EntryHistory({ entries, isCatchWeight, unitAbbr, countId, readOnly }: {
     : 'grid-cols-[4rem_3rem_1fr_auto]';
 
   return (
-    <div className="mt-1.5" data-testid="entry-history-toggle">
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        data-testid="button-toggle-entry-history"
-      >
-        <ChevronDown className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
-        {isCatchWeight ? `${entries.length} packages` : `${entries.length} entries`}
-      </button>
-      {open && (
-        <div className={`mt-1 border-t pt-1.5 grid gap-x-2 gap-y-0.5 text-xs items-center ${gridCols}`}>
-          {entriesWithTotals.map((entry: any) => {
-            const qtyDisplay = isCatchWeight ? entry.qty.toFixed(2) : `${entry.qty}`;
-            const qtyStr = entry.qty > 0 ? `+${qtyDisplay}` : qtyDisplay;
-            return (
-              <Fragment key={entry.id}>
-                <span
-                  className="font-mono font-semibold text-foreground tabular-nums whitespace-nowrap overflow-hidden text-ellipsis"
-                  data-testid={`entry-row-${entry.id}`}
-                >
-                  {isCatchWeight ? `${qtyStr} ${unit}` : qtyStr}
-                </span>
-                {isCatchWeight && (
-                  <span
-                    className="font-mono text-muted-foreground/80 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis"
-                    data-testid={`entry-running-total-${entry.id}`}
-                  >
-                    = {entry.runningTotal.toFixed(2)} {unit}
-                  </span>
-                )}
-                <span className="text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
-                  {entry.userName ? `by ${getInitials(entry.userName)}` : ''}
-                </span>
-                <span className="text-muted-foreground/60 whitespace-nowrap tabular-nums">
-                  {compactRelativeTime(new Date(entry.enteredAt))}
-                </span>
-                {!readOnly && (
-                  <button
-                    onClick={() => deleteEntryMutation.mutate(entry.id)}
-                    disabled={deleteEntryMutation.isPending}
-                    className="text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-40 pl-1"
-                    title="Remove this entry"
-                    data-testid={`button-delete-entry-${entry.id}`}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                )}
-              </Fragment>
-            );
-          })}
+    <>
+      <div className="mt-1.5" data-testid="entry-history-toggle">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setOpen(v => !v)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            data-testid="button-toggle-entry-history"
+          >
+            <ChevronDown className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+            {isCatchWeight ? `${entries.length} packages` : `${entries.length} entries`}
+          </button>
+          {!readOnly && lineId && (
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              disabled={clearMutation.isPending}
+              className="text-xs text-muted-foreground/60 hover:text-destructive transition-colors disabled:opacity-40"
+              title="Clear all entries"
+              data-testid="button-clear-all-entries"
+            >
+              Clear all
+            </button>
+          )}
         </div>
-      )}
-    </div>
+        {open && (
+          <div className={`mt-1 border-t pt-1.5 grid gap-x-2 gap-y-0.5 text-xs items-center ${gridCols}`}>
+            {entriesWithTotals.map((entry: any) => {
+              const qtyDisplay = isCatchWeight ? entry.qty.toFixed(2) : `${entry.qty}`;
+              const qtyStr = entry.qty > 0 ? `+${qtyDisplay}` : qtyDisplay;
+              return (
+                <Fragment key={entry.id}>
+                  <span
+                    className="font-mono font-semibold text-foreground tabular-nums whitespace-nowrap overflow-hidden text-ellipsis"
+                    data-testid={`entry-row-${entry.id}`}
+                  >
+                    {isCatchWeight ? `${qtyStr} ${unit}` : qtyStr}
+                  </span>
+                  {isCatchWeight && (
+                    <span
+                      className="font-mono text-muted-foreground/80 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis"
+                      data-testid={`entry-running-total-${entry.id}`}
+                    >
+                      = {entry.runningTotal.toFixed(2)} {unit}
+                    </span>
+                  )}
+                  <span className="text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
+                    {entry.userName ? `by ${getInitials(entry.userName)}` : ''}
+                  </span>
+                  <span className="text-muted-foreground/60 whitespace-nowrap tabular-nums">
+                    {compactRelativeTime(new Date(entry.enteredAt))}
+                  </span>
+                  {!readOnly && (
+                    <button
+                      onClick={() => deleteEntryMutation.mutate(entry.id)}
+                      disabled={deleteEntryMutation.isPending}
+                      className="text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-40 pl-1"
+                      title="Remove this entry"
+                      data-testid={`button-delete-entry-${entry.id}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                </Fragment>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear all entries?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove all {entries.length} entries and reset the count for this item to zero. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-clear-entries">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => clearMutation.mutate()}
+              disabled={clearMutation.isPending}
+              data-testid="button-confirm-clear-entries"
+            >
+              {clearMutation.isPending ? "Clearing…" : "Clear all entries"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -1591,7 +1655,7 @@ export default function CountSession() {
                                                 </>
                                               )}
                                               <div className="sm:col-span-3">
-                                                <EntryHistory entries={line.entries || []} isCatchWeight={mode === 'catch'} unitAbbr={unitAbbr} countId={countId} readOnly={!!isReadOnly} />
+                                                <EntryHistory entries={line.entries || []} lineId={line.id} isCatchWeight={mode === 'catch'} unitAbbr={unitAbbr} countId={countId} readOnly={!!isReadOnly} />
                                               </div>
                                             </div>
                                             );

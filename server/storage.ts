@@ -255,6 +255,7 @@ export interface IStorage {
   deleteEntriesForLine(lineId: string): Promise<void>;
   getCountEntry(id: string): Promise<InventoryCountEntry | undefined>;
   deleteCountEntry(entryId: string): Promise<InventoryCountLine | undefined>;
+  clearCountLine(lineId: string): Promise<InventoryCountLine | undefined>;
 
   // Item Usage Calculation
   getItemUsageBetweenCounts(storeId: string, previousCountId: string, currentCountId: string): Promise<Array<{
@@ -2042,6 +2043,19 @@ export class DatabaseStorage implements IStorage {
       const [updatedLine] = await tx.update(inventoryCountLines)
         .set({ qty: newQty })
         .where(eq(inventoryCountLines.id, entry.inventoryCountLineId))
+        .returning();
+      return updatedLine;
+    });
+  }
+
+  async clearCountLine(lineId: string): Promise<InventoryCountLine | undefined> {
+    return db.transaction(async (tx) => {
+      const [line] = await tx.select().from(inventoryCountLines).where(eq(inventoryCountLines.id, lineId));
+      if (!line) return undefined;
+      await tx.delete(inventoryCountEntries).where(eq(inventoryCountEntries.inventoryCountLineId, lineId));
+      const [updatedLine] = await tx.update(inventoryCountLines)
+        .set({ qty: 0, caseQty: null, containerQty: null, looseUnits: null })
+        .where(eq(inventoryCountLines.id, lineId))
         .returning();
       return updatedLine;
     });

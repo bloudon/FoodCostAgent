@@ -341,6 +341,8 @@ export default function CountSessionMobile() {
   const [sheetLooseUnits, setSheetLooseUnits] = useState("");
   // Apply confirmation
   const [showApplyDialog, setShowApplyDialog] = useState(false);
+  // Clear all entries confirmation
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   // Barcode scanner
   const [showScanner, setShowScanner] = useState(false);
   const [noMatchBarcode, setNoMatchBarcode] = useState<string | null>(null);
@@ -508,6 +510,21 @@ export default function CountSessionMobile() {
         description: error.message,
         variant: "destructive",
       });
+    },
+  });
+
+  const clearLineMutation = useMutation({
+    mutationFn: async (lineId: string) => {
+      return apiRequest("POST", `/api/inventory-count-lines/${lineId}/clear`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
+      setShowClearConfirm(false);
+      toast({ title: "Entries cleared" });
+    },
+    onError: () => {
+      toast({ title: "Failed to clear entries", variant: "destructive" });
+      setShowClearConfirm(false);
     },
   });
 
@@ -1108,6 +1125,17 @@ export default function CountSessionMobile() {
 
               {/* Footer with primary action */}
               <div className="px-4 pt-2 pb-6 shrink-0 border-t bg-background space-y-2">
+                {!isReadOnly && (activeLine?.entries?.length ?? 0) >= 2 && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setShowClearConfirm(true)}
+                    disabled={clearLineMutation.isPending}
+                    data-testid="button-mobile-clear-all-entries"
+                  >
+                    Clear all entries
+                  </Button>
+                )}
                 {!isReadOnly && (
                   <Button
                     className="w-full h-12 text-base font-semibold"
@@ -1141,6 +1169,30 @@ export default function CountSessionMobile() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* ── Clear all entries confirmation dialog ── */}
+      <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear all entries?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove all entries and reset the count for this item to zero. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-mobile-cancel-clear">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (activeLineId) clearLineMutation.mutate(activeLineId);
+              }}
+              disabled={clearLineMutation.isPending}
+              data-testid="button-mobile-confirm-clear"
+            >
+              {clearLineMutation.isPending ? "Clearing…" : "Clear all entries"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── Apply confirmation dialog ── */}
       <AlertDialog open={showApplyDialog} onOpenChange={setShowApplyDialog}>
