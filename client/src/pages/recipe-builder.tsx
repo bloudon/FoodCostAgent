@@ -416,6 +416,12 @@ function InlineIngredientRow({
       ? inventoryItems?.find((i) => i.id === component.componentId)
       : undefined;
 
+  // Resolve the inventory item's unit name from the units list (inventory items
+  // from the API only carry unitId, not a joined unitName).
+  const inventoryUnitName = inventoryItemForRow
+    ? formatUnitName(units?.find((u) => u.id === inventoryItemForRow.unitId)?.name ?? "")
+    : "";
+
   return (
     <div
       ref={setNodeRef}
@@ -538,7 +544,7 @@ function InlineIngredientRow({
                   Can't convert{" "}
                   <span className="font-medium">{formatUnitName(component.unitName)}</span> to{" "}
                   <span className="font-medium">
-                    {inventoryItemForRow.unitName || "the item's inventory unit"}
+                    {inventoryUnitName || "the item's inventory unit"}
                   </span>
                   . Click to set a conversion factor.
                 </TooltipContent>
@@ -552,7 +558,7 @@ function InlineIngredientRow({
                       <span className="font-medium">{formatUnitName(component.unitName)}</span>{" "}
                       equal 1{" "}
                       <span className="font-medium">
-                        {inventoryItemForRow.unitName || "inventory unit"}
+                        {inventoryUnitName || "inventory unit"}
                       </span>{" "}
                       of <span className="font-medium">{component.name}</span>?
                     </p>
@@ -571,7 +577,7 @@ function InlineIngredientRow({
                       autoFocus
                     />
                     <span className="text-xs text-muted-foreground whitespace-nowrap">
-                      {formatUnitName(component.unitName)} / {inventoryItemForRow.unitName || "unit"}
+                      {formatUnitName(component.unitName)} / {inventoryUnitName || "unit"}
                     </span>
                   </div>
                   <div className="flex gap-2 justify-end">
