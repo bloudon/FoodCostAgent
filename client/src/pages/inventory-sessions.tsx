@@ -98,9 +98,12 @@ function SessionCard({ count }: any) {
   });
 
   const sessionUrl = (locationId?: string) => {
+    if (isEmbedded) {
+      // Mobile WebView: use the dedicated mobile count page
+      return `/count/${count.id}/mobile`;
+    }
     const base = `/count/${count.id}`;
     const qs = new URLSearchParams();
-    if (isEmbedded) qs.set("embedded", "true");
     if (locationId) qs.set("location", locationId);
     const q = qs.toString();
     return q ? `${base}?${q}` : base;

@@ -253,6 +253,8 @@ export interface IStorage {
   createInventoryCountEntry(entry: InsertInventoryCountEntry): Promise<InventoryCountEntry>;
   getEntriesForLines(lineIds: string[]): Promise<InventoryCountEntry[]>;
   deleteEntriesForLine(lineId: string): Promise<void>;
+  getCountEntry(id: string): Promise<InventoryCountEntry | undefined>;
+  deleteCountEntry(entryId: string): Promise<InventoryCountLine | undefined>;
 
   // Item Usage Calculation
   getItemUsageBetweenCounts(storeId: string, previousCountId: string, currentCountId: string): Promise<Array<{
@@ -2021,6 +2023,28 @@ export class DatabaseStorage implements IStorage {
 
   async deleteEntriesForLine(lineId: string): Promise<void> {
     await db.delete(inventoryCountEntries).where(eq(inventoryCountEntries.inventoryCountLineId, lineId));
+  }
+
+  async getCountEntry(id: string): Promise<InventoryCountEntry | undefined> {
+    const [entry] = await db.select().from(inventoryCountEntries).where(eq(inventoryCountEntries.id, id));
+    return entry;
+  }
+
+  async deleteCountEntry(entryId: string): Promise<InventoryCountLine | undefined> {
+    return db.transaction(async (tx) => {
+      const [entry] = await tx.select().from(inventoryCountEntries).where(eq(inventoryCountEntries.id, entryId));
+      if (!entry) return undefined;
+      await tx.delete(inventoryCountEntries).where(eq(inventoryCountEntries.id, entryId));
+      const remaining = await tx.select().from(inventoryCountEntries)
+        .where(eq(inventoryCountEntries.inventoryCountLineId, entry.inventoryCountLineId))
+        .orderBy(asc(inventoryCountEntries.enteredAt));
+      const newQty = remaining.reduce((sum, e) => sum + e.qty, 0);
+      const [updatedLine] = await tx.update(inventoryCountLines)
+        .set({ qty: newQty })
+        .where(eq(inventoryCountLines.id, entry.inventoryCountLineId))
+        .returning();
+      return updatedLine;
+    });
   }
 
   // Item Usage Calculation

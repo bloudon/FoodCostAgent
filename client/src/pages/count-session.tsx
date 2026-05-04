@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Camera, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2, ArrowUpDown, ArrowUpAZ, ArrowDownAZ, Plus, Check, ChevronDown, Scale } from "lucide-react";
+import { ArrowLeft, Camera, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2, ArrowUpDown, ArrowUpAZ, ArrowDownAZ, Plus, Check, ChevronDown, Scale, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   Accordion,
@@ -229,8 +229,25 @@ function getInitials(fullName: string): string {
   return fullName.split(' ').map(n => n[0]).filter(Boolean).join('').toUpperCase().slice(0, 3);
 }
 
-function EntryHistory({ entries, isCatchWeight, unitAbbr }: { entries: any[]; isCatchWeight?: boolean; unitAbbr?: string }) {
+function EntryHistory({ entries, isCatchWeight, unitAbbr, countId, readOnly }: { entries: any[]; isCatchWeight?: boolean; unitAbbr?: string; countId?: string; readOnly?: boolean }) {
   const [open, setOpen] = useState(false);
+  const { toast } = useToast();
+
+  const deleteEntryMutation = useMutation({
+    mutationFn: async (entryId: string) => {
+      return apiRequest("DELETE", `/api/inventory-count-entries/${entryId}`);
+    },
+    onSuccess: () => {
+      if (countId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
+      }
+    },
+    onError: () => {
+      toast({ title: "Failed to remove entry", variant: "destructive" });
+    },
+  });
+
+  // Early return after all hooks
   if (!entries || entries.length <= 1) return null;
 
   const unit = unitAbbr || 'unit';
@@ -242,11 +259,11 @@ function EntryHistory({ entries, isCatchWeight, unitAbbr }: { entries: any[]; is
   });
 
   // Fixed grid columns so each row aligns vertically across rows.
-  // Catch weight: qty | running total | "by XX" | time
-  // Otherwise:    qty | "by XX" | time
+  // Catch weight: qty | running total | "by XX" | time | delete
+  // Otherwise:    qty | "by XX" | time | delete
   const gridCols = isCatchWeight
-    ? 'grid-cols-[5rem_5.5rem_3rem_1fr]'
-    : 'grid-cols-[4rem_3rem_1fr]';
+    ? 'grid-cols-[5rem_5.5rem_3rem_1fr_auto]'
+    : 'grid-cols-[4rem_3rem_1fr_auto]';
 
   return (
     <div className="mt-1.5" data-testid="entry-history-toggle">
@@ -259,7 +276,7 @@ function EntryHistory({ entries, isCatchWeight, unitAbbr }: { entries: any[]; is
         {isCatchWeight ? `${entries.length} packages` : `${entries.length} entries`}
       </button>
       {open && (
-        <div className={`mt-1 border-t pt-1.5 grid gap-x-2 gap-y-0.5 text-xs items-baseline ${gridCols}`}>
+        <div className={`mt-1 border-t pt-1.5 grid gap-x-2 gap-y-0.5 text-xs items-center ${gridCols}`}>
           {entriesWithTotals.map((entry: any) => {
             const qtyDisplay = isCatchWeight ? entry.qty.toFixed(2) : `${entry.qty}`;
             const qtyStr = entry.qty > 0 ? `+${qtyDisplay}` : qtyDisplay;
@@ -282,9 +299,20 @@ function EntryHistory({ entries, isCatchWeight, unitAbbr }: { entries: any[]; is
                 <span className="text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
                   {entry.userName ? `by ${getInitials(entry.userName)}` : ''}
                 </span>
-                <span className="text-muted-foreground/60 whitespace-nowrap tabular-nums text-right">
+                <span className="text-muted-foreground/60 whitespace-nowrap tabular-nums">
                   {compactRelativeTime(new Date(entry.enteredAt))}
                 </span>
+                {!readOnly && (
+                  <button
+                    onClick={() => deleteEntryMutation.mutate(entry.id)}
+                    disabled={deleteEntryMutation.isPending}
+                    className="text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-40 pl-1"
+                    title="Remove this entry"
+                    data-testid={`button-delete-entry-${entry.id}`}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                )}
               </Fragment>
             );
           })}
@@ -1563,7 +1591,7 @@ export default function CountSession() {
                                                 </>
                                               )}
                                               <div className="sm:col-span-3">
-                                                <EntryHistory entries={line.entries || []} isCatchWeight={mode === 'catch'} unitAbbr={unitAbbr} />
+                                                <EntryHistory entries={line.entries || []} isCatchWeight={mode === 'catch'} unitAbbr={unitAbbr} countId={countId} readOnly={!!isReadOnly} />
                                               </div>
                                             </div>
                                             );
@@ -1802,7 +1830,7 @@ export default function CountSession() {
                                           </div>
                                         </Link>
                                       )}
-                                      <EntryHistory entries={line.entries || []} isCatchWeight={mode === 'catch'} unitAbbr={unitAbbr} />
+                                      <EntryHistory entries={line.entries || []} isCatchWeight={mode === 'catch'} unitAbbr={unitAbbr} countId={countId} readOnly={!!isReadOnly} />
                                     </div>
                                   );
                                 })}
