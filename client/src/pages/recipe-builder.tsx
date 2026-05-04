@@ -54,6 +54,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Table,
   TableBody,
   TableCell,
@@ -157,6 +162,10 @@ function InlineIngredientRow({
   const [qtyFocused, setQtyFocused] = useState(false);
   const [yieldFocused, setYieldFocused] = useState(false);
 
+  // Inline unit conversion popover state
+  const [convPopoverOpen, setConvPopoverOpen] = useState(false);
+  const [convFactor, setConvFactor] = useState("");
+
   // Sync local state when component changes from outside (e.g., reorder, reload, save)
   // Only sync when the input is not focused to avoid overwriting user input
   useEffect(() => {
@@ -172,6 +181,80 @@ function InlineIngredientRow({
       );
     }
   }, [component.yieldOverride, yieldFocused]);
+
+  const { toast } = useToast();
+
+  // Fetch existing recipe-unit rows for this item when the conversion popover opens
+  const inventoryItemForConv =
+    component.componentType === "inventory_item" ? component.componentId : null;
+  const { data: existingRecipeUnits } = useQuery<InventoryItemUnit[]>({
+    queryKey: ["/api/inventory-items", inventoryItemForConv, "recipe-units"],
+    queryFn: () =>
+      apiRequest("GET", `/api/inventory-items/${inventoryItemForConv}/recipe-units`).then(
+        (r) => r.json()
+      ),
+    enabled: convPopoverOpen && !!inventoryItemForConv,
+  });
+
+  // Find if a row already exists for the recipe unit being used on this component
+  const existingConvRow = existingRecipeUnits?.find(
+    (r) => r.unitId === component.unitId && r.isIssueUnit === 0
+  );
+
+  // Sync input with existing value when popover opens or existing row loads
+  useEffect(() => {
+    if (convPopoverOpen) {
+      setConvFactor(
+        existingConvRow?.qtyPerInventoryUnit != null
+          ? String(existingConvRow.qtyPerInventoryUnit)
+          : ""
+      );
+    }
+  }, [convPopoverOpen, existingConvRow?.qtyPerInventoryUnit]);
+
+  const saveConversionMutation = useMutation({
+    mutationFn: async (qty: number) => {
+      if (!inventoryItemForConv) throw new Error("No item");
+      if (existingConvRow) {
+        const r = await apiRequest(
+          "PATCH",
+          `/api/inventory-items/${inventoryItemForConv}/recipe-units/${existingConvRow.id}`,
+          { qtyPerInventoryUnit: qty }
+        );
+        if (!r.ok) throw new Error("Failed to update conversion");
+        return r.json();
+      } else {
+        const r = await apiRequest(
+          "POST",
+          `/api/inventory-items/${inventoryItemForConv}/recipe-units`,
+          { unitId: component.unitId, qtyPerInventoryUnit: qty, isIssueUnit: 0 }
+        );
+        if (!r.ok) throw new Error("Failed to save conversion");
+        return r.json();
+      }
+    },
+    onSuccess: () => {
+      setConvPopoverOpen(false);
+      queryClient.invalidateQueries({
+        queryKey: ["/api/inventory-items", inventoryItemForConv, "recipe-units"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipe-components"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      toast({ title: "Conversion saved", description: "Recipe cost will recalculate shortly." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Could not save conversion factor.", variant: "destructive" });
+    },
+  });
+
+  const handleSaveConversion = () => {
+    const val = parseFloat(convFactor);
+    if (isNaN(val) || val <= 0) {
+      toast({ title: "Invalid value", description: "Please enter a positive number.", variant: "destructive" });
+      return;
+    }
+    saveConversionMutation.mutate(val);
+  };
 
   // Get the default yield for inventory items
   const getDefaultYield = () => {
@@ -437,38 +520,95 @@ function InlineIngredientRow({
               </div>
             </SelectContent>
           </Select>
-          {isUncostable && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                {inventoryItemForRow ? (
-                  <Link
-                    href={`/inventory-items/${inventoryItemForRow.id}#recipe-units`}
-                    className="shrink-0 inline-flex items-center justify-center h-6 w-6 rounded-md hover-elevate active-elevate-2"
-                    data-testid={`badge-uncostable-${component.id}`}
-                  >
-                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                  </Link>
-                ) : (
-                  <span
-                    className="shrink-0 inline-flex items-center justify-center h-6 w-6"
-                    data-testid={`badge-uncostable-${component.id}`}
-                  >
-                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          {isUncostable && inventoryItemForRow && (
+            <Popover open={convPopoverOpen} onOpenChange={setConvPopoverOpen}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="shrink-0 inline-flex items-center justify-center h-6 w-6 rounded-md hover-elevate active-elevate-2"
+                      data-testid={`badge-uncostable-${component.id}`}
+                    >
+                      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    </button>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs text-xs">
+                  Can't convert{" "}
+                  <span className="font-medium">{formatUnitName(component.unitName)}</span> to{" "}
+                  <span className="font-medium">
+                    {inventoryItemForRow.unitName || "the item's inventory unit"}
                   </span>
-                )}
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-xs text-xs">
-                This unit can't be converted to{" "}
-                <span className="font-medium">
-                  {inventoryItemForRow?.unitName || "the item's inventory unit"}
-                </span>
-                {inventoryItemForRow ? (
-                  <>, so this line is excluded from the recipe cost. Open the item's Recipe Units tab to add a conversion factor.</>
-                ) : (
-                  <>, so this line is excluded from the recipe cost.</>
-                )}
-              </TooltipContent>
-            </Tooltip>
+                  . Click to set a conversion factor.
+                </TooltipContent>
+              </Tooltip>
+              <PopoverContent side="top" align="end" className="w-72 p-4">
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">Set unit conversion</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      How many{" "}
+                      <span className="font-medium">{formatUnitName(component.unitName)}</span>{" "}
+                      equal 1{" "}
+                      <span className="font-medium">
+                        {inventoryItemForRow.unitName || "inventory unit"}
+                      </span>{" "}
+                      of <span className="font-medium">{component.name}</span>?
+                    </p>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.001"
+                      placeholder="e.g. 4"
+                      value={convFactor}
+                      onChange={(e) => setConvFactor(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSaveConversion()}
+                      className="h-8 text-sm"
+                      data-testid={`input-conv-factor-${component.id}`}
+                      autoFocus
+                    />
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatUnitName(component.unitName)} / {inventoryItemForRow.unitName || "unit"}
+                    </span>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConvPopoverOpen(false)}
+                      data-testid={`button-conv-cancel-${component.id}`}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleSaveConversion}
+                      disabled={saveConversionMutation.isPending}
+                      data-testid={`button-conv-save-${component.id}`}
+                    >
+                      {saveConversionMutation.isPending ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        "Save"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+          {isUncostable && !inventoryItemForRow && (
+            <span
+              className="shrink-0 inline-flex items-center justify-center h-6 w-6"
+              data-testid={`badge-uncostable-${component.id}`}
+            >
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            </span>
           )}
         </div>
 
@@ -2108,33 +2248,21 @@ function RecipeBuilderContent() {
                               : `${uncostableComponents.length} ingredients are excluded from this recipe's cost`}
                           </p>
                           <p className="mt-0.5 text-amber-700 dark:text-amber-400">
-                            Their unit can't be converted into the inventory unit. Add a
-                            Recipe Unit conversion for each item below to include them.
+                            Their unit can't be converted into the inventory unit. Click the{" "}
+                            <AlertTriangle className="inline h-3 w-3 text-amber-600 dark:text-amber-400" />{" "}
+                            icon on each row below to set a conversion factor.
                           </p>
                           <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
-                            {uncostableComponents.map((c) => {
-                              const item =
-                                c.componentType === "inventory_item"
-                                  ? inventoryItems?.find((i) => i.id === c.componentId)
-                                  : undefined;
-                              return (
-                                <li key={c.id}>
-                                  {item ? (
-                                    <Link
-                                      href={`/inventory-items/${item.id}#recipe-units`}
-                                      className="underline text-amber-800 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-200"
-                                      data-testid={`link-uncostable-${c.id}`}
-                                    >
-                                      {c.name} ({c.unitName})
-                                    </Link>
-                                  ) : (
-                                    <span data-testid={`text-uncostable-${c.id}`}>
-                                      {c.name} ({c.unitName})
-                                    </span>
-                                  )}
-                                </li>
-                              );
-                            })}
+                            {uncostableComponents.map((c) => (
+                              <li key={c.id}>
+                                <span
+                                  className="text-amber-800 dark:text-amber-300"
+                                  data-testid={`text-uncostable-${c.id}`}
+                                >
+                                  {c.name} ({formatUnitName(c.unitName)})
+                                </span>
+                              </li>
+                            ))}
                           </ul>
                         </div>
                       </div>
