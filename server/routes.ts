@@ -13201,6 +13201,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       });
 
+      // Build a price-per-unit map from ALL items before any filters are applied.
+      // Location cost totals must reflect every item regardless of category/search filters.
+      const allItemPriceMap = new Map(varianceItems.map(item => [item.inventoryItemId, item.pricePerUnit]));
+
       // Apply filters
       if (categoryId) {
         varianceItems = varianceItems.filter(item => item.category === categoryId);
@@ -13237,6 +13241,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
         categoryName: categoryId, // Will be enriched on frontend
         items,
       }));
+
+      // Build per-location cost subtotals for the variance report
+      const currentLinesByLocation = await db
+        .select({
+          inventoryItemId: inventoryCountLines.inventoryItemId,
+          storageLocationId: inventoryCountLines.storageLocationId,
+          totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+          snapshotUnitCost: sql<number>`COALESCE(
+            CASE WHEN SUM(${inventoryCountLines.qty}) > 0
+              THEN SUM(${inventoryCountLines.qty} * ${inventoryCountLines.unitCost}) / SUM(${inventoryCountLines.qty})
+              ELSE MAX(${inventoryCountLines.unitCost})
+            END, 0)`.as('snapshot_unit_cost'),
+        })
+        .from(inventoryCountLines)
+        .where(eq(inventoryCountLines.inventoryCountId, currentCountId as string))
+        .groupBy(inventoryCountLines.inventoryItemId, inventoryCountLines.storageLocationId);
+
+      const previousLinesByLocation = await db
+        .select({
+          inventoryItemId: inventoryCountLines.inventoryItemId,
+          storageLocationId: inventoryCountLines.storageLocationId,
+          totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+        })
+        .from(inventoryCountLines)
+        .where(eq(inventoryCountLines.inventoryCountId, previousCountId as string))
+        .groupBy(inventoryCountLines.inventoryItemId, inventoryCountLines.storageLocationId);
+
+      // Fetch storage location names for all referenced locations
+      const allLocationIds = [...new Set([
+        ...currentLinesByLocation.map(l => l.storageLocationId),
+        ...previousLinesByLocation.map(l => l.storageLocationId),
+      ])];
+      const locationRecords = allLocationIds.length > 0
+        ? await db.select().from(storageLocations).where(inArray(storageLocations.id, allLocationIds))
+        : [];
+      const locationNameMap = new Map(locationRecords.map(l => [l.id, l.name]));
+      const locationSortMap = new Map(locationRecords.map(l => [l.id, l.sortOrder]));
+
+      // Aggregate counted value and previous value per location
+      const locationTotalsMap = new Map<string, { countedValue: number; previousValue: number }>();
+      for (const line of currentLinesByLocation) {
+        const snapshotCost = Number(line.snapshotUnitCost) || 0;
+        const pricePerUnit = snapshotCost > 0 ? snapshotCost : (allItemPriceMap.get(line.inventoryItemId) || 0);
+        const value = (line.totalQty || 0) * pricePerUnit;
+        if (!locationTotalsMap.has(line.storageLocationId)) {
+          locationTotalsMap.set(line.storageLocationId, { countedValue: 0, previousValue: 0 });
+        }
+        locationTotalsMap.get(line.storageLocationId)!.countedValue += value;
+      }
+      for (const line of previousLinesByLocation) {
+        const pricePerUnit = allItemPriceMap.get(line.inventoryItemId) || 0;
+        const value = (line.totalQty || 0) * pricePerUnit;
+        if (!locationTotalsMap.has(line.storageLocationId)) {
+          locationTotalsMap.set(line.storageLocationId, { countedValue: 0, previousValue: 0 });
+        }
+        locationTotalsMap.get(line.storageLocationId)!.previousValue += value;
+      }
+
+      const locationGroups = Array.from(locationTotalsMap.entries())
+        .map(([locationId, totals]) => ({
+          locationId,
+          locationName: locationNameMap.get(locationId) || 'Unknown Location',
+          countedValue: totals.countedValue,
+          previousValue: totals.previousValue,
+          varianceCost: totals.countedValue - totals.previousValue,
+        }))
+        .sort((a, b) => {
+          const sortA = locationSortMap.get(a.locationId) ?? 999;
+          const sortB = locationSortMap.get(b.locationId) ?? 999;
+          return sortA !== sortB ? sortA - sortB : a.locationName.localeCompare(b.locationName);
+        });
 
       // Get purchase orders delivered during this period
       // Use expected delivery date (when inventory arrived) rather than received date (when entered into system)
@@ -13312,6 +13387,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         summary,
         categories: groupedItems,
         items: varianceItems, // Flat list for convenience
+        locationGroups,
         purchaseOrders: deliveredOrders.map(po => {
           // Use expectedDate if available, otherwise fall back to receipt receivedAt from map
           let deliveryDate = '';

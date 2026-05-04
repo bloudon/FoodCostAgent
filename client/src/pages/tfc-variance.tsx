@@ -68,6 +68,14 @@ type PurchaseOrder = {
   expectedDate: string;
 };
 
+type LocationGroup = {
+  locationId: string;
+  locationName: string;
+  countedValue: number;
+  previousValue: number;
+  varianceCost: number;
+};
+
 type VarianceResponse = {
   previousCountId: string;
   currentCountId: string;
@@ -87,6 +95,7 @@ type VarianceResponse = {
     items: VarianceItem[];
   }>;
   items: VarianceItem[];
+  locationGroups: LocationGroup[];
   purchaseOrders: PurchaseOrder[];
   salesSummary: {
     totalItemsSold: number;
@@ -96,6 +105,7 @@ type VarianceResponse = {
 
 import { TierGate } from "@/components/tier-gate";
 import { CostingMethodBadge } from "@/components/costing-method-badge";
+import { MapPin } from "lucide-react";
 
 function TfcVarianceContent() {
   const { getEffectiveCompanyId } = useAuth();
@@ -503,6 +513,84 @@ function TfcVarianceContent() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Per-Location Cost Totals */}
+          {varianceData.locationGroups && varianceData.locationGroups.length > 0 && (
+            <Card className="mb-6">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <MapPin className="h-5 w-5 text-muted-foreground" />
+                  Inventory Value by Location
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Location</TableHead>
+                        <TableHead className="text-right">Previous Count Value</TableHead>
+                        <TableHead className="text-right">Current Count Value</TableHead>
+                        <TableHead className="text-right">$ Variance</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {varianceData.locationGroups.map((loc) => (
+                        <TableRow key={loc.locationId} data-testid={`row-location-${loc.locationId}`}>
+                          <TableCell className="font-medium" data-testid={`text-location-name-${loc.locationId}`}>
+                            {loc.locationName}
+                          </TableCell>
+                          <TableCell className="text-right font-mono" data-testid={`text-location-previous-${loc.locationId}`}>
+                            {formatCurrency(loc.previousValue)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono" data-testid={`text-location-counted-${loc.locationId}`}>
+                            {formatCurrency(loc.countedValue)}
+                          </TableCell>
+                          <TableCell
+                            className={`text-right font-mono font-medium ${
+                              loc.varianceCost > 0
+                                ? "text-destructive"
+                                : loc.varianceCost < 0
+                                ? "text-green-600 dark:text-green-400"
+                                : ""
+                            }`}
+                            data-testid={`text-location-variance-${loc.locationId}`}
+                          >
+                            {loc.varianceCost > 0 ? "+" : ""}
+                            {formatCurrency(loc.varianceCost)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow className="border-t-2 bg-muted/20 font-bold" data-testid="row-location-grand-total">
+                        <TableCell className="font-semibold">Grand Total</TableCell>
+                        <TableCell className="text-right font-mono font-bold" data-testid="text-location-total-previous">
+                          {formatCurrency(varianceData.locationGroups.reduce((s, l) => s + l.previousValue, 0))}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-bold" data-testid="text-location-total-counted">
+                          {formatCurrency(varianceData.locationGroups.reduce((s, l) => s + l.countedValue, 0))}
+                        </TableCell>
+                        <TableCell
+                          className={`text-right font-mono font-bold ${
+                            varianceData.locationGroups.reduce((s, l) => s + l.varianceCost, 0) > 0
+                              ? "text-destructive"
+                              : varianceData.locationGroups.reduce((s, l) => s + l.varianceCost, 0) < 0
+                              ? "text-green-600 dark:text-green-400"
+                              : ""
+                          }`}
+                          data-testid="text-location-total-variance"
+                        >
+                          {(() => {
+                            const total = varianceData.locationGroups.reduce((s, l) => s + l.varianceCost, 0);
+                            return `${total > 0 ? "+" : ""}${formatCurrency(total)}`;
+                          })()}
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
