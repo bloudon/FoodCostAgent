@@ -16895,6 +16895,7 @@ Human Handoff:
         lastName: user.lastName,
         name: fullName || user.email,
         role: user.role,
+        preferredLanguage: (user as any).preferredLanguage ?? "en",
       });
     } catch (error: any) {
       console.error("[POST /api/mobile/login]", error);
