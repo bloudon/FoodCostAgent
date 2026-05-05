@@ -681,6 +681,19 @@ export default function Vendors() {
                       <div className="flex justify-end gap-1">
                         <Tooltip>
                           <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => handleOpenScanPage(vendor.id)}
+                              data-testid={`button-scan-vendor-${vendor.id}`}
+                            >
+                              <ScanLine className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Scan Invoice</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                             <Button 
                               size="icon" 
                               variant="ghost"

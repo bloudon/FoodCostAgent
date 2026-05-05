@@ -4185,9 +4185,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(409).json({ error: "Order guide is no longer in pending review status." });
       }
 
-      // Count existing lines to determine page break position and pageNumber
+      // Infer current page count from the guide's filename ("Scan — ... (N pages)")
+      // so each append returns the correct page number even beyond page 2.
+      let currentPageCount = 1;
+      if (guide.fileName) {
+        const pageMatch = guide.fileName.match(/\((\d+)\s+pages?\)/i);
+        if (pageMatch) currentPageCount = parseInt(pageMatch[1], 10);
+      }
+      const newPageCount = currentPageCount + 1;
+
+      // Get existing line count for page-break tracking
       const existingLines = await storage.getOrderGuideLines(orderGuideId);
-      const pageNumber = Math.max(1, existingLines.length > 0 ? 2 : 1);
 
       // Read image from storage
       const { buffer, mimeType: storageMime } = await readImageBuffer(objectPath, companyId, userId);
@@ -4218,7 +4226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Convert extracted items to VendorProduct shape
       const vendorProducts = scanResult.items.map((item, index) => ({
-        vendorSku: item.sku || `scan-p${pageNumber}-${index + 1}`,
+        vendorSku: item.sku || `scan-p${newPageCount}-${index + 1}`,
         vendorProductName: item.name,
         description: item.packSizeDescription || undefined,
         caseSizeRaw: item.packSizeDescription || undefined,
@@ -4266,9 +4274,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalItems = existingLines.length + newLines.length;
 
       // Update rowCount and rename file to reflect page count
-      const totalPages = pageNumber; // this page is now the last page
       const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      const newFileName = `Scan — ${dateStr} (${totalPages} pages)`;
+      const newFileName = `Scan — ${dateStr} (${newPageCount} pages)`;
       await storage.updateOrderGuideRowCount(orderGuideId, totalItems, newFileName);
 
       return res.json({
@@ -4284,7 +4291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })),
         newItems: newLines.length,
         totalItems,
-        pageNumber: totalPages,
+        pageNumber: newPageCount,
       });
     } catch (error: any) {
       console.error('[Order Guide Append Scan Error]', error);

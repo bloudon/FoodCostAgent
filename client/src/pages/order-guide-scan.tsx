@@ -80,8 +80,10 @@ export default function OrderGuideScan() {
   const params = new URLSearchParams(search);
   const prefilledVendorId = params.get('vendorId') || '';
   const prefilledStoreId = params.get('storeId') || '';
+  // ogId persists in URL for refresh-safety (mirrors sessionId pattern in menu-import)
+  const urlOrderGuideId = params.get('ogId') || '';
 
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2>(urlOrderGuideId ? 2 : 1);
   const [vendorId, setVendorId] = useState<string>(prefilledVendorId || '__none__');
   const [storeIds, setStoreIds] = useState<string[]>(() => {
     if (prefilledStoreId) return [prefilledStoreId];
@@ -96,7 +98,7 @@ export default function OrderGuideScan() {
     }
   }, [stores]);
 
-  const [orderGuideId, setOrderGuideId] = useState<string | null>(null);
+  const [orderGuideId, setOrderGuideId] = useState<string | null>(urlOrderGuideId || null);
   const [lines, setLines] = useState<ScannedLine[]>([]);
   const [pageBreaks, setPageBreaks] = useState<number[]>([]);
   const [pageCount, setPageCount] = useState(0);
@@ -104,6 +106,49 @@ export default function OrderGuideScan() {
 
   const lastLinesRef = useRef<ScannedLine[]>(lines);
   useEffect(() => { lastLinesRef.current = lines; }, [lines]);
+
+  // Update URL when orderGuideId changes (for refresh-safety)
+  useEffect(() => {
+    if (orderGuideId) {
+      const newParams = new URLSearchParams(search);
+      newParams.set('ogId', orderGuideId);
+      navigate(`/order-guide-scan?${newParams.toString()}`, { replace: true });
+    }
+  }, [orderGuideId]);
+
+  // Rehydrate lines from server if returning with ogId in URL (refresh-safe)
+  const { data: rehydrateData } = useQuery({
+    queryKey: ['/api/order-guides', urlOrderGuideId, 'review'],
+    enabled: !!urlOrderGuideId && lines.length === 0,
+    queryFn: async () => {
+      const res = await fetch(`/api/order-guides/${urlOrderGuideId}/review`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Session not found');
+      return res.json() as Promise<{
+        guide: { rowCount: number; fileName: string | null };
+        lines: { matched: ScannedLine[]; ambiguous: ScannedLine[]; new: ScannedLine[] };
+      }>;
+    },
+  });
+
+  useEffect(() => {
+    if (!rehydrateData) return;
+    if (lines.length > 0) return; // already populated
+    const allLines: ScannedLine[] = [
+      ...rehydrateData.lines.matched,
+      ...rehydrateData.lines.ambiguous,
+      ...rehydrateData.lines.new,
+    ];
+    setLines(allLines);
+    // Infer page count from filename if available
+    if (rehydrateData.guide.fileName) {
+      const m = rehydrateData.guide.fileName.match(/\((\d+)\s+pages?\)/i);
+      if (m) setPageCount(parseInt(m[1], 10));
+      else setPageCount(1);
+    } else {
+      setPageCount(1);
+    }
+    setStep(2);
+  }, [rehydrateData]);
 
   const { data: vendors } = useQuery<Vendor[]>({
     queryKey: ['/api/vendors'],
@@ -497,6 +542,11 @@ export default function OrderGuideScan() {
                   setPageBreaks([]);
                   setPageCount(0);
                   setShowAddPageUploader(false);
+                  // Clear ogId from URL so a refresh doesn't reload the old session
+                  const resetParams = new URLSearchParams();
+                  if (prefilledVendorId) resetParams.set('vendorId', prefilledVendorId);
+                  const qs = resetParams.toString();
+                  navigate(`/order-guide-scan${qs ? `?${qs}` : ''}`, { replace: true });
                 }}
                 data-testid="button-back-step1"
               >
