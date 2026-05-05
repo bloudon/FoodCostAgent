@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 
 const UNDO_DELAY = 5000;
 
@@ -22,6 +23,7 @@ type UndoContextType = {
 const UndoContext = createContext<UndoContextType | null>(null);
 
 export function UndoProvider({ children }: { children: React.ReactNode }) {
+  const { toast } = useToast();
   const [visible, setVisible] = useState(false);
   const [label, setLabel] = useState("");
   const [progress, setProgress] = useState(100);
@@ -60,8 +62,11 @@ export function UndoProvider({ children }: { children: React.ReactNode }) {
     clearTimeout(p.timer);
     pendingRef.current = null;
     setVisible(false);
-    p.onCommit().catch(console.error);
-  }, [cancelAnimation]);
+    p.onCommit().catch((e) => {
+      console.error(e);
+      toast({ title: "Action failed", description: "The change could not be saved. Please refresh and try again.", variant: "destructive" });
+    });
+  }, [cancelAnimation, toast]);
 
   const register = useCallback(
     (label: string, onCommit: () => Promise<void>, onRestore?: () => void) => {
@@ -75,7 +80,10 @@ export function UndoProvider({ children }: { children: React.ReactNode }) {
         cancelAnimation();
         pendingRef.current = null;
         setVisible(false);
-        p.onCommit().catch(console.error);
+        p.onCommit().catch((e) => {
+          console.error(e);
+          toast({ title: "Action failed", description: "The change could not be saved. Please refresh and try again.", variant: "destructive" });
+        });
       }, UNDO_DELAY);
 
       pendingRef.current = { label, onCommit, onRestore, timer };

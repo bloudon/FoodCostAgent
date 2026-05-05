@@ -1302,8 +1302,8 @@ function RecipeBuilderContent() {
         // Delete the persisted component; ignore 404 if it was never saved yet
         try {
           await apiRequest("DELETE", `/api/recipe-components/${componentId}`);
-        } catch {
-          // Component may not exist in DB yet (new unsaved ingredient)
+        } catch (e: any) {
+          if (!String(e?.message ?? "").startsWith("404")) throw e;
         }
       },
       onRestore: () =>
