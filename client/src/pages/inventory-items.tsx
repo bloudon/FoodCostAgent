@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star, Upload } from "lucide-react";
+import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star, Upload, Pencil } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Label } from "@/components/ui/label";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatUnitName, formatDateString } from "@/lib/utils";
@@ -128,6 +129,7 @@ export default function InventoryItems() {
   const [itemsPerPage, setItemsPerPage] = useState<number>(9999);
   const [breakdownItemId, setBreakdownItemId] = useState<string | null>(null);
   const [breakdownItemName, setBreakdownItemName] = useState<string>("");
+  const [editItem, setEditItem] = useState<InventoryItemDisplay | null>(null);
   const { toast } = useToast();
 
   const { data: milestonesData } = useQuery<MilestonesResponse>({
@@ -552,6 +554,13 @@ export default function InventoryItems() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
+                              onClick={() => setEditItem(item)}
+                              data-testid={`menu-edit-${item.id}`}
+                            >
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Edit Item
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               onClick={() => toggleActiveMutation.mutate({ 
                                 id: item.id, 
                                 active: item.active === 1 ? 0 : 1,
@@ -626,6 +635,13 @@ export default function InventoryItems() {
         </div>
       </div>
 
+      {/* Edit Item Dialog */}
+      <EditInventoryItemDialog
+        item={editItem}
+        open={!!editItem}
+        onClose={() => setEditItem(null)}
+      />
+
       {/* Estimated On-Hand Breakdown Modal */}
       <EstimatedOnHandBreakdownModal
         itemId={breakdownItemId}
@@ -636,6 +652,126 @@ export default function InventoryItems() {
       />
       <SetupProgressBanner currentMilestoneId="inventory" hasEntries={(inventoryItems?.length ?? 0) > 0} />
     </div>
+  );
+}
+
+// Edit Item Dialog Component
+function EditInventoryItemDialog({
+  item,
+  open,
+  onClose,
+}: {
+  item: InventoryItemDisplay | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [pricePerUnit, setPricePerUnit] = useState<string>("");
+
+  useEffect(() => {
+    if (item) {
+      setPricePerUnit(item.pricePerUnit?.toString() ?? "0");
+    }
+  }, [item?.id]);
+
+  const { data: vendorItems, isLoading: vendorItemsLoading } = useQuery<{ id: string; active: number }[]>({
+    queryKey: ["/api/inventory-items", item?.id, "vendor-items"],
+    enabled: open && !!item?.id,
+  });
+
+  const hasActiveVendor = (vendorItems?.filter(vi => vi.active === 1)?.length ?? 0) > 0;
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("PATCH", `/api/inventory-items/${item!.id}`, {
+        pricePerUnit: parseFloat(pricePerUnit) || 0,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      toast({ title: "Item updated", description: "Price per unit has been updated." });
+      onClose();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  if (!item) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent data-testid="dialog-edit-item">
+        <DialogHeader>
+          <DialogTitle>Edit Item</DialogTitle>
+          <DialogDescription>{item.name}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="edit-price-per-unit">Price per Unit ($)</Label>
+            {vendorItemsLoading ? (
+              <div
+                className="h-9 rounded-md border bg-muted/50 animate-pulse"
+                data-testid="loading-price-per-unit"
+              />
+            ) : hasActiveVendor ? (
+              <>
+                <div
+                  className="flex h-9 items-center rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground"
+                  data-testid="display-price-per-unit-edit"
+                >
+                  ${item.pricePerUnit?.toFixed(4) ?? "0.0000"}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Auto-synced from vendor — edit price in the{" "}
+                  <Link
+                    href={`/inventory-items/${item.id}`}
+                    onClick={onClose}
+                    className="underline"
+                  >
+                    Purchasing section
+                  </Link>.
+                </p>
+              </>
+            ) : (
+              <>
+                <Input
+                  id="edit-price-per-unit"
+                  type="number"
+                  step="0.0001"
+                  value={pricePerUnit}
+                  onChange={(e) => setPricePerUnit(e.target.value)}
+                  data-testid="input-price-per-unit-edit"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used for costing until a vendor is linked.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            data-testid="button-edit-cancel"
+          >
+            Cancel
+          </Button>
+          {!hasActiveVendor && !vendorItemsLoading && (
+            <Button
+              onClick={() => updateMutation.mutate()}
+              disabled={updateMutation.isPending}
+              data-testid="button-edit-save"
+            >
+              {updateMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

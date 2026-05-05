@@ -658,6 +658,7 @@ export default function InventoryItemCreate() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Enter either price — the other will be calculated automatically.
+                  Unit price is used for costing until a vendor is linked.
                 </p>
               </div>
 

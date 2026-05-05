@@ -2099,6 +2099,11 @@ export default function InventoryItemDetail() {
                   <div className="text-2xl font-semibold text-muted-foreground" data-testid="text-last-cost">
                     ${item.pricePerUnit?.toFixed(2) || '0.00'}
                   </div>
+                  {vendorItems && vendorItems.filter(vi => vi.active === 1).length > 0 ? (
+                    <p className="text-xs text-muted-foreground">Auto-synced from vendor — edit in the Purchasing section below.</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Used for costing until a vendor is linked.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-muted-foreground">Avg Cost / WAC (per {unit?.abbreviation || 'unit'})</Label>
@@ -2240,6 +2245,30 @@ export default function InventoryItemDetail() {
                             <p className="text-xs text-muted-foreground">Auto-synced from vendor</p>
                           )}
                         </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Price per Unit ($)</Label>
+                        {vendorItems && vendorItems.filter(vi => vi.active === 1).length > 0 ? (
+                          <>
+                            <div className="flex h-9 items-center rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground" data-testid="display-price-per-unit">
+                              ${item.pricePerUnit?.toFixed(4) || '0.0000'}
+                            </div>
+                            <p className="text-xs text-muted-foreground">Auto-synced from vendor — edit price in the Vendors section above.</p>
+                          </>
+                        ) : (
+                          <>
+                            <Input
+                              type="number"
+                              step="0.0001"
+                              value={getFieldValue("pricePerUnit", item.pricePerUnit ?? 0)}
+                              onChange={(e) => handleFieldChange("pricePerUnit", e.target.value)}
+                              onBlur={() => handleFieldBlur("pricePerUnit")}
+                              disabled={updateMutation.isPending}
+                              data-testid="input-price-per-unit"
+                            />
+                            <p className="text-xs text-muted-foreground">Used for costing until a vendor is linked.</p>
+                          </>
+                        )}
                       </div>
                     </div>
 
