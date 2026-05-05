@@ -53,7 +53,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { getSuggestedConversionFactor } from "@/lib/unitConversions";
+import { useState, useEffect, useRef } from "react";
 import type { SystemPreferences, InventoryItemUnit } from "@shared/schema";
 
 type InventoryItem = {
@@ -422,9 +423,43 @@ function RecipeUnitsList({
   const [browseSearch, setBrowseSearch] = useState("");
   const [pendingUnitId, setPendingUnitId] = useState<string | null>(null);
   const [pendingQty, setPendingQty] = useState("");
+  const [pendingFactorIsSuggested, setPendingFactorIsSuggested] = useState(false);
 
   // Auto-converts collapsible
   const [showAutoConverts, setShowAutoConverts] = useState(false);
+
+  // Keep a ref to the latest units array so the suggestion effect can read it
+  // without including it in the dependency array — this prevents a background
+  // refetch of units from overwriting a value the user is already editing.
+  const unitsRef = useRef(units);
+  useEffect(() => { unitsRef.current = units; }, [units]);
+
+  // When a unit is selected in the browse panel, pre-fill the factor input
+  // with a standard conversion suggestion for same-kind unit pairs.
+  // Only fires when the selected unit or item unit changes, not on units refetch.
+  useEffect(() => {
+    if (!pendingUnitId) {
+      setPendingFactorIsSuggested(false);
+      return;
+    }
+    const allUnits = unitsRef.current;
+    const pendingUnit = allUnits?.find((u) => u.id === pendingUnitId);
+    const itemUnit = allUnits?.find((u) => u.id === itemUnitId);
+    if (!pendingUnit || !itemUnit) {
+      setPendingFactorIsSuggested(false);
+      return;
+    }
+    // getSuggestedConversionFactor returns qtyPerInventoryUnit (how many
+    // pendingUnit fit in 1 itemUnit). The display direction is the reciprocal.
+    const suggested = getSuggestedConversionFactor(pendingUnit.name, itemUnit.name);
+    if (suggested !== null) {
+      setPendingQty(String(parseFloat((1 / suggested).toPrecision(6))));
+      setPendingFactorIsSuggested(true);
+    } else {
+      setPendingQty("");
+      setPendingFactorIsSuggested(false);
+    }
+  }, [pendingUnitId, itemUnitId]);
 
   const handleAdd = () => {
     const entered = parseFloat(pendingQty);
@@ -702,7 +737,10 @@ function RecipeUnitsList({
                                       step="any"
                                       min="0"
                                       value={pendingQty}
-                                      onChange={(e) => setPendingQty(e.target.value)}
+                                      onChange={(e) => {
+                                        setPendingQty(e.target.value);
+                                        setPendingFactorIsSuggested(false);
+                                      }}
                                       placeholder={`e.g., ${u.kind === itemUnitKind ? "0.0625" : "0.375"}`}
                                       className="h-8 w-28 text-sm"
                                       data-testid={`input-pending-qty-${kind}`}
@@ -730,6 +768,11 @@ function RecipeUnitsList({
                                       <X className="h-3.5 w-3.5" />
                                     </Button>
                                   </div>
+                                  {pendingFactorIsSuggested && (
+                                    <p className="text-xs text-muted-foreground" data-testid={`text-conv-suggested-${kind}`}>
+                                      (suggested — verify for your ingredient)
+                                    </p>
+                                  )}
                                   <p className="text-xs text-muted-foreground">
                                     Example: "1 {formatUnitName(u.name)} = 0.375 {itemUnitAbbrev || "inv unit"}" means 1 portion costs the same as 0.375 {itemUnitAbbrev || "inventory unit"} of this item.
                                   </p>
