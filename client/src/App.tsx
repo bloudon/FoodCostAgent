@@ -32,6 +32,7 @@ import UnitConversions from "@/pages/unit-conversions";
 import Vendors from "@/pages/vendors";
 import VendorDetail from "@/pages/vendor-detail";
 import OrderGuideReview from "@/pages/order-guide-review";
+import OrderGuideScan from "@/pages/order-guide-scan";
 import InventoryImport from "@/pages/inventory-import";
 import RecipeImport from "@/pages/recipe-import";
 import Orders from "@/pages/orders";
@@ -312,6 +313,7 @@ function ProtectedLayoutContent() {
               <Route path="/recipes" component={Recipes} />
               <Route path="/vendors/:id" component={VendorDetail} />
               <Route path="/vendors" component={Vendors} />
+              <Route path="/order-guide-scan" component={OrderGuideScan} />
               <Route path="/order-guides/:id/review" component={OrderGuideReview} />
               <Route path="/inventory-import" component={InventoryImport} />
               <Route path="/recipe-import" component={RecipeImport} />

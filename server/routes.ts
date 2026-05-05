@@ -4155,6 +4155,144 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
+   * POST /api/order-guides/:id/append-scan
+   * Scans an additional image and appends extracted items to an existing pending_review order guide.
+   * Used by the multi-page scan wizard to merge pages one at a time.
+   * Returns { newLines, newItems, totalItems, pageNumber } where pageNumber is 1-based.
+   */
+  app.post("/api/order-guides/:id/append-scan", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const storeId = (req as any).storeId;
+      const userId = (req as any).user?.id;
+      const { id: orderGuideId } = req.params;
+
+      const bodySchema = z.object({
+        objectPath: z.string().min(1, "objectPath is required"),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+      const { objectPath } = parsed.data;
+
+      // Verify order guide exists and belongs to this company
+      const guide = await storage.getOrderGuide(orderGuideId);
+      if (!guide || guide.companyId !== companyId) {
+        return res.status(404).json({ error: "Order guide not found." });
+      }
+      if (guide.status !== 'pending_review') {
+        return res.status(409).json({ error: "Order guide is no longer in pending review status." });
+      }
+
+      // Count existing lines to determine page break position and pageNumber
+      const existingLines = await storage.getOrderGuideLines(orderGuideId);
+      const pageNumber = Math.max(1, existingLines.length > 0 ? 2 : 1);
+
+      // Read image from storage
+      const { buffer, mimeType: storageMime } = await readImageBuffer(objectPath, companyId, userId);
+
+      function detectMimeFromBuffer(buf: Buffer): string | null {
+        if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+        if (buf.length >= 8 &&
+          buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+          buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a) return "image/png";
+        if (buf.length >= 12 &&
+          buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+          buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
+        return null;
+      }
+      const mimeType = detectMimeFromBuffer(buffer) || storageMime || "image/jpeg";
+
+      if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+        return res.status(415).json({ error: "Unsupported image type. Please upload JPG, PNG, or WebP." });
+      }
+
+      // Run GPT-4o Vision extraction
+      const { scanVendorReceipt } = await import('./services/vendorReceiptScanner');
+      const scanResult = await scanVendorReceipt(buffer, mimeType);
+
+      if (scanResult.items.length === 0) {
+        return res.status(422).json({ error: "No product line items could be extracted from this image. Try a clearer photo." });
+      }
+
+      // Convert extracted items to VendorProduct shape
+      const vendorProducts = scanResult.items.map((item, index) => ({
+        vendorSku: item.sku || `scan-p${pageNumber}-${index + 1}`,
+        vendorProductName: item.name,
+        description: item.packSizeDescription || undefined,
+        caseSizeRaw: item.packSizeDescription || undefined,
+        unit: item.unit || undefined,
+        price: item.casePrice ?? undefined,
+        categoryCode: item.categoryHint || undefined,
+      }));
+
+      // Match and build new lines
+      const { ItemMatcher } = await import('./services/itemMatcher');
+      const matcher = new ItemMatcher(storage);
+      const effectiveStoreId = storeId;
+
+      const newLineInserts = [];
+      for (const product of vendorProducts) {
+        const match = await matcher.findBestMatch(product, companyId, effectiveStoreId);
+
+        let matchStatus: 'matched' | 'ambiguous' | 'new';
+        if (match.confidence === 'high') matchStatus = 'matched';
+        else if (match.confidence === 'medium' || match.confidence === 'low') matchStatus = 'ambiguous';
+        else matchStatus = 'new';
+
+        newLineInserts.push({
+          orderGuideId,
+          vendorSku: product.vendorSku,
+          productName: product.vendorProductName,
+          packSize: product.description || null,
+          uom: product.unit || null,
+          caseSize: null,
+          caseSizeRaw: product.caseSizeRaw || null,
+          innerPack: null,
+          innerPackRaw: null,
+          price: product.price ?? null,
+          brandName: null,
+          category: product.categoryCode || null,
+          gtin: null,
+          matchStatus,
+          matchedInventoryItemId: match.inventoryItemId,
+          matchConfidence: Math.round(match.score * 100),
+          isVariableWeight: 0,
+        });
+      }
+
+      const newLines = await storage.createOrderGuideLinesBatch(newLineInserts);
+      const totalItems = existingLines.length + newLines.length;
+
+      // Update rowCount and rename file to reflect page count
+      const totalPages = pageNumber; // this page is now the last page
+      const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const newFileName = `Scan — ${dateStr} (${totalPages} pages)`;
+      await storage.updateOrderGuideRowCount(orderGuideId, totalItems, newFileName);
+
+      return res.json({
+        newLines: newLines.map(l => ({
+          id: l.id,
+          vendorSku: l.vendorSku,
+          productName: l.productName,
+          packSize: l.packSize,
+          uom: l.uom,
+          price: l.price,
+          matchStatus: l.matchStatus,
+          matchConfidence: l.matchConfidence,
+        })),
+        newItems: newLines.length,
+        totalItems,
+        pageNumber: totalPages,
+      });
+    } catch (error: any) {
+      console.error('[Order Guide Append Scan Error]', error);
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
    * @swagger
    * /api/order-guides/{id}/review:
    *   get:
