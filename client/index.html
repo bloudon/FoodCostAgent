@@ -24,6 +24,10 @@
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
+      // Bootstrap config without sending an initial pageview — the useGa4 hook
+      // fires gtag('config', ...) on every Wouter route change (including mount),
+      // so this avoids a duplicate hit on first load.
+      gtag('config', 'G-HKQMSB7LYR', { send_page_view: false });
     </script>
   </head>
   <body>
