@@ -348,6 +348,8 @@ export default function CountSessionMobile() {
   const [selectedLocId, setSelectedLocId] = useState<string | null>(null);
   // Sheet state
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
+  // Manual case-count toggle (user can switch to case mode regardless of location flag)
+  const [manualCaseMode, setManualCaseMode] = useState(false);
   // Inputs inside the sheet
   const [sheetQty, setSheetQty] = useState("");
   const [sheetCaseQty, setSheetCaseQty] = useState("");
@@ -453,9 +455,12 @@ export default function CountSessionMobile() {
   const activeStorageLoc = storageLocations?.find(
     (l) => l.id === activeLine?.storageLocationId
   );
-  const activeMode: CountMode = activeLine
+  const baseMode: CountMode = activeLine
     ? getCountMode(activeCategory, activeStorageLoc)
     : "simple";
+  // Allow manual switch to case mode for items with a caseSize, unless catch-weight
+  const activeMode: CountMode =
+    baseMode === "simple" && manualCaseMode ? "case" : baseMode;
   const activeUnitAbbr =
     activeLine?.unitAbbreviation || activeItem?.unitName || "unit";
 
@@ -551,6 +556,7 @@ export default function CountSessionMobile() {
     const mode = getCountMode(cat, loc);
 
     setActiveLineId(lineId);
+    setManualCaseMode(false);
 
     // Pre-fill inputs with existing values if single entry
     if (mode === "case") {
@@ -579,6 +585,7 @@ export default function CountSessionMobile() {
     setSheetQty("");
     setSheetCaseQty("");
     setSheetLooseUnits("");
+    setManualCaseMode(false);
   }
 
   // Auto-focus the primary input when sheet opens
@@ -987,7 +994,7 @@ export default function CountSessionMobile() {
         )}
       </div>
 
-      {/* ── Entry Sheet (bottom drawer) ── */}
+      {/* ── Entry Sheet (top drawer — stays above keyboard) ── */}
       <Sheet
         open={!!activeLineId}
         onOpenChange={(open) => {
@@ -995,14 +1002,14 @@ export default function CountSessionMobile() {
         }}
       >
         <SheetContent
-          side="bottom"
-          className="h-auto max-h-[88vh] flex flex-col rounded-t-xl px-0 pb-0"
+          side="top"
+          className="h-auto max-h-[88vh] flex flex-col rounded-b-xl px-0 pt-0"
         >
           {activeLine && activeItem && (
             <>
               <SheetHeader className="px-4 pb-2 shrink-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <SheetTitle className="text-base font-semibold">
+                  <SheetTitle className="text-base font-semibold flex-1 min-w-0 truncate">
                     {activeItem.name}
                   </SheetTitle>
                   {activeMode === "catch" && (
@@ -1011,11 +1018,25 @@ export default function CountSessionMobile() {
                       Catch Weight
                     </Badge>
                   )}
-                  {activeMode === "case" && (
-                    <Badge variant="outline" className="gap-1 text-blue-600 border-blue-300 dark:text-blue-400 dark:border-blue-700">
+                  {/* Case mode toggle — shown for any item with a case size that isn't catch-weight */}
+                  {baseMode !== "catch" && activeItem?.caseSize > 0 && (
+                    <button
+                      onClick={() => {
+                        setManualCaseMode((prev) => !prev);
+                        setSheetCaseQty("");
+                        setSheetLooseUnits("");
+                        setSheetQty("");
+                      }}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium transition-colors ${
+                        activeMode === "case"
+                          ? "bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      }`}
+                      data-testid="button-toggle-case-mode"
+                    >
                       <Package className="h-3 w-3" />
                       By Case
-                    </Badge>
+                    </button>
                   )}
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1137,7 +1158,7 @@ export default function CountSessionMobile() {
               </div>
 
               {/* Footer with primary action */}
-              <div className="px-4 pt-2 pb-6 shrink-0 border-t bg-background space-y-2">
+              <div className="px-4 pt-2 pb-4 shrink-0 border-t bg-background space-y-2">
                 {!isReadOnly && (activeLine?.entries?.length ?? 0) >= 2 && (
                   <Button
                     variant="outline"
