@@ -84,6 +84,7 @@ import { LanguageContext } from "@/lib/language-context";
 import { translations } from "@/lib/marketing-translations";
 import type { Language } from "@/lib/marketing-translations";
 import { UndoProvider } from "@/contexts/undo-context";
+import { AppLanguageProvider } from "@/lib/language-context";
 
 const WEBSITE_DOMAINS = ["fnbcostpro.com", "www.fnbcostpro.com"];
 if (new URLSearchParams(window.location.search).has("app")) {
@@ -375,24 +376,26 @@ function App() {
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <AuthProvider>
-            <Switch>
-              <Route path="/login" component={Login} />
-              <Route path="/pending-approval" component={PendingApproval} />
-              <Route path="/sso-access-denied" component={SsoAccessDenied} />
-              <Route path="/accept-invitation/:token" component={AcceptInvitation} />
-              <Route path="/onboarding/menu-scan" component={OnboardingMenuScan} />
-              <Route path="/onboarding"><Redirect to="/signup" /></Route>
-              <Route path="/signup" component={LeadSignup} />
-              <Route path="/activate" component={ActivateAccount} />
-              <Route path="/forgot-password" component={ForgotPassword} />
-              <Route path="/reset-password" component={ResetPassword} />
-              <Route path="/choose-plan" component={ChoosePlan} />
-              <Route path="/enterprise-inquiry" component={EnterpriseInquiry} />
-              <Route path="/enterprise-onboarding" component={EnterpriseOnboarding} />
-              <Route>
-                <ProtectedLayout />
-              </Route>
-            </Switch>
+            <AppLanguageProvider>
+              <Switch>
+                <Route path="/login" component={Login} />
+                <Route path="/pending-approval" component={PendingApproval} />
+                <Route path="/sso-access-denied" component={SsoAccessDenied} />
+                <Route path="/accept-invitation/:token" component={AcceptInvitation} />
+                <Route path="/onboarding/menu-scan" component={OnboardingMenuScan} />
+                <Route path="/onboarding"><Redirect to="/signup" /></Route>
+                <Route path="/signup" component={LeadSignup} />
+                <Route path="/activate" component={ActivateAccount} />
+                <Route path="/forgot-password" component={ForgotPassword} />
+                <Route path="/reset-password" component={ResetPassword} />
+                <Route path="/choose-plan" component={ChoosePlan} />
+                <Route path="/enterprise-inquiry" component={EnterpriseInquiry} />
+                <Route path="/enterprise-onboarding" component={EnterpriseOnboarding} />
+                <Route>
+                  <ProtectedLayout />
+                </Route>
+              </Switch>
+            </AppLanguageProvider>
           </AuthProvider>
           <Toaster />
         </TooltipProvider>

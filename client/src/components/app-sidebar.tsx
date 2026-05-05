@@ -53,8 +53,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LanguageToggle } from "@/components/language-toggle";
 import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/lib/auth-context";
+import { useAppLanguage } from "@/lib/language-context";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import { useCompany } from "@/hooks/use-company";
 import { useStoreContext } from "@/hooks/use-store-context";
@@ -140,6 +142,7 @@ const settingsItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  const { t } = useAppLanguage();
   const { company } = useCompany();
   const { selectedStoreId, setSelectedStoreId, stores } = useStoreContext();
   const { data: accessibleStores, isLoading: storesLoading } = useAccessibleStores();
@@ -184,6 +187,43 @@ export function AppSidebar() {
 
   const visibleSections = getVisibleSections();
   const showSettings = !isStoreUser && (!isGlobalAdmin || !!company);
+
+  const navTitle = (title: string): string => {
+    const map: Record<string, string> = {
+      "Dashboard": t.nav.dashboard,
+      "Navigation": t.nav.navigation,
+      "Settings": t.nav.settings,
+      "Locations": t.nav.locations,
+      "Menu": t.nav.menuSection,
+      "Menu Items": t.nav.menuItems,
+      "Recipes": t.nav.recipes,
+      "Inventory": t.nav.inventorySection,
+      "Inventory Items": t.nav.inventoryItems,
+      "Categories": t.nav.categories,
+      "Inventory Sessions": t.nav.inventorySessions,
+      "Shelf Scans": t.nav.shelfScans,
+      "Waste Entry": t.nav.wasteEntry,
+      "Purchasing": t.nav.purchasingSection,
+      "Orders": t.nav.orders,
+      "Vendors": t.nav.vendors,
+      "Transfer Orders": t.nav.transferOrders,
+      "Reports": t.nav.reportsSection,
+      "Sales Import": t.nav.salesImport,
+      "Variance Report": t.nav.varianceReport,
+      "Kitchen": t.nav.kitchenSection,
+      "Prep Chart": t.nav.prepChart,
+      "Prep Items": t.nav.prepItems,
+      "On Hand": t.nav.onHand,
+      "Production Log": t.nav.productionLog,
+      "Stations": t.nav.stations,
+      "Store Locations": t.nav.storeLocations,
+      "Storage Locations": t.nav.storageLocations,
+      "Unit Conversions": t.nav.unitConversions,
+      "API Credentials": t.nav.apiCredentials,
+      "System": t.nav.system,
+    };
+    return map[title] ?? title;
+  };
 
   const userInitials =
     user?.firstName && user?.lastName
@@ -263,12 +303,12 @@ export function AppSidebar() {
                 <SidebarMenuButton
                   asChild
                   isActive={location === "/"}
-                  tooltip="Dashboard"
+                  tooltip={t.nav.dashboard}
                   data-testid={isMobile ? "link-dashboard-mobile" : "link-dashboard"}
                 >
                   <Link href="/" onClick={closeMobile}>
                     <LayoutDashboard />
-                    <span>Dashboard</span>
+                    <span>{t.nav.dashboard}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -278,7 +318,7 @@ export function AppSidebar() {
 
         {visibleSections.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+            <SidebarGroupLabel>{t.nav.navigation}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {visibleSections.map((section) => (
@@ -291,11 +331,11 @@ export function AppSidebar() {
                     <SidebarMenuItem>
                       <CollapsibleTrigger asChild>
                         <SidebarMenuButton
-                          tooltip={section.title}
+                          tooltip={navTitle(section.title)}
                           data-testid={`nav-section-${section.title.toLowerCase()}`}
                         >
                           <section.icon className="h-4 w-4" />
-                          <span>{section.title}</span>
+                          <span>{navTitle(section.title)}</span>
                           <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                         </SidebarMenuButton>
                       </CollapsibleTrigger>
@@ -315,7 +355,7 @@ export function AppSidebar() {
                                 >
                                   <Link href={item.url} onClick={closeMobile}>
                                     <item.icon className="h-3.5 w-3.5" />
-                                    <span>{item.title}</span>
+                                    <span>{navTitle(item.title)}</span>
                                   </Link>
                                 </SidebarMenuSubButton>
                               </SidebarMenuSubItem>
@@ -333,7 +373,7 @@ export function AppSidebar() {
 
         {showSettings && (
           <SidebarGroup className="mt-auto">
-            <SidebarGroupLabel>Settings</SidebarGroupLabel>
+            <SidebarGroupLabel>{t.nav.settings}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 <Collapsible
@@ -344,11 +384,11 @@ export function AppSidebar() {
                   <SidebarMenuItem>
                     <CollapsibleTrigger asChild>
                       <SidebarMenuButton
-                        tooltip="Settings"
+                        tooltip={t.nav.settings}
                         data-testid="button-settings-menu"
                       >
                         <Settings className="h-4 w-4" />
-                        <span>Settings</span>
+                        <span>{t.nav.settings}</span>
                         <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                       </SidebarMenuButton>
                     </CollapsibleTrigger>
@@ -366,7 +406,7 @@ export function AppSidebar() {
                                 className="w-full"
                               >
                                 <MapPin className="h-3.5 w-3.5" />
-                                <span>Locations</span>
+                                <span>{t.nav.locations}</span>
                                 <ChevronRight className="ml-auto h-3 w-3 transition-transform duration-200 group-data-[state=open]/loc-collapsible:rotate-90" />
                               </SidebarMenuSubButton>
                             </CollapsibleTrigger>
@@ -383,7 +423,7 @@ export function AppSidebar() {
                                       >
                                         <Link href={item.url} onClick={closeMobile}>
                                           <item.icon className="h-3.5 w-3.5" />
-                                          <span>{item.title}</span>
+                                          <span>{navTitle(item.title)}</span>
                                         </Link>
                                       </SidebarMenuSubButton>
                                     </SidebarMenuSubItem>
@@ -446,11 +486,13 @@ export function AppSidebar() {
 
           <ThemeToggle />
 
+          <LanguageToggle />
+
           <button
             onClick={logout}
             data-testid={isMobile ? "button-logout-mobile" : "button-logout"}
             className="inline-flex items-center justify-center rounded-md h-9 w-9 text-muted-foreground hover-elevate active-elevate-2 transition-colors"
-            title="Logout"
+            title={t.auth.logout}
           >
             <LogOut className="h-4 w-4" />
           </button>

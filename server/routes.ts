@@ -350,6 +350,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  (async function migratePreferredLanguage() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'preferred_language'`
+      );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
+      if (!existing) {
+        await db.execute(sql`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_language TEXT NOT NULL DEFAULT 'en';
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('preferred_language')`
+        );
+        console.log("[Migration] Applied preferred_language");
+      } else {
+        console.log("[Migration] Already applied (preferred_language)");
+      }
+    } catch (err) {
+      console.error("[Migration] preferred_language error:", err);
+    }
+  })();
+
   // GET /api/background-images — public
   // Returns active images. If ?companyId= is provided and company has a brand image, returns just that.
   // For free-tier companies without a brand image, returns the designated free-tier background (if any).
@@ -1924,7 +1952,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       profileImageUrl: user.profileImageUrl,
       selectedCompanyId,
       subscriptionTier,
+      preferredLanguage: user.preferredLanguage || "en",
     });
+  });
+
+  app.patch("/api/auth/me/language", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { preferredLanguage } = req.body;
+      if (preferredLanguage !== "en" && preferredLanguage !== "es") {
+        return res.status(400).json({ error: "Invalid language. Must be 'en' or 'es'." });
+      }
+      await db
+        .update(users)
+        .set({ preferredLanguage })
+        .where(eq(users.id, user.id));
+      res.json({ preferredLanguage });
+    } catch (err) {
+      console.error("[Language] PATCH error:", err);
+      res.status(500).json({ error: "Failed to update language preference" });
+    }
   });
 
   app.post("/api/auth/select-company", requireAuth, async (req, res) => {

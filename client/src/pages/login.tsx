@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Shield, Eye, EyeOff } from "lucide-react";
 const logoImage = "/logo.png";
 import { RestaurantBackground } from "@/components/restaurant-background";
+import { useAppLanguage } from "@/lib/language-context";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -19,6 +20,7 @@ export default function Login() {
   const [, setLocation] = useLocation();
   const { login, user } = useAuth();
   const { toast } = useToast();
+  const { t } = useAppLanguage();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -48,8 +50,8 @@ export default function Login() {
     } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "Login failed",
-        description: error.message || "Invalid credentials",
+        title: t.auth.loginFailed,
+        description: error.message || t.auth.invalidCredentials,
       });
     } finally {
       setIsLoading(false);
@@ -68,16 +70,16 @@ export default function Login() {
               className="h-20 w-auto"
             />
           </div>
-          <CardTitle>Sign In</CardTitle>
+          <CardTitle>{t.auth.signIn}</CardTitle>
           <CardDescription>
-            Enter your credentials to access your restaurant inventory system
+            {t.auth.enterCredentials}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email" data-testid="label-email">
-                Email
+                {t.auth.email}
               </Label>
               <Input
                 id="email"
@@ -92,7 +94,7 @@ export default function Login() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password" data-testid="label-password">
-                Password
+                {t.auth.password}
               </Label>
               <div className="relative">
                 <Input
@@ -125,7 +127,7 @@ export default function Login() {
                 onClick={() => setLocation("/forgot-password")}
                 data-testid="link-forgot-password"
               >
-                Forgot your password?
+                {t.auth.forgotPassword}
               </button>
             </div>
             <Button
@@ -134,7 +136,7 @@ export default function Login() {
               disabled={isLoading}
               data-testid="button-login"
             >
-              {isLoading ? "Signing in..." : "Sign In"}
+              {isLoading ? t.auth.signingIn : t.auth.signIn}
             </Button>
           </form>
 
@@ -147,7 +149,7 @@ export default function Login() {
 
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground text-center mb-3">
-              Enterprise SSO
+              {t.auth.enterpriseSso}
             </p>
             <Button
               variant="outline"
@@ -156,7 +158,7 @@ export default function Login() {
               data-testid="button-sso-replit"
             >
               <Shield className="mr-2 h-4 w-4" />
-              Sign in with SSO
+              {t.auth.signInWithSso}
             </Button>
           </div>
 
@@ -166,13 +168,13 @@ export default function Login() {
 
           <div className="mt-6 text-center">
             <p className="text-sm text-muted-foreground">
-              Don't have an account?{" "}
+              {t.auth.noAccount}{" "}
               <button
                 className="text-sm font-semibold text-primary hover:underline cursor-pointer"
                 onClick={() => setLocation("/onboarding-wizard")}
                 data-testid="link-sign-up"
               >
-                Sign up
+                {t.auth.signUp}
               </button>
             </p>
           </div>

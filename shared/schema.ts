@@ -104,6 +104,7 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   active: integer("active").notNull().default(1), // 1=active, 0=inactive
+  preferredLanguage: text("preferred_language").notNull().default("en"), // "en" | "es"
 }, (table) => ({
   // Index for fast SSO lookups
   ssoProviderIdIdx: index("users_sso_provider_id_idx").on(table.ssoProvider, table.ssoId),
