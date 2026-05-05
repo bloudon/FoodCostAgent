@@ -1668,7 +1668,9 @@ function RecipeBuilderContent() {
         await Promise.all(
           recipeComponents.map((comp) =>
             apiRequest("DELETE", `/api/recipe-components/${comp.id}`, undefined).catch(
-              () => {}
+              (e: any) => {
+                if (!String(e?.message ?? "").startsWith("404")) throw e;
+              }
             )
           )
         );
