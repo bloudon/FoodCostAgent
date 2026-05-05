@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'wouter';
 
-const GA4_EN_ID = 'G-HKQMSB7LYR';
+const GA4_EN_ID = 'G-5YH6X21RM4';
 const GA4_ES_ID = import.meta.env.VITE_GA4_ES_ID as string | undefined;
 
 const MARKETING_DOMAINS = ['fnbcostpro.com', 'www.fnbcostpro.com'];
@@ -28,7 +28,7 @@ function sendPageview(measurementId: string, path: string): void {
  *
  * - The gtag.js script and window.gtag shim are bootstrapped in index.html;
  *   this hook only issues gtag('config', ...) calls.
- * - Primary stream (G-HKQMSB7LYR) fires on all marketing pages.
+ * - Primary stream (G-5YH6X21RM4) fires on all marketing pages.
  * - Spanish stream (VITE_GA4_ES_ID) fires additionally on /es and /es/* routes.
  * - Strict hostname guard: only fires on fnbcostpro.com / www.fnbcostpro.com.
  *   Never fires on app.fnbcostpro.com, localhost, or Replit dev hostnames.
