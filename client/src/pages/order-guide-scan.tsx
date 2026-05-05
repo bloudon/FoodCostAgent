@@ -36,6 +36,12 @@ import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { useStoreContext } from '@/hooks/use-store-context';
 import { ObjectUploader } from '@/components/ObjectUploader';
+import {
+  computeMatchCounts,
+  getPageBreakLabel,
+  buildReviewUrl,
+  mergeAppendedLines,
+} from '@/lib/orderGuideScanUtils';
 
 interface Vendor {
   id: string;
@@ -226,11 +232,13 @@ export default function OrderGuideScan() {
       return res.json() as Promise<AppendResult>;
     },
     onSuccess: (data) => {
-      const insertionIndex = lastLinesRef.current.length;
-      setLines(prev => [...prev, ...data.newLines]);
-      if (data.newLines.length > 0) {
-        setPageBreaks(prev => [...prev, insertionIndex]);
-      }
+      const { lines: merged, pageBreaks: newBreaks } = mergeAppendedLines(
+        lastLinesRef.current,
+        pageBreaks,
+        data.newLines
+      );
+      setLines(merged);
+      setPageBreaks(newBreaks);
       setPageCount(data.pageNumber);
       setShowAddPageUploader(false);
       toast({
@@ -243,9 +251,7 @@ export default function OrderGuideScan() {
     },
   });
 
-  const matchedCount = lines.filter(l => l.matchStatus === 'matched').length;
-  const ambiguousCount = lines.filter(l => l.matchStatus === 'ambiguous').length;
-  const newCount = lines.filter(l => l.matchStatus === 'new').length;
+  const { matched: matchedCount, ambiguous: ambiguousCount, newItems: newCount } = computeMatchCounts(lines);
 
   const steps = [
     { num: 1, label: 'Configure' },
@@ -443,13 +449,13 @@ export default function OrderGuideScan() {
                       <TableBody>
                         {lines.map((line, index) => (
                           <Fragment key={line.id}>
-                            {pageBreaks.includes(index) && (
+                            {getPageBreakLabel(pageBreaks, index) && (
                               <TableRow className="pointer-events-none select-none" data-testid={`page-break-${index}`}>
                                 <TableCell
                                   colSpan={5}
                                   className="py-1.5 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/40"
                                 >
-                                  — Page {pageBreaks.indexOf(index) + 2} —
+                                  {getPageBreakLabel(pageBreaks, index)}
                                 </TableCell>
                               </TableRow>
                             )}
@@ -556,7 +562,7 @@ export default function OrderGuideScan() {
                 Start Over
               </Button>
               <Button
-                onClick={() => navigate(`/order-guides/${orderGuideId}/review`)}
+                onClick={() => navigate(buildReviewUrl(orderGuideId!))}
                 disabled={!orderGuideId || appendMutation.isPending}
                 data-testid="button-review-commit"
               >
