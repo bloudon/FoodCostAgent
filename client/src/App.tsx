@@ -86,6 +86,7 @@ import { translations } from "@/lib/marketing-translations";
 import type { Language } from "@/lib/marketing-translations";
 import { UndoProvider } from "@/contexts/undo-context";
 import { AppLanguageProvider } from "@/lib/language-context";
+import { useGa4 } from "@/hooks/use-ga4";
 
 const WEBSITE_DOMAINS = ["fnbcostpro.com", "www.fnbcostpro.com"];
 if (new URLSearchParams(window.location.search).has("app")) {
@@ -119,6 +120,7 @@ const EsAbout = withLang("es", WebsiteAbout);
 const EsContact = withLang("es", WebsiteContact);
 
 function WebsiteRouter() {
+  useGa4();
   return (
     <Switch>
       <Route path="/" component={EnHome} />
