@@ -44,7 +44,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useUndo } from "@/contexts/undo-context";
+import { useUndoableDelete } from "@/hooks/use-undoable-delete";
 import { formatUnitName } from "@/lib/utils";
 
 type CountMode = "catch" | "case" | "simple";
@@ -87,7 +87,7 @@ function MobileEntryList({
   countId: string;
   onDeleted?: () => void;
 }) {
-  const { register: registerUndo } = useUndo();
+  const scheduleDelete = useUndoableDelete();
 
   if (!entries || entries.length === 0) return null;
 
@@ -126,22 +126,29 @@ function MobileEntryList({
               onClick={() => {
                 const cacheKey = ["/api/inventory-count-lines", countId];
                 const previousData = queryClient.getQueryData(cacheKey);
-                queryClient.setQueryData(cacheKey, (old: any) => {
-                  if (!old) return old;
-                  return old.map((line: any) => ({
-                    ...line,
-                    entries: (line.entries || []).filter((e: any) => e.id !== entry.id),
-                  }));
-                });
                 onDeleted?.();
-                registerUndo(
-                  "Count entry removed",
-                  async () => {
-                    await apiRequest("DELETE", `/api/inventory-count-entries/${entry.id}`);
+                scheduleDelete({
+                  label: "Count entry removed",
+                  onOptimisticRemove: () =>
+                    queryClient.setQueryData(cacheKey, (old: any) => {
+                      if (!old) return old;
+                      return old.map((line: any) => ({
+                        ...line,
+                        entries: (line.entries || []).filter(
+                          (e: any) => e.id !== entry.id
+                        ),
+                      }));
+                    }),
+                  onCommit: async () => {
+                    await apiRequest(
+                      "DELETE",
+                      `/api/inventory-count-entries/${entry.id}`
+                    );
                     queryClient.invalidateQueries({ queryKey: cacheKey });
                   },
-                  () => queryClient.setQueryData(cacheKey, previousData)
-                );
+                  onRestore: () =>
+                    queryClient.setQueryData(cacheKey, previousData),
+                });
               }}
               className="text-muted-foreground/40 hover:text-destructive transition-colors flex-shrink-0"
               title="Remove this entry"

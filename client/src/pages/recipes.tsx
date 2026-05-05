@@ -12,7 +12,7 @@ import { formatRecipeName } from "@/lib/utils";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useUndo } from "@/contexts/undo-context";
+import { useUndoableDelete } from "@/hooks/use-undoable-delete";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -112,7 +112,7 @@ function RecipesContent() {
   const [showInactive, setShowInactive] = useState(false);
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
   const { toast } = useToast();
-  const { register: registerUndo } = useUndo();
+  const scheduleDelete = useUndoableDelete();
 
   const { sortField, sortDirection, handleSort } = useTableSort("name");
 
@@ -825,15 +825,24 @@ function RecipesContent() {
               onClick={() => {
                 if (!selectedRecipe) return;
                 const recipe = selectedRecipe;
+                const previousData = queryClient.getQueryData(["/api/recipes"]);
                 setDeleteDialogOpen(false);
                 setSelectedRecipe(null);
-                registerUndo(
-                  `"${recipe.name}" will be deleted`,
-                  async () => {
+                scheduleDelete({
+                  label: `"${recipe.name}" will be deleted`,
+                  onOptimisticRemove: () =>
+                    queryClient.setQueryData(
+                      ["/api/recipes"],
+                      (old: any[] | undefined) =>
+                        old?.filter((r) => r.id !== recipe.id) ?? []
+                    ),
+                  onCommit: async () => {
                     await apiRequest("DELETE", `/api/recipes/${recipe.id}`);
                     queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
-                  }
-                );
+                  },
+                  onRestore: () =>
+                    queryClient.setQueryData(["/api/recipes"], previousData),
+                });
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-delete"

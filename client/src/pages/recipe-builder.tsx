@@ -68,7 +68,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useUndo } from "@/contexts/undo-context";
+import { useUndoableDelete } from "@/hooks/use-undoable-delete";
 import { formatUnitName, formatRecipeName } from "@/lib/utils";
 import { getSuggestedConversionFactor } from "@/lib/unitConversions";
 import {
@@ -776,7 +776,7 @@ function RecipeBuilderContent() {
   const { id } = useParams<{ id?: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { register: registerUndo } = useUndo();
+  const scheduleDelete = useUndoableDelete();
   // isNew is true when id is undefined (from /recipes/new route) or equals "new"
   const isNew = !id || id === "new";
 
@@ -1294,17 +1294,25 @@ function RecipeBuilderContent() {
     const component = components.find((c) => c.id === componentId);
     if (!component) return;
     const idx = components.findIndex((c) => c.id === componentId);
-    setComponents((prev) => prev.filter((c) => c.id !== componentId));
-    registerUndo(
-      `"${component.name}" removed from recipe`,
-      async () => {},
-      () =>
+    scheduleDelete({
+      label: `"${component.name}" removed from recipe`,
+      onOptimisticRemove: () =>
+        setComponents((prev) => prev.filter((c) => c.id !== componentId)),
+      onCommit: async () => {
+        // Delete the persisted component; ignore 404 if it was never saved yet
+        try {
+          await apiRequest("DELETE", `/api/recipe-components/${componentId}`);
+        } catch {
+          // Component may not exist in DB yet (new unsaved ingredient)
+        }
+      },
+      onRestore: () =>
         setComponents((prev) => {
           const next = [...prev];
           next.splice(idx, 0, component);
           return next;
-        })
-    );
+        }),
+    });
   };
 
   // Handle inline component update
@@ -1654,11 +1662,14 @@ function RecipeBuilderContent() {
         await apiRequest("PATCH", `/api/recipes/${id}`, recipeData);
       }
 
-      // Delete all existing components first to avoid duplicates
+      // Delete all existing components first to avoid duplicates.
+      // Ignore 404s — a component may have already been deleted via the undo timer.
       if (!isNew && recipeComponents) {
         await Promise.all(
-          recipeComponents.map((comp) => 
-            apiRequest("DELETE", `/api/recipe-components/${comp.id}`, undefined)
+          recipeComponents.map((comp) =>
+            apiRequest("DELETE", `/api/recipe-components/${comp.id}`, undefined).catch(
+              () => {}
+            )
           )
         );
       }
