@@ -83,6 +83,7 @@ import WebsiteContact from "@/pages/website/contact";
 import { LanguageContext } from "@/lib/language-context";
 import { translations } from "@/lib/marketing-translations";
 import type { Language } from "@/lib/marketing-translations";
+import { UndoProvider } from "@/contexts/undo-context";
 
 const WEBSITE_DOMAINS = ["fnbcostpro.com", "www.fnbcostpro.com"];
 if (new URLSearchParams(window.location.search).has("app")) {
@@ -179,7 +180,9 @@ function ProtectedLayout() {
 
   return (
     <StoreProvider>
-      <ProtectedLayoutContent />
+      <UndoProvider>
+        <ProtectedLayoutContent />
+      </UndoProvider>
     </StoreProvider>
   );
 }

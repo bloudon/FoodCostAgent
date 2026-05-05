@@ -52,6 +52,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useUndo } from "@/contexts/undo-context";
 import { formatUnitName } from "@/lib/utils";
 import type { Company, CompanyStore } from "@shared/schema";
 
@@ -243,20 +244,7 @@ function EntryHistory({ entries, lineId, isCatchWeight, unitAbbr, countId, readO
   const [open, setOpen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const { toast } = useToast();
-
-  const deleteEntryMutation = useMutation({
-    mutationFn: async (entryId: string) => {
-      return apiRequest("DELETE", `/api/inventory-count-entries/${entryId}`);
-    },
-    onSuccess: () => {
-      if (countId) {
-        queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
-      }
-    },
-    onError: () => {
-      toast({ title: "Failed to remove entry", variant: "destructive" });
-    },
-  });
+  const { register: registerUndo } = useUndo();
 
   const clearMutation = useMutation({
     mutationFn: async () => {
@@ -346,9 +334,26 @@ function EntryHistory({ entries, lineId, isCatchWeight, unitAbbr, countId, readO
                   </span>
                   {!readOnly && (
                     <button
-                      onClick={() => deleteEntryMutation.mutate(entry.id)}
-                      disabled={deleteEntryMutation.isPending}
-                      className="text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-40 pl-1"
+                      onClick={() => {
+                        const cacheKey = ["/api/inventory-count-lines", countId];
+                        const previousData = queryClient.getQueryData(cacheKey);
+                        queryClient.setQueryData(cacheKey, (old: any) => {
+                          if (!old) return old;
+                          return old.map((line: any) => {
+                            if (line.id !== lineId) return line;
+                            return { ...line, entries: line.entries.filter((e: any) => e.id !== entry.id) };
+                          });
+                        });
+                        registerUndo(
+                          "Count entry removed",
+                          async () => {
+                            await apiRequest("DELETE", `/api/inventory-count-entries/${entry.id}`);
+                            queryClient.invalidateQueries({ queryKey: cacheKey });
+                          },
+                          () => queryClient.setQueryData(cacheKey, previousData)
+                        );
+                      }}
+                      className="text-muted-foreground/40 hover:text-destructive transition-colors pl-1"
                       title="Remove this entry"
                       data-testid={`button-delete-entry-${entry.id}`}
                     >

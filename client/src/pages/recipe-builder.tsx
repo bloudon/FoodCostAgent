@@ -68,6 +68,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useUndo } from "@/contexts/undo-context";
 import { formatUnitName, formatRecipeName } from "@/lib/utils";
 import { getSuggestedConversionFactor } from "@/lib/unitConversions";
 import {
@@ -775,6 +776,7 @@ function RecipeBuilderContent() {
   const { id } = useParams<{ id?: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { register: registerUndo } = useUndo();
   // isNew is true when id is undefined (from /recipes/new route) or equals "new"
   const isNew = !id || id === "new";
 
@@ -1289,7 +1291,20 @@ function RecipeBuilderContent() {
 
   // Delete ingredient
   const handleDeleteIngredient = (componentId: string) => {
-    setComponents(components.filter((c) => c.id !== componentId));
+    const component = components.find((c) => c.id === componentId);
+    if (!component) return;
+    const idx = components.findIndex((c) => c.id === componentId);
+    setComponents((prev) => prev.filter((c) => c.id !== componentId));
+    registerUndo(
+      `"${component.name}" removed from recipe`,
+      async () => {},
+      () =>
+        setComponents((prev) => {
+          const next = [...prev];
+          next.splice(idx, 0, component);
+          return next;
+        })
+    );
   };
 
   // Handle inline component update

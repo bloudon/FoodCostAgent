@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useUndo } from "@/contexts/undo-context";
 import { formatUnitName } from "@/lib/utils";
 
 type CountMode = "catch" | "case" | "simple";
@@ -86,20 +87,7 @@ function MobileEntryList({
   countId: string;
   onDeleted?: () => void;
 }) {
-  const { toast } = useToast();
-
-  const deleteMutation = useMutation({
-    mutationFn: async (entryId: string) => {
-      return apiRequest("DELETE", `/api/inventory-count-entries/${entryId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
-      onDeleted?.();
-    },
-    onError: () => {
-      toast({ title: "Failed to remove entry", variant: "destructive" });
-    },
-  });
+  const { register: registerUndo } = useUndo();
 
   if (!entries || entries.length === 0) return null;
 
@@ -135,9 +123,27 @@ function MobileEntryList({
               {compactRelativeTime(new Date(entry.enteredAt))}
             </span>
             <button
-              onClick={() => deleteMutation.mutate(entry.id)}
-              disabled={deleteMutation.isPending}
-              className="text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-40 flex-shrink-0"
+              onClick={() => {
+                const cacheKey = ["/api/inventory-count-lines", countId];
+                const previousData = queryClient.getQueryData(cacheKey);
+                queryClient.setQueryData(cacheKey, (old: any) => {
+                  if (!old) return old;
+                  return old.map((line: any) => ({
+                    ...line,
+                    entries: (line.entries || []).filter((e: any) => e.id !== entry.id),
+                  }));
+                });
+                onDeleted?.();
+                registerUndo(
+                  "Count entry removed",
+                  async () => {
+                    await apiRequest("DELETE", `/api/inventory-count-entries/${entry.id}`);
+                    queryClient.invalidateQueries({ queryKey: cacheKey });
+                  },
+                  () => queryClient.setQueryData(cacheKey, previousData)
+                );
+              }}
+              className="text-muted-foreground/40 hover:text-destructive transition-colors flex-shrink-0"
               title="Remove this entry"
               data-testid={`button-mobile-delete-entry-${entry.id}`}
             >

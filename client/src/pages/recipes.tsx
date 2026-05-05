@@ -12,6 +12,7 @@ import { formatRecipeName } from "@/lib/utils";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useUndo } from "@/contexts/undo-context";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -111,6 +112,7 @@ function RecipesContent() {
   const [showInactive, setShowInactive] = useState(false);
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
   const { toast } = useToast();
+  const { register: registerUndo } = useUndo();
 
   const { sortField, sortDirection, handleSort } = useTableSort("name");
 
@@ -820,11 +822,23 @@ function RecipesContent() {
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => selectedRecipe && deleteMutation.mutate(selectedRecipe.id)}
+              onClick={() => {
+                if (!selectedRecipe) return;
+                const recipe = selectedRecipe;
+                setDeleteDialogOpen(false);
+                setSelectedRecipe(null);
+                registerUndo(
+                  `"${recipe.name}" will be deleted`,
+                  async () => {
+                    await apiRequest("DELETE", `/api/recipes/${recipe.id}`);
+                    queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+                  }
+                );
+              }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-delete"
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
