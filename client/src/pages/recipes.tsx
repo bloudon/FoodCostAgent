@@ -145,25 +145,6 @@ function RecipesContent() {
     return unit?.abbreviation || unit?.name || "unit";
   };
 
-  const deleteMutation = useMutation({
-    mutationFn: async (recipeId: string) => {
-      await apiRequest("DELETE", `/api/recipes/${recipeId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
-      toast({ title: "Recipe deleted", description: "The recipe has been permanently deleted." });
-      setDeleteDialogOpen(false);
-      setSelectedRecipe(null);
-    },
-    onError: (error: any) => {
-      toast({ 
-        title: "Delete failed", 
-        description: error.message || "Could not delete the recipe",
-        variant: "destructive"
-      });
-    },
-  });
-
   const deactivateMutation = useMutation({
     mutationFn: async (recipeId: string) => {
       await apiRequest("POST", `/api/recipes/${recipeId}/deactivate`);
@@ -815,8 +796,7 @@ function RecipesContent() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Recipe</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to permanently delete "{selectedRecipe?.name}"? 
-              This action cannot be undone.
+              "{selectedRecipe?.name}" will be deleted. You have a few seconds to undo this action.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

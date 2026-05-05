@@ -1303,7 +1303,8 @@ function RecipeBuilderContent() {
         try {
           await apiRequest("DELETE", `/api/recipe-components/${componentId}`);
         } catch (e: any) {
-          if (!String(e?.message ?? "").startsWith("404")) throw e;
+          const msg = String(e?.message ?? "");
+          if (!msg.startsWith("404") && !msg.includes("Not Found")) throw e;
         }
       },
       onRestore: () =>
@@ -1669,7 +1670,8 @@ function RecipeBuilderContent() {
           recipeComponents.map((comp) =>
             apiRequest("DELETE", `/api/recipe-components/${comp.id}`, undefined).catch(
               (e: any) => {
-                if (!String(e?.message ?? "").startsWith("404")) throw e;
+                const msg = String(e?.message ?? "");
+                if (!msg.startsWith("404") && !msg.includes("Not Found")) throw e;
               }
             )
           )
