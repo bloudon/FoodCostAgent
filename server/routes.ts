@@ -4169,12 +4169,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const bodySchema = z.object({
         objectPath: z.string().min(1, "objectPath is required"),
+        // storeIds mirrors the wizard selection so matching stays consistent across pages
+        storeIds: z.array(z.string()).optional(),
       });
       const parsed = bodySchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
       }
-      const { objectPath } = parsed.data;
+      const { objectPath, storeIds: bodyStoreIds } = parsed.data;
 
       // Verify order guide exists and belongs to this company
       const guide = await storage.getOrderGuide(orderGuideId);
@@ -4238,7 +4240,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Match and build new lines
       const { ItemMatcher } = await import('./services/itemMatcher');
       const matcher = new ItemMatcher(storage);
-      const effectiveStoreId = storeId;
+      // Use the wizard's storeIds if sent (mirrors initial scan: storeIds[0] || session storeId)
+      const effectiveStoreId = (bodyStoreIds && bodyStoreIds.length > 0) ? bodyStoreIds[0] : storeId;
 
       const newLineInserts = [];
       for (const product of vendorProducts) {

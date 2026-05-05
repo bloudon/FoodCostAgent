@@ -216,6 +216,8 @@ export default function OrderGuideScan() {
       if (!orderGuideId) throw new Error('No active scan session');
       const res = await apiRequest('POST', `/api/order-guides/${orderGuideId}/append-scan`, {
         objectPath,
+        // Pass wizard storeIds so matching context is consistent across all pages
+        storeIds: storeIds.length > 0 ? storeIds : undefined,
       });
       if (!res.ok) {
         const err = await res.json() as { error?: string };
@@ -555,7 +557,7 @@ export default function OrderGuideScan() {
               </Button>
               <Button
                 onClick={() => navigate(`/order-guides/${orderGuideId}/review`)}
-                disabled={lines.length === 0 || appendMutation.isPending}
+                disabled={!orderGuideId || appendMutation.isPending}
                 data-testid="button-review-commit"
               >
                 <ArrowRight className="h-4 w-4 mr-2" />
