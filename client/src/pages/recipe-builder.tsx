@@ -279,10 +279,24 @@ function InlineIngredientRow({
     }
   };
 
-  // Handle unit change
+  // Handle unit change — auto-convert qty when switching between same-kind units
   const handleUnitChange = (unitId: string) => {
-    const unitName = units?.find(u => u.id === unitId)?.name || "";
-    const updated = { ...component, unitId, unitName };
+    const newUnit = units?.find(u => u.id === unitId);
+    const oldUnit = units?.find(u => u.id === component.unitId);
+    const unitName = newUnit?.name ?? "";
+
+    let newQty = component.qty;
+    if (
+      newUnit && oldUnit &&
+      newUnit.id !== oldUnit.id &&
+      newUnit.kind === oldUnit.kind &&
+      (newUnit.toBaseRatio ?? 0) > 0 &&
+      (oldUnit.toBaseRatio ?? 0) > 0
+    ) {
+      newQty = Math.round((component.qty * oldUnit.toBaseRatio! / newUnit.toBaseRatio!) * 10000) / 10000;
+    }
+
+    const updated = { ...component, unitId, unitName, qty: newQty };
     onUpdate(updated);
   };
 
@@ -1257,6 +1271,44 @@ function RecipeBuilderContent() {
     }
     
     setEditDialogOpen(true);
+  };
+
+  // Handle Edit dialog unit change — auto-convert qty when switching same-kind units
+  const handleEditUnitChange = (newUnitId: string) => {
+    const newUnit = units?.find(u => u.id === newUnitId);
+    const oldUnit = units?.find(u => u.id === editUnitId);
+    const currentQty = parseFloat(editQty) || 0;
+    if (
+      newUnit && oldUnit &&
+      newUnit.id !== oldUnit.id &&
+      newUnit.kind === oldUnit.kind &&
+      (newUnit.toBaseRatio ?? 0) > 0 &&
+      (oldUnit.toBaseRatio ?? 0) > 0 &&
+      currentQty > 0
+    ) {
+      const newQty = Math.round((currentQty * oldUnit.toBaseRatio! / newUnit.toBaseRatio!) * 10000) / 10000;
+      setEditQty(newQty.toString());
+    }
+    setEditUnitId(newUnitId);
+  };
+
+  // Handle Add dialog unit change — auto-convert qty when switching same-kind units
+  const handleDialogUnitChange = (newUnitId: string) => {
+    const newUnit = units?.find(u => u.id === newUnitId);
+    const oldUnit = units?.find(u => u.id === dialogUnitId);
+    const currentQty = parseFloat(dialogQty) || 0;
+    if (
+      newUnit && oldUnit &&
+      newUnit.id !== oldUnit.id &&
+      newUnit.kind === oldUnit.kind &&
+      (newUnit.toBaseRatio ?? 0) > 0 &&
+      (oldUnit.toBaseRatio ?? 0) > 0 &&
+      currentQty > 0
+    ) {
+      const newQty = Math.round((currentQty * oldUnit.toBaseRatio! / newUnit.toBaseRatio!) * 10000) / 10000;
+      setDialogQty(newQty.toString());
+    }
+    setDialogUnitId(newUnitId);
   };
 
   // Save edited ingredient
@@ -2568,7 +2620,7 @@ function RecipeBuilderContent() {
                   {showAllUnitsAdd ? "Show whitelisted" : "Show all"}
                 </button>
               </div>
-              <Select value={dialogUnitId} onValueChange={setDialogUnitId}>
+              <Select value={dialogUnitId} onValueChange={handleDialogUnitChange}>
                 <SelectTrigger data-testid="select-dialog-unit">
                   <SelectValue placeholder="Select unit" />
                 </SelectTrigger>
@@ -2631,7 +2683,7 @@ function RecipeBuilderContent() {
                   {showAllUnitsEdit ? "Show whitelisted" : "Show all"}
                 </button>
               </div>
-              <Select value={editUnitId} onValueChange={setEditUnitId}>
+              <Select value={editUnitId} onValueChange={handleEditUnitChange}>
                 <SelectTrigger data-testid="select-edit-unit">
                   <SelectValue placeholder="Select unit" />
                 </SelectTrigger>
