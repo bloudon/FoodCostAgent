@@ -71,20 +71,30 @@ const GROUP_META: { icon: IconComponent; color: "green" | "orange" }[] = [
 
 const GROUP_SCREENSHOTS: string[] = [
   "/screenshots/inventory-management.png",
-  "/screenshots/recipe-costing.png",
+  "/screenshots/recipe-card-vs-app.png",
   "/screenshots/vendor-order-guides.png",
   "/screenshots/food-cost-variance.png",
-  "/screenshots/inventory-counting.png",
+  "/screenshots/mobile-count-session.jpg",
   "/screenshots/multi-location.png",
 ];
 
 const GROUP_SCREENSHOT_ALTS: string[] = [
   "FnB Cost Pro inventory management — set up your items from a photo",
-  "FnB Cost Pro live recipe costing — cost per portion updated automatically",
+  "FnB Cost Pro recipe costing — photograph a handwritten recipe card and get exact food costs instantly",
   "FnB Cost Pro vendor order guides — Sysco, GFS, US Foods catalogs",
-  "FnB Cost Pro food cost variance report — theoretical vs actual",
-  "FnB Cost Pro inventory counting on mobile — scan shelves with your phone",
+  "FnB Cost Pro food cost variance report — theoretical vs actual food cost",
+  "FnB Cost Pro inventory counting on mobile — count by storage location on your phone",
   "FnB Cost Pro multi-location store management",
+];
+
+// Groups where the screenshot is a phone/mobile feature — rendered in a phone frame
+// instead of a desktop browser frame. Indices match GROUP_SCREENSHOTS above.
+const GROUP_IS_PHONE: boolean[] = [false, false, false, false, true, false];
+
+const GROUP_PHONE_CAPTIONS: string[] = [
+  "", "", "", "",
+  "Count by location — on your phone",
+  "",
 ];
 
 export default function WebsiteFeatures() {
@@ -215,15 +225,24 @@ export default function WebsiteFeatures() {
                     </div>
                   )}
                 </div>
-                <div className="flex-1 hidden lg:flex items-center">
-                  <div className="w-full rounded-xl overflow-hidden shadow-xl border border-gray-200 bg-white">
-                    <img
+                <div className="flex-1 hidden lg:flex items-center justify-center">
+                  {GROUP_IS_PHONE[i] ? (
+                    <PhoneFrame
                       src={GROUP_SCREENSHOTS[i]}
                       alt={GROUP_SCREENSHOT_ALTS[i]}
-                      className="w-full h-auto block"
-                      loading="lazy"
+                      caption={GROUP_PHONE_CAPTIONS[i]}
+                      testId={`feature-group-phone-${i}`}
                     />
-                  </div>
+                  ) : (
+                    <div className="w-full rounded-xl overflow-hidden shadow-xl border border-gray-200 bg-white">
+                      <img
+                        src={GROUP_SCREENSHOTS[i]}
+                        alt={GROUP_SCREENSHOT_ALTS[i]}
+                        className="w-full h-auto block"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             );

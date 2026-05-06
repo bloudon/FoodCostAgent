@@ -513,10 +513,10 @@ export default function WebsiteHome() {
               </div>
             </div>
             <div className="flex-1 w-full">
-              <div className="rounded-xl overflow-hidden shadow-xl border border-gray-200 bg-white">
+              <div className="rounded-xl overflow-hidden shadow-xl">
                 <img
-                  src="/screenshots/recipe-costing.png"
-                  alt="FnB Cost Pro recipe costing — live food cost per portion for every recipe"
+                  src="/screenshots/recipe-card-vs-app.png"
+                  alt="FnB Cost Pro recipe costing — photograph a handwritten recipe card and get exact food costs instantly"
                   className="w-full h-auto block"
                   loading="lazy"
                 />
