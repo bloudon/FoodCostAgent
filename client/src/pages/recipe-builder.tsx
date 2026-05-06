@@ -122,6 +122,53 @@ type ComponentWithDetails = RecipeComponent & {
   missingItem?: boolean;
 };
 
+// Utility: convert qty between two units, returning the new qty or null when no
+// conversion path exists. Tries per-item Recipe Unit rows first (qtyPerInventoryUnit),
+// then falls back to same-kind toBaseRatio math.
+function convertQtyBetweenUnits(
+  qty: number,
+  fromUnitId: string,
+  toUnitId: string,
+  units: Unit[],
+  itemId: string | null,
+  itemBaseUnitId: string | null,
+  companyRecipeUnits: InventoryItemUnit[] | undefined,
+): number | null {
+  if (fromUnitId === toUnitId || qty <= 0) return null;
+
+  if (itemId && itemBaseUnitId && companyRecipeUnits) {
+    const fromCustom = companyRecipeUnits.find(
+      r => r.inventoryItemId === itemId && r.unitId === fromUnitId &&
+           r.isIssueUnit === 0 && r.qtyPerInventoryUnit > 0,
+    );
+    const toCustom = companyRecipeUnits.find(
+      r => r.inventoryItemId === itemId && r.unitId === toUnitId &&
+           r.isIssueUnit === 0 && r.qtyPerInventoryUnit > 0,
+    );
+    if (fromCustom && toUnitId === itemBaseUnitId) {
+      return Math.round(qty / fromCustom.qtyPerInventoryUnit * 10000) / 10000;
+    }
+    if (toCustom && fromUnitId === itemBaseUnitId) {
+      return Math.round(qty * toCustom.qtyPerInventoryUnit * 10000) / 10000;
+    }
+    if (fromCustom && toCustom) {
+      return Math.round(qty / fromCustom.qtyPerInventoryUnit * toCustom.qtyPerInventoryUnit * 10000) / 10000;
+    }
+  }
+
+  const fromUnit = units.find(u => u.id === fromUnitId);
+  const toUnit   = units.find(u => u.id === toUnitId);
+  if (
+    fromUnit && toUnit &&
+    fromUnit.kind === toUnit.kind &&
+    (fromUnit.toBaseRatio ?? 0) > 0 &&
+    (toUnit.toBaseRatio   ?? 0) > 0
+  ) {
+    return Math.round(qty * fromUnit.toBaseRatio! / toUnit.toBaseRatio! * 10000) / 10000;
+  }
+  return null;
+}
+
 // Inline ingredient row component with stacked form fields
 function InlineIngredientRow({
   component,
@@ -129,6 +176,7 @@ function InlineIngredientRow({
   compatibleUnits,
   inventoryItems,
   recipes,
+  companyRecipeUnits,
   onUpdate,
   onDelete,
   onAddToInventory,
@@ -140,6 +188,7 @@ function InlineIngredientRow({
   compatibleUnits: Unit[] | undefined;
   inventoryItems: InventoryItem[] | undefined;
   recipes: Recipe[] | undefined;
+  companyRecipeUnits: InventoryItemUnit[] | undefined;
   onUpdate: (updated: ComponentWithDetails) => void;
   onDelete: () => void;
   onAddToInventory?: (component: ComponentWithDetails) => void;
@@ -168,6 +217,15 @@ function InlineIngredientRow({
   const [convPopoverOpen, setConvPopoverOpen] = useState(false);
   const [convFactor, setConvFactor] = useState("");
   const [convFactorIsSuggested, setConvFactorIsSuggested] = useState(false);
+
+  // Hint shown below the qty field after an auto-conversion ("was 2 oz")
+  const [convertedFromHint, setConvertedFromHint] = useState<string | null>(null);
+
+  // Derive per-item base unit for conversion utility
+  const itemForRow = component.componentType === "inventory_item"
+    ? inventoryItems?.find(i => i.id === component.componentId)
+    : null;
+  const itemBaseUnitIdForRow = itemForRow?.unitId ?? null;
 
   // Sync local state when component changes from outside (e.g., reorder, reload, save)
   // Only sync when the input is not focused to avoid overwriting user input
@@ -263,8 +321,8 @@ function InlineIngredientRow({
     setLocalQty(value);
   };
 
-  // Track quantity focus
-  const handleQtyFocus = () => setQtyFocused(true);
+  // Track quantity focus — also clears the conversion hint
+  const handleQtyFocus = () => { setQtyFocused(true); setConvertedFromHint(null); };
 
   // Commit quantity change on blur
   const handleQtyBlur = () => {
@@ -279,21 +337,28 @@ function InlineIngredientRow({
     }
   };
 
-  // Handle unit change — auto-convert qty when switching between same-kind units
+  // Handle unit change — auto-convert qty using per-item Recipe Unit rows or
+  // same-kind toBaseRatio math; show a "was X oz" hint after conversion.
   const handleUnitChange = (unitId: string) => {
     const newUnit = units?.find(u => u.id === unitId);
     const oldUnit = units?.find(u => u.id === component.unitId);
     const unitName = newUnit?.name ?? "";
 
     let newQty = component.qty;
-    if (
-      newUnit && oldUnit &&
-      newUnit.id !== oldUnit.id &&
-      newUnit.kind === oldUnit.kind &&
-      (newUnit.toBaseRatio ?? 0) > 0 &&
-      (oldUnit.toBaseRatio ?? 0) > 0
-    ) {
-      newQty = Math.round((component.qty * oldUnit.toBaseRatio! / newUnit.toBaseRatio!) * 10000) / 10000;
+    if (newUnit && oldUnit && newUnit.id !== oldUnit.id && component.qty > 0 && units) {
+      const converted = convertQtyBetweenUnits(
+        component.qty,
+        component.unitId,
+        unitId,
+        units,
+        component.componentType === "inventory_item" ? component.componentId : null,
+        itemBaseUnitIdForRow,
+        companyRecipeUnits,
+      );
+      if (converted !== null && converted !== component.qty) {
+        setConvertedFromHint(`was ${component.qty} ${formatUnitName(oldUnit.name)}`);
+        newQty = converted;
+      }
     }
 
     const updated = { ...component, unitId, unitName, qty: newQty };
@@ -495,18 +560,28 @@ function InlineIngredientRow({
           {component.name}
         </span>
 
-        {/* Quantity input */}
-        <Input
-          type="number"
-          step="0.01"
-          min="0"
-          value={localQty}
-          onChange={(e) => handleQtyChange(e.target.value)}
-          onFocus={handleQtyFocus}
-          onBlur={handleQtyBlur}
-          className="h-8 text-sm"
-          data-testid={`input-qty-${component.id}`}
-        />
+        {/* Quantity input + optional auto-conversion hint */}
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            value={localQty}
+            onChange={(e) => handleQtyChange(e.target.value)}
+            onFocus={handleQtyFocus}
+            onBlur={handleQtyBlur}
+            className="h-8 text-sm"
+            data-testid={`input-qty-${component.id}`}
+          />
+          {convertedFromHint && (
+            <span
+              className="text-[10px] leading-none text-muted-foreground px-0.5"
+              data-testid={`text-converted-hint-${component.id}`}
+            >
+              {convertedFromHint}
+            </span>
+          )}
+        </div>
 
         {/* Unit selector + uncostable warning badge */}
         <div className="flex items-center gap-1 min-w-0">
@@ -829,6 +904,8 @@ function RecipeBuilderContent() {
   const [editUnitId, setEditUnitId] = useState("");
   const [editYieldOverride, setEditYieldOverride] = useState("");
   const [baseUnitIdForEdit, setBaseUnitIdForEdit] = useState<string | null>(null);
+  const [editConvertedHint, setEditConvertedHint] = useState<string | null>(null);
+  const [dialogConvertedHint, setDialogConvertedHint] = useState<string | null>(null);
 
   // Edit inventory item dialog state
   const [editingInventoryItem, setEditingInventoryItem] = useState<any | null>(null);
@@ -1246,6 +1323,7 @@ function RecipeBuilderContent() {
     setPendingItem(null);
     setDialogQty("");
     setDialogUnitId("");
+    setDialogConvertedHint(null);
   };
 
   // Edit ingredient
@@ -1253,6 +1331,7 @@ function RecipeBuilderContent() {
     setEditingComponent(component);
     setEditQty(component.qty.toString());
     setEditUnitId(component.unitId);
+    setEditConvertedHint(null);
     
     // Set yield override and base unit ID based on component type
     if (component.componentType === "inventory_item") {
@@ -1273,40 +1352,47 @@ function RecipeBuilderContent() {
     setEditDialogOpen(true);
   };
 
-  // Handle Edit dialog unit change — auto-convert qty when switching same-kind units
+  // Handle Edit dialog unit change — tries per-item Recipe Unit conversion first,
+  // then same-kind toBaseRatio math; shows a "was X oz" hint.
   const handleEditUnitChange = (newUnitId: string) => {
-    const newUnit = units?.find(u => u.id === newUnitId);
     const oldUnit = units?.find(u => u.id === editUnitId);
     const currentQty = parseFloat(editQty) || 0;
-    if (
-      newUnit && oldUnit &&
-      newUnit.id !== oldUnit.id &&
-      newUnit.kind === oldUnit.kind &&
-      (newUnit.toBaseRatio ?? 0) > 0 &&
-      (oldUnit.toBaseRatio ?? 0) > 0 &&
-      currentQty > 0
-    ) {
-      const newQty = Math.round((currentQty * oldUnit.toBaseRatio! / newUnit.toBaseRatio!) * 10000) / 10000;
-      setEditQty(newQty.toString());
+    if (oldUnit && newUnitId !== editUnitId && currentQty > 0 && units) {
+      const editItemId = editingComponent?.componentType === "inventory_item"
+        ? editingComponent.componentId : null;
+      const editItemBaseUnitId = editItemId
+        ? inventoryItems?.find(i => i.id === editItemId)?.unitId ?? null
+        : null;
+      const converted = convertQtyBetweenUnits(
+        currentQty, editUnitId, newUnitId, units,
+        editItemId, editItemBaseUnitId, companyRecipeUnits,
+      );
+      if (converted !== null && converted !== currentQty) {
+        setEditConvertedHint(`was ${currentQty} ${formatUnitName(oldUnit.name)}`);
+        setEditQty(converted.toString());
+      }
     }
     setEditUnitId(newUnitId);
   };
 
-  // Handle Add dialog unit change — auto-convert qty when switching same-kind units
+  // Handle Add dialog unit change — tries per-item Recipe Unit conversion first,
+  // then same-kind toBaseRatio math; shows a "was X oz" hint.
   const handleDialogUnitChange = (newUnitId: string) => {
-    const newUnit = units?.find(u => u.id === newUnitId);
     const oldUnit = units?.find(u => u.id === dialogUnitId);
     const currentQty = parseFloat(dialogQty) || 0;
-    if (
-      newUnit && oldUnit &&
-      newUnit.id !== oldUnit.id &&
-      newUnit.kind === oldUnit.kind &&
-      (newUnit.toBaseRatio ?? 0) > 0 &&
-      (oldUnit.toBaseRatio ?? 0) > 0 &&
-      currentQty > 0
-    ) {
-      const newQty = Math.round((currentQty * oldUnit.toBaseRatio! / newUnit.toBaseRatio!) * 10000) / 10000;
-      setDialogQty(newQty.toString());
+    if (oldUnit && newUnitId !== dialogUnitId && currentQty > 0 && units) {
+      const addItemId = pendingItem?.type === "inventory_item" ? pendingItem.id : null;
+      const addItemBaseUnitId = addItemId
+        ? inventoryItems?.find(i => i.id === addItemId)?.unitId ?? null
+        : null;
+      const converted = convertQtyBetweenUnits(
+        currentQty, dialogUnitId, newUnitId, units,
+        addItemId, addItemBaseUnitId, companyRecipeUnits,
+      );
+      if (converted !== null && converted !== currentQty) {
+        setDialogConvertedHint(`was ${currentQty} ${formatUnitName(oldUnit.name)}`);
+        setDialogQty(converted.toString());
+      }
     }
     setDialogUnitId(newUnitId);
   };
@@ -2458,6 +2544,7 @@ function RecipeBuilderContent() {
                             compatibleUnits={getCompatibleUnitsForComponent(component)}
                             inventoryItems={inventoryItems}
                             recipes={recipes}
+                            companyRecipeUnits={companyRecipeUnits}
                             onUpdate={handleInlineComponentUpdate}
                             onDelete={() => handleDeleteIngredient(component.id)}
                             onAddToInventory={handleOpenAddToInventory}
@@ -2603,10 +2690,15 @@ function RecipeBuilderContent() {
                 type="number"
                 step="0.01"
                 value={dialogQty}
-                onChange={(e) => setDialogQty(e.target.value)}
+                onChange={(e) => { setDialogQty(e.target.value); setDialogConvertedHint(null); }}
                 placeholder="Enter quantity"
                 data-testid="input-dialog-qty"
               />
+              {dialogConvertedHint && (
+                <p className="text-xs text-muted-foreground" data-testid="text-dialog-converted-hint">
+                  {dialogConvertedHint}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
@@ -2667,9 +2759,14 @@ function RecipeBuilderContent() {
                 type="number"
                 step="0.01"
                 value={editQty}
-                onChange={(e) => setEditQty(e.target.value)}
+                onChange={(e) => { setEditQty(e.target.value); setEditConvertedHint(null); }}
                 data-testid="input-edit-qty"
               />
+              {editConvertedHint && (
+                <p className="text-xs text-muted-foreground" data-testid="text-edit-converted-hint">
+                  {editConvertedHint}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
