@@ -1,0 +1,85 @@
+uploads = []
+
+[[generated]]
+id = "UnxUrDKSX773i_wiCLjI5"
+uri = "file://client/public/screenshots/handwritten-recipe-card.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "l1zxnndx4Nfl61TGWZ5y1"
+uri = "file://client/public/screenshots/recipe-card-phone-scene.png"
+type = "image"
+title = "generated_image"
+
+[[outputs]]
+id = "6GZTug5SGHWMYIqga4hcN"
+uri = "file://client/public/screenshots/inventory-management.png"
+type = "image"
+title = "Desktop — Inventory Management (66 items, Breakfast Nook)"
+
+[[outputs]]
+id = "6Zd-vHcWK-7PUarUfiiUu"
+uri = "file://client/public/screenshots/recipe-costing.png"
+type = "image"
+title = "Desktop — Recipe Costing (Denver Omelet, $2.32)"
+
+[[outputs]]
+id = "fV8yM2LQpSSo9htQiSvLS"
+uri = "file://client/public/screenshots/vendor-order-guides.png"
+type = "image"
+title = "Desktop — Vendor Order Guides (Sysco + US Foods)"
+
+[[outputs]]
+id = "R6VWIE2u9SnhNO7hdFxKk"
+uri = "file://client/public/screenshots/food-cost-variance.png"
+type = "image"
+title = "Desktop — Food Cost Variance Report"
+
+[[outputs]]
+id = "AojACvP5nQm3mC9JJMSOG"
+uri = "file://client/public/screenshots/inventory-counting.png"
+type = "image"
+title = "Desktop — Inventory Counting Sessions"
+
+[[outputs]]
+id = "Pf4f7HpHBXUXPFo4XlWmA"
+uri = "file://client/public/screenshots/multi-location.png"
+type = "image"
+title = "Desktop — Multi-Location (Uptown / Downtown store switcher open)"
+
+[[outputs]]
+id = "b66t0GL-nIIGFsT4uCeib"
+uri = "file://client/public/screenshots/mobile-count-session.jpg"
+type = "image"
+title = "Mobile — Inventory Count Sessions"
+
+[[outputs]]
+id = "rl8TP6QD4ieXTDwKT33jI"
+uri = "file://client/public/screenshots/mobile-count-items.jpg"
+type = "image"
+title = "Mobile — New Count form"
+
+[[outputs]]
+id = "NW9h1VdQ76hNgRi1uLywa"
+uri = "file://client/public/screenshots/mobile-waste-log.jpg"
+type = "image"
+title = "Mobile — Waste Entry"
+
+[[outputs]]
+id = "KOMDwIrwhgsrg9N_69U1O"
+uri = "file://client/public/screenshots/mobile-recipe-builder.jpg"
+type = "image"
+title = "Mobile — Denver Omelet Recipe View"
+
+[[outputs]]
+id = "NusKh-ckOCQUzfSWvddVg"
+uri = "file://client/public/screenshots/recipe-card-vs-app.png"
+type = "image"
+title = "Composite — Handwritten card vs. app (Sharp-built, 1400×800)"
+
+[[outputs]]
+id = "T0VOVniMlWi-_-k6GLnLY"
+uri = "file://client/public/screenshots/recipe-card-phone-scene.png"
+type = "image"
+title = "Composite — AI lifestyle photo: recipe card beside phone on wooden table"
