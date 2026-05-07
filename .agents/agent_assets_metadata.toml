@@ -12,6 +12,12 @@ uri = "file://client/public/screenshots/recipe-card-phone-scene.png"
 type = "image"
 title = "generated_image"
 
+[[generated]]
+id = "pq0nS_Rsb-wcX_7EPjeat"
+uri = "file://attached_assets/generated_images/phone-in-hand-recipe.png"
+type = "image"
+title = "chef hand holding phone recipe app"
+
 [[outputs]]
 id = "6GZTug5SGHWMYIqga4hcN"
 uri = "file://client/public/screenshots/inventory-management.png"
