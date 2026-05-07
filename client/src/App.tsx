@@ -60,6 +60,7 @@ import SsoAccessDenied from "@/pages/sso-access-denied";
 import AcceptInvitation from "@/pages/accept-invitation";
 import OnboardingWizard from "@/pages/onboarding-wizard";
 import OnboardingMenuScan from "@/pages/onboarding-menu-scan";
+import OnboardingSetup from "@/pages/onboarding-setup";
 import OnboardingSeedCosts from "@/pages/onboarding-seed-costs";
 import LeadSignup from "@/pages/lead-signup";
 import ActivateAccount from "@/pages/activate-account";
@@ -229,6 +230,7 @@ function ProtectedLayoutContent() {
   const FULL_SCREEN_PATHS = [
     "/onboarding-wizard",
     "/onboarding-review",
+    "/onboarding/setup",
     "/onboarding/menu-scan",
     "/onboarding/seed-costs",
     "/onboarding",
@@ -255,7 +257,8 @@ function ProtectedLayoutContent() {
         <Route path="/onboarding-review">
           {isGlobalAdmin ? <OnboardingWizard /> : <Redirect to="/" />}
         </Route>
-        <Route path="/onboarding/menu-scan" component={OnboardingMenuScan} />
+        <Route path="/onboarding/setup" component={OnboardingSetup} />
+        <Route path="/onboarding/menu-scan"><Redirect to="/onboarding/setup" /></Route>
         <Route path="/onboarding/seed-costs" component={OnboardingSeedCosts} />
         <Route path="/onboarding"><Redirect to="/signup" /></Route>
         <Route path="/choose-plan" component={ChoosePlan} />
@@ -394,7 +397,8 @@ function App() {
                 <Route path="/pending-approval" component={PendingApproval} />
                 <Route path="/sso-access-denied" component={SsoAccessDenied} />
                 <Route path="/accept-invitation/:token" component={AcceptInvitation} />
-                <Route path="/onboarding/menu-scan" component={OnboardingMenuScan} />
+                <Route path="/onboarding/setup" component={OnboardingSetup} />
+                <Route path="/onboarding/menu-scan"><Redirect to="/onboarding/setup" /></Route>
                 <Route path="/onboarding/seed-costs" component={OnboardingSeedCosts} />
                 <Route path="/onboarding"><Redirect to="/signup" /></Route>
                 <Route path="/signup" component={LeadSignup} />

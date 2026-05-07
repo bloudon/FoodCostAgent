@@ -1,11 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useAuth } from "@/lib/auth-context";
-import { useCompany } from "@/hooks/use-company";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -16,10 +13,16 @@ import {
   ChevronUp,
   X,
   Lightbulb,
-  Store,
-  Loader2,
+  Camera,
+  Zap,
+  FileText,
+  FolderTree,
+  Warehouse,
+  BookOpen,
+  BarChart3,
+  ClipboardList,
 } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 
 interface Milestone {
   id: string;
@@ -35,23 +38,19 @@ interface MilestonesResponse {
   dismissed: boolean;
 }
 
-export function SetupMilestoneTracker() {
-  const { refreshAuth, user } = useAuth();
-  const { company } = useCompany();
-  const [, navigate] = useLocation();
-  const defaultStoreName = company?.name ? `${company.name}'s Store` : "";
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [showStoreForm, setShowStoreForm] = useState(false);
-  const [storeName, setStoreName] = useState(defaultStoreName);
-  const [storeCode, setStoreCode] = useState("S001");
-  const [managerEmail, setManagerEmail] = useState("");
-  const hasAutoExpandedStore = useRef(false);
+const MILESTONE_ICONS: Record<string, React.ComponentType<any>> = {
+  menu_scan: Camera,
+  plan: Zap,
+  invoice_scan: FileText,
+  categories: FolderTree,
+  storage_locations: Warehouse,
+  recipes: BookOpen,
+  review: BarChart3,
+  inventory_count: ClipboardList,
+};
 
-  useEffect(() => {
-    if (company?.name && !storeName) {
-      setStoreName(`${company.name}'s Store`);
-    }
-  }, [company?.name]);
+export function SetupMilestoneTracker() {
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const { data, isLoading, isError } = useQuery<MilestonesResponse>({
     queryKey: ["/api/onboarding/milestones"],
@@ -59,16 +58,6 @@ export function SetupMilestoneTracker() {
     staleTime: 0,
     refetchOnMount: "always",
   });
-
-  useEffect(() => {
-    if (data && !data.dismissed && !hasAutoExpandedStore.current) {
-      const storeMilestone = data.milestones.find((m) => m.id === "store");
-      if (storeMilestone && !storeMilestone.completed) {
-        setShowStoreForm(true);
-        hasAutoExpandedStore.current = true;
-      }
-    }
-  }, [data]);
 
   const dismissMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/onboarding/milestones/dismiss"),
@@ -88,45 +77,6 @@ export function SetupMilestoneTracker() {
     },
   });
 
-  const createStoreMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/onboarding/store", {
-        name: storeName,
-        code: storeCode,
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: "Failed to create store" }));
-        throw new Error(errorData.error || errorData.message || "Failed to create store");
-      }
-      return response.json();
-    },
-    onSuccess: async (result: any) => {
-      await refreshAuth();
-      setShowStoreForm(false);
-      setStoreName(defaultStoreName);
-      setStoreCode("S001");
-
-      const emailToInvite = managerEmail.trim();
-      setManagerEmail("");
-
-      if (emailToInvite && result?.store?.id) {
-        apiRequest("POST", "/api/invitations", {
-          email: emailToInvite,
-          role: "store_manager",
-          storeIds: [result.store.id],
-        }).catch(() => {});
-      }
-
-      await queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stores"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
-      const nextStep = data?.milestones.find((m) => m.id !== "store" && !m.completed);
-      if (nextStep) {
-        navigate(nextStep.path);
-      }
-    },
-  });
-
   if (isLoading) {
     return (
       <div className="mb-6" data-testid="milestone-tracker-loading">
@@ -137,7 +87,7 @@ export function SetupMilestoneTracker() {
           <CardContent>
             <Skeleton className="h-2 w-full mb-4" />
             <div className="space-y-2">
-              {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                 <Skeleton key={i} className="h-8 w-full" />
               ))}
             </div>
@@ -176,8 +126,9 @@ export function SetupMilestoneTracker() {
   }
 
   const progressPercent = (data.completedCount / data.totalCount) * 100;
-  const storeMilestone = data.milestones.find((m) => m.id === "store");
-  const storeNotCreated = storeMilestone && !storeMilestone.completed;
+
+  // Find the first incomplete milestone to highlight as "next"
+  const nextMilestone = data.milestones.find(m => !m.completed);
 
   return (
     <div className="mb-6" data-testid="milestone-tracker">
@@ -230,135 +181,71 @@ export function SetupMilestoneTracker() {
         {!isCollapsed && (
           <CardContent className="pt-0 pb-4">
             <div className="space-y-1" data-testid="milestone-list">
-              {data.milestones.map((milestone) => (
-                <div key={milestone.id}>
-                  <div
-                    className="flex items-center justify-between gap-3 py-1.5 px-1 rounded-md"
-                    data-testid={`milestone-row-${milestone.id}`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      {milestone.completed ? (
-                        <CheckCircle2
-                          className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0"
-                          data-testid={`milestone-check-${milestone.id}`}
-                        />
-                      ) : (
-                        <Circle
-                          className="h-4 w-4 text-muted-foreground/50 shrink-0"
-                          data-testid={`milestone-circle-${milestone.id}`}
-                        />
-                      )}
-                      <span
-                        className={`text-sm truncate ${
-                          milestone.completed ? "line-through text-muted-foreground" : ""
-                        }`}
-                        data-testid={`milestone-label-${milestone.id}`}
-                      >
-                        {milestone.label}
-                      </span>
-                    </div>
-                    {!milestone.completed && (
-                      <>
-                        {milestone.id === "store" ? (
+              {data.milestones.map((milestone) => {
+                const Icon = MILESTONE_ICONS[milestone.id] || Circle;
+                const isNext = milestone.id === nextMilestone?.id;
+                return (
+                  <div key={milestone.id} data-testid={`milestone-row-${milestone.id}`}>
+                    <div className={`flex items-center justify-between gap-3 py-1.5 px-2 rounded-md ${isNext && !milestone.completed ? "bg-accent/10" : ""}`}>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {milestone.completed ? (
+                          <CheckCircle2
+                            className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0"
+                            data-testid={`milestone-check-${milestone.id}`}
+                          />
+                        ) : (
+                          <Icon
+                            className={`h-4 w-4 shrink-0 ${isNext ? "text-primary" : "text-muted-foreground/50"}`}
+                            data-testid={`milestone-circle-${milestone.id}`}
+                          />
+                        )}
+                        <span
+                          className={`text-sm truncate ${
+                            milestone.completed
+                              ? "line-through text-muted-foreground"
+                              : isNext
+                              ? "font-medium"
+                              : ""
+                          }`}
+                          data-testid={`milestone-label-${milestone.id}`}
+                        >
+                          {milestone.label}
+                        </span>
+                        {isNext && !milestone.completed && (
+                          <span className="text-[10px] font-semibold text-primary uppercase tracking-wide shrink-0">Next</span>
+                        )}
+                      </div>
+                      {isNext && !milestone.completed && (
+                        <Link href={milestone.path}>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setShowStoreForm(!showStoreForm)}
-                            data-testid="button-go-store"
+                            data-testid={`button-go-${milestone.id}`}
                           >
-                            {showStoreForm ? "Cancel" : "Set Up"}
-                            {!showStoreForm && <ArrowRight className="h-3 w-3 ml-1" />}
+                            Go
+                            <ArrowRight className="h-3 w-3 ml-1" />
                           </Button>
-                        ) : (
-                          <Link href={milestone.path}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`button-go-${milestone.id}`}
-                            >
-                              {milestone.id === "costs" ? "Upload Invoices" : milestone.id === "par_levels" ? "Set Par Levels" : "Go"}
-                              <ArrowRight className="h-3 w-3 ml-1" />
-                            </Button>
-                          </Link>
-                        )}
-                      </>
-                    )}
-                  </div>
-
-                  {milestone.id === "store" && showStoreForm && storeNotCreated && (
-                    <div
-                      className="ml-7 mt-1 mb-2 p-3 rounded-md bg-muted/50 space-y-3"
-                      data-testid="inline-store-form"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <Store className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-medium">Name Your First Store</span>
-                      </div>
-                      <div className="space-y-2">
-                        <div>
-                          <label className="text-xs text-muted-foreground mb-1 block">
-                            Store Name *
-                          </label>
-                          <Input
-                            placeholder="e.g. Downtown Location"
-                            value={storeName}
-                            onChange={(e) => setStoreName(e.target.value)}
-                            autoFocus
-                            data-testid="input-store-name"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-muted-foreground mb-1 block">
-                            Store Code *
-                          </label>
-                          <Input
-                            placeholder="S001"
-                            value={storeCode}
-                            onChange={(e) => setStoreCode(e.target.value)}
-                            data-testid="input-store-code"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-muted-foreground mb-1 block">
-                            Store Manager Email <span className="opacity-60">(optional)</span>
-                          </label>
-                          <Input
-                            type="email"
-                            placeholder="manager@example.com"
-                            value={managerEmail}
-                            onChange={(e) => setManagerEmail(e.target.value)}
-                            data-testid="input-store-manager-email"
-                          />
-                          <p className="text-xs text-muted-foreground mt-1">
-                            We'll send them an invitation to set up their account.
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        className="w-full"
-                        disabled={
-                          !storeName.trim() ||
-                          !storeCode.trim() ||
-                          createStoreMutation.isPending
-                        }
-                        onClick={() => createStoreMutation.mutate()}
-                        data-testid="button-save-store"
-                      >
-                        {createStoreMutation.isPending ? (
-                          <>
-                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                            Creating...
-                          </>
-                        ) : (
-                          "Create Store"
-                        )}
-                      </Button>
+                        </Link>
+                      )}
                     </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
+
+            {nextMilestone && (
+              <div className="mt-3 pt-3 border-t">
+                <Link href={nextMilestone.path}>
+                  <Button
+                    className="w-full bg-[#f2690d] border-[#f2690d] text-white"
+                    data-testid="button-continue-setup"
+                  >
+                    Continue Setup: {nextMilestone.label}
+                    <ArrowRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </Link>
+              </div>
+            )}
           </CardContent>
         )}
       </Card>

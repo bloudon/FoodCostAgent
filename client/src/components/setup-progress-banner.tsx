@@ -25,15 +25,22 @@ interface MilestonesResponse {
 }
 
 const milestoneLabels: Record<string, string> = {
+  menu_scan: "Menu Scan",
+  plan: "Plan",
+  invoice_scan: "Invoice Scan",
+  categories: "Categories",
+  storage_locations: "Storage",
+  recipes: "Recipes",
+  review: "Review",
+  inventory_count: "First Count",
+  // Legacy labels kept for backwards compatibility
   store: "Store",
-  categories: "Review Categories",
   vendors: "Vendor",
   inventory: "Inventory",
-  costs: "Seed Ingredient Costs",
-  par_levels: "Set Par Levels",
-  recipes: "Recipe",
+  costs: "Seed Costs",
+  par_levels: "Par Levels",
   menu: "Menu Items",
-  team: "Invite Your Team",
+  team: "Team",
 };
 
 interface SetupProgressBannerProps {
@@ -115,9 +122,7 @@ export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: 
               <span className="text-base font-bold text-white hidden sm:inline">
                 {milestoneLabels[currentMilestoneId] || currentMilestone?.label} done!
               </span>
-              <span className="text-base font-bold text-white sm:hidden">
-                Done!
-              </span>
+              <span className="text-base font-bold text-white sm:hidden">Done!</span>
             </div>
           ) : (
             <span className="text-base font-bold text-white">

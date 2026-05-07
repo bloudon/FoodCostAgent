@@ -75,17 +75,24 @@ export default function ChoosePlan() {
   const [selectedTerm, setSelectedTerm] = useState<Term>("monthly");
   const [loadingTier, setLoadingTier] = useState<AppTier | null>(null);
 
-  const locationCount = useMemo(() => {
+  const { locationCount, returnTo } = useMemo(() => {
     const params = new URLSearchParams(searchString);
     const val = parseInt(params.get("locations") || "0", 10);
-    return isNaN(val) ? 0 : val;
+    return {
+      locationCount: isNaN(val) ? 0 : val,
+      returnTo: params.get("returnTo") || null,
+    };
   }, [searchString]);
 
   const isMultiLocation = locationCount > 1;
 
   const checkoutMutation = useMutation({
     mutationFn: async ({ tier, term }: { tier: AppTier; term: Term }) => {
-      const res = await apiRequest("POST", "/api/billing/checkout", { tier, term });
+      const res = await apiRequest("POST", "/api/billing/checkout", {
+        tier,
+        term,
+        ...(returnTo ? { returnTo } : {}),
+      });
       return res.json() as Promise<{ url: string }>;
     },
     onSuccess: (data) => {

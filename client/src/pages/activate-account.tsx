@@ -164,7 +164,7 @@ export default function ActivateAccount() {
       if (result.user) {
         await refreshAuth();
       }
-      setLocation("/onboarding/menu-scan");
+      setLocation("/onboarding/setup");
     },
     onError: (error: any) => {
       toast({

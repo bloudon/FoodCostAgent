@@ -1,0 +1,1422 @@
+import { useState, useEffect, Fragment, useCallback } from "react";
+import { useLocation, useSearch } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useCompany } from "@/hooks/use-company";
+import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ObjectUploader } from "@/components/ObjectUploader";
+import {
+  Check, Loader2, Trash2, Camera, Sparkles, AlertCircle,
+  ChevronRight, Package, FolderTree, Warehouse, BookOpen,
+  ClipboardList, Zap, Building2, Edit2, Plus, X,
+  BarChart3, ExternalLink, ArrowRight, FileText, RefreshCw,
+} from "lucide-react";
+
+const logoImage = "/logo.png";
+
+// ---- Wizard State Persistence ----
+interface WizardState {
+  step: number;
+  approvedMenuItems: { id: string; name: string }[];
+  skippedRecipes: string[];
+  storeId?: string;
+}
+
+interface ApprovedMenuItem {
+  id: string;
+  name: string;
+}
+
+interface MenuItem {
+  id: string;
+  name: string;
+  parentMenuItemId?: string | null;
+  recipeId?: string | null;
+}
+
+interface InvoiceItem {
+  name: string;
+  unitPrice: number;
+  casePrice?: number;
+  unit?: string;
+  categoryHint?: string;
+  matchedItemId?: string;
+  matchedItemName?: string;
+  matchConfidence: "high" | "medium" | "none";
+  action: "update" | "create" | "skip";
+}
+
+interface ExtractedMenuItem {
+  name: string;
+  department: string;
+  category: string;
+  size: string;
+  price: number | null;
+}
+
+interface ApproveResponse {
+  menuItemsCreated: number;
+  menuItemIds: string[];
+}
+
+interface InvoiceApplyResponse {
+  created: number;
+  updated: number;
+}
+
+function getWizardKey(companyId: string) {
+  return `onboarding_wizard_${companyId}`;
+}
+
+function loadWizardState(companyId: string): WizardState {
+  try {
+    const raw = localStorage.getItem(getWizardKey(companyId));
+    if (raw) return JSON.parse(raw) as WizardState;
+  } catch {}
+  return { step: 1, approvedMenuItems: [], skippedRecipes: [] };
+}
+
+function saveWizardState(companyId: string, state: WizardState) {
+  try {
+    localStorage.setItem(getWizardKey(companyId), JSON.stringify(state));
+  } catch {}
+}
+
+function clearWizardState(companyId: string) {
+  try {
+    localStorage.removeItem(getWizardKey(companyId));
+  } catch {}
+}
+
+// ---- Step definitions ----
+const STEPS = [
+  { id: "menu_scan", label: "Menu", icon: Camera },
+  { id: "plan", label: "Plan", icon: Zap },
+  { id: "invoice_scan", label: "Invoice", icon: FileText },
+  { id: "categories", label: "Categories", icon: FolderTree },
+  { id: "storage", label: "Storage", icon: Warehouse },
+  { id: "recipes", label: "Recipes", icon: BookOpen },
+  { id: "review", label: "Review", icon: BarChart3 },
+  { id: "inventory", label: "Count #1", icon: ClipboardList },
+];
+
+const STEP_MILESTONE_IDS: Record<number, string> = {
+  1: "menu_scan",
+  2: "plan",
+  3: "invoice_scan",
+  4: "categories",
+  5: "storage_locations",
+  6: "recipes",
+  7: "review",
+  8: "inventory_count",
+};
+
+async function postReviewStep(milestoneId: string): Promise<void> {
+  try {
+    await apiRequest("POST", "/api/onboarding/milestones/review-step", { stepId: milestoneId });
+    queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+  } catch {
+    // Non-fatal — milestone tracker will re-sync on next load
+  }
+}
+
+// ---- Progress Stepper ----
+function StepperBar({ currentStep }: { currentStep: number }) {
+  return (
+    <div className="flex items-center justify-between mb-8 px-2" data-testid="wizard-stepper">
+      {STEPS.map((step, i) => {
+        const stepNum = i + 1;
+        const isDone = stepNum < currentStep;
+        const isCurrent = stepNum === currentStep;
+        const Icon = step.icon;
+        return (
+          <div key={step.id} className="flex items-center flex-1 last:flex-none">
+            <div className="flex flex-col items-center">
+              <div
+                className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-colors border-2 ${
+                  isDone
+                    ? "bg-primary border-primary text-primary-foreground"
+                    : isCurrent
+                    ? "bg-card border-primary text-primary"
+                    : "bg-card border-muted text-muted-foreground"
+                }`}
+                data-testid={`step-indicator-${step.id}`}
+              >
+                {isDone ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+              </div>
+              <span
+                className={`text-[10px] mt-1 font-medium whitespace-nowrap ${
+                  isCurrent ? "text-primary" : isDone ? "text-primary/70" : "text-muted-foreground/50"
+                }`}
+              >
+                {step.label}
+              </span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <div className={`flex-1 h-0.5 mx-1 mb-4 transition-colors ${isDone ? "bg-primary" : "bg-muted"}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---- Step 1: Menu Scan ----
+function MenuScanStep({
+  storeId,
+  onComplete,
+}: {
+  storeId?: string;
+  onComplete: (items: ApprovedMenuItem[], sessionId: string) => void;
+}) {
+  const { toast } = useToast();
+  const [subStep, setSubStep] = useState<"upload" | "review">("upload");
+  const [scanning, setScanning] = useState(false);
+  const [sessionId, setSessionId] = useState("");
+  const [items, setItems] = useState<ExtractedMenuItem[]>([]);
+
+  const handleUpload = async (objectPath: string) => {
+    setScanning(true);
+    try {
+      const res = await apiRequest("POST", "/api/onboarding/menu-scan", {
+        imageObjectPath: objectPath,
+        storeId: storeId || undefined,
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error || "Scan failed");
+      }
+      const data = await res.json() as { sessionId: string; items: ExtractedMenuItem[] };
+      setSessionId(data.sessionId);
+      setItems(data.items || []);
+      setSubStep("review");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Scan failed";
+      toast({ title: "Scan failed", description: message, variant: "destructive" });
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const approveMutation = useMutation({
+    mutationFn: async () => {
+      const valid = items.filter(i => i.name.trim().length > 0);
+      if (valid.length === 0) throw new Error("No items to import");
+      const res = await apiRequest("POST", `/api/onboarding/menu-scan/${sessionId}/approve`, {
+        items: valid,
+        storeId: storeId || undefined,
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error || "Import failed");
+      }
+      return res.json() as Promise<ApproveResponse>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      // Use real IDs returned by the server; pair with display names from local items array
+      const validItems = items.filter(i => i.name.trim());
+      const named: ApprovedMenuItem[] = (data.menuItemIds || []).map((id, idx) => ({
+        id,
+        name: validItems[idx]?.name?.trim() || `Item ${idx + 1}`,
+      }));
+      toast({
+        title: "Menu imported!",
+        description: `${data.menuItemsCreated} menu item${data.menuItemsCreated !== 1 ? "s" : ""} added.`,
+      });
+      onComplete(named, sessionId);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Import failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx));
+  const updateName = (idx: number, name: string) =>
+    setItems(prev => prev.map((item, i) => i === idx ? { ...item, name } : item));
+
+  if (subStep === "upload") {
+    return (
+      <Card data-testid="card-step-menu-scan">
+        <CardHeader>
+          <CardTitle>Scan your menu</CardTitle>
+          <CardDescription>
+            Upload a photo of your printed menu or PDF screenshot — our AI extracts the dishes automatically.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {scanning ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-4">
+              <Sparkles className="w-10 h-10 text-primary animate-pulse" />
+              <p className="font-medium">Scanning your menu…</p>
+              <p className="text-sm text-muted-foreground">Usually takes 10–20 seconds</p>
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-4 py-10 rounded-md border-2 border-dashed border-muted">
+              <Camera className="w-12 h-12 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Supports JPG, PNG, WebP — up to 10 MB</p>
+              <ObjectUploader
+                onUploadComplete={handleUpload}
+                buttonText="Choose Menu Image"
+                dataTestId="button-upload-menu"
+                visibility="private"
+                maxFileSize={10485760}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const deptOrder: string[] = [];
+  const deptGroups = new Map<string, number[]>();
+  items.forEach((item, idx) => {
+    const dept = (item.department || "").trim() || "Other";
+    if (!deptGroups.has(dept)) { deptGroups.set(dept, []); deptOrder.push(dept); }
+    deptGroups.get(dept)!.push(idx);
+  });
+
+  return (
+    <Card data-testid="card-step-menu-review">
+      <CardHeader>
+        <CardTitle>
+          {items.length > 0
+            ? `We found ${items.length} item${items.length !== 1 ? "s" : ""}`
+            : "No items found"}
+        </CardTitle>
+        <CardDescription>Remove anything that doesn't belong, then import.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {items.length > 0 ? (
+          <div className="rounded-md border overflow-hidden max-h-72 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-muted/80">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium">Item name</th>
+                  <th className="w-10" />
+                </tr>
+              </thead>
+              <tbody>
+                {deptOrder.map((dept) => (
+                  <Fragment key={dept}>
+                    <tr className="bg-muted/30">
+                      <td colSpan={2} className="px-3 py-1 font-semibold text-xs text-muted-foreground uppercase tracking-wide">
+                        {dept}
+                      </td>
+                    </tr>
+                    {deptGroups.get(dept)!.map((idx) => (
+                      <tr key={idx} className="border-t">
+                        <td className="px-3 py-1">
+                          <Input
+                            value={items[idx].name}
+                            onChange={e => updateName(idx, e.target.value)}
+                            className="h-8 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent"
+                            data-testid={`input-item-name-${idx}`}
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <Button variant="ghost" size="icon" onClick={() => deleteItem(idx)} data-testid={`button-delete-item-${idx}`}>
+                            <Trash2 className="w-4 h-4 text-muted-foreground" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="py-8 text-center text-muted-foreground text-sm">
+            No items were extracted. Try a clearer photo or a different page of your menu.
+          </div>
+        )}
+        <div className="flex flex-col gap-2">
+          {items.length > 0 && (
+            <Button
+              onClick={() => approveMutation.mutate()}
+              disabled={approveMutation.isPending}
+              data-testid="button-import-items"
+            >
+              {approveMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing…</>
+              ) : `Import ${items.filter(i => i.name.trim()).length} Items`}
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => setSubStep("upload")} data-testid="button-scan-again">
+            Scan a different image
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Step 2: Plan Selection ----
+// Users must actively click to go to /choose-plan — no auto-redirect.
+// On return from Stripe with ?planActivated=true the wizard polls for
+// plan status automatically (up to ~20s). The "I've selected a plan"
+// button is always available for manual re-check.
+function PlanStep({
+  company,
+  planActivated,
+  onContinue,
+}: {
+  company: { subscriptionTier?: string; name?: string } | null;
+  planActivated: boolean;
+  onContinue: () => void;
+}) {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [checking, setChecking] = useState(false);
+  const [polling, setPolling] = useState(false);
+  const hasPlan = !!(company?.subscriptionTier && company.subscriptionTier !== "free");
+
+  // Auto-advance once a paid plan is confirmed in company data.
+  useEffect(() => {
+    if (hasPlan) {
+      onContinue();
+    }
+  }, [hasPlan, onContinue]);
+
+  // When returning from Stripe (?planActivated=true), poll until the
+  // subscription webhook has propagated (max ~20 seconds / 10 polls).
+  useEffect(() => {
+    if (!planActivated || hasPlan) return;
+
+    let attempts = 0;
+    const MAX_ATTEMPTS = 10;
+    setPolling(true);
+
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await apiRequest("GET", "/api/auth/company");
+        if (res.ok) {
+          const data = await res.json() as { subscriptionTier?: string };
+          if (data.subscriptionTier && data.subscriptionTier !== "free") {
+            clearInterval(interval);
+            setPolling(false);
+            queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/auth/company"] });
+            onContinue();
+            return;
+          }
+        }
+      } catch {}
+      if (attempts >= MAX_ATTEMPTS) {
+        clearInterval(interval);
+        setPolling(false);
+      }
+    }, 2000);
+
+    return () => {
+      clearInterval(interval);
+      setPolling(false);
+    };
+  }, [planActivated, hasPlan, onContinue]);
+
+  if (hasPlan) {
+    return (
+      <Card data-testid="card-step-plan-active">
+        <CardContent className="py-10 text-center space-y-3">
+          <Check className="w-10 h-10 text-green-500 mx-auto" />
+          <p className="font-semibold">Plan selected — continuing setup…</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (polling) {
+    return (
+      <Card data-testid="card-step-plan-polling">
+        <CardContent className="py-10 text-center space-y-3">
+          <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
+          <p className="font-semibold">Confirming your plan…</p>
+          <p className="text-sm text-muted-foreground">This usually takes a few seconds.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const handleCheckPlan = async () => {
+    setChecking(true);
+    try {
+      const res = await apiRequest("GET", "/api/auth/company");
+      if (res.ok) {
+        const data = await res.json() as { subscriptionTier?: string };
+        if (data.subscriptionTier && data.subscriptionTier !== "free") {
+          queryClient.invalidateQueries({ queryKey: ["/api/auth/company"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+          onContinue();
+        } else {
+          toast({ title: "No active plan found", description: "Complete your plan selection to continue.", variant: "destructive" });
+        }
+      }
+    } catch {
+      toast({ title: "Could not check plan status", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <Card data-testid="card-step-plan">
+      <CardHeader>
+        <CardTitle>Choose your plan</CardTitle>
+        <CardDescription>
+          A plan is required to unlock recipe costing, invoice scanning, and more.
+          Click below to review options — you'll return here automatically after selecting.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Button
+          className="w-full bg-[#f2690d] border-[#f2690d] text-white"
+          onClick={() => setLocation("/choose-plan?returnTo=/onboarding/setup")}
+          data-testid="button-choose-plan"
+        >
+          View Plans &amp; Pricing
+          <ChevronRight className="w-4 h-4 ml-1" />
+        </Button>
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={handleCheckPlan}
+          disabled={checking}
+          data-testid="button-check-plan"
+        >
+          {checking
+            ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Checking…</>
+            : <><RefreshCw className="w-4 h-4 mr-2" /> I've selected a plan — continue</>}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Step 3: Invoice Scan ----
+function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
+  const { toast } = useToast();
+  const [subStep, setSubStep] = useState<"upload" | "review">("upload");
+  const [scanning, setScanning] = useState(false);
+  const [extractedItems, setExtractedItems] = useState<InvoiceItem[]>([]);
+  const [vendorName, setVendorName] = useState("");
+
+  const handleUpload = async (objectPath: string) => {
+    setScanning(true);
+    try {
+      const res = await apiRequest("POST", "/api/onboarding/invoice-scan", {
+        imageObjectPath: objectPath,
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error || "Scan failed");
+      }
+      const data = await res.json() as { items: InvoiceItem[]; vendorName?: string };
+      setVendorName(data.vendorName || "");
+      setExtractedItems(
+        (data.items || []).map((item) => ({
+          ...item,
+          action: (item.matchConfidence === "high" || item.matchConfidence === "medium") ? "update" : "create",
+        }))
+      );
+      setSubStep("review");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Scan failed";
+      toast({ title: "Scan failed", description: message, variant: "destructive" });
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const applyMutation = useMutation({
+    mutationFn: async () => {
+      const activeItems = extractedItems
+        .filter(i => i.action !== "skip")
+        .map(i => ({
+          name: i.name,
+          unitPrice: i.unitPrice,
+          casePrice: i.casePrice,
+          unit: i.unit,
+          categoryHint: i.categoryHint,
+          action: i.action,
+          inventoryItemId: i.action === "update" ? i.matchedItemId : undefined,
+        }));
+      const createdItems = activeItems.filter(i => i.action === "create");
+      if (createdItems.length === 0) throw new Error("At least one item must be set to 'Create new' to seed your inventory.");
+      const res = await apiRequest("POST", "/api/onboarding/invoice-scan/apply", { items: activeItems });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error || "Apply failed");
+      }
+      return res.json() as Promise<InvoiceApplyResponse>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      toast({
+        title: "Invoice applied!",
+        description: `${data.created || 0} created, ${data.updated || 0} updated.`,
+      });
+      onComplete();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to apply", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const setAction = (idx: number, action: "update" | "create" | "skip") => {
+    setExtractedItems(prev => prev.map((item, i) => i === idx ? { ...item, action } : item));
+  };
+
+  const confidenceBadge = (c: string) =>
+    c === "high" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" :
+    c === "medium" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" :
+    "bg-muted text-muted-foreground";
+
+  if (subStep === "upload") {
+    return (
+      <Card data-testid="card-step-invoice-upload">
+        <CardHeader>
+          <CardTitle>Upload a vendor invoice</CardTitle>
+          <CardDescription>
+            Take a photo of any vendor invoice or order guide. AI will extract the items and prices to seed your inventory.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {scanning ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-4">
+              <Sparkles className="w-10 h-10 text-primary animate-pulse" />
+              <p className="font-medium">Reading invoice…</p>
+              <p className="text-sm text-muted-foreground">This usually takes 10–20 seconds</p>
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-4 py-10 rounded-md border-2 border-dashed border-muted">
+              <Package className="w-12 h-12 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Supports JPG, PNG, WebP — up to 10 MB</p>
+              <ObjectUploader
+                onUploadComplete={handleUpload}
+                buttonText="Choose Invoice Image"
+                dataTestId="button-upload-invoice"
+                visibility="private"
+                maxFileSize={10485760}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const createdCount = extractedItems.filter(i => i.action === "create").length;
+
+  return (
+    <Card data-testid="card-step-invoice-review">
+      <CardHeader>
+        <CardTitle>
+          Review extracted items{vendorName ? ` from ${vendorName}` : ""}
+        </CardTitle>
+        <CardDescription>
+          Set at least one item to "Create new" to seed your inventory, then click Apply.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-md border overflow-hidden max-h-80 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-muted/80">
+              <tr>
+                <th className="text-left px-3 py-2 font-medium">Item</th>
+                <th className="text-right px-3 py-2 font-medium w-24">Price</th>
+                <th className="px-3 py-2 font-medium w-40">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {extractedItems.map((item, idx) => (
+                <tr key={idx} className="border-t">
+                  <td className="px-3 py-2">
+                    <p className="font-medium leading-tight">{item.name}</p>
+                    {item.matchedItemName && item.matchConfidence !== "none" && (
+                      <p className="text-xs text-muted-foreground">
+                        Matches: {item.matchedItemName}
+                        <span className={`ml-1.5 px-1 rounded text-[10px] font-medium ${confidenceBadge(item.matchConfidence)}`}>
+                          {item.matchConfidence}
+                        </span>
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right text-muted-foreground">
+                    ${item.unitPrice?.toFixed(2) ?? "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    <select
+                      value={item.action}
+                      onChange={e => setAction(idx, e.target.value as "update" | "create" | "skip")}
+                      className="text-xs rounded border px-1.5 py-1 bg-background w-full"
+                      data-testid={`select-action-${idx}`}
+                    >
+                      {item.matchedItemId && <option value="update">Update existing</option>}
+                      <option value="create">Create new</option>
+                      <option value="skip">Skip</option>
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Button
+          onClick={() => applyMutation.mutate()}
+          disabled={applyMutation.isPending || createdCount === 0}
+          data-testid="button-apply-invoice"
+        >
+          {applyMutation.isPending ? (
+            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Applying…</>
+          ) : createdCount === 0
+            ? "Set at least one item to 'Create new'"
+            : `Apply — Create ${createdCount} New Item${createdCount !== 1 ? "s" : ""}`}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Step 4: Categories ----
+function CategoriesStep({ onComplete }: { onComplete: () => void }) {
+  const { toast } = useToast();
+  const { data: cats, isLoading } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/categories"],
+  });
+
+  const [newName, setNewName] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/categories", { name: newName.trim(), showAsIngredient: 1 });
+      if (!res.ok) throw new Error("Failed to create category");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      setNewName("");
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const res = await apiRequest("PATCH", `/api/categories/${id}`, { name });
+      if (!res.ok) throw new Error("Failed to update category");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      setEditingId(null);
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <Card data-testid="card-step-categories">
+      <CardHeader>
+        <CardTitle>Review your categories</CardTitle>
+        <CardDescription>
+          These categories were auto-created from your invoice. Rename or add any that are missing.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground py-4">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Loading categories…</span>
+          </div>
+        ) : (
+          <div className="space-y-1 max-h-64 overflow-y-auto">
+            {(cats || []).map((cat) => (
+              <div key={cat.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50" data-testid={`category-row-${cat.id}`}>
+                {editingId === cat.id ? (
+                  <>
+                    <Input
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      className="h-7 text-sm"
+                      autoFocus
+                      data-testid={`input-category-edit-${cat.id}`}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") updateMutation.mutate({ id: cat.id, name: editName });
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                    />
+                    <Button size="sm" variant="ghost" onClick={() => updateMutation.mutate({ id: cat.id, name: editName })} disabled={updateMutation.isPending} data-testid={`button-save-category-${cat.id}`}>
+                      <Check className="w-3 h-3" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingId(null)} data-testid={`button-cancel-category-${cat.id}`}>
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 text-sm">{cat.name}</span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => { setEditingId(cat.id); setEditName(cat.name); }}
+                      data-testid={`button-edit-category-${cat.id}`}
+                    >
+                      <Edit2 className="w-3.5 h-3.5 text-muted-foreground" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Input
+            placeholder="Add a category…"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && newName.trim() && createMutation.mutate()}
+            data-testid="input-new-category"
+            className="h-8 text-sm"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => createMutation.mutate()}
+            disabled={!newName.trim() || createMutation.isPending}
+            data-testid="button-add-category"
+          >
+            <Plus className="w-3.5 h-3.5 mr-1" /> Add
+          </Button>
+        </div>
+        <Button onClick={onComplete} className="w-full" data-testid="button-continue-categories">
+          Categories look good — Continue
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Step 5: Storage Locations ----
+function StorageStep({ onComplete }: { onComplete: () => void }) {
+  const { toast } = useToast();
+  const { data: locations, isLoading } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/storage-locations"],
+  });
+
+  const [newName, setNewName] = useState("");
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const sortOrder = (locations?.length || 0) + 1;
+      const res = await apiRequest("POST", "/api/storage-locations", { name: newName.trim(), sortOrder });
+      if (!res.ok) throw new Error("Failed to create location");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/storage-locations"] });
+      setNewName("");
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const hasLocations = (locations?.length || 0) > 0;
+
+  return (
+    <Card data-testid="card-step-storage">
+      <CardHeader>
+        <CardTitle>Storage locations</CardTitle>
+        <CardDescription>
+          Define where your inventory physically lives — walk-in, dry storage, freezer, etc. Add at least one to continue.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground py-4">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading locations…
+          </div>
+        ) : (
+          <div className="space-y-1 max-h-56 overflow-y-auto">
+            {(locations || []).length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">No storage locations yet. Add your first one below.</p>
+            ) : (
+              (locations || []).map((loc) => (
+                <div key={loc.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/30" data-testid={`storage-row-${loc.id}`}>
+                  <Warehouse className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm">{loc.name}</span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Input
+            placeholder="Add a location (e.g. Walk-In Cooler)…"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && newName.trim() && createMutation.mutate()}
+            data-testid="input-new-storage"
+            className="h-8 text-sm"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => createMutation.mutate()}
+            disabled={!newName.trim() || createMutation.isPending}
+            data-testid="button-add-storage"
+          >
+            <Plus className="w-3.5 h-3.5 mr-1" /> Add
+          </Button>
+        </div>
+        <Button
+          onClick={onComplete}
+          disabled={!hasLocations}
+          className="w-full"
+          data-testid="button-continue-storage"
+        >
+          {hasLocations ? "Storage set — Continue" : "Add at least one location to continue"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Step 6: Recipes ----
+function RecipesStep({
+  approvedMenuItems,
+  onComplete,
+  onSkipRecipe,
+  skippedRecipes,
+}: {
+  approvedMenuItems: ApprovedMenuItem[];
+  onComplete: () => void;
+  onSkipRecipe: (id: string) => void;
+  skippedRecipes: string[];
+}) {
+  const [, setLocation] = useLocation();
+  const [currentIdx, setCurrentIdx] = useState(0);
+
+  const { data: menuItemsData } = useQuery<MenuItem[]>({ queryKey: ["/api/menu-items"] });
+  const { data: recipesData } = useQuery<{ id: string; computedCost: number; componentCount: number }[]>({ queryKey: ["/api/recipes"] });
+
+  // A recipe is "costed" when it has at least one ingredient component. componentCount >= 1
+  // is the authoritative check; computedCost > 0 was a weaker proxy that failed for
+  // valid recipes where all ingredients happen to have $0 price (e.g., early setup).
+  const costedRecipeIds = new Set<string>(
+    (recipesData || []).filter((r) => r.componentCount >= 1).map((r) => r.id)
+  );
+
+  const menuItemsWithRecipes = new Set<string>(
+    (menuItemsData || [])
+      .filter((m) => m.recipeId && costedRecipeIds.has(m.recipeId))
+      .map((m) => m.id)
+  );
+
+  const items = approvedMenuItems.length > 0
+    ? approvedMenuItems
+    : (menuItemsData || []).filter((m) => !m.parentMenuItemId).map((m) => ({ id: m.id, name: m.name }));
+
+  const costedCount = items.filter(i => menuItemsWithRecipes.has(i.id) || skippedRecipes.includes(i.id)).length;
+  const totalCount = items.length;
+  const allDone = costedCount >= totalCount;
+
+  const current = items[currentIdx];
+
+  const goNext = () => {
+    // Never auto-complete from goNext — onComplete() is only
+    // triggered by the explicit "All done — Continue" button once
+    // every item has been costed or explicitly skipped.
+    if (currentIdx < items.length - 1) {
+      setCurrentIdx(i => i + 1);
+    }
+  };
+
+  const isCosted = (id: string) => menuItemsWithRecipes.has(id) || skippedRecipes.includes(id);
+
+  if (items.length === 0) {
+    return (
+      <Card data-testid="card-step-recipes-empty">
+        <CardHeader>
+          <CardTitle>Build your recipes</CardTitle>
+          <CardDescription>No menu items found yet — build a recipe from the recipe builder to continue.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button onClick={() => setLocation("/recipes/new")} className="w-full" data-testid="button-go-recipes">
+            Open Recipe Builder <ExternalLink className="w-4 h-4 ml-2" />
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card data-testid="card-step-recipes">
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <CardTitle>Build your recipes</CardTitle>
+          <Badge variant="secondary" data-testid="badge-recipe-progress">
+            {costedCount} of {totalCount} costed
+          </Badge>
+        </div>
+        <CardDescription>
+          Work through each menu item to build its recipe. You can mark any as "skip for now" to revisit later.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Progress dots */}
+        <div className="flex flex-wrap gap-1.5">
+          {items.map((item, idx) => (
+            <button
+              key={item.id}
+              onClick={() => setCurrentIdx(idx)}
+              title={item.name}
+              data-testid={`dot-recipe-${idx}`}
+              className={`w-4 h-4 rounded-full border-2 transition-colors ${
+                isCosted(item.id)
+                  ? "bg-primary border-primary"
+                  : idx === currentIdx
+                  ? "bg-card border-primary"
+                  : "bg-muted border-muted-foreground/30"
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* Current item card */}
+        {current && (
+          <div className="rounded-md border p-4 space-y-3" data-testid="card-current-recipe-item">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-semibold capitalize">{current.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  Item {currentIdx + 1} of {items.length}
+                </p>
+              </div>
+              {isCosted(current.id) && (
+                <Badge className="bg-green-500 text-white" data-testid={`badge-costed-${current.id}`}>
+                  <Check className="w-3 h-3 mr-1" /> Costed
+                </Badge>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={() => setLocation(`/recipes/new?menuItemId=${current.id}&menuItemName=${encodeURIComponent(current.name)}`)}
+                data-testid={`button-build-recipe-${current.id}`}
+              >
+                <BookOpen className="w-4 h-4 mr-2" />
+                Build Recipe for "{current.name}"
+                <ExternalLink className="w-4 h-4 ml-2" />
+              </Button>
+              <div className="flex gap-2">
+                {currentIdx > 0 && (
+                  <Button variant="outline" size="sm" onClick={() => setCurrentIdx(i => i - 1)} data-testid="button-recipe-prev">
+                    ← Prev
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1 text-muted-foreground"
+                  onClick={() => { onSkipRecipe(current.id); goNext(); }}
+                  data-testid={`button-skip-recipe-${current.id}`}
+                >
+                  Skip for now →
+                </Button>
+                {currentIdx < items.length - 1 && (
+                  <Button variant="outline" size="sm" onClick={() => setCurrentIdx(i => i + 1)} data-testid="button-recipe-next">
+                    Next →
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {allDone && (
+          <Button onClick={onComplete} className="w-full" data-testid="button-continue-recipes">
+            <Check className="w-4 h-4 mr-2" /> All done — Continue to Review
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Step 7: Review ----
+function ReviewStep({ approvedMenuItems, onComplete }: { approvedMenuItems: ApprovedMenuItem[]; onComplete: () => void }) {
+  const { data: menuItemsData } = useQuery<MenuItem[]>({ queryKey: ["/api/menu-items"] });
+  const { data: inventoryData } = useQuery<{ id: string }[]>({ queryKey: ["/api/inventory-items"] });
+  const { data: vendorsData } = useQuery<{ id: string }[]>({ queryKey: ["/api/vendors"] });
+  const { data: recipesData } = useQuery<{ id: string; componentCount: number }[]>({ queryKey: ["/api/recipes"] });
+
+  const [, setLocation] = useLocation();
+
+  const allRootMenuItems = (menuItemsData || []).filter((m) => !m.parentMenuItemId);
+
+  // When wizard-approved items are available, scope "Menu Items" to that set so the
+  // count reflects what was reviewed in this onboarding session, not pre-existing items.
+  // Fall back to all root items for accounts that skipped the menu scan step.
+  const approvedIds = new Set(approvedMenuItems.map((a) => a.id));
+  const scopedMenuItems = approvedMenuItems.length > 0
+    ? allRootMenuItems.filter((m) => approvedIds.has(m.id))
+    : allRootMenuItems;
+
+  // Use componentCount >= 1 (same definition as Step 6) so recipes with zero-priced
+  // ingredients are still counted as costed — matching the Step 6 progression check.
+  const costedRecipeIdSet = new Set<string>(
+    (recipesData || []).filter((r) => r.componentCount >= 1).map((r) => r.id)
+  );
+  const costedMenuItems = scopedMenuItems.filter(
+    (m) => m.recipeId && costedRecipeIdSet.has(m.recipeId)
+  );
+  // Flag both: no recipe linked at all, AND recipe linked but uncosted (no ingredients yet).
+  const missingRecipe = scopedMenuItems.filter(
+    (m) => !m.recipeId || !costedRecipeIdSet.has(m.recipeId)
+  );
+
+  const stats = [
+    { label: "Menu Items", value: scopedMenuItems.length, icon: Camera },
+    { label: "Recipes Costed", value: costedMenuItems.length, icon: BookOpen },
+    { label: "Inventory Items", value: (inventoryData || []).length, icon: Package },
+    { label: "Vendors", value: (vendorsData || []).length, icon: Building2 },
+  ];
+
+  return (
+    <Card data-testid="card-step-review">
+      <CardHeader>
+        <CardTitle>Setup Summary</CardTitle>
+        <CardDescription>Here's where things stand before your first inventory count.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid grid-cols-2 gap-3">
+          {stats.map(stat => {
+            const Icon = stat.icon;
+            return (
+              <div key={stat.label} className="rounded-md border p-3 text-center" data-testid={`stat-${stat.label.toLowerCase().replace(/ /g, "-")}`}>
+                <Icon className="w-5 h-5 mx-auto text-muted-foreground mb-1" />
+                <p className="text-2xl font-bold">{stat.value}</p>
+                <p className="text-xs text-muted-foreground">{stat.label}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        {missingRecipe.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground">
+              {missingRecipe.length} menu item{missingRecipe.length !== 1 ? "s" : ""} still need{missingRecipe.length === 1 ? "s" : ""} a recipe:
+            </p>
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {missingRecipe.slice(0, 10).map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-2 text-sm px-2 py-1 rounded hover:bg-muted/50" data-testid={`missing-recipe-row-${item.id}`}>
+                  <span className="capitalize">{item.name}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setLocation(`/recipes/new?menuItemId=${item.id}&menuItemName=${encodeURIComponent(item.name)}`)}
+                    data-testid={`button-build-recipe-review-${item.id}`}
+                  >
+                    Build <ArrowRight className="w-3 h-3 ml-1" />
+                  </Button>
+                </div>
+              ))}
+              {missingRecipe.length > 10 && (
+                <p className="text-xs text-muted-foreground px-2">…and {missingRecipe.length - 10} more</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <Button onClick={onComplete} className="w-full bg-[#f2690d] border-[#f2690d] text-white" data-testid="button-start-first-count">
+          <ClipboardList className="w-4 h-4 mr-2" />
+          Start My First Count
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Step 8: Inventory #1 ----
+function InventoryStep({ onComplete }: { onComplete: () => void }) {
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const { data: storesData } = useQuery<{ id: string; name: string }[]>({ queryKey: ["/api/stores/accessible"] });
+
+  const createSessionMutation = useMutation({
+    mutationFn: async () => {
+      const storeId = storesData?.[0]?.id;
+      if (!storeId) throw new Error("No store found — please add a store first.");
+      const today = new Date().toISOString().split("T")[0];
+      const res = await apiRequest("POST", "/api/inventory-counts", {
+        storeId,
+        name: "Opening Count",
+        note: "First inventory count to establish on-hand quantities.",
+        countDate: today,
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error || "Failed to create session");
+      }
+      return res.json() as Promise<{ id: string }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      onComplete();
+      setLocation(`/count/${data.id}`);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Card data-testid="card-step-inventory">
+      <CardHeader>
+        <CardTitle>Start your first inventory count</CardTitle>
+        <CardDescription>
+          A count session lets you walk your storage areas and record what you have on hand.
+          This establishes your baseline so you can track usage and catch variance over time.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-md bg-muted/40 p-4 space-y-2 text-sm text-muted-foreground">
+          <p><strong className="text-foreground">Walk each storage area</strong> — freezer, walk-in, dry storage, etc.</p>
+          <p><strong className="text-foreground">Count every item</strong> — use your phone camera for shelf scans (Pro) or enter counts manually.</p>
+          <p><strong className="text-foreground">Finalize when done</strong> — costs and on-hand quantities update instantly.</p>
+        </div>
+        {storesData?.length === 0 ? (
+          <div className="space-y-3">
+            <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>No store locations found. You need at least one store to start a count.</span>
+            </div>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setLocation("/stores")}
+              data-testid="button-go-create-store"
+            >
+              <Building2 className="w-4 h-4 mr-2" /> Set Up Your First Store
+            </Button>
+          </div>
+        ) : (
+          <Button
+            onClick={() => createSessionMutation.mutate()}
+            disabled={createSessionMutation.isPending}
+            className="w-full bg-[#f2690d] border-[#f2690d] text-white"
+            data-testid="button-start-count-session"
+          >
+            {createSessionMutation.isPending ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating session…</>
+            ) : (
+              <><ClipboardList className="w-4 h-4 mr-2" /> Begin Opening Count</>
+            )}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Main Wizard ----
+export default function OnboardingSetup() {
+  const [, setLocation] = useLocation();
+  const searchStr = useSearch();
+  const { toast } = useToast();
+  const { company, selectedCompanyId, isLoading: companyLoading } = useCompany();
+  const { user, isLoading: authLoading } = useAuth();
+
+  const companyId = selectedCompanyId || user?.companyId || "";
+
+  const [wizardState, setWizardState] = useState<WizardState>(() =>
+    companyId ? loadWizardState(companyId) : { step: 1, approvedMenuItems: [], skippedRecipes: [] }
+  );
+
+  // Load state from localStorage once companyId is known.
+  // Never allow URL ?step=N to jump past earlier steps — sequential gating is enforced.
+  useEffect(() => {
+    if (companyId && wizardState.step === 1 && wizardState.approvedMenuItems.length === 0) {
+      const saved = loadWizardState(companyId);
+      setWizardState(saved);
+    }
+  }, [companyId]);
+
+  // Detect Stripe return: ?planActivated=true triggers an immediate cache
+  // bust so PlanStep can poll for the freshly activated subscription.
+  const planActivated = new URLSearchParams(searchStr).get("planActivated") === "true";
+
+  const updateState = useCallback((patch: Partial<WizardState>) => {
+    setWizardState(prev => {
+      const next = { ...prev, ...patch };
+      if (companyId) saveWizardState(companyId, next);
+      return next;
+    });
+  }, [companyId]);
+
+  const advance = useCallback(async (currentStep: number) => {
+    const milestoneId = STEP_MILESTONE_IDS[currentStep];
+    if (milestoneId) {
+      await postReviewStep(milestoneId);
+    }
+    setWizardState(prev => {
+      const next = { ...prev, step: Math.min(8, prev.step + 1) };
+      if (companyId) saveWizardState(companyId, next);
+      return next;
+    });
+  }, [companyId]);
+
+  const finishWizard = useCallback(async () => {
+    await postReviewStep("inventory_count");
+    if (companyId) clearWizardState(companyId);
+    queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+  }, [companyId]);
+
+  // Auth guard
+  if (authLoading || (user && companyLoading && !selectedCompanyId)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md text-center space-y-4">
+          <img src={logoImage} alt="FNB Cost Pro" className="h-14 w-auto mx-auto mb-6" />
+          <div className="flex items-center justify-center gap-2 text-muted-foreground">
+            <AlertCircle className="h-5 w-5 text-amber-500" />
+            <p>Please sign in to continue setting up your account.</p>
+          </div>
+          <Button onClick={() => setLocation("/login")} data-testid="button-go-to-login">Sign In</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (user.role === "global_admin" && !selectedCompanyId) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md text-center space-y-4">
+          <img src={logoImage} alt="FNB Cost Pro" className="h-14 w-auto mx-auto mb-6" />
+          <AlertCircle className="h-5 w-5 text-amber-500 mx-auto" />
+          <p className="text-muted-foreground">Select a company from the header before running the setup wizard.</p>
+          <Button onClick={() => setLocation("/companies")} data-testid="button-go-to-companies">Select Company</Button>
+        </div>
+      </div>
+    );
+  }
+
+  const { step, approvedMenuItems, skippedRecipes, storeId } = wizardState;
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-start bg-background p-4 pt-8">
+      <div className="w-full max-w-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <img src={logoImage} alt="FNB Cost Pro" className="h-12 w-auto" />
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">Step {step} of 8</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground text-xs"
+              onClick={() => setLocation("/")}
+              data-testid="button-exit-wizard"
+            >
+              Exit Setup
+            </Button>
+          </div>
+        </div>
+
+        {/* Stepper */}
+        <StepperBar currentStep={step} />
+
+        {/* Step content */}
+        {step === 1 && (
+          <MenuScanStep
+            storeId={storeId}
+            onComplete={(items, _sessionId) => {
+              updateState({ approvedMenuItems: items });
+              advance(1);
+            }}
+          />
+        )}
+
+        {step === 2 && (
+          <PlanStep
+            company={company}
+            planActivated={planActivated}
+            onContinue={() => advance(2)}
+          />
+        )}
+
+        {step === 3 && (
+          <InvoiceScanStep onComplete={() => advance(3)} />
+        )}
+
+        {step === 4 && (
+          <CategoriesStep onComplete={() => advance(4)} />
+        )}
+
+        {step === 5 && (
+          <StorageStep onComplete={() => advance(5)} />
+        )}
+
+        {step === 6 && (
+          <RecipesStep
+            approvedMenuItems={approvedMenuItems}
+            skippedRecipes={skippedRecipes}
+            onComplete={() => advance(6)}
+            onSkipRecipe={(id) => updateState({ skippedRecipes: [...skippedRecipes, id] })}
+          />
+        )}
+
+        {step === 7 && (
+          <ReviewStep
+            approvedMenuItems={approvedMenuItems}
+            onComplete={() => advance(7)}
+          />
+        )}
+
+        {step === 8 && (
+          <InventoryStep
+            onComplete={finishWizard}
+          />
+        )}
+
+        {/* Back navigation */}
+        {step > 1 && step < 8 && (
+          <div className="mt-4 flex justify-start">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground text-xs"
+              onClick={() => {
+                setWizardState(prev => {
+                  const next = { ...prev, step: Math.max(1, prev.step - 1) };
+                  if (companyId) saveWizardState(companyId, next);
+                  return next;
+                });
+              }}
+              data-testid="button-wizard-back"
+            >
+              ← Back
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

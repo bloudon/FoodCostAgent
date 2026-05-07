@@ -86,12 +86,17 @@ export async function createCheckoutSession(req: Request, res: Response) {
       process.env.APP_BASE_URL ||
       `${req.protocol}://${req.get("host")}`;
 
-    const { tier, term } = req.body ?? {};
+    const { tier, term, returnTo } = req.body ?? {};
     if (!tier || !term) return res.status(400).json({ message: "tier and term are required" });
 
     const key = `${tier}:${term}`;
     const lookupKey = LOOKUP_KEY[key];
     if (!lookupKey) return res.status(400).json({ message: `Invalid tier/term combination: ${key}` });
+
+    // Validate returnTo — only allow relative internal paths to prevent open redirects.
+    const safeReturnTo = typeof returnTo === "string" && /^\/[a-zA-Z0-9/_?&=-]*$/.test(returnTo)
+      ? returnTo
+      : null;
 
     // Fetch price by lookup_key
     const prices = await getStripe().prices.search({
@@ -106,14 +111,23 @@ export async function createCheckoutSession(req: Request, res: Response) {
       .from(companies)
       .where(eq(companies.id, companyId));
 
+    // Build success URL — handle the case where safeReturnTo already has
+    // a query string by using the correct separator (? vs &).
+    const successUrl = safeReturnTo
+      ? (() => {
+          const sep = safeReturnTo.includes("?") ? "&" : "?";
+          return `${baseUrl}${safeReturnTo}${sep}planActivated=true`;
+        })()
+      : `${baseUrl}/?welcome=true`;
+
     const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: price.id, quantity: 1 }],
       subscription_data: {
         trial_period_days: TRIAL_DAYS,
       },
-      success_url: `${baseUrl}/?welcome=true`,
-      cancel_url: `${baseUrl}/choose-plan`,
+      success_url: successUrl,
+      cancel_url: safeReturnTo ? `${baseUrl}/choose-plan?returnTo=${encodeURIComponent(safeReturnTo)}` : `${baseUrl}/choose-plan`,
       customer: company?.stripeCustomerId || undefined,
       customer_email: company?.stripeCustomerId ? undefined : (company?.contactEmail || undefined),
       client_reference_id: companyId,

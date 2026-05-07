@@ -1445,20 +1445,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "User is not associated with a company" });
       }
 
-      const [storeRows, categoryRows, vendorRows, inventoryRows, costsRows, parLevelStats, recipeRows, menuRows, progressRows, teamRows] = await Promise.all([
-        db.select().from(companyStores).where(eq(companyStores.companyId, companyId)).limit(1),
-        db.select().from(categories).where(eq(categories.companyId, companyId)).limit(1),
-        db.select().from(vendors).where(and(eq(vendors.companyId, companyId), not(like(vendors.name, '%Misc Grocery%')))).limit(1),
-        db.select().from(inventoryItems).where(eq(inventoryItems.companyId, companyId)).limit(1),
-        db.select().from(inventoryItems).where(and(eq(inventoryItems.companyId, companyId), gt(inventoryItems.pricePerUnit, 0))).limit(1),
-        db.select({
-          total: sql<number>`COUNT(*)`,
-          withPar: sql<number>`SUM(CASE WHEN ${inventoryItems.parLevel} IS NOT NULL THEN 1 ELSE 0 END)`,
-        }).from(inventoryItems).where(and(eq(inventoryItems.companyId, companyId), eq(inventoryItems.active, 1))),
-        db.select().from(recipes).where(eq(recipes.companyId, companyId)).limit(1),
+      const [menuRows, companiesRow, inventoryRows, storageRows, recipeRows, inventoryCountRows, progressRows] = await Promise.all([
         db.select().from(menuItems).where(eq(menuItems.companyId, companyId)).limit(1),
+        db.select({ subscriptionTier: companiesTable.subscriptionTier }).from(companiesTable).where(eq(companiesTable.id, companyId)).limit(1),
+        db.select().from(inventoryItems).where(eq(inventoryItems.companyId, companyId)).limit(1),
+        db.select().from(storageLocations).where(eq(storageLocations.companyId, companyId)).limit(1),
+        db.select().from(recipes).where(eq(recipes.companyId, companyId)).limit(1),
+        db.select({ id: inventoryCounts.id }).from(inventoryCounts).where(eq(inventoryCounts.companyId, companyId)).limit(1),
         db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1),
-        db.select().from(users).where(and(eq(users.companyId, companyId), not(eq(users.role, "company_admin")))).limit(1),
       ]);
 
       let reviewedSteps: string[] = [];
@@ -1469,20 +1463,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch {}
       }
 
-      const parTotal = Number(parLevelStats[0]?.total ?? 0);
-      const parWithPar = Number(parLevelStats[0]?.withPar ?? 0);
-      const parLevelsComplete = parTotal > 0 && parWithPar / parTotal > 0.5;
+      const tier = companiesRow[0]?.subscriptionTier;
+      const hasPlan = tier && tier !== "free";
 
       const milestonesList = [
-        { id: "store", label: "Set Up Your Store Locations", completed: storeRows.length > 0, path: "/stores" },
-        { id: "categories", label: "Review Categories", completed: reviewedSteps.includes("categories"), path: "/categories" },
-        { id: "vendors", label: "Add a Vendor", completed: vendorRows.length > 0 || reviewedSteps.includes("vendors"), path: "/vendors" },
-        { id: "inventory", label: "Add Inventory Items", completed: inventoryRows.length > 0 || reviewedSteps.includes("inventory"), path: "/inventory-items" },
-        { id: "costs", label: "Seed Ingredient Costs", completed: costsRows.length > 0, path: "/onboarding/seed-costs" },
-        { id: "par_levels", label: "Set Par Levels", completed: parLevelsComplete, path: "/inventory-items/par-levels" },
-        { id: "recipes", label: "Create a Recipe", completed: recipeRows.length > 0 || reviewedSteps.includes("recipes"), path: "/recipes" },
-        { id: "menu", label: "Add Menu Items", completed: menuRows.length > 0 || reviewedSteps.includes("menu"), path: "/menu-items" },
-        { id: "team", label: "Invite Your Team", completed: teamRows.length > 0 || reviewedSteps.includes("team"), path: "/users" },
+        { id: "menu_scan", label: "Scan Your Menu", completed: menuRows.length > 0 || reviewedSteps.includes("menu_scan"), path: "/onboarding/setup" },
+        { id: "plan", label: "Choose a Plan", completed: !!hasPlan || reviewedSteps.includes("plan"), path: "/onboarding/setup" },
+        { id: "invoice_scan", label: "Scan an Invoice", completed: inventoryRows.length > 0 || reviewedSteps.includes("invoice_scan"), path: "/onboarding/setup" },
+        { id: "categories", label: "Review Categories", completed: reviewedSteps.includes("categories"), path: "/onboarding/setup" },
+        { id: "storage_locations", label: "Set Up Storage", completed: storageRows.length > 0 || reviewedSteps.includes("storage_locations"), path: "/onboarding/setup" },
+        { id: "recipes", label: "Build Recipes", completed: recipeRows.length > 0 || reviewedSteps.includes("recipes"), path: "/onboarding/setup" },
+        { id: "review", label: "Review Setup", completed: reviewedSteps.includes("review"), path: "/onboarding/setup" },
+        { id: "inventory_count", label: "First Count", completed: inventoryCountRows.length > 0 || reviewedSteps.includes("inventory_count"), path: "/onboarding/setup" },
       ];
 
       const completedCount = milestonesList.filter(m => m.completed).length;
@@ -1723,7 +1715,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         groups.get(key)!.items.push(item);
       }
 
-      const { created } = await db.transaction(async (tx) => {
+      const { created, topLevelIds } = await db.transaction(async (tx) => {
         const sizeIdCache = new Map<string, string>();
         const deptIdCache = new Map<string, string>();
 
@@ -1781,6 +1773,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const now = Date.now();
         let txCreated = 0;
         let pluCounter = 1;
+        const topLevelIds: string[] = [];
 
         for (const [, group] of groups) {
           const representative = group.items[0];
@@ -1799,6 +1792,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               category: representative.category || null, size: null, pluSku: parentPlu, price: null, sortOrder: group.sortBase,
               menuDepartmentId,
             });
+            topLevelIds.push(parentId);
             for (let j = 0; j < group.items.length; j++) {
               const variant = group.items[j];
               const menuItemSizeId = variant.size ? await findOrCreateSizeId(variant.size) : null;
@@ -1816,13 +1810,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (let j = 0; j < group.items.length; j++) {
               const item = group.items[j];
               const menuItemSizeId = item.size ? await findOrCreateSizeId(item.size) : null;
-              await insertMenuItemRow({
+              const itemId = await insertMenuItemRow({
                 name: item.name.trim(), department: item.department || null,
                 category: item.category || null, size: item.size || null,
                 pluSku: `SCAN-${now}-${pluCounter++}`, price: item.price ?? null,
                 sortOrder: group.sortBase + j, menuItemSizeId,
                 menuDepartmentId,
               });
+              topLevelIds.push(itemId);
               txCreated++;
             }
           }
@@ -1832,10 +1827,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .set({ status: "approved", rawImagePath: null, extractedItems: null, updatedAt: new Date() })
           .where(eq(menuImportSessions.id, sessionId));
 
-        return { created: txCreated };
+        return { created: txCreated, topLevelIds };
       });
 
-      return res.json({ menuItemsCreated: created });
+      return res.json({ menuItemsCreated: created, menuItemIds: topLevelIds });
     } catch (error: any) {
       console.error("[Onboarding Menu Scan Approve]", error);
       return res.status(500).json({ error: error.message });
@@ -7311,7 +7306,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const cost = await calculateRecipeCost(recipe.id, preloadedData, memo);
         return {
           ...recipe,
-          computedCost: cost  // Overwrite computedCost with fresh calculated value
+          computedCost: cost,  // Overwrite computedCost with fresh calculated value
+          componentCount: (allComponents.get(recipe.id) ?? []).length, // # of ingredients — used for costed checks
         };
       })
     );
