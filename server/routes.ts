@@ -15,6 +15,7 @@ import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
 import { getEffectiveUnitCost, type CostingMethodCarrier } from "./lib/costing";
 import { convertToInventoryUnits, autoSeedRecipeUnitsForItem } from "./lib/recipeUnits";
+import { resolvePriceSource, resolveScannedItemUnitPrice, resolveApplyLineUnitPrice } from "./lib/invoiceScanUtils";
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
 import { createSession, requireAuth, optionalAuth, requireTier, verifyPassword, hashPassword } from "./auth";
@@ -1920,11 +1921,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Ensure unitPrice is always a number — fall back to casePrice if the AI
         // only extracted a case price (common on distributor invoices).
         // Track the source so the UI can warn the user accordingly.
-        const priceSource: "unit" | "case" | "zero" =
-          item.unitPrice != null ? "unit" :
-          item.casePrice != null ? "case" :
-          "zero";
-        const resolvedUnitPrice = item.unitPrice ?? item.casePrice ?? 0;
+        const priceSource = resolvePriceSource(item);
+        const resolvedUnitPrice = resolveScannedItemUnitPrice(item);
 
         return {
           name: item.name,
@@ -2033,7 +2031,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .limit(1);
           if (existing.length === 0) continue;
 
-          const effectiveUnitPrice = line.unitPrice ?? line.casePrice ?? 0;
+          const effectiveUnitPrice = resolveApplyLineUnitPrice(line);
           await db.update(inventoryItems)
             .set({ pricePerUnit: effectiveUnitPrice, avgCostPerUnit: effectiveUnitPrice, updatedAt: new Date() })
             .where(eq(inventoryItems.id, line.inventoryItemId));
@@ -2061,7 +2059,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (line.action === "create") {
           const resolvedUnitId = resolveUnitId(line.unit);
           const resolvedCategoryId = resolveCategoryId(line.categoryHint);
-          const effectiveUnitPrice = line.unitPrice ?? line.casePrice ?? 0;
+          const effectiveUnitPrice = resolveApplyLineUnitPrice(line);
           const [newItem] = await db.insert(inventoryItems).values({
             companyId,
             name: line.name,

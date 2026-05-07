@@ -15,7 +15,11 @@ const config: VitestUserConfig = {
   },
   test: {
     environment: "node",
-    include: ["client/src/**/*.test.ts", "client/src/**/*.test.tsx"],
+    include: [
+      "client/src/**/*.test.ts",
+      "client/src/**/*.test.tsx",
+      "server/**/*.test.ts",
+    ],
     exclude: ["node_modules", ".cache"],
     environmentMatchGlobs: [
       ["client/src/**/*.component.test.tsx", "jsdom"],

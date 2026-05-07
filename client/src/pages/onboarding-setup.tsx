@@ -502,7 +502,7 @@ function PlanStep({
 }
 
 // ---- Step 3: Invoice Scan ----
-function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
+export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
   const { toast } = useToast();
   const [subStep, setSubStep] = useState<"upload" | "review">("upload");
   const [scanning, setScanning] = useState(false);
