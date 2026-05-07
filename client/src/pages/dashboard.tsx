@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,7 @@ const statusConfig: Record<string, { variant: "default" | "secondary" | "destruc
 export default function Dashboard() {
   const { selectedStoreId, selectedStore, stores, isLoading: storesLoading } = useStoreContext();
   const { user } = useAuth();
+  const { toast } = useToast();
   const search = useSearch();
   const isWelcome = search.includes("welcome=true");
 
@@ -790,6 +792,8 @@ export default function Dashboard() {
               navigator.clipboard.writeText(lines.join("\n")).then(() => {
                 setReorderCopied(true);
                 setTimeout(() => setReorderCopied(false), 2000);
+              }).catch(() => {
+                toast({ title: "Copy failed", description: "Could not access clipboard. Please copy manually.", variant: "destructive" });
               });
             };
 

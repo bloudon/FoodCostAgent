@@ -109,6 +109,12 @@ export default function ParLevels() {
   }, [activeItems, search, categoryFilter]);
 
   const sortedItems = useMemo(() => {
+    const hasParLevel = (item: InventoryItem): boolean => {
+      const d = dirty[item.id];
+      if (d !== undefined) return d.parLevel !== null;
+      return item.parLevel !== null;
+    };
+
     return [...filteredItems].sort((a, b) => {
       let cmp = 0;
       if (sortField === "name") {
@@ -116,13 +122,11 @@ export default function ParLevels() {
       } else if (sortField === "category") {
         cmp = (a.category ?? "").localeCompare(b.category ?? "");
       } else if (sortField === "parStatus") {
-        const aHas = a.parLevel !== null ? 1 : 0;
-        const bHas = b.parLevel !== null ? 1 : 0;
-        cmp = bHas - aHas; // set first by default asc
+        cmp = (hasParLevel(b) ? 1 : 0) - (hasParLevel(a) ? 1 : 0);
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [filteredItems, sortField, sortDir]);
+  }, [filteredItems, sortField, sortDir, dirty]);
 
   const handleSort = (field: SortField) => {
     if (field === sortField) {
@@ -218,14 +222,44 @@ export default function ParLevels() {
     const dirtyIds = Object.keys(dirty);
     if (dirtyIds.length === 0) return;
 
-    await Promise.all(
+    const results = await Promise.allSettled(
       dirtyIds.map(async (id) => {
         const item = items.find((i) => i.id === id);
-        if (item) await saveRow(item);
+        if (!item) return;
+        const row = dirty[id];
+        if (!row) return;
+        setSaving((prev) => ({ ...prev, [id]: true }));
+        const res = await apiRequest("PATCH", `/api/inventory-items/${id}`, {
+          parLevel: row.parLevel,
+          reorderLevel: row.reorderLevel,
+        });
+        if (!res.ok) throw new Error(`Failed to save ${item.name}`);
+        setDirty((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        setSaving((prev) => ({ ...prev, [id]: false }));
       })
     );
-    toast({ title: "Saved", description: "All par levels updated." });
-  }, [dirty, items, saveRow, toast]);
+
+    const failed = results.filter((r) => r.status === "rejected").length;
+    const saved = results.length - failed;
+
+    queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/reorder-list"] });
+
+    if (failed === 0) {
+      toast({ title: "Saved", description: `${saved} item${saved !== 1 ? "s" : ""} updated.` });
+    } else {
+      toast({
+        title: "Partial save",
+        description: `${saved} saved, ${failed} failed. Please retry.`,
+        variant: "destructive",
+      });
+    }
+  }, [dirty, items, toast]);
 
   return (
     <div className={`p-4 sm:p-8 ${showBanner ? "pb-20" : ""}`}>
