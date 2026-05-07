@@ -1951,6 +1951,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const lineSchema = z.object({
         name: z.string().min(1),
         unitPrice: z.number().positive(),
+        unit: z.string().optional(),
+        categoryHint: z.string().optional(),
         action: z.enum(["update", "create", "skip"]),
         inventoryItemId: z.string().optional(),
       });
@@ -1963,20 +1965,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const { items } = parsed.data;
 
-      // Resolve the default unit (lb) for newly created items
-      const lbUnit = await db.select().from(units).where(eq(units.abbreviation, "lb")).limit(1);
-      const defaultUnitId = lbUnit[0]?.id;
+      // Preload all units for unit-string matching (done once for the whole request)
+      const allUnits = await db.select({ id: units.id, abbreviation: units.abbreviation, name: units.name })
+        .from(units);
+      const lbUnit = allUnits.find(u => u.abbreviation === "lb");
+      const defaultUnitId = lbUnit?.id;
       if (!defaultUnitId) {
         return res.status(500).json({ error: "Default unit 'lb' not found. Please contact support." });
       }
 
-      // Resolve a default category for the company (first active category)
-      const defaultCategoryRows = await db.select({ id: categories.id })
+      // Helper: resolve a unit string (e.g. "oz", "lb", "each") to a unit ID, falling back to lb
+      const resolveUnitId = (unitStr: string | undefined | null): string => {
+        if (!unitStr) return defaultUnitId;
+        const norm = unitStr.toLowerCase().trim();
+        const match = allUnits.find(u =>
+          u.abbreviation.toLowerCase() === norm ||
+          u.name.toLowerCase() === norm
+        );
+        return match?.id ?? defaultUnitId;
+      };
+
+      // Preload all active company categories for category-hint matching
+      const allCategories = await db.select({ id: categories.id, name: categories.name })
         .from(categories)
         .where(and(eq(categories.companyId, companyId), eq(categories.isActive, 1)))
-        .orderBy(asc(categories.sortOrder))
-        .limit(1);
-      const defaultCategoryId = defaultCategoryRows[0]?.id || null;
+        .orderBy(asc(categories.sortOrder));
+      const defaultCategoryId = allCategories[0]?.id || null;
+
+      // Helper: resolve a categoryHint string to the best-matching category ID
+      const resolveCategoryId = (hint: string | undefined | null): string | null => {
+        if (!hint || allCategories.length === 0) return defaultCategoryId;
+        const hintNorm = hint.toLowerCase().trim();
+        const exact = allCategories.find(c => c.name.toLowerCase() === hintNorm);
+        if (exact) return exact.id;
+        const partial = allCategories.find(c =>
+          c.name.toLowerCase().includes(hintNorm) || hintNorm.includes(c.name.toLowerCase())
+        );
+        return partial?.id ?? defaultCategoryId;
+      };
 
       const updatedItemIds: string[] = [];
       const createdItemIds: string[] = [];
@@ -1993,17 +2019,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (existing.length === 0) continue;
 
           await db.update(inventoryItems)
-            .set({ pricePerUnit: line.unitPrice, updatedAt: new Date() })
+            .set({ pricePerUnit: line.unitPrice, avgCostPerUnit: line.unitPrice, updatedAt: new Date() })
             .where(eq(inventoryItems.id, line.inventoryItemId));
           updatedItemIds.push(line.inventoryItemId);
         }
 
         if (line.action === "create") {
+          const resolvedUnitId = resolveUnitId(line.unit);
+          const resolvedCategoryId = resolveCategoryId(line.categoryHint);
           const [newItem] = await db.insert(inventoryItems).values({
             companyId,
             name: line.name,
-            unitId: defaultUnitId,
-            categoryId: defaultCategoryId,
+            unitId: resolvedUnitId,
+            categoryId: resolvedCategoryId,
             pricePerUnit: line.unitPrice,
             avgCostPerUnit: line.unitPrice,
             yieldPercent: 100,

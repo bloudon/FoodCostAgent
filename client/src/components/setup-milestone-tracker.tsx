@@ -276,7 +276,7 @@ export function SetupMilestoneTracker() {
                               size="sm"
                               data-testid={`button-go-${milestone.id}`}
                             >
-                              Go
+                              {milestone.id === "costs" ? "Upload Invoices" : "Go"}
                               <ArrowRight className="h-3 w-3 ml-1" />
                             </Button>
                           </Link>

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
@@ -25,6 +25,8 @@ import {
   RotateCcw,
   DollarSign,
   Package,
+  PlusCircle,
+  Trash2,
 } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 
@@ -47,6 +49,8 @@ type ItemAction = "update" | "create" | "skip";
 interface ReviewRow {
   item: ScannedItem;
   action: ItemAction;
+  name: string;
+  unit: string;
   unitPrice: string;
   inventoryItemId: string | null;
 }
@@ -61,14 +65,15 @@ function confidenceBadge(confidence: "high" | "medium" | "none") {
   return <Badge variant="secondary" className="text-xs">New</Badge>;
 }
 
+type Phase = "upload" | "scanning" | "review" | "applying" | "done";
+
 export default function OnboardingSeedCosts() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [phase, setPhase] = useState<"upload" | "scanning" | "review" | "applying" | "done">("upload");
-  const [uploadedPath, setUploadedPath] = useState<string | null>(null);
-  const [vendorName, setVendorName] = useState<string | null>(null);
+  const [phase, setPhase] = useState<Phase>("upload");
   const [rows, setRows] = useState<ReviewRow[]>([]);
-  const uploadRef = useRef<string | null>(null);
+  const [scanCount, setScanCount] = useState(0);
+  const [isScanningMore, setIsScanningMore] = useState(false);
 
   const scanMutation = useMutation({
     mutationFn: async (imageObjectPath: string) => {
@@ -80,29 +85,40 @@ export default function OnboardingSeedCosts() {
       return res.json() as Promise<{ items: ScannedItem[]; vendorName: string | null }>;
     },
     onSuccess: (data) => {
-      setVendorName(data.vendorName);
-      const initialRows: ReviewRow[] = data.items.map((item) => {
+      const newRows: ReviewRow[] = data.items.map((item) => {
         const resolvedPrice = item.unitPrice ?? (item.casePrice ?? null);
         const defaultAction: ItemAction =
           item.matchConfidence !== "none" ? "update" : "create";
         return {
           item,
           action: defaultAction,
+          name: item.name,
+          unit: item.unit || "lb",
           unitPrice: resolvedPrice != null ? String(resolvedPrice.toFixed(4)) : "",
           inventoryItemId: item.matchedItemId,
         };
       });
-      setRows(initialRows);
+      setRows((prev) => {
+        // De-duplicate by name (case-insensitive) — keep existing row if already present
+        const existingNames = new Set(prev.map(r => r.name.toLowerCase()));
+        const fresh = newRows.filter(r => !existingNames.has(r.name.toLowerCase()));
+        return [...prev, ...fresh];
+      });
+      setScanCount((c) => c + 1);
       setPhase("review");
+      setIsScanningMore(false);
     },
     onError: (err: Error) => {
       toast({ title: "Scan failed", description: err.message, variant: "destructive" });
-      setPhase("upload");
+      if (scanCount === 0) setPhase("upload");
+      else setIsScanningMore(false);
     },
   });
 
   const applyMutation = useMutation({
-    mutationFn: async (payload: { items: { name: string; unitPrice: number; action: ItemAction; inventoryItemId?: string }[] }) => {
+    mutationFn: async (payload: {
+      items: { name: string; unitPrice: number; unit: string; categoryHint?: string; action: ItemAction; inventoryItemId?: string }[];
+    }) => {
       const res = await apiRequest("POST", "/api/onboarding/invoice-scan/apply", payload);
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Apply failed" }));
@@ -115,7 +131,7 @@ export default function OnboardingSeedCosts() {
       setPhase("done");
       toast({
         title: "Costs saved",
-        description: `Updated ${data.updated} item${data.updated !== 1 ? "s" : ""}, created ${data.created} new. ${data.recipesRecalculated > 0 ? `${data.recipesRecalculated} recipe${data.recipesRecalculated !== 1 ? "s" : ""} recalculated.` : ""}`,
+        description: `Updated ${data.updated} item${data.updated !== 1 ? "s" : ""}, created ${data.created} new.${data.recipesRecalculated > 0 ? ` ${data.recipesRecalculated} recipe${data.recipesRecalculated !== 1 ? "s" : ""} recalculated.` : ""}`,
       });
     },
     onError: (err: Error) => {
@@ -124,45 +140,51 @@ export default function OnboardingSeedCosts() {
     },
   });
 
-  function handleUploadComplete(objectPath: string) {
-    uploadRef.current = objectPath;
-    setUploadedPath(objectPath);
-    setPhase("scanning");
+  const handleUploadComplete = useCallback((objectPath: string) => {
+    if (scanCount === 0) setPhase("scanning");
+    else setIsScanningMore(true);
     scanMutation.mutate(objectPath);
-  }
+  }, [scanCount, scanMutation]);
 
   function handleActionChange(idx: number, action: ItemAction) {
     setRows((prev) => {
       const next = [...prev];
-      next[idx] = { ...next[idx], action };
-      if (action === "update") {
-        next[idx].inventoryItemId = next[idx].item.matchedItemId;
-      }
+      next[idx] = {
+        ...next[idx],
+        action,
+        inventoryItemId: action === "update" ? next[idx].item.matchedItemId : null,
+      };
       return next;
     });
   }
 
-  function handlePriceChange(idx: number, value: string) {
+  function handleFieldChange(idx: number, field: "name" | "unit" | "unitPrice", value: string) {
     setRows((prev) => {
       const next = [...prev];
-      next[idx] = { ...next[idx], unitPrice: value };
+      next[idx] = { ...next[idx], [field]: value };
       return next;
     });
+  }
+
+  function handleRemoveRow(idx: number) {
+    setRows((prev) => prev.filter((_, i) => i !== idx));
   }
 
   function handleApply() {
     const payload = rows
       .filter((r) => r.action !== "skip")
       .map((r) => ({
-        name: r.item.name,
+        name: r.name.trim() || r.item.name,
         unitPrice: parseFloat(r.unitPrice),
+        unit: r.unit.trim() || "lb",
+        categoryHint: r.item.categoryHint || undefined,
         action: r.action,
         inventoryItemId: r.action === "update" && r.inventoryItemId ? r.inventoryItemId : undefined,
       }))
       .filter((r) => !isNaN(r.unitPrice) && r.unitPrice > 0);
 
     if (payload.length === 0) {
-      toast({ title: "Nothing to apply", description: "Mark at least one item to update or create.", variant: "destructive" });
+      toast({ title: "Nothing to apply", description: "Set a valid price on at least one item.", variant: "destructive" });
       return;
     }
 
@@ -200,7 +222,7 @@ export default function OnboardingSeedCosts() {
         </Button>
       </div>
 
-      <div className="flex-1 flex flex-col items-center px-4 py-10 max-w-4xl mx-auto w-full">
+      <div className="flex-1 flex flex-col items-center px-4 py-10 max-w-5xl mx-auto w-full">
         {/* Step header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-accent/10 mb-4">
@@ -210,11 +232,11 @@ export default function OnboardingSeedCosts() {
             Seed Ingredient Costs
           </h1>
           <p className="text-muted-foreground max-w-lg mx-auto">
-            Upload a vendor invoice or price list so we can fill in ingredient costs. This lets food cost % appear on your menu items right away.
+            Upload 1–3 vendor invoices or price lists so we can fill in ingredient costs. This lets food cost % appear on your menu items right away.
           </p>
         </div>
 
-        {/* Phase: upload */}
+        {/* Phase: initial upload */}
         {phase === "upload" && (
           <div
             className="w-full max-w-lg border-2 border-dashed rounded-lg p-10 flex flex-col items-center gap-4 text-center"
@@ -237,7 +259,7 @@ export default function OnboardingSeedCosts() {
           </div>
         )}
 
-        {/* Phase: scanning */}
+        {/* Phase: scanning first image */}
         {phase === "scanning" && (
           <div className="flex flex-col items-center gap-4 py-16" data-testid="scanning-state">
             <Loader2 className="h-10 w-10 animate-spin text-accent" />
@@ -280,25 +302,44 @@ export default function OnboardingSeedCosts() {
             <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
               <div>
                 <p className="font-medium">
-                  {vendorName ? (
-                    <>Found {rows.length} item{rows.length !== 1 ? "s" : ""} from <span className="font-bold">{vendorName}</span></>
-                  ) : (
-                    <>Found {rows.length} item{rows.length !== 1 ? "s" : ""}</>
-                  )}
+                  {rows.length} item{rows.length !== 1 ? "s" : ""} extracted
+                  {scanCount > 1 && <span className="text-muted-foreground text-sm ml-1">from {scanCount} invoices</span>}
                 </p>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  Review the extracted costs. Adjust prices or skip items before saving.
+                  Review extracted costs. Edit names, units, or prices before saving.
                 </p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => { setPhase("upload"); setRows([]); setUploadedPath(null); }}
-                data-testid="button-rescan"
-              >
-                <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                Try another photo
-              </Button>
+              <div className="flex items-center gap-2">
+                {scanCount < 3 && (
+                  <div className="relative">
+                    {isScanningMore ? (
+                      <Button variant="outline" size="sm" disabled data-testid="button-adding-more">
+                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                        Scanning...
+                      </Button>
+                    ) : (
+                      <ObjectUploader
+                        onUploadComplete={handleUploadComplete}
+                        buttonText="Add another invoice"
+                        dataTestId="button-add-invoice"
+                        maxFileSize={15 * 1024 * 1024}
+                        visibility="private"
+                        buttonVariant="outline"
+                        icon={<PlusCircle className="h-3.5 w-3.5" />}
+                      />
+                    )}
+                  </div>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setPhase("upload"); setRows([]); setScanCount(0); }}
+                  data-testid="button-rescan"
+                >
+                  <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                  Start over
+                </Button>
+              </div>
             </div>
 
             <div className="rounded-md border overflow-auto mb-4">
@@ -306,10 +347,11 @@ export default function OnboardingSeedCosts() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="min-w-[180px]">Item Name</TableHead>
-                    <TableHead className="min-w-[140px]">Match</TableHead>
+                    <TableHead className="min-w-[80px]">Unit</TableHead>
                     <TableHead className="min-w-[110px]">Unit Cost</TableHead>
-                    <TableHead className="min-w-[110px]">Pack Info</TableHead>
+                    <TableHead className="min-w-[140px]">Match</TableHead>
                     <TableHead className="min-w-[130px]">Action</TableHead>
+                    <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -320,26 +362,29 @@ export default function OnboardingSeedCosts() {
                       data-testid={`review-row-${idx}`}
                     >
                       <TableCell>
-                        <div className="flex items-start gap-1.5">
-                          <Package className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
-                          <span className="text-sm font-medium leading-tight">{row.item.name}</span>
+                        <div className="flex items-center gap-1">
+                          <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <Input
+                            value={row.name}
+                            onChange={(e) => handleFieldChange(idx, "name", e.target.value)}
+                            className="h-8 text-sm"
+                            disabled={row.action === "skip"}
+                            data-testid={`input-name-${idx}`}
+                          />
                         </div>
                         {row.item.categoryHint && (
-                          <span className="text-xs text-muted-foreground ml-5">{row.item.categoryHint}</span>
+                          <span className="text-xs text-muted-foreground ml-6 mt-0.5 block">{row.item.categoryHint}</span>
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col gap-1">
-                          {confidenceBadge(row.item.matchConfidence)}
-                          {row.item.matchedItemName && row.action === "update" && (
-                            <span className="text-xs text-muted-foreground leading-tight">
-                              {row.item.matchedItemName}
-                            </span>
-                          )}
-                          {row.action === "create" && (
-                            <span className="text-xs text-muted-foreground">Will create new</span>
-                          )}
-                        </div>
+                        <Input
+                          value={row.unit}
+                          onChange={(e) => handleFieldChange(idx, "unit", e.target.value)}
+                          className="h-8 text-sm w-20"
+                          placeholder="lb"
+                          disabled={row.action === "skip"}
+                          data-testid={`input-unit-${idx}`}
+                        />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
@@ -347,7 +392,7 @@ export default function OnboardingSeedCosts() {
                           <Input
                             type="number"
                             value={row.unitPrice}
-                            onChange={(e) => handlePriceChange(idx, e.target.value)}
+                            onChange={(e) => handleFieldChange(idx, "unitPrice", e.target.value)}
                             className="w-24 h-8 text-sm"
                             step="0.0001"
                             min="0"
@@ -357,9 +402,17 @@ export default function OnboardingSeedCosts() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="text-xs text-muted-foreground">
-                          {row.item.packSizeDescription || row.item.unit || "—"}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          {confidenceBadge(row.item.matchConfidence)}
+                          {row.item.matchedItemName && row.action === "update" && (
+                            <span className="text-xs text-muted-foreground leading-tight">
+                              → {row.item.matchedItemName}
+                            </span>
+                          )}
+                          {row.action === "create" && (
+                            <span className="text-xs text-muted-foreground">Will create new</span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1 flex-wrap">
@@ -394,6 +447,17 @@ export default function OnboardingSeedCosts() {
                           </Button>
                         </div>
                       </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleRemoveRow(idx)}
+                          data-testid={`button-remove-row-${idx}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -405,8 +469,8 @@ export default function OnboardingSeedCosts() {
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <AlertCircle className="h-4 w-4" />
                 <span>
-                  {activeRows.length} item{activeRows.length !== 1 ? "s" : ""} will be saved.{" "}
-                  {rows.length - activeRows.length > 0 && `${rows.length - activeRows.length} skipped.`}
+                  {activeRows.length} item{activeRows.length !== 1 ? "s" : ""} will be saved.
+                  {rows.length - activeRows.length > 0 && ` ${rows.length - activeRows.length} skipped.`}
                 </span>
               </div>
               <div className="flex items-center gap-2">
