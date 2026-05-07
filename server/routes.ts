@@ -1445,11 +1445,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "User is not associated with a company" });
       }
 
-      const [storeRows, categoryRows, vendorRows, inventoryRows, recipeRows, menuRows, progressRows, teamRows] = await Promise.all([
+      const [storeRows, categoryRows, vendorRows, inventoryRows, costsRows, recipeRows, menuRows, progressRows, teamRows] = await Promise.all([
         db.select().from(companyStores).where(eq(companyStores.companyId, companyId)).limit(1),
         db.select().from(categories).where(eq(categories.companyId, companyId)).limit(1),
         db.select().from(vendors).where(and(eq(vendors.companyId, companyId), not(like(vendors.name, '%Misc Grocery%')))).limit(1),
         db.select().from(inventoryItems).where(eq(inventoryItems.companyId, companyId)).limit(1),
+        db.select().from(inventoryItems).where(and(eq(inventoryItems.companyId, companyId), gt(inventoryItems.pricePerUnit, 0))).limit(1),
         db.select().from(recipes).where(eq(recipes.companyId, companyId)).limit(1),
         db.select().from(menuItems).where(eq(menuItems.companyId, companyId)).limit(1),
         db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1),
@@ -1469,6 +1470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { id: "categories", label: "Review Categories", completed: reviewedSteps.includes("categories"), path: "/categories" },
         { id: "vendors", label: "Add a Vendor", completed: vendorRows.length > 0 || reviewedSteps.includes("vendors"), path: "/vendors" },
         { id: "inventory", label: "Add Inventory Items", completed: inventoryRows.length > 0 || reviewedSteps.includes("inventory"), path: "/inventory-items" },
+        { id: "costs", label: "Seed Ingredient Costs", completed: costsRows.length > 0 || reviewedSteps.includes("costs"), path: "/onboarding/seed-costs" },
         { id: "recipes", label: "Create a Recipe", completed: recipeRows.length > 0 || reviewedSteps.includes("recipes"), path: "/recipes" },
         { id: "menu", label: "Add Menu Items", completed: menuRows.length > 0 || reviewedSteps.includes("menu"), path: "/menu-items" },
         { id: "team", label: "Invite Your Team", completed: teamRows.length > 0 || reviewedSteps.includes("team"), path: "/users" },
@@ -1828,6 +1830,214 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("[Onboarding Menu Scan Approve]", error);
       return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============ ONBOARDING INVOICE COST SEEDING ============
+
+  /**
+   * POST /api/onboarding/invoice-scan
+   * Accepts an already-uploaded image objectPath, runs GPT-4o Vision to extract
+   * vendor line items, and fuzzy-matches them against existing inventory items.
+   * Returns extracted items with match metadata for operator review.
+   * No vendor/PO required — stripped-down version for the onboarding context.
+   */
+  app.post("/api/onboarding/invoice-scan", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const userId = (req as any).user?.id;
+
+      const bodySchema = z.object({
+        imageObjectPath: z.string().min(1, "imageObjectPath is required"),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+      const { imageObjectPath } = parsed.data;
+
+      const { buffer, mimeType: storageMime } = await readImageBuffer(imageObjectPath, companyId, userId);
+
+      function detectMime(buf: Buffer): string | null {
+        if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+        if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
+        if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+          buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
+        return null;
+      }
+      const mimeType = detectMime(buffer) || storageMime || "image/jpeg";
+      if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+        return res.status(415).json({ error: "Unsupported image type. Please upload JPG, PNG, or WebP." });
+      }
+
+      const { scanVendorReceipt } = await import('./services/vendorReceiptScanner');
+      const scanResult = await scanVendorReceipt(buffer, mimeType);
+
+      if (scanResult.items.length === 0) {
+        return res.status(422).json({ error: "No product line items could be extracted from this image. Try a clearer photo." });
+      }
+
+      // Fuzzy-match extracted items against existing inventory items
+      const existingItems = await db.select({
+        id: inventoryItems.id,
+        name: inventoryItems.name,
+        pricePerUnit: inventoryItems.pricePerUnit,
+      }).from(inventoryItems).where(eq(inventoryItems.companyId, companyId));
+
+      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+
+      const resultItems = scanResult.items.map((item) => {
+        const itemNorm = normalize(item.name);
+        const itemWords = new Set(itemNorm.split(' ').filter(w => w.length > 2));
+        let bestScore = 0;
+        let bestMatch: { id: string; name: string; pricePerUnit: number } | null = null;
+
+        for (const inv of existingItems) {
+          const invNorm = normalize(inv.name);
+          const invWords = new Set(invNorm.split(' ').filter(w => w.length > 2));
+          if (itemWords.size === 0 && invWords.size === 0) continue;
+          const intersection = [...itemWords].filter(w => invWords.has(w)).length;
+          const union = new Set([...itemWords, ...invWords]).size;
+          const jaccard = union > 0 ? intersection / union : 0;
+
+          // Exact substring bonus
+          const exactBonus = (invNorm.includes(itemNorm) || itemNorm.includes(invNorm)) ? 0.2 : 0;
+          const score = Math.min(1, jaccard + exactBonus);
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = inv;
+          }
+        }
+
+        const confidence = bestScore >= 0.6 ? "high" : bestScore >= 0.35 ? "medium" : "none";
+        const matchedItem = confidence !== "none" ? bestMatch : null;
+
+        return {
+          name: item.name,
+          sku: item.sku || null,
+          unitPrice: item.unitPrice,
+          casePrice: item.casePrice,
+          priceType: item.priceType,
+          packSizeDescription: item.packSizeDescription || null,
+          unit: item.unit || null,
+          categoryHint: item.categoryHint || null,
+          matchedItemId: matchedItem?.id || null,
+          matchedItemName: matchedItem?.name || null,
+          matchConfidence: confidence,
+        };
+      });
+
+      res.json({ items: resultItems, vendorName: scanResult.vendorName });
+    } catch (error: any) {
+      console.error("[Onboarding Invoice Scan]", error);
+      res.status(500).json({ error: error.message || "Failed to scan invoice" });
+    }
+  });
+
+  /**
+   * POST /api/onboarding/invoice-scan/apply
+   * Accepts operator-reviewed line items and applies them:
+   *   action "update" → update pricePerUnit on the matched inventory item
+   *   action "create" → create a new inventory item stub with the given price
+   *   action "skip"   → no-op
+   * After applying, triggers recipe cost recalculation for all affected items.
+   */
+  app.post("/api/onboarding/invoice-scan/apply", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const userId = (req as any).user?.id;
+
+      const lineSchema = z.object({
+        name: z.string().min(1),
+        unitPrice: z.number().positive(),
+        action: z.enum(["update", "create", "skip"]),
+        inventoryItemId: z.string().optional(),
+      });
+      const bodySchema = z.object({
+        items: z.array(lineSchema).min(1),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+      const { items } = parsed.data;
+
+      // Resolve the default unit (lb) for newly created items
+      const lbUnit = await db.select().from(units).where(eq(units.abbreviation, "lb")).limit(1);
+      const defaultUnitId = lbUnit[0]?.id;
+      if (!defaultUnitId) {
+        return res.status(500).json({ error: "Default unit 'lb' not found. Please contact support." });
+      }
+
+      // Resolve a default category for the company (first active category)
+      const defaultCategoryRows = await db.select({ id: categories.id })
+        .from(categories)
+        .where(and(eq(categories.companyId, companyId), eq(categories.isActive, 1)))
+        .orderBy(asc(categories.sortOrder))
+        .limit(1);
+      const defaultCategoryId = defaultCategoryRows[0]?.id || null;
+
+      const updatedItemIds: string[] = [];
+      const createdItemIds: string[] = [];
+
+      for (const line of items) {
+        if (line.action === "skip") continue;
+
+        if (line.action === "update" && line.inventoryItemId) {
+          // Verify item belongs to this company before updating
+          const existing = await db.select({ id: inventoryItems.id, companyId: inventoryItems.companyId })
+            .from(inventoryItems)
+            .where(and(eq(inventoryItems.id, line.inventoryItemId), eq(inventoryItems.companyId, companyId)))
+            .limit(1);
+          if (existing.length === 0) continue;
+
+          await db.update(inventoryItems)
+            .set({ pricePerUnit: line.unitPrice, updatedAt: new Date() })
+            .where(eq(inventoryItems.id, line.inventoryItemId));
+          updatedItemIds.push(line.inventoryItemId);
+        }
+
+        if (line.action === "create") {
+          const [newItem] = await db.insert(inventoryItems).values({
+            companyId,
+            name: line.name,
+            unitId: defaultUnitId,
+            categoryId: defaultCategoryId,
+            pricePerUnit: line.unitPrice,
+            avgCostPerUnit: line.unitPrice,
+            yieldPercent: 100,
+            caseSize: 20,
+            active: 1,
+          }).returning({ id: inventoryItems.id });
+          if (newItem?.id) createdItemIds.push(newItem.id);
+        }
+      }
+
+      // Trigger recipe cost recalculation for all updated items
+      const allAffectedItemIds = [...updatedItemIds];
+      const affectedRecipeIdSet = new Set<string>();
+      for (const itemId of allAffectedItemIds) {
+        const recipeIds = await findAffectedRecipesByInventoryItem(itemId, companyId);
+        recipeIds.forEach(id => affectedRecipeIdSet.add(id));
+      }
+
+      if (affectedRecipeIdSet.size > 0) {
+        for (const recipeId of affectedRecipeIdSet) {
+          const newCost = await calculateRecipeCost(recipeId);
+          await storage.updateRecipe(recipeId, { computedCost: newCost });
+        }
+        await cacheInvalidator.invalidateRecipes(companyId);
+      }
+
+      res.json({
+        updated: updatedItemIds.length,
+        created: createdItemIds.length,
+        recipesRecalculated: affectedRecipeIdSet.size,
+      });
+    } catch (error: any) {
+      console.error("[Onboarding Invoice Apply]", error);
+      res.status(500).json({ error: error.message || "Failed to apply costs" });
     }
   });
 

@@ -29,6 +29,7 @@ const milestoneLabels: Record<string, string> = {
   categories: "Review Categories",
   vendors: "Vendor",
   inventory: "Inventory",
+  costs: "Seed Ingredient Costs",
   recipes: "Recipe",
   menu: "Menu Items",
   team: "Invite Your Team",
