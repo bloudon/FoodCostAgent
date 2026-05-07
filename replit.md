@@ -2,6 +2,73 @@
 
 FNB Cost Pro is an AI-powered inventory management and recipe costing system for food service businesses. Its core purpose is to boost profitability and operational efficiency by utilizing photo-first data entry (menu, recipe, invoice, shelf scans), precise unit conversions, multi-level nested recipe costing, POS sales data integration, and comprehensive variance reporting. The project aims to reduce waste, optimize profit margins, offer real-time inventory insights, streamline vendor interactions, and establish strong food cost control within the restaurant industry.
 
+---
+
+# ⚠️ CRITICAL ARCHITECTURE — READ FIRST, NEVER FORGET
+
+## Two fully built, active client surfaces — one backend
+
+FnB Cost Pro has **TWO production client applications** sharing one PostgreSQL database and one Express backend:
+
+### 1. Expo Native Mobile App ("Floor Mode")
+- **Repo**: https://replit.com/@loudonbrian/Fnb-Cost-Scanner
+- **Status**: Fully developed, active, in production. NOT a prototype.
+- **Purpose**: Floor-level tasks — inventory counting, shelf scanning, catch-weight, waste logging. Crew and manager tool.
+- **Auth**: Token-based. `POST /api/mobile/login` returns session token in JSON body (not cookie). Sessions tagged `source: "mobile"` in `authSessions`.
+- **Pattern**: Deliberate hybrid — native React Native screens for hardware/shell, WebViews for management content.
+
+**Native React Native screens** (custom UI, call `/api/mobile/*` directly):
+- Login, Settings (auth shell)
+- Home / dashboard tab
+- Camera (device hardware required)
+- Scan results
+- Session detail, session items list, individual item view
+
+**WebView screens** (wrap mobile-optimized web app pages, auth via `?mobileToken=` + JS Bearer header patch):
+- Inventory sessions list → `https://app.fnbcostpro.com/inventory-sessions?embedded=true`
+- Count session → `https://app.fnbcostpro.com/count/[sessionId]/mobile`
+
+**Governing rule**: If a mobile-optimized web route exists → Expo wraps it in a WebView. If not → native screen calling `/api/mobile/*`. New mobile UI features should follow this pattern: build the route here first, Expo wraps it.
+
+### 2. Web SPA — Management Interface
+- **URL**: `app.fnbcostpro.com`
+- **Purpose**: Office/management tasks — recipe building, TFC variance, vendor orders, QuickBooks, transfers, reports, setup.
+- **Auth**: Cookie-based sessions (standard).
+- **Stack**: React 18, TypeScript, Vite, shadcn/ui, TanStack Query, Wouter.
+- Marketing site at `fnbcostpro.com` (hostname-based routing separates the two).
+
+## Mobile API Contract (`/api/mobile/*`)
+All mobile endpoints require Bearer token auth except where noted:
+- `POST /api/mobile/login` — token-based login (no auth required)
+- `GET  /api/mobile/dashboard` — home screen (businessName, locationName, recentScans)
+- `GET  /api/mobile/stores` — store picker for starting a count
+- `POST /api/mobile/sweep-scan` — AI shelf scan via GPT-4o Vision (multipart image upload)
+- `POST /api/mobile/catch-weight-scan` — barcode + scale weight scan
+- `GET  /api/mobile/background-images` — mobile-flagged images (`isMobileAvailable=1`)
+- `POST /api/mobile/sessions` — create inventory count session
+- `GET  /api/mobile/sessions/active` — active sessions for user
+- `GET  /api/mobile/sessions/:id` — session detail
+- `GET  /api/mobile/sessions/:id/items` — session items
+- `GET  /api/mobile/sessions/:id/inventory` — session inventory
+- `PATCH /api/mobile/sessions/:id/inventory/:itemId` — update item count
+- `GET  /api/mobile/sessions/:id/lines` — session count lines
+- `PATCH /api/mobile/sessions/:id/lines/:lineId` — update a count line
+- `POST /api/mobile/sessions/:id/apply` — finalize and apply a count session
+- `POST /api/mobile/sessions/:id/apply-scan` — apply AI-identified items from scan
+
+## User Roles (three tiers, used for role-aware mobile dashboard)
+- **Company Admin** — full access, management + floor
+- **Store Manager** — store-level management + floor tasks
+- **User** — floor tasks only (counting, scanning, waste)
+
+## Planned Mobile Expansions (not yet built)
+- Role-aware `/dashboard/mobile` WebView page (replaces native home screen — Option A)
+- Alert system: `alerts` table + `/api/mobile/alerts` + `/alerts/mobile` WebView
+- @Messaging: `messages` table + `/api/mobile/messages` + `/messages/mobile` WebView
+- Expo push token storage: `/api/mobile/push-token` endpoint
+
+---
+
 # User Preferences
 
 - Preferred communication style: Simple, everyday language.
@@ -13,7 +80,7 @@ FNB Cost Pro is an AI-powered inventory management and recipe costing system for
 - Store Locations: Inventory items require assignment to at least one store location during creation.
 - Storage Locations: Inventory items can be associated with multiple storage locations; at least one is required. Storage Locations page features drag-and-drop reordering. Inventory count displays respect storage location sortOrder.
 - Recipe `canBeIngredient`: Recipes include a `canBeIngredient` checkbox field (0/1 in DB) to mark if they can be used as ingredients in other recipes.
-- Count Entry Sub-History: `inventoryCountEntries` table tracks discrete count additions per line (id, inventoryCountLineId, qty, userId, enteredAt). POST creates the first entry; PATCH with `accumulate: true` appends a new entry (used by "+" button); direct PATCH replaces entries. GET `/api/inventory-count-lines/:countId` furnishes each line with `entries[]` (qty, enteredAt, userName). UI shows collapsible "Count history" inline on any card that has more than one entry.
+- Count Entry Sub-History: `inventoryCountEntries` table tracks discrete count additions per line (id, inventoryCountLineId, qty, userId, enteredAt). POST creates the first entry; PATCH with `accumulate: true` appends a new entry (used by "+" button"); direct PATCH replaces entries. GET `/api/inventory-count-lines/:countId` furnishes each line with `entries[]` (qty, enteredAt, userName). UI shows collapsible "Count history" inline on any card that has more than one entry.
 - Prep Chart Recipe Linkage & Pull List: When a prep item is linked to a `canBeIngredient` recipe, the recipe's components are shown as read-only inherited ingredients in the Prep Item Builder. The Prep Chart generate endpoint enriches each chart line with `requiredIngredients` (ingredient qty × recommendedBatches, sourced from linked recipe's components or the prep item's own ingredients). The Prep Chart UI shows a "Requires" column per line and a "Pull List" toggle view that aggregates all required ingredients across all chart lines grouped by ingredient.
 - Category Filtering in Recipe Builder: Categories include a `showAsIngredient` field (0/1 in DB) controlling whether items in this category appear in the recipe builder's ingredient selection.
 - Category Soft-Delete Protection: Categories use soft-delete only (`isActive` column, integer 0/1). `DELETE` endpoint sets `isActive=0`; a `POST /api/categories/:id/restore` endpoint reactivates. `GET /api/categories` returns only active; `?includeInactive=true` returns all. Database-level FK constraint (`inventory_items_category_id_fk`) with `ON DELETE SET NULL` prevents orphaned items if a hard delete ever reaches the DB. Default category set expanded to 11 categories: Produce, Dairy, Proteins, Seafood, Frozen, Walk-In, Dry/Pantry, Bread/Dough, Spices & Seasonings, Beverages, Cleaning & Supplies. Item count shown as a badge on each category. Inactive categories collapsible section at bottom of page.
@@ -41,17 +108,19 @@ FNB Cost Pro is an AI-powered inventory management and recipe costing system for
 
 # System Architecture
 
-- **Frontend**: React 18 SPA with TypeScript, Vite, `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing, built with a mobile-first approach. Hostname-based routing separates marketing (`fnbcostpro.com`) from the application (`app.fnbcostpro.com`).
+- **Web Frontend**: React 18 SPA with TypeScript, Vite, `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing. Hostname-based routing separates marketing (`fnbcostpro.com`) from the application (`app.fnbcostpro.com`).
+- **Native Mobile**: Expo app (separate repo: https://replit.com/@loudonbrian/Fnb-Cost-Scanner) — fully built, production. Hybrid native + WebView architecture. See CRITICAL ARCHITECTURE section above.
 - **Backend**: Node.js (TypeScript) with Express.js and Zod for data validation.
-- **Database**: PostgreSQL with Drizzle ORM.
-- **Application Structure**: Multi-tenant Single Page Application (SPA) with strict data isolation at the company level.
+- **Database**: PostgreSQL with Drizzle ORM (Neon serverless).
+- **Application Structure**: Multi-tenant SPA with strict company-level data isolation. Same DB serves both web and Expo.
 - **Technical Implementations**: Micro-unit precision, comprehensive unit conversion, multi-level nested recipe costing, dual inventory pricing (Last Cost & Weighted Average Cost), multi-tenant QuickBooks integration, intelligent vendor order guide import, real-time recipe cost calculation with caching, dynamic estimated on-hand inventory with automated cache invalidation, detailed Theoretical Food Cost (TFC) variance reporting, and single-timezone date handling.
 - **System Design Choices**: Strict multi-tenancy, secure OAuth using HMAC-SHA256, robust vendor relationship management, and a subscription tier system (Starter, Pro, Enterprise). Vendors are managed at the company level, assigned to stores via a join table, and order guides can be assigned to multiple stores.
 - **UI/UX Decisions**: Branding utilizes the FNB Cost Pro logo (white "FNB" text with green "cost pro" and bottle icon on black background). Color scheme for header/menu is slate blue grey (`--primary: 215 16% 47%`), and buttons use an orange accent (`--accent-button: 24 93% 50%`, hex `#f2690d`), defined in `client/src/index.css` with dark mode variants.
 
 # External Dependencies
 
-- **Database Services**: Neon serverless PostgreSQL.
+- **Database**: Neon serverless PostgreSQL with Drizzle ORM.
+- **Native Mobile App**: Expo (https://replit.com/@loudonbrian/Fnb-Cost-Scanner) — production, hybrid native+WebView.
 - **Real-time Communication**: `ws` library (WebSockets).
 - **Image Processing**: Sharp library.
 - **Object Storage & File Uploads**: Replit native object storage.
@@ -61,6 +130,5 @@ FNB Cost Pro is an AI-powered inventory management and recipe costing system for
 - **Email Service**: SMTP2GO.
 - **Background Image System**: Unsplash.
 - **AI Chat**: OpenAI GPT-4o-mini via `openai` npm package.
-- **AI Recipe Image Scan**: GPT-4o Vision.
+- **AI Vision**: GPT-4o Vision (recipe scan, invoice scan, shelf sweep scan, catch-weight scan, instruction extraction).
 - **AI CSV Inventory Import**: GPT-4o-mini for column mapping.
-- **Mobile API**: Dedicated endpoints for native mobile clients (Expo app) for login and shelf image processing via GPT-4o Vision.
