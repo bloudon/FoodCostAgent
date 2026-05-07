@@ -4505,6 +4505,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           packSize: l.packSize,
           uom: l.uom,
           price: l.price,
+          // All order guide line prices are case prices (scan pipeline only stores
+          // item.casePrice here), so derive priceSource from nullability.
+          priceSource: l.price != null ? 'case' : 'zero',
           matchStatus: l.matchStatus,
           matchConfidence: l.matchConfidence,
         })),

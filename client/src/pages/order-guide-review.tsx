@@ -66,6 +66,7 @@ interface OrderGuideLine {
   caseSize: number | null;
   innerPack: number | null;
   price: number | null;
+  priceSource?: 'unit' | 'case' | 'zero';
   matchStatus: string;
   matchedInventoryItemId: string | null;
   matchConfidence: number | null;
@@ -705,7 +706,22 @@ function OrderGuideTable({
                 {line.innerPack ? `${line.innerPack} ${line.uom || ''}`.trim() : (line.uom || '-')}
               </TableCell>
               <TableCell>{line.caseSize ?? '-'}</TableCell>
-              <TableCell>{line.price ? `$${line.price.toFixed(2)}` : '-'}</TableCell>
+              <TableCell>
+                {line.price ? (
+                  <div className="flex flex-col items-start gap-0.5">
+                    <span>${line.price.toFixed(2)}</span>
+                    {line.priceSource === 'case' && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-600 dark:text-amber-400 no-default-active-elevate"
+                        title="The AI extracted a case price from this invoice. Verify the per-unit cost before committing."
+                      >
+                        case price
+                      </Badge>
+                    )}
+                  </div>
+                ) : '-'}
+              </TableCell>
               {showConfidence && (
                 <TableCell>
                   <Badge variant={getConfidenceBadgeVariant(line.matchConfidence)}>

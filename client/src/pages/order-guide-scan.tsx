@@ -56,6 +56,7 @@ interface ScannedLine {
   packSize: string | null;
   uom: string | null;
   price: number | null;
+  priceSource?: 'unit' | 'case' | 'zero';
   matchStatus: 'matched' | 'ambiguous' | 'new';
   matchConfidence: number | null;
 }
@@ -468,7 +469,20 @@ export default function OrderGuideScan() {
                                 {line.packSize || '—'}
                               </TableCell>
                               <TableCell className="text-sm">
-                                {line.price != null ? `$${line.price.toFixed(2)}` : '—'}
+                                {line.price != null ? (
+                                  <div className="flex flex-col items-start gap-0.5">
+                                    <span>${line.price.toFixed(2)}</span>
+                                    {line.priceSource === 'case' && (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-600 dark:text-amber-400 no-default-active-elevate"
+                                        title="The AI extracted a case price from this invoice. Verify the per-unit cost before committing."
+                                      >
+                                        case price
+                                      </Badge>
+                                    )}
+                                  </div>
+                                ) : '—'}
                               </TableCell>
                               <TableCell>
                                 {line.matchStatus === 'matched' ? (

@@ -244,12 +244,16 @@ export class OrderGuideProcessor {
       } catch {}
     }
 
-    // Enrich lines with matched item name
+    // Enrich lines with matched item name and priceSource.
+    // All prices in order guide lines represent case prices (the scan pipeline
+    // only populates price from item.casePrice). We derive priceSource here
+    // so the review UI can show the same "case price" badge as the onboarding flow.
     const enrichedLines = lines.map(l => ({
       ...l,
       matchedInventoryItemName: l.matchedInventoryItemId
         ? (inventoryNameMap.get(l.matchedInventoryItemId) ?? null)
         : null,
+      priceSource: l.price != null ? 'case' : 'zero',
     }));
 
     // Group lines by match status
