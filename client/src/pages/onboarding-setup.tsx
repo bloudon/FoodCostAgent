@@ -400,14 +400,13 @@ function PlanStep({
     const interval = setInterval(async () => {
       attempts++;
       try {
-        const res = await apiRequest("GET", "/api/auth/company");
+        const res = await apiRequest("GET", "/api/auth/me");
         if (res.ok) {
           const data = await res.json() as { subscriptionTier?: string };
           if (data.subscriptionTier && data.subscriptionTier !== "free") {
             clearInterval(interval);
             setPolling(false);
             queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-            queryClient.invalidateQueries({ queryKey: ["/api/auth/company"] });
             onContinue();
             return;
           }
@@ -451,11 +450,10 @@ function PlanStep({
   const handleCheckPlan = async () => {
     setChecking(true);
     try {
-      const res = await apiRequest("GET", "/api/auth/company");
+      const res = await apiRequest("GET", "/api/auth/me");
       if (res.ok) {
         const data = await res.json() as { subscriptionTier?: string };
         if (data.subscriptionTier && data.subscriptionTier !== "free") {
-          queryClient.invalidateQueries({ queryKey: ["/api/auth/company"] });
           queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
           onContinue();
         } else {
