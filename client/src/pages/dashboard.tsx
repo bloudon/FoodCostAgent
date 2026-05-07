@@ -4,7 +4,7 @@ import { Link, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed, AlertCircle, Calendar, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, PartyPopper } from "lucide-react";
+import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed, AlertCircle, Calendar, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, PartyPopper, ShoppingCart, Copy, Check } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SetupMilestoneTracker } from "@/components/setup-milestone-tracker";
@@ -56,6 +56,7 @@ export default function Dashboard() {
   // State for pagination in each alert box - MUST be at top before conditional returns
   const [orderIndex, setOrderIndex] = useState(0);
   const [inventoryIndex, setInventoryIndex] = useState(0);
+  const [reorderCopied, setReorderCopied] = useState(false);
   
   // State for waste chart date range (7, 14, 30 days)
   const [wasteDaysRange, setWasteDaysRange] = useState<7 | 14 | 30>(7);
@@ -147,6 +148,30 @@ export default function Dashboard() {
   // Fetch recipes with missing ingredients for the alert card
   const { data: recipesWithMissing = [] } = useQuery<Array<{ id: string; name: string; missingComponentNames: string[] }>>({
     queryKey: ["/api/recipes/missing-ingredients"],
+  });
+
+  // Fetch reorder list — items below par level for the selected store
+  const { data: reorderData } = useQuery<{
+    items: Array<{
+      id: string;
+      name: string;
+      parLevel: number;
+      reorderLevel: number | null;
+      onHand: number;
+      qtyToOrder: number;
+      unitAbbreviation: string;
+      vendorName: string | null;
+    }>;
+    hasParLevels: boolean;
+  }>({
+    queryKey: ["/api/dashboard/reorder-list", selectedStoreId],
+    queryFn: async () => {
+      if (!selectedStoreId || selectedStoreId === "all") return { items: [], hasParLevels: false };
+      const res = await fetch(`/api/dashboard/reorder-list?storeId=${selectedStoreId}`);
+      if (!res.ok) return { items: [], hasParLevels: false };
+      return res.json();
+    },
+    enabled: !!selectedStoreId && selectedStoreId !== "all",
   });
 
   // Fetch estimated on-hand inventory for critical items detection
@@ -743,6 +768,130 @@ export default function Dashboard() {
           </Card>
         )}
       </div>
+
+      {/* What to Order card — shown when par levels are set and items are below par */}
+      {reorderData?.hasParLevels && (
+        <div className="mb-6" data-testid="card-what-to-order">
+          {(() => {
+            const items = reorderData.items ?? [];
+            // Group by vendor
+            const grouped = new Map<string, typeof items>();
+            for (const item of items) {
+              const key = item.vendorName ?? "No Vendor";
+              if (!grouped.has(key)) grouped.set(key, []);
+              grouped.get(key)!.push(item);
+            }
+            const vendorGroups = Array.from(grouped.entries());
+
+            const copyList = () => {
+              const lines = items.map(
+                (i) => `${i.vendorName ?? "No Vendor"} — ${i.name} — ${i.qtyToOrder.toFixed(1)} ${i.unitAbbreviation}`
+              );
+              navigator.clipboard.writeText(lines.join("\n")).then(() => {
+                setReorderCopied(true);
+                setTimeout(() => setReorderCopied(false), 2000);
+              });
+            };
+
+            return (
+              <Card
+                className={
+                  items.length > 0
+                    ? "bg-gradient-to-r from-orange-50/50 to-slate-50/50 dark:from-orange-950/20 dark:to-slate-950/20 border-orange-200 dark:border-orange-800"
+                    : ""
+                }
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <ShoppingCart className={`h-5 w-5 ${items.length > 0 ? "text-[#f2690d]" : "text-muted-foreground"}`} />
+                      <CardTitle className="text-base">
+                        What to Order {items.length > 0 && `(${items.length})`}
+                      </CardTitle>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {items.length > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={copyList}
+                          data-testid="button-copy-reorder-list"
+                        >
+                          {reorderCopied ? (
+                            <>
+                              <Check className="h-3.5 w-3.5 mr-1 text-green-600" />
+                              Copied
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3.5 w-3.5 mr-1" />
+                              Copy List
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      <Link href="/inventory-items/par-levels">
+                        <Button variant="ghost" size="sm" data-testid="button-manage-par-levels">
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pb-4">
+                  {items.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-4 text-center gap-2">
+                      <p className="text-sm text-muted-foreground">
+                        All items with par levels are at or above par. Great job!
+                      </p>
+                      <Link href="/inventory-items/par-levels">
+                        <Button size="sm" variant="outline" data-testid="button-edit-par-levels">
+                          Edit Par Levels
+                        </Button>
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {vendorGroups.map(([vendorName, vendorItems]) => (
+                        <div key={vendorName} data-testid={`reorder-vendor-${vendorName}`}>
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                            {vendorName}
+                          </p>
+                          <div className="space-y-1">
+                            {vendorItems.map((item) => (
+                              <Link key={item.id} href={`/inventory-items/${item.id}`}>
+                                <div
+                                  className="flex items-center justify-between gap-3 px-3 py-2 rounded-md border bg-background hover-elevate cursor-pointer"
+                                  data-testid={`reorder-item-${item.id}`}
+                                >
+                                  <span className="text-sm font-medium truncate">
+                                    {item.name.charAt(0).toUpperCase() + item.name.slice(1)}
+                                  </span>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="text-xs text-muted-foreground font-mono">
+                                      on hand: {item.onHand.toFixed(1)}
+                                    </span>
+                                    <Badge
+                                      variant="secondary"
+                                      className="bg-orange-500/10 text-orange-700 border-orange-500/20 dark:text-orange-400 font-mono text-xs"
+                                    >
+                                      order {item.qtyToOrder.toFixed(1)} {item.unitAbbreviation}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">

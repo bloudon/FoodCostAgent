@@ -21,6 +21,7 @@ import CountSessionMobile from "@/pages/count-session-mobile";
 import NewCountSession from "@/pages/new-count-session";
 import ItemCount from "@/pages/item-count";
 import InventoryItems from "@/pages/inventory-items";
+import ParLevels from "@/pages/par-levels";
 import InventoryItemDetail from "@/pages/inventory-item-detail";
 import InventoryItemCreate from "@/pages/inventory-item-create";
 import MenuItems from "@/pages/menu-items";
@@ -304,6 +305,7 @@ function ProtectedLayoutContent() {
               <Route path="/stores" component={Stores} />
               <Route path="/users" component={Users} />
               <Route path="/inventory-items" component={InventoryItems} />
+              <Route path="/inventory-items/par-levels" component={ParLevels} />
               <Route path="/inventory-items/new" component={InventoryItemCreate} />
               <Route path="/inventory-items/:id" component={InventoryItemDetail} />
               <Route path="/menu-items" component={MenuItems} />

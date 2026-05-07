@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star, Upload, Pencil } from "lucide-react";
+import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star, Upload, Pencil, BarChart2 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
@@ -294,6 +294,12 @@ export default function InventoryItems() {
             )}
           </div>
           <div className="flex gap-2 items-center flex-wrap justify-end">
+            <Button asChild variant="outline" data-testid="button-par-levels">
+              <Link href="/inventory-items/par-levels">
+                <BarChart2 className="h-4 w-4 mr-2" />
+                Par Levels
+              </Link>
+            </Button>
             <Button asChild variant="outline" data-testid="button-import-csv">
               <Link href="/inventory-import">
                 <Upload className="h-4 w-4 mr-2" />

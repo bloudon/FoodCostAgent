@@ -30,6 +30,7 @@ const milestoneLabels: Record<string, string> = {
   vendors: "Vendor",
   inventory: "Inventory",
   costs: "Seed Ingredient Costs",
+  par_levels: "Set Par Levels",
   recipes: "Recipe",
   menu: "Menu Items",
   team: "Invite Your Team",

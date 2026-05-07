@@ -1445,12 +1445,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "User is not associated with a company" });
       }
 
-      const [storeRows, categoryRows, vendorRows, inventoryRows, costsRows, recipeRows, menuRows, progressRows, teamRows] = await Promise.all([
+      const [storeRows, categoryRows, vendorRows, inventoryRows, costsRows, parLevelStats, recipeRows, menuRows, progressRows, teamRows] = await Promise.all([
         db.select().from(companyStores).where(eq(companyStores.companyId, companyId)).limit(1),
         db.select().from(categories).where(eq(categories.companyId, companyId)).limit(1),
         db.select().from(vendors).where(and(eq(vendors.companyId, companyId), not(like(vendors.name, '%Misc Grocery%')))).limit(1),
         db.select().from(inventoryItems).where(eq(inventoryItems.companyId, companyId)).limit(1),
         db.select().from(inventoryItems).where(and(eq(inventoryItems.companyId, companyId), gt(inventoryItems.pricePerUnit, 0))).limit(1),
+        db.select({
+          total: sql<number>`COUNT(*)`,
+          withPar: sql<number>`SUM(CASE WHEN ${inventoryItems.parLevel} IS NOT NULL THEN 1 ELSE 0 END)`,
+        }).from(inventoryItems).where(and(eq(inventoryItems.companyId, companyId), eq(inventoryItems.active, 1))),
         db.select().from(recipes).where(eq(recipes.companyId, companyId)).limit(1),
         db.select().from(menuItems).where(eq(menuItems.companyId, companyId)).limit(1),
         db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1),
@@ -1465,12 +1469,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch {}
       }
 
+      const parTotal = Number(parLevelStats[0]?.total ?? 0);
+      const parWithPar = Number(parLevelStats[0]?.withPar ?? 0);
+      const parLevelsComplete = parTotal > 0 && parWithPar / parTotal > 0.5;
+
       const milestonesList = [
         { id: "store", label: "Set Up Your Store Locations", completed: storeRows.length > 0, path: "/stores" },
         { id: "categories", label: "Review Categories", completed: reviewedSteps.includes("categories"), path: "/categories" },
         { id: "vendors", label: "Add a Vendor", completed: vendorRows.length > 0 || reviewedSteps.includes("vendors"), path: "/vendors" },
         { id: "inventory", label: "Add Inventory Items", completed: inventoryRows.length > 0 || reviewedSteps.includes("inventory"), path: "/inventory-items" },
         { id: "costs", label: "Seed Ingredient Costs", completed: costsRows.length > 0, path: "/onboarding/seed-costs" },
+        { id: "par_levels", label: "Set Par Levels", completed: parLevelsComplete, path: "/inventory-items/par-levels" },
         { id: "recipes", label: "Create a Recipe", completed: recipeRows.length > 0 || reviewedSteps.includes("recipes"), path: "/recipes" },
         { id: "menu", label: "Add Menu Items", completed: menuRows.length > 0 || reviewedSteps.includes("menu"), path: "/menu-items" },
         { id: "team", label: "Invite Your Team", completed: teamRows.length > 0 || reviewedSteps.includes("team"), path: "/users" },
@@ -6163,6 +6172,103 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/inventory-items/aggregated", async (req, res) => {
     const aggregated = await storage.getInventoryItemsAggregated();
     res.json(aggregated);
+  });
+
+  // GET /api/dashboard/reorder-list — items below par level for a given store, enriched with vendor info
+  app.get("/api/dashboard/reorder-list", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const storeId = req.query.storeId as string;
+
+      if (!companyId) return res.status(400).json({ error: "Company context required" });
+      if (!storeId) return res.status(400).json({ error: "storeId is required" });
+
+      const store = await storage.getCompanyStore(storeId);
+      if (!store) return res.status(404).json({ error: "Store not found" });
+      if (store.companyId !== companyId) return res.status(403).json({ error: "Access denied" });
+
+      // Get all active inventory items for the company that have a par level set
+      const itemsWithPar = await db
+        .select({
+          id: inventoryItems.id,
+          name: inventoryItems.name,
+          parLevel: inventoryItems.parLevel,
+          reorderLevel: inventoryItems.reorderLevel,
+          unitId: inventoryItems.unitId,
+        })
+        .from(inventoryItems)
+        .where(and(
+          eq(inventoryItems.companyId, companyId),
+          eq(inventoryItems.active, 1),
+          isNotNull(inventoryItems.parLevel),
+        ));
+
+      if (itemsWithPar.length === 0) {
+        return res.json({ items: [], hasParLevels: false });
+      }
+
+      // Get estimated on-hand for the store
+      const estimatedOnHand = await storage.getEstimatedOnHand(companyId, storeId);
+      const onHandMap = new Map(estimatedOnHand.map(e => [e.inventoryItemId, e.estimatedOnHand]));
+
+      // Gather unit abbreviations
+      const unitIds = [...new Set(itemsWithPar.map(i => i.unitId).filter(Boolean))];
+      const unitRows = unitIds.length > 0
+        ? await db.select({ id: unitsTable.id, abbreviation: unitsTable.abbreviation }).from(unitsTable).where(inArray(unitsTable.id, unitIds))
+        : [];
+      const unitMap = new Map(unitRows.map(u => [u.id, u.abbreviation]));
+
+      // Get primary vendor for each item via vendorItems
+      const itemIds = itemsWithPar.map(i => i.id);
+      const vendorItemRows = itemIds.length > 0
+        ? await db
+            .select({
+              inventoryItemId: vendorItems.inventoryItemId,
+              vendorId: vendorItems.vendorId,
+              vendorName: vendors.name,
+            })
+            .from(vendorItems)
+            .innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
+            .where(and(
+              inArray(vendorItems.inventoryItemId, itemIds),
+              eq(vendors.companyId, companyId),
+            ))
+        : [];
+
+      // Map inventoryItemId -> first vendor name found
+      const vendorMap = new Map<string, string>();
+      for (const row of vendorItemRows) {
+        if (!vendorMap.has(row.inventoryItemId)) {
+          vendorMap.set(row.inventoryItemId, row.vendorName);
+        }
+      }
+
+      // Filter to items below par, compute qty_to_order
+      const belowPar = itemsWithPar
+        .filter(item => {
+          const onHand = onHandMap.get(item.id) ?? 0;
+          return onHand < (item.parLevel ?? 0);
+        })
+        .map(item => {
+          const onHand = onHandMap.get(item.id) ?? 0;
+          return {
+            id: item.id,
+            name: item.name,
+            parLevel: item.parLevel!,
+            reorderLevel: item.reorderLevel,
+            onHand,
+            qtyToOrder: Math.max(0, item.parLevel! - onHand),
+            unitAbbreviation: unitMap.get(item.unitId) ?? item.unitId,
+            vendorName: vendorMap.get(item.id) ?? null,
+          };
+        })
+        .sort((a, b) => (a.vendorName ?? "").localeCompare(b.vendorName ?? "") || a.name.localeCompare(b.name));
+
+      return res.json({ items: belowPar, hasParLevels: true });
+    } catch (err: any) {
+      console.error("GET /api/dashboard/reorder-list error:", err);
+      return res.status(500).json({ error: "Failed to fetch reorder list" });
+    }
   });
 
   app.get("/api/inventory-items/estimated-on-hand", requireAuth, async (req, res) => {
