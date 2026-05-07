@@ -52,6 +52,7 @@ interface ReviewRow {
   name: string;
   unit: string;
   unitPrice: string;
+  casePrice: number | null;
   inventoryItemId: string | null;
 }
 
@@ -95,6 +96,7 @@ export default function OnboardingSeedCosts() {
           name: item.name,
           unit: item.unit || "lb",
           unitPrice: resolvedPrice != null ? String(resolvedPrice.toFixed(4)) : "",
+          casePrice: item.casePrice ?? null,
           inventoryItemId: item.matchedItemId,
         };
       });
@@ -176,6 +178,7 @@ export default function OnboardingSeedCosts() {
       .map((r) => ({
         name: r.name.trim() || r.item.name,
         unitPrice: parseFloat(r.unitPrice),
+        casePrice: r.casePrice ?? undefined,
         unit: r.unit.trim() || "lb",
         categoryHint: r.item.categoryHint || undefined,
         action: r.action,
