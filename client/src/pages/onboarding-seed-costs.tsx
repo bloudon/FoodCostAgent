@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -71,6 +72,7 @@ type Phase = "upload" | "scanning" | "review" | "applying" | "done";
 export default function OnboardingSeedCosts() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { user, isLoading: authLoading } = useAuth();
   const [phase, setPhase] = useState<Phase>("upload");
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [scanCount, setScanCount] = useState(0);
@@ -129,7 +131,11 @@ export default function OnboardingSeedCosts() {
       return res.json() as Promise<{ updated: number; created: number; recipesRecalculated: number }>;
     },
     onSuccess: (data) => {
+      // Invalidate all affected query keys so same-session views reflect updated costs
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
       setPhase("done");
       toast({
         title: "Costs saved",
@@ -197,6 +203,31 @@ export default function OnboardingSeedCosts() {
 
   function handleSkip() {
     navigate("/recipes");
+  }
+
+  // Auth guard — consistent with onboarding-menu-scan pattern
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md text-center space-y-4">
+          <div className="flex items-center justify-center gap-2 text-muted-foreground">
+            <AlertCircle className="h-5 w-5 text-amber-500" />
+            <p>Please sign in to continue setting up your account.</p>
+          </div>
+          <Button onClick={() => navigate("/login")} data-testid="button-go-to-login">
+            Sign In
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   const activeRows = rows.filter((r) => r.action !== "skip");
