@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { STEP_MILESTONE_IDS } from "../pages/onboarding-setup";
+
+vi.mock("@/lib/queryClient", () => ({
+  apiRequest: vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) }),
+  queryClient: { invalidateQueries: vi.fn() },
+}));
+
+import { apiRequest } from "@/lib/queryClient";
+import { STEP_MILESTONE_IDS, postReviewStep, advanceStep } from "../pages/onboarding-setup";
+
+const apiRequestSpy = apiRequest as ReturnType<typeof vi.fn>;
 
 const KNOWN_MILESTONE_IDS = [
   "menu_scan",
@@ -12,29 +21,23 @@ const KNOWN_MILESTONE_IDS = [
   "inventory_count",
 ];
 
+const REVIEW_STEP_ENDPOINT = "/api/onboarding/milestones/review-step";
+
 describe("STEP_MILESTONE_IDS", () => {
   it("maps all 8 wizard steps (1–8) to a milestone ID", () => {
     for (let step = 1; step <= 8; step++) {
-      expect(STEP_MILESTONE_IDS[step]).toBeDefined();
       expect(typeof STEP_MILESTONE_IDS[step]).toBe("string");
     }
   });
 
-  it("does not contain extra steps beyond 8", () => {
+  it("covers exactly steps 1–8", () => {
     const keys = Object.keys(STEP_MILESTONE_IDS).map(Number);
     expect(keys).toHaveLength(8);
     expect(Math.min(...keys)).toBe(1);
     expect(Math.max(...keys)).toBe(8);
   });
 
-  it("maps each step to a known, non-empty milestone ID", () => {
-    for (let step = 1; step <= 8; step++) {
-      const id = STEP_MILESTONE_IDS[step];
-      expect(KNOWN_MILESTONE_IDS).toContain(id);
-    }
-  });
-
-  it("maps milestone IDs in the correct order", () => {
+  it("maps in the correct order", () => {
     expect(STEP_MILESTONE_IDS[1]).toBe("menu_scan");
     expect(STEP_MILESTONE_IDS[2]).toBe("plan");
     expect(STEP_MILESTONE_IDS[3]).toBe("invoice_scan");
@@ -45,88 +48,170 @@ describe("STEP_MILESTONE_IDS", () => {
     expect(STEP_MILESTONE_IDS[8]).toBe("inventory_count");
   });
 
-  it("all 8 milestone IDs are unique — no duplicates", () => {
+  it("all 8 IDs are unique", () => {
     const ids = Object.values(STEP_MILESTONE_IDS);
-    const unique = new Set(ids);
-    expect(unique.size).toBe(ids.length);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });
 
-describe("postReviewStep API contract", () => {
-  const ENDPOINT = "/api/onboarding/milestones/review-step";
-
+describe("postReviewStep()", () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    apiRequestSpy.mockClear();
+    apiRequestSpy.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
   });
 
-  it("calls the correct endpoint for each milestone ID", async () => {
-    const postSpy = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
-    vi.doMock("@/lib/queryClient", () => ({
-      apiRequest: postSpy,
-      queryClient: { invalidateQueries: vi.fn() },
-    }));
+  it("POSTs to review-step with stepId 'categories' (step 4)", async () => {
+    await postReviewStep("categories");
+    expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "categories" });
+  });
 
-    for (const milestoneId of KNOWN_MILESTONE_IDS) {
-      postSpy.mockClear();
-      postSpy.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+  it("POSTs to review-step with stepId 'storage_locations' (step 5)", async () => {
+    await postReviewStep("storage_locations");
+    expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "storage_locations" });
+  });
 
-      const { apiRequest } = await import("@/lib/queryClient");
-      await (apiRequest as typeof postSpy)("POST", ENDPOINT, { stepId: milestoneId });
+  it("POSTs to review-step with stepId 'recipes' (step 6)", async () => {
+    await postReviewStep("recipes");
+    expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "recipes" });
+  });
 
-      expect(postSpy).toHaveBeenCalledWith("POST", ENDPOINT, { stepId: milestoneId });
+  it("POSTs to review-step with stepId 'review' (step 7)", async () => {
+    await postReviewStep("review");
+    expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "review" });
+  });
+
+  it("calls the correct milestone ID for each step", async () => {
+    for (const milestoneId of Object.values(STEP_MILESTONE_IDS)) {
+      apiRequestSpy.mockClear();
+      await postReviewStep(milestoneId);
+      expect(apiRequestSpy).toHaveBeenCalledTimes(1);
+      expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: milestoneId });
     }
   });
 
-  it("advance() marks the milestone for the completed step before moving to next step", () => {
-    const completedOrder: string[] = [];
+  it("swallows errors non-fatally", async () => {
+    apiRequestSpy.mockRejectedValueOnce(new Error("Network error"));
+    await expect(postReviewStep("categories")).resolves.toBeUndefined();
+  });
+});
 
-    const mockPostReviewStep = async (milestoneId: string) => {
-      completedOrder.push(milestoneId);
-    };
+// advanceStep() is the extracted core of the advance() callback in OnboardingSetup.
+// advance() delegates to advanceStep(), so these tests also cover the advance() → POST chain.
+describe("advanceStep()", () => {
+  beforeEach(() => {
+    apiRequestSpy.mockClear();
+    apiRequestSpy.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+  });
 
-    const simulateAdvance = async (currentStep: number) => {
-      const milestoneId = STEP_MILESTONE_IDS[currentStep];
-      if (milestoneId) {
-        await mockPostReviewStep(milestoneId);
-      }
-      return Math.min(8, currentStep + 1);
-    };
+  it("step 4 → POSTs with stepId 'categories'", async () => {
+    await advanceStep(4);
+    expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "categories" });
+  });
 
-    const testSteps = async () => {
-      for (let step = 1; step <= 8; step++) {
-        await simulateAdvance(step);
-      }
-      return completedOrder;
-    };
+  it("step 5 → POSTs with stepId 'storage_locations'", async () => {
+    await advanceStep(5);
+    expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "storage_locations" });
+  });
 
-    return testSteps().then((order) => {
-      expect(order).toEqual(KNOWN_MILESTONE_IDS);
+  it("step 6 → POSTs with stepId 'recipes'", async () => {
+    await advanceStep(6);
+    expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "recipes" });
+  });
+
+  it("step 7 → POSTs with stepId 'review'", async () => {
+    await advanceStep(7);
+    expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "review" });
+  });
+
+  it("each call makes exactly one POST", async () => {
+    for (const step of [4, 5, 6, 7]) {
+      apiRequestSpy.mockClear();
+      await advanceStep(step);
+      expect(apiRequestSpy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("sequential steps 1–8 post milestone IDs in the correct order", async () => {
+    for (let step = 1; step <= 8; step++) {
+      await advanceStep(step);
+    }
+    const postedIds = apiRequestSpy.mock.calls.map((call) => (call[2] as { stepId: string }).stepId);
+    expect(postedIds).toEqual(KNOWN_MILESTONE_IDS);
+  });
+});
+
+// Pure function mirroring the completion check in GET /api/onboarding/milestones.
+function isMilestoneCompleted(id: string, reviewedSteps: string[], hasData: boolean): boolean {
+  return reviewedSteps.includes(id) || hasData;
+}
+
+describe("milestone completion logic — steps 4–7", () => {
+  describe("categories (step 4)", () => {
+    it("incomplete before review-step is posted", () => {
+      expect(isMilestoneCompleted("categories", [], false)).toBe(false);
+    });
+
+    it("complete after review-step with stepId 'categories'", () => {
+      expect(isMilestoneCompleted("categories", ["categories"], false)).toBe(true);
+    });
+
+    it("remains incomplete when only other steps are reviewed", () => {
+      expect(isMilestoneCompleted("categories", ["recipes", "review"], false)).toBe(false);
     });
   });
 
-  it("finishWizard() always marks inventory_count milestone for step 8", async () => {
-    const recorded: string[] = [];
-    const mockPostReviewStep = async (milestoneId: string) => {
-      recorded.push(milestoneId);
-    };
+  describe("storage_locations (step 5)", () => {
+    it("incomplete with no data and no review", () => {
+      expect(isMilestoneCompleted("storage_locations", [], false)).toBe(false);
+    });
 
-    const simulateFinishWizard = async () => {
-      await mockPostReviewStep("inventory_count");
-    };
+    it("complete via review-step", () => {
+      expect(isMilestoneCompleted("storage_locations", ["storage_locations"], false)).toBe(true);
+    });
 
-    await simulateFinishWizard();
-    expect(recorded).toContain("inventory_count");
-    expect(recorded[0]).toBe("inventory_count");
+    it("complete via data fallback", () => {
+      expect(isMilestoneCompleted("storage_locations", [], true)).toBe(true);
+    });
   });
 
-  it("GET milestones recognises all 8 milestone IDs", () => {
-    const reviewedSteps = [...KNOWN_MILESTONE_IDS];
+  describe("recipes (step 6)", () => {
+    it("incomplete with no data and no review", () => {
+      expect(isMilestoneCompleted("recipes", [], false)).toBe(false);
+    });
 
-    const computeMilestoneCompletion = (id: string) =>
-      reviewedSteps.includes(id);
+    it("complete via review-step", () => {
+      expect(isMilestoneCompleted("recipes", ["recipes"], false)).toBe(true);
+    });
 
-    for (const id of KNOWN_MILESTONE_IDS) {
-      expect(computeMilestoneCompletion(id)).toBe(true);
-    }
+    it("complete via data fallback", () => {
+      expect(isMilestoneCompleted("recipes", [], true)).toBe(true);
+    });
+  });
+
+  describe("review (step 7)", () => {
+    it("incomplete before review-step is posted", () => {
+      expect(isMilestoneCompleted("review", [], false)).toBe(false);
+    });
+
+    it("complete after review-step with stepId 'review'", () => {
+      expect(isMilestoneCompleted("review", ["review"], false)).toBe(true);
+    });
+  });
+
+  describe("sequential progression", () => {
+    it("all 4 target milestones complete after advancing steps 4–7", () => {
+      const reviewed = ["categories", "storage_locations", "recipes", "review"];
+      for (const id of reviewed) {
+        expect(isMilestoneCompleted(id, reviewed, false)).toBe(true);
+      }
+    });
+
+    it("skipped earlier steps remain incomplete when later steps are posted", () => {
+      const reviewed = ["recipes", "review"];
+      expect(isMilestoneCompleted("categories", reviewed, false)).toBe(false);
+      expect(isMilestoneCompleted("storage_locations", reviewed, false)).toBe(false);
+      expect(isMilestoneCompleted("recipes", reviewed, false)).toBe(true);
+      expect(isMilestoneCompleted("review", reviewed, false)).toBe(true);
+    });
   });
 });

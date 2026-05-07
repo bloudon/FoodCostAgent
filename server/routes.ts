@@ -16,6 +16,7 @@ import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache"
 import { getEffectiveUnitCost, type CostingMethodCarrier } from "./lib/costing";
 import { convertToInventoryUnits, autoSeedRecipeUnitsForItem } from "./lib/recipeUnits";
 import { resolvePriceSource, resolveScannedItemUnitPrice, resolveApplyLineUnitPrice } from "./lib/invoiceScanUtils";
+import { createReviewStepHandler, createGetMilestonesHandler } from "./lib/milestonesHandler";
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
 import { createSession, requireAuth, optionalAuth, requireTier, verifyPassword, hashPassword } from "./auth";
@@ -1437,68 +1438,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ SETUP MILESTONE TRACKER ============
-  app.get("/api/onboarding/milestones", requireAuth, async (req, res) => {
-    try {
-      const user = (req as any).user;
-      const companyId = user.companyId;
-
-      if (!companyId) {
-        return res.status(400).json({ error: "User is not associated with a company" });
-      }
-
-      const [menuRows, companiesRow, inventoryRows, storageRows, recipeRows, inventoryCountRows, progressRows] = await Promise.all([
+  app.get("/api/onboarding/milestones", requireAuth, createGetMilestonesHandler({
+    async getProgress(companyId) {
+      const rows = await db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1);
+      return rows[0] ?? null;
+    },
+    async getDataPresence(companyId) {
+      const [menuRows, companiesRow, inventoryRows, storageRows, recipeRows, inventoryCountRows] = await Promise.all([
         db.select().from(menuItems).where(eq(menuItems.companyId, companyId)).limit(1),
         db.select({ subscriptionTier: companiesTable.subscriptionTier }).from(companiesTable).where(eq(companiesTable.id, companyId)).limit(1),
         db.select().from(inventoryItems).where(eq(inventoryItems.companyId, companyId)).limit(1),
         db.select().from(storageLocations).where(eq(storageLocations.companyId, companyId)).limit(1),
         db.select().from(recipes).where(eq(recipes.companyId, companyId)).limit(1),
         db.select({ id: inventoryCounts.id }).from(inventoryCounts).where(eq(inventoryCounts.companyId, companyId)).limit(1),
-        db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1),
       ]);
-
-      let reviewedSteps: string[] = [];
-      if (progressRows.length > 0 && progressRows[0].stepData) {
-        try {
-          const parsed = JSON.parse(progressRows[0].stepData);
-          reviewedSteps = parsed.reviewedSteps || [];
-        } catch {}
-      }
-
       const tier = companiesRow[0]?.subscriptionTier;
-      const hasPlan = tier && tier !== "free";
-
-      const milestonesList = [
-        { id: "menu_scan", label: "Scan Your Menu", completed: menuRows.length > 0 || reviewedSteps.includes("menu_scan"), path: "/onboarding/setup" },
-        { id: "plan", label: "Choose a Plan", completed: !!hasPlan || reviewedSteps.includes("plan"), path: "/onboarding/setup" },
-        { id: "invoice_scan", label: "Scan an Invoice", completed: inventoryRows.length > 0 || reviewedSteps.includes("invoice_scan"), path: "/onboarding/setup" },
-        { id: "categories", label: "Review Categories", completed: reviewedSteps.includes("categories"), path: "/onboarding/setup" },
-        { id: "storage_locations", label: "Set Up Storage", completed: storageRows.length > 0 || reviewedSteps.includes("storage_locations"), path: "/onboarding/setup" },
-        { id: "recipes", label: "Build Recipes", completed: recipeRows.length > 0 || reviewedSteps.includes("recipes"), path: "/onboarding/setup" },
-        { id: "review", label: "Review Setup", completed: reviewedSteps.includes("review"), path: "/onboarding/setup" },
-        { id: "inventory_count", label: "First Count", completed: inventoryCountRows.length > 0 || reviewedSteps.includes("inventory_count"), path: "/onboarding/setup" },
-      ];
-
-      const completedCount = milestonesList.filter(m => m.completed).length;
-      const totalCount = milestonesList.length;
-      const allComplete = completedCount === totalCount;
-
-      let dismissed = progressRows.length > 0 && progressRows[0].isCompleted === 1;
-
-      if (allComplete && !dismissed) {
-        if (progressRows.length > 0) {
-          await db.update(onboardingProgress)
-            .set({ isCompleted: 1, completedAt: new Date(), updatedAt: new Date() })
-            .where(eq(onboardingProgress.companyId, companyId));
-        }
-        dismissed = true;
+      return {
+        hasMenuItems: menuRows.length > 0,
+        hasPlan: !!(tier && tier !== "free"),
+        hasInventoryItems: inventoryRows.length > 0,
+        hasStorageLocations: storageRows.length > 0,
+        hasRecipes: recipeRows.length > 0,
+        hasInventoryCount: inventoryCountRows.length > 0,
+      };
+    },
+    async markCompleted(companyId) {
+      const existing = await db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1);
+      if (existing.length > 0) {
+        await db.update(onboardingProgress)
+          .set({ isCompleted: 1, completedAt: new Date(), updatedAt: new Date() })
+          .where(eq(onboardingProgress.companyId, companyId));
       }
-
-      res.json({ milestones: milestonesList, completedCount, totalCount, dismissed });
-    } catch (error: any) {
-      console.error("Milestones fetch error:", error);
-      res.status(500).json({ error: "Failed to fetch milestones" });
-    }
-  });
+    },
+  }));
 
   app.post("/api/onboarding/milestones/dismiss", requireAuth, async (req, res) => {
     try {
@@ -1546,49 +1518,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/onboarding/milestones/review-step", requireAuth, async (req, res) => {
-    try {
-      const user = (req as any).user;
-      const companyId = user.companyId;
-      if (!companyId) {
-        return res.status(400).json({ error: "User is not associated with a company" });
-      }
-
-      const { stepId } = z.object({ stepId: z.string() }).parse(req.body);
-
+  app.post("/api/onboarding/milestones/review-step", requireAuth, createReviewStepHandler({
+    async getProgress(companyId) {
+      const rows = await db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1);
+      return rows[0] ?? null;
+    },
+    async upsertProgress(companyId, stepData) {
       const existing = await db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1);
-
-      let reviewedSteps: string[] = [];
-      if (existing.length > 0 && existing[0].stepData) {
-        try {
-          const parsed = JSON.parse(existing[0].stepData);
-          reviewedSteps = parsed.reviewedSteps || [];
-        } catch {}
-      }
-
-      if (!reviewedSteps.includes(stepId)) {
-        reviewedSteps.push(stepId);
-      }
-
-      const stepData = JSON.stringify({ reviewedSteps });
-
       if (existing.length > 0) {
         await db.update(onboardingProgress)
           .set({ stepData, updatedAt: new Date() })
           .where(eq(onboardingProgress.companyId, companyId));
       } else {
-        await db.insert(onboardingProgress).values({
-          companyId,
-          stepData,
-        });
+        await db.insert(onboardingProgress).values({ companyId, stepData });
       }
-
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error("Review step error:", error);
-      res.status(500).json({ error: "Failed to mark step as reviewed" });
-    }
-  });
+    },
+  }));
 
   // ============ ONBOARDING MENU SCAN (Variant B — no tier gate) ============
 

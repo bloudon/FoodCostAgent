@@ -117,12 +117,24 @@ export const STEP_MILESTONE_IDS: Record<number, string> = {
   8: "inventory_count",
 };
 
-async function postReviewStep(milestoneId: string): Promise<void> {
+export async function postReviewStep(milestoneId: string): Promise<void> {
   try {
     await apiRequest("POST", "/api/onboarding/milestones/review-step", { stepId: milestoneId });
     queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
   } catch {
     // Non-fatal — milestone tracker will re-sync on next load
+  }
+}
+
+/**
+ * Core milestone-posting logic extracted from the advance() callback.
+ * Looks up the milestone ID for a wizard step and calls postReviewStep.
+ * Exported so this exact linkage (advance → milestone → POST) can be tested.
+ */
+export async function advanceStep(currentStep: number): Promise<void> {
+  const milestoneId = STEP_MILESTONE_IDS[currentStep];
+  if (milestoneId) {
+    await postReviewStep(milestoneId);
   }
 }
 
@@ -1283,10 +1295,7 @@ export default function OnboardingSetup() {
   }, [companyId]);
 
   const advance = useCallback(async (currentStep: number) => {
-    const milestoneId = STEP_MILESTONE_IDS[currentStep];
-    if (milestoneId) {
-      await postReviewStep(milestoneId);
-    }
+    await advanceStep(currentStep);
     setWizardState(prev => {
       const next = { ...prev, step: Math.min(8, prev.step + 1) };
       if (companyId) saveWizardState(companyId, next);
