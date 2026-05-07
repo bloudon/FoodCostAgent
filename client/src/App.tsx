@@ -59,9 +59,7 @@ import PendingApproval from "@/pages/pending-approval";
 import SsoAccessDenied from "@/pages/sso-access-denied";
 import AcceptInvitation from "@/pages/accept-invitation";
 import OnboardingWizard from "@/pages/onboarding-wizard";
-import OnboardingMenuScan from "@/pages/onboarding-menu-scan";
 import OnboardingSetup from "@/pages/onboarding-setup";
-import OnboardingSeedCosts from "@/pages/onboarding-seed-costs";
 import LeadSignup from "@/pages/lead-signup";
 import ActivateAccount from "@/pages/activate-account";
 import ForgotPassword from "@/pages/forgot-password";
@@ -165,7 +163,7 @@ function ProtectedLayout() {
       const selectedCompanyId = localStorage.getItem("selectedCompanyId");
       const isOnCompaniesPage = location === "/companies" || location.startsWith("/companies/");
       const isOnAdminPage = location.startsWith("/admin/") || location === "/admin";
-      const isOnWizardPage = location === "/onboarding-wizard" || location === "/onboarding-review";
+      const isOnWizardPage = location === "/onboarding-wizard";
       if (!selectedCompanyId && !isOnCompaniesPage && !isOnAdminPage && !isOnWizardPage) {
         setLocation("/companies");
       }
@@ -229,10 +227,7 @@ function ProtectedLayoutContent() {
   // even when reached by a logged-in user (e.g. direct URL navigation in production).
   const FULL_SCREEN_PATHS = [
     "/onboarding-wizard",
-    "/onboarding-review",
     "/onboarding/setup",
-    "/onboarding/menu-scan",
-    "/onboarding/seed-costs",
     "/onboarding",
     "/choose-plan",
     "/enterprise-inquiry",
@@ -254,12 +249,7 @@ function ProtectedLayoutContent() {
         <Route path="/onboarding-wizard">
           {isGlobalAdmin ? <OnboardingWizard /> : <Redirect to="/" />}
         </Route>
-        <Route path="/onboarding-review">
-          {isGlobalAdmin ? <OnboardingWizard /> : <Redirect to="/" />}
-        </Route>
         <Route path="/onboarding/setup" component={OnboardingSetup} />
-        <Route path="/onboarding/menu-scan"><Redirect to="/onboarding/setup" /></Route>
-        <Route path="/onboarding/seed-costs" component={OnboardingSeedCosts} />
         <Route path="/onboarding"><Redirect to="/signup" /></Route>
         <Route path="/choose-plan" component={ChoosePlan} />
         <Route path="/enterprise-inquiry" component={EnterpriseInquiry} />
@@ -398,8 +388,6 @@ function App() {
                 <Route path="/sso-access-denied" component={SsoAccessDenied} />
                 <Route path="/accept-invitation/:token" component={AcceptInvitation} />
                 <Route path="/onboarding/setup" component={OnboardingSetup} />
-                <Route path="/onboarding/menu-scan"><Redirect to="/onboarding/setup" /></Route>
-                <Route path="/onboarding/seed-costs" component={OnboardingSeedCosts} />
                 <Route path="/onboarding"><Redirect to="/signup" /></Route>
                 <Route path="/signup" component={LeadSignup} />
                 <Route path="/activate" component={ActivateAccount} />

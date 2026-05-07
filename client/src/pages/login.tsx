@@ -171,7 +171,7 @@ export default function Login() {
               {t.auth.noAccount}{" "}
               <button
                 className="text-sm font-semibold text-primary hover:underline cursor-pointer"
-                onClick={() => setLocation("/onboarding-wizard")}
+                onClick={() => setLocation("/signup")}
                 data-testid="link-sign-up"
               >
                 {t.auth.signUp}
