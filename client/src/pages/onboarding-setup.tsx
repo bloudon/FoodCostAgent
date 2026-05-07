@@ -43,6 +43,7 @@ interface InvoiceItem {
   name: string;
   unitPrice: number;
   casePrice?: number;
+  priceSource?: "unit" | "case" | "zero";
   unit?: string;
   categoryHint?: string;
   matchedItemId?: string;
@@ -525,7 +526,12 @@ function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
       setExtractedItems(
         (data.items || []).map((item) => ({
           ...item,
-          action: (item.matchConfidence === "high" || item.matchConfidence === "medium") ? "update" : "create",
+          // Zero-price items default to skip — user must explicitly choose to create them
+          action: item.priceSource === "zero"
+            ? "skip"
+            : (item.matchConfidence === "high" || item.matchConfidence === "medium")
+              ? "update"
+              : "create",
         }))
       );
       setSubStep("review");
@@ -652,8 +658,20 @@ function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
                       </p>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">
-                    ${item.unitPrice?.toFixed(2) ?? "—"}
+                  <td className="px-3 py-2 text-right">
+                    {item.priceSource === "zero" ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        ${item.unitPrice.toFixed(2)}
+                        {item.priceSource === "case" && (
+                          <span
+                            className="ml-1 text-[10px] text-amber-600 dark:text-amber-400"
+                            title="Case price used — verify this is the correct per-unit cost"
+                          >case</span>
+                        )}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <select

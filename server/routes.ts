@@ -1917,11 +1917,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const confidence = bestScore >= 0.6 ? "high" : bestScore >= 0.35 ? "medium" : "none";
         const matchedItem = confidence !== "none" ? bestMatch : null;
 
+        // Ensure unitPrice is always a number — fall back to casePrice if the AI
+        // only extracted a case price (common on distributor invoices).
+        // Track the source so the UI can warn the user accordingly.
+        const priceSource: "unit" | "case" | "zero" =
+          item.unitPrice != null ? "unit" :
+          item.casePrice != null ? "case" :
+          "zero";
+        const resolvedUnitPrice = item.unitPrice ?? item.casePrice ?? 0;
+
         return {
           name: item.name,
           sku: item.sku || null,
-          unitPrice: item.unitPrice,
+          unitPrice: resolvedUnitPrice,
           casePrice: item.casePrice,
+          priceSource,
           priceType: item.priceType,
           packSizeDescription: item.packSizeDescription || null,
           unit: item.unit || null,
@@ -1954,8 +1964,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const lineSchema = z.object({
         name: z.string().min(1),
-        unitPrice: z.number().positive(),
-        casePrice: z.number().optional(),
+        unitPrice: z.number().nonnegative().nullable().optional(),
+        casePrice: z.number().nonnegative().nullable().optional(),
         unit: z.string().optional(),
         categoryHint: z.string().optional(),
         action: z.enum(["update", "create", "skip"]),
@@ -2023,8 +2033,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .limit(1);
           if (existing.length === 0) continue;
 
+          const effectiveUnitPrice = line.unitPrice ?? line.casePrice ?? 0;
           await db.update(inventoryItems)
-            .set({ pricePerUnit: line.unitPrice, avgCostPerUnit: line.unitPrice, updatedAt: new Date() })
+            .set({ pricePerUnit: effectiveUnitPrice, avgCostPerUnit: effectiveUnitPrice, updatedAt: new Date() })
             .where(eq(inventoryItems.id, line.inventoryItemId));
 
           // Also update lastCasePrice on any existing vendorItems association for this inventory item
@@ -2037,7 +2048,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const innerPackSize = vi.innerPackSize ?? 1;
               const derivedUnitPrice = caseSize > 0 && innerPackSize > 0
                 ? line.casePrice / (caseSize * innerPackSize)
-                : line.unitPrice;
+                : effectiveUnitPrice;
               await db.update(vendorItems)
                 .set({ lastCasePrice: line.casePrice, lastPrice: derivedUnitPrice })
                 .where(eq(vendorItems.id, vi.id));
@@ -2050,13 +2061,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (line.action === "create") {
           const resolvedUnitId = resolveUnitId(line.unit);
           const resolvedCategoryId = resolveCategoryId(line.categoryHint);
+          const effectiveUnitPrice = line.unitPrice ?? line.casePrice ?? 0;
           const [newItem] = await db.insert(inventoryItems).values({
             companyId,
             name: line.name,
             unitId: resolvedUnitId,
             categoryId: resolvedCategoryId,
-            pricePerUnit: line.unitPrice,
-            avgCostPerUnit: line.unitPrice,
+            pricePerUnit: effectiveUnitPrice,
+            avgCostPerUnit: effectiveUnitPrice,
             yieldPercent: 100,
             caseSize: 20,
             active: 1,
