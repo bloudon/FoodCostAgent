@@ -15883,42 +15883,48 @@ Human Handoff:
 
   /**
    * GET /api/mobile/dashboard
-   * Returns { businessName, locationName, recentScans[] } for the mobile home screen.
-   * locationName is null when the user has no assigned store.
-   * recentScans lists the last 10 sweep scans (newest first) with optional sessionId/sessionName.
+   * Role-aware dashboard data for the mobile home screen.
+   * Returns role, userName, businessName, locationName, stores[], activeSessions[], recentScans[].
+   * Admins/managers also receive cross-store session data.
    */
   app.get("/api/mobile/dashboard", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       if (!companyId) return res.status(403).json({ error: "Company context required" });
-      const userId = (req as any).user?.id;
+      const user = (req as any).user;
+      const userId = user?.id;
+      const role: string = user?.role ?? "store_user";
+      const userName: string | null = user?.name ?? user?.email ?? null;
 
       // Resolve businessName from company
       const company = await storage.getCompany(companyId);
       const businessName = company?.name ?? null;
 
-      // Resolve locationName from the user's first assigned store
-      let locationName: string | null = null;
-      if (userId) {
-        const userStoreAssignments = await storage.getUserStores(userId);
-        if (userStoreAssignments.length > 0) {
-          const storeRecord = await storage.getCompanyStore(userStoreAssignments[0].storeId);
-          locationName = storeRecord?.name ?? null;
-        }
+      // Resolve stores based on role
+      let stores: { id: string; name: string }[] = [];
+      if (role === "company_admin" || role === "global_admin") {
+        const allStores = await storage.getCompanyStores(companyId);
+        stores = allStores.map(s => ({ id: s.id, name: s.name }));
+      } else if (userId) {
+        const assignments = await storage.getUserStores(userId);
+        const storeDetails = await Promise.all(
+          assignments.map(a => storage.getCompanyStore(a.storeId))
+        );
+        stores = storeDetails.filter(Boolean).map(s => ({ id: s!.id, name: s!.name }));
       }
+
+      const locationName: string | null = stores[0]?.name ?? null;
 
       // Fetch recent scans for this user within the company
       const rawScans = userId
-        ? await storage.getRecentShelfScanSessions(userId, companyId, 10)
+        ? await storage.getRecentShelfScanSessions(userId, companyId, 8)
         : [];
 
-      // Enrich scans with sessionName from linked inventory count
       const recentScans = await Promise.all(
         rawScans.map(async (scan) => {
           let sessionName: string | null = null;
           if (scan.inventoryCountId) {
             const ic = await storage.getInventoryCount(scan.inventoryCountId);
-            // Defensive company check to ensure cross-tenant isolation
             if (ic && ic.companyId === companyId) {
               sessionName = ic.name ?? ic.countDate.toISOString().slice(0, 10);
             }
@@ -15934,7 +15940,45 @@ Human Handoff:
         })
       );
 
-      return res.json({ businessName, locationName, recentScans });
+      // Fetch active count sessions for accessible stores
+      let activeSessions: {
+        id: string; name: string; storeId: string | null;
+        storeName: string | null; startedAt: Date | null;
+      }[] = [];
+
+      if (role === "company_admin" || role === "global_admin") {
+        // All active sessions across all company stores
+        const allActive = await storage.getActiveInventoryCounts(companyId);
+        const storeMap = new Map(stores.map(s => [s.id, s.name]));
+        activeSessions = allActive.map(ic => ({
+          id: ic.id,
+          name: ic.name ?? ic.countDate.toISOString().slice(0, 10),
+          storeId: ic.storeId ?? null,
+          storeName: ic.storeId ? (storeMap.get(ic.storeId) ?? null) : null,
+          startedAt: ic.countedAt ?? null,
+        }));
+      } else {
+        // Sessions scoped to user's first accessible store
+        const primaryStoreId = stores[0]?.id;
+        const counts = await storage.getActiveInventoryCounts(companyId, primaryStoreId);
+        activeSessions = counts.map(ic => ({
+          id: ic.id,
+          name: ic.name ?? ic.countDate.toISOString().slice(0, 10),
+          storeId: ic.storeId ?? null,
+          storeName: stores.find(s => s.id === ic.storeId)?.name ?? null,
+          startedAt: ic.countedAt ?? null,
+        }));
+      }
+
+      return res.json({
+        role,
+        userName,
+        businessName,
+        locationName,
+        stores,
+        recentScans,
+        activeSessions,
+      });
     } catch (error: any) {
       console.error("[GET /api/mobile/dashboard]", error);
       return res.status(500).json({ error: "Failed to load dashboard" });

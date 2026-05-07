@@ -75,6 +75,7 @@ import PrepChartStations from "@/pages/prep-chart-stations";
 import PrepChartOnHand from "@/pages/prep-chart-on-hand";
 import PrepChartProduction from "@/pages/prep-chart-production";
 import ShelfScans from "@/pages/shelf-scans";
+import DashboardMobile from "@/pages/dashboard-mobile";
 import { ChatPanel } from "@/components/chat-panel";
 import WebsiteHome from "@/pages/website/home";
 import WebsiteFeatures from "@/pages/website/features";
@@ -271,6 +272,7 @@ function ProtectedLayoutContent() {
       <main className="h-screen overflow-auto">
         <Switch>
           <Route path="/" component={Dashboard} />
+          <Route path="/dashboard/mobile" component={DashboardMobile} />
           <Route path="/inventory-sessions" component={InventorySessions} />
           <Route path="/new-count" component={NewCountSession} />
           <Route path="/inventory-count" component={InventoryCount} />
@@ -344,6 +346,7 @@ function ProtectedLayoutContent() {
               <Route path="/prep-chart/on-hand" component={PrepChartOnHand} />
               <Route path="/prep-chart/production" component={PrepChartProduction} />
               <Route path="/shelf-scans" component={ShelfScans} />
+              <Route path="/dashboard/mobile" component={DashboardMobile} />
               <Route component={NotFound} />
             </Switch>
           </main>
