@@ -660,15 +660,18 @@ function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
                     {item.priceSource === "zero" ? (
                       <span className="text-muted-foreground">—</span>
                     ) : (
-                      <span className="text-muted-foreground">
-                        ${item.unitPrice.toFixed(2)}
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span>${item.unitPrice.toFixed(2)}</span>
                         {item.priceSource === "case" && (
-                          <span
-                            className="ml-1 text-[10px] text-amber-600 dark:text-amber-400"
-                            title="Case price used — verify this is the correct per-unit cost"
-                          >case</span>
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-600 dark:text-amber-400 no-default-active-elevate"
+                            title="The AI only found a case price — this may not be the correct per-unit cost. Please verify before applying."
+                          >
+                            case price
+                          </Badge>
                         )}
-                      </span>
+                      </div>
                     )}
                   </td>
                   <td className="px-3 py-2">
