@@ -195,9 +195,7 @@ export default function OnboardingSeedCosts() {
     applyMutation.mutate({ items: payload });
   }
 
-  async function handleSkip() {
-    await apiRequest("POST", "/api/onboarding/milestones/review-step", { stepId: "costs" }).catch(() => {});
-    queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+  function handleSkip() {
     navigate("/recipes");
   }
 

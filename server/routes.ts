@@ -1470,7 +1470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { id: "categories", label: "Review Categories", completed: reviewedSteps.includes("categories"), path: "/categories" },
         { id: "vendors", label: "Add a Vendor", completed: vendorRows.length > 0 || reviewedSteps.includes("vendors"), path: "/vendors" },
         { id: "inventory", label: "Add Inventory Items", completed: inventoryRows.length > 0 || reviewedSteps.includes("inventory"), path: "/inventory-items" },
-        { id: "costs", label: "Seed Ingredient Costs", completed: costsRows.length > 0 || reviewedSteps.includes("costs"), path: "/onboarding/seed-costs" },
+        { id: "costs", label: "Seed Ingredient Costs", completed: costsRows.length > 0, path: "/onboarding/seed-costs" },
         { id: "recipes", label: "Create a Recipe", completed: recipeRows.length > 0 || reviewedSteps.includes("recipes"), path: "/recipes" },
         { id: "menu", label: "Add Menu Items", completed: menuRows.length > 0 || reviewedSteps.includes("menu"), path: "/menu-items" },
         { id: "team", label: "Invite Your Team", completed: teamRows.length > 0 || reviewedSteps.includes("team"), path: "/users" },
