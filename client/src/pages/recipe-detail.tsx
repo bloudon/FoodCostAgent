@@ -159,7 +159,7 @@ function RecipeDetailContent() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3 mb-8">
+      <div className="grid grid-cols-2 gap-4 md:gap-6 md:grid-cols-3 mb-8">
         <Card data-testid="card-current-cost">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
