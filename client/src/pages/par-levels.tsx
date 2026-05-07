@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useCallback, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
   Table,
@@ -20,10 +20,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Save, ArrowLeft, BarChart2, CheckCircle2 } from "lucide-react";
+import {
+  Search,
+  Save,
+  ArrowLeft,
+  BarChart2,
+  CheckCircle2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+} from "lucide-react";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
 
 interface InventoryItem {
@@ -47,12 +56,24 @@ interface DirtyRow {
   reorderLevel: number | null;
 }
 
+type SortField = "name" | "category" | "parStatus";
+type SortDir = "asc" | "desc";
+
+function SortIcon({ field, current, dir }: { field: SortField; current: SortField; dir: SortDir }) {
+  if (field !== current) return <ArrowUpDown className="h-3.5 w-3.5 ml-1 text-muted-foreground/50" />;
+  return dir === "asc"
+    ? <ArrowUp className="h-3.5 w-3.5 ml-1" />
+    : <ArrowDown className="h-3.5 w-3.5 ml-1" />;
+}
+
 export default function ParLevels() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [dirty, setDirty] = useState<Record<string, DirtyRow>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const { data: items = [], isLoading } = useQuery<InventoryItem[]>({
     queryKey: ["/api/inventory-items"],
@@ -75,10 +96,7 @@ export default function ParLevels() {
 
   const showBanner = milestonesData && !milestonesData.dismissed;
 
-  const activeItems = useMemo(
-    () => items.filter((i) => i.active === 1),
-    [items]
-  );
+  const activeItems = useMemo(() => items.filter((i) => i.active === 1), [items]);
 
   const filteredItems = useMemo(() => {
     return activeItems.filter((item) => {
@@ -90,12 +108,38 @@ export default function ParLevels() {
     });
   }, [activeItems, search, categoryFilter]);
 
+  const sortedItems = useMemo(() => {
+    return [...filteredItems].sort((a, b) => {
+      let cmp = 0;
+      if (sortField === "name") {
+        cmp = a.name.localeCompare(b.name);
+      } else if (sortField === "category") {
+        cmp = (a.category ?? "").localeCompare(b.category ?? "");
+      } else if (sortField === "parStatus") {
+        const aHas = a.parLevel !== null ? 1 : 0;
+        const bHas = b.parLevel !== null ? 1 : 0;
+        cmp = bHas - aHas; // set first by default asc
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [filteredItems, sortField, sortDir]);
+
+  const handleSort = (field: SortField) => {
+    if (field === sortField) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
   const itemsWithPar = useMemo(
-    () => activeItems.filter((i) => {
-      const d = dirty[i.id];
-      if (d) return d.parLevel !== null && d.parLevel !== undefined;
-      return i.parLevel !== null && i.parLevel !== undefined;
-    }).length,
+    () =>
+      activeItems.filter((i) => {
+        const d = dirty[i.id];
+        if (d !== undefined) return d.parLevel !== null;
+        return i.parLevel !== null;
+      }).length,
     [activeItems, dirty]
   );
 
@@ -104,22 +148,36 @@ export default function ParLevels() {
   const getVal = (item: InventoryItem, field: "parLevel" | "reorderLevel"): string => {
     if (dirty[item.id] !== undefined) {
       const v = dirty[item.id][field];
-      return v === null || v === undefined ? "" : String(v);
+      return v === null ? "" : String(v);
     }
     const v = item[field];
     return v === null || v === undefined ? "" : String(v);
   };
 
+  // handleChange preserves the other field's CURRENT persisted value when first editing a row
   const handleChange = useCallback(
-    (itemId: string, field: "parLevel" | "reorderLevel", value: string) => {
+    (item: InventoryItem, field: "parLevel" | "reorderLevel", value: string) => {
       const num = value === "" ? null : parseFloat(value);
-      setDirty((prev) => ({
-        ...prev,
-        [itemId]: {
-          parLevel: field === "parLevel" ? num : (prev[itemId]?.parLevel ?? null),
-          reorderLevel: field === "reorderLevel" ? num : (prev[itemId]?.reorderLevel ?? null),
-        },
-      }));
+      setDirty((prev) => {
+        const existing = prev[item.id];
+        return {
+          ...prev,
+          [item.id]: {
+            parLevel:
+              field === "parLevel"
+                ? num
+                : existing !== undefined
+                ? existing.parLevel
+                : item.parLevel,
+            reorderLevel:
+              field === "reorderLevel"
+                ? num
+                : existing !== undefined
+                ? existing.reorderLevel
+                : item.reorderLevel,
+          },
+        };
+      });
     },
     []
   );
@@ -130,10 +188,10 @@ export default function ParLevels() {
       if (!row) return;
       setSaving((prev) => ({ ...prev, [item.id]: true }));
       try {
-        const payload: Record<string, number | null> = {};
-        if (row.parLevel !== undefined) payload.parLevel = row.parLevel;
-        if (row.reorderLevel !== undefined) payload.reorderLevel = row.reorderLevel;
-
+        const payload: Record<string, number | null> = {
+          parLevel: row.parLevel,
+          reorderLevel: row.reorderLevel,
+        };
         const res = await apiRequest("PATCH", `/api/inventory-items/${item.id}`, payload);
         if (!res.ok) throw new Error("Save failed");
 
@@ -144,6 +202,7 @@ export default function ParLevels() {
         });
         queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
         queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/dashboard/reorder-list"] });
       } catch {
         toast({ title: "Error", description: "Failed to save par level", variant: "destructive" });
       } finally {
@@ -184,11 +243,7 @@ export default function ParLevels() {
           </p>
         </div>
         {hasDirty && (
-          <Button
-            onClick={saveAll}
-            data-testid="button-save-all-par"
-            className="shrink-0"
-          >
+          <Button onClick={saveAll} data-testid="button-save-all-par" className="shrink-0">
             <Save className="h-4 w-4 mr-1.5" />
             Save All ({Object.keys(dirty).length})
           </Button>
@@ -205,7 +260,11 @@ export default function ParLevels() {
                 {itemsWithPar} of {activeItems.length} items have par levels set
               </span>
               {progressPercent > 50 && (
-                <Badge variant="secondary" className="bg-green-500/10 text-green-700 border-green-500/20 dark:text-green-400" data-testid="badge-par-complete">
+                <Badge
+                  variant="secondary"
+                  className="bg-green-500/10 text-green-700 border-green-500/20 dark:text-green-400"
+                  data-testid="badge-par-complete"
+                >
                   <CheckCircle2 className="h-3 w-3 mr-1" />
                   Milestone Complete
                 </Badge>
@@ -256,12 +315,39 @@ export default function ParLevels() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Item</TableHead>
-              <TableHead className="hidden sm:table-cell">Category</TableHead>
+              <TableHead>
+                <button
+                  className="flex items-center text-xs font-medium uppercase tracking-wide hover:text-foreground transition-colors"
+                  onClick={() => handleSort("name")}
+                  data-testid="sort-name"
+                >
+                  Item
+                  <SortIcon field="name" current={sortField} dir={sortDir} />
+                </button>
+              </TableHead>
+              <TableHead className="hidden sm:table-cell">
+                <button
+                  className="flex items-center text-xs font-medium uppercase tracking-wide hover:text-foreground transition-colors"
+                  onClick={() => handleSort("category")}
+                  data-testid="sort-category"
+                >
+                  Category
+                  <SortIcon field="category" current={sortField} dir={sortDir} />
+                </button>
+              </TableHead>
               <TableHead className="hidden md:table-cell">Unit</TableHead>
               <TableHead>Par Level</TableHead>
               <TableHead>Reorder Level</TableHead>
-              <TableHead className="w-[80px]">Status</TableHead>
+              <TableHead className="w-[90px]">
+                <button
+                  className="flex items-center text-xs font-medium uppercase tracking-wide hover:text-foreground transition-colors"
+                  onClick={() => handleSort("parStatus")}
+                  data-testid="sort-par-status"
+                >
+                  Status
+                  <SortIcon field="parStatus" current={sortField} dir={sortDir} />
+                </button>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -275,7 +361,7 @@ export default function ParLevels() {
                   ))}
                 </TableRow>
               ))
-            ) : filteredItems.length === 0 ? (
+            ) : sortedItems.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                   {search || categoryFilter !== "all"
@@ -284,7 +370,7 @@ export default function ParLevels() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredItems.map((item) => {
+              sortedItems.map((item) => {
                 const isDirty = dirty[item.id] !== undefined;
                 const isSaving = saving[item.id];
                 const parVal = getVal(item, "parLevel");
@@ -300,7 +386,10 @@ export default function ParLevels() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {isDirty && (
-                          <span className="inline-block h-2 w-2 rounded-full bg-amber-500 shrink-0" aria-label="Unsaved" />
+                          <span
+                            className="inline-block h-2 w-2 rounded-full bg-amber-500 shrink-0"
+                            aria-label="Unsaved"
+                          />
                         )}
                         <span className="font-medium text-sm truncate max-w-[160px] sm:max-w-[220px]">
                           {item.name.charAt(0).toUpperCase() + item.name.slice(1)}
@@ -319,7 +408,7 @@ export default function ParLevels() {
                         inputMode="decimal"
                         value={parVal}
                         placeholder="—"
-                        onChange={(e) => handleChange(item.id, "parLevel", e.target.value)}
+                        onChange={(e) => handleChange(item, "parLevel", e.target.value)}
                         onBlur={() => saveRow(item)}
                         disabled={isSaving}
                         className="w-20 h-8 text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
@@ -332,7 +421,7 @@ export default function ParLevels() {
                         inputMode="decimal"
                         value={reorderVal}
                         placeholder="—"
-                        onChange={(e) => handleChange(item.id, "reorderLevel", e.target.value)}
+                        onChange={(e) => handleChange(item, "reorderLevel", e.target.value)}
                         onBlur={() => saveRow(item)}
                         disabled={isSaving}
                         className="w-20 h-8 text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
