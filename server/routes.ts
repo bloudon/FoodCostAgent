@@ -1967,8 +1967,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { items } = parsed.data;
 
       // Preload all units for unit-string matching (done once for the whole request)
-      const allUnits = await db.select({ id: units.id, abbreviation: units.abbreviation, name: units.name })
-        .from(units);
+      const allUnits = await db.select({ id: unitsTable.id, abbreviation: unitsTable.abbreviation, name: unitsTable.name })
+        .from(unitsTable);
       const lbUnit = allUnits.find(u => u.abbreviation === "lb");
       const defaultUnitId = lbUnit?.id;
       if (!defaultUnitId) {
