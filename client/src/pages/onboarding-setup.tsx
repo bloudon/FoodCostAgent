@@ -106,7 +106,7 @@ const STEPS = [
   { id: "inventory", label: "Count #1", icon: ClipboardList },
 ];
 
-const STEP_MILESTONE_IDS: Record<number, string> = {
+export const STEP_MILESTONE_IDS: Record<number, string> = {
   1: "menu_scan",
   2: "plan",
   3: "invoice_scan",
