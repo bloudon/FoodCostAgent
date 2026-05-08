@@ -3222,20 +3222,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const fractionalPounds = ['eighth-pound', 'quarter-pound', 'half-pound'];
 
     // A unit is compatible if ALL of:
-    // 1. Same kind as target (prevents cross-kind selections like oz for a gallon item)
+    // 1. Same kind as target (weight↔weight, volume↔volume, count↔count) OR
+    //    cross-kind volume↔weight (water-density fallback: 1 mL ≈ 1 g)
     // 2. Not a fractional pound
-    // 3. Reachable via the unit_conversions graph OR convertible via toBaseRatio
-    //    (toBaseRatio handles standard same-kind conversions through the common base unit)
+    // 3. Reachable via graph OR toBaseRatio (same-kind); valid toBaseRatio (cross-kind)
     // 4. Matches company's preferred unit system
     const compatibleUnits = units.filter(u => {
-      if (u.kind !== targetUnit.kind) return false;
+      const sameKind = u.kind === targetUnit.kind;
+      const crossKindWaterDensity =
+        (targetUnit.kind === "weight" && u.kind === "volume") ||
+        (targetUnit.kind === "volume" && u.kind === "weight");
+
+      if (!sameKind && !crossKindWaterDensity) return false;
       if (fractionalPounds.includes(u.name)) return false;
 
-      // Conversion-path check: allow if reachable via explicit graph edges OR
-      // via the toBaseRatio transitive path (all same-kind units with valid ratios)
-      const graphCompatible = reachable.has(u.id);
-      const ratioCompatible = u.toBaseRatio > 0 && targetUnit.toBaseRatio > 0;
-      if (!graphCompatible && !ratioCompatible) return false;
+      if (sameKind) {
+        // Conversion-path check: allow if reachable via explicit graph edges OR
+        // via the toBaseRatio transitive path (all same-kind units with valid ratios)
+        const graphCompatible = reachable.has(u.id);
+        const ratioCompatible = u.toBaseRatio > 0 && targetUnit.toBaseRatio > 0;
+        if (!graphCompatible && !ratioCompatible) return false;
+      } else {
+        // Cross-kind: both sides must have valid toBaseRatio for the mL=g math to work
+        if (u.toBaseRatio <= 0 || targetUnit.toBaseRatio <= 0) return false;
+      }
 
       // Apply company's preferred unit system
       if (company.preferredUnitSystem === 'both' || !u.system) return true;

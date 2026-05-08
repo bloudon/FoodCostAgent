@@ -70,7 +70,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useUndoableDelete } from "@/hooks/use-undoable-delete";
 import { formatUnitName, formatRecipeName } from "@/lib/utils";
-import { getSuggestedConversionFactor } from "@/lib/unitConversions";
+import { getSuggestedConversionFactor, getWaterDensityConversionFactor } from "@/lib/unitConversions";
 import {
   ArrowLeft,
   Save,
@@ -182,6 +182,7 @@ function InlineIngredientRow({
   onAddToInventory,
   onLinkToExisting,
   isUncostable = false,
+  isWaterDensity = false,
 }: {
   component: ComponentWithDetails;
   units: Unit[] | undefined;
@@ -194,6 +195,7 @@ function InlineIngredientRow({
   onAddToInventory?: (component: ComponentWithDetails) => void;
   onLinkToExisting?: (component: ComponentWithDetails) => void;
   isUncostable?: boolean;
+  isWaterDensity?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: component.id });
@@ -433,8 +435,9 @@ function InlineIngredientRow({
     : undefined;
 
   // Sync the conversion input when the popover opens or an existing saved row loads.
-  // For same-kind unit pairs (volume↔volume, weight↔weight) with no saved factor yet,
-  // pre-fill with the standard conversion factor from the lookup table.
+  // For same-kind unit pairs, pre-fill with the standard factor. For cross-kind
+  // volume↔weight pairs (water-density rows), pre-fill with the water-density factor
+  // as a starting point the chef can refine for their specific ingredient.
   // inventoryUnitRaw is declared above (before the early-return), so it is safe to
   // include in the dependency array — no Temporal Dead Zone risk.
   useEffect(() => {
@@ -450,8 +453,17 @@ function InlineIngredientRow({
           setConvFactor(String(suggested));
           setConvFactorIsSuggested(true);
         } else {
-          setConvFactor("");
-          setConvFactorIsSuggested(false);
+          // Try water-density cross-kind factor as a starting point
+          const waterFactor = inventoryUnitRaw
+            ? getWaterDensityConversionFactor(component.unitName, inventoryUnitRaw)
+            : null;
+          if (waterFactor !== null) {
+            setConvFactor(String(waterFactor));
+            setConvFactorIsSuggested(true);
+          } else {
+            setConvFactor("");
+            setConvFactorIsSuggested(false);
+          }
         }
       }
     }
@@ -531,6 +543,7 @@ function InlineIngredientRow({
       }
       data-testid={`row-ingredient-${component.id}`}
     >
+
       {/* Responsive grid: compact on mobile, full columns on desktop */}
       <div className="grid grid-cols-[1fr_64px_76px_48px_32px] md:grid-cols-[24px_20px_1fr_80px_100px_70px_70px_32px] gap-2 items-center">
         {/* Drag handle - desktop only */}
@@ -583,7 +596,7 @@ function InlineIngredientRow({
           )}
         </div>
 
-        {/* Unit selector + uncostable warning badge */}
+        {/* Unit selector + uncostable/water-density badge */}
         <div className="flex items-center gap-1 min-w-0">
           <Select value={component.unitId} onValueChange={handleUnitChange}>
             <SelectTrigger
@@ -634,7 +647,9 @@ function InlineIngredientRow({
               </div>
             </SelectContent>
           </Select>
-          {isUncostable && inventoryItemForRow && (
+          {/* Shared conversion popover: amber triangle for truly uncostable,
+              muted ~ badge for water-density estimates (volume↔weight) */}
+          {(isUncostable || isWaterDensity) && inventoryItemForRow && (
             <Popover open={convPopoverOpen} onOpenChange={setConvPopoverOpen}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -642,33 +657,66 @@ function InlineIngredientRow({
                     <button
                       type="button"
                       className="shrink-0 inline-flex items-center justify-center h-6 w-6 rounded-md hover-elevate active-elevate-2"
-                      data-testid={`badge-uncostable-${component.id}`}
+                      data-testid={isUncostable ? `badge-uncostable-${component.id}` : `badge-water-density-${component.id}`}
                     >
-                      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      {isUncostable ? (
+                        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      ) : (
+                        <span className="text-xs font-bold text-blue-500 dark:text-blue-400 leading-none">~</span>
+                      )}
                     </button>
                   </PopoverTrigger>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-xs text-xs">
-                  Can't convert{" "}
-                  <span className="font-medium">{formatUnitName(component.unitName)}</span> to{" "}
-                  <span className="font-medium">
-                    {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "the item's inventory unit"}
-                  </span>
-                  . Click to set a conversion factor.
+                  {isUncostable ? (
+                    <>
+                      Can't convert{" "}
+                      <span className="font-medium">{formatUnitName(component.unitName)}</span> to{" "}
+                      <span className="font-medium">
+                        {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "the item's inventory unit"}
+                      </span>
+                      . Click to set a conversion factor.
+                    </>
+                  ) : (
+                    <>
+                      Using water-density estimate (1 mL ≈ 1 g) to convert{" "}
+                      <span className="font-medium">{formatUnitName(component.unitName)}</span> to{" "}
+                      <span className="font-medium">
+                        {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "the item's inventory unit"}
+                      </span>
+                      . Click to set the actual density for this ingredient.
+                    </>
+                  )}
                 </TooltipContent>
               </Tooltip>
               <PopoverContent side="top" align="end" className="w-72 p-4">
                 <div className="space-y-3">
                   <div>
-                    <p className="text-sm font-medium">Set unit conversion</p>
+                    <p className="text-sm font-medium">
+                      {isWaterDensity ? "Override density conversion" : "Set unit conversion"}
+                    </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      How many{" "}
-                      <span className="font-medium">{formatUnitName(component.unitName)}</span>{" "}
-                      equal 1{" "}
-                      <span className="font-medium">
-                        {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "inventory unit"}
-                      </span>{" "}
-                      of <span className="font-medium">{component.name}</span>?
+                      {isWaterDensity ? (
+                        <>
+                          Currently using water density (1 mL ≈ 1 g). Enter the actual number of{" "}
+                          <span className="font-medium">{formatUnitName(component.unitName)}</span>{" "}
+                          per 1{" "}
+                          <span className="font-medium">
+                            {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "inventory unit"}
+                          </span>{" "}
+                          of <span className="font-medium">{component.name}</span> to improve accuracy.
+                        </>
+                      ) : (
+                        <>
+                          How many{" "}
+                          <span className="font-medium">{formatUnitName(component.unitName)}</span>{" "}
+                          equal 1{" "}
+                          <span className="font-medium">
+                            {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "inventory unit"}
+                          </span>{" "}
+                          of <span className="font-medium">{component.name}</span>?
+                        </>
+                      )}
                     </p>
                   </div>
                   <div className="space-y-1">
@@ -694,7 +742,9 @@ function InlineIngredientRow({
                   </div>
                   {convFactorIsSuggested && (
                     <p className="text-xs text-muted-foreground" data-testid={`text-conv-suggested-${component.id}`}>
-                      (suggested — verify for your ingredient)
+                      {isWaterDensity
+                        ? "(water-density estimate — update for this ingredient)"
+                        : "(suggested — verify for your ingredient)"}
                     </p>
                   )}
                   </div>
@@ -1067,6 +1117,17 @@ function RecipeBuilderContent() {
     ) {
       return (comp.qty * fromUnit.toBaseRatio) / itemUnit.toBaseRatio;
     }
+    // Water-density cross-kind fallback (volume ↔ weight, 1 mL ≈ 1 g).
+    // Mirrors server/lib/recipeUnits.ts — a saved per-item factor (above) wins.
+    if (
+      itemUnit &&
+      ((fromUnit.kind === "volume" && itemUnit.kind === "weight") ||
+        (fromUnit.kind === "weight" && itemUnit.kind === "volume")) &&
+      itemUnit.toBaseRatio > 0 &&
+      fromUnit.toBaseRatio > 0
+    ) {
+      return (comp.qty * fromUnit.toBaseRatio) / itemUnit.toBaseRatio;
+    }
     return null;
   };
 
@@ -1079,6 +1140,34 @@ function RecipeBuilderContent() {
     const item = inventoryItems?.find((i) => i.id === comp.componentId);
     if (!item) return false;
     return convertCompQtyToInventoryUnits(comp, item) === null;
+  };
+
+  // True when a component's cost is based on water-density (1 mL ≈ 1 g) rather
+  // than a saved per-item conversion factor or same-kind math. Used to show the
+  // muted "~" badge instead of the amber warning triangle.
+  const isComponentWaterDensity = (comp: ComponentWithDetails): boolean => {
+    if (comp.missingItem) return false;
+    if (comp.componentType !== "inventory_item") return false;
+    const item = inventoryItems?.find((i) => i.id === comp.componentId);
+    if (!item) return false;
+    const fromUnit = units?.find((u) => u.id === comp.unitId);
+    const itemUnit = units?.find((u) => u.id === item.unitId);
+    if (!fromUnit || !itemUnit) return false;
+    if (fromUnit.id === itemUnit.id) return false;
+    // Has an explicit per-item override → not a water-density estimate
+    const override = companyRecipeUnits?.find(
+      (u) => u.inventoryItemId === item.id && u.unitId === fromUnit.id && u.isIssueUnit === 0
+    );
+    if (override && override.qtyPerInventoryUnit > 0) return false;
+    // Same-kind → not water-density
+    if (fromUnit.kind === itemUnit.kind) return false;
+    // Cross-kind volume↔weight with valid ratios → water-density estimate
+    return (
+      ((fromUnit.kind === "volume" && itemUnit.kind === "weight") ||
+        (fromUnit.kind === "weight" && itemUnit.kind === "volume")) &&
+      fromUnit.toBaseRatio > 0 &&
+      itemUnit.toBaseRatio > 0
+    );
   };
 
   // Calculate component cost
@@ -1471,8 +1560,9 @@ function RecipeBuilderContent() {
   // Get compatible units for a specific component (for inline editing).
   // Mirrors `convertToInventoryUnits` so the dropdown only surfaces units the
   // cost engine can actually convert: the inventory unit itself, per-item
-  // Recipe Unit overrides (qtyPerInventoryUnit > 0, isIssueUnit = 0), and
-  // same-kind units that have a non-zero toBaseRatio on both sides.
+  // Recipe Unit overrides (qtyPerInventoryUnit > 0, isIssueUnit = 0),
+  // same-kind units (via toBaseRatio), and cross-kind volume↔weight pairs
+  // (via water-density fallback: 1 mL ≈ 1 g).
   // Sub-recipes only use same-kind because they don't have a per-item
   // override mechanism today.
   const getCompatibleUnitsForComponent = (component: ComponentWithDetails): Unit[] => {
@@ -1518,8 +1608,8 @@ function RecipeBuilderContent() {
       }
     }
 
-    // Then fill in remaining same-kind units in master order — but only the
-    // ones the toBaseRatio path can actually convert (both sides > 0).
+    // Fill in remaining same-kind units — only the ones the toBaseRatio path
+    // can actually convert (both sides > 0).
     if (baseUnit.toBaseRatio > 0) {
       for (const u of units) {
         if (
@@ -1527,6 +1617,22 @@ function RecipeBuilderContent() {
           u.toBaseRatio > 0 &&
           !result.has(u.id)
         ) {
+          result.set(u.id, u);
+        }
+      }
+    }
+
+    // Cross-kind volume↔weight: water-density fallback (1 mL ≈ 1 g) means
+    // these are now costable for inventory items, so surface them in the
+    // dropdown. Only applies when the base unit is weight or volume (not count).
+    if (
+      inventoryItemId &&
+      (baseUnit.kind === "weight" || baseUnit.kind === "volume") &&
+      baseUnit.toBaseRatio > 0
+    ) {
+      const crossKind = baseUnit.kind === "weight" ? "volume" : "weight";
+      for (const u of units) {
+        if (u.kind === crossKind && u.toBaseRatio > 0 && !result.has(u.id)) {
           result.set(u.id, u);
         }
       }
@@ -2550,6 +2656,7 @@ function RecipeBuilderContent() {
                             onAddToInventory={handleOpenAddToInventory}
                             onLinkToExisting={handleOpenLinkToExisting}
                             isUncostable={isComponentUncostable(component)}
+                            isWaterDensity={isComponentWaterDensity(component)}
                           />
                         ))}
                       </div>

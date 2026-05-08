@@ -56,6 +56,25 @@ export function convertToInventoryUnits(
     return (qty * fromUnit.toBaseRatio) / itemUnit.toBaseRatio;
   }
 
+  // Water-density cross-kind fallback (volume ↔ weight, 1 mL ≈ 1 g).
+  // Volume toBaseRatio is in mL; weight toBaseRatio is in grams.
+  // Water density (1 g/mL) means they share the same numeric base, so the
+  // standard ratio formula works without any density constant:
+  //   qty_in_inventory_unit = (qty × fromUnit.toBaseRatio) / itemUnit.toBaseRatio
+  // This gives: 1 cup → 236.6 mL → 236.6 g → 0.522 lb ≈ 8.35 oz
+  //             1 tbsp → 14.79 mL → 0.0326 lb ≈ 0.52 oz
+  //             1 tsp  →  4.93 mL → 0.0109 lb ≈ 0.17 oz
+  // A saved per-item factor (handled above) always wins over this fallback.
+  if (
+    itemUnit &&
+    ((fromUnit.kind === "volume" && itemUnit.kind === "weight") ||
+      (fromUnit.kind === "weight" && itemUnit.kind === "volume")) &&
+    itemUnit.toBaseRatio > 0 &&
+    fromUnit.toBaseRatio > 0
+  ) {
+    return (qty * fromUnit.toBaseRatio) / itemUnit.toBaseRatio;
+  }
+
   return null;
 }
 

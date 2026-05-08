@@ -55,6 +55,40 @@ const UNIT_BASE_RATIOS: Record<string, { ratio: number; kind: string }> = {
 };
 
 /**
+ * Returns the water-density conversion factor for a volume↔weight cross-kind
+ * pair, or `null` for same-kind or count pairs.
+ *
+ * Water density: 1 mL = 1 g. Since volume toBaseRatio is in mL and weight
+ * toBaseRatio is in grams, the factor is simply:
+ *   inventoryUnit.ratio / recipeUnit.ratio
+ * (same formula as same-kind conversions, but applied cross-kind via density).
+ *
+ * This gives the chef's expected values:
+ *   1 cup  vs lb → 236.588 / 453.592 ≈ 0.5216 lb per cup (≈ 8.35 oz)
+ *   1 tbsp vs lb →  14.787 / 453.592 ≈ 0.0326 lb per tbsp (≈ 0.52 oz)
+ *   1 tsp  vs lb →   4.929 / 453.592 ≈ 0.0109 lb per tsp  (≈ 0.17 oz)
+ *
+ * A saved per-item explicit factor always wins over this at runtime.
+ */
+export function getWaterDensityConversionFactor(
+  recipeUnitName: string,
+  inventoryUnitName: string,
+): number | null {
+  const key = (s: string) => s.trim().toLowerCase();
+  const recipeEntry = UNIT_BASE_RATIOS[key(recipeUnitName)];
+  const inventoryEntry = UNIT_BASE_RATIOS[key(inventoryUnitName)];
+
+  if (!recipeEntry || !inventoryEntry) return null;
+
+  const isVolWeight =
+    (recipeEntry.kind === "volume" && inventoryEntry.kind === "weight") ||
+    (recipeEntry.kind === "weight" && inventoryEntry.kind === "volume");
+  if (!isVolWeight) return null;
+
+  return parseFloat((inventoryEntry.ratio / recipeEntry.ratio).toPrecision(6));
+}
+
+/**
  * Returns a suggested conversion factor representing how many `recipeUnitName`
  * units equal 1 `inventoryUnitName` unit, or `null` when no standard factor
  * exists.
