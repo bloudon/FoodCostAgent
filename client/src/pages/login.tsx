@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Eye, EyeOff } from "lucide-react";
-const logoImage = "/logo.png";
+const logoImage = "/website-logo-dark.png";
 import { RestaurantBackground } from "@/components/restaurant-background";
 import { useAppLanguage } from "@/lib/language-context";
 
@@ -67,7 +67,7 @@ export default function Login() {
             <img 
               src={logoImage} 
               alt="FNB Cost Pro" 
-              className="h-20 w-auto"
+              className="h-24 w-auto"
             />
           </div>
           <CardTitle>{t.auth.signIn}</CardTitle>
