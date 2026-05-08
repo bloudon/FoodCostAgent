@@ -3223,15 +3223,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // A unit is compatible if ALL of:
     // 1. Same kind as target (weight↔weight, volume↔volume, count↔count) OR
-    //    cross-kind volume↔weight (water-density fallback: 1 mL ≈ 1 g)
+    //    cross-kind volume↔weight when an inventoryItemId context is present
+    //    (water-density fallback: 1 mL ≈ 1 g — only valid for inventory items;
+    //     recipe sub-components don't support density fallback)
     // 2. Not a fractional pound
     // 3. Reachable via graph OR toBaseRatio (same-kind); valid toBaseRatio (cross-kind)
     // 4. Matches company's preferred unit system
+    const hasInventoryContext = Boolean(inventoryItemId && typeof inventoryItemId === 'string');
     const compatibleUnits = units.filter(u => {
       const sameKind = u.kind === targetUnit.kind;
       const crossKindWaterDensity =
-        (targetUnit.kind === "weight" && u.kind === "volume") ||
-        (targetUnit.kind === "volume" && u.kind === "weight");
+        hasInventoryContext &&
+        ((targetUnit.kind === "weight" && u.kind === "volume") ||
+         (targetUnit.kind === "volume" && u.kind === "weight"));
 
       if (!sameKind && !crossKindWaterDensity) return false;
       if (fractionalPounds.includes(u.name)) return false;
