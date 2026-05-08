@@ -576,11 +576,9 @@ function PlanStep({
 function StoreSetupStep({
   storeId,
   onComplete,
-  onStoreRenamed,
 }: {
   storeId?: string;
   onComplete: () => void;
-  onStoreRenamed: (name: string) => void;
 }) {
   const { toast } = useToast();
   const { data: storesData, isLoading } = useQuery<{ id: string; name: string }[]>({
@@ -611,7 +609,6 @@ function StoreSetupStep({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
-      onStoreRenamed(storeName.trim());
       onComplete();
     },
     onError: (err: Error) => {
@@ -1456,15 +1453,17 @@ export default function OnboardingSetup() {
     });
   }, [companyId]);
 
-  // Force the wizard to render in light mode regardless of system/user theme.
+  // Bootstrap storeId from API when not present in persisted wizard state
+  // (e.g. first login, cleared localStorage, or different device).
+  const { data: bootstrapStores } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/stores/accessible"],
+    enabled: !!companyId && !wizardState.storeId,
+  });
   useEffect(() => {
-    const root = document.documentElement;
-    const wasDark = root.classList.contains("dark");
-    root.classList.remove("dark");
-    return () => {
-      if (wasDark) root.classList.add("dark");
-    };
-  }, []);
+    if (bootstrapStores && bootstrapStores.length > 0 && !wizardState.storeId) {
+      updateState({ storeId: bootstrapStores[0].id });
+    }
+  }, [bootstrapStores, wizardState.storeId]);
 
   const advance = useCallback(async (currentStep: number) => {
     await advanceStep(currentStep);
@@ -1521,7 +1520,10 @@ export default function OnboardingSetup() {
   const { step, approvedMenuItems, skippedRecipes, storeId } = wizardState;
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-start bg-background p-4 pt-8">
+    <div
+      className="flex min-h-screen flex-col items-center justify-start bg-white text-gray-900 p-4 pt-8"
+      style={{ colorScheme: "light" }}
+    >
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -1566,7 +1568,6 @@ export default function OnboardingSetup() {
           <StoreSetupStep
             storeId={storeId}
             onComplete={() => advance(3)}
-            onStoreRenamed={(name) => updateState({ storeId })}
           />
         )}
 

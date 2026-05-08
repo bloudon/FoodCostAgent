@@ -950,86 +950,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const passwordHash = await hashPassword(password);
 
-      const { users, companies } = await import("@shared/schema");
+      const {
+        users, companies, menuItemSizes,
+        companyStores: cs, userStores: us, storageLocations: sl, categories: cats,
+      } = await import("@shared/schema");
+
+      // Fetch company name before the transaction so it can be used inside.
+      let companyName = "My";
+      if (user.companyId) {
+        const companyRecord = await storage.getCompany(user.companyId);
+        companyName = companyRecord?.name || "My";
+      }
+
+      // One atomic transaction: activate user + company, seed menu item sizes,
+      // auto-create default store (+ storage locations + categories) when none exist.
+      let defaultStoreId: string | null = null;
 
       await db.transaction(async (tx) => {
         await tx.update(users).set({ active: 1, passwordHash }).where(eq(users.id, user.id));
 
         if (user.companyId) {
           await tx.update(companies).set({ status: "active" }).where(eq(companies.id, user.companyId));
+
+          // Seed default menu item sizes (once per company).
+          const existingSizes = await tx.select({ id: menuItemSizes.id }).from(menuItemSizes)
+            .where(eq(menuItemSizes.companyId, user.companyId)).limit(1);
+          if (existingSizes.length === 0) {
+            const defaultSizes = [
+              { name: "One Size", sortOrder: 0, isDefault: 1 },
+              { name: "Large", sortOrder: 1, isDefault: 0 },
+              { name: "Medium", sortOrder: 2, isDefault: 0 },
+              { name: "Small", sortOrder: 3, isDefault: 0 },
+              { name: "Lunch", sortOrder: 4, isDefault: 0 },
+              { name: "Kids", sortOrder: 5, isDefault: 0 },
+            ];
+            await tx.insert(menuItemSizes).values(
+              defaultSizes.map(size => ({
+                companyId: user.companyId!,
+                name: size.name,
+                sortOrder: size.sortOrder,
+                isDefault: size.isDefault,
+                active: 1,
+              }))
+            );
+          }
+
+          // Auto-create default store so wizard can scan menus immediately on first login.
+          const existingStores = await tx.select({ id: cs.id }).from(cs)
+            .where(eq(cs.companyId, user.companyId)).limit(1);
+          if (existingStores.length === 0) {
+            const storeName = `${companyName}'s Store`;
+            const [newStore] = await tx.insert(cs).values({
+              companyId: user.companyId,
+              name: storeName,
+              code: "MAIN",
+            }).returning();
+            await tx.insert(us).values({ userId: user.id, storeId: newStore.id });
+
+            // Seed default storage locations and categories (first store only).
+            const existingCats = await tx.select({ id: cats.id }).from(cats)
+              .where(eq(cats.companyId, user.companyId)).limit(1);
+            if (existingCats.length === 0) {
+              const defaultLocations = [
+                { name: "Walk-In Cooler", sortOrder: 1 },
+                { name: "Pantry", sortOrder: 2 },
+                { name: "Drink Cooler", sortOrder: 3 },
+                { name: "Walk-In Freezer", sortOrder: 4 },
+                { name: "Prep Table", sortOrder: 5 },
+                { name: "Front Counter", sortOrder: 6 },
+              ];
+              for (const loc of defaultLocations) {
+                await tx.insert(sl).values({ companyId: user.companyId!, ...loc });
+              }
+              const defaultCategories = [
+                { name: "Frozen", showAsIngredient: 1 },
+                { name: "Walk-In", showAsIngredient: 1 },
+                { name: "Dry/Pantry", showAsIngredient: 1 },
+              ];
+              for (const cat of defaultCategories) {
+                await tx.insert(cats).values({ companyId: user.companyId!, ...cat });
+              }
+            }
+            defaultStoreId = newStore.id;
+            console.log(`[Activate] Auto-created default store "${storeName}" (${newStore.id}) for company ${user.companyId}`);
+          } else {
+            defaultStoreId = existingStores[0].id;
+          }
         }
       });
-
-      if (user.companyId) {
-        const { menuItemSizes } = await import("@shared/schema");
-        const existingSizes = await db.select().from(menuItemSizes)
-          .where(eq(menuItemSizes.companyId, user.companyId));
-        if (existingSizes.length === 0) {
-          const defaultSizes = [
-            { name: "One Size", sortOrder: 0, isDefault: 1 },
-            { name: "Large", sortOrder: 1, isDefault: 0 },
-            { name: "Medium", sortOrder: 2, isDefault: 0 },
-            { name: "Small", sortOrder: 3, isDefault: 0 },
-            { name: "Lunch", sortOrder: 4, isDefault: 0 },
-            { name: "Kids", sortOrder: 5, isDefault: 0 },
-          ];
-          await db.insert(menuItemSizes).values(
-            defaultSizes.map(size => ({
-              companyId: user.companyId!,
-              name: size.name,
-              sortOrder: size.sortOrder,
-              isDefault: size.isDefault,
-              active: 1,
-            }))
-          );
-        }
-      }
-
-      // Auto-create default store if none exists yet for this company.
-      // This ensures new accounts always have a store so the onboarding wizard
-      // menu scan step works immediately on first login.
-      let defaultStoreId: string | null = null;
-      if (user.companyId) {
-        const { companyStores: cs, userStores: us, storageLocations: sl, categories: cats } = await import("@shared/schema");
-        const existingStores = await db.select({ id: cs.id }).from(cs).where(eq(cs.companyId, user.companyId)).limit(1);
-        if (existingStores.length === 0) {
-          const companyRecord = await storage.getCompany(user.companyId);
-          const storeName = `${companyRecord?.name || "My"}'s Store`;
-          const [newStore] = await db.insert(cs).values({
-            companyId: user.companyId,
-            name: storeName,
-            code: "MAIN",
-          }).returning();
-          await db.insert(us).values({ userId: user.id, storeId: newStore.id });
-          // Seed default storage locations and categories (first store only).
-          const existingCats = await db.select({ id: cats.id }).from(cats).where(eq(cats.companyId, user.companyId)).limit(1);
-          if (existingCats.length === 0) {
-            const defaultLocations = [
-              { name: "Walk-In Cooler", sortOrder: 1 },
-              { name: "Pantry", sortOrder: 2 },
-              { name: "Drink Cooler", sortOrder: 3 },
-              { name: "Walk-In Freezer", sortOrder: 4 },
-              { name: "Prep Table", sortOrder: 5 },
-              { name: "Front Counter", sortOrder: 6 },
-            ];
-            for (const loc of defaultLocations) {
-              await db.insert(sl).values({ companyId: user.companyId, ...loc });
-            }
-            const defaultCategories = [
-              { name: "Frozen", showAsIngredient: 1 },
-              { name: "Walk-In", showAsIngredient: 1 },
-              { name: "Dry/Pantry", showAsIngredient: 1 },
-            ];
-            for (const cat of defaultCategories) {
-              await db.insert(cats).values({ companyId: user.companyId, ...cat });
-            }
-          }
-          defaultStoreId = newStore.id;
-          console.log(`[Activate] Auto-created default store "${storeName}" (${newStore.id}) for company ${user.companyId}`);
-        } else {
-          defaultStoreId = existingStores[0].id;
-        }
-      }
 
       const token = await createSession(
         user.id,
