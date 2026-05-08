@@ -17,7 +17,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { formatPhoneNumber, phoneValidation } from "@/lib/phone";
-const logoImage = "/logo.png";
+const logoImage = "/website-logo-dark.png";
 
 const leadSignupSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -68,7 +68,7 @@ export default function LeadSignup() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
-            <img src={logoImage} alt="FNB Cost Pro" className="h-20 w-auto" />
+            <img src={logoImage} alt="FNB Cost Pro" className="h-24 w-auto" />
           </div>
           <CardTitle data-testid="text-signup-title">Start Your Free Trial</CardTitle>
           <CardDescription>
