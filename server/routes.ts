@@ -985,6 +985,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Auto-create default store if none exists yet for this company.
+      // This ensures new accounts always have a store so the onboarding wizard
+      // menu scan step works immediately on first login.
+      let defaultStoreId: string | null = null;
+      if (user.companyId) {
+        const { companyStores: cs, userStores: us, storageLocations: sl, categories: cats } = await import("@shared/schema");
+        const existingStores = await db.select({ id: cs.id }).from(cs).where(eq(cs.companyId, user.companyId)).limit(1);
+        if (existingStores.length === 0) {
+          const companyRecord = await storage.getCompany(user.companyId);
+          const storeName = `${companyRecord?.name || "My"}'s Store`;
+          const [newStore] = await db.insert(cs).values({
+            companyId: user.companyId,
+            name: storeName,
+            code: "MAIN",
+          }).returning();
+          await db.insert(us).values({ userId: user.id, storeId: newStore.id });
+          // Seed default storage locations and categories (first store only).
+          const existingCats = await db.select({ id: cats.id }).from(cats).where(eq(cats.companyId, user.companyId)).limit(1);
+          if (existingCats.length === 0) {
+            const defaultLocations = [
+              { name: "Walk-In Cooler", sortOrder: 1 },
+              { name: "Pantry", sortOrder: 2 },
+              { name: "Drink Cooler", sortOrder: 3 },
+              { name: "Walk-In Freezer", sortOrder: 4 },
+              { name: "Prep Table", sortOrder: 5 },
+              { name: "Front Counter", sortOrder: 6 },
+            ];
+            for (const loc of defaultLocations) {
+              await db.insert(sl).values({ companyId: user.companyId, ...loc });
+            }
+            const defaultCategories = [
+              { name: "Frozen", showAsIngredient: 1 },
+              { name: "Walk-In", showAsIngredient: 1 },
+              { name: "Dry/Pantry", showAsIngredient: 1 },
+            ];
+            for (const cat of defaultCategories) {
+              await db.insert(cats).values({ companyId: user.companyId, ...cat });
+            }
+          }
+          defaultStoreId = newStore.id;
+          console.log(`[Activate] Auto-created default store "${storeName}" (${newStore.id}) for company ${user.companyId}`);
+        } else {
+          defaultStoreId = existingStores[0].id;
+        }
+      }
+
       const token = await createSession(
         user.id,
         req.headers["user-agent"],
@@ -1008,6 +1054,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           lastName: user.lastName,
         },
         company,
+        storeId: defaultStoreId,
       });
     } catch (error: any) {
       console.error("Lead activation error:", error);

@@ -98,6 +98,7 @@ function clearWizardState(companyId: string) {
 const STEPS = [
   { id: "menu_scan", label: "Menu", icon: Camera },
   { id: "plan", label: "Plan", icon: Zap },
+  { id: "store_setup", label: "Store", icon: Building2 },
   { id: "invoice_scan", label: "Invoice", icon: FileText },
   { id: "categories", label: "Categories", icon: FolderTree },
   { id: "storage", label: "Storage", icon: Warehouse },
@@ -109,12 +110,13 @@ const STEPS = [
 export const STEP_MILESTONE_IDS: Record<number, string> = {
   1: "menu_scan",
   2: "plan",
-  3: "invoice_scan",
-  4: "categories",
-  5: "storage_locations",
-  6: "recipes",
-  7: "review",
-  8: "inventory_count",
+  3: "store",
+  4: "invoice_scan",
+  5: "categories",
+  6: "storage_locations",
+  7: "recipes",
+  8: "review",
+  9: "inventory_count",
 };
 
 export async function postReviewStep(milestoneId: string): Promise<void> {
@@ -191,6 +193,8 @@ function MenuScanStep({
   const { toast } = useToast();
   const [subStep, setSubStep] = useState<"upload" | "review">("upload");
   const [scanning, setScanning] = useState(false);
+  const [addingPage, setAddingPage] = useState(false);
+  const [addPageScanning, setAddPageScanning] = useState(false);
   const [sessionId, setSessionId] = useState("");
   const [items, setItems] = useState<ExtractedMenuItem[]>([]);
 
@@ -214,6 +218,34 @@ function MenuScanStep({
       toast({ title: "Scan failed", description: message, variant: "destructive" });
     } finally {
       setScanning(false);
+    }
+  };
+
+  const handleAddPage = async (objectPath: string) => {
+    setAddPageScanning(true);
+    try {
+      const res = await apiRequest("POST", "/api/onboarding/menu-scan", {
+        imageObjectPath: objectPath,
+        storeId: storeId || undefined,
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error || "Scan failed");
+      }
+      const data = await res.json() as { sessionId: string; items: ExtractedMenuItem[] };
+      // Merge new items, de-duplicating by normalized name
+      setItems(prev => {
+        const existingNames = new Set(prev.map(i => i.name.toLowerCase().trim()));
+        const newUnique = (data.items || []).filter(i => !existingNames.has(i.name.toLowerCase().trim()));
+        return [...prev, ...newUnique];
+      });
+      setAddingPage(false);
+      toast({ title: "Page added", description: `${data.items?.length || 0} items scanned and merged.` });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Scan failed";
+      toast({ title: "Scan failed", description: message, variant: "destructive" });
+    } finally {
+      setAddPageScanning(false);
     }
   };
 
@@ -364,7 +396,34 @@ function MenuScanStep({
               ) : `Import ${items.filter(i => i.name.trim()).length} Items`}
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => setSubStep("upload")} data-testid="button-scan-again">
+          {!addingPage ? (
+            <Button variant="outline" size="sm" onClick={() => setAddingPage(true)} data-testid="button-add-page">
+              <Plus className="w-3.5 h-3.5 mr-1" /> Add another page
+            </Button>
+          ) : (
+            <div className="rounded-md border p-3 space-y-2 bg-muted/20">
+              <p className="text-xs text-muted-foreground font-medium">Scan the next page — items will be merged into the list above.</p>
+              {addPageScanning ? (
+                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Scanning…
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <ObjectUploader
+                    onUploadComplete={handleAddPage}
+                    buttonText="Choose Next Page"
+                    dataTestId="button-upload-next-page"
+                    visibility="private"
+                    maxFileSize={10485760}
+                  />
+                  <Button variant="ghost" size="sm" onClick={() => setAddingPage(false)} data-testid="button-cancel-add-page">
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => { setSubStep("upload"); setAddingPage(false); }} data-testid="button-scan-again">
             Scan a different image
           </Button>
         </div>
@@ -513,7 +572,110 @@ function PlanStep({
   );
 }
 
-// ---- Step 3: Invoice Scan ----
+// ---- Step 3: Store Setup ----
+function StoreSetupStep({
+  storeId,
+  onComplete,
+  onStoreRenamed,
+}: {
+  storeId?: string;
+  onComplete: () => void;
+  onStoreRenamed: (name: string) => void;
+}) {
+  const { toast } = useToast();
+  const { data: storesData, isLoading } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/stores/accessible"],
+  });
+
+  const store = storesData?.find(s => s.id === storeId) || storesData?.[0];
+  const [storeName, setStoreName] = useState("");
+
+  useEffect(() => {
+    if (store && !storeName) {
+      setStoreName(store.name);
+    }
+  }, [store]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const sid = store?.id;
+      if (!sid) throw new Error("No store found");
+      const name = storeName.trim();
+      if (!name) throw new Error("Store name is required");
+      const res = await apiRequest("PATCH", `/api/stores/${sid}`, { name });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error || "Failed to save");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
+      onStoreRenamed(storeName.trim());
+      onComplete();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Could not save store name", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <Card data-testid="card-step-store-loading">
+        <CardContent className="py-10 flex items-center justify-center gap-2 text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin" /> Loading…
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card data-testid="card-step-store">
+      <CardHeader>
+        <CardTitle>Name your store</CardTitle>
+        <CardDescription>
+          We created a default store for you based on your company name. Give it a name that your team will recognize.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium" htmlFor="store-name-input">Store name</label>
+          <Input
+            id="store-name-input"
+            value={storeName}
+            onChange={e => setStoreName(e.target.value)}
+            placeholder="e.g. Downtown Location, Main Kitchen…"
+            data-testid="input-store-name"
+            onKeyDown={e => { if (e.key === "Enter" && storeName.trim()) saveMutation.mutate(); }}
+          />
+        </div>
+        <Button
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending || !storeName.trim()}
+          className="w-full"
+          data-testid="button-save-store-name"
+        >
+          {saveMutation.isPending ? (
+            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</>
+          ) : (
+            <><Check className="w-4 h-4 mr-2" /> Save &amp; Continue</>
+          )}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full text-muted-foreground"
+          onClick={onComplete}
+          data-testid="button-skip-store-name"
+        >
+          Keep this name — Continue
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Step 4: Invoice Scan ----
 export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
   const { toast } = useToast();
   const [subStep, setSubStep] = useState<"upload" | "review">("upload");
@@ -1294,10 +1456,20 @@ export default function OnboardingSetup() {
     });
   }, [companyId]);
 
+  // Force the wizard to render in light mode regardless of system/user theme.
+  useEffect(() => {
+    const root = document.documentElement;
+    const wasDark = root.classList.contains("dark");
+    root.classList.remove("dark");
+    return () => {
+      if (wasDark) root.classList.add("dark");
+    };
+  }, []);
+
   const advance = useCallback(async (currentStep: number) => {
     await advanceStep(currentStep);
     setWizardState(prev => {
-      const next = { ...prev, step: Math.min(8, prev.step + 1) };
+      const next = { ...prev, step: Math.min(9, prev.step + 1) };
       if (companyId) saveWizardState(companyId, next);
       return next;
     });
@@ -1355,7 +1527,7 @@ export default function OnboardingSetup() {
         <div className="flex items-center justify-between mb-6">
           <img src={logoImage} alt="FNB Cost Pro" className="h-12 w-auto" />
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">Step {step} of 8</span>
+            <span className="text-xs text-muted-foreground">Step {step} of 9</span>
             <Button
               variant="ghost"
               size="sm"
@@ -1391,41 +1563,49 @@ export default function OnboardingSetup() {
         )}
 
         {step === 3 && (
-          <InvoiceScanStep onComplete={() => advance(3)} />
+          <StoreSetupStep
+            storeId={storeId}
+            onComplete={() => advance(3)}
+            onStoreRenamed={(name) => updateState({ storeId })}
+          />
         )}
 
         {step === 4 && (
-          <CategoriesStep onComplete={() => advance(4)} />
+          <InvoiceScanStep onComplete={() => advance(4)} />
         )}
 
         {step === 5 && (
-          <StorageStep onComplete={() => advance(5)} />
+          <CategoriesStep onComplete={() => advance(5)} />
         )}
 
         {step === 6 && (
+          <StorageStep onComplete={() => advance(6)} />
+        )}
+
+        {step === 7 && (
           <RecipesStep
             approvedMenuItems={approvedMenuItems}
             skippedRecipes={skippedRecipes}
-            onComplete={() => advance(6)}
+            onComplete={() => advance(7)}
             onSkipRecipe={(id) => updateState({ skippedRecipes: [...skippedRecipes, id] })}
           />
         )}
 
-        {step === 7 && (
+        {step === 8 && (
           <ReviewStep
             approvedMenuItems={approvedMenuItems}
-            onComplete={() => advance(7)}
+            onComplete={() => advance(8)}
           />
         )}
 
-        {step === 8 && (
+        {step === 9 && (
           <InventoryStep
             onComplete={finishWizard}
           />
         )}
 
         {/* Back navigation */}
-        {step > 1 && step < 8 && (
+        {step > 1 && step < 9 && (
           <div className="mt-4 flex justify-start">
             <Button
               variant="ghost"
