@@ -81,6 +81,22 @@ Ratified and authoritative. These govern all feature work, AI assistance, and ar
 
 ---
 
+## Intelligence Maturity
+
+- **Operational intelligence develops progressively** — features that depend on historical data must behave appropriately at day zero and improve as history accumulates. Never assume data exists; degrade gracefully and improve silently over time.
+- **Four data states must never be conflated** — the application must clearly distinguish: **configured** (explicitly set by the operator), **observed** (recorded from a real event), **inferred** (derived where gaps exist), and **predicted** (forward-looking projections from historical patterns). These must remain distinct in the UI and in API responses.
+- **Predictive workflows must communicate confidence and data sufficiency** — always surface what period of history was used, how much of the requested lookback was actually available, and what assumptions were made to fill gaps.
+- **Insufficient data must be explained, not hidden** — features dependent on historical operational data must tell the user why results are limited rather than silently returning empty or misleading output.
+- **Speculative outputs must never appear authoritative** — low-confidence or inferred values must be visually marked as such. Uncertainty must be made visible; certainty must be earned.
+
+---
+
+## Beta Goal
+
+A restaurant can onboard within an afternoon and begin establishing operational baselines that evolve into increasingly accurate food cost and ordering intelligence over time.
+
+---
+
 ## Beta Refactoring Principle
 
 Do not pause beta-readiness to clean up architecture unless the current structure blocks reliability, security, or critical feature work.
