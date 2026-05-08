@@ -4,6 +4,70 @@ import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { companies, companyStores, storeStorageLocations, inventoryItems, storeInventoryItems, vendors, storeVendors, recipes, recipeComponents, categories, units, dayparts, users, menuItemSizes } from "@shared/schema";
 
+// Idempotent unit conversion seeding — safe to run on any DB state (fresh or existing).
+// Checks for an existing row (in either direction) before inserting, so duplicates
+// can never accumulate even if this function is called on every server restart.
+async function seedUnitConversions() {
+  const allUnits = await storage.getUnits();
+  const findUnit = (name: string) => allUnits.find(u => u.name === name);
+
+  const existingConversions = await storage.getUnitConversions();
+
+  // Returns true if a conversion between these two units already exists in either direction
+  const exists = (fromId: string, toId: string) =>
+    existingConversions.some(
+      c =>
+        (c.fromUnitId === fromId && c.toUnitId === toId) ||
+        (c.fromUnitId === toId && c.toUnitId === fromId)
+    );
+
+  const ensure = async (fromName: string, toName: string, factor: number) => {
+    const from = findUnit(fromName);
+    const to = findUnit(toName);
+    if (!from || !to) return;
+    if (exists(from.id, to.id)) return;
+    await storage.createUnitConversion({ fromUnitId: from.id, toUnitId: to.id, conversionFactor: factor });
+  };
+
+  // === WEIGHT ===
+  await ensure("pound",         "ounce (weight)",   16);    // 1 lb = 16 oz
+
+  // === VOLUME — spoon-level ===
+  await ensure("tablespoon",    "teaspoon",          3);    // 1 tbsp = 3 tsp
+  await ensure("tablespoon",    "half-tablespoon",   2);    // 1 tbsp = 2 half-tbsp
+  await ensure("fluid ounce",   "tablespoon",        2);    // 1 fl oz = 2 tbsp
+  await ensure("fluid ounce",   "teaspoon",          6);    // 1 fl oz = 6 tsp
+
+  // === VOLUME — cup chain ===
+  await ensure("cup",           "fluid ounce",       8);    // 1 cup = 8 fl oz
+  await ensure("cup",           "tablespoon",       16);    // 1 cup = 16 tbsp
+  await ensure("half-cup",      "fluid ounce",       4);    // ½ cup = 4 fl oz
+  await ensure("quarter-cup",   "fluid ounce",       2);    // ¼ cup = 2 fl oz
+  await ensure("quarter-cup",   "tablespoon",        4);    // ¼ cup = 4 tbsp
+
+  // === VOLUME — large vessels ===
+  await ensure("pint",          "cup",               2);    // 1 pt = 2 cups
+  await ensure("pint",          "fluid ounce",      16);    // 1 pt = 16 fl oz
+  await ensure("quart",         "pint",              2);    // 1 qt = 2 pts
+  await ensure("quart",         "cup",               4);    // 1 qt = 4 cups
+  await ensure("quart",         "fluid ounce",      32);    // 1 qt = 32 fl oz
+  await ensure("gallon",        "quart",             4);    // 1 gal = 4 qts
+  await ensure("gallon",        "pint",              8);    // 1 gal = 8 pts
+  await ensure("gallon",        "cup",              16);    // 1 gal = 16 cups
+  await ensure("gallon",        "fluid ounce",     128);    // 1 gal = 128 fl oz
+
+  // === COUNT — #10 can ===
+  await ensure("#10 can",       "fluid ounce",     109);    // 1 #10 can = 109 fl oz
+  await ensure("#10 can",       "cup",          13.625);    // 1 #10 can = 13.625 cups
+
+  const newCount = (await storage.getUnitConversions()).length - existingConversions.length;
+  if (newCount > 0) {
+    console.log(`✅ Added ${newCount} missing unit conversions`);
+  } else {
+    console.log("✅ All unit conversions already present");
+  }
+}
+
 // Comprehensive kitchen units seed data
 async function seedKitchenUnits() {
   console.log("📏 Seeding comprehensive kitchen units...");
@@ -605,131 +669,15 @@ export async function seedDatabase() {
 
   if (alreadySeeded) {
     console.log("✅ Database already seeded");
-    // ============ BRIAN'S PIZZA SETUP (Always runs) ============
+    // ============ ALWAYS-RUN MAINTENANCE ============
+    await seedUnitConversions();
     await seedBriansPizza();
-    // Migrate existing vendors to store_vendors join table
     await migrateVendorsToStores();
     return;
   }
 
-  // ============ UNITS ============
-  // Base unit for weight: pound (imperial) / kilogram (metric)
-  // Base unit for volume: fluid ounce (imperial) / milliliter (metric)
   // ============ UNIT CONVERSIONS ============
-  console.log("🔄 Creating unit conversions...");
-  
-  // Query comprehensive units created earlier for use in conversions
-  const allUnits = await storage.getUnits();
-  const findUnit = (name: string) => allUnits.find(u => u.name === name);
-  
-  const pound = findUnit("pound");
-  const ounce = findUnit("ounce (weight)"); // Note: comprehensive seed uses "ounce (weight)"
-  const tablespoon = findUnit("tablespoon");
-  const halfTablespoon = findUnit("half-tablespoon");
-  const teaspoon = findUnit("teaspoon");
-  const halfTeaspoon = findUnit("half-teaspoon");
-  const cup = findUnit("cup");
-  const halfCup = findUnit("half-cup");
-  const quarterCup = findUnit("quarter-cup");
-  const pint = findUnit("pint");
-  const quart = findUnit("quart");
-  const gallon = findUnit("gallon");
-  const fluidOunce = findUnit("fluid ounce");
-  const numberTenCan = findUnit("#10 can");
-  
-  // Only create conversions if units exist
-  if (pound && ounce) {
-    // 1 pound = 16 ounces
-    await storage.createUnitConversion({
-      fromUnitId: pound.id,
-      toUnitId: ounce.id,
-      conversionFactor: 16,
-    });
-  }
-
-  if (tablespoon && teaspoon) {
-    // 1 tablespoon = 3 teaspoons
-    await storage.createUnitConversion({
-      fromUnitId: tablespoon.id,
-      toUnitId: teaspoon.id,
-      conversionFactor: 3,
-    });
-  }
-
-  if (cup && tablespoon) {
-    // 1 cup = 16 tablespoons
-    await storage.createUnitConversion({
-      fromUnitId: cup.id,
-      toUnitId: tablespoon.id,
-      conversionFactor: 16,
-    });
-  }
-
-  if (pint && cup) {
-    // 1 pint = 2 cups
-    await storage.createUnitConversion({
-      fromUnitId: pint.id,
-      toUnitId: cup.id,
-      conversionFactor: 2,
-    });
-  }
-
-  if (quart && pint) {
-    // 1 quart = 2 pints
-    await storage.createUnitConversion({
-      fromUnitId: quart.id,
-      toUnitId: pint.id,
-      conversionFactor: 2,
-    });
-  }
-
-  if (quart && cup) {
-    // 1 quart = 4 cups
-    await storage.createUnitConversion({
-      fromUnitId: quart.id,
-      toUnitId: cup.id,
-      conversionFactor: 4,
-    });
-  }
-
-  if (gallon && quart) {
-    // 1 gallon = 4 quarts
-    await storage.createUnitConversion({
-      fromUnitId: gallon.id,
-      toUnitId: quart.id,
-      conversionFactor: 4,
-    });
-  }
-
-  if (gallon && cup) {
-    // 1 gallon = 16 cups
-    await storage.createUnitConversion({
-      fromUnitId: gallon.id,
-      toUnitId: cup.id,
-      conversionFactor: 16,
-    });
-  }
-
-  // #10 Can conversions (standard #10 can = 109 fl oz = 13.5 cups)
-  if (numberTenCan && fluidOunce) {
-    // 1 #10 can = 109 fluid ounces
-    await storage.createUnitConversion({
-      fromUnitId: numberTenCan.id,
-      toUnitId: fluidOunce.id,
-      conversionFactor: 109,
-    });
-  }
-
-  if (numberTenCan && cup) {
-    // 1 #10 can = 13.625 cups (109 fl oz / 8 fl oz per cup)
-    await storage.createUnitConversion({
-      fromUnitId: numberTenCan.id,
-      toUnitId: cup.id,
-      conversionFactor: 13.625,
-    });
-  }
-
-  console.log("✅ Unit conversions created!");
+  await seedUnitConversions();
 
   // ============ COMPANY & STORES ============
   console.log("🏢 Creating Brian's Pizza company and stores...");
