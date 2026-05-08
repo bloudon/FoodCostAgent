@@ -11,7 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ChevronLeft, Building2, Store, Plus, Edit, Save, X, Pencil, ImageIcon, Trash2 } from "lucide-react";
+import { ChevronLeft, Building2, Store, Plus, Edit, Save, X, Pencil, ImageIcon, Trash2, Users, UserX, UserCheck, AlertTriangle } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { TierGate } from "@/components/tier-gate";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -26,8 +26,30 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useAuth } from "@/lib/auth-context";
 import { TIER_LABELS, getTierLabel, TIERS, type Tier, type DbTier } from "@shared/tier-config";
+
+type CompanyUser = {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  role: string;
+  active: number;
+  created_at: string;
+  last_login_at: string | null;
+};
 
 export default function CompanyDetail() {
   const { id } = useParams<{ id: string }>();
@@ -215,6 +237,41 @@ export default function CompanyDetail() {
       createStoreMutation.mutate(normalizedData);
     }
   };
+
+  const { data: usersData } = useQuery<{ users: CompanyUser[] }>({
+    queryKey: [`/api/admin/companies/${id}/users`],
+    enabled: isGlobalAdmin && !!id,
+  });
+  const companyUsers = usersData?.users ?? [];
+
+  const toggleUserMutation = useMutation({
+    mutationFn: async ({ userId, active }: { userId: string; active: number }) => {
+      const response = await apiRequest("PATCH", `/api/admin/users/${userId}`, { active });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/companies/${id}/users`] });
+      toast({ title: "User updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update user", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await apiRequest("DELETE", `/api/admin/users/${userId}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/companies/${id}/users`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+      toast({ title: "User deleted" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to delete user", description: error.message, variant: "destructive" });
+    },
+  });
 
   const handleDeactivateCompany = () => {
     if (confirm("Are you sure you want to deactivate this company?")) {
@@ -718,6 +775,111 @@ export default function CompanyDetail() {
             )}
           </CardContent>
         </Card>
+
+        {/* Users Card — global admins only */}
+        {isGlobalAdmin && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <CardTitle>Users</CardTitle>
+                  <CardDescription>
+                    {companyUsers.length} user{companyUsers.length !== 1 ? "s" : ""} in this company
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {companyUsers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground" data-testid="text-no-users">
+                  No users found for this company.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {companyUsers.map((u) => {
+                    const displayName = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email;
+                    const isActive = u.active === 1;
+                    return (
+                      <div
+                        key={u.id}
+                        className="flex items-center justify-between p-3 border rounded-lg"
+                        data-testid={`user-item-${u.id}`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="min-w-0">
+                            <div className="font-medium truncate" data-testid={`text-user-name-${u.id}`}>
+                              {displayName}
+                            </div>
+                            <div className="text-sm text-muted-foreground truncate" data-testid={`text-user-email-${u.id}`}>
+                              {u.email}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 ml-3">
+                          <Badge variant="outline" className="text-xs capitalize" data-testid={`badge-user-role-${u.id}`}>
+                            {u.role.replace(/_/g, " ")}
+                          </Badge>
+                          <Badge
+                            variant={isActive ? "default" : "secondary"}
+                            data-testid={`badge-user-status-${u.id}`}
+                          >
+                            {isActive ? "Active" : "Inactive"}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title={isActive ? "Deactivate user" : "Reactivate user"}
+                            onClick={() => toggleUserMutation.mutate({ userId: u.id, active: isActive ? 0 : 1 })}
+                            disabled={toggleUserMutation.isPending}
+                            data-testid={`button-toggle-user-${u.id}`}
+                          >
+                            {isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive"
+                                title="Delete user permanently"
+                                data-testid={`button-delete-user-${u.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <div className="flex items-center gap-2">
+                                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                                  <AlertDialogTitle>Delete User?</AlertDialogTitle>
+                                </div>
+                                <AlertDialogDescription>
+                                  This will permanently delete <strong>{displayName}</strong> ({u.email}) and revoke all their active sessions. This cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive hover:bg-destructive/90"
+                                  onClick={() => deleteUserMutation.mutate(u.id)}
+                                  disabled={deleteUserMutation.isPending}
+                                  data-testid={`button-confirm-delete-user-${u.id}`}
+                                >
+                                  {deleteUserMutation.isPending ? "Deleting..." : "Delete User"}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Edit Store Dialog */}

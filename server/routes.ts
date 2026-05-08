@@ -12869,6 +12869,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/admin/companies/:id/users — list users belonging to a specific company
+  app.get("/api/admin/companies/:id/users", requireAuth, async (req, res) => {
+    try {
+      const reqUser = await storage.getUser(req.user!.id);
+      if (reqUser?.role !== "global_admin") {
+        return res.status(403).json({ error: "Only global admins can access this endpoint" });
+      }
+      const companyId = req.params.id;
+      const result = await db.execute(
+        sql`SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.active, u.created_at,
+                   MAX(s.last_active_at) as last_login_at
+            FROM users u
+            LEFT JOIN auth_sessions s ON s.user_id = u.id
+            WHERE u.company_id = ${companyId}
+            GROUP BY u.id, u.email, u.first_name, u.last_name, u.role, u.active, u.created_at
+            ORDER BY u.created_at DESC`
+      );
+      const rows = (result as any).rows ?? result;
+      res.json({ users: Array.isArray(rows) ? rows : [] });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error("GET /api/admin/companies/:id/users error:", err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // PATCH /api/admin/users/:id — global admin: deactivate or reactivate a user
+  app.patch("/api/admin/users/:id", requireAuth, async (req, res) => {
+    try {
+      const reqUser = await storage.getUser(req.user!.id);
+      if (reqUser?.role !== "global_admin") {
+        return res.status(403).json({ error: "Only global admins can access this endpoint" });
+      }
+      const { active } = z.object({ active: z.number().int().min(0).max(1) }).parse(req.body);
+      const updated = await storage.updateUser(req.params.id, { active });
+      if (!updated) return res.status(404).json({ error: "User not found" });
+      res.json(updated);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      res.status(400).json({ error: message });
+    }
+  });
+
+  // DELETE /api/admin/users/:id — global admin: permanently delete a user
+  app.delete("/api/admin/users/:id", requireAuth, async (req, res) => {
+    try {
+      const reqUser = await storage.getUser(req.user!.id);
+      if (reqUser?.role !== "global_admin") {
+        return res.status(403).json({ error: "Only global admins can delete users" });
+      }
+      const targetUser = await storage.getUser(req.params.id);
+      if (!targetUser) return res.status(404).json({ error: "User not found" });
+      if (targetUser.role === "global_admin") {
+        return res.status(403).json({ error: "Cannot delete a global admin account" });
+      }
+      // Revoke all sessions first
+      await db.execute(sql`UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = ${req.params.id} AND revoked_at IS NULL`);
+      // Remove user store assignments
+      await db.execute(sql`DELETE FROM user_stores WHERE user_id = ${req.params.id}`);
+      // Delete the user record
+      await db.execute(sql`DELETE FROM users WHERE id = ${req.params.id}`);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error("DELETE /api/admin/users/:id error:", err);
+      res.status(500).json({ error: message });
+    }
+  });
+
   // Update company logo
   app.put("/api/companies/:id/logo", requireAuth, async (req, res) => {
     try {
