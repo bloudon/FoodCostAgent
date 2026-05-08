@@ -587,10 +587,12 @@ function StoreSetupStep({
 
   const store = storesData?.find(s => s.id === storeId) || storesData?.[0];
   const [storeName, setStoreName] = useState("");
+  const [storeDescription, setStoreDescription] = useState("");
 
   useEffect(() => {
-    if (store && !storeName) {
-      setStoreName(store.name);
+    if (store) {
+      if (!storeName) setStoreName(store.name);
+      if (!storeDescription && (store as any).description) setStoreDescription((store as any).description);
     }
   }, [store]);
 
@@ -600,7 +602,9 @@ function StoreSetupStep({
       if (!sid) throw new Error("No store found");
       const name = storeName.trim();
       if (!name) throw new Error("Store name is required");
-      const res = await apiRequest("PATCH", `/api/stores/${sid}`, { name });
+      const payload: Record<string, string> = { name };
+      if (storeDescription.trim()) payload.description = storeDescription.trim();
+      const res = await apiRequest("PATCH", `/api/stores/${sid}`, payload);
       if (!res.ok) {
         const err = await res.json() as { error?: string };
         throw new Error(err.error || "Failed to save");
@@ -644,6 +648,20 @@ function StoreSetupStep({
             placeholder="e.g. Downtown Location, Main Kitchen…"
             data-testid="input-store-name"
             onKeyDown={e => { if (e.key === "Enter" && storeName.trim()) saveMutation.mutate(); }}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium" htmlFor="store-description-input">
+            Notes <span className="text-muted-foreground font-normal">(optional)</span>
+          </label>
+          <textarea
+            id="store-description-input"
+            value={storeDescription}
+            onChange={e => setStoreDescription(e.target.value)}
+            placeholder="e.g. Main production kitchen, open 7am–10pm…"
+            rows={2}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
+            data-testid="input-store-description"
           />
         </div>
         <Button

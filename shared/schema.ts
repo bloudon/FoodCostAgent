@@ -50,6 +50,7 @@ export const companyStores = pgTable("company_stores", {
   companyId: varchar("company_id").notNull(),
   code: text("code").notNull(), // Store code (e.g., "S001", "S002")
   name: text("name").notNull(), // Store name (e.g., "Downtown Store", "Airport Location")
+  description: text("description"), // Optional short description / notes for the store
   phone: text("phone"),
   addressLine1: text("address_line1"),
   addressLine2: text("address_line2"),
