@@ -233,10 +233,15 @@ function MenuScanStep({
         throw new Error(err.error || "Scan failed");
       }
       const data = await res.json() as { sessionId: string; items: ExtractedMenuItem[] };
-      // Merge new items, de-duplicating by normalized name
+      // Merge new items, de-duplicating by normalized name across both existing and incoming
       setItems(prev => {
-        const existingNames = new Set(prev.map(i => i.name.toLowerCase().trim()));
-        const newUnique = (data.items || []).filter(i => !existingNames.has(i.name.toLowerCase().trim()));
+        const seen = new Set(prev.map(i => i.name.toLowerCase().trim()));
+        const newUnique = (data.items || []).filter(i => {
+          const key = i.name.toLowerCase().trim();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
         return [...prev, ...newUnique];
       });
       setAddingPage(false);
@@ -581,7 +586,7 @@ function StoreSetupStep({
   onComplete: () => void;
 }) {
   const { toast } = useToast();
-  const { data: storesData, isLoading } = useQuery<{ id: string; name: string }[]>({
+  const { data: storesData, isLoading } = useQuery<{ id: string; name: string; description?: string | null }[]>({
     queryKey: ["/api/stores/accessible"],
   });
 
@@ -592,7 +597,7 @@ function StoreSetupStep({
   useEffect(() => {
     if (store) {
       if (!storeName) setStoreName(store.name);
-      if (!storeDescription && (store as any).description) setStoreDescription((store as any).description);
+      if (!storeDescription && store.description) setStoreDescription(store.description);
     }
   }, [store]);
 
