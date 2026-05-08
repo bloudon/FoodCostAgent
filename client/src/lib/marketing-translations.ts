@@ -35,8 +35,8 @@ export const translations = {
           "FnB Cost Pro is restaurant inventory management and back of house (BOH) software for F&B operators. Track food costs, count stock, manage recipes, and scan vendor invoices — all from your phone.",
       },
       badge: "Picture This.",
-      headline1: "Your whole kitchen.",
-      headline2: "Just your phone.",
+      headline1: "Operational in an afternoon.",
+      headline2: "Intelligent within weeks.",
       headline3: "",
       subheadline:
         "Picture this: your menu, your recipes, your vendor invoices, your restaurant inventory — all in the system from a photo. No keyboard, no spreadsheets, no re-entry. Traditional software takes weeks to set up. FnB Cost Pro takes a day.",
@@ -610,8 +610,8 @@ export const translations = {
           "FnB Cost Pro es el software de gestión de inventario para restaurantes y cocina trasera (BOH). Controla costos, cuenta stock y gestiona recetas — todo desde tu teléfono.",
       },
       badge: "Imagina esto.",
-      headline1: "Tu cocina completa.",
-      headline2: "Solo tu teléfono.",
+      headline1: "Operativo en una tarde.",
+      headline2: "Inteligente en semanas.",
       headline3: "",
       subheadline:
         "Imagina esto: tu menú, tus recetas, tus facturas de proveedores, tu inventario del restaurante — en el sistema desde una foto. Sin teclado, sin hojas de cálculo, sin reingreso. El software tradicional tarda semanas. FnB Cost Pro tarda un día.",
