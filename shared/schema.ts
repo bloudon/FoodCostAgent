@@ -1189,6 +1189,7 @@ export const orderGuideLines = pgTable("order_guide_lines", {
   innerPack: real("inner_pack"),           // Parsed numeric inner pack for calculations
   innerPackRaw: text("inner_pack_raw"),    // Original vendor inner pack string
   price: real("price"),
+  priceSource: text("price_source"), // 'case' | 'unit' | null — how the price was extracted
   gtin: text("gtin"), // Global Trade Item Number / UPC
   category: text("category"),
   brandName: text("brand_name"),

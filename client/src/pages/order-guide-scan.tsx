@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Fragment } from 'react';
+import { useState, useRef, useEffect, useCallback, Fragment } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLocation, useSearch } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,7 +56,7 @@ interface ScannedLine {
   packSize: string | null;
   uom: string | null;
   price: number | null;
-  priceSource?: 'unit' | 'case' | 'zero';
+  priceSource?: 'unit' | 'case' | null;
   matchStatus: 'matched' | 'ambiguous' | 'new';
   matchConfidence: number | null;
 }
@@ -111,8 +111,23 @@ export default function OrderGuideScan() {
   const [pageCount, setPageCount] = useState(0);
   const [showAddPageUploader, setShowAddPageUploader] = useState(false);
 
+  // Multi-page upload state: paths queued for sequential append after first scan
+  const [queuedPaths, setQueuedPaths] = useState<string[]>([]);
+  const [multiTotal, setMultiTotal] = useState(0);
+  const [scanningPage, setScanningPage] = useState<number | null>(null);
+
+  // Keep a ref so async callbacks can access current queued paths without stale closure
+  const queuedPathsRef = useRef<string[]>([]);
+  useEffect(() => { queuedPathsRef.current = queuedPaths; }, [queuedPaths]);
+
+  const storeIdsRef = useRef<string[]>(storeIds);
+  useEffect(() => { storeIdsRef.current = storeIds; }, [storeIds]);
+
   const lastLinesRef = useRef<ScannedLine[]>(lines);
   useEffect(() => { lastLinesRef.current = lines; }, [lines]);
+
+  const pageBreaksRef = useRef<number[]>(pageBreaks);
+  useEffect(() => { pageBreaksRef.current = pageBreaks; }, [pageBreaks]);
 
   // Update URL when orderGuideId changes (for refresh-safety)
   useEffect(() => {
@@ -167,6 +182,28 @@ export default function OrderGuideScan() {
     );
   };
 
+  // Low-level append helper — bypasses appendMutation so it can be called with
+  // an explicit orderGuideId before React state has settled.
+  const appendPageDirect = useCallback(async (
+    ogId: string,
+    objectPath: string,
+    currentLines: ScannedLine[],
+    currentBreaks: number[],
+    currentPageCount: number,
+  ): Promise<{ lines: ScannedLine[]; breaks: number[]; pageCount: number }> => {
+    const res = await apiRequest('POST', `/api/order-guides/${ogId}/append-scan`, {
+      objectPath,
+      storeIds: storeIdsRef.current.length > 0 ? storeIdsRef.current : undefined,
+    });
+    if (!res.ok) {
+      const err = await res.json() as { error?: string };
+      throw new Error(err.error || 'Scan failed');
+    }
+    const data = await res.json() as AppendResult;
+    const { lines: merged, pageBreaks: newBreaks } = mergeAppendedLines(currentLines, currentBreaks, data.newLines);
+    return { lines: merged, breaks: newBreaks, pageCount: data.pageNumber };
+  }, []);
+
   // Step 1 → first scan
   const firstScanMutation = useMutation({
     mutationFn: async (objectPath: string) => {
@@ -182,20 +219,23 @@ export default function OrderGuideScan() {
       return res.json() as Promise<FirstScanResult>;
     },
     onSuccess: async (data) => {
-      setOrderGuideId(data.orderGuideId);
+      const ogId = data.orderGuideId;
+      setOrderGuideId(ogId);
       setPageCount(1);
 
       // Fetch all lines from the review endpoint so we can display them
+      let currentLines: ScannedLine[] = [];
       try {
-        const reviewRes = await fetch(`/api/order-guides/${data.orderGuideId}/review`, { credentials: 'include' });
+        const reviewRes = await fetch(`/api/order-guides/${ogId}/review`, { credentials: 'include' });
         if (reviewRes.ok) {
           const reviewData = await reviewRes.json();
-          const allLines: ScannedLine[] = [
+          currentLines = [
             ...reviewData.lines.matched,
             ...reviewData.lines.ambiguous,
             ...reviewData.lines.new,
           ];
-          setLines(allLines);
+          setLines(currentLines);
+          lastLinesRef.current = currentLines;
         }
       } catch {
         // Non-fatal — user can still proceed to review
@@ -206,18 +246,56 @@ export default function OrderGuideScan() {
         setVendorId(data.detectedVendorId);
       }
 
+      // Process queued pages sequentially (multi-image upload)
+      const queued = queuedPathsRef.current;
+      if (queued.length > 0) {
+        let accLines = currentLines;
+        let accBreaks: number[] = [];
+        let accPageCount = 1;
+        for (let i = 0; i < queued.length; i++) {
+          setScanningPage(i + 2);
+          try {
+            const result = await appendPageDirect(ogId, queued[i], accLines, accBreaks, accPageCount);
+            accLines = result.lines;
+            accBreaks = result.breaks;
+            accPageCount = result.pageCount;
+            setLines([...accLines]);
+            setPageBreaks([...accBreaks]);
+            setPageCount(accPageCount);
+            lastLinesRef.current = accLines;
+            pageBreaksRef.current = accBreaks;
+          } catch (err: any) {
+            toast({
+              title: `Page ${i + 2} scan failed`,
+              description: err.message,
+              variant: 'destructive',
+            });
+          }
+        }
+        setQueuedPaths([]);
+        setScanningPage(null);
+        toast({
+          title: `${queued.length + 1} pages scanned`,
+          description: `Extracted ${accLines.length} item${accLines.length !== 1 ? 's' : ''} total`,
+        });
+      } else {
+        toast({
+          title: 'Page 1 scanned',
+          description: `Extracted ${data.totalItems} item${data.totalItems !== 1 ? 's' : ''} — ${data.highConfidenceMatches} auto-matched`,
+        });
+      }
+
       setStep(2);
-      toast({
-        title: 'Page 1 scanned',
-        description: `Extracted ${data.totalItems} item${data.totalItems !== 1 ? 's' : ''} — ${data.highConfidenceMatches} auto-matched`,
-      });
     },
     onError: (err: Error) => {
+      setQueuedPaths([]);
+      setScanningPage(null);
+      setMultiTotal(0);
       toast({ title: 'Scan failed', description: err.message, variant: 'destructive' });
     },
   });
 
-  // Append additional pages
+  // Append additional pages (manual "Add Another Page" button)
   const appendMutation = useMutation({
     mutationFn: async (objectPath: string) => {
       if (!orderGuideId) throw new Error('No active scan session');
@@ -252,6 +330,23 @@ export default function OrderGuideScan() {
     },
   });
 
+  // Handler for multi-image upload on Step 1
+  const handleMultiUpload = useCallback((paths: string[]) => {
+    if (storeIds.length === 0) {
+      toast({ title: 'Select a store', description: 'Please select at least one store before scanning.', variant: 'destructive' });
+      return;
+    }
+    if (paths.length === 0) return;
+    const [first, ...rest] = paths;
+    setMultiTotal(paths.length);
+    setScanningPage(1);
+    if (rest.length > 0) {
+      setQueuedPaths(rest);
+      queuedPathsRef.current = rest;
+    }
+    firstScanMutation.mutate(first);
+  }, [storeIds, firstScanMutation, toast]);
+
   const { matched: matchedCount, ambiguous: ambiguousCount, newItems: newCount } = computeMatchCounts(lines);
 
   const steps = [
@@ -259,6 +354,14 @@ export default function OrderGuideScan() {
     { num: 2, label: 'Review' },
   ];
   const stepNum = step;
+
+  // Scanning in progress (either first scan or multi-page queue)
+  const isScanning = firstScanMutation.isPending || scanningPage !== null;
+  const scanProgressLabel = isScanning
+    ? (multiTotal > 1
+        ? `Scanning page ${scanningPage ?? 1} of ${multiTotal} — this may take 10–20 seconds each`
+        : 'Scanning page 1 with AI…')
+    : null;
 
   return (
     <div className="h-full overflow-auto pb-4">
@@ -361,37 +464,46 @@ export default function OrderGuideScan() {
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <ScanLine className="h-4 w-4" />
-                  Upload First Page
+                  Upload Invoice Image(s)
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Take a clear photo of your invoice or receipt. Works best with well-lit, straight-on shots.
-                  Scanning begins automatically after upload.
+                  Take a clear photo of your invoice or receipt. You can select multiple images at once for multi-page invoices — they will be scanned in order automatically.
                 </p>
 
-                {firstScanMutation.isPending ? (
+                {isScanning ? (
                   <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
                     <Loader2 className="h-10 w-10 animate-spin" />
-                    <p className="font-medium">Scanning page 1 with AI…</p>
-                    <p className="text-xs">This may take 10–20 seconds</p>
+                    <p className="font-medium">{scanProgressLabel}</p>
+                    {multiTotal > 1 && (
+                      <div className="w-full max-w-xs bg-muted rounded-full h-1.5">
+                        <div
+                          className="bg-primary h-1.5 rounded-full transition-all"
+                          style={{ width: `${((scanningPage ?? 1) / multiTotal) * 100}%` }}
+                        />
+                      </div>
+                    )}
+                    <p className="text-xs">This may take 10–20 seconds per page</p>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-4">
                     <ObjectUploader
+                      multiple
                       onUploadComplete={(path) => {
                         if (storeIds.length === 0) {
                           toast({ title: 'Select a store', description: 'Please select at least one store before scanning.', variant: 'destructive' });
                           return;
                         }
-                        firstScanMutation.mutate(path);
+                        handleMultiUpload([path]);
                       }}
-                      buttonText="Select Invoice Image"
+                      onMultipleUploadsComplete={(paths) => handleMultiUpload(paths)}
+                      buttonText="Select Invoice Image(s)"
                       dataTestId="button-upload-invoice"
                       visibility="private"
                       icon={<ScanLine className="h-4 w-4" />}
                     />
-                    <p className="text-xs text-muted-foreground">Supports JPG, PNG, WebP up to 10 MB</p>
+                    <p className="text-xs text-muted-foreground">Supports JPG, PNG, WebP up to 10 MB — select multiple files for multi-page invoices</p>
                   </div>
                 )}
               </CardContent>
@@ -479,6 +591,15 @@ export default function OrderGuideScan() {
                                         title="The AI extracted a case price from this invoice. Verify the per-unit cost before committing."
                                       >
                                         case price
+                                      </Badge>
+                                    )}
+                                    {line.priceSource === 'unit' && (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[10px] px-1.5 py-0 border-blue-400 text-blue-600 dark:text-blue-400 no-default-active-elevate"
+                                        title="The AI extracted a per-unit price from this invoice. Case price was not available."
+                                      >
+                                        unit price
                                       </Badge>
                                     )}
                                   </div>

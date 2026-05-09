@@ -4376,18 +4376,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Convert extracted items to VendorProduct[] shape that orderGuideProcessor consumes.
       // IMPORTANT: VendorProduct.price and orderGuideLine.price both represent CASE price —
       // the orderGuideProcessor.approve() flow divides by caseSize to derive unit price.
-      // Therefore we only populate price from item.casePrice.
-      // If the scanner only returned unitPrice (priceType='unit'), we leave price undefined
-      // (null on the line) to avoid the approve() flow dividing it again incorrectly.
+      // priceSource is stored on the line so the review UI and approve flow can distinguish
+      // case prices (safe to use as lastCasePrice) from unit prices (display only).
       const vendorProducts = scanResult.items.map((item, index) => ({
         vendorSku: item.sku || `scan-${index + 1}`,
         vendorProductName: item.name,
         description: item.packSizeDescription || undefined,
         caseSizeRaw: item.packSizeDescription || undefined,
         unit: item.unit || undefined,
-        // Use casePrice when available; fall back to unitPrice only when priceType explicitly says 'unit'
-        // to leave it null (we don't convert unit→case as we'd need caseSize which isn't reliable here)
-        price: item.casePrice ?? undefined,
+        price: item.casePrice ?? item.unitPrice ?? undefined,
+        priceSource: item.casePrice != null ? 'case' : item.unitPrice != null ? 'unit' : undefined,
         categoryCode: item.categoryHint || undefined,
       }));
 
@@ -4443,6 +4441,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           innerPack: null,
           innerPackRaw: null,
           price: product.price ?? null,
+          priceSource: (product as any).priceSource ?? null,
           brandName: null,
           category: product.categoryCode || null,
           gtin: null,
@@ -4558,7 +4557,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         description: item.packSizeDescription || undefined,
         caseSizeRaw: item.packSizeDescription || undefined,
         unit: item.unit || undefined,
-        price: item.casePrice ?? undefined,
+        price: item.casePrice ?? item.unitPrice ?? undefined,
+        priceSource: item.casePrice != null ? 'case' : item.unitPrice != null ? 'unit' : undefined,
         categoryCode: item.categoryHint || undefined,
       }));
 
@@ -4588,6 +4588,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           innerPack: null,
           innerPackRaw: null,
           price: product.price ?? null,
+          priceSource: (product as any).priceSource ?? null,
           brandName: null,
           category: product.categoryCode || null,
           gtin: null,
@@ -4614,9 +4615,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           packSize: l.packSize,
           uom: l.uom,
           price: l.price,
-          // All order guide line prices are case prices (scan pipeline only stores
-          // item.casePrice here), so derive priceSource from nullability.
-          priceSource: l.price != null ? 'case' : 'zero',
+          // Use stored priceSource when available; fall back to nullability-derived value
+          priceSource: l.priceSource ?? (l.price != null ? 'case' : null),
           matchStatus: l.matchStatus,
           matchConfidence: l.matchConfidence,
         })),

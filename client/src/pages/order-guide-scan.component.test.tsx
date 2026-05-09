@@ -217,9 +217,9 @@ describe("OrderGuideScan page — Step 1 configuration UI", () => {
     expect(screen.getByText("Vendor (Optional)")).toBeInTheDocument();
   });
 
-  it("shows the 'Upload First Page' section", () => {
+  it("shows the 'Upload Invoice Image(s)' section", () => {
     render(React.createElement(OrderGuideScan));
-    expect(screen.getByText("Upload First Page")).toBeInTheDocument();
+    expect(screen.getByText("Upload Invoice Image(s)")).toBeInTheDocument();
   });
 
   it("does not show 'Review & Commit' button on step 1", () => {

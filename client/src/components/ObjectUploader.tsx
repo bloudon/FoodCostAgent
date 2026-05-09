@@ -4,6 +4,8 @@ import { Upload, Loader2 } from "lucide-react";
 
 interface SimpleObjectUploaderProps {
   onUploadComplete: (url: string) => void;
+  onMultipleUploadsComplete?: (urls: string[]) => void;
+  multiple?: boolean;
   buttonText?: string;
   dataTestId?: string;
   maxFileSize?: number;
@@ -15,6 +17,8 @@ interface SimpleObjectUploaderProps {
 
 export function ObjectUploader({
   onUploadComplete,
+  onMultipleUploadsComplete,
+  multiple = false,
   buttonText = "Upload Image",
   dataTestId = "button-upload-image",
   maxFileSize = 10485760,
@@ -26,57 +30,68 @@ export function ObjectUploader({
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const uploadSingleFile = async (file: File): Promise<string> => {
     if (file.size > maxFileSize) {
-      alert(`File too large. Maximum size is ${Math.round(maxFileSize / 1024 / 1024)}MB.`);
-      return;
+      throw new Error(`File "${file.name}" is too large. Maximum size is ${Math.round(maxFileSize / 1024 / 1024)}MB.`);
+    }
+    if (!file.type.startsWith("image/")) {
+      throw new Error(`"${file.name}" is not an image file.`);
     }
 
-    if (!file.type.startsWith("image/")) {
-      alert("Only image files are allowed.");
-      return;
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("visibility", visibility);
+
+    const response = await fetch("/api/objects/upload", {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error("Upload failed");
     }
+
+    const data = await response.json();
+
+    if (data.objectPath) {
+      return data.objectPath;
+    } else if (data.uploadUrl) {
+      const putResponse = await fetch(data.uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      if (!putResponse.ok) {
+        throw new Error("Failed to upload to storage");
+      }
+      const url = new URL(data.uploadUrl);
+      return url.pathname;
+    }
+
+    throw new Error("No object path returned from upload");
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setIsUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("visibility", visibility);
-
-      const response = await fetch("/api/objects/upload", {
-        method: "POST",
-        credentials: "include",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error("Upload failed");
-      }
-
-      const data = await response.json();
-
-      if (data.objectPath) {
-        onUploadComplete(data.objectPath);
-      } else if (data.uploadUrl) {
-        const putResponse = await fetch(data.uploadUrl, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type },
-        });
-
-        if (!putResponse.ok) {
-          throw new Error("Failed to upload to storage");
+      if (multiple && files.length > 1 && onMultipleUploadsComplete) {
+        const paths: string[] = [];
+        for (let i = 0; i < files.length; i++) {
+          const path = await uploadSingleFile(files[i]);
+          paths.push(path);
         }
-
-        const url = new URL(data.uploadUrl);
-        onUploadComplete(url.pathname);
+        onMultipleUploadsComplete(paths);
+      } else {
+        const path = await uploadSingleFile(files[0]);
+        onUploadComplete(path);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Upload error:", error);
-      alert("Failed to upload image. Please try again.");
+      alert(error?.message || "Failed to upload image. Please try again.");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -92,6 +107,7 @@ export function ObjectUploader({
         type="file"
         accept="image/*"
         capture={capture}
+        multiple={multiple}
         onChange={handleFileSelect}
         className="hidden"
         data-testid={`${dataTestId}-input`}

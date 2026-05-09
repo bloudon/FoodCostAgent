@@ -245,15 +245,14 @@ export class OrderGuideProcessor {
     }
 
     // Enrich lines with matched item name and priceSource.
-    // All prices in order guide lines represent case prices (the scan pipeline
-    // only populates price from item.casePrice). We derive priceSource here
-    // so the review UI can show the same "case price" badge as the onboarding flow.
+    // priceSource is stored on the line by the scan pipeline; fall back to nullability-derived
+    // value for lines imported via CSV (which only ever have case prices).
     const enrichedLines = lines.map(l => ({
       ...l,
       matchedInventoryItemName: l.matchedInventoryItemId
         ? (inventoryNameMap.get(l.matchedInventoryItemId) ?? null)
         : null,
-      priceSource: l.price != null ? 'case' : 'zero',
+      priceSource: l.priceSource ?? (l.price != null ? 'case' : null),
     }));
 
     // Group lines by match status
@@ -599,12 +598,16 @@ export class OrderGuideProcessor {
       }
 
       // Calculate unit price from case price
-      // line.price is the CASE price; caseSize now equals total units per case (innerPack folded in)
+      // line.price is the CASE price unless priceSource === 'unit' (scan-only scenario).
+      // For unit-priced lines we use price directly as the unit price and skip lastCasePrice.
       // Guard against zero/negative values that would cause Infinity
       const rawCaseSize = Math.max(line.caseSize ?? 1, 1);
       const rawInnerPack = Math.max(line.innerPack ?? 1, 1);
       const totalUnitsPerCase = rawCaseSize * rawInnerPack; // merged caseSize
-      const unitPrice = line.price ? line.price / totalUnitsPerCase : 0;
+      const isUnitPrice = (line as any).priceSource === 'unit';
+      const unitPrice = isUnitPrice
+        ? (line.price ?? 0)
+        : (line.price ? line.price / totalUnitsPerCase : 0);
 
       // Create inventory item with smart defaults
       const inventoryItem = await this.storage.createInventoryItem({
@@ -650,6 +653,7 @@ export class OrderGuideProcessor {
 
       // Create vendor item (only if a vendor is assigned)
       // Fold innerPack into caseSize: total units per case = caseSize × innerPack
+      // For unit-priced lines skip lastCasePrice to avoid storing a unit price as a case price.
       let vendorItemCreated = false;
       if (vendorId) {
         const mergedCaseSize = (line.caseSize ?? 1) * Math.max(line.innerPack ?? 1, 1);
@@ -661,7 +665,7 @@ export class OrderGuideProcessor {
           purchaseUnitId: unitId,
           caseSize: mergedCaseSize,
           lastPrice: unitPrice > 0 ? unitPrice : (line.price ?? undefined),
-          lastCasePrice: line.price ?? undefined,
+          lastCasePrice: isUnitPrice ? undefined : (line.price ?? undefined),
         });
         vendorItemCreated = true;
       }

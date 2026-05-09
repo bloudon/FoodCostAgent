@@ -170,6 +170,8 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE company_stores ADD COLUMN IF NOT EXISTS description text`);
     // Task #201: hasBar — onboarding bar/beverage profile question
     await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS has_bar integer`);
+    // Task #204: price_source on order_guide_lines — tracks whether extracted price is case or unit
+    await db.execute(sql`ALTER TABLE order_guide_lines ADD COLUMN IF NOT EXISTS price_source text`);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);
