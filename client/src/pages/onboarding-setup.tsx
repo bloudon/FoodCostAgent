@@ -514,13 +514,59 @@ export function MenuScanStep({
           </div>
         )}
 
+        <div className="flex flex-col gap-2">
+          {!addingPage ? (
+            <Button variant="outline" size="sm" onClick={() => setAddingPage(true)} disabled={approveMutation.isPending} data-testid="button-add-page">
+              <Plus className="w-3.5 h-3.5 mr-1" /> Add another page
+            </Button>
+          ) : (
+            <div className="rounded-md border p-3 space-y-2 bg-muted/20">
+              <p className="text-xs text-muted-foreground font-medium">Scan the next page — items will be merged into the list above.</p>
+              {addPageScanning ? (
+                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Scanning…
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <ObjectUploader
+                    onUploadComplete={handleAddPage}
+                    buttonText="Choose Next Page"
+                    dataTestId="button-upload-next-page"
+                    visibility="private"
+                    maxFileSize={10485760}
+                  />
+                  <Button variant="ghost" size="sm" onClick={() => setAddingPage(false)} data-testid="button-cancel-add-page">
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+          {items.length > 0 && (
+            <Button
+              onClick={() => approveMutation.mutate()}
+              disabled={approveMutation.isPending}
+              data-testid="button-import-items"
+            >
+              {approveMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing…</>
+              ) : (
+                <>{`Import ${items.filter(i => i.name.trim()).length} Items`} <ArrowRight className="w-4 h-4 ml-2" /></>
+              )}
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => { setSubStep("upload"); setAddingPage(false); }} data-testid="button-scan-again">
+            Scan a different image
+          </Button>
+        </div>
+
         <div className="rounded-md border overflow-hidden" data-testid="section-whats-next">
           {uploadedImages.length > 0 && (
             <div className="relative">
               <img
-                src={`/objects/${uploadedImages[carouselIndex]}`}
+                src={uploadedImages[carouselIndex]}
                 alt={`Menu page ${carouselIndex + 1}`}
-                className="w-full h-28 object-cover object-top"
+                className="w-full h-40 object-cover object-top"
               />
               {uploadedImages.length > 1 && (
                 <>
@@ -571,52 +617,6 @@ export function MenuScanStep({
               ))}
             </div>
           </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          {items.length > 0 && (
-            <Button
-              onClick={() => approveMutation.mutate()}
-              disabled={approveMutation.isPending}
-              data-testid="button-import-items"
-            >
-              {approveMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing…</>
-              ) : (
-                <>{`Import ${items.filter(i => i.name.trim()).length} Items`} <ArrowRight className="w-4 h-4 ml-2" /></>
-              )}
-            </Button>
-          )}
-          {!addingPage ? (
-            <Button variant="outline" size="sm" onClick={() => setAddingPage(true)} data-testid="button-add-page">
-              <Plus className="w-3.5 h-3.5 mr-1" /> Add another page
-            </Button>
-          ) : (
-            <div className="rounded-md border p-3 space-y-2 bg-muted/20">
-              <p className="text-xs text-muted-foreground font-medium">Scan the next page — items will be merged into the list above.</p>
-              {addPageScanning ? (
-                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Scanning…
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <ObjectUploader
-                    onUploadComplete={handleAddPage}
-                    buttonText="Choose Next Page"
-                    dataTestId="button-upload-next-page"
-                    visibility="private"
-                    maxFileSize={10485760}
-                  />
-                  <Button variant="ghost" size="sm" onClick={() => setAddingPage(false)} data-testid="button-cancel-add-page">
-                    Cancel
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-          <Button variant="ghost" size="sm" onClick={() => { setSubStep("upload"); setAddingPage(false); }} data-testid="button-scan-again">
-            Scan a different image
-          </Button>
         </div>
       </CardContent>
     </Card>
