@@ -771,11 +771,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
-        // Create default categories
+        // Create default food categories
         const defaultCategories = [
-          { name: "Frozen", showAsIngredient: 1 },
-          { name: "Walk-In", showAsIngredient: 1 },
-          { name: "Dry/Pantry", showAsIngredient: 1 },
+          { name: "Produce",                 showAsIngredient: 1 },
+          { name: "Dairy",                   showAsIngredient: 1 },
+          { name: "Proteins",                showAsIngredient: 1 },
+          { name: "Seafood",                 showAsIngredient: 1 },
+          { name: "Cheese",                  showAsIngredient: 1 },
+          { name: "Bread & Dough",           showAsIngredient: 1 },
+          { name: "Dry Goods & Pantry",      showAsIngredient: 1 },
+          { name: "Frozen",                  showAsIngredient: 1 },
+          { name: "Oils & Condiments",       showAsIngredient: 1 },
+          { name: "Spices & Seasonings",     showAsIngredient: 1 },
+          { name: "Herbs & Garnish",         showAsIngredient: 1 },
+          { name: "Beer",                    showAsIngredient: 1 },
+          { name: "Wine",                    showAsIngredient: 1 },
+          { name: "Spirits & Liquor",        showAsIngredient: 1 },
+          { name: "Non-Alcoholic Beverages", showAsIngredient: 1 },
+          { name: "Desserts & Pastry",       showAsIngredient: 1 },
+          { name: "Cleaning & Supplies",     showAsIngredient: 0 },
+          { name: "Paper & Smallwares",      showAsIngredient: 0 },
         ];
 
         for (const category of defaultCategories) {
@@ -1023,9 +1038,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 await tx.insert(sl).values({ companyId: user.companyId!, ...loc });
               }
               const defaultCategories = [
-                { name: "Frozen", showAsIngredient: 1 },
-                { name: "Walk-In", showAsIngredient: 1 },
-                { name: "Dry/Pantry", showAsIngredient: 1 },
+                { name: "Produce",                 showAsIngredient: 1 },
+                { name: "Dairy",                   showAsIngredient: 1 },
+                { name: "Proteins",                showAsIngredient: 1 },
+                { name: "Seafood",                 showAsIngredient: 1 },
+                { name: "Cheese",                  showAsIngredient: 1 },
+                { name: "Bread & Dough",           showAsIngredient: 1 },
+                { name: "Dry Goods & Pantry",      showAsIngredient: 1 },
+                { name: "Frozen",                  showAsIngredient: 1 },
+                { name: "Oils & Condiments",       showAsIngredient: 1 },
+                { name: "Spices & Seasonings",     showAsIngredient: 1 },
+                { name: "Herbs & Garnish",         showAsIngredient: 1 },
+                { name: "Beer",                    showAsIngredient: 1 },
+                { name: "Wine",                    showAsIngredient: 1 },
+                { name: "Spirits & Liquor",        showAsIngredient: 1 },
+                { name: "Non-Alcoholic Beverages", showAsIngredient: 1 },
+                { name: "Desserts & Pastry",       showAsIngredient: 1 },
+                { name: "Cleaning & Supplies",     showAsIngredient: 0 },
+                { name: "Paper & Smallwares",      showAsIngredient: 0 },
               ];
               for (const cat of defaultCategories) {
                 await tx.insert(cats).values({ companyId: user.companyId!, ...cat });
@@ -1466,9 +1496,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           const defaultCategories = [
-            { name: "Frozen", showAsIngredient: 1 },
-            { name: "Walk-In", showAsIngredient: 1 },
-            { name: "Dry/Pantry", showAsIngredient: 1 },
+            { name: "Produce",                 showAsIngredient: 1 },
+            { name: "Dairy",                   showAsIngredient: 1 },
+            { name: "Proteins",                showAsIngredient: 1 },
+            { name: "Seafood",                 showAsIngredient: 1 },
+            { name: "Cheese",                  showAsIngredient: 1 },
+            { name: "Bread & Dough",           showAsIngredient: 1 },
+            { name: "Dry Goods & Pantry",      showAsIngredient: 1 },
+            { name: "Frozen",                  showAsIngredient: 1 },
+            { name: "Oils & Condiments",       showAsIngredient: 1 },
+            { name: "Spices & Seasonings",     showAsIngredient: 1 },
+            { name: "Herbs & Garnish",         showAsIngredient: 1 },
+            { name: "Beer",                    showAsIngredient: 1 },
+            { name: "Wine",                    showAsIngredient: 1 },
+            { name: "Spirits & Liquor",        showAsIngredient: 1 },
+            { name: "Non-Alcoholic Beverages", showAsIngredient: 1 },
+            { name: "Desserts & Pastry",       showAsIngredient: 1 },
+            { name: "Cleaning & Supplies",     showAsIngredient: 0 },
+            { name: "Paper & Smallwares",      showAsIngredient: 0 },
           ];
 
           for (const category of defaultCategories) {

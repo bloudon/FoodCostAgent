@@ -174,17 +174,24 @@ async function createDefaultCategories(companyId: string) {
   const existingCategories = await db.select().from(categories).where(eq(categories.companyId, companyId));
   if (existingCategories.length === 0) {
     await db.insert(categories).values([
-      { companyId, name: "Produce",             sortOrder: 1,  showAsIngredient: 1 },
-      { companyId, name: "Dairy",               sortOrder: 2,  showAsIngredient: 1 },
-      { companyId, name: "Proteins",            sortOrder: 3,  showAsIngredient: 1 },
-      { companyId, name: "Seafood",             sortOrder: 4,  showAsIngredient: 1 },
-      { companyId, name: "Frozen",              sortOrder: 5,  showAsIngredient: 1 },
-      { companyId, name: "Walk-In",             sortOrder: 6,  showAsIngredient: 1 },
-      { companyId, name: "Dry/Pantry",          sortOrder: 7,  showAsIngredient: 1 },
-      { companyId, name: "Bread/Dough",         sortOrder: 8,  showAsIngredient: 1 },
-      { companyId, name: "Spices & Seasonings", sortOrder: 9,  showAsIngredient: 1 },
-      { companyId, name: "Beverages",           sortOrder: 10, showAsIngredient: 1 },
-      { companyId, name: "Cleaning & Supplies", sortOrder: 11, showAsIngredient: 0 },
+      { companyId, name: "Produce",                 sortOrder: 1,  showAsIngredient: 1 },
+      { companyId, name: "Dairy",                   sortOrder: 2,  showAsIngredient: 1 },
+      { companyId, name: "Proteins",                sortOrder: 3,  showAsIngredient: 1 },
+      { companyId, name: "Seafood",                 sortOrder: 4,  showAsIngredient: 1 },
+      { companyId, name: "Cheese",                  sortOrder: 5,  showAsIngredient: 1 },
+      { companyId, name: "Bread & Dough",           sortOrder: 6,  showAsIngredient: 1 },
+      { companyId, name: "Dry Goods & Pantry",      sortOrder: 7,  showAsIngredient: 1 },
+      { companyId, name: "Frozen",                  sortOrder: 8,  showAsIngredient: 1 },
+      { companyId, name: "Oils & Condiments",       sortOrder: 9,  showAsIngredient: 1 },
+      { companyId, name: "Spices & Seasonings",     sortOrder: 10, showAsIngredient: 1 },
+      { companyId, name: "Herbs & Garnish",         sortOrder: 11, showAsIngredient: 1 },
+      { companyId, name: "Beer",                    sortOrder: 12, showAsIngredient: 1 },
+      { companyId, name: "Wine",                    sortOrder: 13, showAsIngredient: 1 },
+      { companyId, name: "Spirits & Liquor",        sortOrder: 14, showAsIngredient: 1 },
+      { companyId, name: "Non-Alcoholic Beverages", sortOrder: 15, showAsIngredient: 1 },
+      { companyId, name: "Desserts & Pastry",       sortOrder: 16, showAsIngredient: 1 },
+      { companyId, name: "Cleaning & Supplies",     sortOrder: 17, showAsIngredient: 0 },
+      { companyId, name: "Paper & Smallwares",      sortOrder: 18, showAsIngredient: 0 },
     ]);
     return true;
   }

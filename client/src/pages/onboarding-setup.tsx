@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment, useCallback } from "react";
+import { useState, useEffect, Fragment, useCallback, useMemo } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useCompany } from "@/hooks/use-company";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import {
   Check, Loader2, Trash2, Camera, Sparkles, AlertCircle,
@@ -1037,17 +1038,82 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
 }
 
 // ---- Step 4: Categories ----
+const SUGGESTED_FOOD_CATEGORIES: { name: string; showAsIngredient: number }[] = [
+  { name: "Produce",                 showAsIngredient: 1 },
+  { name: "Dairy",                   showAsIngredient: 1 },
+  { name: "Proteins",                showAsIngredient: 1 },
+  { name: "Seafood",                 showAsIngredient: 1 },
+  { name: "Cheese",                  showAsIngredient: 1 },
+  { name: "Bread & Dough",           showAsIngredient: 1 },
+  { name: "Dry Goods & Pantry",      showAsIngredient: 1 },
+  { name: "Frozen",                  showAsIngredient: 1 },
+  { name: "Oils & Condiments",       showAsIngredient: 1 },
+  { name: "Spices & Seasonings",     showAsIngredient: 1 },
+  { name: "Herbs & Garnish",         showAsIngredient: 1 },
+  { name: "Beer",                    showAsIngredient: 1 },
+  { name: "Wine",                    showAsIngredient: 1 },
+  { name: "Spirits & Liquor",        showAsIngredient: 1 },
+  { name: "Non-Alcoholic Beverages", showAsIngredient: 1 },
+  { name: "Desserts & Pastry",       showAsIngredient: 1 },
+  { name: "Cleaning & Supplies",     showAsIngredient: 0 },
+  { name: "Paper & Smallwares",      showAsIngredient: 0 },
+];
+
 function CategoriesStep({ onComplete }: { onComplete: () => void }) {
   const { toast } = useToast();
   const { data: cats, isLoading } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/categories"],
   });
 
+  const [checked, setChecked] = useState<Set<string>>(
+    () => new Set(SUGGESTED_FOOD_CATEGORIES.map(c => c.name))
+  );
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
-  const createMutation = useMutation({
+  const existingNames = useMemo(
+    () => new Set((cats || []).map(c => c.name.toLowerCase())),
+    [cats]
+  );
+
+  const extraDbCats = useMemo(
+    () => (cats || []).filter(
+      c => !SUGGESTED_FOOD_CATEGORIES.some(s => s.name.toLowerCase() === c.name.toLowerCase())
+    ),
+    [cats]
+  );
+
+  const toggle = (name: string) => {
+    setChecked(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const toCreate = SUGGESTED_FOOD_CATEGORIES.filter(
+        c => checked.has(c.name) && !existingNames.has(c.name.toLowerCase())
+      );
+      for (const cat of toCreate) {
+        const res = await apiRequest("POST", "/api/categories", {
+          name: cat.name,
+          showAsIngredient: cat.showAsIngredient,
+        });
+        if (!res.ok) throw new Error(`Failed to create category: ${cat.name}`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      onComplete();
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const addCustomMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/categories", { name: newName.trim(), showAsIngredient: 1 });
       if (!res.ok) throw new Error("Failed to create category");
@@ -1076,79 +1142,129 @@ function CategoriesStep({ onComplete }: { onComplete: () => void }) {
   return (
     <Card data-testid="card-step-categories">
       <CardHeader>
-        <CardTitle>Review your categories</CardTitle>
+        <CardTitle>Choose your categories</CardTitle>
         <CardDescription>
-          These categories were auto-created from your invoice. Rename or add any that are missing.
+          Select the categories that apply to your kitchen. Uncheck any you don't need — you can always add more later.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-5">
         {isLoading ? (
           <div className="flex items-center gap-2 text-muted-foreground py-4">
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Loading categories…</span>
+            <span>Loading…</span>
           </div>
         ) : (
-          <div className="space-y-1 max-h-64 overflow-y-auto">
-            {(cats || []).map((cat) => (
-              <div key={cat.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50" data-testid={`category-row-${cat.id}`}>
-                {editingId === cat.id ? (
-                  <>
-                    <Input
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
-                      className="h-7 text-sm"
-                      autoFocus
-                      data-testid={`input-category-edit-${cat.id}`}
-                      onKeyDown={e => {
-                        if (e.key === "Enter") updateMutation.mutate({ id: cat.id, name: editName });
-                        if (e.key === "Escape") setEditingId(null);
-                      }}
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              {SUGGESTED_FOOD_CATEGORIES.map(cat => {
+                const isExisting = existingNames.has(cat.name.toLowerCase());
+                const isChecked = isExisting || checked.has(cat.name);
+                const testId = `checkbox-category-${cat.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+                return (
+                  <label
+                    key={cat.name}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-md border cursor-pointer select-none transition-colors ${
+                      isChecked
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-border bg-transparent"
+                    }`}
+                    data-testid={`label-category-${cat.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                  >
+                    <Checkbox
+                      checked={isChecked}
+                      onCheckedChange={() => { if (!isExisting) toggle(cat.name); }}
+                      disabled={isExisting}
+                      data-testid={testId}
                     />
-                    <Button size="sm" variant="ghost" onClick={() => updateMutation.mutate({ id: cat.id, name: editName })} disabled={updateMutation.isPending} data-testid={`button-save-category-${cat.id}`}>
-                      <Check className="w-3 h-3" />
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEditingId(null)} data-testid={`button-cancel-category-${cat.id}`}>
-                      <X className="w-3 h-3" />
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <span className="flex-1 text-sm">{cat.name}</span>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => { setEditingId(cat.id); setEditName(cat.name); }}
-                      data-testid={`button-edit-category-${cat.id}`}
-                    >
-                      <Edit2 className="w-3.5 h-3.5 text-muted-foreground" />
-                    </Button>
-                  </>
-                )}
+                    <span className="text-sm flex-1">{cat.name}</span>
+                    {isExisting && (
+                      <Badge variant="secondary" className="text-xs shrink-0">Added</Badge>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+
+            {extraDbCats.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">From your invoice</p>
+                <div className="space-y-1">
+                  {extraDbCats.map((cat) => (
+                    <div key={cat.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50" data-testid={`category-row-${cat.id}`}>
+                      {editingId === cat.id ? (
+                        <>
+                          <Input
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            className="h-7 text-sm"
+                            autoFocus
+                            data-testid={`input-category-edit-${cat.id}`}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") updateMutation.mutate({ id: cat.id, name: editName });
+                              if (e.key === "Escape") setEditingId(null);
+                            }}
+                          />
+                          <Button size="sm" variant="ghost" onClick={() => updateMutation.mutate({ id: cat.id, name: editName })} disabled={updateMutation.isPending} data-testid={`button-save-category-${cat.id}`}>
+                            <Check className="w-3 h-3" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setEditingId(null)} data-testid={`button-cancel-category-${cat.id}`}>
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="flex-1 text-sm">{cat.name}</span>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => { setEditingId(cat.id); setEditName(cat.name); }}
+                            data-testid={`button-edit-category-${cat.id}`}
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-muted-foreground" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
+            )}
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Add a custom category</p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="e.g. House-made Sauces…"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && newName.trim() && addCustomMutation.mutate()}
+                  data-testid="input-new-category"
+                  className="h-8 text-sm"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => addCustomMutation.mutate()}
+                  disabled={!newName.trim() || addCustomMutation.isPending}
+                  data-testid="button-add-category"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Add
+                </Button>
+              </div>
+            </div>
+          </>
         )}
-        <div className="flex gap-2">
-          <Input
-            placeholder="Add a category…"
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && newName.trim() && createMutation.mutate()}
-            data-testid="input-new-category"
-            className="h-8 text-sm"
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => createMutation.mutate()}
-            disabled={!newName.trim() || createMutation.isPending}
-            data-testid="button-add-category"
-          >
-            <Plus className="w-3.5 h-3.5 mr-1" /> Add
-          </Button>
-        </div>
-        <Button onClick={onComplete} className="w-full" data-testid="button-continue-categories">
-          Categories look good — Continue
+
+        <Button
+          onClick={() => saveMutation.mutate()}
+          className="w-full"
+          disabled={saveMutation.isPending}
+          data-testid="button-continue-categories"
+        >
+          {saveMutation.isPending
+            ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</>
+            : "Categories look good — Continue"
+          }
         </Button>
       </CardContent>
     </Card>
