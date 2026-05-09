@@ -13,7 +13,9 @@ vitestExpect.extend(matchers);
 interface ObjectUploaderProps {
   dataTestId?: string;
   buttonText?: string;
+  multiple?: boolean;
   onUploadComplete?: (path: string) => void;
+  onMultipleUploadsComplete?: (paths: string[]) => void;
 }
 
 interface QueryClientProviderProps {
@@ -63,14 +65,29 @@ vi.mock("@/lib/queryClient", () => ({
 }));
 
 vi.mock("@/components/ObjectUploader", () => ({
-  ObjectUploader: ({ dataTestId, buttonText, onUploadComplete }: ObjectUploaderProps) =>
+  ObjectUploader: ({ dataTestId, buttonText, multiple, onUploadComplete, onMultipleUploadsComplete }: ObjectUploaderProps) =>
     React.createElement(
-      "button",
-      {
-        "data-testid": dataTestId,
-        onClick: () => onUploadComplete && onUploadComplete("test/invoice.jpg"),
-      },
-      buttonText
+      React.Fragment,
+      null,
+      React.createElement(
+        "button",
+        {
+          "data-testid": dataTestId,
+          "data-multiple": multiple ? "true" : undefined,
+          onClick: () => onUploadComplete && onUploadComplete("test/invoice.jpg"),
+        },
+        buttonText
+      ),
+      onMultipleUploadsComplete
+        ? React.createElement(
+            "button",
+            {
+              "data-testid": `${dataTestId}-multi`,
+              onClick: () => onMultipleUploadsComplete(["test/invoice-p1.jpg", "test/invoice-p2.jpg"]),
+            },
+            `${buttonText} (multi)`
+          )
+        : null
     ),
 }));
 
@@ -315,5 +332,118 @@ describe("InvoiceScanStep — default action assignment", () => {
     await renderAndAdvanceToReview(ITEMS_CASE_ONLY);
     const selector = screen.getByTestId("select-action-0") as HTMLSelectElement;
     expect(selector.value).toBe("create");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests — Multi-select upload
+// ---------------------------------------------------------------------------
+
+describe("InvoiceScanStep — multi-page upload", () => {
+  it("upload button is rendered with multiple attribute enabled", () => {
+    setupMockMutation();
+    render(React.createElement(InvoiceScanStep, { onComplete: vi.fn() }));
+    const btn = screen.getByTestId("button-upload-invoice");
+    expect(btn.getAttribute("data-multiple")).toBe("true");
+  });
+
+  it("selecting 2 files calls the scan endpoint twice and shows merged results in review", async () => {
+    setupMockMutation();
+    const PAGE1_ITEMS = [
+      {
+        name: "Flour 50 Lb Bag",
+        unitPrice: 18.0,
+        casePrice: null,
+        priceSource: "unit" as const,
+        unit: "lb",
+        categoryHint: "Dry Goods & Pantry",
+        matchedItemId: null,
+        matchedItemName: null,
+        matchConfidence: "none" as const,
+        action: "create" as const,
+      },
+    ];
+    const PAGE2_ITEMS = [
+      {
+        name: "Sugar 25 Lb Bag",
+        unitPrice: 14.5,
+        casePrice: null,
+        priceSource: "unit" as const,
+        unit: "lb",
+        categoryHint: "Dry Goods & Pantry",
+        matchedItemId: null,
+        matchedItemName: null,
+        matchConfidence: "none" as const,
+        action: "create" as const,
+      },
+    ];
+
+    mockApiRequest
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items: PAGE1_ITEMS, vendorName: "Sysco" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items: PAGE2_ITEMS, vendorName: "Sysco" }) });
+
+    render(React.createElement(InvoiceScanStep, { onComplete: vi.fn() }));
+
+    const multiBtn = screen.getByTestId("button-upload-invoice-multi");
+    fireEvent.click(multiBtn);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("card-step-invoice-review")).toBeInTheDocument()
+    );
+
+    expect(mockApiRequest).toHaveBeenCalledTimes(2);
+    expect(mockApiRequest).toHaveBeenNthCalledWith(1, "POST", "/api/onboarding/invoice-scan", { imageObjectPath: "test/invoice-p1.jpg" });
+    expect(mockApiRequest).toHaveBeenNthCalledWith(2, "POST", "/api/onboarding/invoice-scan", { imageObjectPath: "test/invoice-p2.jpg" });
+
+    expect(screen.getByText("Flour 50 Lb Bag")).toBeInTheDocument();
+    expect(screen.getByText("Sugar 25 Lb Bag")).toBeInTheDocument();
+  });
+
+  it("deduplicates items with the same name across pages (case-insensitive, keeps first occurrence)", async () => {
+    setupMockMutation();
+    const DUPLICATE_NAME = "Mozzarella Cheese";
+    const PAGE1_ITEMS = [
+      {
+        name: DUPLICATE_NAME,
+        unitPrice: 4.5,
+        casePrice: null,
+        priceSource: "unit" as const,
+        unit: "lb",
+        categoryHint: "Dairy",
+        matchedItemId: null,
+        matchedItemName: null,
+        matchConfidence: "none" as const,
+        action: "create" as const,
+      },
+    ];
+    const PAGE2_ITEMS = [
+      {
+        name: DUPLICATE_NAME.toLowerCase(),
+        unitPrice: 5.0,
+        casePrice: null,
+        priceSource: "unit" as const,
+        unit: "lb",
+        categoryHint: "Dairy",
+        matchedItemId: null,
+        matchedItemName: null,
+        matchConfidence: "none" as const,
+        action: "create" as const,
+      },
+    ];
+
+    mockApiRequest
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items: PAGE1_ITEMS, vendorName: "US Foods" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items: PAGE2_ITEMS, vendorName: "US Foods" }) });
+
+    render(React.createElement(InvoiceScanStep, { onComplete: vi.fn() }));
+    fireEvent.click(screen.getByTestId("button-upload-invoice-multi"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("card-step-invoice-review")).toBeInTheDocument()
+    );
+
+    const priceInputs = screen.getAllByTestId(/^input-price-/);
+    expect(priceInputs).toHaveLength(1);
+    expect(parseFloat((priceInputs[0] as HTMLInputElement).value)).toBeCloseTo(4.5, 2);
   });
 });

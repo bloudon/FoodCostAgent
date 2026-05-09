@@ -946,7 +946,7 @@ function StoreSetupStep({
 export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
   const { toast } = useToast();
   const [subStep, setSubStep] = useState<"upload" | "review">("upload");
-  const [scanning, setScanning] = useState(false);
+  const [scanning, setScanning] = useState<boolean | { current: number; total: number }>(false);
   const [addingPage, setAddingPage] = useState(false);
   const [addPageScanning, setAddPageScanning] = useState(false);
   const [extractedItems, setExtractedItems] = useState<InvoiceItem[]>([]);
@@ -983,6 +983,42 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
     } finally {
       setScanning(false);
     }
+  };
+
+  const handleMultiUpload = async (objectPaths: string[]) => {
+    const allItems: InvoiceItem[] = [];
+    let firstVendorName = "";
+    for (let i = 0; i < objectPaths.length; i++) {
+      setScanning({ current: i + 1, total: objectPaths.length });
+      try {
+        const res = await apiRequest("POST", "/api/onboarding/invoice-scan", {
+          imageObjectPath: objectPaths[i],
+        });
+        if (!res.ok) {
+          const err = await res.json() as { error?: string };
+          throw new Error(err.error || "Scan failed");
+        }
+        const data = await res.json() as { items: InvoiceItem[]; vendorName?: string };
+        if (i === 0) firstVendorName = data.vendorName || "";
+        const seen = new Set(allItems.map(it => it.name.toLowerCase().trim()));
+        for (const item of (data.items || [])) {
+          const key = item.name.toLowerCase().trim();
+          if (!seen.has(key)) {
+            seen.add(key);
+            allItems.push(item);
+          }
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Scan failed";
+        toast({ title: `Page ${i + 1} scan failed`, description: message, variant: "destructive" });
+        setScanning(false);
+        return;
+      }
+    }
+    setVendorName(firstVendorName);
+    setExtractedItems(allItems.map(item => ({ ...item, action: defaultAction(item) })));
+    setSubStep("review");
+    setScanning(false);
   };
 
   const handleAddPage = async (objectPath: string) => {
@@ -1082,21 +1118,28 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
           {scanning ? (
             <div className="flex flex-col items-center justify-center py-16 gap-4">
               <Sparkles className="w-10 h-10 text-primary animate-pulse" />
-              <p className="font-medium">Reading invoice…</p>
-              <p className="text-sm text-muted-foreground">This usually takes 10–20 seconds</p>
+              <p className="font-medium">
+                {typeof scanning === "object"
+                  ? `Reading page ${scanning.current} of ${scanning.total}…`
+                  : "Reading invoice…"}
+              </p>
+              <p className="text-sm text-muted-foreground">This usually takes 10–20 seconds per page</p>
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
             <div className="flex flex-col items-center gap-4 py-10 rounded-md border-2 border-dashed border-muted">
               <Package className="w-12 h-12 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Supports JPG, PNG, WebP — up to 10 MB</p>
+              <p className="text-sm text-muted-foreground">Supports JPG, PNG, WebP — up to 10 MB per page</p>
               <ObjectUploader
                 onUploadComplete={handleUpload}
-                buttonText="Choose Invoice Image"
+                onMultipleUploadsComplete={handleMultiUpload}
+                multiple={true}
+                buttonText="Choose Invoice Image(s)"
                 dataTestId="button-upload-invoice"
                 visibility="private"
                 maxFileSize={10485760}
               />
+              <p className="text-xs text-muted-foreground">You can select multiple pages at once</p>
             </div>
           )}
         </CardContent>
