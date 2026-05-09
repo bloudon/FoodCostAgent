@@ -194,7 +194,7 @@ function StepperBar({ currentStep }: { currentStep: number }) {
 }
 
 // ---- Step 1: Menu Scan ----
-function MenuScanStep({
+export function MenuScanStep({
   storeId,
   initialHasBar,
   onComplete,
