@@ -570,7 +570,7 @@ export function MenuScanStep({
               <img
                 src={uploadedImages[carouselIndex]}
                 alt={`Menu page ${carouselIndex + 1}`}
-                className="w-full h-56 object-cover object-top"
+                className="w-full h-24 object-cover object-top"
               />
               {uploadedImages.length > 1 && (
                 <>
