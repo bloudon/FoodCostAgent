@@ -210,6 +210,8 @@ export function MenuScanStep({
   const [addPageScanning, setAddPageScanning] = useState(false);
   const [sessionId, setSessionId] = useState("");
   const [items, setItems] = useState<ExtractedMenuItem[]>([]);
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [carouselIndex, setCarouselIndex] = useState(0);
   const [intelligence, setIntelligence] = useState<MenuIntelligence>({
     phones: [], addresses: [], locationCount: 1, multiLocationSignal: false,
   });
@@ -219,6 +221,8 @@ export function MenuScanStep({
   const [barSaving, setBarSaving] = useState(false);
 
   const handleUpload = async (objectPath: string) => {
+    setUploadedImages([objectPath]);
+    setCarouselIndex(0);
     setScanning(true);
     try {
       const res = await apiRequest("POST", "/api/onboarding/menu-scan", {
@@ -243,6 +247,7 @@ export function MenuScanStep({
   };
 
   const handleAddPage = async (objectPath: string) => {
+    setUploadedImages(prev => [...prev, objectPath]);
     setAddPageScanning(true);
     try {
       const res = await apiRequest("POST", "/api/onboarding/menu-scan", {
@@ -508,12 +513,46 @@ export function MenuScanStep({
         )}
 
         <div className="rounded-md border overflow-hidden" data-testid="section-whats-next">
-          <img
-            src="https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=800&q=60"
-            alt="Restaurant professional reviewing data on a phone"
-            className="w-full h-28 object-cover object-center"
-            loading="lazy"
-          />
+          {uploadedImages.length > 0 && (
+            <div className="relative">
+              <img
+                src={`/objects/${uploadedImages[carouselIndex]}`}
+                alt={`Menu page ${carouselIndex + 1}`}
+                className="w-full h-28 object-cover object-top"
+              />
+              {uploadedImages.length > 1 && (
+                <>
+                  <button
+                    className="absolute left-1 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center text-base leading-none"
+                    onClick={() => setCarouselIndex(i => (i - 1 + uploadedImages.length) % uploadedImages.length)}
+                    aria-label="Previous image"
+                    data-testid="button-carousel-prev"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    className="absolute right-1 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center text-base leading-none"
+                    onClick={() => setCarouselIndex(i => (i + 1) % uploadedImages.length)}
+                    aria-label="Next image"
+                    data-testid="button-carousel-next"
+                  >
+                    ›
+                  </button>
+                  <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
+                    {uploadedImages.map((_, i) => (
+                      <button
+                        key={i}
+                        className={`w-1.5 h-1.5 rounded-full transition-colors ${i === carouselIndex ? "bg-white" : "bg-white/50"}`}
+                        onClick={() => setCarouselIndex(i)}
+                        aria-label={`Go to page ${i + 1}`}
+                        data-testid={`button-carousel-dot-${i}`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <div className="p-4 space-y-3">
             <p className="text-sm font-semibold">What's next — the full picture</p>
             <div className="space-y-2.5">
