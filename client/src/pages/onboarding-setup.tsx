@@ -288,6 +288,8 @@ export function MenuScanStep({
       toast({ title: "Page added", description: `${data.items?.length || 0} items scanned and merged.` });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Scan failed";
+      // Roll back the optimistically appended image — scan failed so it contributed nothing
+      setUploadedImages(prev => prev.filter(p => p !== objectPath));
       toast({ title: "Scan failed", description: message, variant: "destructive" });
     } finally {
       setAddPageScanning(false);
