@@ -1362,6 +1362,13 @@ function CategoriesStep({ onComplete }: { onComplete: () => void }) {
         });
         if (!res.ok) throw new Error(`Failed to create category: ${cat.name}`);
       }
+      const toRemove = (cats || []).filter(
+        c => SUGGESTED_FOOD_CATEGORIES.some(s => s.name.toLowerCase() === c.name.toLowerCase())
+          && !checked.has(c.name)
+      );
+      for (const cat of toRemove) {
+        await apiRequest("DELETE", `/api/categories/${cat.id}`);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
@@ -1415,7 +1422,7 @@ function CategoriesStep({ onComplete }: { onComplete: () => void }) {
             <div className="grid grid-cols-2 gap-2">
               {SUGGESTED_FOOD_CATEGORIES.map(cat => {
                 const isExisting = existingNames.has(cat.name.toLowerCase());
-                const isChecked = isExisting || checked.has(cat.name);
+                const isChecked = checked.has(cat.name);
                 const testId = `checkbox-category-${cat.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
                 return (
                   <label
@@ -1429,8 +1436,7 @@ function CategoriesStep({ onComplete }: { onComplete: () => void }) {
                   >
                     <Checkbox
                       checked={isChecked}
-                      onCheckedChange={() => { if (!isExisting) toggle(cat.name); }}
-                      disabled={isExisting}
+                      onCheckedChange={() => toggle(cat.name)}
                       data-testid={testId}
                     />
                     <span className="text-sm flex-1">{cat.name}</span>

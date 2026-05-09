@@ -194,7 +194,11 @@ async function runStartupMigrations() {
   // Setup WebSocket for real-time POS streaming
   setupWebSocket(server);
 
-  await seedDatabase();
+  try {
+    await seedDatabase();
+  } catch (err) {
+    console.error('⚠️ Seed error (non-fatal):', err);
+  }
 
   // Start background session cleanup job
   // Runs every hour to remove expired auth sessions and prevent table bloat
