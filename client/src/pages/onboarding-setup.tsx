@@ -702,7 +702,8 @@ function PlanStep({
         const data = await res.json() as { subscriptionTier?: string };
         if (data.subscriptionTier && data.subscriptionTier !== "free") {
           queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-          onContinue();
+          setPlanConfirmed(true);
+          setConfirmedTier(data.subscriptionTier);
         } else {
           toast({ title: "No active plan found", description: "Complete your plan selection to continue.", variant: "destructive" });
         }
