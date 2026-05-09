@@ -140,11 +140,13 @@ async function runStartupMigrations() {
     await db.execute(sql`
       DO $$ BEGIN
         IF EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_name = 'categories' AND column_name = 'is_tare_weight_category') THEN
+                   WHERE table_name = 'categories' AND column_name = 'is_tare_weight_category')
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                           WHERE table_name = 'categories' AND column_name = 'is_catch_weight_category') THEN
           ALTER TABLE categories RENAME COLUMN is_tare_weight_category TO is_catch_weight_category;
         ELSIF NOT EXISTS (SELECT 1 FROM information_schema.columns
                           WHERE table_name = 'categories' AND column_name = 'is_catch_weight_category') THEN
-          ALTER TABLE categories ADD COLUMN is_catch_weight_category integer NOT NULL DEFAULT 0;
+          ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_catch_weight_category integer NOT NULL DEFAULT 0;
         END IF;
       END $$
     `);

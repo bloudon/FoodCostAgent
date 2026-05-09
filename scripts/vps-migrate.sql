@@ -947,3 +947,38 @@ BEGIN
       VALUES ('v036', 'Task #115: change inventory_items.yield_percent default 95 -> 100');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v037 — Task #201: has_bar column on companies
+-- Stores whether the company operates a bar/beverage program (0=no, 1=yes,
+-- null=not yet answered). Used during onboarding storage-location setup to
+-- conditionally show bar-related storage location options.
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v037') THEN
+
+    ALTER TABLE companies ADD COLUMN IF NOT EXISTS has_bar integer;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v037', 'Task #201: add has_bar column to companies');
+  END IF;
+END $$;
+
+-- =============================================================================
+-- v038 — Task #204: price_source column on order_guide_lines
+-- Tracks how the AI extracted a price from a vendor invoice scan:
+--   'case'  = price is per case/pack (standard; used directly as lastCasePrice)
+--   'unit'  = price is per individual unit (display only; do not use as case price)
+--   null    = price source not determined (CSV imports always have case prices)
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v038') THEN
+
+    ALTER TABLE order_guide_lines ADD COLUMN IF NOT EXISTS price_source text;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v038', 'Task #204: add price_source column to order_guide_lines');
+  END IF;
+END $$;

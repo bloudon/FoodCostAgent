@@ -24,6 +24,34 @@ Ratified and authoritative. These govern all feature work, AI assistance, and ar
 ## Technical Standards
 
 - **Shared types** — `shared/schema.ts` is the single source of truth for all data models. Frontend and backend share types from here.
+
+---
+
+## VPS Database Migration Rule
+
+**Every schema change that adds a column, table, or index must be committed in two places — not one.**
+
+| Location | Purpose |
+|---|---|
+| `server/index.ts` `runStartupMigrations()` | Fast safety net for the Replit dev environment and any ad-hoc restart |
+| `scripts/vps-migrate.sql` | The authoritative, versioned migration applied during `./scripts/deploy-vps.sh` |
+
+**If you only add it to `server/index.ts`, the VPS will crash on next deploy.**
+
+The VPS deploy script (step 4) runs `vps-migrate.sql` via `psql` before restarting PM2. The startup migrations in `index.ts` run afterwards — but if any earlier migration in that block throws, the remaining ones are silently skipped. `vps-migrate.sql` is idempotent (every block is wrapped in `IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'vXXX')`) so it is safe to re-run and is never skipped.
+
+### Checklist for any task that touches `shared/schema.ts`
+
+1. Add `ALTER TABLE … ADD COLUMN IF NOT EXISTS …` to `runStartupMigrations()` in `server/index.ts`.
+2. Add a new `DO $$ … $$` versioned block to the **end** of `scripts/vps-migrate.sql`, incrementing the version number (v037, v038, …).
+3. The version block must: run the DDL, then `INSERT INTO _migration_log (version, description) VALUES (…)`.
+4. Always use `IF NOT EXISTS` / `IF EXISTS` guards in both locations — never a bare `ALTER TABLE ADD COLUMN` that will fail if the column is already present.
+
+### Immediate fix if a column is missing on the VPS
+
+Run the DDL directly via `psql "$DATABASE_URL"` on the VPS, then `pm2 restart fnbcostpro`. The startup migrations and `vps-migrate.sql` will both see the column already present and skip gracefully.
+
+---
 - **No duplicated business logic** — if the same calculation or validation exists in two places, consolidate it.
 - **All AI-generated data must include confidence metadata** — OCR results, inventory recognition, recipe extraction, and forecasting outputs must carry confidence scores where applicable.
 - **Critical operational actions require audit logging** — receipts, transfers, waste logs, count applies, and similar actions must record who did what and when.

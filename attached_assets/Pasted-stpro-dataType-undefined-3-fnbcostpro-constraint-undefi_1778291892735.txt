@@ -1,0 +1,51 @@
+stpro  |   dataType: undefined,
+3|fnbcostpro  |   constraint: undefined,
+3|fnbcostpro  |   file: 'tablecmds.c',
+3|fnbcostpro  |   line: '7347',
+3|fnbcostpro  |   routine: 'check_for_column_name_collision'
+3|fnbcostpro  | }
+3|fnbcostpro  | [Storage] Environment detected: local (VPS)
+3|fnbcostpro  | [Storage] Using local filesystem storage with company isolation
+3|fnbcostpro  | ✅ WebSocket POS streaming enabled at /ws/pos
+3|fnbcostpro  | 🌱 Seeding database with pizza restaurant data...
+3|fnbcostpro  | 📏 Seeding comprehensive kitchen units...
+3|fnbcostpro  | [Migration] Already applied (vendor_receive_by_unit)
+3|fnbcostpro  | [TierMigration] Already applied (tier_system_init)
+3|fnbcostpro  | [Migration] Already applied (receipt_receive_by_unit)
+3|fnbcostpro  | [Migration] Already applied (container_size_hierarchy)
+3|fnbcostpro  | [Migration] Already applied (mobile_dashboard_columns)
+3|fnbcostpro  | [Migration] Already applied (preferred_language)
+3|fnbcostpro  | ✅ All 41 comprehensive kitchen units already seeded
+3|fnbcostpro  | /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45
+3|fnbcostpro  |     Error.captureStackTrace(err)
+3|fnbcostpro  |           ^
+3|fnbcostpro  | error: column "has_bar" does not exist
+3|fnbcostpro  |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+3|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+3|fnbcostpro  |     at async file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/drizzle-orm/node-postgres/session.js:83:22
+3|fnbcostpro  |     at async seedDatabase (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:25153:24)
+3|fnbcostpro  |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:25849:3 {
+3|fnbcostpro  |   length: 108,
+3|fnbcostpro  |   severity: 'ERROR',
+3|fnbcostpro  |   code: '42703',
+3|fnbcostpro  |   detail: undefined,
+3|fnbcostpro  |   hint: undefined,
+3|fnbcostpro  |   position: '425',
+3|fnbcostpro  |   internalPosition: undefined,
+3|fnbcostpro  |   internalQuery: undefined,
+3|fnbcostpro  |   where: undefined,
+3|fnbcostpro  |   schema: undefined,
+3|fnbcostpro  |   table: undefined,
+3|fnbcostpro  |   column: undefined,
+3|fnbcostpro  |   dataType: undefined,
+3|fnbcostpro  |   constraint: undefined,
+3|fnbcostpro  |   file: 'parse_relation.c',
+3|fnbcostpro  |   line: '3722',
+3|fnbcostpro  |   routine: 'errorMissingColumn'
+3|fnbcostpro  | }
+3|fnbcostpro  | Node.js v20.20.0
+PM2           | App [fnbcostpro:3] exited with code [1] via signal [SIGINT]
+PM2           | App [fnbcostpro:3] starting in -fork mode-
+PM2           | App [fnbcostpro:3] online
+3|fnbcostpro  | > rest-express@1.5.0 start
+3|fnbcostpro  | > NODE_ENV=production node dist/index.js
