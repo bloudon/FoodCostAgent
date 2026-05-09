@@ -1162,7 +1162,7 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
   const applyLabel = (() => {
     if (createdCount === 0 && updatedCount === 0) return "Select at least one item to apply";
     const parts: string[] = [];
-    parts.push(`Create ${createdCount}`);
+    if (createdCount > 0) parts.push(`Create ${createdCount}`);
     if (updatedCount > 0) parts.push(`Update ${updatedCount}`);
     return `Apply — ${parts.join(", ")}`;
   })();
