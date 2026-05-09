@@ -229,10 +229,12 @@ describe("InvoiceScanStep — Step 3 review table renders without throwing", () 
     expect(screen.getByText(/Restaurant Depot/i)).toBeInTheDocument();
   });
 
-  it("renders item rows — unit-price items display a formatted dollar amount", async () => {
+  it("renders item rows — unit-price items show an editable price input pre-filled with the AI value", async () => {
     await renderAndAdvanceToReview(ITEMS_UNIT_PRICE);
     expect(screen.getByText("Mozzarella Cheese 5 Lb")).toBeInTheDocument();
-    expect(screen.getByText("$4.50")).toBeInTheDocument();
+    const priceInput = screen.getByTestId("input-price-0") as HTMLInputElement;
+    expect(priceInput).toBeInTheDocument();
+    expect(parseFloat(priceInput.value)).toBeCloseTo(4.5, 2);
   });
 
   it("does NOT crash when an item has null unitPrice but a valid casePrice (case-only invoice)", async () => {
@@ -246,10 +248,12 @@ describe("InvoiceScanStep — Step 3 review table renders without throwing", () 
     expect(screen.getByText(/case price/i)).toBeInTheDocument();
   });
 
-  it("shows a dash for zero-price items instead of a dollar amount", async () => {
+  it("shows an editable $0.0000 input for zero-price items (no longer a dash)", async () => {
     await renderAndAdvanceToReview(ITEMS_ZERO_PRICE);
     expect(screen.getByText("Unknown Item")).toBeInTheDocument();
-    expect(screen.getByText("—")).toBeInTheDocument();
+    const priceInput = screen.getByTestId("input-price-0") as HTMLInputElement;
+    expect(priceInput).toBeInTheDocument();
+    expect(priceInput.value).toBe("0.0000");
   });
 
   it("shows match info for items with a high-confidence match", async () => {
@@ -289,10 +293,10 @@ describe("InvoiceScanStep — Step 3 review table renders without throwing", () 
 // ---------------------------------------------------------------------------
 
 describe("InvoiceScanStep — default action assignment", () => {
-  it("defaults zero-price items to 'skip'", async () => {
+  it("defaults zero-price items to 'create' (not skip) so onboarding users can seed inventory without manual changes", async () => {
     await renderAndAdvanceToReview(ITEMS_ZERO_PRICE);
     const selector = screen.getByTestId("select-action-0") as HTMLSelectElement;
-    expect(selector.value).toBe("skip");
+    expect(selector.value).toBe("create");
   });
 
   it("defaults items with no match to 'create'", async () => {
