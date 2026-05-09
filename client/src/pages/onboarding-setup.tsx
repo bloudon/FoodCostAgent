@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment, useCallback, useMemo } from "react";
+import { useState, useEffect, Fragment, useCallback, useMemo, useRef } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useCompany } from "@/hooks/use-company";
@@ -1364,6 +1364,20 @@ function StorageStep({ hasBar, onComplete }: { hasBar?: boolean; onComplete: () 
   const [customInput, setCustomInput] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // If hasBar resolves to true after initial mount (company query loads async),
+  // ensure bar options that should be pre-checked are added to the checked set.
+  const barInitialized = useRef(false);
+  useEffect(() => {
+    if (hasBar && !barInitialized.current) {
+      barInitialized.current = true;
+      setChecked(prev => {
+        const next = new Set(prev);
+        BAR_OPTIONS.filter(o => o.defaultChecked).forEach(o => next.add(o.name));
+        return next;
+      });
+    }
+  }, [hasBar]);
+
   const toggleOption = (name: string) => {
     setChecked(prev => {
       const next = new Set(prev);
@@ -1394,7 +1408,15 @@ function StorageStep({ hasBar, onComplete }: { hasBar?: boolean; onComplete: () 
       const existingNames = new Set(
         (existingLocations || []).map(l => l.name.toLowerCase().trim())
       );
-      const toCreate = selectedNames.filter(
+      // Deduplicate selected names by normalized key before POSTing
+      const seenKeys = new Set<string>();
+      const uniqueSelected = selectedNames.filter(n => {
+        const key = n.toLowerCase().trim();
+        if (seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+      });
+      const toCreate = uniqueSelected.filter(
         n => !existingNames.has(n.toLowerCase().trim())
       );
       for (let i = 0; i < toCreate.length; i++) {
