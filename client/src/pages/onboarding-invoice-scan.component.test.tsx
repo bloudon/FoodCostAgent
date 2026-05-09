@@ -265,12 +265,12 @@ describe("InvoiceScanStep — Step 3 review table renders without throwing", () 
     expect(screen.getByText(/case price/i)).toBeInTheDocument();
   });
 
-  it("shows an editable $0.0000 input for zero-price items (no longer a dash)", async () => {
+  it("shows an editable $0.000 input for zero-price items (no longer a dash)", async () => {
     await renderAndAdvanceToReview(ITEMS_ZERO_PRICE);
     expect(screen.getByText("Unknown Item")).toBeInTheDocument();
     const priceInput = screen.getByTestId("input-price-0") as HTMLInputElement;
     expect(priceInput).toBeInTheDocument();
-    expect(priceInput.value).toBe("0.0000");
+    expect(priceInput.value).toBe("0.000");
   });
 
   it("shows match info for items with a high-confidence match", async () => {

@@ -951,6 +951,7 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
   const [addPageScanning, setAddPageScanning] = useState(false);
   const [extractedItems, setExtractedItems] = useState<InvoiceItem[]>([]);
   const [vendorName, setVendorName] = useState("");
+  const [priceText, setPriceText] = useState<Record<number, string>>({});
 
   const defaultAction = (item: InvoiceItem): "update" | "create" => {
     return (item.matchConfidence === "high" || item.matchConfidence === "medium") && item.matchedItemId
@@ -970,12 +971,12 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
       }
       const data = await res.json() as { items: InvoiceItem[]; vendorName?: string };
       setVendorName(data.vendorName || "");
-      setExtractedItems(
-        (data.items || []).map((item) => ({
-          ...item,
-          action: defaultAction(item),
-        }))
-      );
+      const items = (data.items || []).map((item) => ({
+        ...item,
+        action: defaultAction(item),
+      }));
+      setExtractedItems(items);
+      setPriceText(Object.fromEntries(items.map((it, i) => [i, it.unitPrice.toFixed(3)])));
       setSubStep("review");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Scan failed";
@@ -1016,7 +1017,9 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
       }
     }
     setVendorName(firstVendorName);
-    setExtractedItems(allItems.map(item => ({ ...item, action: defaultAction(item) })));
+    const mappedItems = allItems.map(item => ({ ...item, action: defaultAction(item) }));
+    setExtractedItems(mappedItems);
+    setPriceText(Object.fromEntries(mappedItems.map((it, i) => [i, it.unitPrice.toFixed(3)])));
     setSubStep("review");
     setScanning(false);
   };
@@ -1039,8 +1042,14 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
+        }).map(item => ({ ...item, action: defaultAction(item) }));
+        const next = [...prev, ...newUnique];
+        setPriceText(pt => {
+          const updated = { ...pt };
+          newUnique.forEach((it, j) => { updated[prev.length + j] = it.unitPrice.toFixed(3); });
+          return updated;
         });
-        return [...prev, ...newUnique.map(item => ({ ...item, action: defaultAction(item) }))];
+        return next;
       });
       if (!vendorName && data.vendorName) setVendorName(data.vendorName);
       setAddingPage(false);
@@ -1098,6 +1107,7 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
     setExtractedItems(prev => prev.map((item, i) =>
       i === idx ? { ...item, unitPrice, priceSource: "unit" } : item
     ));
+    setPriceText(pt => ({ ...pt, [idx]: parseFloat(unitPrice.toFixed(3)).toFixed(3) }));
   };
 
   const confidenceBadge = (c: string) =>
@@ -1198,12 +1208,17 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
                       <div className="flex items-center gap-0.5">
                         <span className="text-xs text-muted-foreground">$</span>
                         <input
-                          type="number"
-                          min="0"
-                          step="0.0001"
-                          value={item.unitPrice.toFixed(4)}
-                          onChange={e => setPrice(idx, e.target.value)}
-                          className="w-20 text-right text-xs rounded border px-1.5 py-0.5 bg-background [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          type="text"
+                          inputMode="decimal"
+                          value={priceText[idx] ?? item.unitPrice.toFixed(3)}
+                          onChange={e => {
+                            const raw = e.target.value;
+                            if (/^(\d*\.?\d{0,3})?$/.test(raw)) {
+                              setPriceText(pt => ({ ...pt, [idx]: raw }));
+                            }
+                          }}
+                          onBlur={() => setPrice(idx, priceText[idx] ?? String(item.unitPrice))}
+                          className="w-20 text-right text-xs rounded border px-1.5 py-0.5 bg-background"
                           data-testid={`input-price-${idx}`}
                         />
                       </div>
