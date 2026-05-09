@@ -438,61 +438,100 @@ export function MenuScanStep({
     deptGroups.get(dept)!.push(idx);
   });
 
+  const chainItems = [
+    { Icon: BookOpen,     label: "Menu items",                     desc: "ready to cost as recipes" },
+    { Icon: ClipboardList, label: "Recipes",                       desc: "costed automatically from your menu" },
+    { Icon: Package,      label: "Vendor Order Guides",            desc: "prices tracked, changes flagged" },
+    { Icon: Warehouse,    label: "Inventory",                      desc: "counted from your phone" },
+    { Icon: BarChart3,    label: "Live food cost vs. theoretical",  desc: "variance visible at a glance" },
+  ];
+
   return (
     <Card data-testid="card-step-menu-review">
-      <CardHeader>
-        <CardTitle>
-          {items.length > 0
-            ? `We found ${items.length} item${items.length !== 1 ? "s" : ""}`
-            : "No items found"}
-        </CardTitle>
-        <CardDescription>Remove anything that doesn't belong, then import.</CardDescription>
+      <CardHeader className="pb-3">
+        <div className="flex items-start gap-2">
+          <Sparkles className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+          <div>
+            <CardTitle className="text-base leading-snug">
+              {items.length > 0
+                ? "Your restaurant is already taking shape"
+                : "No items found"}
+            </CardTitle>
+            <CardDescription className="mt-0.5">
+              {items.length > 0
+                ? `${items.length} item${items.length !== 1 ? "s" : ""} pulled from your menu — remove anything that doesn't belong, then import.`
+                : "No items were extracted. Try a clearer photo or a different page of your menu."}
+            </CardDescription>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {items.length > 0 ? (
-          <div className="rounded-md border overflow-hidden max-h-72 overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-muted/80">
-                <tr>
-                  <th className="text-left px-3 py-2 font-medium">Item name</th>
-                  <th className="w-10" />
-                </tr>
-              </thead>
-              <tbody>
-                {deptOrder.map((dept) => (
-                  <Fragment key={dept}>
-                    <tr className="bg-muted/30">
-                      <td colSpan={2} className="px-3 py-1 font-semibold text-xs text-muted-foreground uppercase tracking-wide">
-                        {dept}
-                      </td>
-                    </tr>
-                    {deptGroups.get(dept)!.map((idx) => (
-                      <tr key={idx} className="border-t">
-                        <td className="px-3 py-1">
-                          <Input
-                            value={items[idx].name}
-                            onChange={e => updateName(idx, e.target.value)}
-                            className="h-8 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent"
-                            data-testid={`input-item-name-${idx}`}
-                          />
-                        </td>
-                        <td className="px-2 py-1">
-                          <Button variant="ghost" size="icon" onClick={() => deleteItem(idx)} data-testid={`button-delete-item-${idx}`}>
-                            <Trash2 className="w-4 h-4 text-muted-foreground" />
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="py-8 text-center text-muted-foreground text-sm">
-            No items were extracted. Try a clearer photo or a different page of your menu.
+        {items.length > 0 && (
+          <div className="rounded-md border overflow-hidden max-h-64 overflow-y-auto">
+            {deptOrder.map((dept) => {
+              const indices = deptGroups.get(dept)!;
+              return (
+                <Fragment key={dept}>
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-muted/40 sticky top-0">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{dept}</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {indices.length} {indices.length === 1 ? "item" : "items"}
+                    </Badge>
+                  </div>
+                  {indices.map((idx) => {
+                    const item = items[idx];
+                    const hasPrice = item.price !== null && item.price > 0;
+                    return (
+                      <div key={idx} className="flex items-center gap-1.5 px-3 border-t">
+                        <Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                        <Input
+                          value={item.name}
+                          onChange={e => updateName(idx, e.target.value)}
+                          className="h-8 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent flex-1 text-sm"
+                          data-testid={`input-item-name-${idx}`}
+                        />
+                        {hasPrice && (
+                          <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 font-medium whitespace-nowrap">
+                            ${item.price!.toFixed(2)}
+                          </span>
+                        )}
+                        <Button variant="ghost" size="icon" onClick={() => deleteItem(idx)} data-testid={`button-delete-item-${idx}`}>
+                          <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </Fragment>
+              );
+            })}
           </div>
         )}
+
+        <div className="rounded-md border overflow-hidden" data-testid="section-whats-next">
+          <img
+            src="https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=800&q=60"
+            alt="Restaurant professional reviewing data on a phone"
+            className="w-full h-28 object-cover object-center"
+            loading="lazy"
+          />
+          <div className="p-4 space-y-3">
+            <p className="text-sm font-semibold">What's next — the full picture</p>
+            <div className="space-y-2.5">
+              {chainItems.map(({ Icon, label, desc }, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Icon className="w-3 h-3 text-primary" />
+                  </div>
+                  <p className="text-sm leading-snug">
+                    <span className="font-medium">{label}</span>
+                    <span className="text-muted-foreground"> — {desc}</span>
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
         <div className="flex flex-col gap-2">
           {items.length > 0 && (
             <Button
@@ -502,7 +541,9 @@ export function MenuScanStep({
             >
               {approveMutation.isPending ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing…</>
-              ) : `Import ${items.filter(i => i.name.trim()).length} Items`}
+              ) : (
+                <>{`Import ${items.filter(i => i.name.trim()).length} Items`} <ArrowRight className="w-4 h-4 ml-2" /></>
+              )}
             </Button>
           )}
           {!addingPage ? (
@@ -561,14 +602,17 @@ function PlanStep({
   const { toast } = useToast();
   const [checking, setChecking] = useState(false);
   const [polling, setPolling] = useState(false);
+  const [planConfirmed, setPlanConfirmed] = useState(false);
+  const [confirmedTier, setConfirmedTier] = useState("");
   const hasPlan = !!(company?.subscriptionTier && company.subscriptionTier !== "free");
 
-  // Auto-advance once a paid plan is confirmed in company data.
+  // When a paid plan is already on the company record, surface the celebration card.
   useEffect(() => {
     if (hasPlan) {
-      onContinue();
+      setPlanConfirmed(true);
+      setConfirmedTier(company?.subscriptionTier || "");
     }
-  }, [hasPlan, onContinue]);
+  }, [hasPlan, company?.subscriptionTier]);
 
   // When returning from Stripe (?planActivated=true), poll until the
   // subscription webhook has propagated (max ~20 seconds / 10 polls).
@@ -589,7 +633,8 @@ function PlanStep({
             clearInterval(interval);
             setPolling(false);
             queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-            onContinue();
+            setPlanConfirmed(true);
+            setConfirmedTier(data.subscriptionTier);
             return;
           }
         }
@@ -604,14 +649,34 @@ function PlanStep({
       clearInterval(interval);
       setPolling(false);
     };
-  }, [planActivated, hasPlan, onContinue]);
+  }, [planActivated, hasPlan]);
 
-  if (hasPlan) {
+  if (planConfirmed) {
+    const tierDisplay: Record<string, string> = {
+      basic: "Basic", pro: "Pro", enterprise: "Enterprise", starter: "Starter",
+    };
+    const planName = tierDisplay[confirmedTier] || confirmedTier || "Pro";
     return (
-      <Card data-testid="card-step-plan-active">
-        <CardContent className="py-10 text-center space-y-3">
-          <Check className="w-10 h-10 text-green-500 mx-auto" />
-          <p className="font-semibold">Plan selected — continuing setup…</p>
+      <Card data-testid="card-plan-celebration">
+        <CardContent className="py-10 text-center space-y-5">
+          <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto">
+            <Check className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-lg font-bold leading-tight">You're in — let's set up your kitchen</p>
+            <p className="text-sm text-muted-foreground">
+              You're on the{" "}
+              <span className="font-semibold text-foreground">{planName} plan</span>.
+              {" "}Recipe costing, invoice scanning, and food cost reports are ready to configure.
+            </p>
+          </div>
+          <Button
+            className="w-full"
+            onClick={onContinue}
+            data-testid="button-plan-celebration-continue"
+          >
+            Let's go <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
         </CardContent>
       </Card>
     );
