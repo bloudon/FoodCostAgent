@@ -1648,9 +1648,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         extractedItems: result.items,
       }).returning();
 
+      // Write extracted intelligence to the company record (only fills empty fields —
+      // never overwrites data the user has already entered).
+      const intel = result.intelligence;
+      if (intel.phones.length > 0 || intel.addresses.length > 0) {
+        try {
+          const existingCompany = await storage.getCompany(companyId);
+          const updates: Record<string, string> = {};
+          if (!existingCompany?.phone && intel.phones[0]) {
+            updates.phone = intel.phones[0];
+          }
+          if (!existingCompany?.addressLine1 && intel.addresses[0]) {
+            updates.addressLine1 = intel.addresses[0];
+          }
+          if (Object.keys(updates).length > 0) {
+            await storage.updateCompany(companyId, updates);
+          }
+        } catch (err) {
+          // Non-fatal — intelligence write failure must not break the scan flow
+          console.warn("[Onboarding Menu Scan] Failed to write intelligence to company:", err);
+        }
+      }
+
       return res.json({
         sessionId: session.id,
         items: result.items,
+        intelligence: intel,
         count: result.items.length,
       });
     } catch (error: any) {

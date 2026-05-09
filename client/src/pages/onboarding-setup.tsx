@@ -20,11 +20,19 @@ import {
 const logoImage = "/logo.png";
 
 // ---- Wizard State Persistence ----
+interface MenuIntelligence {
+  phones: string[];
+  addresses: string[];
+  locationCount: number;
+  multiLocationSignal: boolean;
+}
+
 interface WizardState {
   step: number;
   approvedMenuItems: { id: string; name: string }[];
   skippedRecipes: string[];
   storeId?: string;
+  scannedIntelligence?: MenuIntelligence;
 }
 
 interface ApprovedMenuItem {
@@ -188,7 +196,7 @@ function MenuScanStep({
   onComplete,
 }: {
   storeId?: string;
-  onComplete: (items: ApprovedMenuItem[], sessionId: string) => void;
+  onComplete: (items: ApprovedMenuItem[], sessionId: string, intelligence: MenuIntelligence) => void;
 }) {
   const { toast } = useToast();
   const [subStep, setSubStep] = useState<"upload" | "review">("upload");
@@ -197,6 +205,9 @@ function MenuScanStep({
   const [addPageScanning, setAddPageScanning] = useState(false);
   const [sessionId, setSessionId] = useState("");
   const [items, setItems] = useState<ExtractedMenuItem[]>([]);
+  const [intelligence, setIntelligence] = useState<MenuIntelligence>({
+    phones: [], addresses: [], locationCount: 1, multiLocationSignal: false,
+  });
 
   const handleUpload = async (objectPath: string) => {
     setScanning(true);
@@ -209,9 +220,10 @@ function MenuScanStep({
         const err = await res.json() as { error?: string };
         throw new Error(err.error || "Scan failed");
       }
-      const data = await res.json() as { sessionId: string; items: ExtractedMenuItem[] };
+      const data = await res.json() as { sessionId: string; items: ExtractedMenuItem[]; intelligence?: MenuIntelligence };
       setSessionId(data.sessionId);
       setItems(data.items || []);
+      if (data.intelligence) setIntelligence(data.intelligence);
       setSubStep("review");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Scan failed";
@@ -280,7 +292,7 @@ function MenuScanStep({
         title: "Menu imported!",
         description: `${data.menuItemsCreated} menu item${data.menuItemsCreated !== 1 ? "s" : ""} added.`,
       });
-      onComplete(named, sessionId);
+      onComplete(named, sessionId, intelligence);
     },
     onError: (err: Error) => {
       toast({ title: "Import failed", description: err.message, variant: "destructive" });
@@ -445,10 +457,12 @@ function MenuScanStep({
 function PlanStep({
   company,
   planActivated,
+  locationCount,
   onContinue,
 }: {
   company: { subscriptionTier?: string; name?: string } | null;
   planActivated: boolean;
+  locationCount: number;
   onContinue: () => void;
 }) {
   const [, setLocation] = useLocation();
@@ -555,7 +569,11 @@ function PlanStep({
       <CardContent className="space-y-3">
         <Button
           className="w-full bg-[#f2690d] border-[#f2690d] text-white"
-          onClick={() => setLocation("/choose-plan?returnTo=/onboarding/setup")}
+          onClick={() => {
+            const params = new URLSearchParams({ returnTo: "/onboarding/setup" });
+            if (locationCount > 1) params.set("locations", String(locationCount));
+            setLocation(`/choose-plan?${params.toString()}`);
+          }}
           data-testid="button-choose-plan"
         >
           View Plans &amp; Pricing
@@ -580,9 +598,11 @@ function PlanStep({
 // ---- Step 3: Store Setup ----
 function StoreSetupStep({
   storeId,
+  scannedIntelligence,
   onComplete,
 }: {
   storeId?: string;
+  scannedIntelligence?: MenuIntelligence;
   onComplete: () => void;
 }) {
   const { toast } = useToast();
@@ -593,6 +613,11 @@ function StoreSetupStep({
   const store = storesData?.find(s => s.id === storeId) || storesData?.[0];
   const [storeName, setStoreName] = useState("");
   const [storeDescription, setStoreDescription] = useState("");
+  const [prefillDismissed, setPrefillDismissed] = useState(false);
+
+  const suggestedAddress = scannedIntelligence?.addresses[0] || null;
+  const suggestedPhone = scannedIntelligence?.phones[0] || null;
+  const hasPrefill = !prefillDismissed && (!!suggestedAddress || !!suggestedPhone);
 
   useEffect(() => {
     if (store) {
@@ -644,6 +669,25 @@ function StoreSetupStep({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {hasPrefill && (
+          <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-1.5" data-testid="banner-menu-prefill">
+            <p className="text-xs font-semibold text-primary">We found this on your menu:</p>
+            {suggestedAddress && (
+              <p className="text-sm text-muted-foreground">{suggestedAddress}</p>
+            )}
+            {suggestedPhone && (
+              <p className="text-sm text-muted-foreground">{suggestedPhone}</p>
+            )}
+            <p className="text-xs text-muted-foreground">This has been saved to your account profile.</p>
+            <button
+              className="text-xs text-muted-foreground underline underline-offset-2"
+              onClick={() => setPrefillDismissed(true)}
+              data-testid="button-dismiss-prefill"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         <div className="space-y-1.5">
           <label className="text-sm font-medium" htmlFor="store-name-input">Store name</label>
           <Input
@@ -1572,8 +1616,8 @@ export default function OnboardingSetup() {
         {step === 1 && (
           <MenuScanStep
             storeId={storeId}
-            onComplete={(items, _sessionId) => {
-              updateState({ approvedMenuItems: items });
+            onComplete={(items, _sessionId, intel) => {
+              updateState({ approvedMenuItems: items, scannedIntelligence: intel });
               advance(1);
             }}
           />
@@ -1583,6 +1627,7 @@ export default function OnboardingSetup() {
           <PlanStep
             company={company}
             planActivated={planActivated}
+            locationCount={wizardState.scannedIntelligence?.locationCount ?? 1}
             onContinue={() => advance(2)}
           />
         )}
@@ -1590,6 +1635,7 @@ export default function OnboardingSetup() {
         {step === 3 && (
           <StoreSetupStep
             storeId={storeId}
+            scannedIntelligence={wizardState.scannedIntelligence}
             onComplete={() => advance(3)}
           />
         )}
