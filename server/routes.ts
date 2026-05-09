@@ -3467,8 +3467,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/storage-locations", requireAuth, async (req: AuthRequest, res) => {
     try {
-      const data = insertStorageLocationSchema.parse(req.body);
-      // Auto-inject companyId from authenticated user
+      const data = insertStorageLocationSchema.omit({ companyId: true }).parse(req.body);
+      // companyId is always injected from the authenticated session — never trusted from the client
       const location = await storage.createStorageLocation({ ...data, companyId: req.companyId! });
       res.status(201).json(location);
     } catch (error: any) {
