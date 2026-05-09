@@ -244,7 +244,7 @@ function MenuScanStep({
         const err = await res.json() as { error?: string };
         throw new Error(err.error || "Scan failed");
       }
-      const data = await res.json() as { sessionId: string; items: ExtractedMenuItem[] };
+      const data = await res.json() as { sessionId: string; items: ExtractedMenuItem[]; intelligence?: MenuIntelligence };
       // Merge new items, de-duplicating by normalized name across both existing and incoming
       setItems(prev => {
         const seen = new Set(prev.map(i => i.name.toLowerCase().trim()));
@@ -256,6 +256,20 @@ function MenuScanStep({
         });
         return [...prev, ...newUnique];
       });
+      // Merge intelligence from additional pages: union phones/addresses, keep max locationCount
+      if (data.intelligence) {
+        setIntelligence(prev => {
+          const mergedPhones = Array.from(new Set([...prev.phones, ...data.intelligence!.phones]));
+          const mergedAddresses = Array.from(new Set([...prev.addresses, ...data.intelligence!.addresses]));
+          const mergedLocationCount = Math.max(prev.locationCount, data.intelligence!.locationCount, mergedAddresses.length > 1 ? mergedAddresses.length : 1);
+          return {
+            phones: mergedPhones,
+            addresses: mergedAddresses,
+            locationCount: mergedLocationCount,
+            multiLocationSignal: prev.multiLocationSignal || data.intelligence!.multiLocationSignal,
+          };
+        });
+      }
       setAddingPage(false);
       toast({ title: "Page added", description: `${data.items?.length || 0} items scanned and merged.` });
     } catch (err: unknown) {
