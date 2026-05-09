@@ -1075,8 +1075,7 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
           action: i.action,
           inventoryItemId: i.action === "update" ? i.matchedItemId : undefined,
         }));
-      const createdItems = activeItems.filter(i => i.action === "create");
-      if (createdItems.length === 0) throw new Error("At least one item must be set to 'Create new' to seed your inventory.");
+      if (activeItems.length === 0) throw new Error("Select at least one item to apply.");
       const res = await apiRequest("POST", "/api/onboarding/invoice-scan/apply", { items: activeItems });
       if (!res.ok) {
         const err = await res.json() as { error?: string };
@@ -1161,8 +1160,7 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
   const updatedCount = extractedItems.filter(i => i.action === "update").length;
 
   const applyLabel = (() => {
-    if (createdCount === 0 && updatedCount === 0) return "Set at least one item to 'Create new'";
-    if (createdCount === 0) return "Set at least one item to 'Create new'";
+    if (createdCount === 0 && updatedCount === 0) return "Select at least one item to apply";
     const parts: string[] = [];
     parts.push(`Create ${createdCount}`);
     if (updatedCount > 0) parts.push(`Update ${updatedCount}`);
@@ -1297,7 +1295,7 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
 
         <Button
           onClick={() => applyMutation.mutate()}
-          disabled={applyMutation.isPending || createdCount === 0}
+          disabled={applyMutation.isPending || (createdCount === 0 && updatedCount === 0)}
           data-testid="button-apply-invoice"
         >
           {applyMutation.isPending ? (
