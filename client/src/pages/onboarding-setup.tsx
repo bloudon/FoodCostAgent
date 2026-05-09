@@ -489,12 +489,12 @@ export function MenuScanStep({
                     const item = items[idx];
                     const hasPrice = item.price !== null && item.price > 0;
                     return (
-                      <div key={idx} className="flex items-center gap-1.5 px-3 border-t">
-                        <Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                      <div key={idx} className="flex items-center gap-1 px-2 py-0.5 border-t">
+                        <Check className="w-3 h-3 text-emerald-500 flex-shrink-0" />
                         <Input
                           value={item.name}
                           onChange={e => updateName(idx, e.target.value)}
-                          className="h-8 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent flex-1 text-sm"
+                          className="h-6 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent flex-1 text-xs"
                           data-testid={`input-item-name-${idx}`}
                         />
                         {hasPrice && (
@@ -502,9 +502,13 @@ export function MenuScanStep({
                             ${item.price!.toFixed(2)}
                           </span>
                         )}
-                        <Button variant="ghost" size="icon" onClick={() => deleteItem(idx)} data-testid={`button-delete-item-${idx}`}>
-                          <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
-                        </Button>
+                        <button
+                          onClick={() => deleteItem(idx)}
+                          className="p-0.5 rounded text-muted-foreground hover:text-destructive flex-shrink-0"
+                          data-testid={`button-delete-item-${idx}`}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
                       </div>
                     );
                   })}
@@ -566,7 +570,7 @@ export function MenuScanStep({
               <img
                 src={uploadedImages[carouselIndex]}
                 alt={`Menu page ${carouselIndex + 1}`}
-                className="w-full h-40 object-cover object-top"
+                className="w-full h-56 object-cover object-top"
               />
               {uploadedImages.length > 1 && (
                 <>
