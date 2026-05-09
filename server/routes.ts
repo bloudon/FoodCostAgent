@@ -1683,6 +1683,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
+   * PATCH /api/onboarding/has-bar
+   * Persists the bar/beverage profile answer to the company record.
+   * Safe to call multiple times — always overwrites with the latest answer.
+   */
+  app.patch("/api/onboarding/has-bar", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(400).json({ error: "Company context required" });
+      const { hasBar } = z.object({ hasBar: z.boolean() }).parse(req.body);
+      await storage.updateCompany(companyId, { hasBar: hasBar ? 1 : 0 });
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  /**
    * POST /api/onboarding/menu-scan/:sessionId/approve
    * Tier-gate-free version of /api/menu-import/:sessionId/approve for the onboarding flow.
    */

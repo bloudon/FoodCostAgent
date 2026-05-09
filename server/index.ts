@@ -168,6 +168,8 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE background_images ADD COLUMN IF NOT EXISTS is_free_background integer NOT NULL DEFAULT 0`);
     // Optional description/notes field for company_stores (added for onboarding wizard Step 3)
     await db.execute(sql`ALTER TABLE company_stores ADD COLUMN IF NOT EXISTS description text`);
+    // Task #201: hasBar — onboarding bar/beverage profile question
+    await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS has_bar integer`);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

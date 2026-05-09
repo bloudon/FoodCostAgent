@@ -15,6 +15,7 @@ import {
   ChevronRight, Package, FolderTree, Warehouse, BookOpen,
   ClipboardList, Zap, Building2, Edit2, Plus, X,
   BarChart3, ExternalLink, ArrowRight, FileText, RefreshCw,
+  Wine, Utensils,
 } from "lucide-react";
 
 const logoImage = "/logo.png";
@@ -33,6 +34,7 @@ interface WizardState {
   skippedRecipes: string[];
   storeId?: string;
   scannedIntelligence?: MenuIntelligence;
+  hasBar?: boolean;
 }
 
 interface ApprovedMenuItem {
@@ -193,13 +195,15 @@ function StepperBar({ currentStep }: { currentStep: number }) {
 // ---- Step 1: Menu Scan ----
 function MenuScanStep({
   storeId,
+  initialHasBar,
   onComplete,
 }: {
   storeId?: string;
-  onComplete: (items: ApprovedMenuItem[], sessionId: string, intelligence: MenuIntelligence) => void;
+  initialHasBar?: number | null;
+  onComplete: (items: ApprovedMenuItem[], sessionId: string, intelligence: MenuIntelligence, hasBar?: boolean) => void;
 }) {
   const { toast } = useToast();
-  const [subStep, setSubStep] = useState<"upload" | "review">("upload");
+  const [subStep, setSubStep] = useState<"upload" | "bar-question" | "review">("upload");
   const [scanning, setScanning] = useState(false);
   const [addingPage, setAddingPage] = useState(false);
   const [addPageScanning, setAddPageScanning] = useState(false);
@@ -208,6 +212,10 @@ function MenuScanStep({
   const [intelligence, setIntelligence] = useState<MenuIntelligence>({
     phones: [], addresses: [], locationCount: 1, multiLocationSignal: false,
   });
+  const [barAnswer, setBarAnswer] = useState<boolean | undefined>(
+    initialHasBar === null || initialHasBar === undefined ? undefined : initialHasBar === 1,
+  );
+  const [barSaving, setBarSaving] = useState(false);
 
   const handleUpload = async (objectPath: string) => {
     setScanning(true);
@@ -224,7 +232,7 @@ function MenuScanStep({
       setSessionId(data.sessionId);
       setItems(data.items || []);
       if (data.intelligence) setIntelligence(data.intelligence);
-      setSubStep("review");
+      setSubStep("bar-question");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Scan failed";
       toast({ title: "Scan failed", description: message, variant: "destructive" });
@@ -306,7 +314,7 @@ function MenuScanStep({
         title: "Menu imported!",
         description: `${data.menuItemsCreated} menu item${data.menuItemsCreated !== 1 ? "s" : ""} added.`,
       });
-      onComplete(named, sessionId, intelligence);
+      onComplete(named, sessionId, intelligence, barAnswer);
     },
     onError: (err: Error) => {
       toast({ title: "Import failed", description: err.message, variant: "destructive" });
@@ -316,6 +324,75 @@ function MenuScanStep({
   const deleteItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx));
   const updateName = (idx: number, name: string) =>
     setItems(prev => prev.map((item, i) => i === idx ? { ...item, name } : item));
+
+  const handleBarAnswer = async (answer: boolean) => {
+    setBarAnswer(answer);
+    setBarSaving(true);
+    try {
+      await apiRequest("PATCH", "/api/onboarding/has-bar", { hasBar: answer });
+    } catch {
+      // Non-fatal — best effort
+    } finally {
+      setBarSaving(false);
+    }
+    setSubStep("review");
+  };
+
+  if (subStep === "bar-question") {
+    return (
+      <Card data-testid="card-step-bar-question">
+        <CardHeader>
+          <CardTitle>One quick question</CardTitle>
+          <CardDescription>
+            Do you serve alcohol or operate a bar?
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-3" data-testid="bar-question-tiles">
+            <button
+              className={`flex flex-col items-center justify-center gap-2 rounded-md border-2 p-6 transition-colors ${
+                barAnswer === true
+                  ? "border-primary bg-primary/5"
+                  : "border-muted hover:border-primary/40"
+              }`}
+              onClick={() => handleBarAnswer(true)}
+              disabled={barSaving}
+              data-testid="tile-has-bar-yes"
+            >
+              <Wine className="w-8 h-8 text-muted-foreground" />
+              <span className="font-medium text-sm">Yes, we serve alcohol</span>
+            </button>
+            <button
+              className={`flex flex-col items-center justify-center gap-2 rounded-md border-2 p-6 transition-colors ${
+                barAnswer === false
+                  ? "border-primary bg-primary/5"
+                  : "border-muted hover:border-primary/40"
+              }`}
+              onClick={() => handleBarAnswer(false)}
+              disabled={barSaving}
+              data-testid="tile-has-bar-no"
+            >
+              <Utensils className="w-8 h-8 text-muted-foreground" />
+              <span className="font-medium text-sm">No, food only</span>
+            </button>
+          </div>
+          {barSaving && (
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" /> Saving…
+            </div>
+          )}
+          <button
+            className="w-full text-xs text-muted-foreground underline underline-offset-2 pt-1"
+            onClick={() => setSubStep("review")}
+            disabled={barSaving}
+            data-testid="button-skip-bar-question"
+          >
+            Skip this question
+          </button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (subStep === "upload") {
     return (
@@ -1630,8 +1707,9 @@ export default function OnboardingSetup() {
         {step === 1 && (
           <MenuScanStep
             storeId={storeId}
-            onComplete={(items, _sessionId, intel) => {
-              updateState({ approvedMenuItems: items, scannedIntelligence: intel });
+            initialHasBar={company?.hasBar}
+            onComplete={(items, _sessionId, intel, hasBar) => {
+              updateState({ approvedMenuItems: items, scannedIntelligence: intel, hasBar });
               advance(1);
             }}
           />

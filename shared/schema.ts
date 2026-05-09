@@ -32,6 +32,7 @@ export const companies = pgTable("companies", {
   subscriptionTier: text("subscription_tier"), // free, basic, pro
   subscriptionTerm: text("subscription_term"), // monthly, quarterly, annual
   subscriptionCurrentPeriodEnd: timestamp("subscription_current_period_end"),
+  hasBar: integer("has_bar"), // 0 = no, 1 = yes, null = not yet answered
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
