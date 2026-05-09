@@ -12927,6 +12927,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             FROM users u
             LEFT JOIN companies c ON u.company_id = c.id
             LEFT JOIN auth_sessions s ON s.user_id = u.id
+            WHERE (u.company_id IS NULL OR c.id IS NOT NULL)
             GROUP BY u.id, u.email, u.first_name, u.last_name, u.role, u.active, u.created_at,
                      c.id, c.name, c.subscription_tier
             ORDER BY u.created_at DESC`

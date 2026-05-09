@@ -886,8 +886,21 @@ async function purgeCompanyData(
       },
     },
 
+    // ── Users ────────────────────────────────────────────────────────────
+    // Delete all users belonging to this company. global_admin users have
+    // a null company_id and are never matched here.
+    {
+      name: "users",
+      count: async () => countByCompany("users", companyId),
+      delete: async () => {
+        const result = await db.delete(schema.users)
+          .where(eq(schema.users.companyId, companyId))
+          .returning({ id: schema.users.id });
+        return result.length;
+      },
+    },
+
     // ── User Stores (by this company's store IDs) ────────────────────────
-    // Note: user records themselves are preserved intentionally
     {
       name: "user_stores",
       count: async () => {
