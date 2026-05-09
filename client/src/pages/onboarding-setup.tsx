@@ -943,8 +943,16 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
   const { toast } = useToast();
   const [subStep, setSubStep] = useState<"upload" | "review">("upload");
   const [scanning, setScanning] = useState(false);
+  const [addingPage, setAddingPage] = useState(false);
+  const [addPageScanning, setAddPageScanning] = useState(false);
   const [extractedItems, setExtractedItems] = useState<InvoiceItem[]>([]);
   const [vendorName, setVendorName] = useState("");
+
+  const defaultAction = (item: InvoiceItem): "update" | "create" => {
+    return (item.matchConfidence === "high" || item.matchConfidence === "medium") && item.matchedItemId
+      ? "update"
+      : "create";
+  };
 
   const handleUpload = async (objectPath: string) => {
     setScanning(true);
@@ -961,12 +969,7 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
       setExtractedItems(
         (data.items || []).map((item) => ({
           ...item,
-          // Zero-price items default to skip — user must explicitly choose to create them
-          action: item.priceSource === "zero"
-            ? "skip"
-            : (item.matchConfidence === "high" || item.matchConfidence === "medium")
-              ? "update"
-              : "create",
+          action: defaultAction(item),
         }))
       );
       setSubStep("review");
@@ -975,6 +978,38 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
       toast({ title: "Scan failed", description: message, variant: "destructive" });
     } finally {
       setScanning(false);
+    }
+  };
+
+  const handleAddPage = async (objectPath: string) => {
+    setAddPageScanning(true);
+    try {
+      const res = await apiRequest("POST", "/api/onboarding/invoice-scan", {
+        imageObjectPath: objectPath,
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error || "Scan failed");
+      }
+      const data = await res.json() as { items: InvoiceItem[]; vendorName?: string };
+      setExtractedItems(prev => {
+        const seen = new Set(prev.map(i => i.name.toLowerCase().trim()));
+        const newUnique = (data.items || []).filter(i => {
+          const key = i.name.toLowerCase().trim();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        return [...prev, ...newUnique.map(item => ({ ...item, action: defaultAction(item) }))];
+      });
+      if (!vendorName && data.vendorName) setVendorName(data.vendorName);
+      setAddingPage(false);
+      toast({ title: "Page added", description: `${data.items?.length || 0} items scanned and merged.` });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Scan failed";
+      toast({ title: "Scan failed", description: message, variant: "destructive" });
+    } finally {
+      setAddPageScanning(false);
     }
   };
 
@@ -1015,6 +1050,14 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
 
   const setAction = (idx: number, action: "update" | "create" | "skip") => {
     setExtractedItems(prev => prev.map((item, i) => i === idx ? { ...item, action } : item));
+  };
+
+  const setPrice = (idx: number, value: string) => {
+    const parsed = parseFloat(value);
+    const unitPrice = isNaN(parsed) ? 0 : Math.max(0, parsed);
+    setExtractedItems(prev => prev.map((item, i) =>
+      i === idx ? { ...item, unitPrice, priceSource: "unit" } : item
+    ));
   };
 
   const confidenceBadge = (c: string) =>
@@ -1058,6 +1101,16 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
   }
 
   const createdCount = extractedItems.filter(i => i.action === "create").length;
+  const updatedCount = extractedItems.filter(i => i.action === "update").length;
+
+  const applyLabel = (() => {
+    if (createdCount === 0 && updatedCount === 0) return "Set at least one item to 'Create new'";
+    if (createdCount === 0) return "Set at least one item to 'Create new'";
+    const parts: string[] = [];
+    parts.push(`Create ${createdCount}`);
+    if (updatedCount > 0) parts.push(`Update ${updatedCount}`);
+    return `Apply — ${parts.join(", ")}`;
+  })();
 
   return (
     <Card data-testid="card-step-invoice-review">
@@ -1066,16 +1119,16 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
           Review extracted items{vendorName ? ` from ${vendorName}` : ""}
         </CardTitle>
         <CardDescription>
-          Set at least one item to "Create new" to seed your inventory, then click Apply.
+          Adjust prices and actions, then click Apply to seed your inventory.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="rounded-md border overflow-hidden max-h-80 overflow-y-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-muted/80">
+            <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm">
               <tr>
                 <th className="text-left px-3 py-2 font-medium">Item</th>
-                <th className="text-right px-3 py-2 font-medium w-24">Price</th>
+                <th className="text-right px-3 py-2 font-medium w-28">Unit Price</th>
                 <th className="px-3 py-2 font-medium w-40">Action</th>
               </tr>
             </thead>
@@ -1093,23 +1146,34 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
                       </p>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {item.priceSource === "zero" ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : (
-                      <div className="flex flex-col items-end gap-0.5">
-                        <span>${item.unitPrice.toFixed(2)}</span>
-                        {item.priceSource === "case" && (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-600 dark:text-amber-400 no-default-active-elevate"
-                            title="The AI only found a case price — this may not be the correct per-unit cost. Please verify before applying."
-                          >
-                            case price
-                          </Badge>
-                        )}
+                  <td className="px-3 py-2">
+                    <div className="flex flex-col items-end gap-0.5">
+                      <div className="flex items-center gap-0.5">
+                        <span className="text-xs text-muted-foreground">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.0001"
+                          value={item.unitPrice === 0 ? "" : item.unitPrice.toFixed(4)}
+                          placeholder="0.0000"
+                          onChange={e => setPrice(idx, e.target.value)}
+                          className="w-20 text-right text-xs rounded border px-1.5 py-0.5 bg-background [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          data-testid={`input-price-${idx}`}
+                        />
                       </div>
-                    )}
+                      {item.priceSource === "case" && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-600 dark:text-amber-400 no-default-active-elevate"
+                          title="The AI only found a case price — this may not be the correct per-unit cost. Please verify before applying."
+                        >
+                          case price
+                        </Badge>
+                      )}
+                      {item.priceSource === "zero" && (
+                        <span className="text-[10px] text-muted-foreground">not found</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-2">
                     <select
@@ -1128,6 +1192,48 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
             </tbody>
           </table>
         </div>
+
+        {addingPage ? (
+          <div className="rounded-md border border-dashed p-3 space-y-2">
+            <p className="text-sm font-medium">Add another page</p>
+            {addPageScanning ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Scanning page…
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <ObjectUploader
+                  onUploadComplete={handleAddPage}
+                  buttonText="Choose Page Image"
+                  dataTestId="button-upload-invoice-page"
+                  visibility="private"
+                  maxFileSize={10485760}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAddingPage(false)}
+                  data-testid="button-cancel-add-page"
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAddingPage(true)}
+            disabled={applyMutation.isPending || addPageScanning}
+            data-testid="button-add-invoice-page"
+          >
+            <Plus className="w-3.5 h-3.5 mr-1.5" />
+            Add another page
+          </Button>
+        )}
+
         <Button
           onClick={() => applyMutation.mutate()}
           disabled={applyMutation.isPending || createdCount === 0}
@@ -1135,9 +1241,7 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
         >
           {applyMutation.isPending ? (
             <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Applying…</>
-          ) : createdCount === 0
-            ? "Set at least one item to 'Create new'"
-            : `Apply — Create ${createdCount} New Item${createdCount !== 1 ? "s" : ""}`}
+          ) : applyLabel}
         </Button>
       </CardContent>
     </Card>
