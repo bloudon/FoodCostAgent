@@ -1218,7 +1218,7 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
                             }
                           }}
                           onBlur={() => setPrice(idx, priceText[idx] ?? String(item.unitPrice))}
-                          className="w-20 text-right text-xs rounded border px-1.5 py-0.5 bg-background"
+                          className="w-20 text-right text-xs rounded border px-1.5 py-0.5 bg-background [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           data-testid={`input-price-${idx}`}
                         />
                       </div>
