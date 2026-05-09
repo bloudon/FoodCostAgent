@@ -110,9 +110,9 @@ const STEPS = [
   { id: "menu_scan", label: "Menu", icon: Camera },
   { id: "plan", label: "Plan", icon: Zap },
   { id: "store_setup", label: "Store", icon: Building2 },
+  { id: "storage", label: "Storage", icon: Warehouse },
   { id: "invoice_scan", label: "Invoice", icon: FileText },
   { id: "categories", label: "Categories", icon: FolderTree },
-  { id: "storage", label: "Storage", icon: Warehouse },
   { id: "recipes", label: "Recipes", icon: BookOpen },
   { id: "review", label: "Review", icon: BarChart3 },
   { id: "inventory", label: "Count #1", icon: ClipboardList },
@@ -122,9 +122,9 @@ export const STEP_MILESTONE_IDS: Record<number, string> = {
   1: "menu_scan",
   2: "plan",
   3: "store",
-  4: "invoice_scan",
-  5: "categories",
-  6: "storage_locations",
+  4: "storage_locations",
+  5: "invoice_scan",
+  6: "categories",
   7: "recipes",
   8: "review",
   9: "inventory_count",
@@ -1338,83 +1338,152 @@ function CategoriesStep({ onComplete }: { onComplete: () => void }) {
 }
 
 // ---- Step 5: Storage Locations ----
-function StorageStep({ onComplete }: { onComplete: () => void }) {
+function StorageStep({ hasBar, onComplete }: { hasBar?: boolean; onComplete: () => void }) {
   const { toast } = useToast();
-  const { data: locations, isLoading } = useQuery<{ id: string; name: string }[]>({
+  const { data: existingLocations } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/storage-locations"],
   });
 
-  const [newName, setNewName] = useState("");
+  const BASE_OPTIONS = [
+    { name: "Walk-in Cooler", defaultChecked: true },
+    { name: "Dry Pantry", defaultChecked: true },
+    { name: "Freezer", defaultChecked: true },
+    { name: "Dry Storage", defaultChecked: false },
+  ];
+  const BAR_OPTIONS = [
+    { name: "Bar", defaultChecked: true },
+    { name: "Beer Cooler", defaultChecked: true },
+  ];
 
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      const sortOrder = (locations?.length || 0) + 1;
-      const res = await apiRequest("POST", "/api/storage-locations", { name: newName.trim(), sortOrder });
-      if (!res.ok) throw new Error("Failed to create location");
-      return res.json();
-    },
-    onSuccess: () => {
+  const allSeedOptions = hasBar ? [...BASE_OPTIONS, ...BAR_OPTIONS] : BASE_OPTIONS;
+
+  const [checked, setChecked] = useState<Set<string>>(
+    () => new Set(allSeedOptions.filter(o => o.defaultChecked).map(o => o.name))
+  );
+  const [customOptions, setCustomOptions] = useState<string[]>([]);
+  const [customInput, setCustomInput] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const toggleOption = (name: string) => {
+    setChecked(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const addCustom = () => {
+    const trimmed = customInput.trim();
+    if (!trimmed) return;
+    if (!customOptions.includes(trimmed) && !allSeedOptions.some(o => o.name === trimmed)) {
+      setCustomOptions(prev => [...prev, trimmed]);
+      setChecked(prev => new Set([...prev, trimmed]));
+    }
+    setCustomInput("");
+  };
+
+  const handleConfirm = async () => {
+    const selectedNames = Array.from(checked);
+    if (selectedNames.length === 0) {
+      toast({ title: "Select at least one location", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const existingNames = new Set(
+        (existingLocations || []).map(l => l.name.toLowerCase().trim())
+      );
+      const toCreate = selectedNames.filter(
+        n => !existingNames.has(n.toLowerCase().trim())
+      );
+      for (let i = 0; i < toCreate.length; i++) {
+        await apiRequest("POST", "/api/storage-locations", {
+          name: toCreate[i],
+          sortOrder: (existingLocations?.length || 0) + i + 1,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/storage-locations"] });
-      setNewName("");
-    },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
+      onComplete();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to save locations";
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  const hasLocations = (locations?.length || 0) > 0;
+  const allOptionNames = [
+    ...allSeedOptions.map(o => o.name),
+    ...customOptions,
+  ];
 
   return (
     <Card data-testid="card-step-storage">
       <CardHeader>
-        <CardTitle>Storage locations</CardTitle>
+        <CardTitle>Where do you store things?</CardTitle>
         <CardDescription>
-          Define where your inventory physically lives — walk-in, dry storage, freezer, etc. Add at least one to continue.
+          Pick the storage areas in your kitchen — we'll use these to organise your inventory counts.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {isLoading ? (
-          <div className="flex items-center gap-2 text-muted-foreground py-4">
-            <Loader2 className="w-4 h-4 animate-spin" /> Loading locations…
-          </div>
-        ) : (
-          <div className="space-y-1 max-h-56 overflow-y-auto">
-            {(locations || []).length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">No storage locations yet. Add your first one below.</p>
-            ) : (
-              (locations || []).map((loc) => (
-                <div key={loc.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/30" data-testid={`storage-row-${loc.id}`}>
-                  <Warehouse className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span className="text-sm">{loc.name}</span>
+        <div className="grid grid-cols-2 gap-2" data-testid="storage-options-grid">
+          {allOptionNames.map((name) => {
+            const isChecked = checked.has(name);
+            return (
+              <button
+                key={name}
+                type="button"
+                onClick={() => toggleOption(name)}
+                className={`flex items-center gap-2 rounded-md border px-3 py-2.5 text-sm text-left ${
+                  isChecked
+                    ? "border-primary bg-primary/5"
+                    : "border-border"
+                }`}
+                data-testid={`toggle-storage-${name.toLowerCase().replace(/[\s/]+/g, "-")}`}
+              >
+                <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                  isChecked ? "bg-primary border-primary" : "border-muted-foreground/40"
+                }`}>
+                  {isChecked && <Check className="w-3 h-3 text-primary-foreground" />}
                 </div>
-              ))
-            )}
-          </div>
-        )}
+                <span>{name}</span>
+              </button>
+            );
+          })}
+        </div>
+
         <div className="flex gap-2">
           <Input
-            placeholder="Add a location (e.g. Walk-In Cooler)…"
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && newName.trim() && createMutation.mutate()}
-            data-testid="input-new-storage"
-            className="h-8 text-sm"
+            placeholder="Add your own (e.g. Prep Kitchen)…"
+            value={customInput}
+            onChange={e => setCustomInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && customInput.trim() && addCustom()}
+            data-testid="input-custom-storage"
+            className="text-sm"
           />
           <Button
-            size="sm"
             variant="outline"
-            onClick={() => createMutation.mutate()}
-            disabled={!newName.trim() || createMutation.isPending}
-            data-testid="button-add-storage"
+            size="sm"
+            onClick={addCustom}
+            disabled={!customInput.trim()}
+            data-testid="button-add-custom-storage"
           >
             <Plus className="w-3.5 h-3.5 mr-1" /> Add
           </Button>
         </div>
+
         <Button
-          onClick={onComplete}
-          disabled={!hasLocations}
           className="w-full"
-          data-testid="button-continue-storage"
+          onClick={handleConfirm}
+          disabled={checked.size === 0 || saving}
+          data-testid="button-confirm-storage"
         >
-          {hasLocations ? "Storage set — Continue" : "Add at least one location to continue"}
+          {saving ? (
+            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</>
+          ) : (
+            <>Confirm {checked.size} Location{checked.size !== 1 ? "s" : ""}<ArrowRight className="w-4 h-4 ml-2" /></>
+          )}
         </Button>
       </CardContent>
     </Card>
@@ -1915,15 +1984,15 @@ export default function OnboardingSetup() {
         )}
 
         {step === 4 && (
-          <InvoiceScanStep onComplete={() => advance(4)} />
+          <StorageStep hasBar={company?.hasBar === 1} onComplete={() => advance(4)} />
         )}
 
         {step === 5 && (
-          <CategoriesStep onComplete={() => advance(5)} />
+          <InvoiceScanStep onComplete={() => advance(5)} />
         )}
 
         {step === 6 && (
-          <StorageStep onComplete={() => advance(6)} />
+          <CategoriesStep onComplete={() => advance(6)} />
         )}
 
         {step === 7 && (

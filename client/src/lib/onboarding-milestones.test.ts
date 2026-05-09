@@ -14,9 +14,9 @@ const KNOWN_MILESTONE_IDS = [
   "menu_scan",
   "plan",
   "store",
+  "storage_locations",
   "invoice_scan",
   "categories",
-  "storage_locations",
   "recipes",
   "review",
   "inventory_count",
@@ -42,9 +42,9 @@ describe("STEP_MILESTONE_IDS", () => {
     expect(STEP_MILESTONE_IDS[1]).toBe("menu_scan");
     expect(STEP_MILESTONE_IDS[2]).toBe("plan");
     expect(STEP_MILESTONE_IDS[3]).toBe("store");
-    expect(STEP_MILESTONE_IDS[4]).toBe("invoice_scan");
-    expect(STEP_MILESTONE_IDS[5]).toBe("categories");
-    expect(STEP_MILESTONE_IDS[6]).toBe("storage_locations");
+    expect(STEP_MILESTONE_IDS[4]).toBe("storage_locations");
+    expect(STEP_MILESTONE_IDS[5]).toBe("invoice_scan");
+    expect(STEP_MILESTONE_IDS[6]).toBe("categories");
     expect(STEP_MILESTONE_IDS[7]).toBe("recipes");
     expect(STEP_MILESTONE_IDS[8]).toBe("review");
     expect(STEP_MILESTONE_IDS[9]).toBe("inventory_count");
@@ -110,19 +110,19 @@ describe("advanceStep()", () => {
     expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "store" });
   });
 
-  it("step 4 → POSTs with stepId 'invoice_scan'", async () => {
+  it("step 4 → POSTs with stepId 'storage_locations'", async () => {
     await advanceStep(4);
+    expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "storage_locations" });
+  });
+
+  it("step 5 → POSTs with stepId 'invoice_scan'", async () => {
+    await advanceStep(5);
     expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "invoice_scan" });
   });
 
-  it("step 5 → POSTs with stepId 'categories'", async () => {
-    await advanceStep(5);
-    expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "categories" });
-  });
-
-  it("step 6 → POSTs with stepId 'storage_locations'", async () => {
+  it("step 6 → POSTs with stepId 'categories'", async () => {
     await advanceStep(6);
-    expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "storage_locations" });
+    expect(apiRequestSpy).toHaveBeenCalledWith("POST", REVIEW_STEP_ENDPOINT, { stepId: "categories" });
   });
 
   it("step 7 → POSTs with stepId 'recipes'", async () => {
