@@ -1208,10 +1208,13 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
             Invoice{appliedBatches.length > 1 ? "s" : ""} applied
           </CardTitle>
           <CardDescription>
-            {totalCreated > 0 && `${totalCreated} item${totalCreated !== 1 ? "s" : ""} added`}
-            {totalCreated > 0 && totalUpdated > 0 && ", "}
-            {totalUpdated > 0 && `${totalUpdated} price${totalUpdated !== 1 ? "s" : ""} updated`}
-            {totalSkipped > 0 && ` · ${totalSkipped} skipped`}
+            {(() => {
+              const parts: string[] = [];
+              if (totalCreated > 0) parts.push(`${totalCreated} item${totalCreated !== 1 ? "s" : ""} added`);
+              if (totalUpdated > 0) parts.push(`${totalUpdated} price${totalUpdated !== 1 ? "s" : ""} updated`);
+              if (totalSkipped > 0) parts.push(`${totalSkipped} skipped`);
+              return parts.join(" · ") || "No changes applied";
+            })()}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
