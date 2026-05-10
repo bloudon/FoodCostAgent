@@ -3568,6 +3568,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...bodyData,
         companyId,
       });
+
+      // If a soft-deleted category with the same name already exists, restore it
+      const [existing] = await db
+        .select()
+        .from(categories)
+        .where(and(
+          eq(categories.companyId, companyId),
+          sql`lower(${categories.name}) = lower(${data.name})`,
+          eq(categories.isActive, 0),
+        ))
+        .limit(1);
+
+      if (existing) {
+        const [restored] = await db
+          .update(categories)
+          .set({ isActive: 1, showAsIngredient: data.showAsIngredient ?? existing.showAsIngredient })
+          .where(eq(categories.id, existing.id))
+          .returning();
+        await cache.del(CacheKeys.categories(companyId));
+        return res.status(200).json(restored);
+      }
+
       const category = await storage.createCategory(data);
       await cache.del(CacheKeys.categories(companyId));
       res.status(201).json(category);
