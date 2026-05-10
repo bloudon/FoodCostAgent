@@ -81,6 +81,13 @@ interface InvoiceApplyResponse {
   updated: number;
 }
 
+interface AppliedBatch {
+  vendorName: string;
+  created: string[];
+  updated: string[];
+  skipped: number;
+}
+
 function getWizardKey(companyId: string) {
   return `onboarding_wizard_${companyId}`;
 }
@@ -945,18 +952,28 @@ function StoreSetupStep({
 // ---- Step 4: Invoice Scan ----
 export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
   const { toast } = useToast();
-  const [subStep, setSubStep] = useState<"upload" | "review">("upload");
+  const [subStep, setSubStep] = useState<"upload" | "review" | "summary">("upload");
   const [scanning, setScanning] = useState<boolean | { current: number; total: number }>(false);
   const [addingPage, setAddingPage] = useState(false);
   const [addPageScanning, setAddPageScanning] = useState(false);
   const [extractedItems, setExtractedItems] = useState<InvoiceItem[]>([]);
   const [vendorName, setVendorName] = useState("");
   const [priceText, setPriceText] = useState<Record<number, string>>({});
+  const [appliedBatches, setAppliedBatches] = useState<AppliedBatch[]>([]);
 
   const defaultAction = (item: InvoiceItem): "update" | "create" => {
     return (item.matchConfidence === "high" || item.matchConfidence === "medium") && item.matchedItemId
       ? "update"
       : "create";
+  };
+
+  const resetForNewVendor = () => {
+    setExtractedItems([]);
+    setVendorName("");
+    setPriceText({});
+    setAddingPage(false);
+    setAddPageScanning(false);
+    setSubStep("upload");
   };
 
   const handleUpload = async (objectPath: string) => {
@@ -1064,6 +1081,12 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
 
   const applyMutation = useMutation({
     mutationFn: async () => {
+      const snapshot: AppliedBatch = {
+        vendorName,
+        created: extractedItems.filter(i => i.action === "create").map(i => i.name),
+        updated: extractedItems.filter(i => i.action === "update").map(i => i.matchedItemName || i.name),
+        skipped: extractedItems.filter(i => i.action === "skip").length,
+      };
       const activeItems = extractedItems
         .filter(i => i.action !== "skip")
         .map(i => ({
@@ -1081,15 +1104,16 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
         const err = await res.json() as { error?: string };
         throw new Error(err.error || "Apply failed");
       }
-      return res.json() as Promise<InvoiceApplyResponse>;
+      const data = await res.json() as InvoiceApplyResponse;
+      return { ...data, snapshot };
     },
-    onSuccess: (data) => {
+    onSuccess: ({ snapshot }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
-      toast({
-        title: "Invoice applied!",
-        description: `${data.created || 0} created, ${data.updated || 0} updated.`,
-      });
-      onComplete();
+      setAppliedBatches(prev => [...prev, snapshot]);
+      setExtractedItems([]);
+      setVendorName("");
+      setPriceText({});
+      setSubStep("summary");
     },
     onError: (err: Error) => {
       toast({ title: "Failed to apply", description: err.message, variant: "destructive" });
@@ -1118,9 +1142,13 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
     return (
       <Card data-testid="card-step-invoice-upload">
         <CardHeader>
-          <CardTitle>Upload a vendor invoice</CardTitle>
+          <CardTitle>
+            {appliedBatches.length > 0 ? "Scan another vendor's invoice" : "Upload a vendor invoice"}
+          </CardTitle>
           <CardDescription>
-            Take a photo of any vendor invoice or order guide. AI will extract the items and prices to seed your inventory.
+            {appliedBatches.length > 0
+              ? "Upload an invoice from a different vendor to continue building your inventory."
+              : "Take a photo of any vendor invoice or order guide. AI will extract the items and prices to seed your inventory."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1151,6 +1179,101 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
               <p className="text-xs text-muted-foreground">You can select multiple pages at once</p>
             </div>
           )}
+          {appliedBatches.length > 0 && !scanning && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-muted-foreground"
+              onClick={() => setSubStep("summary")}
+              data-testid="button-back-to-summary"
+            >
+              Back to summary
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (subStep === "summary") {
+    const totalCreated = appliedBatches.reduce((n, b) => n + b.created.length, 0);
+    const totalUpdated = appliedBatches.reduce((n, b) => n + b.updated.length, 0);
+    const totalSkipped = appliedBatches.reduce((n, b) => n + b.skipped, 0);
+
+    return (
+      <Card data-testid="card-step-invoice-summary">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Check className="w-5 h-5 text-green-600" />
+            Invoice{appliedBatches.length > 1 ? "s" : ""} applied
+          </CardTitle>
+          <CardDescription>
+            {totalCreated > 0 && `${totalCreated} item${totalCreated !== 1 ? "s" : ""} added`}
+            {totalCreated > 0 && totalUpdated > 0 && ", "}
+            {totalUpdated > 0 && `${totalUpdated} price${totalUpdated !== 1 ? "s" : ""} updated`}
+            {totalSkipped > 0 && ` · ${totalSkipped} skipped`}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {appliedBatches.map((batch, bi) => (
+            <div key={bi} className="rounded-md border p-3 space-y-2">
+              <p className="text-sm font-semibold text-foreground">
+                {batch.vendorName || `Vendor ${bi + 1}`}
+              </p>
+              {batch.created.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">
+                    Added ({batch.created.length})
+                  </p>
+                  <ul className="space-y-0.5">
+                    {batch.created.map((name, i) => (
+                      <li key={i} className="flex items-center gap-1.5 text-xs">
+                        <Plus className="w-3 h-3 text-green-600 shrink-0" />
+                        <span>{name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {batch.updated.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">
+                    Price updated ({batch.updated.length})
+                  </p>
+                  <ul className="space-y-0.5">
+                    {batch.updated.map((name, i) => (
+                      <li key={i} className="flex items-center gap-1.5 text-xs">
+                        <RefreshCw className="w-3 h-3 text-blue-500 shrink-0" />
+                        <span>{name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {batch.skipped > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {batch.skipped} item{batch.skipped !== 1 ? "s" : ""} skipped
+                </p>
+              )}
+            </div>
+          ))}
+          <div className="flex flex-col gap-2 pt-1">
+            <Button
+              onClick={resetForNewVendor}
+              variant="outline"
+              data-testid="button-add-another-vendor"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add another vendor's invoice
+            </Button>
+            <Button
+              onClick={onComplete}
+              data-testid="button-continue-to-categories"
+            >
+              <ArrowRight className="w-4 h-4 mr-2" />
+              Continue to Categories
+            </Button>
+          </div>
         </CardContent>
       </Card>
     );
@@ -1252,46 +1375,60 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
           </table>
         </div>
 
-        {addingPage ? (
-          <div className="rounded-md border border-dashed p-3 space-y-2">
-            <p className="text-sm font-medium">Add another page</p>
-            {addPageScanning ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Scanning page…
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <ObjectUploader
-                  onUploadComplete={handleAddPage}
-                  buttonText="Choose Page Image"
-                  dataTestId="button-upload-invoice-page"
-                  visibility="private"
-                  maxFileSize={10485760}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setAddingPage(false)}
-                  data-testid="button-cancel-add-page"
-                >
-                  Cancel
-                </Button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setAddingPage(true)}
-            disabled={applyMutation.isPending || addPageScanning}
-            data-testid="button-add-invoice-page"
-          >
-            <Plus className="w-3.5 h-3.5 mr-1.5" />
-            Add another page
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {addingPage ? (
+            <div className="w-full rounded-md border border-dashed p-3 space-y-2">
+              <p className="text-sm font-medium">Add another page</p>
+              {addPageScanning ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Scanning page…
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <ObjectUploader
+                    onUploadComplete={handleAddPage}
+                    buttonText="Choose Page Image"
+                    dataTestId="button-upload-invoice-page"
+                    visibility="private"
+                    maxFileSize={10485760}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setAddingPage(false)}
+                    data-testid="button-cancel-add-page"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAddingPage(true)}
+                disabled={applyMutation.isPending || addPageScanning}
+                data-testid="button-add-invoice-page"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Add another page
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={resetForNewVendor}
+                disabled={applyMutation.isPending || addPageScanning}
+                data-testid="button-scan-another-vendor"
+              >
+                <FileText className="w-3.5 h-3.5 mr-1.5" />
+                Scan another vendor
+              </Button>
+            </>
+          )}
+        </div>
 
         <Button
           onClick={() => applyMutation.mutate()}
