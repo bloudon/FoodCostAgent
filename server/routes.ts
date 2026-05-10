@@ -2090,6 +2090,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .orderBy(asc(categories.sortOrder));
       const defaultCategoryId = allCategories[0]?.id || null;
 
+      // Preload all company stores so we can assign items to them
+      const companyStoresList = await storage.getCompanyStores(companyId);
+
+      // Helper: ensure an inventory item is visible in every store (idempotent)
+      const assignItemToAllStores = async (inventoryItemId: string) => {
+        for (const store of companyStoresList) {
+          await db.insert(storeInventoryItems)
+            .values({
+              companyId,
+              storeId: store.id,
+              inventoryItemId,
+              onHandQty: 0,
+              active: 1,
+            })
+            .onConflictDoNothing();
+        }
+      };
+
       // Helper: resolve a categoryHint string to the best-matching category ID
       const resolveCategoryId = (hint: string | undefined | null): string | null => {
         if (!hint || allCategories.length === 0) return defaultCategoryId;
@@ -2139,6 +2157,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           updatedItemIds.push(line.inventoryItemId);
+          await assignItemToAllStores(line.inventoryItemId);
         }
 
         if (line.action === "create") {
@@ -2156,7 +2175,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             caseSize: 20,
             active: 1,
           }).returning({ id: inventoryItems.id });
-          if (newItem?.id) createdItemIds.push(newItem.id);
+          if (newItem?.id) {
+            createdItemIds.push(newItem.id);
+            await assignItemToAllStores(newItem.id);
+          }
         }
       }
 
