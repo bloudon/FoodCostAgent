@@ -1919,6 +1919,7 @@ export class DatabaseStorage implements IStorage {
 
   // Inventory Counts
   async getInventoryCounts(companyId: string, storeId?: string, storageLocationId?: string): Promise<InventoryCount[]> {
+    if (!companyId) throw new Error("getInventoryCounts requires a companyId");
     const conditions = [eq(inventoryCounts.companyId, companyId)];
     
     if (storeId) {
