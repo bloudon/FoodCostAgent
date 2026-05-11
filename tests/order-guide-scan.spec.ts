@@ -2,7 +2,7 @@ import { test, expect, Page } from 'playwright/test';
 
 const BASE_URL = 'http://localhost:5000';
 const TEST_EMAIL = 'admin@brians.pizza';
-const TEST_PASSWORD = 'testpass123';
+const TEST_PASSWORD = 'test123';
 const EXISTING_OG_ID = '3d91e5f0-71c6-457a-88cb-17353ae49e00';
 
 async function login(page: Page): Promise<void> {

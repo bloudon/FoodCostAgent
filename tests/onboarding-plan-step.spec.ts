@@ -2,7 +2,7 @@ import { test, expect, Page } from 'playwright/test';
 
 const BASE_URL = 'http://localhost:5000';
 const TEST_EMAIL = 'admin@brians.pizza';
-const TEST_PASSWORD = 'testpass123';
+const TEST_PASSWORD = 'test123';
 
 /**
  * Company ID for admin@brians.pizza (Brian's Pizza) in the dev database.
