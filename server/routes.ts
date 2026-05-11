@@ -8510,12 +8510,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/inventory-counts/:id", requireAuth, async (req, res) => {
     const companyId = (req as any).companyId as string | undefined;
+    if (!companyId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
     const count = await storage.getInventoryCount(req.params.id);
     if (!count) {
       return res.status(404).json({ error: "Count not found" });
     }
     
-    if (companyId && count.companyId !== companyId) {
+    if (count.companyId !== companyId) {
       return res.status(404).json({ error: "Count not found" });
     }
     
@@ -9438,6 +9441,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/inventory-counts/:id/previous-lines", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId as string | undefined;
+      if (!companyId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
       const currentCountId = req.params.id;
       const currentCount = await storage.getInventoryCount(currentCountId);
       
@@ -9445,7 +9451,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Count not found" });
       }
       
-      if (companyId && currentCount.companyId !== companyId) {
+      if (currentCount.companyId !== companyId) {
         return res.status(404).json({ error: "Count not found" });
       }
 
