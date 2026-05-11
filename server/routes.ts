@@ -8462,8 +8462,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ INVENTORY COUNTS ============
-  app.get("/api/inventory-counts", async (req, res) => {
-    const companyId = req.query.companyId as string | undefined;
+  app.get("/api/inventory-counts", requireAuth, async (req, res) => {
+    const companyId = (req as any).companyId as string | undefined;
+    if (!companyId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
     const storeId = req.query.storeId as string | undefined;
     const storageLocationId = req.query.storageLocationId as string | undefined;
     const counts = await storage.getInventoryCounts(companyId, storeId, storageLocationId);
@@ -8506,8 +8509,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/inventory-counts/:id", requireAuth, async (req, res) => {
+    const companyId = (req as any).companyId as string | undefined;
     const count = await storage.getInventoryCount(req.params.id);
     if (!count) {
+      return res.status(404).json({ error: "Count not found" });
+    }
+    
+    if (companyId && count.companyId !== companyId) {
       return res.status(404).json({ error: "Count not found" });
     }
     
@@ -9427,12 +9435,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get previous inventory count session (for comparison)
-  app.get("/api/inventory-counts/:id/previous-lines", async (req, res) => {
+  app.get("/api/inventory-counts/:id/previous-lines", requireAuth, async (req, res) => {
     try {
+      const companyId = (req as any).companyId as string | undefined;
       const currentCountId = req.params.id;
       const currentCount = await storage.getInventoryCount(currentCountId);
       
       if (!currentCount) {
+        return res.status(404).json({ error: "Count not found" });
+      }
+      
+      if (companyId && currentCount.companyId !== companyId) {
         return res.status(404).json({ error: "Count not found" });
       }
 
