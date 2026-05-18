@@ -1,3 +1,5 @@
+[![Playwright Tests](https://github.com/bloudon/FoodCostAgent/actions/workflows/playwright.yml/badge.svg)](https://github.com/bloudon/FoodCostAgent/actions/workflows/playwright.yml)
+
 # Overview
 
 FNB Cost Pro is an AI-powered inventory management and recipe costing system for food service businesses. Its core purpose is to boost profitability and operational efficiency by utilizing photo-first data entry (menu, recipe, invoice, shelf scans), precise unit conversions, multi-level nested recipe costing, POS sales data integration, and comprehensive variance reporting. The project aims to reduce waste, optimize profit margins, offer real-time inventory insights, streamline vendor interactions, and establish strong food cost control within the restaurant industry.
