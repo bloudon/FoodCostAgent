@@ -28,14 +28,28 @@ jobs:
           --health-retries 5
 
     env:
+      # ── Database (throwaway CI container — not a secret) ──────────────────
       DATABASE_URL: postgresql://fnbtest:fnbtest@localhost:5432/fnbtest?sslmode=disable
-      SESSION_SECRET: ci-test-session-secret-at-least-32-chars
+
+      # ── App ───────────────────────────────────────────────────────────────
       NODE_ENV: test
       PORT: 5000
       BASE_URL: http://localhost:5000
       APP_BASE_URL: http://localhost:5000
       AUTH_MODE: local
       STORAGE_MODE: local
+
+      # ── Auth (CI-only value, not a production secret) ─────────────────────
+      SESSION_SECRET: ci-test-session-secret-at-least-32-chars
+
+      # ── Optional secrets — tests that require these are gated behind
+      #    skipIfNoOpenAI() / skipIfNoStripe() helpers in tests/helpers/ci-skip.ts.
+      #    Set these in GitHub → Settings → Secrets and variables → Actions.
+      #    When absent the secret evaluates to an empty string and guarded
+      #    tests are skipped automatically rather than failing.
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
 
     steps:
       - name: Checkout repository
