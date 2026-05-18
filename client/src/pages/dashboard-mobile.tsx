@@ -384,6 +384,7 @@ export default function DashboardMobile() {
   const { data, isLoading, error } = useQuery<MobileDashboardData>({
     queryKey: ["/api/mobile/dashboard"],
     refetchInterval: 60000,
+    refetchIntervalInBackground: false,
   });
 
   if (isLoading) return <LoadingSkeleton />;
