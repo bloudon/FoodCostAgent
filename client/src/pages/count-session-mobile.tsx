@@ -362,6 +362,7 @@ export default function CountSessionMobile() {
   const [showScanner, setShowScanner] = useState(false);
   const [noMatchBarcode, setNoMatchBarcode] = useState<string | null>(null);
   const [noMatchSuggestions, setNoMatchSuggestions] = useState<string[]>([]);
+  const [catchWeightScanPending, setCatchWeightScanPending] = useState(false);
 
   const primaryInputRef = useRef<HTMLInputElement>(null);
 
@@ -599,6 +600,27 @@ export default function CountSessionMobile() {
     }
   }, [activeLineId]);
 
+  // Listen for catch-weight scan results from the native Expo layer
+  useEffect(() => {
+    function handleCatchWeightResult(e: Event) {
+      const { lineId, newCount, cancelled } = (e as CustomEvent).detail ?? {};
+      setCatchWeightScanPending(false);
+      if (cancelled || newCount == null || newCount <= 0) return;
+      if (!lineId) return;
+      updateMutation.mutate(
+        { id: lineId, addQty: Number(newCount), accumulate: true },
+        {
+          onSuccess: () => {
+            setSheetQty("");
+            setTimeout(() => primaryInputRef.current?.focus(), 50);
+          },
+        }
+      );
+    }
+    window.addEventListener("nativeCatchWeightResult", handleCatchWeightResult);
+    return () => window.removeEventListener("nativeCatchWeightResult", handleCatchWeightResult);
+  }, [updateMutation]);
+
   function hasSheetInput(): boolean {
     if (activeMode === "case") {
       return (
@@ -718,6 +740,23 @@ export default function CountSessionMobile() {
         );
       }
     }
+  }
+
+  // ── Native catch-weight scan trigger (Expo WebView bridge) ─────────────────
+  function triggerNativeCatchWeightScan() {
+    if (!activeLineId) return;
+    const rn = (window as any).ReactNativeWebView;
+    if (!rn) return;
+    setCatchWeightScanPending(true);
+    rn.postMessage(
+      JSON.stringify({
+        type: "SCAN_CATCH_WEIGHT",
+        lineId: activeLineId,
+        itemId: activeLine?.inventoryItem?.id,
+        itemName: activeLine?.inventoryItem?.name,
+        sessionId: countId,
+      })
+    );
   }
 
   // ── Barcode scan handler ───────────────────────────────────────────────────
@@ -1110,33 +1149,47 @@ export default function CountSessionMobile() {
                         </div>
                       </div>
                     ) : (
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-muted-foreground">
-                          {activeMode === "catch"
-                            ? `Package weight (${activeUnitAbbr})`
-                            : `Quantity (${activeUnitAbbr})`}
-                        </label>
-                        <Input
-                          ref={primaryInputRef}
-                          type="number"
-                          inputMode="decimal"
-                          min="0"
-                          step={activeMode === "catch" ? "0.01" : "1"}
-                          placeholder="0"
-                          value={sheetQty}
-                          onChange={(e) => setSheetQty(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              if (activeMode === "catch") {
-                                addEntry();
-                              } else {
-                                saveAndAdvance();
+                      <div className="space-y-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground">
+                            {activeMode === "catch"
+                              ? `Package weight (${activeUnitAbbr})`
+                              : `Quantity (${activeUnitAbbr})`}
+                          </label>
+                          <Input
+                            ref={primaryInputRef}
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            step={activeMode === "catch" ? "0.01" : "1"}
+                            placeholder="0"
+                            value={sheetQty}
+                            onChange={(e) => setSheetQty(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                if (activeMode === "catch") {
+                                  addEntry();
+                                } else {
+                                  saveAndAdvance();
+                                }
                               }
-                            }
-                          }}
-                          className="h-16 text-3xl text-center font-mono"
-                          data-testid="input-mobile-qty"
-                        />
+                            }}
+                            className="h-16 text-3xl text-center font-mono"
+                            data-testid="input-mobile-qty"
+                          />
+                        </div>
+                        {activeMode === "catch" && typeof window !== "undefined" && "ReactNativeWebView" in window && (
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={triggerNativeCatchWeightScan}
+                            disabled={catchWeightScanPending || updateMutation.isPending}
+                            data-testid="button-mobile-scan-catch-weight"
+                          >
+                            <Scale className="h-4 w-4 mr-2" />
+                            {catchWeightScanPending ? "Waiting for scale…" : "Scan from scale"}
+                          </Button>
+                        )}
                       </div>
                     )}
 

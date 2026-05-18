@@ -1,4 +1,20 @@
 const EMBEDDED_KEY = "fnb_embedded_mode";
+const MOBILE_TOKEN_KEY = "fnb_mobile_token";
+
+/**
+ * Returns the mobile Bearer token if the page was opened from the Expo WebView.
+ * Reads ?mobileToken= from the URL on first load, persists it to sessionStorage,
+ * and returns it from sessionStorage on all subsequent SPA navigations.
+ */
+export function getMobileToken(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  const urlToken = params.get("mobileToken");
+  if (urlToken) {
+    sessionStorage.setItem(MOBILE_TOKEN_KEY, urlToken);
+    return urlToken;
+  }
+  return sessionStorage.getItem(MOBILE_TOKEN_KEY);
+}
 
 /**
  * Returns true when the app is running inside a native WebView in embedded mode.

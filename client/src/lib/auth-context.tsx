@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { getMobileToken } from "@/hooks/use-embedded";
 import type { User } from "@shared/schema";
 
 // Extended user type with selectedCompanyId from session
@@ -30,8 +31,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function checkAuth() {
     try {
+      const mobileToken = getMobileToken();
+      const headers: Record<string, string> = {};
+      if (mobileToken) {
+        headers["Authorization"] = `Bearer ${mobileToken}`;
+      }
       const response = await fetch("/api/auth/me", {
         credentials: "include",
+        headers,
       });
       
       if (response.ok) {
