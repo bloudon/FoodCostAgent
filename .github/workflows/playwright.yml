@@ -1,14 +1,40 @@
 name: Playwright Tests
 
+# ─────────────────────────────────────────────────────────────────────────────
+# TWO JOBS — one for every PR/push, one for trusted fork PRs with real secrets
+#
+# Job "playwright"
+#   Triggers: push to main/master and pull_request from any branch.
+#   Secrets:  available for push events and same-repo PRs; empty for fork PRs.
+#             AI-dependent tests are gated by skipIfNoOpenAI() / skipIfNoStripe()
+#             in tests/helpers/ci-skip.ts so they skip gracefully rather than fail.
+#
+# Job "playwright-ai"
+#   Triggers: pull_request_target — fires when a PR targets main/master.
+#             Only runs when the head repo is a fork (same-repo PRs are covered
+#             by the first job).
+#   Secrets:  injected via the "ci-secrets" GitHub environment.
+#             The environment MUST have required reviewers configured so a
+#             maintainer must approve before secrets are exposed to fork code.
+#             See docs/ci-github-secrets.md for setup instructions.
+# ─────────────────────────────────────────────────────────────────────────────
+
 on:
   push:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  pull_request_target:
+    branches: [main, master]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 1 — standard run (push + pull_request)
+# ─────────────────────────────────────────────────────────────────────────────
 jobs:
   playwright:
     name: Run Playwright browser tests
+    # Do not run on pull_request_target — that is handled by playwright-ai below.
+    if: github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -44,9 +70,8 @@ jobs:
 
       # ── Optional secrets — tests that require these are gated behind
       #    skipIfNoOpenAI() / skipIfNoStripe() helpers in tests/helpers/ci-skip.ts.
-      #    Set these in GitHub → Settings → Secrets and variables → Actions.
-      #    When absent the secret evaluates to an empty string and guarded
-      #    tests are skipped automatically rather than failing.
+      #    For push-to-main and same-repo PRs these are populated from repository
+      #    secrets.  For fork PRs they will be empty and guarded tests are skipped.
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
@@ -92,5 +117,118 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-results
+          path: test-results/
+          retention-days: 7
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 2 — AI-gated run for trusted fork PRs (pull_request_target)
+#
+# Security model
+# ──────────────
+# pull_request_target runs with the BASE branch's workflow file but we
+# explicitly check out the PR head SHA so the test code from the fork is used.
+# The "ci-secrets" environment MUST be configured with required reviewers in
+# GitHub (Settings → Environments → ci-secrets → Required reviewers).  A
+# maintainer must approve the run before GitHub injects the secrets, which
+# prevents a malicious fork from exfiltrating OPENAI_API_KEY etc.
+# ─────────────────────────────────────────────────────────────────────────────
+  playwright-ai:
+    name: Run AI-gated Playwright tests (trusted fork PRs)
+    # Only runs for pull_request_target events where the head repo is a fork.
+    # Same-repo PRs are already covered by the playwright job above.
+    if: |
+      github.event_name == 'pull_request_target' &&
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Least-privilege token: this job only needs to read the repository
+    # and upload artifacts. Removing write scopes limits blast radius if
+    # a malicious fork somehow bypasses the environment reviewer gate.
+    permissions:
+      contents: read
+      actions: read
+
+    # This environment MUST have required reviewers set in GitHub Settings.
+    # Without that protection rule the secrets would be exposed to any fork PR.
+    environment: ci-secrets
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: fnbtest
+          POSTGRES_PASSWORD: fnbtest
+          POSTGRES_DB: fnbtest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://fnbtest:fnbtest@localhost:5432/fnbtest?sslmode=disable
+      NODE_ENV: test
+      PORT: 5000
+      BASE_URL: http://localhost:5000
+      APP_BASE_URL: http://localhost:5000
+      AUTH_MODE: local
+      STORAGE_MODE: local
+      SESSION_SECRET: ci-test-session-secret-at-least-32-chars
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+
+    steps:
+      # Check out the PR's head commit (fork code), not the base branch.
+      # Safe here because a maintainer must approve via the ci-secrets
+      # environment before this step can run.
+      # persist-credentials: false drops the GITHUB_TOKEN from the checkout
+      # so the runner cannot push or create refs even if something goes wrong.
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (including devDependencies)
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Push database schema
+        run: npx drizzle-kit push --force
+
+      - name: Seed base data (kitchen units, conversions)
+        run: npx tsx server/seed.ts
+
+      - name: Seed Playwright test fixtures
+        run: npx tsx scripts/ci-seed.ts
+
+      - name: Run Playwright tests
+        run: npx playwright test
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-ai
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-ai
           path: test-results/
           retention-days: 7
