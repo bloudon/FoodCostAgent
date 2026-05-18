@@ -14,10 +14,20 @@ import {
   TrendingUp,
   Package,
   Clock,
+  CheckCircle2,
   AlertTriangle,
   BookOpen,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
+
+interface RecentSession {
+  id: string;
+  name: string;
+  storeId: string | null;
+  storeName: string | null;
+  countDate: string;
+  lineCount: number;
+}
 
 interface MobileDashboardData {
   role: string;
@@ -32,6 +42,7 @@ interface MobileDashboardData {
     storeName: string | null;
     startedAt: string | null;
   }[];
+  recentSessions: RecentSession[];
   recentScans: {
     id: string;
     createdAt: string;
@@ -58,7 +69,7 @@ function greeting(): string {
   return "Good evening";
 }
 
-function SessionCard({
+function ActiveSessionCard({
   session,
   onOpen,
 }: {
@@ -70,15 +81,15 @@ function SessionCard({
     <button
       className="w-full text-left hover-elevate active-elevate-2"
       onClick={() => onOpen(session.id)}
-      data-testid={`button-session-${session.id}`}
+      data-testid={`button-active-session-${session.id}`}
     >
       <Card>
         <CardContent className="p-4 flex items-center gap-3">
-          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-            <ClipboardList className="w-5 h-5 text-primary" />
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#f2690d]/10 flex items-center justify-center">
+            <ClipboardList className="w-5 h-5 text-[#f2690d]" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-sm truncate">{session.name}</p>
+            <p className="font-semibold text-sm truncate">{session.name}</p>
             {session.storeName && (
               <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                 <Store className="w-3 h-3" />
@@ -87,33 +98,40 @@ function SessionCard({
             )}
             {startedAt && (
               <p className="text-xs text-muted-foreground mt-0.5">
-                Started {formatDistanceToNow(startedAt, { addSuffix: true })}
+                In progress &middot; {formatDistanceToNow(startedAt, { addSuffix: true })}
               </p>
             )}
           </div>
-          <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-xs font-medium text-[#f2690d]">Continue</span>
+            <ChevronRight className="w-4 h-4 text-[#f2690d]" />
+          </div>
         </CardContent>
       </Card>
     </button>
   );
 }
 
-function ScanRow({ scan }: { scan: MobileDashboardData["recentScans"][0] }) {
-  const createdAt = new Date(scan.createdAt);
+function RecentSessionRow({ session }: { session: RecentSession }) {
+  const countDate = new Date(session.countDate);
   return (
-    <div className="flex items-center gap-3 py-3 border-b last:border-0" data-testid={`row-scan-${scan.id}`}>
+    <div
+      className="flex items-center gap-3 py-3 border-b last:border-0"
+      data-testid={`row-recent-session-${session.id}`}
+    >
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-        <Camera className="w-4 h-4 text-muted-foreground" />
+        <CheckCircle2 className="w-4 h-4 text-muted-foreground" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">
-          {scan.sessionName ?? "Shelf scan"}
-        </p>
+        <p className="text-sm font-medium truncate">{session.name}</p>
         <p className="text-xs text-muted-foreground">
-          {scan.itemCount} item{scan.itemCount !== 1 ? "s" : ""} &middot;{" "}
-          {formatDistanceToNow(createdAt, { addSuffix: true })}
+          {session.lineCount} item{session.lineCount !== 1 ? "s" : ""}
+          {session.storeName ? ` \u00b7 ${session.storeName}` : ""}
         </p>
       </div>
+      <span className="text-xs text-muted-foreground flex-shrink-0">
+        {format(countDate, "MMM d")}
+      </span>
     </div>
   );
 }
@@ -122,13 +140,11 @@ function QuickAction({
   icon: Icon,
   label,
   href,
-  accent,
   testId,
 }: {
   icon: React.ElementType;
   label: string;
   href: string;
-  accent?: boolean;
   testId: string;
 }) {
   const [, setLocation] = useLocation();
@@ -136,12 +152,10 @@ function QuickAction({
     <button
       onClick={() => setLocation(href)}
       data-testid={testId}
-      className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border hover-elevate active-elevate-2 w-full ${
-        accent ? "bg-[#f2690d] text-white border-transparent" : "bg-card"
-      }`}
+      className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border bg-card hover-elevate active-elevate-2 w-full"
     >
-      <Icon className={`w-6 h-6 ${accent ? "text-white" : "text-primary"}`} />
-      <span className={`text-xs font-medium text-center leading-tight ${accent ? "text-white" : ""}`}>
+      <Icon className="w-5 h-5 text-primary" />
+      <span className="text-xs font-medium text-center leading-tight">
         {label}
       </span>
     </button>
@@ -150,11 +164,16 @@ function QuickAction({
 
 function LoadingSkeleton() {
   return (
-    <div className="min-h-screen bg-background p-4 space-y-4">
-      <Skeleton className="h-20 w-full rounded-xl" />
-      <Skeleton className="h-16 w-full rounded-xl" />
-      <Skeleton className="h-32 w-full rounded-xl" />
-      <Skeleton className="h-32 w-full rounded-xl" />
+    <div className="min-h-screen bg-background">
+      <div className="h-24 bg-primary" />
+      <div className="px-4 space-y-4 pt-4">
+        <Skeleton className="h-14 w-full rounded-lg" />
+        <Skeleton className="h-5 w-32" />
+        <Skeleton className="h-20 w-full rounded-lg" />
+        <Skeleton className="h-20 w-full rounded-lg" />
+        <Skeleton className="h-5 w-32" />
+        <Skeleton className="h-32 w-full rounded-lg" />
+      </div>
     </div>
   );
 }
@@ -182,6 +201,7 @@ export default function DashboardMobile() {
   const isAdmin = data.role === "company_admin" || data.role === "global_admin";
   const isManager = data.role === "store_manager";
   const firstName = data.userName?.split(" ")[0] ?? "there";
+  const hasAnySessions = data.activeSessions.length > 0 || data.recentSessions.length > 0;
 
   const handleOpenSession = (sessionId: string) => {
     setLocation(`/count/${sessionId}/mobile`);
@@ -190,24 +210,24 @@ export default function DashboardMobile() {
   return (
     <div className="min-h-screen bg-background pb-8">
       {/* Header */}
-      <div className="bg-primary px-4 pt-6 pb-6">
-        <div className="flex items-start justify-between">
+      <div className="bg-primary px-4 pt-6 pb-8">
+        <div className="flex items-start justify-between gap-2">
           <div>
             <p className="text-primary-foreground/70 text-sm">
               {greeting()}, {firstName}
             </p>
-            <h1 className="text-primary-foreground text-xl font-semibold mt-0.5">
+            <h1 className="text-primary-foreground text-xl font-bold mt-0.5">
               {data.businessName ?? "FnB Cost Pro"}
             </h1>
             {data.locationName && (
-              <p className="text-primary-foreground/70 text-sm flex items-center gap-1 mt-1">
+              <p className="text-primary-foreground/70 text-xs flex items-center gap-1 mt-1">
                 <Store className="w-3 h-3" />
                 {data.locationName}
               </p>
             )}
           </div>
           <Badge
-            className="mt-1 bg-primary-foreground/20 text-primary-foreground border-transparent text-xs"
+            className="mt-1 flex-shrink-0 bg-primary-foreground/20 text-primary-foreground border-transparent text-xs"
             data-testid="badge-user-role"
           >
             {roleLabel(data.role)}
@@ -215,61 +235,79 @@ export default function DashboardMobile() {
         </div>
       </div>
 
-      <div className="px-4 -mt-3 space-y-4">
-        {/* Active Sessions */}
-        <section data-testid="section-active-sessions">
-          <div className="flex items-center justify-between mb-2 mt-5">
-            <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-              <Clock className="w-4 h-4 text-primary" />
-              Active Sessions
-              {data.activeSessions.length > 0 && (
-                <Badge className="ml-1 text-xs" data-testid="badge-active-count">
-                  {data.activeSessions.length}
-                </Badge>
-              )}
-            </h2>
-          </div>
+      <div className="px-4 -mt-4 space-y-5">
+        {/* Start New Count — always at the top, always prominent */}
+        <Button
+          className="w-full bg-[#f2690d] text-white font-semibold text-base py-6 shadow-md"
+          onClick={() => setLocation("/inventory-sessions?embedded=true")}
+          data-testid="button-start-count"
+        >
+          <Plus className="w-5 h-5 mr-2" />
+          Start New Count
+        </Button>
 
-          {data.activeSessions.length === 0 ? (
-            <Card>
-              <CardContent className="p-4 text-center">
-                <p className="text-sm text-muted-foreground">No active count sessions</p>
-              </CardContent>
-            </Card>
-          ) : (
+        {/* Active Sessions */}
+        {data.activeSessions.length > 0 && (
+          <section data-testid="section-active-sessions">
+            <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-2">
+              <Clock className="w-4 h-4 text-[#f2690d]" />
+              In Progress
+              <Badge className="ml-1 text-xs" data-testid="badge-active-count">
+                {data.activeSessions.length}
+              </Badge>
+            </h2>
             <div className="space-y-2">
               {data.activeSessions.map(session => (
-                <SessionCard
+                <ActiveSessionCard
                   key={session.id}
                   session={session}
                   onOpen={handleOpenSession}
                 />
               ))}
             </div>
-          )}
-        </section>
+          </section>
+        )}
 
-        {/* Quick Actions — role-aware */}
+        {/* Recent Completed Sessions */}
+        {data.recentSessions.length > 0 && (
+          <section data-testid="section-recent-sessions">
+            <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-2">
+              <CheckCircle2 className="w-4 h-4 text-muted-foreground" />
+              Recent Counts
+            </h2>
+            <Card>
+              <CardContent className="px-4 py-0 divide-y">
+                {data.recentSessions.map(session => (
+                  <RecentSessionRow key={session.id} session={session} />
+                ))}
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {/* Empty state — only shown when there are truly no sessions at all */}
+        {!hasAnySessions && (
+          <Card data-testid="card-empty-state">
+            <CardContent className="p-6 text-center space-y-2">
+              <ClipboardList className="w-8 h-8 text-muted-foreground mx-auto" />
+              <p className="text-sm font-medium">No counts yet</p>
+              <p className="text-xs text-muted-foreground">
+                Tap Start New Count to begin your first inventory count.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Quick Actions — role-aware, below the sessions */}
         <section data-testid="section-quick-actions">
           <h2 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1.5">
-            <TrendingUp className="w-4 h-4 text-primary" />
-            Quick Actions
+            <TrendingUp className="w-4 h-4 text-muted-foreground" />
+            Quick Access
           </h2>
 
-          {/* All roles: Start Count is always prominent */}
-          <Button
-            className="w-full mb-3 bg-[#f2690d] hover:bg-[#f2690d] text-white font-semibold py-5 text-base"
-            onClick={() => setLocation("/new-count?embedded=true")}
-            data-testid="button-start-count"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Start New Count
-          </Button>
-
-          {/* Role-specific grid */}
           {isAdmin ? (
             <div className="grid grid-cols-3 gap-2">
-              <QuickAction icon={ClipboardList} label="Count Sessions" href="/inventory-sessions?embedded=true" testId="action-sessions" />
+              <QuickAction icon={ClipboardList} label="All Sessions" href="/inventory-sessions?embedded=true" testId="action-sessions" />
               <QuickAction icon={Package} label="Inventory" href="/inventory-items?embedded=true" testId="action-inventory" />
               <QuickAction icon={BookOpen} label="Recipes" href="/recipes?embedded=true" testId="action-recipes" />
               <QuickAction icon={ScanLine} label="Shelf Scans" href="/shelf-scans?embedded=true" testId="action-scans" />
@@ -278,28 +316,29 @@ export default function DashboardMobile() {
             </div>
           ) : isManager ? (
             <div className="grid grid-cols-3 gap-2">
-              <QuickAction icon={ClipboardList} label="Count Sessions" href="/inventory-sessions?embedded=true" testId="action-sessions" />
+              <QuickAction icon={ClipboardList} label="All Sessions" href="/inventory-sessions?embedded=true" testId="action-sessions" />
               <QuickAction icon={ScanLine} label="Shelf Scans" href="/shelf-scans?embedded=true" testId="action-scans" />
               <QuickAction icon={TrendingUp} label="Variance" href="/tfc/variance?embedded=true" testId="action-variance" />
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              <QuickAction icon={ClipboardList} label="Count Sessions" href="/inventory-sessions?embedded=true" testId="action-sessions" />
+              <QuickAction icon={ClipboardList} label="All Sessions" href="/inventory-sessions?embedded=true" testId="action-sessions" />
               <QuickAction icon={ScanLine} label="Shelf Scans" href="/shelf-scans?embedded=true" testId="action-scans" />
             </div>
           )}
         </section>
 
-        {/* Admin: store overview */}
-        {isAdmin && data.stores.length > 1 && (
+        {/* Admin: store overview — only when multiple stores have active sessions */}
+        {isAdmin && data.stores.length > 1 && data.activeSessions.length > 0 && (
           <section data-testid="section-store-overview">
             <h2 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1.5">
-              <Store className="w-4 h-4 text-primary" />
-              Locations ({data.stores.length})
+              <Store className="w-4 h-4 text-muted-foreground" />
+              Locations
             </h2>
             <div className="space-y-1.5">
               {data.stores.map(store => {
                 const storeSessions = data.activeSessions.filter(s => s.storeId === store.id);
+                if (storeSessions.length === 0) return null;
                 return (
                   <div
                     key={store.id}
@@ -307,13 +346,9 @@ export default function DashboardMobile() {
                     data-testid={`row-store-${store.id}`}
                   >
                     <span className="text-sm font-medium">{store.name}</span>
-                    {storeSessions.length > 0 ? (
-                      <Badge className="text-xs" data-testid={`badge-store-sessions-${store.id}`}>
-                        {storeSessions.length} active
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">No active counts</span>
-                    )}
+                    <Badge className="text-xs" data-testid={`badge-store-sessions-${store.id}`}>
+                      {storeSessions.length} active
+                    </Badge>
                   </div>
                 );
               })}
@@ -325,13 +360,30 @@ export default function DashboardMobile() {
         {data.recentScans.length > 0 && (
           <section data-testid="section-recent-scans">
             <h2 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1.5">
-              <Camera className="w-4 h-4 text-primary" />
-              Recent Scans
+              <Camera className="w-4 h-4 text-muted-foreground" />
+              Recent Shelf Scans
             </h2>
             <Card>
               <CardContent className="px-4 py-0 divide-y">
                 {data.recentScans.slice(0, 5).map(scan => (
-                  <ScanRow key={scan.id} scan={scan} />
+                  <div
+                    key={scan.id}
+                    className="flex items-center gap-3 py-3 border-b last:border-0"
+                    data-testid={`row-scan-${scan.id}`}
+                  >
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                      <Camera className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {scan.sessionName ?? "Shelf scan"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {scan.itemCount} item{scan.itemCount !== 1 ? "s" : ""} &middot;{" "}
+                        {formatDistanceToNow(new Date(scan.createdAt), { addSuffix: true })}
+                      </p>
+                    </div>
+                  </div>
                 ))}
               </CardContent>
             </Card>

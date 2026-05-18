@@ -16488,8 +16488,8 @@ Human Handoff:
   /**
    * GET /api/mobile/dashboard
    * Role-aware dashboard data for the mobile home screen.
-   * Returns role, userName, businessName, locationName, stores[], activeSessions[], recentScans[].
-   * Admins/managers also receive cross-store session data.
+   * Returns role, userName, businessName, locationName, stores[], activeSessions[], recentSessions[], recentScans[].
+   * Admins/managers receive cross-store session data; floor users are scoped to their assigned stores.
    */
   app.get("/api/mobile/dashboard", requireAuth, async (req, res) => {
     try {
@@ -16518,11 +16518,40 @@ Human Handoff:
       }
 
       const locationName: string | null = stores[0]?.name ?? null;
+      const storeMap = new Map(stores.map(s => [s.id, s.name]));
 
-      // Fetch recent scans for this user within the company
-      const rawScans = userId
-        ? await storage.getRecentShelfScanSessions(userId, companyId, 8)
-        : [];
+      const isAdmin = role === "company_admin" || role === "global_admin";
+      const primaryStoreId = stores[0]?.id;
+
+      // Fetch active sessions + recent applied sessions + recent scans concurrently
+      const [rawActiveCounts, rawRecentSessions, rawScans] = await Promise.all([
+        isAdmin
+          ? storage.getActiveInventoryCounts(companyId)
+          : storage.getActiveInventoryCounts(companyId, primaryStoreId),
+        storage.getRecentAppliedInventoryCounts(
+          companyId,
+          isAdmin ? undefined : stores.map(s => s.id),
+          5,
+        ),
+        userId ? storage.getRecentShelfScanSessions(userId, companyId, 8) : Promise.resolve([]),
+      ]);
+
+      const activeSessions = rawActiveCounts.map(ic => ({
+        id: ic.id,
+        name: ic.name ?? ic.countDate.toISOString().slice(0, 10),
+        storeId: ic.storeId ?? null,
+        storeName: ic.storeId ? (storeMap.get(ic.storeId) ?? null) : null,
+        startedAt: ic.countedAt ?? null,
+      }));
+
+      const recentSessions = rawRecentSessions.map(ic => ({
+        id: ic.id,
+        name: ic.name ?? ic.countDate.toISOString().slice(0, 10),
+        storeId: ic.storeId ?? null,
+        storeName: ic.storeId ? (storeMap.get(ic.storeId) ?? null) : null,
+        countDate: ic.countDate,
+        lineCount: ic.lineCount,
+      }));
 
       const recentScans = await Promise.all(
         rawScans.map(async (scan) => {
@@ -16544,44 +16573,15 @@ Human Handoff:
         })
       );
 
-      // Fetch active count sessions for accessible stores
-      let activeSessions: {
-        id: string; name: string; storeId: string | null;
-        storeName: string | null; startedAt: Date | null;
-      }[] = [];
-
-      if (role === "company_admin" || role === "global_admin") {
-        // All active sessions across all company stores
-        const allActive = await storage.getActiveInventoryCounts(companyId);
-        const storeMap = new Map(stores.map(s => [s.id, s.name]));
-        activeSessions = allActive.map(ic => ({
-          id: ic.id,
-          name: ic.name ?? ic.countDate.toISOString().slice(0, 10),
-          storeId: ic.storeId ?? null,
-          storeName: ic.storeId ? (storeMap.get(ic.storeId) ?? null) : null,
-          startedAt: ic.countedAt ?? null,
-        }));
-      } else {
-        // Sessions scoped to user's first accessible store
-        const primaryStoreId = stores[0]?.id;
-        const counts = await storage.getActiveInventoryCounts(companyId, primaryStoreId);
-        activeSessions = counts.map(ic => ({
-          id: ic.id,
-          name: ic.name ?? ic.countDate.toISOString().slice(0, 10),
-          storeId: ic.storeId ?? null,
-          storeName: stores.find(s => s.id === ic.storeId)?.name ?? null,
-          startedAt: ic.countedAt ?? null,
-        }));
-      }
-
       return res.json({
         role,
         userName,
         businessName,
         locationName,
         stores,
-        recentScans,
         activeSessions,
+        recentSessions,
+        recentScans,
       });
     } catch (error: any) {
       console.error("[GET /api/mobile/dashboard]", error);

@@ -612,6 +612,7 @@ export interface IStorage {
 
   // Mobile Dashboard & Active Sessions
   getActiveInventoryCounts(companyId: string, storeId?: string): Promise<InventoryCount[]>;
+  getRecentAppliedInventoryCounts(companyId: string, storeIds?: string[], limit?: number): Promise<{ id: string; name: string | null; storeId: string | null; countDate: Date; lineCount: number }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4485,6 +4486,43 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(inventoryCounts)
       .where(and(...conditions))
       .orderBy(desc(inventoryCounts.countedAt));
+  }
+
+  async getRecentAppliedInventoryCounts(
+    companyId: string,
+    storeIds?: string[],
+    limit = 5,
+  ): Promise<{ id: string; name: string | null; storeId: string | null; countDate: Date; lineCount: number }[]> {
+    const conditions = [
+      eq(inventoryCounts.companyId, companyId),
+      eq(inventoryCounts.applied, 1),
+    ];
+    if (storeIds && storeIds.length > 0) {
+      conditions.push(inArray(inventoryCounts.storeId, storeIds));
+    }
+
+    const rows = await db
+      .select({
+        id: inventoryCounts.id,
+        name: inventoryCounts.name,
+        storeId: inventoryCounts.storeId,
+        countDate: inventoryCounts.countDate,
+        lineCount: sql<number>`count(${inventoryCountLines.id})::int`,
+      })
+      .from(inventoryCounts)
+      .leftJoin(inventoryCountLines, eq(inventoryCountLines.inventoryCountId, inventoryCounts.id))
+      .where(and(...conditions))
+      .groupBy(inventoryCounts.id, inventoryCounts.name, inventoryCounts.storeId, inventoryCounts.countDate)
+      .orderBy(desc(inventoryCounts.countDate))
+      .limit(limit);
+
+    return rows.map(r => ({
+      id: r.id,
+      name: r.name ?? null,
+      storeId: r.storeId ?? null,
+      countDate: r.countDate,
+      lineCount: r.lineCount ?? 0,
+    }));
   }
 }
 
