@@ -1,9 +1,26 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   ClipboardList,
   Plus,
@@ -17,8 +34,11 @@ import {
   CheckCircle2,
   AlertTriangle,
   BookOpen,
+  Loader2,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface RecentSession {
   id: string;
@@ -69,6 +89,10 @@ function greeting(): string {
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
   return "Good evening";
+}
+
+function todayDefaultName(): string {
+  return format(new Date(), "MMM d, yyyy");
 }
 
 function ActiveSessionCard({
@@ -205,8 +229,157 @@ function LoadingSkeleton() {
   );
 }
 
+interface NewCountModalProps {
+  open: boolean;
+  onClose: () => void;
+  stores: { id: string; name: string }[];
+  onCreated: (sessionId: string) => void;
+}
+
+function NewCountModal({ open, onClose, stores, onCreated }: NewCountModalProps) {
+  const { toast } = useToast();
+  const [storeId, setStoreId] = useState<string>(stores.length === 1 ? stores[0].id : "");
+  const [sessionName, setSessionName] = useState(todayDefaultName());
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const today = format(new Date(), "yyyy-MM-dd");
+      const res = await apiRequest("POST", "/api/mobile/sessions", {
+        storeId,
+        name: sessionName.trim() || todayDefaultName(),
+        countDate: today,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      onClose();
+      onCreated(data.id);
+    },
+    onError: (err: unknown) => {
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "object" && err !== null && "error" in err
+          ? String((err as { error: unknown }).error)
+          : "Please try again.";
+      toast({
+        title: "Could not start count",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleStart = () => {
+    if (!storeId) {
+      toast({ title: "Choose a location", description: "Select which store to count.", variant: "destructive" });
+      return;
+    }
+    createMutation.mutate();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-sm" data-testid="dialog-new-count">
+        <DialogHeader>
+          <DialogTitle>Start a New Count</DialogTitle>
+        </DialogHeader>
+
+        {stores.length === 0 ? (
+          <>
+            <div className="py-4 text-center space-y-3" data-testid="dialog-no-stores">
+              <Store className="w-8 h-8 text-muted-foreground mx-auto" />
+              <p className="text-sm font-medium">No locations assigned</p>
+              <p className="text-xs text-muted-foreground">
+                You haven&apos;t been assigned to any store yet. Ask your manager to set up your access.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose} data-testid="button-cancel-count">
+                Close
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <div className="space-y-4 py-2">
+              {stores.length > 1 && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="store-select">Location</Label>
+                  <Select value={storeId} onValueChange={setStoreId}>
+                    <SelectTrigger id="store-select" data-testid="select-store">
+                      <SelectValue placeholder="Choose a store..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stores.map((s) => (
+                        <SelectItem key={s.id} value={s.id} data-testid={`option-store-${s.id}`}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {stores.length === 1 && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted">
+                  <Store className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <span className="text-sm text-muted-foreground">{stores[0].name}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="session-name">
+                  Count name <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <Input
+                  id="session-name"
+                  data-testid="input-session-name"
+                  value={sessionName}
+                  onChange={(e) => setSessionName(e.target.value)}
+                  placeholder={todayDefaultName()}
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={onClose}
+                disabled={createMutation.isPending}
+                data-testid="button-cancel-count"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-[#f2690d] text-white"
+                onClick={handleStart}
+                disabled={createMutation.isPending || !storeId}
+                data-testid="button-confirm-start-count"
+              >
+                {createMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Start Count
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function DashboardMobile() {
   const [, setLocation] = useLocation();
+  const [showNewCountModal, setShowNewCountModal] = useState(false);
 
   const { data, isLoading, error } = useQuery<MobileDashboardData>({
     queryKey: ["/api/mobile/dashboard"],
@@ -227,11 +400,20 @@ export default function DashboardMobile() {
 
   const isAdmin = data.role === "company_admin" || data.role === "global_admin";
   const isManager = data.role === "store_manager";
+  const isFloorStaff = !isAdmin && !isManager;
   const firstName = data.userName?.split(" ")[0] ?? "there";
   const hasAnySessions = data.activeSessions.length > 0 || data.recentSessions.length > 0;
 
   const handleOpenSession = (sessionId: string) => {
     setLocation(`/count/${sessionId}/mobile`);
+  };
+
+  const handleStartNewCount = () => {
+    if (isFloorStaff) {
+      setShowNewCountModal(true);
+    } else {
+      setLocation("/inventory-sessions?embedded=true");
+    }
   };
 
   return (
@@ -266,7 +448,7 @@ export default function DashboardMobile() {
         {/* Start New Count — always at the top, always prominent */}
         <Button
           className="w-full bg-[#f2690d] text-white font-semibold text-base py-6 shadow-md"
-          onClick={() => setLocation("/inventory-sessions?embedded=true")}
+          onClick={handleStartNewCount}
           data-testid="button-start-count"
         >
           <Plus className="w-5 h-5 mr-2" />
@@ -323,7 +505,7 @@ export default function DashboardMobile() {
               </p>
               <Button
                 className="w-full bg-[#f2690d] text-white font-semibold"
-                onClick={() => setLocation("/inventory-sessions?embedded=true")}
+                onClick={handleStartNewCount}
                 data-testid="button-empty-start-count"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -425,6 +607,16 @@ export default function DashboardMobile() {
           </section>
         )}
       </div>
+
+      {/* New Count Modal — floor staff only */}
+      {isFloorStaff && showNewCountModal && (
+        <NewCountModal
+          open={showNewCountModal}
+          onClose={() => setShowNewCountModal(false)}
+          stores={data.stores}
+          onCreated={(sessionId) => setLocation(`/count/${sessionId}/mobile`)}
+        />
+      )}
     </div>
   );
 }
