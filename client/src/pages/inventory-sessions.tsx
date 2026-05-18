@@ -137,6 +137,24 @@ function SessionCard({ count }: any) {
             {count.note && <><span>·</span><span className="truncate max-w-[120px] inline-block">{count.note}</span></>}
             {count.applied === 1 && <><span>·</span><span className="text-emerald-600 dark:text-emerald-400 font-medium">Locked</span></>}
           </div>
+          {isEmbedded && (count.totalItems ?? 0) > 0 && (
+            <div className="mt-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-muted-foreground" data-testid={`text-session-progress-${count.id}`}>
+                  {count.countedItems ?? 0} of {count.totalItems ?? 0} items counted
+                </span>
+                <span className="text-xs font-medium text-[#f2690d]">
+                  {Math.round(((count.countedItems ?? 0) / (count.totalItems ?? 1)) * 100)}%
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden" data-testid={`progress-bar-${count.id}`}>
+                <div
+                  className="h-full rounded-full bg-[#f2690d] transition-all"
+                  style={{ width: `${Math.round(((count.countedItems ?? 0) / (count.totalItems ?? 1)) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <Button

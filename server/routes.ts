@@ -8489,6 +8489,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       usersByCompany.set(cid, userMap);
     }
     
+    // Fetch progress (countedItems / totalItems) for all sessions in one query
+    const countIds = counts.map(c => c.id);
+    const progressData = await storage.getInventoryCountProgressBatch(countIds);
+    const progressMap = new Map(progressData.map(p => [p.countId, p]));
+
     const enrichedCounts = counts.map(count => {
       const store = storesMap.get(count.storeId);
       const userMap = usersByCompany.get(count.companyId);
@@ -8498,10 +8503,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : count.userId === "system"
           ? "System"
           : count.userId || "Unknown";
+      const progress = progressMap.get(count.id);
       return {
         ...count,
         storeName: store?.name || 'Unknown Store',
         userName,
+        countedItems: progress?.countedItems ?? 0,
+        totalItems: progress?.totalItems ?? 0,
       };
     });
     
