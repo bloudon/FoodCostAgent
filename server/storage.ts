@@ -613,6 +613,7 @@ export interface IStorage {
   // Mobile Dashboard & Active Sessions
   getActiveInventoryCounts(companyId: string, storeId?: string): Promise<InventoryCount[]>;
   getRecentAppliedInventoryCounts(companyId: string, storeIds?: string[], limit?: number): Promise<{ id: string; name: string | null; storeId: string | null; countDate: Date; lineCount: number }[]>;
+  getInventoryCountProgressBatch(countIds: string[]): Promise<{ countId: string; totalItems: number; countedItems: number }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4522,6 +4523,24 @@ export class DatabaseStorage implements IStorage {
       storeId: r.storeId ?? null,
       countDate: r.countDate,
       lineCount: r.lineCount ?? 0,
+    }));
+  }
+
+  async getInventoryCountProgressBatch(countIds: string[]): Promise<{ countId: string; totalItems: number; countedItems: number }[]> {
+    if (countIds.length === 0) return [];
+    const rows = await db
+      .select({
+        countId: inventoryCountLines.inventoryCountId,
+        totalItems: sql<number>`count(*)::int`,
+        countedItems: sql<number>`count(*) filter (where ${inventoryCountLines.qty} > 0)::int`,
+      })
+      .from(inventoryCountLines)
+      .where(inArray(inventoryCountLines.inventoryCountId, countIds))
+      .groupBy(inventoryCountLines.inventoryCountId);
+    return rows.map(r => ({
+      countId: r.countId,
+      totalItems: r.totalItems,
+      countedItems: r.countedItems,
     }));
   }
 }

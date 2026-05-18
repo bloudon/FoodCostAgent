@@ -41,6 +41,8 @@ interface MobileDashboardData {
     storeId: string | null;
     storeName: string | null;
     startedAt: string | null;
+    countedItems: number;
+    totalItems: number;
   }[];
   recentSessions: RecentSession[];
   recentScans: {
@@ -77,6 +79,9 @@ function ActiveSessionCard({
   onOpen: (id: string) => void;
 }) {
   const startedAt = session.startedAt ? new Date(session.startedAt) : null;
+  const { countedItems, totalItems } = session;
+  const progressPct = totalItems > 0 ? Math.round((countedItems / totalItems) * 100) : 0;
+
   return (
     <button
       className="w-full text-left hover-elevate active-elevate-2"
@@ -96,11 +101,33 @@ function ActiveSessionCard({
                 {session.storeName}
               </p>
             )}
-            {startedAt && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                In progress &middot; {formatDistanceToNow(startedAt, { addSuffix: true })}
-              </p>
-            )}
+            <div className="mt-1.5 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className="text-xs text-muted-foreground"
+                  data-testid={`text-session-progress-${session.id}`}
+                >
+                  {countedItems} of {totalItems} items counted
+                </span>
+                {totalItems > 0 && (
+                  <span className="text-xs font-medium text-[#f2690d] flex-shrink-0">{progressPct}%</span>
+                )}
+              </div>
+              <div
+                className="h-1.5 w-full rounded-full bg-muted overflow-hidden"
+                data-testid={`progress-bar-${session.id}`}
+              >
+                <div
+                  className="h-full rounded-full bg-[#f2690d] transition-all"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+              {startedAt && (
+                <p className="text-xs text-muted-foreground">
+                  {formatDistanceToNow(startedAt, { addSuffix: true })}
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <span className="text-xs font-medium text-[#f2690d]">Continue</span>

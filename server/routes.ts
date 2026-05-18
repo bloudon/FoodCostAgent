@@ -16537,13 +16537,22 @@ Human Handoff:
         userId ? storage.getRecentShelfScanSessions(userId, companyId, 8) : Promise.resolve([]),
       ]);
 
-      const activeSessions = rawActiveCounts.map(ic => ({
-        id: ic.id,
-        name: ic.name ?? ic.countDate.toISOString().slice(0, 10),
-        storeId: ic.storeId ?? null,
-        storeName: ic.storeId ? (storeMap.get(ic.storeId) ?? null) : null,
-        startedAt: ic.countedAt ?? null,
-      }));
+      const activeCountIds = rawActiveCounts.map(ic => ic.id);
+      const progressData = await storage.getInventoryCountProgressBatch(activeCountIds);
+      const progressMap = new Map(progressData.map(p => [p.countId, p]));
+
+      const activeSessions = rawActiveCounts.map(ic => {
+        const prog = progressMap.get(ic.id);
+        return {
+          id: ic.id,
+          name: ic.name ?? ic.countDate.toISOString().slice(0, 10),
+          storeId: ic.storeId ?? null,
+          storeName: ic.storeId ? (storeMap.get(ic.storeId) ?? null) : null,
+          startedAt: ic.countedAt ?? null,
+          countedItems: prog?.countedItems ?? 0,
+          totalItems: prog?.totalItems ?? 0,
+        };
+      });
 
       const recentSessions = rawRecentSessions.map(ic => ({
         id: ic.id,
