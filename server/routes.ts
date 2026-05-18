@@ -16489,7 +16489,8 @@ Human Handoff:
    * GET /api/mobile/dashboard
    * Role-aware dashboard data for the mobile home screen.
    * Returns role, userName, businessName, locationName, stores[], activeSessions[], recentSessions[], recentScans[].
-   * Admins/managers receive cross-store session data; floor users are scoped to their assigned stores.
+   * company_admin/global_admin: cross-store data for all company stores.
+   * store_manager/store_user: data scoped to their assigned stores only.
    */
   app.get("/api/mobile/dashboard", requireAuth, async (req, res) => {
     try {

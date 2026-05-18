@@ -288,12 +288,20 @@ export default function DashboardMobile() {
         {/* Empty state — only shown when there are truly no sessions at all */}
         {!hasAnySessions && (
           <Card data-testid="card-empty-state">
-            <CardContent className="p-6 text-center space-y-2">
+            <CardContent className="p-6 text-center space-y-3">
               <ClipboardList className="w-8 h-8 text-muted-foreground mx-auto" />
-              <p className="text-sm font-medium">No counts yet</p>
+              <p className="text-sm font-medium">No active counts</p>
               <p className="text-xs text-muted-foreground">
                 Tap Start New Count to begin your first inventory count.
               </p>
+              <Button
+                className="w-full bg-[#f2690d] text-white font-semibold"
+                onClick={() => setLocation("/inventory-sessions?embedded=true")}
+                data-testid="button-empty-start-count"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Start New Count
+              </Button>
             </CardContent>
           </Card>
         )}
@@ -322,7 +330,7 @@ export default function DashboardMobile() {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              <QuickAction icon={ClipboardList} label="All Sessions" href="/inventory-sessions?embedded=true" testId="action-sessions" />
+              <QuickAction icon={ClipboardList} label="Count Sessions" href="/inventory-sessions?embedded=true" testId="action-sessions" />
               <QuickAction icon={ScanLine} label="Shelf Scans" href="/shelf-scans?embedded=true" testId="action-scans" />
             </div>
           )}
