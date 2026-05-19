@@ -1,0 +1,49 @@
+
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ pm2 logs --lines 5
+[TAILING] Tailing last 5 lines for [all] processes (change the value with --lines option)
+/home/administrator/.pm2/pm2.log last 5 lines:
+PM2        | 2026-05-19T19:50:52: PM2 log: Stopping app:fnbcostpro id:3
+PM2        | 2026-05-19T19:50:52: PM2 log: App [fnbcostpro:3] exited with code [0] via signal [SIGINT]
+PM2        | 2026-05-19T19:50:52: PM2 log: pid=1204240 msg=process killed
+PM2        | 2026-05-19T19:50:52: PM2 log: App [fnbcostpro:3] starting in -fork mode-
+PM2        | 2026-05-19T19:50:52: PM2 log: App [fnbcostpro:3] online
+
+/home/administrator/.pm2/logs/docu-submit-error.log last 5 lines:
+6|docu-sub |     at ae.<anonymous> (/home/administrator/apps/docu-submit/dist/index.cjs:53:29115)
+6|docu-sub |     at ae.emit (node:events:524:28)
+6|docu-sub |     at ae.error (/home/administrator/apps/docu-submit/dist/index.cjs:42:40617)
+6|docu-sub |     at ae.pipe (/home/administrator/apps/docu-submit/dist/index.cjs:42:43330)
+6|docu-sub |     at /home/administrator/apps/docu-submit/dist/index.cjs:53:29123
+
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 5 lines:
+3|fnbcostp | [Recipe Cost] Cannot convert ounce (weight) to case - incompatible unit types
+3|fnbcostp | [RecipeComponents] Missing inventory item: componentId=80521a82-f163-4980-aaed-c3208b6d43bb recipeId=b8b4b094-7b26-4698-b609-b07ec04b2674 componentRowId=f91bf609-b739-4dec-a9f1-5ea60f5ca647
+3|fnbcostp | [Recipe Cost] Cannot convert ounce (weight) to case - incompatible unit types
+3|fnbcostp | [Recipe Cost] Cannot convert ounce (weight) to case - incompatible unit types
+3|fnbcostp | [RecipeComponents] Missing inventory item: componentId=77f09eb5-1c67-4058-804b-3378f21a88e4 recipeId=0fbabe32-4741-45c2-90ee-4d77c0492cfe componentRowId=cdf832e3-6bb0-4304-9acb-65ac508d674c
+
+/home/administrator/.pm2/logs/permitflow-error.log last 5 lines:
+4|permitfl |   routine: 'ri_ReportViolation'
+4|permitfl | }
+4|permitfl | Error: ENOENT: no such file or directory, stat '/home/administrator/apps/PermitFlow/dist/public/index.html'
+4|permitfl | Error: ENOENT: no such file or directory, stat '/home/administrator/apps/PermitFlow/dist/public/index.html'
+4|permitfl | Error: ENOENT: no such file or directory, stat '/home/administrator/apps/PermitFlow/dist/public/index.html'
+
+/home/administrator/.pm2/logs/docu-submit-out.log last 5 lines:
+6|docu-sub | 11:49:43 AM [express] GET /api/env 200 in 1ms
+6|docu-sub | 2:44:11 PM [express] serving on port 3002
+6|docu-sub | 3:09:25 PM [express] serving on port 3002
+6|docu-sub | 3:37:26 PM [express] serving on port 3002
+6|docu-sub | 3:38:40 PM [express] serving on port 3002
+
+/home/administrator/.pm2/logs/fnbcostpro-out.log last 5 lines:
+3|fnbcostp | 7:51:21 PM [express] GET /api/mobile/background-images 200 in 7ms :: {"images":[{"id":"274c6f1e-5aa3…
+3|fnbcostp | 7:51:21 PM [express] GET /api/mobile/background-images 200 in 6ms :: {"images":[{"id":"274c6f1e-5aa3…
+3|fnbcostp | 7:51:21 PM [express] GET /api/mobile/sessions/active 401 in 14ms :: {"error":"Not authenticated"}
+3|fnbcostp | 7:51:23 PM [express] GET /api/mobile/sessions/active 401 in 5ms :: {"error":"Not authenticated"}
+3|fnbcostp | 7:51:24 PM [express] GET /api/mobile/sessions/active 401 in 6ms :: {"error":"Not authenticated"}
+
+/home/administrator/.pm2/logs/permitflow-out.log last 5 lines:
+4|permitfl | ou were assigned to 82-35342767 — 4202 Vixen Ct","createdAt":"2026-04-17T17:30:22.287Z","href":"/projects/57aad42c-4586-4160-8769-a95ee5b9f8f2"},{"id":"6","type":"assignment","isRead":true,"projectId":"899ba25b-915a-4ade-89e8-b47a0269495a","projectName":"-34437502","title":"New Job Assignment","body":"You were assigned to -34437502 — 14520 Yellow Butterfly Road","createdAt":"2026-04-14T19:49:26.208Z","href":"/projects/899ba25b-915a-4ade-89e8-b47a0269495a"},{"id":"1","type":"assignment","isRead":true,"projectId":"9b45ab7b-2470-4844-aa35-462aff3f65d5","projectName":"82-35438620","title":"New Job Assignment","body":"You were assigned to 82-35438620 — 2368 Roanoke Court","createdAt":"2026-04-14T15:01:54.346Z","href":"/projects/9b45ab7b-2470-4844-aa35-462aff3f65d5"}]
+4|permitfl | 7:59:02 PM [express] GET /api/projects/a0e766d5-9555-4015-b591-5510286e3a6d/presence 200 in 30ms :: []
+4|permitfl | 7:59:03 PM [express] POST /api/projects/a0e766d5-9555-4015-b591-5510286e3a6d/presence 200 in 63ms :: {"success":true}
