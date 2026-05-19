@@ -77,7 +77,8 @@ interface MobileDashboardData {
 
 function roleLabel(role: string): string {
   switch (role) {
-    case "company_admin": return "Admin";
+    case "company_admin":
+    case "owner": return "Admin";
     case "store_manager": return "Manager";
     case "global_admin": return "Global Admin";
     default: return "Team";

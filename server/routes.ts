@@ -1086,7 +1086,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         user: {
           id: user.id,
           email: user.email,
-          role: user.role,
+          role: user.role === "owner" ? "company_admin" : user.role,
           companyId: user.companyId,
           firstName: user.firstName,
           lastName: user.lastName,
@@ -2239,7 +2239,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         user: { 
           id: user.id, 
           email: user.email, 
-          role: user.role,
+          role: user.role === "owner" ? "company_admin" : user.role,
           companyId: user.companyId,
           firstName: user.firstName,
           lastName: user.lastName,
@@ -17700,6 +17700,7 @@ Human Handoff:
 
       res.cookie("session", token, sessionCookieOptions());
       const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ");
+      const normalizedRole = user.role === "owner" ? "company_admin" : user.role;
       return res.json({
         token,
         userId: user.id,
@@ -17708,7 +17709,7 @@ Human Handoff:
         firstName: user.firstName,
         lastName: user.lastName,
         name: fullName || user.email,
-        role: user.role,
+        role: normalizedRole,
         preferredLanguage: (user as any).preferredLanguage ?? "en",
       });
     } catch (error: any) {

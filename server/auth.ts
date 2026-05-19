@@ -118,11 +118,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       }
       
       if (user) {
-        (req as any).user = user;
+        // Normalize legacy "owner" role to "company_admin" so all permission
+        // checks work without needing to know about the old role name.
+        const normalizedUser = user.role === "owner"
+          ? { ...user, role: "company_admin" as const }
+          : user;
+        (req as any).user = normalizedUser;
         (req as any).authSession = session;
         (req as any).sessionId = session.id;
         
-        const companyId = user.companyId || session.selectedCompanyId || null;
+        const companyId = normalizedUser.companyId || session.selectedCompanyId || null;
         (req as any).companyId = companyId;
         
         trackUserActivity(user.id);
@@ -154,11 +159,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       }
       
       if (user) {
-        (req as any).user = user;
+        const normalizedUser = user.role === "owner"
+          ? { ...user, role: "company_admin" as const }
+          : user;
+        (req as any).user = normalizedUser;
         (req as any).ssoAuth = true;
         
-        let companyId = user.companyId || null;
-        if (user.role === "global_admin" && (req as any).session?.selectedCompanyId) {
+        let companyId = normalizedUser.companyId || null;
+        if (normalizedUser.role === "global_admin" && (req as any).session?.selectedCompanyId) {
           companyId = (req as any).session.selectedCompanyId;
         }
         (req as any).companyId = companyId;

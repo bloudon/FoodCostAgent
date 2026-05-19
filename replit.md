@@ -59,7 +59,7 @@ All mobile endpoints require Bearer token auth except where noted:
 - `POST /api/mobile/sessions/:id/apply-scan` — apply AI-identified items from scan
 
 ## User Roles (three tiers, used for role-aware mobile dashboard)
-- **Company Admin** — full access, management + floor
+- **Company Admin** — full access, management + floor. DB value: `company_admin`. Note: legacy accounts may have role `owner` in the DB — this is normalized to `company_admin` at the auth middleware layer (`server/auth.ts`) so all permission checks work without modification. Never add `owner` checks elsewhere.
 - **Store Manager** — store-level management + floor tasks
 - **User** — floor tasks only (counting, scanning, waste)
 
