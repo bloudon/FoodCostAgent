@@ -123,6 +123,18 @@ See **`STANDARDS.md`** for the full ratified standards. Summary of key points fo
 - AI Chat Logging & Corrections: Every AI assistant exchange is logged to `chat_logs` table (companyId, userId, userMessage, assistantResponse, tier). Global admins can view logs at `/companies` (AI Chat Logs panel), add corrections to `chat_corrections` table, and toggle/delete them. Active corrections (is_active=1) are injected as few-shot examples into the system prompt before every AI chat response. Admin endpoints: GET /api/admin/chat-logs, GET/POST /api/admin/chat-corrections, PATCH/DELETE /api/admin/chat-corrections/:id.
 - Managed Menu Departments: `menuDepartments` table (id UUID, companyId, name, sortOrder) provides top-level menu sections (Appetizers, Entrees, etc.) per company. `menuItems.menuDepartmentId` nullable FK. Full CRUD at `GET/POST /api/menu-departments`, `PATCH/DELETE /api/menu-departments/:id`, `POST /api/menu-departments/reorder`. "Manage Sections" button on menu-items page opens a dialog with drag-to-reorder, inline rename, delete, and add. Department filter dropdown uses managed dept IDs. Add/edit dialogs uses a Select for section assignment. Hierarchy view shows section header rows when departments exist. Legacy `department` text field synced to dept name on save.
 
+# ⚠️ PRODUCTION DEPLOYMENT — READ FIRST, NEVER SUGGEST REPLIT DEPLOY
+
+**Production runs on a VPS, NOT Replit.** Never suggest using Replit's built-in deployment/publishing for this project.
+
+- **Production URL**: `app.fnbcostpro.com` — hosted on a VPS managed with **PM2**
+- **Deploy process**: SSH into VPS → `git pull origin main` → `npm install` → `npm run db:push` → `pm2 restart all`
+- **Replit's role**: Development environment and code editor only. Not a host.
+- **Replit Deploy button**: Do not use. Do not suggest. Do not mention unless the user explicitly brings it up.
+- The Expo mobile app points to `app.fnbcostpro.com` — any hosting change would require updating the mobile app config too.
+
+---
+
 # System Architecture
 
 - **Web Frontend**: React 18 SPA with TypeScript, Vite, `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing. Hostname-based routing separates marketing (`fnbcostpro.com`) from the application (`app.fnbcostpro.com`).
