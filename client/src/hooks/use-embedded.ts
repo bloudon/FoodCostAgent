@@ -8,6 +8,7 @@ const MOBILE_TOKEN_KEY = "fnb_mobile_token";
 // the Expo WebView modifies the URL or the SPA router replaces it before the
 // auth check reads it.
 (function captureUrlParams() {
+  if (typeof window === "undefined") return;
   const params = new URLSearchParams(window.location.search);
 
   const token = params.get("mobileToken");

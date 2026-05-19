@@ -81,22 +81,32 @@ export async function createSession(userId: string, userAgent?: string, ip?: str
  * This ensures that when a user explicitly logs in with username/password, it overrides any existing SSO session
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  // PRIORITY 1: Check for cookie-based username/password session first
-  // Also accepts Authorization: Bearer <token> for mobile clients using the same session token
+  // PRIORITY 1: Check for cookie-based username/password session and/or
+  // Authorization: Bearer <token> for mobile clients.
+  //
+  // IMPORTANT: We try BOTH tokens independently. A WebView may carry a stale
+  // cookie from a previous web session alongside a valid mobile Bearer token.
+  // Trying only `cookie || bearer` would pick the stale cookie, fail the DB
+  // lookup, and never attempt the Bearer token — causing a 401. By trying
+  // each token in turn (cookie first, then Bearer) we always reach the valid
+  // one regardless of what the cookie jar contains.
   const authHeader = req.headers?.authorization;
   const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
-  const token = req.cookies?.session || bearerToken;
-  
-  if (token) {
+  const cookieToken: string | undefined = req.cookies?.session;
+
+  // Ordered list of tokens to attempt; filter out empties.
+  const tokensToTry = [cookieToken, bearerToken].filter(Boolean) as string[];
+
+  for (const token of tokensToTry) {
     const tokenHash = createHash("sha256").update(token).digest("hex");
-    
+
     // Try cache first (Phase 2 optimization - eliminates DB lookup on every request)
     let session: AuthSession | null | undefined = await cache.get<AuthSession>(CacheKeys.session(tokenHash));
-    
+
     if (!session) {
       // Cache miss - fetch from database
       session = await storage.getAuthSessionByToken(tokenHash);
-      
+
       if (session) {
         // Cache for future requests
         await cache.set(CacheKeys.session(tokenHash), session, CacheTTL.SESSION);
@@ -106,17 +116,17 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     if (session) {
       // Try cache for user lookup (Phase 2 optimization)
       let user: User | null | undefined = await cache.get<User>(CacheKeys.user(session.userId));
-      
+
       if (!user) {
         // Cache miss - fetch from database
         user = await storage.getUser(session.userId);
-        
+
         if (user) {
           // Cache for future requests
           await cache.set(CacheKeys.user(user.id), user, CacheTTL.USER);
         }
       }
-      
+
       if (user) {
         // Normalize legacy "owner" role to "company_admin" so all permission
         // checks work without needing to know about the old role name.
@@ -126,10 +136,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         (req as any).user = normalizedUser;
         (req as any).authSession = session;
         (req as any).sessionId = session.id;
-        
+
         const companyId = normalizedUser.companyId || session.selectedCompanyId || null;
         (req as any).companyId = companyId;
-        
+
         trackUserActivity(user.id);
         const now = Date.now();
         const lastUpdate = lastActiveUpdates.get(session.id) || 0;
@@ -137,7 +147,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
           lastActiveUpdates.set(session.id, now);
           storage.updateAuthSession(session.id, { lastActiveAt: new Date() }).catch(() => {});
         }
-        
+
         return next();
       }
     }
