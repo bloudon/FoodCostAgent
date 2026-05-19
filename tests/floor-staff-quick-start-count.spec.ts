@@ -72,7 +72,54 @@ async function mockSessionCreate(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Mocks /api/auth/me so the React auth guard (ProtectedLayout) considers the
+ * browser authenticated and does NOT redirect to /login.
+ *
+ * The floor-staff tests drive the dashboard-mobile page entirely via mocked
+ * API responses — they do not perform a real login. Without this mock,
+ * ProtectedLayout sees a 401 from /api/auth/me, sets user=null, and
+ * immediately navigates to /login before the dashboard renders.
+ *
+ * Role is always company_admin here — the role that controls dashboard
+ * *behaviour* (floor-staff modal vs. admin bypass) comes from the separate
+ * /api/mobile/dashboard mock in mockDashboard().
+ */
+async function mockAuth(page: Page): Promise<void> {
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 'test-user-id',
+        email: 'admin@brians.pizza',
+        companyId: 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1',
+        companyName: "Brian's Pizza",
+        role: 'company_admin',
+        firstName: 'Test',
+        lastName: 'User',
+        active: 1,
+        subscriptionTier: 'pro',
+      }),
+    });
+  });
+
+  // Stub noisy layout-shell calls so they don't spray 401 errors into the
+  // console and potentially affect test stability.
+  await page.route('**/api/stores', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+  });
+  await page.route('**/api/onboarding/milestones', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ dismissed: false, milestones: [] }),
+    });
+  });
+}
+
 async function navigateToDashboard(page: Page): Promise<void> {
+  await mockAuth(page);
   await page.goto(`${BASE_URL}/dashboard/mobile`);
   await page.waitForSelector('[data-testid="button-start-count"]', { timeout: 8000 });
 }
