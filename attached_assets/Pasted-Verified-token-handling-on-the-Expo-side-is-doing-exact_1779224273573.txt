@@ -1,0 +1,44 @@
+Verified — token handling on the Expo side is doing exactly what they describe. Here's the proof, all from AuthContext.tsx:
+
+1. Token stored after login (line 208–212):
+
+await Promise.all([
+  secureSet(TOKEN_KEY, authToken),         // persisted to SecureStore
+  secureSet(USER_KEY, JSON.stringify(authUser)),
+]);
+setToken(authToken);                       // and into React state
+
+2. Token read fresh at call time, not cached at startup (line 267–269):
+
+const getToken = useCallback(async () => {
+  if (token) return token;                 // current state value
+  return secureGet(TOKEN_KEY);             // else read SecureStore live
+}, [token]);
+
+Every API call awaits getToken() immediately before the fetch — never reuses a startup-cached value.
+
+3. Bearer header attached on every authed call, e.g. native home screen:
+
+const token = await getToken();
+fetch(`${PROD_BASE}/api/mobile/sessions/active`, {
+  headers: token ? { Authorization: `Bearer ${token}` } : {},
+});
+
+4. Logout clears it cleanly (line 261–262):
+
+await Promise.all([secureDelete(TOKEN_KEY), secureDelete(USER_KEY)]);
+setToken(null);
+
+So the Bearer-token plumbing for /api/mobile/* endpoints is correct — and the native home screen is in fact successfully calling /api/mobile/sessions/active today (it just returns an empty list because no session is currently "active" by that endpoint's definition).
+
+The WebView problem is unrelated to Bearer headers. When the WebView loads https://app.fnbcostpro.com/dashboard/mobile?mobileToken=..., the browser sends an HTML GET request — there is no Authorization header on that initial request and the WebView has no way to add one before the framework's routing guard sees it and 302s to /login.
+
+The web team can confirm this themselves in 10 seconds:
+
+TOKEN=$(curl -s -X POST https://app.fnbcostpro.com/api/mobile/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"...","password":"..."}' | jq -r '.token')
+curl -sI "https://app.fnbcostpro.com/dashboard/mobile?mobileToken=$TOKEN" \
+  | grep -E '^HTTP|^location'
+
+If that returns 302 + location: .../login, no amount of Expo-side changes will fix it — they need the routing middleware to read ?mobileToken= and let the request through.
