@@ -240,6 +240,7 @@ export default function MenuItemsPage() {
   const [csvContent, setCsvContent] = useState("");
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [selectedStoreForImport, setSelectedStoreForImport] = useState<string>("");
+  const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [manageSectionsOpen, setManageSectionsOpen] = useState(false);
   const [newDeptName, setNewDeptName] = useState("");
   const [stagingDefaults, setStagingDefaults] = useState<{ id: string; name: string; editing: boolean }[]>([]);
@@ -722,6 +723,33 @@ export default function MenuItemsPage() {
         description: error.message,
         variant: "destructive",
       });
+    },
+  });
+
+  const seedRecipesMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/menu-items/seed-recipes", {});
+      const data = await response.json() as { recipesCreated: number; message?: string };
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items/hierarchy"] });
+      setSeedDialogOpen(false);
+      if (data.recipesCreated > 0) {
+        toast({
+          title: "Recipes seeded",
+          description: `Created ${data.recipesCreated} recipe stub${data.recipesCreated !== 1 ? "s" : ""} from menu descriptions. Open each recipe to add quantities and costs.`,
+        });
+      } else {
+        toast({
+          title: "Nothing to seed",
+          description: data.message || "All menu items with descriptions already have linked recipes.",
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({ title: "Seeding failed", description: error.message, variant: "destructive" });
     },
   });
 
@@ -1843,6 +1871,36 @@ export default function MenuItemsPage() {
               </Form>
               </>
               )}
+            </DialogContent>
+          </Dialog>
+
+          {/* Seed Recipes from Menu Dialog */}
+          <Dialog open={seedDialogOpen} onOpenChange={setSeedDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" data-testid="button-seed-recipes">
+                <BookOpen className="h-4 w-4 mr-2" />
+                Seed Recipes
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Seed Recipes from Menu Descriptions</DialogTitle>
+                <DialogDescription>
+                  For every menu item that has an ingredient description but no linked recipe, this will create a recipe stub with placeholder ingredients from the description text. Recipes already linked to a menu item are never changed.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setSeedDialogOpen(false)} disabled={seedRecipesMutation.isPending} data-testid="button-seed-cancel">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => seedRecipesMutation.mutate()}
+                  disabled={seedRecipesMutation.isPending}
+                  data-testid="button-seed-confirm"
+                >
+                  {seedRecipesMutation.isPending ? "Creating recipes…" : "Create Recipe Stubs"}
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
 

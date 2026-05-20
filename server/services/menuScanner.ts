@@ -4,6 +4,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export interface ExtractedMenuItem {
   name: string;
+  description: string;
   department: string;
   category: string;
   size: string;
@@ -44,6 +45,7 @@ Return a JSON object with this exact structure:
   "items": [
     {
       "name": "Item name (clean, human-readable)",
+      "description": "Full description text printed below the item name — ingredient/preparation list exactly as it appears. Empty string if no description exists.",
       "department": "Main category group (e.g. Pizza, Appetizers, Beverages, Desserts, Sides)",
       "category": "Subcategory if visible (e.g. Specialty Pizza, Classic Pizza) — empty string if none",
       "size": "Size variant if visible (e.g. Small, Medium, Large, 10\\", 12\\") — empty string if single size",
@@ -60,6 +62,7 @@ Return a JSON object with this exact structure:
 
 Rules for items:
 - Extract ALL items visible in the menu
+- description: copy the ingredient/preparation text printed under the item name verbatim (e.g. "crispy flatbread, garlic oil, pesto, fresh mozzarella, grilled chicken, balsamic glaze"). Use empty string if no description is printed.
 - price: use null if no price is shown for that item
 - For items with multiple sizes shown as a table row (e.g. "Margherita | Sm $10 | Lg $15"), create SEPARATE entries for each size variant
 - department: infer from menu section headers (e.g. "PIZZAS", "DRINKS", "APPETIZERS")
@@ -110,6 +113,7 @@ Respond ONLY with the JSON object, no markdown or explanation`;
 
   const items: ExtractedMenuItem[] = (parsed.items || []).map((item) => ({
     name: String(item.name || '').trim(),
+    description: String((item as any).description || '').trim(),
     department: String(item.department || '').trim(),
     category: String(item.category || '').trim(),
     size: String(item.size || '').trim(),

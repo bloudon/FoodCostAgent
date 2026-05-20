@@ -793,6 +793,7 @@ export const menuItems = pgTable("menu_items", {
   active: integer("active").notNull().default(1), // 0 = inactive, 1 = active
   price: real("price"), // Menu item price (nullable until set)
   sortOrder: integer("sort_order").notNull().default(0), // For ordering size variants
+  description: text("description"), // Description text extracted from menu scan (e.g. "crispy flatbread, garlic oil, pesto...")
 }, (table) => ({
   uniqueCompanyPlu: unique().on(table.companyId, table.pluSku),
   parentMenuItemIdx: index("menu_items_parent_idx").on(table.parentMenuItemId),
@@ -1354,7 +1355,7 @@ export const menuImportSessions = pgTable("menu_import_sessions", {
   storeId: varchar("store_id"),
   status: text("status").notNull().default("pending"), // pending, approved, cancelled
   rawImagePath: text("raw_image_path"), // objectPath of the uploaded menu image
-  extractedItems: jsonb("extracted_items").$type<Array<{ name: string; category?: string; size?: string; price?: number | null; department?: string }>>(), // JSONB array of extracted menu items
+  extractedItems: jsonb("extracted_items").$type<Array<{ name: string; description?: string; category?: string; size?: string; price?: number | null; department?: string }>>(), // JSONB array of extracted menu items
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({

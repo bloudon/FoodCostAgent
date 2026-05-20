@@ -65,6 +65,7 @@ interface InvoiceItem {
 
 interface ExtractedMenuItem {
   name: string;
+  description: string;
   department: string;
   category: string;
   size: string;
@@ -495,23 +496,33 @@ export function MenuScanStep({
                   {indices.map((idx) => {
                     const item = items[idx];
                     const hasPrice = item.price !== null && item.price > 0;
+                    const hasDescription = item.description && item.description.trim().length > 0;
                     return (
-                      <div key={idx} className="flex items-center gap-1 px-2 py-0.5 border-t">
-                        <Check className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-                        <Input
-                          value={item.name}
-                          onChange={e => updateName(idx, e.target.value)}
-                          className="h-6 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent flex-1 text-xs"
-                          data-testid={`input-item-name-${idx}`}
-                        />
-                        {hasPrice && (
-                          <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 font-medium whitespace-nowrap">
-                            ${item.price!.toFixed(2)}
-                          </span>
-                        )}
+                      <div key={idx} className="flex items-start gap-1 px-2 py-1 border-t">
+                        <Check className="w-3 h-3 text-emerald-500 flex-shrink-0 mt-1.5" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1">
+                            <Input
+                              value={item.name}
+                              onChange={e => updateName(idx, e.target.value)}
+                              className="h-6 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent flex-1 text-xs"
+                              data-testid={`input-item-name-${idx}`}
+                            />
+                            {hasPrice && (
+                              <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 font-medium whitespace-nowrap">
+                                ${item.price!.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                          {hasDescription && (
+                            <p className="text-[10px] text-muted-foreground leading-tight line-clamp-2 mt-0.5" data-testid={`text-item-description-${idx}`}>
+                              {item.description}
+                            </p>
+                          )}
+                        </div>
                         <button
                           onClick={() => deleteItem(idx)}
-                          className="p-0.5 rounded text-muted-foreground hover:text-destructive flex-shrink-0"
+                          className="p-0.5 rounded text-muted-foreground hover:text-destructive flex-shrink-0 mt-1"
                           data-testid={`button-delete-item-${idx}`}
                         >
                           <Trash2 className="w-3 h-3" />
