@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Calendar as CalendarIcon, Trash2, Star, RotateCcw, ChevronRight, Lock, MapPin } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Trash2, Star, RotateCcw, ChevronRight, Lock, MapPin, Home } from "lucide-react";
 import { useEmbedded } from "@/hooks/use-embedded";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import {
@@ -502,7 +502,10 @@ export default function InventorySessions() {
 
   return (
     <TierGate feature="power_inventory">
-    <div className={isEmbedded ? "p-4" : "p-4 sm:p-8"}>
+    <div
+      className={isEmbedded ? "p-4" : "p-4 sm:p-8"}
+      style={isEmbedded ? { paddingTop: 'calc(16px + env(safe-area-inset-top, 0px))' } : undefined}
+    >
       <div className="mb-4 sm:mb-8">
         {/* Header */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -548,6 +551,17 @@ export default function InventorySessions() {
               <span className="hidden sm:inline">Start New Count</span>
               <span className="sm:hidden">New Count</span>
             </Button>
+            {isEmbedded && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setLocation("/dashboard/mobile")}
+                data-testid="button-sessions-home"
+                title="Home"
+              >
+                <Home className="h-5 w-5" />
+              </Button>
+            )}
           </div>
         </div>
         {!isEmbedded && stores.length === 1 && (

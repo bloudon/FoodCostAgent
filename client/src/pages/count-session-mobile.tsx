@@ -41,6 +41,7 @@ import {
   ScanBarcode,
   X,
   Camera,
+  Home,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -846,17 +847,23 @@ export default function CountSessionMobile() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden">
-      {/* ── Compact header ── */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b bg-background shrink-0">
+      {/* ── Compact header — safe-area top padding keeps content below status bar ── */}
+      <div
+        className="flex items-center gap-1 px-2 pb-2 border-b bg-background shrink-0"
+        style={{ paddingTop: 'calc(8px + env(safe-area-inset-top, 0px))' }}
+      >
+        {/* Back to sessions list */}
         <Button
           variant="ghost"
-          size="icon"
+          className="gap-1 px-2 shrink-0"
           onClick={() => navigate("/inventory-sessions?embedded=true")}
           data-testid="button-mobile-back"
         >
-          <ArrowLeft className="h-5 w-5" />
+          <ArrowLeft className="h-4 w-4" />
+          <span className="text-sm font-medium">Sessions</span>
         </Button>
-        <div className="flex-1 min-w-0">
+
+        <div className="flex-1 min-w-0 px-1">
           <div className="font-semibold text-sm truncate" data-testid="text-mobile-session-title">
             {count?.storeName ?? "Count Session"}
           </div>
@@ -864,6 +871,8 @@ export default function CountSessionMobile() {
             {countedItems} / {totalItems} items counted
           </div>
         </div>
+
+        {/* Barcode scanner */}
         {!isReadOnly && (
           <Button
             variant="ghost"
@@ -876,6 +885,8 @@ export default function CountSessionMobile() {
             <ScanBarcode className="h-5 w-5" />
           </Button>
         )}
+
+        {/* Apply / Locked badge */}
         {isReadOnly ? (
           <Badge variant="outline" className="shrink-0 gap-1">
             <Lock className="h-3 w-3" />
@@ -893,6 +904,18 @@ export default function CountSessionMobile() {
             Apply
           </Button>
         ) : null}
+
+        {/* Home — return to mobile dashboard */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => navigate("/dashboard/mobile")}
+          className="shrink-0"
+          data-testid="button-mobile-home"
+          title="Home"
+        >
+          <Home className="h-5 w-5" />
+        </Button>
       </div>
 
       {/* ── Location switcher ── */}
