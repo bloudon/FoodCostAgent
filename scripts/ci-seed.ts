@@ -29,6 +29,10 @@ import {
   inventoryCounts,
   orderGuides,
   vendors,
+  units,
+  menuItems,
+  recipes,
+  recipeComponents,
 } from "../shared/schema";
 import { eq } from "drizzle-orm";
 
@@ -234,36 +238,45 @@ async function run() {
     console.log("  ⏭  Inventory count A already exists");
   }
 
-  // ── 10. Inventory count for Company B ────────────────────────────────────
+  // ── 10. Test user — ci-staff@breakfastnook.com / ci-pass-nook ───────────
+  // Created/updated unconditionally so password is always valid in CI.
+  const existingBUser = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, "ci-staff@breakfastnook.com"));
+
+  const bPasswordHash = await hashPassword("ci-pass-nook");
+
+  let bUserId: string;
+  if (existingBUser.length === 0) {
+    const [newBUser] = await db
+      .insert(users)
+      .values({
+        email: "ci-staff@breakfastnook.com",
+        passwordHash: bPasswordHash,
+        role: "company_admin",
+        companyId: COMPANY_B_ID,
+        active: 1,
+      })
+      .returning({ id: users.id });
+    bUserId = newBUser.id;
+    console.log("  ✅ Test user ci-staff@breakfastnook.com created");
+  } else {
+    bUserId = existingBUser[0].id;
+    await db
+      .update(users)
+      .set({ passwordHash: bPasswordHash, active: 1 })
+      .where(eq(users.email, "ci-staff@breakfastnook.com"));
+    console.log("  ⏭  Company B user exists — password reset");
+  }
+
+  // ── 11. Inventory count for Company B ────────────────────────────────────
   const existingCountB = await db
     .select()
     .from(inventoryCounts)
     .where(eq(inventoryCounts.id, COUNT_B_ID));
 
   if (existingCountB.length === 0) {
-    // Need a placeholder user for Company B's count
-    const existingBUser = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, "ci-staff@breakfastnook.com"));
-
-    let bUserId: string;
-    if (existingBUser.length === 0) {
-      const [newBUser] = await db
-        .insert(users)
-        .values({
-          email: "ci-staff@breakfastnook.com",
-          passwordHash: await hashPassword("ci-pass-nook"),
-          role: "company_admin",
-          companyId: COMPANY_B_ID,
-          active: 1,
-        })
-        .returning({ id: users.id });
-      bUserId = newBUser.id;
-    } else {
-      bUserId = existingBUser[0].id;
-    }
-
     await db.insert(inventoryCounts).values({
       id: COUNT_B_ID,
       companyId: COMPANY_B_ID,
@@ -276,6 +289,140 @@ async function run() {
     console.log("  ✅ Inventory count B created");
   } else {
     console.log("  ⏭  Inventory count B already exists");
+  }
+
+  // ── 11. Menu insights fixtures ────────────────────────────────────────────
+  // Each company gets a menu item and a recipe with a unique missingItemName
+  // so the menu-insights-isolation spec can assert cross-company scoping.
+
+  // Resolve any unit ID — needed for recipe yieldUnitId
+  const [anyUnit] = await db.select({ id: units.id }).from(units).limit(1);
+  const unitId = anyUnit?.id ?? "fallback-unit-id";
+
+  // Company A menu item
+  const existingMenuA = await db
+    .select()
+    .from(menuItems)
+    .where(eq(menuItems.id, "ci-menu-brians-001"));
+
+  if (existingMenuA.length === 0) {
+    await db.insert(menuItems).values({
+      id: "ci-menu-brians-001",
+      companyId: COMPANY_A_ID,
+      name: "CI Margherita Pizza",
+      pluSku: "CI-BRIANS-PIZZA-001",
+      price: 14.99,
+      active: 1,
+    });
+    console.log("  ✅ Company A CI menu item created");
+  } else {
+    console.log("  ⏭  Company A CI menu item already exists");
+  }
+
+  // Company B menu item
+  const existingMenuB = await db
+    .select()
+    .from(menuItems)
+    .where(eq(menuItems.id, "ci-menu-nook-001"));
+
+  if (existingMenuB.length === 0) {
+    await db.insert(menuItems).values({
+      id: "ci-menu-nook-001",
+      companyId: COMPANY_B_ID,
+      name: "CI Eggs Benedict",
+      pluSku: "CI-NOOK-EGGS-001",
+      price: 12.5,
+      active: 1,
+    });
+    console.log("  ✅ Company B CI menu item created");
+  } else {
+    console.log("  ⏭  Company B CI menu item already exists");
+  }
+
+  // Company A recipe with a uniquely identifiable missingItemName
+  const existingRecipeA = await db
+    .select()
+    .from(recipes)
+    .where(eq(recipes.id, "ci-recipe-brians-001"));
+
+  if (existingRecipeA.length === 0) {
+    await db.insert(recipes).values({
+      id: "ci-recipe-brians-001",
+      companyId: COMPANY_A_ID,
+      name: "CI Margherita Base",
+      yieldQty: 1,
+      yieldUnitId: unitId,
+      computedCost: 0,
+      isActive: 1,
+    });
+    console.log("  ✅ Company A CI recipe created");
+  } else {
+    console.log("  ⏭  Company A CI recipe already exists");
+  }
+
+  // Company A recipe component with unique missingItemName sentinel
+  const existingCompA = await db
+    .select()
+    .from(recipeComponents)
+    .where(eq(recipeComponents.id, "ci-comp-brians-001"));
+
+  if (existingCompA.length === 0) {
+    await db.insert(recipeComponents).values({
+      id: "ci-comp-brians-001",
+      recipeId: "ci-recipe-brians-001",
+      componentType: "inventory_item",
+      componentId: "00000000-0000-0000-0000-000000000001",
+      qty: 1,
+      unitId,
+      missingItemName: "ci-anchovy-paste",
+      sortOrder: 0,
+    });
+    console.log("  ✅ Company A CI recipe component created");
+  } else {
+    console.log("  ⏭  Company A CI recipe component already exists");
+  }
+
+  // Company B recipe with a uniquely identifiable missingItemName
+  const existingRecipeB = await db
+    .select()
+    .from(recipes)
+    .where(eq(recipes.id, "ci-recipe-nook-001"));
+
+  if (existingRecipeB.length === 0) {
+    await db.insert(recipes).values({
+      id: "ci-recipe-nook-001",
+      companyId: COMPANY_B_ID,
+      name: "CI Hollandaise Recipe",
+      yieldQty: 1,
+      yieldUnitId: unitId,
+      computedCost: 0,
+      isActive: 1,
+    });
+    console.log("  ✅ Company B CI recipe created");
+  } else {
+    console.log("  ⏭  Company B CI recipe already exists");
+  }
+
+  // Company B recipe component with unique missingItemName sentinel
+  const existingCompB = await db
+    .select()
+    .from(recipeComponents)
+    .where(eq(recipeComponents.id, "ci-comp-nook-001"));
+
+  if (existingCompB.length === 0) {
+    await db.insert(recipeComponents).values({
+      id: "ci-comp-nook-001",
+      recipeId: "ci-recipe-nook-001",
+      componentType: "inventory_item",
+      componentId: "00000000-0000-0000-0000-000000000002",
+      qty: 1,
+      unitId,
+      missingItemName: "ci-hollandaise-base",
+      sortOrder: 0,
+    });
+    console.log("  ✅ Company B CI recipe component created");
+  } else {
+    console.log("  ⏭  Company B CI recipe component already exists");
   }
 
   console.log("\n✅ CI seed complete.");
