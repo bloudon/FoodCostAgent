@@ -91,6 +91,8 @@ import {
   Lock,
   ChevronDown,
   Info,
+  CheckCircle2,
+  SkipForward,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { ObjectUploader } from "@/components/ObjectUploader";
@@ -924,6 +926,21 @@ function RecipeBuilderContent() {
   const urlParams = new URLSearchParams(window.location.search);
   const initialName = urlParams.get("name") || "";
   const menuItemIdToLink = urlParams.get("menuItemId") || null;
+
+  // Completion queue params (set when coming from "Complete all" flow)
+  const queueParam = urlParams.get("queue") || "";
+  const queueTotal = parseInt(urlParams.get("queueTotal") || "0", 10);
+  const queueRemaining = queueParam ? queueParam.split(",").filter(Boolean) : [];
+  const currentQueuePosition = queueTotal > 0 ? queueTotal - queueRemaining.length : 0;
+
+  const navigateToNextInQueue = () => {
+    if (queueRemaining.length > 0) {
+      const [nextId, ...rest] = queueRemaining;
+      setLocation(`/recipes/${nextId}/edit?queue=${rest.join(",")}&queueTotal=${queueTotal}`);
+    } else {
+      setLocation("/recipes");
+    }
+  };
 
   // Recipe metadata state
   const [recipeName, setRecipeName] = useState(initialName);
@@ -1999,6 +2016,15 @@ function RecipeBuilderContent() {
         // Clean up the edit draft since we're linking successfully
         sessionStorage.removeItem('menu-item-edit-draft');
         setLocation(`/menu-items`);
+      } else if (queueTotal > 0) {
+        if (queueRemaining.length > 0) {
+          toast({ title: "Recipe saved — moving to next" });
+          const [nextId, ...rest] = queueRemaining;
+          setLocation(`/recipes/${nextId}/edit?queue=${rest.join(",")}&queueTotal=${queueTotal}`);
+        } else {
+          toast({ title: "All placeholder recipes completed!" });
+          setLocation("/recipes");
+        }
       } else {
         toast({ title: "Recipe saved successfully" });
         setLocation(`/recipes`);
@@ -2307,6 +2333,26 @@ function RecipeBuilderContent() {
 
         {/* Main content */}
         <div className="flex-1 md:overflow-hidden overflow-y-auto">
+          {/* Completion queue progress banner */}
+          {queueTotal > 0 && !isNew && (
+            <div className="mx-4 mt-4 md:mx-6 md:mt-6 flex items-center justify-between gap-3 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30 px-4 py-3" data-testid="banner-completion-queue">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                <span className="text-sm text-green-800 dark:text-green-300">
+                  Completing placeholder recipes: <strong>{currentQueuePosition} of {queueTotal}</strong>
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={navigateToNextInQueue}
+                data-testid="button-skip-recipe-in-queue"
+              >
+                <SkipForward className="h-3 w-3 mr-1" />
+                Skip
+              </Button>
+            </div>
+          )}
           {/* Auto-generated placeholder banner */}
           {!isNew && recipe?.isPlaceholder === 1 && (
             <div className="mx-4 mt-4 md:mx-6 md:mt-6 flex items-start gap-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 px-4 py-3" data-testid="banner-placeholder-recipe">

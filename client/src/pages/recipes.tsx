@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -114,6 +114,7 @@ function RecipesContent() {
   const [showNeedsCompletion, setShowNeedsCompletion] = useState(false);
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const scheduleDelete = useUndoableDelete();
 
   const { sortField, sortDirection, handleSort } = useTableSort("name");
@@ -254,6 +255,18 @@ function RecipesContent() {
     if (!recipes) return 0;
     return recipes.filter(r => r.isPlaceholder === 1 && r.isActive === 1).length;
   }, [recipes]);
+
+  // Start "Complete all" workflow — navigate through all active placeholder recipes one by one
+  const handleCompleteAll = () => {
+    if (!recipes) return;
+    const placeholders = recipes
+      .filter(r => r.isPlaceholder === 1 && r.isActive === 1 && !r.parentRecipeId)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (placeholders.length === 0) return;
+    const [first, ...rest] = placeholders;
+    const queueParam = rest.map(r => r.id).join(',');
+    setLocation(`/recipes/${first.id}/edit?queue=${queueParam}&queueTotal=${placeholders.length}`);
+  };
 
   // Group recipes by parent-child relationship
   const groupedRecipes = useMemo(() => {
@@ -448,18 +461,29 @@ function RecipesContent() {
           {showInactive ? "Showing All" : "Show Inactive"}
         </Button>
         {placeholderCount > 0 && (
-          <Button
-            variant={showNeedsCompletion ? "secondary" : "outline"}
-            size="sm"
-            onClick={() => setShowNeedsCompletion(!showNeedsCompletion)}
-            data-testid="button-toggle-needs-completion"
-          >
-            <AlertTriangle className="h-4 w-4 mr-2 text-yellow-600 dark:text-yellow-400" />
-            Needs completion
-            <Badge variant="secondary" className="ml-2 text-xs" data-testid="badge-placeholder-count">
-              {placeholderCount}
-            </Badge>
-          </Button>
+          <>
+            <Button
+              variant={showNeedsCompletion ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setShowNeedsCompletion(!showNeedsCompletion)}
+              data-testid="button-toggle-needs-completion"
+            >
+              <AlertTriangle className="h-4 w-4 mr-2 text-yellow-600 dark:text-yellow-400" />
+              Needs completion
+              <Badge variant="secondary" className="ml-2 text-xs" data-testid="badge-placeholder-count">
+                {placeholderCount}
+              </Badge>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCompleteAll}
+              data-testid="button-complete-all-recipes"
+            >
+              <Wrench className="h-4 w-4 mr-2" />
+              Complete all
+            </Button>
+          </>
         )}
       </div>
 
@@ -530,6 +554,16 @@ function RecipesContent() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {group.parent.isPlaceholder === 1 && (
+                            <>
+                              <DropdownMenuItem asChild>
+                                <Link href={`/recipes/${group.parent.id}/edit`} data-testid={`button-complete-recipe-mobile-${group.parent.id}`}>
+                                  <Wrench className="h-4 w-4 mr-2" />Complete Recipe
+                                </Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
                           <DropdownMenuItem asChild>
                             <Link href={`/recipes/${group.parent.id}`}>
                               <Eye className="h-4 w-4 mr-2" />View Recipe
@@ -659,11 +693,21 @@ function RecipesContent() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
-                            <Link href={`/recipes/${group.parent.id}`}>
-                              <Button variant="ghost" size="sm" data-testid={`button-view-recipe-${group.parent.id}`}>
-                                View
-                              </Button>
-                            </Link>
+                            {group.parent.isPlaceholder === 1 && (
+                              <Link href={`/recipes/${group.parent.id}/edit`}>
+                                <Button variant="outline" size="sm" data-testid={`button-complete-recipe-${group.parent.id}`}>
+                                  <Wrench className="h-3 w-3 mr-1" />
+                                  Complete
+                                </Button>
+                              </Link>
+                            )}
+                            {group.parent.isPlaceholder !== 1 && (
+                              <Link href={`/recipes/${group.parent.id}`}>
+                                <Button variant="ghost" size="sm" data-testid={`button-view-recipe-${group.parent.id}`}>
+                                  View
+                                </Button>
+                              </Link>
+                            )}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-actions-recipe-${group.parent.id}`}>
