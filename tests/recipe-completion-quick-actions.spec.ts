@@ -210,6 +210,10 @@ async function mockRecipeBuilderShared(page: Page): Promise<void> {
   await page.route('**/api/stores/accessible', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
   });
+
+  await page.route('**/api/inventory-item-units', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+  });
 }
 
 /**
