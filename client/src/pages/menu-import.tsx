@@ -35,13 +35,14 @@ import { ObjectUploader } from '@/components/ObjectUploader';
 
 interface ExtractedItem {
   name: string;
+  description: string;
   department: string;
   category: string;
   size: string;
   price: number | null;
 }
 
-const EMPTY_ITEM: ExtractedItem = { name: '', department: '', category: '', size: '', price: null };
+const EMPTY_ITEM: ExtractedItem = { name: '', description: '', department: '', category: '', size: '', price: null };
 
 export default function MenuImport() {
   const [, navigate] = useLocation();
@@ -445,6 +446,7 @@ export default function MenuImport() {
                           <TableRow>
                             <TableHead className="w-10"></TableHead>
                             <TableHead>Item Name</TableHead>
+                            <TableHead className="hidden lg:table-cell">Description</TableHead>
                             <TableHead className="hidden sm:table-cell">Department</TableHead>
                             <TableHead className="hidden md:table-cell">Size</TableHead>
                             <TableHead>Price</TableHead>
@@ -455,7 +457,7 @@ export default function MenuImport() {
                           {deptOrder.map((dept) => (
                             <Fragment key={`dept-${dept}`}>
                               <TableRow className="pointer-events-none select-none" data-testid={`header-department-${dept}`}>
-                                <TableCell colSpan={6} className="py-1.5 px-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide bg-muted/40">
+                                <TableCell colSpan={7} className="py-1.5 px-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide bg-muted/40">
                                   {dept}
                                 </TableCell>
                               </TableRow>
@@ -479,6 +481,15 @@ export default function MenuImport() {
                                       className="h-8 min-w-[120px]"
                                       placeholder="Item name"
                                       data-testid={`input-name-${i}`}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="hidden lg:table-cell">
+                                    <Input
+                                      value={items[i].description}
+                                      onChange={(e) => updateItem(i, 'description', e.target.value)}
+                                      className="h-8 min-w-[160px]"
+                                      placeholder="Ingredients / description"
+                                      data-testid={`input-description-${i}`}
                                     />
                                   </TableCell>
                                   <TableCell className="hidden sm:table-cell">
