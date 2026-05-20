@@ -1042,13 +1042,45 @@ export default function CountSessionMobile() {
       >
         <SheetContent
           side="top"
-          className="h-auto max-h-[88vh] flex flex-col rounded-b-xl px-0 pt-0"
+          className="h-auto max-h-[88vh] flex flex-col rounded-b-2xl px-0 pt-0"
         >
           {activeLine && activeItem && (
             <>
-              <SheetHeader className="px-4 pb-2 shrink-0">
+              {/* ── Primary action — TOP of card so it's always visible above keyboard ── */}
+              <div className="px-5 pt-5 pb-4 shrink-0">
+                {!isReadOnly ? (
+                  <Button
+                    className="w-full h-13 text-base font-semibold"
+                    onClick={saveAndAdvance}
+                    disabled={updateMutation.isPending}
+                    data-testid="button-mobile-save-next"
+                  >
+                    {updateMutation.isPending
+                      ? "Saving…"
+                      : nextLine
+                      ? activeMode === "catch" && !hasSheetInput()
+                        ? "Next Item →"
+                        : "Save & Next →"
+                      : activeMode === "catch" && !hasSheetInput()
+                      ? "Done"
+                      : "Save & Done"}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-full h-13"
+                    onClick={closeSheet}
+                    data-testid="button-mobile-close-readonly"
+                  >
+                    Close
+                  </Button>
+                )}
+              </div>
+
+              {/* ── Item name + metadata ── */}
+              <SheetHeader className="px-5 pb-4 shrink-0 border-b">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <SheetTitle className="text-base font-semibold flex-1 min-w-0 truncate">
+                  <SheetTitle className="text-lg font-semibold flex-1 min-w-0 truncate">
                     {activeItem.name}
                   </SheetTitle>
                   {activeMode === "catch" && (
@@ -1066,7 +1098,7 @@ export default function CountSessionMobile() {
                         setSheetLooseUnits("");
                         setSheetQty("");
                       }}
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium transition-colors ${
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${
                         activeMode === "case"
                           ? "bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300"
                           : "border-border text-muted-foreground hover:text-foreground"
@@ -1078,8 +1110,8 @@ export default function CountSessionMobile() {
                     </button>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <MapPin className="h-3 w-3" />
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
+                  <MapPin className="h-3.5 w-3.5 shrink-0" />
                   <span>{storageLocations?.find((l) => l.id === activeLine.storageLocationId)?.name ?? "Unknown"}</span>
                   <span>·</span>
                   <span>{activeUnitAbbr}</span>
@@ -1092,7 +1124,8 @@ export default function CountSessionMobile() {
                 </div>
               </SheetHeader>
 
-              <div className="overflow-y-auto flex-1 px-4 space-y-4 pb-2">
+              {/* ── Scrollable body: entry history + qty input ── */}
+              <div className="overflow-y-auto flex-1 px-5 space-y-5 py-5">
                 {/* Entry history with delete */}
                 {(activeLine.entries?.length ?? 0) > 0 && (
                   <MobileEntryList
@@ -1103,12 +1136,25 @@ export default function CountSessionMobile() {
                   />
                 )}
 
+                {/* Clear all entries — near the entries it affects */}
+                {!isReadOnly && (activeLine?.entries?.length ?? 0) >= 2 && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setShowClearConfirm(true)}
+                    disabled={clearLineMutation.isPending}
+                    data-testid="button-mobile-clear-all-entries"
+                  >
+                    Clear all entries
+                  </Button>
+                )}
+
                 {/* Input section */}
                 {!isReadOnly && (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {activeMode === "case" ? (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
                           <label className="text-xs font-medium text-muted-foreground">
                             Cases {activeItem?.caseSize ? `(× ${activeItem.caseSize} ${activeUnitAbbr})` : ""}
                           </label>
@@ -1128,7 +1174,7 @@ export default function CountSessionMobile() {
                             data-testid="input-mobile-case-qty"
                           />
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                           <label className="text-xs font-medium text-muted-foreground">
                             Loose {activeUnitAbbr}
                           </label>
@@ -1149,8 +1195,8 @@ export default function CountSessionMobile() {
                         </div>
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        <div className="space-y-1">
+                      <div className="space-y-3">
+                        <div className="space-y-1.5">
                           <label className="text-xs font-medium text-muted-foreground">
                             {activeMode === "catch"
                               ? `Package weight (${activeUnitAbbr})`
@@ -1207,49 +1253,6 @@ export default function CountSessionMobile() {
                       </Button>
                     )}
                   </div>
-                )}
-              </div>
-
-              {/* Footer with primary action */}
-              <div className="px-4 pt-2 pb-4 shrink-0 border-t bg-background space-y-2">
-                {!isReadOnly && (activeLine?.entries?.length ?? 0) >= 2 && (
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => setShowClearConfirm(true)}
-                    disabled={clearLineMutation.isPending}
-                    data-testid="button-mobile-clear-all-entries"
-                  >
-                    Clear all entries
-                  </Button>
-                )}
-                {!isReadOnly && (
-                  <Button
-                    className="w-full h-12 text-base font-semibold"
-                    onClick={saveAndAdvance}
-                    disabled={updateMutation.isPending}
-                    data-testid="button-mobile-save-next"
-                  >
-                    {updateMutation.isPending
-                      ? "Saving…"
-                      : nextLine
-                      ? activeMode === "catch" && !hasSheetInput()
-                        ? "Next Item →"
-                        : "Save & Next →"
-                      : activeMode === "catch" && !hasSheetInput()
-                      ? "Done"
-                      : "Save & Done"}
-                  </Button>
-                )}
-                {isReadOnly && (
-                  <Button
-                    variant="outline"
-                    className="w-full h-12"
-                    onClick={closeSheet}
-                    data-testid="button-mobile-close-readonly"
-                  >
-                    Close
-                  </Button>
                 )}
               </div>
             </>
