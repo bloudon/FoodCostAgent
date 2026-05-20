@@ -380,6 +380,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  (async function migrateMenuDescriptions() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'menu_descriptions'`
+      );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
+      if (!existing) {
+        await db.execute(sql`
+          ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS description TEXT;
+          ALTER TABLE menu_import_sessions ADD COLUMN IF NOT EXISTS description TEXT;
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('menu_descriptions')`
+        );
+        console.log("[Migration] Applied menu_descriptions");
+      } else {
+        console.log("[Migration] Already applied (menu_descriptions)");
+      }
+    } catch (err) {
+      console.error("[Migration] menu_descriptions error:", err);
+    }
+  })();
+
   // GET /api/background-images — public
   // Returns active images. If ?companyId= is provided and company has a brand image, returns just that.
   // For free-tier companies without a brand image, returns the designated free-tier background (if any).
