@@ -1831,7 +1831,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         groups.get(key)!.items.push(item);
       }
 
-      const { created, topLevelIds } = await db.transaction(async (tx) => {
+      const { created, topLevelIds, topLevelForSeeding } = await db.transaction(async (tx) => {
         const sizeIdCache = new Map<string, string>();
         const deptIdCache = new Map<string, string>();
 
@@ -5542,7 +5542,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Run all inserts and session update in a single transaction to prevent partial imports
-      const { created, skipped } = await db.transaction(async (tx) => {
+      const { created, skipped, topLevelForSeeding } = await db.transaction(async (tx) => {
         const sizeIdCache = new Map<string, string>();
         const deptIdCache = new Map<string, string>();
 
