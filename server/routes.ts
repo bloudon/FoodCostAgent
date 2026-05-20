@@ -5422,6 +5422,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const bodySchema = z.object({
         items: z.array(z.object({
           name: z.string(),
+          description: z.string().optional().default(""),
           department: z.string().default(""),
           category: z.string().default(""),
           size: z.string().default(""),
@@ -5461,6 +5462,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const bodySchema = z.object({
         items: z.array(z.object({
           name: z.string().min(1),
+          description: z.string().optional().default(""),
           department: z.string().default(""),
           category: z.string().default(""),
           size: z.string().default(""),
@@ -5571,6 +5573,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           size: string | null; pluSku: string; price: number | null;
           sortOrder: number; parentMenuItemId?: string | null;
           menuItemSizeId?: string | null; menuDepartmentId?: string | null;
+          description?: string | null;
         }): Promise<string> {
           const [row] = await tx.insert(menuItems).values({
             companyId,
@@ -5586,6 +5589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             price: values.price,
             sortOrder: values.sortOrder,
             menuDepartmentId: values.menuDepartmentId ?? null,
+            description: values.description ?? null,
           }).returning();
 
           for (const sid of targetStoreIds) {
@@ -5602,6 +5606,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const now = Date.now();
         let txCreated = 0;
         let pluCounter = 1;
+        // Track descriptions for top-level items so we can seed recipes after the transaction
+        const topLevelForSeeding: Array<{ id: string; name: string; description: string; price: number | null }> = [];
 
         for (const [, group] of groups) {
           const representative = group.items[0];
@@ -5615,6 +5621,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           const deptName = (representative.department || '').trim() || 'Other';
           const menuDepartmentId = await findOrCreateDepartmentId(deptName);
+          const representativeDescription = (representative as any).description?.trim() || '';
 
           if (hasMultipleSizes) {
             const parentPlu = `SCAN-${now}-${pluCounter++}`;
@@ -5627,7 +5634,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               price: null,
               sortOrder: group.sortBase,
               menuDepartmentId,
+              description: representativeDescription || null,
             });
+            if (representativeDescription) {
+              topLevelForSeeding.push({ id: parentId, name: representative.name.trim(), description: representativeDescription, price: null });
+            }
 
             for (let j = 0; j < group.items.length; j++) {
               const variant = group.items[j];
@@ -5654,9 +5665,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (let j = 0; j < group.items.length; j++) {
               const item = group.items[j];
               const pluSku = `SCAN-${now}-${pluCounter++}`;
+              const itemDescription = (item as any).description?.trim() || representativeDescription;
               // Populate menuItemSizeId even for single items that have a size string
               const menuItemSizeId = item.size ? await findOrCreateSizeId(item.size) : null;
-              await insertMenuItemRow({
+              const itemId = await insertMenuItemRow({
                 name: item.name.trim(),
                 department: item.department || null,
                 category: item.category || null,
@@ -5666,7 +5678,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 sortOrder: group.sortBase + j,
                 menuItemSizeId,
                 menuDepartmentId,
+                description: itemDescription || null,
               });
+              if (itemDescription) {
+                topLevelForSeeding.push({ id: itemId, name: item.name.trim(), description: itemDescription, price: item.price ?? null });
+              }
               txCreated++;
             }
           }
@@ -5677,10 +5693,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .set({ status: "approved", rawImagePath: null, extractedItems: null, updatedAt: new Date() })
           .where(eq(menuImportSessions.id, sessionId));
 
-        return { created: txCreated, skipped: 0 };
+        return { created: txCreated, skipped: 0, topLevelForSeeding };
       });
 
-      return res.json({ menuItemsCreated: created, skipped });
+      // Seed recipe stubs for items that have a description (non-fatal if this fails)
+      let recipesSeeded = 0;
+      if (topLevelForSeeding.length > 0) {
+        try {
+          const { seedRecipesFromDescriptions } = await import('./services/menuRecipeSeeder');
+          const seeded = await seedRecipesFromDescriptions(topLevelForSeeding, companyId);
+          recipesSeeded = seeded.length;
+        } catch (seedErr) {
+          console.error("[Menu Import Approve] Recipe seeding failed (non-fatal):", seedErr);
+        }
+      }
+
+      return res.json({ menuItemsCreated: created, skipped, recipesSeeded });
     } catch (error: any) {
       console.error("[Menu Import Approve]", error);
       return res.status(500).json({ error: error.message });
