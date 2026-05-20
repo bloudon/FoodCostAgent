@@ -4,7 +4,7 @@ import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, ChefHat, ChevronRight, MoreHorizontal, Trash2, EyeOff, Eye, AlertTriangle, Wrench, Archive, X, LinkIcon, ScanLine } from "lucide-react";
+import { Plus, Search, ChefHat, ChevronRight, MoreHorizontal, Trash2, EyeOff, Eye, AlertTriangle, Wrench, Archive, X, LinkIcon, ScanLine, BarChart2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SortableTableHead, useTableSort } from "@/components/sortable-table-head";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -399,6 +399,14 @@ function RecipesContent() {
         </div>
         <div className="flex flex-col gap-2 items-end">
           <div className="flex items-center gap-2">
+            {recipesWithMissing.length > 0 && (
+              <Button variant="ghost" className="hidden sm:flex text-muted-foreground" asChild data-testid="button-view-menu-insights">
+                <Link href="/menu-insights">
+                  <BarChart2 className="h-4 w-4 mr-2" />
+                  Menu Insights
+                </Link>
+              </Button>
+            )}
             <Button 
               variant="outline"
               size="icon"

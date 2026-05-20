@@ -68,6 +68,7 @@ import ChoosePlan from "@/pages/choose-plan";
 import EnterpriseInquiry from "@/pages/enterprise-inquiry";
 import EnterpriseOnboarding from "@/pages/enterprise-onboarding";
 import AdminBackgrounds from "@/pages/admin-backgrounds";
+import MenuInsights from "@/pages/menu-insights";
 import AdminUsers from "@/pages/admin-users";
 import PrepChart from "@/pages/prep-chart";
 import PrepChartItems from "@/pages/prep-chart-items";
@@ -345,6 +346,7 @@ function ProtectedLayoutContent() {
               <Route path="/prep-chart/production" component={PrepChartProduction} />
               <Route path="/shelf-scans" component={ShelfScans} />
               <Route path="/dashboard/mobile" component={DashboardMobile} />
+              <Route path="/menu-insights" component={MenuInsights} />
               <Route component={NotFound} />
             </Switch>
           </main>

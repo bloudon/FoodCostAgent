@@ -56,6 +56,7 @@ export interface MilestoneDataPresence {
   hasStorageLocations: boolean;
   hasRecipes: boolean;
   hasInventoryCount: boolean;
+  hasMenuInsightsData: boolean;
 }
 
 export interface GetMilestonesDeps {
@@ -83,7 +84,7 @@ export function computeMilestones(
   reviewedSteps: string[],
   data: MilestoneDataPresence,
 ): MilestoneEntry[] {
-  return [
+  const milestones: MilestoneEntry[] = [
     {
       id: "menu_scan",
       label: "Scan Your Menu",
@@ -135,6 +136,17 @@ export function computeMilestones(
       path: "/onboarding/setup",
     },
   ];
+
+  if (data.hasMenuInsightsData) {
+    milestones.push({
+      id: "menu_insights",
+      label: "View Menu Insights",
+      completed: reviewedSteps.includes("menu_insights"),
+      path: "/menu-insights",
+    });
+  }
+
+  return milestones;
 }
 
 export function createGetMilestonesHandler(deps: GetMilestonesDeps) {

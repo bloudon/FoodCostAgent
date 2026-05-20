@@ -118,7 +118,7 @@ export async function createCheckoutSession(req: Request, res: Response) {
           const sep = safeReturnTo.includes("?") ? "&" : "?";
           return `${baseUrl}${safeReturnTo}${sep}planActivated=true`;
         })()
-      : `${baseUrl}/?welcome=true`;
+      : `${baseUrl}/menu-insights?welcome=true`;
 
     const session = await getStripe().checkout.sessions.create({
       mode: "subscription",

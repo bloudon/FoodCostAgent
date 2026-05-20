@@ -33,6 +33,7 @@ const milestoneLabels: Record<string, string> = {
   recipes: "Recipes",
   review: "Review",
   inventory_count: "First Count",
+  menu_insights: "Menu Insights",
   // Legacy labels kept for backwards compatibility
   store: "Store",
   vendors: "Vendor",

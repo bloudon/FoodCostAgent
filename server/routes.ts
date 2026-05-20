@@ -1573,13 +1573,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return rows[0] ?? null;
     },
     async getDataPresence(companyId) {
-      const [menuRows, companiesRow, inventoryRows, storageRows, recipeRows, inventoryCountRows] = await Promise.all([
+      const [menuRows, companiesRow, inventoryRows, storageRows, recipeRows, inventoryCountRows, ingredientComponentRows] = await Promise.all([
         db.select().from(menuItems).where(eq(menuItems.companyId, companyId)).limit(1),
         db.select({ subscriptionTier: companiesTable.subscriptionTier }).from(companiesTable).where(eq(companiesTable.id, companyId)).limit(1),
         db.select().from(inventoryItems).where(eq(inventoryItems.companyId, companyId)).limit(1),
         db.select().from(storageLocations).where(eq(storageLocations.companyId, companyId)).limit(1),
         db.select().from(recipes).where(eq(recipes.companyId, companyId)).limit(1),
         db.select({ id: inventoryCounts.id }).from(inventoryCounts).where(eq(inventoryCounts.companyId, companyId)).limit(1),
+        db.select({ id: recipeComponents.id })
+          .from(recipeComponents)
+          .innerJoin(recipes, eq(recipeComponents.recipeId, recipes.id))
+          .where(and(eq(recipes.companyId, companyId), isNotNull(recipeComponents.missingItemName)))
+          .limit(1),
       ]);
       const tier = companiesRow[0]?.subscriptionTier;
       return {
@@ -1589,6 +1594,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         hasStorageLocations: storageRows.length > 0,
         hasRecipes: recipeRows.length > 0,
         hasInventoryCount: inventoryCountRows.length > 0,
+        hasMenuInsightsData: ingredientComponentRows.length > 0,
       };
     },
     async markCompleted(companyId) {
@@ -1663,6 +1669,143 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     },
   }));
+
+  // ============ MENU INSIGHTS ============
+
+  app.get("/api/menu-insights", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string;
+      if (!companyId) return res.status(401).json({ error: "Not authenticated" });
+
+      const { classifyToken, isExcludedFromAvgPrice } = await import("./services/menuInsightsService");
+
+      // Fetch active parent menu items with their department names
+      const menuItemRows = await db
+        .select({
+          price: menuItems.price,
+          menuDepartmentId: menuItems.menuDepartmentId,
+          department: menuItems.department,
+          deptName: menuDepartments.name,
+        })
+        .from(menuItems)
+        .leftJoin(menuDepartments, eq(menuItems.menuDepartmentId, menuDepartments.id))
+        .where(
+          and(
+            eq(menuItems.companyId, companyId),
+            eq(menuItems.active, 1),
+            isNull(menuItems.parentMenuItemId),
+          ),
+        );
+
+      // Department breakdown (grouped by resolved name)
+      const deptMap = new Map<string, number>();
+      for (const row of menuItemRows) {
+        const name = row.deptName || row.department || "Uncategorized";
+        deptMap.set(name, (deptMap.get(name) ?? 0) + 1);
+      }
+      const departmentBreakdown = [...deptMap.entries()]
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+
+      // Average selling price (excluding sides, modifiers, zero/low prices)
+      const qualifyingPrices = menuItemRows
+        .filter((row) => !isExcludedFromAvgPrice(row.price, row.deptName || row.department))
+        .map((row) => row.price as number);
+      const avgSellingPrice =
+        qualifyingPrices.length > 0
+          ? Math.round((qualifyingPrices.reduce((s, p) => s + p, 0) / qualifyingPrices.length) * 100) / 100
+          : null;
+
+      // Ingredient tokens from recipe_components.missingItemName
+      const componentRows = await db
+        .select({
+          missingItemName: recipeComponents.missingItemName,
+          recipeId: recipeComponents.recipeId,
+        })
+        .from(recipeComponents)
+        .innerJoin(recipes, eq(recipeComponents.recipeId, recipes.id))
+        .where(
+          and(
+            eq(recipes.companyId, companyId),
+            isNotNull(recipeComponents.missingItemName),
+            eq(recipes.isActive, 1),
+          ),
+        );
+
+      // Deduplicate: count unique recipeIds per ingredient name
+      const ingredientMap = new Map<string, Set<string>>();
+      for (const row of componentRows) {
+        const name = (row.missingItemName as string).trim().toLowerCase();
+        if (!name) continue;
+        if (!ingredientMap.has(name)) {
+          ingredientMap.set(name, new Set());
+        }
+        ingredientMap.get(name)!.add(row.recipeId);
+      }
+
+      const ingredients = [...ingredientMap.entries()].map(([name, recipeIds]) => ({
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        classification: classifyToken(name),
+        recipeCount: recipeIds.size,
+      }));
+
+      // Sort: batch_prep first, then alphabetical within each group
+      ingredients.sort((a, b) => {
+        if (a.classification !== b.classification) {
+          return a.classification === "batch_prep" ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
+
+      return res.json({
+        totalMenuItems: menuItemRows.length,
+        departmentBreakdown,
+        avgSellingPrice,
+        uniqueIngredientCount: ingredients.length,
+        ingredients,
+      });
+    } catch (err) {
+      console.error("GET /api/menu-insights error:", err);
+      return res.status(500).json({ error: "Failed to fetch menu insights" });
+    }
+  });
+
+  app.post("/api/menu-insights/visited", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string;
+      if (!companyId) return res.status(401).json({ error: "Not authenticated" });
+
+      const existing = await db.select().from(onboardingProgress).where(eq(onboardingProgress.companyId, companyId)).limit(1);
+
+      let reviewedSteps: string[] = [];
+      if (existing[0]?.stepData) {
+        try {
+          const parsed = JSON.parse(existing[0].stepData) as { reviewedSteps?: string[] };
+          reviewedSteps = parsed.reviewedSteps ?? [];
+        } catch {
+          // malformed JSON — treat as empty
+        }
+      }
+
+      if (!reviewedSteps.includes("menu_insights")) {
+        reviewedSteps.push("menu_insights");
+      }
+
+      const stepData = JSON.stringify({ reviewedSteps });
+      if (existing.length > 0) {
+        await db.update(onboardingProgress)
+          .set({ stepData, updatedAt: new Date() })
+          .where(eq(onboardingProgress.companyId, companyId));
+      } else {
+        await db.insert(onboardingProgress).values({ companyId, stepData });
+      }
+
+      return res.json({ success: true });
+    } catch (err) {
+      console.error("POST /api/menu-insights/visited error:", err);
+      return res.status(500).json({ error: "Failed to record visit" });
+    }
+  });
 
   // ============ ONBOARDING MENU SCAN (Variant B — no tier gate) ============
 
