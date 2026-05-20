@@ -403,23 +403,7 @@ const companyFormSchema = z.object({
   state: z.string().optional(),
   postalCode: z.string().optional(),
   posProvider: z.enum(['thrive', 'toast', 'hungerrush', 'clover', 'other', 'none']).optional(),
-  tccAccountId: z.string().optional(),
-}).refine(
-  (data) => {
-    if (data.posProvider === 'thrive') {
-      if (!data.tccAccountId || data.tccAccountId.trim() === '') {
-        return false;
-      }
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      return uuidRegex.test(data.tccAccountId);
-    }
-    return true;
-  },
-  {
-    message: "TCC Account ID is required and must be a valid UUID for Thrive POS users",
-    path: ["tccAccountId"],
-  }
-);
+});
 
 type CompanyFormValues = z.infer<typeof companyFormSchema>;
 
@@ -441,12 +425,8 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
       state: wizardData.company?.state || "",
       postalCode: wizardData.company?.postalCode || "",
       posProvider: wizardData.company?.posProvider || undefined,
-      tccAccountId: wizardData.company?.tccAccountId || "",
     },
   });
-
-  // Watch posProvider field to conditionally show TCC ID
-  const posProvider = form.watch("posProvider");
 
   const registerMutation = useMutation({
     mutationFn: async (data: CompanyFormValues) => {
@@ -565,7 +545,6 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="thrive">Thrive POS (The Chef's Companion)</SelectItem>
                       <SelectItem value="toast">Toast POS</SelectItem>
                       <SelectItem value="hungerrush">HungerRush</SelectItem>
                       <SelectItem value="clover">Clover</SelectItem>
@@ -580,29 +559,6 @@ export function CompanySetupStep({ onComplete }: { onComplete: () => void }) {
                 </FormItem>
               )}
             />
-
-            {posProvider === 'thrive' && (
-              <FormField
-                control={form.control}
-                name="tccAccountId"
-                render={({ field }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>TCC Account ID *</FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" 
-                        {...field} 
-                        data-testid="input-tcc-account-id" 
-                      />
-                    </FormControl>
-                    <FormDescription className="text-xs">
-                      Your Thrive POS (The Chef's Companion) account identifier
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
 
             <FormField
               control={form.control}

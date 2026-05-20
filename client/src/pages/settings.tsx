@@ -369,14 +369,6 @@ export default function Settings() {
       return;
     }
 
-    if (posProvider === "thrive") {
-      const tccValue = (formData.get("company-tcc-account-id") as string || "").trim();
-      if (!tccValue) {
-        toast({ variant: "destructive", title: "TCC Account ID required", description: "A valid TCC Account ID is required when using Thrive as your POS provider" });
-        return;
-      }
-    }
-
     const companyData: Partial<Company> = {
       name: formData.get("company-name") as string,
       addressLine1: formData.get("company-address") as string,
@@ -386,34 +378,9 @@ export default function Settings() {
       phone: phoneValue,
       contactEmail: formData.get("company-email") as string,
       posProvider: posProvider as Company["posProvider"],
-      ...(posProvider === "thrive" ? { tccAccountId: (formData.get("company-tcc-account-id") as string).trim() } : {}),
     };
     
     updateCompanyMutation.mutate(companyData);
-  };
-
-  const handleTccSave = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    
-    const tccAccountId = formData.get("tcc-account-id") as string;
-    
-    // Update company TCC Account ID
-    updateCompanyMutation.mutate({ tccAccountId }, {
-      onSuccess: () => {
-        toast({
-          title: "Success",
-          description: "TCC Account ID updated successfully",
-        });
-      },
-      onError: () => {
-        toast({
-          title: "Error",
-          description: "Failed to update TCC Account ID",
-          variant: "destructive",
-        });
-      }
-    });
   };
 
   const handlePrefsSave = (e: React.FormEvent<HTMLFormElement>) => {
@@ -658,7 +625,6 @@ export default function Settings() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="thrive">Thrive</SelectItem>
                       <SelectItem value="toast">Toast</SelectItem>
                       <SelectItem value="hungerrush">HungerRush</SelectItem>
                       <SelectItem value="clover">Clover</SelectItem>
@@ -666,22 +632,6 @@ export default function Settings() {
                     </SelectContent>
                   </Select>
                 </div>
-
-                {posProvider === "thrive" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="company-tcc-account-id">TCC Account ID</Label>
-                    <Input
-                      id="company-tcc-account-id"
-                      name="company-tcc-account-id"
-                      placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                      defaultValue={company?.tccAccountId || ""}
-                      data-testid="input-company-tcc-account-id"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      UUID format required for Thrive Control Center account identification
-                    </p>
-                  </div>
-                )}
 
                 <Separator />
                 
@@ -1484,43 +1434,6 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Thrive Control Center (TCC) Integration</CardTitle>
-              <CardDescription>
-                Configure your TCC Account ID for Thrive POS integration
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleTccSave} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="tcc-account-id">TCC Account ID</Label>
-                  <Input
-                    id="tcc-account-id"
-                    name="tcc-account-id"
-                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                    defaultValue={company?.tccAccountId || ""}
-                    data-testid="input-tcc-account-id"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    UUID format required for Thrive Control Center account identification
-                  </p>
-                </div>
-
-                <Separator />
-
-                <div className="flex justify-end">
-                  <Button 
-                    type="submit" 
-                    data-testid="button-save-tcc"
-                    disabled={updateCompanyMutation.isPending}
-                  >
-                    {updateCompanyMutation.isPending ? "Saving..." : "Save TCC Settings"}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="preferences" className="space-y-6">

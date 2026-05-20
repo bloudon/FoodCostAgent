@@ -438,10 +438,6 @@ export default function CompanyDetail() {
                   <div className="text-sm text-muted-foreground">Timezone</div>
                   <div className="font-medium" data-testid="text-timezone">{company.timezone}</div>
                 </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">TCC Account ID</div>
-                  <div className="font-medium" data-testid="text-tcc-account-id">{company.tccAccountId || "-"}</div>
-                </div>
               </div>
             ) : (
               <Form {...companyForm}>
@@ -518,19 +514,6 @@ export default function CompanyDetail() {
                               <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
                             </SelectContent>
                           </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={companyForm.control}
-                      name="tccAccountId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>TCC Account ID</FormLabel>
-                          <FormControl>
-                            <Input {...field} value={field.value || ""} data-testid="input-tcc-account-id" />
-                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -677,19 +660,6 @@ export default function CompanyDetail() {
                           )}
                         />
                       </div>
-                      <FormField
-                        control={storeForm.control}
-                        name="tccLocationId"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>TCC Location ID (Thrive POS)</FormLabel>
-                            <FormControl>
-                              <Input {...field} value={field.value ?? ""} placeholder="6a459cda-a9b3-40da-b6a7-5c858b30a3a7" data-testid="input-tcc-location-id" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
                       <div className="flex justify-end gap-2">
                         <Button
                           type="button"
@@ -1009,19 +979,6 @@ export default function CompanyDetail() {
                     )}
                   />
                 </div>
-                <FormField
-                  control={storeForm.control}
-                  name="tccLocationId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>TCC Location ID (Thrive POS)</FormLabel>
-                      <FormControl>
-                        <Input {...field} value={field.value ?? ""} placeholder="6a459cda-a9b3-40da-b6a7-5c858b30a3a7" data-testid="input-edit-tcc-location-id" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
                 <FormField
                   control={storeForm.control}
                   name="status"

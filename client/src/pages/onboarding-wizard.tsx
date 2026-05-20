@@ -23,7 +23,6 @@ export interface WizardCompanyData {
   state?: string;
   postalCode?: string;
   posProvider?: "thrive" | "toast" | "hungerrush" | "clover" | "other" | "none";
-  tccAccountId?: string;
 }
 
 export interface WizardData {
