@@ -90,6 +90,7 @@ import {
   Loader2,
   Lock,
   ChevronDown,
+  Info,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { ObjectUploader } from "@/components/ObjectUploader";
@@ -2306,6 +2307,15 @@ function RecipeBuilderContent() {
 
         {/* Main content */}
         <div className="flex-1 md:overflow-hidden overflow-y-auto">
+          {/* Auto-generated placeholder banner */}
+          {!isNew && recipe?.isPlaceholder === 1 && (
+            <div className="mx-4 mt-4 md:mx-6 md:mt-6 flex items-start gap-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 px-4 py-3" data-testid="banner-placeholder-recipe">
+              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <p className="text-sm text-blue-800 dark:text-blue-300">
+                This recipe was auto-generated from your menu — add quantities and costs to complete it
+              </p>
+            </div>
+          )}
           <div className="flex flex-col gap-4 p-4 md:h-full md:grid md:grid-cols-12 md:gap-6 md:p-6">
             {/* Right panel - Source items (shows below recipe form on mobile) */}
             <div className="order-2 md:order-2 md:col-span-4 flex flex-col gap-2 md:overflow-hidden">

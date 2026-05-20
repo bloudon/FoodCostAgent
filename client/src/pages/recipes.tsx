@@ -56,6 +56,7 @@ type Recipe = {
   parentRecipeId: string | null;
   sizeName: string | null;
   isActive: number;
+  isPlaceholder: number;
 };
 
 type CanDeleteResponse = {
@@ -110,6 +111,7 @@ function RecipesContent() {
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [canDeleteInfo, setCanDeleteInfo] = useState<CanDeleteResponse | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [showNeedsCompletion, setShowNeedsCompletion] = useState(false);
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
   const { toast } = useToast();
   const scheduleDelete = useUndoableDelete();
@@ -247,6 +249,12 @@ function RecipesContent() {
     }
   };
 
+  // Count placeholder recipes (needs completion)
+  const placeholderCount = useMemo(() => {
+    if (!recipes) return 0;
+    return recipes.filter(r => r.isPlaceholder === 1 && r.isActive === 1).length;
+  }, [recipes]);
+
   // Group recipes by parent-child relationship
   const groupedRecipes = useMemo(() => {
     if (!recipes) return [];
@@ -255,7 +263,8 @@ function RecipesContent() {
     const filtered = recipes.filter(r => {
       const matchesSearch = r.name.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesActive = showInactive || r.isActive === 1;
-      return matchesSearch && matchesActive;
+      const matchesCompletion = !showNeedsCompletion || r.isPlaceholder === 1;
+      return matchesSearch && matchesActive && matchesCompletion;
     });
 
     // Separate parent recipes (no parentRecipeId) and child recipes
@@ -311,7 +320,7 @@ function RecipesContent() {
     });
 
     return groups;
-  }, [recipes, searchQuery, showInactive]);
+  }, [recipes, searchQuery, showInactive, showNeedsCompletion]);
 
   const sortedGroupedRecipes = useMemo(() => {
     return [...groupedRecipes].sort((a, b) => {
@@ -438,6 +447,20 @@ function RecipesContent() {
           {showInactive ? <Eye className="h-4 w-4 mr-2" /> : <EyeOff className="h-4 w-4 mr-2" />}
           {showInactive ? "Showing All" : "Show Inactive"}
         </Button>
+        {placeholderCount > 0 && (
+          <Button
+            variant={showNeedsCompletion ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setShowNeedsCompletion(!showNeedsCompletion)}
+            data-testid="button-toggle-needs-completion"
+          >
+            <AlertTriangle className="h-4 w-4 mr-2 text-yellow-600 dark:text-yellow-400" />
+            Needs completion
+            <Badge variant="secondary" className="ml-2 text-xs" data-testid="badge-placeholder-count">
+              {placeholderCount}
+            </Badge>
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -464,6 +487,11 @@ function RecipesContent() {
                           {formatRecipeName(group.parent.name)}
                         </span>
                         {group.parent.isActive === 0 && <Badge variant="outline" className="text-xs text-muted-foreground">Inactive</Badge>}
+                        {group.parent.isPlaceholder === 1 && (
+                          <Badge variant="outline" className="text-xs gap-1 border-yellow-400 text-yellow-700 dark:text-yellow-400" data-testid={`badge-needs-completion-mobile-${group.parent.id}`}>
+                            <AlertTriangle className="h-3 w-3" />Needs completion
+                          </Badge>
+                        )}
                         {group.parent.canBeIngredient === 1 && (
                           <Badge variant="secondary" className="text-xs gap-1">
                             <ChefHat className="h-3 w-3" />Base Recipe
@@ -576,6 +604,12 @@ function RecipesContent() {
                                 {group.parent.isActive === 0 && (
                                   <Badge variant="outline" className="text-xs text-muted-foreground">
                                     Inactive
+                                  </Badge>
+                                )}
+                                {group.parent.isPlaceholder === 1 && (
+                                  <Badge variant="outline" className="text-xs gap-1 border-yellow-400 text-yellow-700 dark:text-yellow-400" data-testid={`badge-needs-completion-${group.parent.id}`}>
+                                    <AlertTriangle className="h-3 w-3" />
+                                    Needs completion
                                   </Badge>
                                 )}
                                 {group.parent.canBeIngredient === 1 && (
