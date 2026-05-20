@@ -1355,7 +1355,8 @@ export const menuImportSessions = pgTable("menu_import_sessions", {
   storeId: varchar("store_id"),
   status: text("status").notNull().default("pending"), // pending, approved, cancelled
   rawImagePath: text("raw_image_path"), // objectPath of the uploaded menu image
-  extractedItems: jsonb("extracted_items").$type<Array<{ name: string; description?: string; category?: string; size?: string; price?: number | null; department?: string }>>(), // JSONB array of extracted menu items
+  description: text("description"), // Optional session-level note (e.g. "Dinner menu — spring 2025"). Not required but useful for distinguishing multiple scan sessions.
+  extractedItems: jsonb("extracted_items").$type<Array<{ name: string; description?: string; category?: string; size?: string; price?: number | null; department?: string }>>(), // JSONB array of extracted menu items; each item's description holds the ingredient/preparation text extracted by GPT-4o Vision
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({

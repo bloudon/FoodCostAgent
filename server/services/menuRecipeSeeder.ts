@@ -66,6 +66,12 @@ export interface SeededRecipeSummary {
  * Each call should pass the items that need seeding (description non-empty, no existing recipeId).
  * Returns summaries for all recipes created.
  *
+ * The `recipes` table has no dedicated selling-price or menu-department column.
+ * Both are preserved on the linked `menu_items` row (accessible via menuItems.recipeId)
+ * and are also captured in the auto-generated `instructions` note written below.
+ * The instructions field is the designated place to carry menu-derived metadata until
+ * an operator completes the recipe proper.
+ *
  * @param itemsToSeed  Array of { id, name, description, price } from menuItems
  * @param companyId    Company scoping
  */
@@ -94,9 +100,19 @@ export async function seedRecipesFromDescriptions(
   for (const item of itemsToSeed) {
     const tokens = tokenizeDescription(item.description);
 
+    // Encode selling price in the auto-generated instructions so operators can see it
+    // when building out the recipe. The recipes table has no dedicated price column —
+    // selling price is owned by the linked menu_items row (menuItems.recipeId = recipe.id).
+    const priceNote = item.price !== null && item.price > 0
+      ? `Selling price: $${item.price.toFixed(2)}\n`
+      : '';
+    const autoInstructions = `${priceNote}Auto-generated from menu description: "${item.description}"\n\nAdd quantities, yields, and costs to complete this recipe.`;
+
     try {
       const created = await db.transaction(async (tx) => {
-        // Create recipe stub
+        // Create recipe stub — name filled in from menu item; selling price and menu
+        // department are on the linked menu_items row (see menuItems.recipeId).
+        // The instructions field carries the selling price note for operator visibility.
         const [newRecipe] = await tx.insert(recipes).values({
           companyId,
           name: item.name,
@@ -106,6 +122,7 @@ export async function seedRecipesFromDescriptions(
           canBeIngredient: 0,
           isPlaceholder: 1,
           isActive: 1,
+          instructions: autoInstructions,
         }).returning();
 
         // Link menu item → recipe
