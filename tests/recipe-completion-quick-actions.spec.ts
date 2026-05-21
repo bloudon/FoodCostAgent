@@ -224,7 +224,7 @@ async function goToRecipesPage(page: Page, recipes: object[]): Promise<void> {
   await mockRecipesList(page, recipes);
   // Use ?app to force app-mode routing in the development environment.
   await page.goto(`${BASE_URL}/recipes?app`);
-  await page.waitForSelector('[data-testid^="row-recipe-"]', { timeout: 10000 });
+  await page.waitForSelector('[data-testid^="row-recipe-"]:not([data-testid*="-mobile-"])', { timeout: 10000 });
 }
 
 // =============================================================================

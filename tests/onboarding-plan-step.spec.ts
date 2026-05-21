@@ -294,7 +294,7 @@ test.describe('Onboarding plan step — wizard Step 2', () => {
     await page.getByTestId('button-check-plan').click();
 
     // Should show an error toast (no active plan found)
-    await expect(page.getByText('No active plan found')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('No active plan found').first()).toBeVisible({ timeout: 5000 });
 
     // Should still be on step 2 (plan card still visible)
     await expect(page.getByTestId('card-step-plan')).toBeVisible();
