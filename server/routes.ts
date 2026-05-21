@@ -24,7 +24,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -11023,6 +11023,267 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       res.json({ ok: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============ MENU SCAN TOOL ============
+
+  // GET /api/order-guide-lines — all OGL lines for the company (used by Link chooser)
+  app.get("/api/order-guide-lines", requireAuth, async (req, res) => {
+    try {
+      const companyId = req.companyId!;
+      const lines = await db
+        .select({
+          id: orderGuideLines.id,
+          productName: orderGuideLines.productName,
+          matchedInventoryItemId: orderGuideLines.matchedInventoryItemId,
+        })
+        .from(orderGuideLines)
+        .innerJoin(orderGuides, eq(orderGuideLines.orderGuideId, orderGuides.id))
+        .where(eq(orderGuides.companyId, companyId));
+      res.json({ data: lines });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/menu-scan/match-ingredients?menuItemIds[]=id1&menuItemIds[]=id2
+  // For each menu item, look up its recipe components and surface matched/unmatched ingredients.
+  app.get("/api/menu-scan/match-ingredients", requireAuth, async (req, res) => {
+    try {
+      const companyId = req.companyId!;
+      const raw = req.query["menuItemIds[]"];
+      const menuItemIdList: string[] = Array.isArray(raw)
+        ? (raw as string[])
+        : raw
+        ? [raw as string]
+        : [];
+
+      if (menuItemIdList.length === 0) {
+        return res.json({ data: [] });
+      }
+
+      // Fetch the requested menu items (company-scoped)
+      const requestedItems = await db
+        .select({ id: menuItems.id, name: menuItems.name, recipeId: menuItems.recipeId, description: menuItems.description })
+        .from(menuItems)
+        .where(and(
+          eq(menuItems.companyId, companyId),
+          inArray(menuItems.id, menuItemIdList),
+        ));
+
+      // Pre-load inventory + categories + OGL lines once for the whole request
+      const { ItemMatcher } = await import('./services/itemMatcher');
+      const matcher = new ItemMatcher(storage);
+      const [allInventoryItems, allCategories, companyOGLLines] = await Promise.all([
+        storage.getInventoryItems(undefined, undefined, companyId),
+        storage.getCategories(companyId),
+        db
+          .select({
+            id: orderGuideLines.id,
+            productName: orderGuideLines.productName,
+            matchedInventoryItemId: orderGuideLines.matchedInventoryItemId,
+          })
+          .from(orderGuideLines)
+          .innerJoin(orderGuides, eq(orderGuideLines.orderGuideId, orderGuides.id))
+          .where(eq(orderGuides.companyId, companyId)),
+      ]);
+
+      // Treat OGL lines as candidates for a second-pass fuzzy match
+      const oglAsInventory = companyOGLLines.map(l => ({
+        id: l.id,
+        name: l.productName,
+        categoryId: null as string | null,
+        pluSku: null as string | null,
+      }));
+
+      type IngredientResult = {
+        name: string;
+        status: "matched" | "unmatched";
+        inventoryItemId?: string;
+        inventoryItemName?: string;
+        componentId?: string;
+        suggestedInventoryItemId?: string;
+        suggestedInventoryItemName?: string;
+        orderGuideLineId?: string;
+        orderGuideLineName?: string;
+        orderGuideLinkedInventoryItemId?: string | null;
+        matchConfidence?: string;
+        aiExtracted?: boolean;
+      };
+
+      const results: {
+        menuItemId: string;
+        menuItemName: string;
+        recipeId: string | null;
+        ingredients: IngredientResult[];
+      }[] = [];
+
+      for (const item of requestedItems) {
+        const ingredients: IngredientResult[] = [];
+
+        if (item.recipeId) {
+          // ── Items WITH a linked recipe ──────────────────────────────────────
+          // Fetch all recipe components
+          const components = await db
+            .select({
+              id: recipeComponents.id,
+              componentId: recipeComponents.componentId,
+              missingItemName: recipeComponents.missingItemName,
+            })
+            .from(recipeComponents)
+            .where(eq(recipeComponents.recipeId, item.recipeId));
+
+          // Collect linked inventory item IDs for name lookup
+          const linkedItemIds = components
+            .filter(c => c.componentId && !c.missingItemName)
+            .map(c => c.componentId!);
+
+          const inventoryItemMap = new Map<string, string>();
+          if (linkedItemIds.length > 0) {
+            const linkedItems = await db
+              .select({ id: inventoryItems.id, name: inventoryItems.name })
+              .from(inventoryItems)
+              .where(and(
+                eq(inventoryItems.companyId, companyId),
+                inArray(inventoryItems.id, linkedItemIds),
+              ));
+            for (const li of linkedItems) inventoryItemMap.set(li.id, li.name);
+          }
+
+          // Run unmatched components (missingItemName) through itemMatcher — inventory + OGL
+          const unmatchedComponents = components.filter(c => !!c.missingItemName);
+          const unmatchedProducts = unmatchedComponents.map((c, i) => ({
+            vendorSku: `missing-${i}`,
+            vendorProductName: c.missingItemName!,
+          }));
+          const matchResults = unmatchedProducts.length > 0
+            ? matcher.matchWithPreloadedData(unmatchedProducts, allInventoryItems, allCategories)
+            : new Map();
+          // Second pass: match unmatched components against OGL product names
+          const oglMatchResults = unmatchedProducts.length > 0 && oglAsInventory.length > 0
+            ? matcher.matchWithPreloadedData(unmatchedProducts, oglAsInventory, [])
+            : new Map();
+
+          for (const comp of components) {
+            if (comp.missingItemName) {
+              const matchIdx = unmatchedComponents.findIndex(u => u.id === comp.id);
+              const matchResult = matchResults.get(`missing-${matchIdx}`);
+              const oglMatch = oglMatchResults.get(`missing-${matchIdx}`);
+              const oglLine = oglMatch?.confidence !== 'none' && oglMatch?.inventoryItemId
+                ? companyOGLLines.find(l => l.id === oglMatch.inventoryItemId)
+                : null;
+              ingredients.push({
+                name: comp.missingItemName,
+                status: "unmatched",
+                componentId: comp.id,
+                suggestedInventoryItemId: matchResult?.confidence !== 'none' ? (matchResult?.inventoryItemId ?? undefined) : undefined,
+                suggestedInventoryItemName: matchResult?.confidence !== 'none' ? (matchResult?.inventoryItemName ?? undefined) : undefined,
+                orderGuideLineId: oglLine?.id,
+                orderGuideLineName: oglLine?.productName,
+                orderGuideLinkedInventoryItemId: oglLine?.matchedInventoryItemId,
+                matchConfidence: matchResult?.confidence,
+              });
+            } else if (comp.componentId) {
+              const invName = inventoryItemMap.get(comp.componentId);
+              ingredients.push({
+                name: invName || comp.componentId,
+                status: "matched",
+                inventoryItemId: comp.componentId,
+                inventoryItemName: invName,
+                componentId: comp.id,
+              });
+            }
+          }
+        } else {
+          // ── Items WITHOUT a recipe: AI extraction ───────────────────────────
+          // Use GPT-4o-mini to extract likely ingredients from the menu item name
+          try {
+            const OpenAI = (await import("openai")).default;
+            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+            const prompt = `You are a culinary expert. Given a menu item name and optional description, list the typical main ingredients needed to prepare this dish. Return ONLY a JSON array of ingredient names (strings), with 3-8 items. Do not include measurements or units. Focus on the main ingredients a restaurant would need to stock.
+
+Menu item: "${item.name}"${item.description ? `\nDescription: "${item.description}"` : ""}
+
+Return format: ["ingredient1", "ingredient2", ...]`;
+
+            const completion = await openai.chat.completions.create({
+              model: "gpt-4o-mini",
+              messages: [{ role: "user", content: prompt }],
+              response_format: { type: "json_object" },
+              max_tokens: 200,
+              temperature: 0.3,
+            });
+
+            const raw = completion.choices[0]?.message?.content ?? "{}";
+            let parsed: unknown;
+            try { parsed = JSON.parse(raw); } catch { parsed = {}; }
+
+            let ingredientNames: string[] = [];
+            if (Array.isArray(parsed)) {
+              ingredientNames = parsed.filter((x): x is string => typeof x === "string");
+            } else if (parsed && typeof parsed === "object") {
+              const obj = parsed as Record<string, unknown>;
+              const first = Object.values(obj)[0];
+              if (Array.isArray(first)) {
+                ingredientNames = first.filter((x): x is string => typeof x === "string");
+              }
+            }
+
+            // Run through itemMatcher to find matches in inventory
+            const vendorProducts = ingredientNames.map((name, i) => ({
+              vendorSku: `ai-${i}`,
+              vendorProductName: name,
+            }));
+            const matchResults = ingredientNames.length > 0
+              ? matcher.matchWithPreloadedData(vendorProducts, allInventoryItems, allCategories)
+              : new Map();
+            // Second pass: match AI-extracted ingredients against OGL product names
+            const oglMatchResults = ingredientNames.length > 0 && oglAsInventory.length > 0
+              ? matcher.matchWithPreloadedData(vendorProducts, oglAsInventory, [])
+              : new Map();
+
+            for (let i = 0; i < ingredientNames.length; i++) {
+              const name = ingredientNames[i];
+              const matchResult = matchResults.get(`ai-${i}`);
+              const oglMatch = oglMatchResults.get(`ai-${i}`);
+              const isMatched = matchResult?.confidence === 'high' || matchResult?.confidence === 'medium';
+              const oglLine = !isMatched && oglMatch?.confidence !== 'none' && oglMatch?.inventoryItemId
+                ? companyOGLLines.find(l => l.id === oglMatch.inventoryItemId)
+                : null;
+              ingredients.push({
+                name,
+                status: isMatched ? "matched" : "unmatched",
+                inventoryItemId: isMatched ? (matchResult!.inventoryItemId ?? undefined) : undefined,
+                inventoryItemName: isMatched ? (matchResult!.inventoryItemName ?? undefined) : undefined,
+                suggestedInventoryItemId: !isMatched && matchResult?.confidence !== 'none' ? (matchResult?.inventoryItemId ?? undefined) : undefined,
+                suggestedInventoryItemName: !isMatched && matchResult?.confidence !== 'none' ? (matchResult?.inventoryItemName ?? undefined) : undefined,
+                orderGuideLineId: oglLine?.id,
+                orderGuideLineName: oglLine?.productName,
+                orderGuideLinkedInventoryItemId: oglLine?.matchedInventoryItemId,
+                matchConfidence: matchResult?.confidence,
+                aiExtracted: true,
+                // componentId is intentionally undefined — no recipe component exists yet
+              });
+            }
+          } catch (aiError) {
+            // If AI extraction fails, return empty ingredients rather than failing the whole request
+            console.error(`[menu-scan/match-ingredients] AI extraction failed for "${item.name}":`, aiError);
+          }
+        }
+
+        results.push({
+          menuItemId: item.id,
+          menuItemName: item.name,
+          recipeId: item.recipeId ?? null,
+          ingredients,
+        });
+      }
+
+      res.json({ data: results });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

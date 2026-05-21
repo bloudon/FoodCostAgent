@@ -1134,7 +1134,7 @@ export default function MenuItemsPage() {
             </Button>
 
             {hasFeature('recipe_costing') && (
-              <Link href="/menu-import">
+              <Link href="/menu-scan">
                 <Button variant="outline" data-testid="button-import-from-image">
                   <Camera className="h-4 w-4 mr-2" />
                   Import from Image
