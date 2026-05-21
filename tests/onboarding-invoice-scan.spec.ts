@@ -105,7 +105,7 @@ test.describe('Onboarding invoice scan — wizard Step 3', () => {
     await page.goto(`${BASE_URL}/onboarding/setup`);
     await page.waitForTimeout(1000);
 
-    await setWizardStep(page, 3);
+    await setWizardStep(page, 5);
     await page.reload();
     await page.waitForTimeout(2000);
 
@@ -155,7 +155,7 @@ test.describe('Onboarding invoice scan — wizard Step 3', () => {
     await page.goto(`${BASE_URL}/onboarding/setup`);
     await page.waitForTimeout(1000);
 
-    await setWizardStep(page, 3);
+    await setWizardStep(page, 5);
     await page.reload();
     await page.waitForTimeout(2000);
 
@@ -220,7 +220,7 @@ test.describe('Onboarding invoice scan — wizard Step 3', () => {
     await page.goto(`${BASE_URL}/onboarding/setup`);
     await page.waitForTimeout(1000);
 
-    await setWizardStep(page, 3);
+    await setWizardStep(page, 5);
     await page.reload();
     await page.waitForTimeout(2000);
 

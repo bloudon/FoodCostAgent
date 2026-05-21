@@ -28,6 +28,7 @@ import {
   userStores,
   inventoryCounts,
   orderGuides,
+  orderGuideLines,
   vendors,
   units,
   menuItems,
@@ -209,12 +210,62 @@ async function run() {
       vendorId: VENDOR_ID,
       vendorKey: "sysco",
       source: "csv",
-      rowCount: 0,
+      rowCount: 2,
       status: "approved",
     });
     console.log("  ✅ Order guide created");
   } else {
     console.log("  ⏭  Order guide already exists");
+  }
+
+  // ── 8b. Order guide lines (needed by order-guide-scan spec) ──────────────
+  const OG_LINE_1_ID = "ci-og-line-00000000000001";
+  const OG_LINE_2_ID = "ci-og-line-00000000000002";
+
+  const existingLine1 = await db
+    .select()
+    .from(orderGuideLines)
+    .where(eq(orderGuideLines.id, OG_LINE_1_ID));
+
+  if (existingLine1.length === 0) {
+    await db.insert(orderGuideLines).values({
+      id: OG_LINE_1_ID,
+      orderGuideId: ORDER_GUIDE_ID,
+      vendorSku: "CI-001",
+      productName: "CI Test Mozzarella Cheese",
+      packSize: "5 LB",
+      uom: "LB",
+      caseSize: 6,
+      price: 4.5,
+      matchStatus: "new",
+      matchConfidence: 0,
+    });
+    console.log("  ✅ Order guide line 1 created");
+  } else {
+    console.log("  ⏭  Order guide line 1 already exists");
+  }
+
+  const existingLine2 = await db
+    .select()
+    .from(orderGuideLines)
+    .where(eq(orderGuideLines.id, OG_LINE_2_ID));
+
+  if (existingLine2.length === 0) {
+    await db.insert(orderGuideLines).values({
+      id: OG_LINE_2_ID,
+      orderGuideId: ORDER_GUIDE_ID,
+      vendorSku: "CI-002",
+      productName: "CI Test Sliced Bacon",
+      packSize: "15/18 CT",
+      uom: "CS",
+      caseSize: 2,
+      price: 34.99,
+      matchStatus: "new",
+      matchConfidence: 0,
+    });
+    console.log("  ✅ Order guide line 2 created");
+  } else {
+    console.log("  ⏭  Order guide line 2 already exists");
   }
 
   // ── 9. Inventory count for Company A ─────────────────────────────────────

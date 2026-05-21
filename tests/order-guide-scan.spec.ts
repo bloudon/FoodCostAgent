@@ -56,7 +56,7 @@ test.describe('Order Guide Scan — multi-page invoice scan flow', () => {
     await expect(vendorSelector).toBeVisible();
 
     await vendorSelector.click();
-    await expect(page.getByText('No vendor / Unknown')).toBeVisible();
+    await expect(page.getByText('No vendor / Unknown').first()).toBeVisible();
     await page.keyboard.press('Escape');
 
     const storeCheckboxes = page.locator('[data-testid^="checkbox-store-"]');

@@ -192,7 +192,7 @@ test.describe('Onboarding plan step — wizard Step 2', () => {
 
     // After polling detects a paid tier, the wizard should advance to step 3
     await expect(
-      page.getByTestId('card-step-invoice-upload').or(page.getByTestId('card-step-plan-active'))
+      page.getByTestId('card-step-store').or(page.getByTestId('card-step-plan-active'))
     ).toBeVisible({ timeout: 12000 });
   });
 
@@ -241,7 +241,7 @@ test.describe('Onboarding plan step — wizard Step 2', () => {
     await expect(page.getByText('Confirming your plan…')).toBeVisible();
 
     // After polling detects a paid tier, wizard should advance to step 3
-    await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('card-step-store')).toBeVisible({ timeout: 15000 });
   });
 
   test('manual "I\'ve selected a plan" button advances to step 3 when API returns paid tier', async ({ page }) => {
@@ -275,8 +275,8 @@ test.describe('Onboarding plan step — wizard Step 2', () => {
 
     await page.getByTestId('button-check-plan').click();
 
-    // Should advance to step 3 — invoice upload card
-    await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 8000 });
+    // Should advance to step 3 — store setup card
+    await expect(page.getByTestId('card-step-store')).toBeVisible({ timeout: 8000 });
   });
 
   test('manual "I\'ve selected a plan" button shows error toast when API still returns free tier', async ({ page }) => {
