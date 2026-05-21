@@ -32,6 +32,35 @@ import {
 
 type Screen = "scan" | "summary" | "matching";
 
+const SESSION_KEY = "menu_scan_session";
+
+interface SavedSession extends ImportedSummary {
+  lastScreen: "summary" | "matching";
+}
+
+function loadSavedSession(): SavedSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SavedSession;
+    if (!parsed.sessionId || !Array.isArray(parsed.items)) return null;
+    return parsed;
+  } catch {
+    localStorage.removeItem(SESSION_KEY);
+    return null;
+  }
+}
+
+function persistSession(data: ImportedSummary, lastScreen: "summary" | "matching") {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ ...data, lastScreen }));
+  } catch {}
+}
+
+function clearPersistedSession() {
+  localStorage.removeItem(SESSION_KEY);
+}
+
 interface ImportedSummary {
   items: ApprovedMenuItem[];
   sessionId: string;
@@ -808,6 +837,12 @@ export default function MenuScanTool() {
   const [, navigate] = useLocation();
   const [screen, setScreen] = useState<Screen>("scan");
   const [summary, setSummary] = useState<ImportedSummary | null>(null);
+  const [savedSession, setSavedSession] = useState<SavedSession | null>(null);
+
+  useEffect(() => {
+    const session = loadSavedSession();
+    if (session) setSavedSession(session);
+  }, []);
 
   const handleScanComplete = (
     items: ApprovedMenuItem[],
@@ -815,8 +850,6 @@ export default function MenuScanTool() {
     intelligence: MenuIntelligence,
     hasBar?: boolean,
   ) => {
-    // Build department breakdown and price stats from real ApprovedMenuItem data
-    // (department and price are now carried on ApprovedMenuItem from the scan)
     const deptMap = new Map<string, number>();
     let withPrices = 0;
 
@@ -830,8 +863,29 @@ export default function MenuScanTool() {
       .sort((a, b) => b[1] - a[1])
       .map(([dept, count]) => ({ dept, count }));
 
-    setSummary({ items, sessionId, intelligence, hasBar, deptBreakdown, withPrices });
+    const newSummary: ImportedSummary = { items, sessionId, intelligence, hasBar, deptBreakdown, withPrices };
+    setSummary(newSummary);
+    persistSession(newSummary, "summary");
+    setSavedSession(null);
     setScreen("summary");
+  };
+
+  const handleResume = () => {
+    if (!savedSession) return;
+    const { lastScreen, ...summaryData } = savedSession;
+    setSummary(summaryData);
+    setSavedSession(null);
+    setScreen(lastScreen);
+  };
+
+  const handleStartFresh = () => {
+    clearPersistedSession();
+    setSavedSession(null);
+  };
+
+  const handleFinish = () => {
+    clearPersistedSession();
+    navigate("/menu-items");
   };
 
   const STEP_LABELS: Record<Screen, string> = {
@@ -887,6 +941,30 @@ export default function MenuScanTool() {
             ))}
           </div>
 
+          {screen === "scan" && savedSession && (
+            <Card data-testid="card-resume-session">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Resume previous scan
+                </CardTitle>
+                <CardDescription>
+                  You have an unfinished scan with {savedSession.items.length} item{savedSession.items.length !== 1 ? "s" : ""}.
+                  Pick up where you left off or start over.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0 flex flex-col sm:flex-row gap-2">
+                <Button onClick={handleResume} data-testid="button-resume-session">
+                  Resume — go to {savedSession.lastScreen === "matching" ? "Ingredient Matching" : "Summary"}
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+                <Button variant="ghost" onClick={handleStartFresh} data-testid="button-start-fresh">
+                  Start fresh
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           {screen === "scan" && (
             <MenuScanStep onComplete={handleScanComplete} />
           )}
@@ -894,15 +972,21 @@ export default function MenuScanTool() {
           {screen === "summary" && summary && (
             <SummaryScreen
               summary={summary}
-              onContinue={() => setScreen("matching")}
-              onSkip={() => navigate("/menu-items")}
+              onContinue={() => {
+                persistSession(summary, "matching");
+                setScreen("matching");
+              }}
+              onSkip={() => {
+                clearPersistedSession();
+                navigate("/menu-items");
+              }}
             />
           )}
 
           {screen === "matching" && summary && (
             <MatchingScreen
               summary={summary}
-              onFinish={() => navigate("/menu-items")}
+              onFinish={handleFinish}
             />
           )}
         </div>
