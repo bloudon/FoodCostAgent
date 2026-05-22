@@ -11887,19 +11887,20 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         .where(eq(menuItemRecipes.menuItemId, id))
         .orderBy(asc(menuItemRecipes.sortOrder));
 
-      // Compute food cost % per row using the menu item's selling price
+      // Compute margin % per row using the menu item's selling price
+      // marginPct = (sellingPrice - recipeCost) / sellingPrice * 100
       const sellingPrice = menuItem.price;
       const enriched = rows.map((row) => {
-        let foodCostPct: number | null = null;
+        let marginPct: number | null = null;
         if (
           sellingPrice != null &&
           sellingPrice > 0 &&
           row.recipeComputedCost != null &&
-          row.recipeComputedCost > 0
+          row.recipeComputedCost >= 0
         ) {
-          foodCostPct = Math.round((row.recipeComputedCost / sellingPrice) * 10000) / 100;
+          marginPct = Math.round(((sellingPrice - row.recipeComputedCost) / sellingPrice) * 10000) / 100;
         }
-        return { ...row, sellingPrice, foodCostPct };
+        return { ...row, sellingPrice, marginPct };
       });
 
       return res.json(enriched);
@@ -11927,6 +11928,17 @@ Return format: ["ingredient1", "ingredient2", ...]`;
 
       if (itemRows.length !== itemIds.length) {
         return res.status(400).json({ error: "One or more items not found" });
+      }
+
+      // Reject items already linked to a different parent
+      const alreadyLinked = itemRows.filter(
+        (r) => r.parentMenuItemId != null && !itemIds.includes(r.parentMenuItemId)
+      );
+      if (alreadyLinked.length > 0) {
+        const names = alreadyLinked.map((r) => r.name).join(", ");
+        return res.status(409).json({
+          error: `One or more items already belong to a variant group: ${names}`,
+        });
       }
 
       const [parentItem, ...childItems] = itemIds;
