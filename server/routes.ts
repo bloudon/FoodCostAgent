@@ -24,7 +24,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -406,6 +406,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (err) {
       console.error("[Migration] menu_descriptions error:", err);
+    }
+  })();
+
+  (async function migrateMenuItemRecipes() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'menu_item_recipes'`
+      );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
+      if (!existing) {
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS menu_item_recipes (
+            id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id VARCHAR NOT NULL,
+            menu_item_id VARCHAR NOT NULL,
+            recipe_id VARCHAR NOT NULL,
+            prep_style_label TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(menu_item_id, recipe_id)
+          );
+          CREATE INDEX IF NOT EXISTS menu_item_recipes_menu_item_idx ON menu_item_recipes(menu_item_id);
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('menu_item_recipes')`
+        );
+        console.log("[Migration] Applied menu_item_recipes");
+      } else {
+        console.log("[Migration] Already applied (menu_item_recipes)");
+      }
+    } catch (err) {
+      console.error("[Migration] menu_item_recipes error:", err);
     }
   })();
 
@@ -1757,12 +1794,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return a.name.localeCompare(b.name);
       });
 
+      // ---- Variant group detection ----
+      // Detect menu items that appear to be size variants of the same dish
+      // but are not yet linked under a parent (parentMenuItemId is null).
+      // Strategy: strip leading/trailing numerics to get a "base name", then
+      // group items sharing the same normalised base name that have 2+ members.
+      const allActiveItems = await db
+        .select({ id: menuItems.id, name: menuItems.name, pluSku: menuItems.pluSku, size: menuItems.size, price: menuItems.price })
+        .from(menuItems)
+        .where(and(
+          eq(menuItems.companyId, companyId),
+          eq(menuItems.active, 1),
+          isNull(menuItems.parentMenuItemId),
+        ));
+
+      function extractBaseName(name: string): string {
+        // Remove leading number (e.g. "6 Chicken Wings" → "Chicken Wings")
+        const leadingNum = name.replace(/^\d+\s+/i, "");
+        if (leadingNum !== name) return leadingNum.trim().toLowerCase();
+        // Remove trailing number (e.g. "Wings 6pc" → "Wings")
+        const trailingNum = name.replace(/\s+\d+\s*(?:pc|pcs|piece|pieces|oz|lb)?$/i, "");
+        if (trailingNum !== name) return trailingNum.trim().toLowerCase();
+        // Remove common size suffixes
+        const sizeSuffix = name.replace(/\s+(?:small|medium|large|sm|md|lg|xl|regular|reg|half|full|mini|jumbo|6pc|12pc|24pc|6"|8"|10"|12"|14"|16")$/i, "");
+        if (sizeSuffix !== name) return sizeSuffix.trim().toLowerCase();
+        return name.trim().toLowerCase();
+      }
+
+      const baseNameMap = new Map<string, typeof allActiveItems>();
+      for (const item of allActiveItems) {
+        const base = extractBaseName(item.name);
+        if (!baseNameMap.has(base)) baseNameMap.set(base, []);
+        baseNameMap.get(base)!.push(item);
+      }
+
+      const variantGroups = [...baseNameMap.entries()]
+        .filter(([, items]) => items.length >= 2)
+        .map(([baseName, items]) => ({
+          baseName: baseName.charAt(0).toUpperCase() + baseName.slice(1),
+          items: items.map(i => ({ id: i.id, name: i.name, pluSku: i.pluSku, price: i.price })),
+        }))
+        .sort((a, b) => b.items.length - a.items.length)
+        .slice(0, 10); // cap at 10 groups to keep payload light
+
       return res.json({
         totalMenuItems: menuItemRows.length,
         departmentBreakdown,
         avgSellingPrice,
         uniqueIngredientCount: ingredients.length,
         ingredients,
+        variantGroups,
       });
     } catch (err) {
       console.error("GET /api/menu-insights error:", err);
@@ -11773,6 +11854,139 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       res.json(updated);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // ============ MENU ITEM PREP STYLES (menuItemRecipes) ============
+
+  // GET /api/menu-items/:id/prep-styles — list prep-style recipe links with cost
+  app.get("/api/menu-items/:id/prep-styles", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = req.companyId!;
+
+      const [menuItem] = await db.select({ id: menuItems.id })
+        .from(menuItems)
+        .where(and(eq(menuItems.id, id), eq(menuItems.companyId, companyId)))
+        .limit(1);
+      if (!menuItem) return res.status(404).json({ error: "Menu item not found" });
+
+      const rows = await db.select({
+        id: menuItemRecipes.id,
+        menuItemId: menuItemRecipes.menuItemId,
+        recipeId: menuItemRecipes.recipeId,
+        prepStyleLabel: menuItemRecipes.prepStyleLabel,
+        sortOrder: menuItemRecipes.sortOrder,
+        recipeComputedCost: recipes.computedCost,
+        recipeName: recipes.name,
+        recipeIsPlaceholder: recipes.isPlaceholder,
+      })
+        .from(menuItemRecipes)
+        .innerJoin(recipes, eq(menuItemRecipes.recipeId, recipes.id))
+        .where(eq(menuItemRecipes.menuItemId, id))
+        .orderBy(asc(menuItemRecipes.sortOrder));
+
+      return res.json(rows);
+    } catch (err) {
+      console.error("GET /api/menu-items/:id/prep-styles error:", err);
+      return res.status(500).json({ error: "Failed to fetch prep styles" });
+    }
+  });
+
+  // POST /api/menu-items/:id/prep-styles — add a prep-style recipe link
+  app.post("/api/menu-items/:id/prep-styles", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const companyId = req.companyId!;
+      const { recipeId, prepStyleLabel } = req.body;
+
+      if (!recipeId || !prepStyleLabel?.trim()) {
+        return res.status(400).json({ error: "recipeId and prepStyleLabel are required" });
+      }
+
+      const [menuItem] = await db.select({ id: menuItems.id })
+        .from(menuItems)
+        .where(and(eq(menuItems.id, id), eq(menuItems.companyId, companyId)))
+        .limit(1);
+      if (!menuItem) return res.status(404).json({ error: "Menu item not found" });
+
+      const [recipe] = await db.select({ id: recipes.id })
+        .from(recipes)
+        .where(and(eq(recipes.id, recipeId), eq(recipes.companyId, companyId)))
+        .limit(1);
+      if (!recipe) return res.status(404).json({ error: "Recipe not found" });
+
+      const maxSortOrder = await db.select({ maxSort: sql<number>`COALESCE(MAX(sort_order), -1)` })
+        .from(menuItemRecipes)
+        .where(eq(menuItemRecipes.menuItemId, id));
+      const nextSort = (maxSortOrder[0]?.maxSort ?? -1) + 1;
+
+      const [created] = await db.insert(menuItemRecipes).values({
+        companyId,
+        menuItemId: id,
+        recipeId,
+        prepStyleLabel: prepStyleLabel.trim(),
+        sortOrder: nextSort,
+      }).returning();
+
+      return res.status(201).json(created);
+    } catch (err: any) {
+      if (err.code === "23505") {
+        return res.status(409).json({ error: "This recipe is already linked as a prep style for this item" });
+      }
+      console.error("POST /api/menu-items/:id/prep-styles error:", err);
+      return res.status(500).json({ error: "Failed to add prep style" });
+    }
+  });
+
+  // PATCH /api/menu-items/:id/prep-styles/:prepId — update label
+  app.patch("/api/menu-items/:id/prep-styles/:prepId", requireAuth, async (req, res) => {
+    try {
+      const { id, prepId } = req.params;
+      const companyId = req.companyId!;
+      const { prepStyleLabel } = req.body;
+
+      if (!prepStyleLabel?.trim()) {
+        return res.status(400).json({ error: "prepStyleLabel is required" });
+      }
+
+      const [row] = await db.select({ id: menuItemRecipes.id, menuItemId: menuItemRecipes.menuItemId })
+        .from(menuItemRecipes)
+        .innerJoin(menuItems, eq(menuItemRecipes.menuItemId, menuItems.id))
+        .where(and(eq(menuItemRecipes.id, prepId), eq(menuItems.companyId, companyId), eq(menuItemRecipes.menuItemId, id)))
+        .limit(1);
+      if (!row) return res.status(404).json({ error: "Prep style not found" });
+
+      const [updated] = await db.update(menuItemRecipes)
+        .set({ prepStyleLabel: prepStyleLabel.trim() })
+        .where(eq(menuItemRecipes.id, prepId))
+        .returning();
+
+      return res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/menu-items/:id/prep-styles/:prepId error:", err);
+      return res.status(500).json({ error: "Failed to update prep style" });
+    }
+  });
+
+  // DELETE /api/menu-items/:id/prep-styles/:prepId — remove a prep-style link
+  app.delete("/api/menu-items/:id/prep-styles/:prepId", requireAuth, async (req, res) => {
+    try {
+      const { id, prepId } = req.params;
+      const companyId = req.companyId!;
+
+      const [row] = await db.select({ id: menuItemRecipes.id })
+        .from(menuItemRecipes)
+        .innerJoin(menuItems, eq(menuItemRecipes.menuItemId, menuItems.id))
+        .where(and(eq(menuItemRecipes.id, prepId), eq(menuItems.companyId, companyId), eq(menuItemRecipes.menuItemId, id)))
+        .limit(1);
+      if (!row) return res.status(404).json({ error: "Prep style not found" });
+
+      await db.delete(menuItemRecipes).where(eq(menuItemRecipes.id, prepId));
+      return res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/menu-items/:id/prep-styles/:prepId error:", err);
+      return res.status(500).json({ error: "Failed to remove prep style" });
     }
   });
 

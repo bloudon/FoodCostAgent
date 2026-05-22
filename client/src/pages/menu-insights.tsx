@@ -13,6 +13,7 @@ import {
   Leaf,
   ArrowRight,
   ChefHat,
+  Layers,
 } from "lucide-react";
 
 type IngredientEntry = {
@@ -26,12 +27,25 @@ type DepartmentEntry = {
   count: number;
 };
 
+type VariantGroupItem = {
+  id: string;
+  name: string;
+  pluSku: string | null;
+  price: number | null;
+};
+
+type VariantGroup = {
+  baseName: string;
+  items: VariantGroupItem[];
+};
+
 type MenuInsightsData = {
   totalMenuItems: number;
   departmentBreakdown: DepartmentEntry[];
   avgSellingPrice: number | null;
   uniqueIngredientCount: number;
   ingredients: IngredientEntry[];
+  variantGroups: VariantGroup[];
 };
 
 function StatCard({
@@ -303,6 +317,42 @@ export default function MenuInsights() {
             <p className="text-sm text-muted-foreground">
               No ingredient descriptions were detected in this menu scan.
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {data.variantGroups && data.variantGroups.length > 0 && (
+        <Card className="mb-8">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Layers className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-base">Detected Size Variant Groups</CardTitle>
+              <Badge variant="secondary" className="ml-auto">{data.variantGroups.length} group{data.variantGroups.length !== 1 ? "s" : ""}</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground pt-1">
+              Menu items with the same dish name at different sizes. Consider linking them as size variants in the menu builder for unified recipe costing.
+            </p>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-3">
+              {data.variantGroups.map((group) => (
+                <div key={group.baseName} className="space-y-1" data-testid={`variant-group-${group.baseName.toLowerCase().replace(/\s+/g, "-")}`}>
+                  <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide text-xs">
+                    {group.baseName}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {group.items.map((item) => (
+                      <div key={item.id} className="flex items-center gap-1.5 text-sm bg-muted rounded-md px-2.5 py-1">
+                        <span>{item.name}</span>
+                        {item.price != null && (
+                          <span className="text-muted-foreground text-xs">${item.price.toFixed(2)}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}

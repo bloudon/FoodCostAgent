@@ -226,6 +226,266 @@ function SortableDeptRow({
   );
 }
 
+// ---- PrepStylesSection — inline prep-style recipe linker in edit dialog ----
+interface PrepStyleRow {
+  id: string;
+  menuItemId: string;
+  recipeId: string;
+  prepStyleLabel: string;
+  sortOrder: number;
+  recipeComputedCost: number | null;
+  recipeName: string;
+  recipeIsPlaceholder: number | null;
+}
+
+interface Recipe {
+  id: string;
+  name: string;
+  computedCost: number | null;
+  sizeName?: string | null;
+}
+
+function PrepStylesSection({ menuItemId, recipes }: { menuItemId: string; recipes?: Recipe[] }) {
+  const { toast } = useToast();
+  const [addOpen, setAddOpen] = useState(false);
+  const [newRecipeId, setNewRecipeId] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+
+  const { data: prepStyles, isLoading } = useQuery<PrepStyleRow[]>({
+    queryKey: ["/api/menu-items", menuItemId, "prep-styles"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/menu-items/${menuItemId}/prep-styles`);
+      return res.json();
+    },
+    staleTime: 0,
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/menu-items/${menuItemId}/prep-styles`, {
+        recipeId: newRecipeId,
+        prepStyleLabel: newLabel.trim(),
+      });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error || "Failed to add");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items", menuItemId, "prep-styles"] });
+      setAddOpen(false);
+      setNewRecipeId("");
+      setNewLabel("");
+      toast({ title: "Preparation style added" });
+    },
+    onError: (err: any) => toast({ title: err.message || "Failed to add", variant: "destructive" }),
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: async ({ id, label }: { id: string; label: string }) => {
+      const res = await apiRequest("PATCH", `/api/menu-items/${menuItemId}/prep-styles/${id}`, { prepStyleLabel: label });
+      if (!res.ok) throw new Error("Failed to rename");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items", menuItemId, "prep-styles"] });
+      setEditingId(null);
+      toast({ title: "Label updated" });
+    },
+    onError: () => toast({ title: "Failed to update label", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/menu-items/${menuItemId}/prep-styles/${id}`);
+      if (!res.ok) throw new Error("Failed to delete");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items", menuItemId, "prep-styles"] });
+      toast({ title: "Preparation style removed" });
+    },
+    onError: () => toast({ title: "Failed to remove", variant: "destructive" }),
+  });
+
+  const linkedRecipeIds = new Set((prepStyles || []).map(p => p.recipeId));
+  const availableRecipes = (recipes || []).filter(r => !linkedRecipeIds.has(r.id));
+
+  return (
+    <div className="space-y-2 pt-2 border-t" data-testid="section-prep-styles">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Preparation Styles</p>
+          <p className="text-xs text-muted-foreground">
+            Link different recipes to this item, each with a cost label (e.g. Bone-In, Boneless).
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => { setNewRecipeId(""); setNewLabel(""); setAddOpen(true); }}
+          data-testid="button-add-prep-style"
+        >
+          <Plus className="h-3.5 w-3.5 mr-1" />
+          Add
+        </Button>
+      </div>
+
+      {isLoading && (
+        <p className="text-xs text-muted-foreground">Loading…</p>
+      )}
+
+      {!isLoading && prepStyles && prepStyles.length > 0 && (
+        <div className="space-y-1.5" data-testid="list-prep-styles">
+          {prepStyles.map((row) => (
+            <div key={row.id} className="flex items-center gap-2 rounded-md bg-muted/50 px-2.5 py-1.5" data-testid={`prep-style-row-${row.id}`}>
+              {editingId === row.id ? (
+                <>
+                  <Input
+                    value={editLabel}
+                    onChange={e => setEditLabel(e.target.value)}
+                    className="h-7 text-sm flex-1"
+                    autoFocus
+                    data-testid={`input-edit-prep-label-${row.id}`}
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0"
+                    disabled={renameMutation.isPending}
+                    onClick={() => renameMutation.mutate({ id: row.id, label: editLabel })}
+                    data-testid={`button-confirm-prep-label-${row.id}`}
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => setEditingId(null)}
+                    data-testid={`button-cancel-prep-label-${row.id}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <span className="flex-1 text-sm font-medium truncate">{row.prepStyleLabel}</span>
+                  <span className="text-xs text-muted-foreground truncate max-w-[120px]">{formatRecipeName(row.recipeName)}</span>
+                  {row.recipeComputedCost != null && (
+                    <Badge variant="outline" className="text-xs shrink-0">
+                      ${row.recipeComputedCost.toFixed(2)}
+                    </Badge>
+                  )}
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => { setEditingId(row.id); setEditLabel(row.prepStyleLabel); }}
+                    data-testid={`button-edit-prep-label-${row.id}`}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0 text-destructive"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate(row.id)}
+                    data-testid={`button-delete-prep-style-${row.id}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isLoading && prepStyles && prepStyles.length === 0 && (
+        <p className="text-xs text-muted-foreground py-1" data-testid="text-no-prep-styles">
+          No preparation styles linked yet.
+        </p>
+      )}
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Preparation Style</DialogTitle>
+            <DialogDescription>
+              Choose a recipe and give it a short label so this menu item shows multiple cost rows side by side.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Recipe</label>
+              <Select value={newRecipeId} onValueChange={(v) => {
+                setNewRecipeId(v);
+                if (!newLabel.trim()) {
+                  const r = availableRecipes.find(r => r.id === v);
+                  if (r?.sizeName) setNewLabel(r.sizeName);
+                }
+              }}>
+                <SelectTrigger data-testid="select-new-prep-recipe">
+                  <SelectValue placeholder="Select a recipe…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableRecipes.map(r => (
+                    <SelectItem key={r.id} value={r.id} data-testid={`option-prep-recipe-${r.id}`}>
+                      {formatRecipeName(r.name)}
+                      {r.sizeName ? ` (${r.sizeName})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Label</label>
+              <Input
+                value={newLabel}
+                onChange={e => setNewLabel(e.target.value)}
+                placeholder="e.g. Bone-In, Half Rack, Boneless…"
+                data-testid="input-new-prep-label"
+              />
+              <p className="text-xs text-muted-foreground">
+                Shown alongside the cost on the menu item card.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setAddOpen(false)}
+              data-testid="button-cancel-add-prep-style"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!newRecipeId || !newLabel.trim() || addMutation.isPending}
+              onClick={() => addMutation.mutate()}
+              data-testid="button-confirm-add-prep-style"
+            >
+              {addMutation.isPending ? "Adding…" : "Add Preparation Style"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+// ---- End PrepStylesSection ----
+
 export default function MenuItemsPage() {
   const [search, setSearch] = useState("");
   const { selectedStoreId } = useStoreContext();
@@ -1819,6 +2079,11 @@ export default function MenuItemsPage() {
                       </FormItem>
                     )}
                   />
+                  {/* Preparation Styles — prep-style recipe links */}
+                  {editingItem && (
+                    <PrepStylesSection menuItemId={editingItem.id} recipes={recipes} />
+                  )}
+
                   <div className="space-y-3">
                     <FormLabel>Store Locations *</FormLabel>
                     <div className="space-y-2">

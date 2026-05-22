@@ -9,6 +9,7 @@ export interface ExtractedMenuItem {
   category: string;
   size: string;
   price: number | null;
+  variantGroupKey: string; // shared key for items that are size variants of the same dish (empty if none detected)
 }
 
 export interface MenuIntelligence {
@@ -49,7 +50,8 @@ Return a JSON object with this exact structure:
       "department": "Main category group (e.g. Pizza, Appetizers, Beverages, Desserts, Sides)",
       "category": "Subcategory if visible (e.g. Specialty Pizza, Classic Pizza) — empty string if none",
       "size": "Size variant if visible (e.g. Small, Medium, Large, 10\\", 12\\") — empty string if single size",
-      "price": 12.99
+      "price": 12.99,
+      "variantGroupKey": "slug-style-key shared by items that are the same dish in different sizes (e.g. all three wing sizes share \\"chicken-wings\\"). Empty string if no group detected."
     }
   ],
   "intelligence": {
@@ -69,6 +71,7 @@ Rules for items:
 - category: use sub-section headers if visible, otherwise empty string
 - name: clean up abbreviations, use title case
 - Do NOT include modifiers, add-ons, or combo options as separate items
+- variantGroupKey: assign a shared lowercase-hyphenated key to items that are clearly the same dish in different sizes (e.g. "6 Chicken Wings", "12 Chicken Wings", "24 Chicken Wings" all get "chicken-wings"). Only use this for genuine size variants of the same dish — NOT for different preparations (bone-in vs boneless), NOT for flavour variants (mild/hot/BBQ). Leave as empty string for items with no size siblings on this menu.
 
 Rules for intelligence:
 - phones: extract ALL phone numbers found anywhere on the menu (header, footer, contact section). Empty array if none found.
@@ -118,6 +121,7 @@ Respond ONLY with the JSON object, no markdown or explanation`;
     category: String(item.category || '').trim(),
     size: String(item.size || '').trim(),
     price: item.price != null ? Number(item.price) : null,
+    variantGroupKey: String((item as any).variantGroupKey || '').trim(),
   })).filter((item) => item.name.length > 0);
 
   const rawIntel = parsed.intelligence || {};

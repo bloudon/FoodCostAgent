@@ -947,6 +947,7 @@ function RecipeBuilderContent() {
   const [yieldQty, setYieldQty] = useState("1");
   const [yieldUnitId, setYieldUnitId] = useState("");
   const [canBeIngredient, setCanBeIngredient] = useState(false);
+  const [sizeName, setSizeName] = useState("");
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
 
   // Instructions & photo state
@@ -1910,6 +1911,7 @@ function RecipeBuilderContent() {
         yieldUnitId,
         computedCost: totalCost,
         canBeIngredient: canBeIngredient ? 1 : 0,
+        sizeName: sizeName.trim() || null,
         isPlaceholder: 0, // Convert placeholder to complete recipe when saved
         instructions: instructions || null,
         imagePath: recipeImagePath,
@@ -2139,6 +2141,7 @@ function RecipeBuilderContent() {
       setYieldQty(recipe.yieldQty.toString());
       setYieldUnitId(recipe.yieldUnitId);
       setCanBeIngredient(recipe.canBeIngredient === 1);
+      setSizeName(recipe.sizeName || "");
       setInstructions(recipe.instructions || "");
       setRecipeImagePath(recipe.imagePath || null);
 
@@ -2524,6 +2527,20 @@ function RecipeBuilderContent() {
                             </Select>
                           </div>
                         </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Preparation Style Label <span className="text-muted-foreground font-normal">(optional)</span></label>
+                          <Input
+                            type="text"
+                            value={sizeName}
+                            onChange={(e) => setSizeName(e.target.value)}
+                            placeholder="e.g. Bone-In, Boneless, Half Rack…"
+                            data-testid="input-size-name"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Used when this recipe is linked as a prep style on a menu item. Helps differentiate multiple recipes costed under the same dish.
+                          </p>
+                        </div>
+
                         <div className="flex items-center space-x-2">
                           <Checkbox
                             id="can-be-ingredient"

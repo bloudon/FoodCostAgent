@@ -819,6 +819,25 @@ export const insertStoreMenuItemSchema = createInsertSchema(storeMenuItems).omit
 export type InsertStoreMenuItem = z.infer<typeof insertStoreMenuItemSchema>;
 export type StoreMenuItem = typeof storeMenuItems.$inferSelect;
 
+// Menu Item Recipes (prep-style recipe links — one menu item → multiple recipe cost rows)
+// Example: "Chicken Wings" linked to "Bone-In Wings" recipe and "Boneless Wings" recipe,
+// each with its own label, so the menu item card can show both costs side by side.
+export const menuItemRecipes = pgTable("menu_item_recipes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  menuItemId: varchar("menu_item_id").notNull(),
+  recipeId: varchar("recipe_id").notNull(),
+  prepStyleLabel: text("prep_style_label").notNull(), // e.g. "Bone-In", "Boneless"
+  sortOrder: integer("sort_order").notNull().default(0),
+}, (table) => ({
+  menuItemIdx: index("menu_item_recipes_menu_item_idx").on(table.menuItemId),
+  uniqueMenuItemRecipe: unique().on(table.menuItemId, table.recipeId),
+}));
+
+export const insertMenuItemRecipeSchema = createInsertSchema(menuItemRecipes).omit({ id: true });
+export type InsertMenuItemRecipe = z.infer<typeof insertMenuItemRecipeSchema>;
+export type MenuItemRecipe = typeof menuItemRecipes.$inferSelect;
+
 // ============ THEORETICAL FOOD COST (TFC) MODULE ============
 
 // Dayparts (configurable meal periods for sales analysis)
