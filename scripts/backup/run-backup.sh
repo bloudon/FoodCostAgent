@@ -17,6 +17,9 @@
 #
 set -euo pipefail
 
+# ─── Script location (needed by the EXIT trap below) ──────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # ─── CONFIGURATION — adjust these paths for your VPS ──────────────────────────
 
 # Root directory where the app lives on the VPS
@@ -42,6 +45,23 @@ NGINX_CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/sites-available}"
 
 # ──────────────────────────────────────────────────────────────────────────────
 
+# ─── Failure alert trap ───────────────────────────────────────────────────────
+#
+# If the script exits with a non-zero code for any reason, call
+# notify-failure.sh which sends an email via SMTP2GO.  We use || true so
+# that a broken notify script can never suppress the original exit code.
+#
+_notify_on_failure() {
+  local code=$?
+  if [[ $code -ne 0 ]]; then
+    echo "[run-backup] Backup failed (exit $code) — sending alert..." >&2
+    bash "$SCRIPT_DIR/notify-failure.sh" "$LOG_FILE" "$code" || true
+  fi
+}
+trap _notify_on_failure EXIT
+
+# ──────────────────────────────────────────────────────────────────────────────
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
@@ -60,8 +80,6 @@ echo "════════════════════════�
 echo "  FNB Cost Pro — IDrive Backup"
 echo "  $TIMESTAMP"
 echo "═══════════════════════════════════════════════"
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ─── Step 1: Pre-backup (pg_dump + config snapshot) ───────────────────────────
 

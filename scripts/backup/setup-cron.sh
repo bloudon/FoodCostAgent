@@ -5,6 +5,16 @@
 # Installs a daily cron job that runs run-backup.sh at 2:30 AM server time.
 # Safe to run multiple times — it checks for an existing entry first.
 #
+# Failure alerting
+# ─────────────────
+# If a backup fails, run-backup.sh automatically calls notify-failure.sh which
+# sends an email alert via SMTP2GO.  For alerts to work you must set:
+#
+#   BACKUP_ALERT_EMAIL=you@example.com   in /var/www/fnbcostpro/.env
+#
+# The SMTP2GO_USERNAME / SMTP2GO_PASSWORD / SMTP_FROM_EMAIL variables already
+# required by the application are reused — no extra credentials needed.
+#
 # Usage (on VPS):
 #   chmod +x scripts/backup/setup-cron.sh
 #   ./scripts/backup/setup-cron.sh
