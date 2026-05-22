@@ -5,7 +5,7 @@ import {
   Building2, MapPin, Plus, Settings2, UserCircle, Trash2, AlertTriangle,
   Users, CreditCard, Clock, MailWarning, RefreshCw, Activity,
   ChevronDown, ChevronUp, Wand2, MessageSquare, CheckCircle, XCircle,
-  Pencil, Smartphone,
+  Pencil, Smartphone, DatabaseBackup,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +49,25 @@ type AdminStats = {
   activeSessions: number;
   mobileUsers: number;
 };
+
+type BackupStatus = {
+  status: "success" | "failure" | "unknown";
+  lastRun: string | null;
+  lastLine?: string;
+  message?: string;
+};
+
+function formatAgo(isoTimestamp: string | null): string {
+  if (!isoTimestamp) return "Unknown";
+  const diff = Date.now() - new Date(isoTimestamp).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 type OrphanedSignup = {
   companyId: string;
@@ -174,6 +193,11 @@ export default function Companies() {
   const { data: adminStats } = useQuery<AdminStats>({
     queryKey: ["/api/admin/stats"],
     refetchInterval: 30000,
+  });
+
+  const { data: backupStatus } = useQuery<BackupStatus>({
+    queryKey: ["/api/admin/backup-status"],
+    refetchInterval: 300000,
   });
 
   const { data: orphanedSignups, isLoading: orphansLoading } = useQuery<OrphanedSignup[]>({
@@ -432,7 +456,7 @@ export default function Companies() {
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         <StatCard
           icon={<Building2 className="h-5 w-5 text-primary" />}
           label="Companies"
@@ -464,6 +488,36 @@ export default function Companies() {
           label="Mobile Users"
           value={adminStats?.mobileUsers ?? "—"}
           testId="card-stat-mobile-users"
+        />
+        <StatCard
+          icon={
+            <DatabaseBackup
+              className={`h-5 w-5 ${
+                backupStatus?.status === "success"
+                  ? "text-green-500"
+                  : backupStatus?.status === "failure"
+                  ? "text-red-500"
+                  : "text-muted-foreground"
+              }`}
+            />
+          }
+          label="Last Backup"
+          value={backupStatus ? formatAgo(backupStatus.lastRun) : "—"}
+          subtitle={
+            backupStatus?.status === "success" ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                <CheckCircle className="h-3 w-3" />
+                OK
+              </span>
+            ) : backupStatus?.status === "failure" ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400">
+                <XCircle className="h-3 w-3" />
+                Failed
+              </span>
+            ) : undefined
+          }
+          highlight={backupStatus?.status === "failure"}
+          testId="card-stat-backup-status"
         />
       </div>
 
@@ -1064,6 +1118,7 @@ function StatCard({
   icon,
   label,
   value,
+  subtitle,
   highlight = false,
   testId,
   onClick,
@@ -1071,6 +1126,7 @@ function StatCard({
   icon: React.ReactNode;
   label: string;
   value: number | string;
+  subtitle?: React.ReactNode;
   highlight?: boolean;
   testId?: string;
   onClick?: () => void;
@@ -1100,6 +1156,7 @@ function StatCard({
               {value}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
+            {subtitle && <div className="mt-0.5">{subtitle}</div>}
           </div>
         </div>
       </CardContent>

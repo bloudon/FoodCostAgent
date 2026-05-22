@@ -12852,6 +12852,89 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
+  // ── Admin: backup status ──────────────────────────────────────────────────
+  // Parses /var/log/fnbcostpro-backup/backup.log written by run-backup.sh.
+  //
+  // Log structure per run:
+  //   ═══════...
+  //   FNB Cost Pro — IDrive Backup
+  //   YYYY-MM-DD HH:MM:SS TZ          ← run start timestamp
+  //   ═══════...
+  //   ... step output ...
+  //   [on success]
+  //   ═══════...
+  //   ✔  Backup complete — YYYY-MM-DD HH:MM:SS TZ   ← definitive success line
+  //   ═══════...
+  //   [on failure — set -euo pipefail causes early exit before any error echo]
+  //   <no success or explicit error marker>
+  //
+  // Strategy: find the last run's header, then check whether "Backup complete"
+  // appears anywhere after it. Absence == failure.
+  app.get("/api/admin/backup-status", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.user!.id);
+    if (user?.role !== "global_admin") {
+      return res.status(403).json({ error: "Only global admins can access this" });
+    }
+    try {
+      const { readFile } = await import("fs/promises");
+      const logFile = "/var/log/fnbcostpro-backup/backup.log";
+
+      let content: string;
+      try {
+        content = await readFile(logFile, "utf-8");
+      } catch {
+        return res.json({ status: "unknown", lastRun: null, message: "Log file not found" });
+      }
+
+      // Strip ANSI escape codes (run-backup.sh uses coloured echo -e via tee)
+      // eslint-disable-next-line no-control-regex
+      const stripped = content.replace(/\x1b\[[0-9;]*m/g, "");
+      const lines = stripped.split("\n");
+
+      // Step 1: Find the last run's header line ("FNB Cost Pro — IDrive Backup")
+      let lastRunStartIndex = -1;
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (lines[i].includes("FNB Cost Pro") && lines[i].includes("IDrive Backup")) {
+          lastRunStartIndex = i;
+          break;
+        }
+      }
+
+      if (lastRunStartIndex === -1) {
+        return res.json({ status: "unknown", lastRun: null, message: "No backup records found" });
+      }
+
+      // Step 2: Extract the run's start timestamp from nearby lines (within 5 lines of header)
+      let lastRun: string | null = null;
+      for (let i = lastRunStartIndex + 1; i < Math.min(lastRunStartIndex + 5, lines.length); i++) {
+        const tsMatch = lines[i].match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+        if (tsMatch) {
+          lastRun = new Date(tsMatch[1].replace(" ", "T")).toISOString();
+          break;
+        }
+      }
+
+      // Step 3: Scan forward from the run start for the definitive success marker
+      let status: "success" | "failure" = "failure";
+      for (let i = lastRunStartIndex; i < lines.length; i++) {
+        if (lines[i].includes("Backup complete")) {
+          status = "success";
+          // Use the completion timestamp for accuracy (run end, not start)
+          const tsMatch = lines[i].match(/Backup complete.*?(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+          if (tsMatch) {
+            lastRun = new Date(tsMatch[1].replace(" ", "T")).toISOString();
+          }
+          break;
+        }
+      }
+
+      res.json({ status, lastRun });
+    } catch (err) {
+      console.error("GET /api/admin/backup-status error:", err);
+      res.status(500).json({ error: "Failed to read backup status" });
+    }
+  });
+
   // ── Admin: orphaned (pending) signups ─────────────────────────────────────
   app.get("/api/admin/orphaned-signups", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.user!.id);
