@@ -1,56 +1,43 @@
 #!/usr/bin/env bash
 #
-# FNB Cost Pro — IDrive Backup Runner
+# FNB Cost Pro — Backup Runner (rclone + IDrive e2)
 #
 # This is the main backup script. It:
 #   1. Runs pre-backup.sh (pg_dump + config snapshot)
-#   2. Kicks off the IDrive backup covering the staging dir and app directory
+#   2. Uses rclone to sync the staging dir and nginx configs to IDrive e2
 #   3. Logs the result
 #
 # Called directly by the cron job. Can also be run manually for ad-hoc backups.
 #
 # Usage (on VPS):
 #   chmod +x scripts/backup/run-backup.sh
-#   ./scripts/backup/run-backup.sh
-#
-# EDIT THE VARIABLES BELOW to match your VPS paths before first run.
+#   APP_DIR=/home/administrator/apps/CostPro/fnbcostpro ./scripts/backup/run-backup.sh
 #
 set -euo pipefail
 
-# ─── Script location (needed by the EXIT trap below) ──────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ─── CONFIGURATION — adjust these paths for your VPS ──────────────────────────
+# ─── CONFIGURATION ────────────────────────────────────────────────────────────
 
 # Root directory where the app lives on the VPS
-APP_DIR="${APP_DIR:-/var/www/fnbcostpro}"
+APP_DIR="${APP_DIR:-/home/administrator/apps/CostPro/fnbcostpro}"
 
-# Staging directory written by pre-backup.sh
+# Staging directory written by pre-backup.sh (db dumps + config snapshots)
 STAGING_DIR="${STAGING_DIR:-/var/backups/fnbcostpro}"
 
-# IDrive client directory (set by install-idrive.sh, or override here)
-IDRIVE_CONFIG="$HOME/.fnbcostpro-backup/config"
-if [[ -f "$IDRIVE_CONFIG" ]]; then
-  # shellcheck disable=SC1090
-  source "$IDRIVE_CONFIG"
-fi
-IDRIVE_DIR="${IDRIVE_DIR:-$HOME/IDrive/IDriveForLinux}"
+# rclone remote name and bucket (configured via `rclone config`)
+RCLONE_REMOTE="${RCLONE_REMOTE:-idrive-e2}"
+RCLONE_BUCKET="${RCLONE_BUCKET:-fnbcostpro-backups}"
 
-# Log file for backup history
+# Nginx config directory
+NGINX_CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/sites-available}"
+
+# Log file
 LOG_DIR="${LOG_DIR:-/var/log/fnbcostpro-backup}"
 LOG_FILE="$LOG_DIR/backup.log"
 
-# Nginx config directory (backed up for completeness)
-NGINX_CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/sites-available}"
-
 # ──────────────────────────────────────────────────────────────────────────────
 
-# ─── Failure alert trap ───────────────────────────────────────────────────────
-#
-# If the script exits with a non-zero code for any reason, call
-# notify-failure.sh which sends an email via SMTP2GO.  We use || true so
-# that a broken notify script can never suppress the original exit code.
-#
 _notify_on_failure() {
   local code=$?
   if [[ $code -ne 0 ]]; then
@@ -59,8 +46,6 @@ _notify_on_failure() {
   fi
 }
 trap _notify_on_failure EXIT
-
-# ──────────────────────────────────────────────────────────────────────────────
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -77,7 +62,7 @@ mkdir -p "$LOG_DIR"
 
 {
 echo "═══════════════════════════════════════════════"
-echo "  FNB Cost Pro — IDrive Backup"
+echo "  FNB Cost Pro — rclone Backup"
 echo "  $TIMESTAMP"
 echo "═══════════════════════════════════════════════"
 
@@ -87,37 +72,39 @@ step "Running pre-backup (pg_dump + config snapshot)"
 APP_DIR="$APP_DIR" STAGING_DIR="$STAGING_DIR" \
   bash "$SCRIPT_DIR/pre-backup.sh"
 
-# ─── Step 2: IDrive backup ────────────────────────────────────────────────────
+# ─── Step 2: Verify rclone ────────────────────────────────────────────────────
 
-step "Verifying IDrive client"
-[[ -d "$IDRIVE_DIR" ]] || fail "IDrive client not found at $IDRIVE_DIR. Run install-idrive.sh first."
-[[ -f "$IDRIVE_DIR/Backup.pl" ]] || fail "Backup.pl not found in $IDRIVE_DIR. IDrive install may be incomplete."
+step "Verifying rclone"
+command -v rclone >/dev/null 2>&1 \
+  || fail "rclone not found. Install with: curl https://rclone.org/install.sh | sudo bash"
 
-step "Starting IDrive backup"
+rclone lsd "$RCLONE_REMOTE:$RCLONE_BUCKET" >/dev/null 2>&1 \
+  || fail "Cannot access $RCLONE_REMOTE:$RCLONE_BUCKET — check rclone config with: rclone config show"
 
-# Build the list of paths to back up:
-#   - Staging dir (db dumps + config snapshots)
-#   - App directory (source code, uploads, object storage)
-#   - Nginx configs (read-only, so we copy path directly)
-BACKUP_PATHS="$STAGING_DIR,$APP_DIR"
+echo "  rclone remote: $RCLONE_REMOTE"
+echo "  bucket:        $RCLONE_BUCKET"
+
+# ─── Step 3: Upload staging dir (db dumps + config snapshots) ─────────────────
+
+step "Uploading staging dir to $RCLONE_REMOTE:$RCLONE_BUCKET/staging"
+rclone sync "$STAGING_DIR" "$RCLONE_REMOTE:$RCLONE_BUCKET/staging" \
+  --transfers=4 \
+  --checksum \
+  --stats=30s
+
+echo -e "  ${GREEN}✔  Staging dir uploaded.${NC}"
+
+# ─── Step 4: Upload nginx configs ─────────────────────────────────────────────
+
 if [[ -d "$NGINX_CONF_DIR" ]]; then
-  BACKUP_PATHS="$BACKUP_PATHS,$NGINX_CONF_DIR"
-fi
-
-echo "  Backup paths: $BACKUP_PATHS"
-echo "  IDrive client: $IDRIVE_DIR"
-
-perl "$IDRIVE_DIR/Backup.pl" \
-  --backup-location "$BACKUP_PATHS" \
-  --silent
-
-BACKUP_EXIT=$?
-
-if [[ $BACKUP_EXIT -eq 0 ]]; then
-  echo -e "\n${GREEN}✔  IDrive backup completed successfully.${NC}"
+  step "Uploading nginx configs to $RCLONE_REMOTE:$RCLONE_BUCKET/nginx"
+  rclone sync "$NGINX_CONF_DIR" "$RCLONE_REMOTE:$RCLONE_BUCKET/nginx" \
+    --transfers=4 \
+    --checksum \
+    --stats=30s
+  echo -e "  ${GREEN}✔  Nginx configs uploaded.${NC}"
 else
-  echo -e "\n${RED}✖  IDrive backup exited with code $BACKUP_EXIT. Check IDrive logs.${NC}"
-  exit $BACKUP_EXIT
+  warn "Nginx config dir not found at $NGINX_CONF_DIR — skipping."
 fi
 
 echo ""
