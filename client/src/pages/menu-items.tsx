@@ -236,6 +236,8 @@ interface PrepStyleRow {
   recipeComputedCost: number | null;
   recipeName: string;
   recipeIsPlaceholder: number | null;
+  sellingPrice: number | null;
+  foodCostPct: number | null;
 }
 
 interface Recipe {
@@ -377,10 +379,19 @@ function PrepStylesSection({ menuItemId, recipes }: { menuItemId: string; recipe
               ) : (
                 <>
                   <span className="flex-1 text-sm font-medium truncate">{row.prepStyleLabel}</span>
-                  <span className="text-xs text-muted-foreground truncate max-w-[120px]">{formatRecipeName(row.recipeName)}</span>
+                  <span className="text-xs text-muted-foreground truncate max-w-[100px]">{formatRecipeName(row.recipeName)}</span>
                   {row.recipeComputedCost != null && (
                     <Badge variant="outline" className="text-xs shrink-0">
                       ${row.recipeComputedCost.toFixed(2)}
+                    </Badge>
+                  )}
+                  {row.foodCostPct != null && (
+                    <Badge
+                      variant="secondary"
+                      className={`text-xs shrink-0 ${row.foodCostPct > 35 ? "bg-destructive/10 text-destructive" : row.foodCostPct > 25 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400" : "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400"}`}
+                      data-testid={`badge-food-cost-pct-${row.id}`}
+                    >
+                      {row.foodCostPct.toFixed(1)}%
                     </Badge>
                   )}
                   <Button

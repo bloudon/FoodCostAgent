@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   UtensilsCrossed,
   LayoutGrid,
@@ -111,6 +112,8 @@ function IngredientRow({ ingredient }: { ingredient: IngredientEntry }) {
 
 export default function MenuInsights() {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const [linkedGroups, setLinkedGroups] = useState<Set<string>>(new Set());
 
   const { data, isLoading, isError } = useQuery<MenuInsightsData>({
     queryKey: ["/api/menu-insights"],
@@ -123,6 +126,26 @@ export default function MenuInsights() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+    },
+  });
+
+  const linkVariantsMutation = useMutation({
+    mutationFn: async ({ baseName, itemIds }: { baseName: string; itemIds: string[] }) => {
+      const res = await apiRequest("POST", "/api/menu-items/link-as-variants", { itemIds });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error || "Failed to link variants");
+      }
+      return { baseName, data: await res.json() };
+    },
+    onSuccess: ({ baseName }) => {
+      setLinkedGroups((prev) => new Set([...prev, baseName]));
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-insights"] });
+      toast({ title: "Variant group linked", description: `"${baseName}" items are now size variants of each other.` });
+    },
+    onError: (err: any) => {
+      toast({ title: err.message || "Failed to link variants", variant: "destructive" });
     },
   });
 
@@ -334,24 +357,51 @@ export default function MenuInsights() {
             </p>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="space-y-3">
-              {data.variantGroups.map((group) => (
-                <div key={group.baseName} className="space-y-1" data-testid={`variant-group-${group.baseName.toLowerCase().replace(/\s+/g, "-")}`}>
-                  <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide text-xs">
-                    {group.baseName}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {group.items.map((item) => (
-                      <div key={item.id} className="flex items-center gap-1.5 text-sm bg-muted rounded-md px-2.5 py-1">
-                        <span>{item.name}</span>
-                        {item.price != null && (
-                          <span className="text-muted-foreground text-xs">${item.price.toFixed(2)}</span>
-                        )}
-                      </div>
-                    ))}
+            <div className="space-y-4">
+              {data.variantGroups.map((group) => {
+                const isLinked = linkedGroups.has(group.baseName);
+                const isPending = linkVariantsMutation.isPending;
+                return (
+                  <div key={group.baseName} className="space-y-2" data-testid={`variant-group-${group.baseName.toLowerCase().replace(/\s+/g, "-")}`}>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        {group.baseName}
+                      </p>
+                      {isLinked ? (
+                        <Badge variant="secondary" className="text-xs" data-testid={`badge-linked-${group.baseName}`}>
+                          Linked
+                        </Badge>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isPending}
+                          onClick={() =>
+                            linkVariantsMutation.mutate({
+                              baseName: group.baseName,
+                              itemIds: group.items.map((i) => i.id),
+                            })
+                          }
+                          data-testid={`button-link-variants-${group.baseName.toLowerCase().replace(/\s+/g, "-")}`}
+                        >
+                          Link as variants
+                        </Button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {group.items.map((item) => (
+                        <div key={item.id} className="flex items-center gap-1.5 text-sm bg-muted rounded-md px-2.5 py-1">
+                          <span>{item.name}</span>
+                          {item.price != null && (
+                            <span className="text-muted-foreground text-xs">${item.price.toFixed(2)}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>

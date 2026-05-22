@@ -7895,6 +7895,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       if (validatedData.instructions !== undefined) updateData.instructions = validatedData.instructions;
       if (validatedData.imagePath !== undefined) updateData.imagePath = validatedData.imagePath;
+      if (validatedData.sizeName !== undefined) updateData.sizeName = validatedData.sizeName;
 
       await storage.updateRecipe(req.params.id, updateData);
       
@@ -11859,13 +11860,13 @@ Return format: ["ingredient1", "ingredient2", ...]`;
 
   // ============ MENU ITEM PREP STYLES (menuItemRecipes) ============
 
-  // GET /api/menu-items/:id/prep-styles — list prep-style recipe links with cost
+  // GET /api/menu-items/:id/prep-styles — list prep-style recipe links with cost and margin
   app.get("/api/menu-items/:id/prep-styles", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const companyId = req.companyId!;
 
-      const [menuItem] = await db.select({ id: menuItems.id })
+      const [menuItem] = await db.select({ id: menuItems.id, price: menuItems.price })
         .from(menuItems)
         .where(and(eq(menuItems.id, id), eq(menuItems.companyId, companyId)))
         .limit(1);
@@ -11886,10 +11887,59 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         .where(eq(menuItemRecipes.menuItemId, id))
         .orderBy(asc(menuItemRecipes.sortOrder));
 
-      return res.json(rows);
+      // Compute food cost % per row using the menu item's selling price
+      const sellingPrice = menuItem.price;
+      const enriched = rows.map((row) => {
+        let foodCostPct: number | null = null;
+        if (
+          sellingPrice != null &&
+          sellingPrice > 0 &&
+          row.recipeComputedCost != null &&
+          row.recipeComputedCost > 0
+        ) {
+          foodCostPct = Math.round((row.recipeComputedCost / sellingPrice) * 10000) / 100;
+        }
+        return { ...row, sellingPrice, foodCostPct };
+      });
+
+      return res.json(enriched);
     } catch (err) {
       console.error("GET /api/menu-items/:id/prep-styles error:", err);
       return res.status(500).json({ error: "Failed to fetch prep styles" });
+    }
+  });
+
+  // POST /api/menu-items/link-as-variants — link a detected variant group as parent/child items
+  // Body: { itemIds: string[] } — first ID becomes the parent, rest become children
+  app.post("/api/menu-items/link-as-variants", requireAuth, async (req, res) => {
+    try {
+      const companyId = req.companyId!;
+      const { itemIds } = req.body;
+
+      if (!Array.isArray(itemIds) || itemIds.length < 2) {
+        return res.status(400).json({ error: "At least 2 item IDs are required" });
+      }
+
+      // Verify all items belong to this company and have no existing parent
+      const itemRows = await db.select({ id: menuItems.id, parentMenuItemId: menuItems.parentMenuItemId, name: menuItems.name })
+        .from(menuItems)
+        .where(and(inArray(menuItems.id, itemIds), eq(menuItems.companyId, companyId)));
+
+      if (itemRows.length !== itemIds.length) {
+        return res.status(400).json({ error: "One or more items not found" });
+      }
+
+      const [parentItem, ...childItems] = itemIds;
+
+      // Set children's parentMenuItemId to parentItem
+      await db.update(menuItems)
+        .set({ parentMenuItemId: parentItem })
+        .where(and(inArray(menuItems.id, childItems), eq(menuItems.companyId, companyId)));
+
+      return res.json({ success: true, parentId: parentItem, childIds: childItems });
+    } catch (err) {
+      console.error("POST /api/menu-items/link-as-variants error:", err);
+      return res.status(500).json({ error: "Failed to link variants" });
     }
   });
 
