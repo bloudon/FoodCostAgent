@@ -10,6 +10,7 @@ import { ObjectUploader } from "@/components/ObjectUploader";
 import {
   Check, Loader2, Trash2, Camera, Sparkles, Plus, ArrowRight,
   Wine, Utensils, BookOpen, ClipboardList, Package, Warehouse, BarChart3,
+  Layers,
 } from "lucide-react";
 
 export interface MenuIntelligence {
@@ -33,6 +34,7 @@ export interface ExtractedMenuItem {
   category: string;
   size: string;
   price: number | null;
+  variantGroupKey?: string;
 }
 
 export interface ApproveResponse {
@@ -144,14 +146,22 @@ export function MenuScanStep({
       const valid = items.filter(i => i.name.trim().length > 0);
       if (valid.length === 0) throw new Error("No items to import");
       const res = await apiRequest("POST", `/api/onboarding/menu-scan/${sessionId}/approve`, {
-        items: valid,
+        items: valid.map(i => ({
+          name: i.name,
+          description: i.description,
+          department: i.department,
+          category: i.category,
+          size: i.size,
+          price: i.price,
+          variantGroupKey: i.variantGroupKey || "",
+        })),
         storeId: storeId || undefined,
       });
       if (!res.ok) {
         const err = await res.json() as { error?: string };
         throw new Error(err.error || "Import failed");
       }
-      return res.json() as Promise<ApproveResponse>;
+      return res.json() as Promise<ApproveResponse & { variantGroupsLinked?: number }>;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
@@ -162,9 +172,12 @@ export function MenuScanStep({
         department: validItems[idx]?.department,
         price: validItems[idx]?.price,
       }));
+      const variantNote = data.variantGroupsLinked && data.variantGroupsLinked > 0
+        ? ` ${data.variantGroupsLinked} size variant group${data.variantGroupsLinked !== 1 ? "s" : ""} linked automatically.`
+        : "";
       toast({
         title: "Menu imported!",
-        description: `${data.menuItemsCreated} menu item${data.menuItemsCreated !== 1 ? "s" : ""} added.`,
+        description: `${data.menuItemsCreated} menu item${data.menuItemsCreated !== 1 ? "s" : ""} added.${variantNote}`,
       });
       onComplete(named, sessionId, intelligence, barAnswer);
     },
@@ -289,6 +302,15 @@ export function MenuScanStep({
     deptGroups.get(dept)!.push(idx);
   });
 
+  const detectedVariantGroupCount = (() => {
+    const keys = new Map<string, number>();
+    for (const item of items) {
+      const key = (item.variantGroupKey || "").trim();
+      if (key) keys.set(key, (keys.get(key) || 0) + 1);
+    }
+    return [...keys.values()].filter(count => count >= 2).length;
+  })();
+
   const chainItems = [
     { Icon: BookOpen,     label: "Menu items",                     desc: "ready to cost as recipes" },
     { Icon: ClipboardList, label: "Recipes",                       desc: "costed automatically from your menu" },
@@ -369,6 +391,16 @@ export function MenuScanStep({
                 </Fragment>
               );
             })}
+          </div>
+        )}
+
+        {detectedVariantGroupCount > 0 && (
+          <div className="flex items-start gap-2 rounded-md bg-primary/5 border border-primary/20 px-3 py-2.5" data-testid="banner-variant-groups-detected">
+            <Layers className="w-3.5 h-3.5 text-primary flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-muted-foreground leading-snug">
+              <span className="font-medium text-foreground">{detectedVariantGroupCount} size variant group{detectedVariantGroupCount !== 1 ? "s" : ""} detected</span>
+              {" — "}items in each group will be linked as size variants automatically on import.
+            </p>
           </div>
         )}
 

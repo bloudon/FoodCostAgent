@@ -2014,6 +2014,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           category: z.string().default(""),
           size: z.string().default(""),
           price: z.number().nullable().optional(),
+          variantGroupKey: z.string().optional().default(""),
         })),
         storeId: z.string().optional(),
       });
@@ -2055,7 +2056,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         groups.get(key)!.items.push(item);
       }
 
-      const { created, topLevelIds, topLevelForSeeding } = await db.transaction(async (tx) => {
+      const { created, topLevelIds, topLevelForSeeding, topLevelVariantKeys } = await db.transaction(async (tx) => {
         const sizeIdCache = new Map<string, string>();
         const deptIdCache = new Map<string, string>();
 
@@ -2117,6 +2118,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const topLevelIds: string[] = [];
         // Track descriptions for top-level items so we can seed recipes after the transaction
         const topLevelForSeeding: Array<{ id: string; name: string; description: string; price: number | null }> = [];
+        // Track variantGroupKey for each top-level item so we can auto-link after the transaction
+        const topLevelVariantKeys: Array<{ id: string; variantGroupKey: string }> = [];
 
         for (const [, group] of groups) {
           const representative = group.items[0];
@@ -2128,6 +2131,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const deptName = (representative.department || '').trim() || 'Other';
           const menuDepartmentId = await findOrCreateDepartmentId(deptName);
           const representativeDescription = (representative as any).description?.trim() || '';
+          const representativeVariantKey = ((representative as any).variantGroupKey || '').trim();
 
           if (hasMultipleSizes) {
             const parentPlu = `SCAN-${now}-${pluCounter++}`;
@@ -2137,6 +2141,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               menuDepartmentId, description: representativeDescription || null,
             });
             topLevelIds.push(parentId);
+            if (representativeVariantKey) topLevelVariantKeys.push({ id: parentId, variantGroupKey: representativeVariantKey });
             if (representativeDescription) {
               topLevelForSeeding.push({ id: parentId, name: representative.name.trim(), description: representativeDescription, price: null });
             }
@@ -2158,6 +2163,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const item = group.items[j];
               const menuItemSizeId = item.size ? await findOrCreateSizeId(item.size) : null;
               const itemDescription = (item as any).description?.trim() || representativeDescription;
+              const itemVariantKey = ((item as any).variantGroupKey || '').trim() || representativeVariantKey;
               const itemId = await insertMenuItemRow({
                 name: item.name.trim(), department: item.department || null,
                 category: item.category || null, size: item.size || null,
@@ -2166,6 +2172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 menuDepartmentId, description: itemDescription || null,
               });
               topLevelIds.push(itemId);
+              if (itemVariantKey) topLevelVariantKeys.push({ id: itemId, variantGroupKey: itemVariantKey });
               if (itemDescription) {
                 topLevelForSeeding.push({ id: itemId, name: item.name.trim(), description: itemDescription, price: item.price ?? null });
               }
@@ -2178,8 +2185,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .set({ status: "approved", rawImagePath: null, extractedItems: null, updatedAt: new Date() })
           .where(eq(menuImportSessions.id, sessionId));
 
-        return { created: txCreated, topLevelIds, topLevelForSeeding };
+        return { created: txCreated, topLevelIds, topLevelForSeeding, topLevelVariantKeys };
       });
+
+      // Auto-link items sharing the same variantGroupKey as parent/child (non-fatal)
+      let variantGroupsLinked = 0;
+      if (topLevelVariantKeys.length >= 2) {
+        try {
+          const keyToIds = new Map<string, string[]>();
+          for (const { id, variantGroupKey } of topLevelVariantKeys) {
+            if (!variantGroupKey) continue;
+            if (!keyToIds.has(variantGroupKey)) keyToIds.set(variantGroupKey, []);
+            keyToIds.get(variantGroupKey)!.push(id);
+          }
+          for (const [, ids] of keyToIds) {
+            if (ids.length < 2) continue;
+            const [parentId, ...childIds] = ids;
+            await db.update(menuItems)
+              .set({ parentMenuItemId: parentId })
+              .where(and(inArray(menuItems.id, childIds), eq(menuItems.companyId, companyId)));
+            variantGroupsLinked++;
+          }
+        } catch (linkErr) {
+          console.error("[Onboarding Menu Scan Approve] Variant group auto-linking failed (non-fatal):", linkErr);
+        }
+      }
 
       // Seed recipe stubs for items that have a description (non-fatal if this fails)
       let recipesSeeded = 0;
@@ -2193,7 +2223,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      return res.json({ menuItemsCreated: created, menuItemIds: topLevelIds, recipesSeeded });
+      return res.json({ menuItemsCreated: created, menuItemIds: topLevelIds, recipesSeeded, variantGroupsLinked });
     } catch (error: any) {
       console.error("[Onboarding Menu Scan Approve]", error);
       return res.status(500).json({ error: error.message });
