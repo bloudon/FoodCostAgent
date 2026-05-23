@@ -13543,39 +13543,47 @@ Return format: ["ingredient1", "ingredient2", ...]`;
 
     try {
       const data = insertCompanySchema.parse(req.body);
-      const company = await storage.createCompany(data);
-      
-      // Auto-create a default store so admins don't land on "No Stores"
-      const storeCode = company.name
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, "")
-        .slice(0, 6) || "STORE1";
-      const [defaultStore] = await db
-        .insert(companyStores)
-        .values({
-          companyId: company.id,
-          code: storeCode,
-          name: `${company.name}'s Store`,
-        })
-        .returning();
 
-      // Create default storage locations for new company
-      const defaultLocations = [
-        { name: "Walk-In Cooler", sortOrder: 1 },
-        { name: "Pantry", sortOrder: 2 },
-        { name: "Drink Cooler", sortOrder: 3 },
-        { name: "Walk-In Freezer", sortOrder: 4 },
-        { name: "Prep Table", sortOrder: 5 },
-        { name: "Front Counter", sortOrder: 6 },
-      ];
-      
-      for (const location of defaultLocations) {
-        await storage.createStorageLocation({
-          companyId: company.id,
-          ...location,
-        });
-      }
-      
+      const { company, defaultStore } = await db.transaction(async (tx) => {
+        // Create the company
+        const [newCompany] = await tx
+          .insert(companiesTable)
+          .values(data)
+          .returning();
+
+        // Auto-create a default store so admins don't land on "No Stores"
+        const storeCode = newCompany.name
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, "")
+          .slice(0, 6) || "STORE1";
+        const [newStore] = await tx
+          .insert(companyStores)
+          .values({
+            companyId: newCompany.id,
+            code: storeCode,
+            name: `${newCompany.name}'s Store`,
+          })
+          .returning();
+
+        // Create default storage locations
+        const defaultLocations = [
+          { name: "Walk-In Cooler", sortOrder: 1 },
+          { name: "Pantry", sortOrder: 2 },
+          { name: "Drink Cooler", sortOrder: 3 },
+          { name: "Walk-In Freezer", sortOrder: 4 },
+          { name: "Prep Table", sortOrder: 5 },
+          { name: "Front Counter", sortOrder: 6 },
+        ];
+        for (const location of defaultLocations) {
+          await tx.insert(storageLocations).values({
+            companyId: newCompany.id,
+            ...location,
+          });
+        }
+
+        return { company: newCompany, defaultStore: newStore };
+      });
+
       res.status(201).json({ ...company, defaultStore });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
