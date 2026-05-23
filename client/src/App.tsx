@@ -80,6 +80,8 @@ import PrepChartProduction from "@/pages/prep-chart-production";
 import ShelfScans from "@/pages/shelf-scans";
 import DashboardMobile from "@/pages/dashboard-mobile";
 import { ChatPanel } from "@/components/chat-panel";
+import { WhatsNewModal } from "@/components/whats-new-modal";
+import { VersionBanner } from "@/components/version-banner";
 import WebsiteHome from "@/pages/website/home";
 import WebsiteFeatures from "@/pages/website/features";
 import WebsitePricing from "@/pages/website/pricing";
@@ -221,6 +223,7 @@ function AppTopBar() {
 function ProtectedLayoutContent() {
   const { user } = useAuth();
   const [location] = useLocation();
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const isEmbedded = useEmbedded();
 
   const isGlobalAdmin = user?.role === "global_admin";
@@ -292,6 +295,11 @@ function ProtectedLayoutContent() {
         <SidebarInset>
           <AppTopBar />
 
+          <VersionBanner
+            currentVersion={pkgJson.version}
+            userLastSeenVersion={(user as any)?.lastSeenVersion}
+          />
+
           <main className="flex-1 overflow-auto">
             <Switch>
               <Route path="/" component={Dashboard} />
@@ -354,8 +362,22 @@ function ProtectedLayoutContent() {
           </main>
 
           <footer className="shrink-0 border-t px-4 py-1 text-center" data-testid="app-footer-version">
-            <span className="text-[10px] text-muted-foreground">v{pkgJson.version}</span>
+            <button
+              type="button"
+              onClick={() => setWhatsNewOpen(true)}
+              className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"
+              data-testid="button-footer-version"
+            >
+              v{pkgJson.version}
+            </button>
           </footer>
+
+          <WhatsNewModal
+            open={whatsNewOpen}
+            onOpenChange={setWhatsNewOpen}
+            currentVersion={pkgJson.version}
+            userLastSeenVersion={(user as any)?.lastSeenVersion}
+          />
         </SidebarInset>
       </SidebarProvider>
 

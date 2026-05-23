@@ -1,5 +1,7 @@
 import type { Express } from "express";
 import { createRequire } from "module";
+import { readFileSync } from "fs";
+import { join } from "path";
 const _require = createRequire(import.meta.url);
 const { version: APP_VERSION } = _require("../package.json") as { version: string };
 import { createServer, type Server } from "http";
@@ -144,6 +146,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint for deployment monitoring
   app.get('/api/health', (_req, res) => {
     res.status(200).json({ status: 'ok', version: APP_VERSION, timestamp: new Date().toISOString() });
+  });
+
+  // GET /api/changelog — parses CHANGELOG.md and returns structured version entries
+  app.get('/api/changelog', (_req, res) => {
+    try {
+      const changelogPath = join(process.cwd(), 'CHANGELOG.md');
+      const raw = readFileSync(changelogPath, 'utf-8');
+
+      // Split on version headers: "## [x.x.x]"
+      const versionBlocks = raw.split(/\n## \[/).slice(1);
+
+      const entries = versionBlocks.map((block) => {
+        const lines = block.split('\n');
+        const headerLine = lines[0] || '';
+        // e.g. "1.6.0] — 2025-05-23"
+        const versionMatch = headerLine.match(/^([\d.]+)\]\s*[—-]?\s*(.*)/);
+        const version = versionMatch?.[1] || headerLine.replace(']', '').trim();
+        const date = versionMatch?.[2]?.trim() || '';
+
+        // Parse sections (### headings)
+        const rest = lines.slice(1).join('\n');
+        const sectionBlocks = rest.split(/\n### /).filter(Boolean);
+
+        const sections = sectionBlocks.map((sb) => {
+          const sectionLines = sb.split('\n');
+          const heading = sectionLines[0].trim();
+          const items = sectionLines
+            .slice(1)
+            .filter((l) => l.trim().startsWith('-'))
+            .map((l) => l.replace(/^\s*-\s*/, '').trim())
+            .filter(Boolean);
+          return { heading, items };
+        }).filter((s) => s.items.length > 0);
+
+        return { version, date, sections };
+      });
+
+      res.json(entries);
+    } catch (err) {
+      console.error('GET /api/changelog error:', err);
+      res.json([]);
+    }
   });
 
   // ============ BILLING (Stripe) ============
@@ -2638,7 +2682,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       selectedCompanyId,
       subscriptionTier,
       preferredLanguage: user.preferredLanguage || "en",
+      lastSeenVersion: user.lastSeenVersion || null,
     });
+  });
+
+  // POST /api/user/acknowledge-version — marks the current app version as seen for this user
+  app.post("/api/user/acknowledge-version", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      await db
+        .update(users)
+        .set({ lastSeenVersion: APP_VERSION })
+        .where(eq(users.id, user.id));
+      res.json({ lastSeenVersion: APP_VERSION });
+    } catch (err) {
+      console.error("[AcknowledgeVersion] error:", err);
+      res.status(500).json({ error: "Failed to acknowledge version" });
+    }
   });
 
   app.patch("/api/auth/me/language", requireAuth, async (req, res) => {
