@@ -170,7 +170,7 @@ export default function ReceivingDetail() {
     retry: false,
   });
 
-  const { data: reconciliationData, refetch: refetchReconciliation } = useQuery<{ data: any }>({
+  const { data: reconciliationData, refetch: refetchReconciliation } = useQuery<{ data: any; syncLog: any }>({
     queryKey: [`/api/purchase-orders/${poId}/reconciliation`],
     enabled: !!poId,
   });
@@ -347,6 +347,7 @@ export default function ReceivingDetail() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}/reconciliation`] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/sync-logs"] });
       const result = data?.data?.results?.[0];
@@ -942,8 +943,10 @@ export default function ReceivingDetail() {
         {isCompleted && hasFeature((user as any)?.subscriptionTier, "transfer_orders") && qbStatus?.connected && (
           (() => {
             const existing = reconciliationData?.data;
+            const syncLog = reconciliationData?.syncLog;
             const isExported = purchaseOrder.status === "qb_exported";
             const isPendingExport = purchaseOrder.status === "pending_qb_export";
+            const exportFailed = !isExported && syncLog && (syncLog.syncStatus === "failed" || syncLog.syncStatus === "retry_exhausted");
             const receiptTotal = filteredLines.reduce((sum, line) => {
               const rqty = receivedQuantities[line.id] || 0;
               const price = editedPrices[line.id] ?? line.pricePerUnit;
@@ -967,7 +970,13 @@ export default function ReceivingDetail() {
                         Exported to QB
                       </Badge>
                     )}
-                    {isPendingExport && !isExported && (
+                    {exportFailed && (
+                      <Badge className="ml-auto bg-destructive/10 text-destructive border-destructive/20" data-testid="badge-export-failed">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        Export Failed
+                      </Badge>
+                    )}
+                    {isPendingExport && !isExported && !exportFailed && (
                       <Badge className="ml-auto bg-blue-500/10 text-blue-700 border-blue-500/20" data-testid="badge-pending-export">
                         Reconciled — Ready to Export
                       </Badge>
@@ -976,15 +985,49 @@ export default function ReceivingDetail() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {isExported ? (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <CheckCircle2 className="h-4 w-4 text-green-600" />
-                      <span>This order has been exported to QuickBooks as a bill.</span>
-                      {existing?.invoiceNumber && (
-                        <span className="font-medium text-foreground">Invoice #{existing.invoiceNumber}</span>
-                      )}
+                    <div className="space-y-3" data-testid="section-qb-export-success">
+                      <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                        <span className="font-medium">Bill successfully created in QuickBooks.</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                        {existing?.invoiceNumber && (
+                          <div>
+                            <p className="text-muted-foreground">Vendor Invoice #</p>
+                            <p className="font-medium" data-testid="text-qb-invoice-number">{existing.invoiceNumber}</p>
+                          </div>
+                        )}
+                        {syncLog?.quickbooksBillId && (
+                          <div>
+                            <p className="text-muted-foreground">QuickBooks Bill ID</p>
+                            <p className="font-medium font-mono" data-testid="text-qb-bill-id">{syncLog.quickbooksBillId}</p>
+                          </div>
+                        )}
+                        {syncLog?.createdAt && (
+                          <div>
+                            <p className="text-muted-foreground">Exported</p>
+                            <p className="font-medium" data-testid="text-qb-export-timestamp">
+                              {new Date(syncLog.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}{" "}
+                              {new Date(syncLog.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <>
+                      {exportFailed && (
+                        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive" data-testid="section-export-failed">
+                          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="font-medium">Export to QuickBooks failed.</p>
+                            {syncLog?.errorMessage && (
+                              <p className="text-muted-foreground mt-0.5">{syncLog.errorMessage}</p>
+                            )}
+                            <p className="text-muted-foreground mt-0.5">Go to the Orders page to retry the export.</p>
+                          </div>
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="invoice-number">Vendor Invoice # <span className="text-muted-foreground">(optional)</span></Label>

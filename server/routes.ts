@@ -15834,8 +15834,11 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       // Verify QB connected
       const connection = await storage.getQuickBooksConnection(companyId);
       if (!connection) return res.status(400).json({ error: "QuickBooks is not connected" });
-      const rec = await storage.getQbReconciliation(id, companyId);
-      res.json({ data: rec || null });
+      const [rec, syncLog] = await Promise.all([
+        storage.getQbReconciliation(id, companyId),
+        storage.getQuickBooksSyncLog(id, companyId),
+      ]);
+      res.json({ data: rec || null, syncLog: syncLog || null });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
