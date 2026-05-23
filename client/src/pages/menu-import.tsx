@@ -74,7 +74,7 @@ export default function MenuImport() {
     queryFn: async () => {
       const res = await fetch(`/api/menu-import/${urlSessionId}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Session not found');
-      return res.json() as Promise<{ sessionId: string; status: string; items: ExtractedItem[] }>;
+      return res.json() as Promise<{ sessionId: string; status: string; items: ExtractedItem[]; disabledVariantGroupKeys: string[] }>;
     },
   });
 
@@ -87,6 +87,9 @@ export default function MenuImport() {
     if (items.length === 0 && sessionData.items.length > 0) {
       setItems(sessionData.items);
       setSelectedRowIndices(new Set(sessionData.items.map((_: ExtractedItem, i: number) => i)));
+      if (sessionData.disabledVariantGroupKeys?.length > 0) {
+        setDisabledVariantGroupKeys(new Set(sessionData.disabledVariantGroupKeys));
+      }
       setStep(2);
     }
   }, [sessionData]);
@@ -186,18 +189,33 @@ export default function MenuImport() {
     },
   });
 
-  // Ref that always reflects the latest committed items state.
-  // Updated synchronously in a useEffect so appendPageMutation.onSuccess can read
-  // the true current items (including edits made during a long scan) without relying
-  // on a stale closure or call-time snapshot.
+  // Refs that always reflect the latest committed state so closures stay fresh.
   const lastItemsRef = useRef<ExtractedItem[]>(items);
   useEffect(() => { lastItemsRef.current = items; }, [items]);
 
-  // Autosave: persist edited items to server so refresh doesn't lose progress
+  const lastDisabledKeysRef = useRef<Set<string>>(disabledVariantGroupKeys);
+  useEffect(() => { lastDisabledKeysRef.current = disabledVariantGroupKeys; }, [disabledVariantGroupKeys]);
+
+  // Autosave variant group preferences whenever they change (e.g. toggled on Step 3)
+  useEffect(() => {
+    if (!sessionId || step !== 3) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      autosaveMutation.mutate({
+        editedItems: lastItemsRef.current,
+        disabledKeys: Array.from(disabledVariantGroupKeys),
+      });
+    }, 800);
+  }, [disabledVariantGroupKeys]);
+
+  // Autosave: persist edited items AND variant group preferences to server so refresh doesn't lose progress
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autosaveMutation = useMutation({
-    mutationFn: async (editedItems: ExtractedItem[]) => {
-      const res = await apiRequest('PATCH', `/api/menu-import/${sessionId}`, { items: editedItems });
+    mutationFn: async ({ editedItems, disabledKeys }: { editedItems: ExtractedItem[]; disabledKeys: string[] }) => {
+      const res = await apiRequest('PATCH', `/api/menu-import/${sessionId}`, {
+        items: editedItems,
+        disabledVariantGroupKeys: disabledKeys,
+      });
       if (!res.ok) throw new Error('Autosave failed');
     },
   });
@@ -253,11 +271,12 @@ export default function MenuImport() {
     },
   });
 
-  const scheduleAutosave = (editedItems: ExtractedItem[]) => {
-    if (!sessionId || step !== 2) return;
+  const scheduleAutosave = (editedItems: ExtractedItem[], disabledKeys?: Set<string>) => {
+    if (!sessionId || (step !== 2 && step !== 3)) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
-      autosaveMutation.mutate(editedItems);
+      const keys = disabledKeys ?? lastDisabledKeysRef.current;
+      autosaveMutation.mutate({ editedItems, disabledKeys: Array.from(keys) });
     }, 1500);
   };
 

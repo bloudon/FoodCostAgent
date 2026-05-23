@@ -5685,6 +5685,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sessionId: session.id,
         status: session.status,
         items: session.extractedItems ?? [],
+        disabledVariantGroupKeys: session.disabledVariantGroupKeys ?? [],
       });
     } catch (error: any) {
       console.error("[Menu Import GET]", error);
@@ -5711,6 +5712,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           size: z.string().default(""),
           price: z.number().nullable().optional(),
         })),
+        disabledVariantGroupKeys: z.array(z.string()).optional(),
       });
       const parsed = bodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -5722,8 +5724,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!session) return res.status(404).json({ error: "Session not found" });
       if (session.status !== "pending") return res.status(409).json({ error: "Session is not editable" });
 
+      const updatePayload: Record<string, any> = { extractedItems: parsed.data.items, updatedAt: new Date() };
+      if (parsed.data.disabledVariantGroupKeys !== undefined) {
+        updatePayload.disabledVariantGroupKeys = parsed.data.disabledVariantGroupKeys;
+      }
       await db.update(menuImportSessions)
-        .set({ extractedItems: parsed.data.items, updatedAt: new Date() })
+        .set(updatePayload)
         .where(eq(menuImportSessions.id, sessionId));
 
       return res.json({ success: true });

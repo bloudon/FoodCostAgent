@@ -174,6 +174,8 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS has_bar integer`);
     // Task #204: price_source on order_guide_lines — tracks whether extracted price is case or unit
     await db.execute(sql`ALTER TABLE order_guide_lines ADD COLUMN IF NOT EXISTS price_source text`);
+    // Task #296: persist variant group opt-out preferences across menu import wizard refresh
+    await db.execute(sql`ALTER TABLE menu_import_sessions ADD COLUMN IF NOT EXISTS disabled_variant_group_keys jsonb DEFAULT '[]'::jsonb`);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);
