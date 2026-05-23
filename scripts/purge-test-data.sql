@@ -52,6 +52,28 @@ BEGIN
   GET DIAGNOSTICS n = ROW_COUNT; RAISE NOTICE 'CI test purchase_orders: %', n;
 
   -- ------------------------------------------------------------------
+  -- CI test menu import sessions within kept companies
+  -- (stamped description = '__ci_test__' by the dev seed helper)
+  -- These are left behind when afterEach teardown is skipped or fails.
+  -- ------------------------------------------------------------------
+  DELETE FROM store_menu_items
+    WHERE menu_item_id IN (
+      SELECT mi.id FROM menu_items mi
+      WHERE mi.company_id = ANY(keep_ids)
+        AND mi.name LIKE '%-test-%'
+        AND EXISTS (
+          SELECT 1 FROM menu_import_sessions mis
+          WHERE mis.company_id = mi.company_id
+            AND mis.description = '__ci_test__'
+        )
+    );
+  GET DIAGNOSTICS n = ROW_COUNT; RAISE NOTICE 'CI test store_menu_items (from ci sessions): %', n;
+
+  DELETE FROM menu_import_sessions
+    WHERE description = '__ci_test__';
+  GET DIAGNOSTICS n = ROW_COUNT; RAISE NOTICE 'CI test menu_import_sessions: %', n;
+
+  -- ------------------------------------------------------------------
   -- Delete in dependency order (children before parents)
   -- ------------------------------------------------------------------
 

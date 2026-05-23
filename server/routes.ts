@@ -18997,6 +18997,7 @@ Human Handoff:
           companyId,
           storeId,
           status: "pending",
+          description: "__ci_test__",
         }).returning();
         return res.json({ sessionId: session.id, storeId });
       } catch (err: any) {
@@ -19086,6 +19087,58 @@ Human Handoff:
         return res.json({ poId: po.id, syncLogId, status, storeId, vendorId });
       } catch (err: any) {
         console.error("[dev/test/qb-po-state]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    /**
+     * DELETE /api/dev/test/menu-import-session/:sessionId
+     * Removes a test menu import session and optionally any menu items that were
+     * created when the session was approved.  Used by afterEach hooks in
+     * automated tests to keep the dev database clean.
+     *
+     * Body (all optional):
+     *   menuItemIds — string[] of menu item IDs to delete along with the session
+     */
+    app.delete("/api/dev/test/menu-import-session/:sessionId", requireAuth, async (req, res) => {
+      try {
+        const companyId = (req as any).companyId;
+        if (!companyId) return res.status(400).json({ error: "Company context required" });
+
+        const { sessionId } = req.params;
+        if (!sessionId) return res.status(400).json({ error: "sessionId is required" });
+
+        // Confirm the session belongs to this company before deleting
+        const existing = await db.select({ id: menuImportSessions.id })
+          .from(menuImportSessions)
+          .where(and(eq(menuImportSessions.id, sessionId), eq(menuImportSessions.companyId, companyId)))
+          .limit(1);
+
+        if (existing.length === 0) {
+          return res.status(404).json({ error: "Session not found or does not belong to this company" });
+        }
+
+        // Optionally delete menu items that were created when this session was approved
+        const menuItemIds: string[] = Array.isArray(req.body?.menuItemIds) ? req.body.menuItemIds : [];
+        let menuItemsDeleted = 0;
+        if (menuItemIds.length > 0) {
+          // Delete child rows in FK order before removing the menu items
+          await db.delete(storeMenuItems)
+            .where(and(inArray(storeMenuItems.menuItemId, menuItemIds), eq(storeMenuItems.companyId, companyId)));
+          // Delete the menu items themselves (company guard ensures isolation)
+          const deleted = await db.delete(menuItems)
+            .where(and(inArray(menuItems.id, menuItemIds), eq(menuItems.companyId, companyId)))
+            .returning({ id: menuItems.id });
+          menuItemsDeleted = deleted.length;
+        }
+
+        // Delete the session
+        await db.delete(menuImportSessions)
+          .where(and(eq(menuImportSessions.id, sessionId), eq(menuImportSessions.companyId, companyId)));
+
+        return res.json({ deleted: true, sessionId, menuItemsDeleted });
+      } catch (err: any) {
+        console.error("[dev/test/menu-import-session DELETE]", err);
         return res.status(500).json({ error: err.message });
       }
     });

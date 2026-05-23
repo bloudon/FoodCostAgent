@@ -69,6 +69,29 @@ async function seedPendingSession(
 }
 
 /**
+ * Deletes a test menu import session and any associated menu items via the
+ * dev-only DELETE helper.  Safe to call even if the session was already deleted
+ * (404 is treated as success in teardown).
+ */
+async function deleteMenuImportSession(
+  request: APIRequestContext,
+  sessionId: string,
+  menuItemIds: string[] = [],
+): Promise<void> {
+  if (!sessionId) return;
+  const res = await request.delete(
+    `${BASE_URL}/api/dev/test/menu-import-session/${sessionId}`,
+    {
+      data: { menuItemIds },
+      headers: { 'Content-Type': 'application/json' },
+    },
+  );
+  if (res.status() !== 200 && res.status() !== 404) {
+    console.warn(`[afterEach] Failed to delete test session ${sessionId}: HTTP ${res.status()}`);
+  }
+}
+
+/**
  * Calls the approve endpoint and returns the parsed response body.
  */
 async function approveSession(
@@ -167,8 +190,21 @@ test.describe('POST .../approve — auth & validation', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Variant group auto-linking — integration', () => {
+  let seededSessionIds: string[] = [];
+  let seededMenuItemIds: string[] = [];
+
   test.beforeEach(async ({ request }) => {
+    seededSessionIds = [];
+    seededMenuItemIds = [];
     await loginCookie(request);
+  });
+
+  test.afterEach(async ({ request }) => {
+    for (const sessionId of seededSessionIds) {
+      await deleteMenuImportSession(request, sessionId, seededMenuItemIds);
+    }
+    seededSessionIds = [];
+    seededMenuItemIds = [];
   });
 
   // -------------------------------------------------------------------------
@@ -176,11 +212,13 @@ test.describe('Variant group auto-linking — integration', () => {
   // -------------------------------------------------------------------------
   test('items with no variantGroupKey field → variantGroupsLinked is 0', async ({ request }) => {
     const { sessionId, storeId } = await seedPendingSession(request);
+    seededSessionIds.push(sessionId);
 
     const body = await approveSession(request, sessionId, [
       { name: uniqueName('Margherita'), department: 'Pizza', price: 12.99 },
       { name: uniqueName('Pepperoni'),  department: 'Pizza', price: 14.99 },
     ], storeId);
+    seededMenuItemIds.push(...body.menuItemIds);
 
     expect(body.variantGroupsLinked).toBe(0);
     expect(body.menuItemsCreated).toBe(2);
@@ -192,11 +230,13 @@ test.describe('Variant group auto-linking — integration', () => {
   // -------------------------------------------------------------------------
   test('items with empty string variantGroupKey → variantGroupsLinked is 0', async ({ request }) => {
     const { sessionId, storeId } = await seedPendingSession(request);
+    seededSessionIds.push(sessionId);
 
     const body = await approveSession(request, sessionId, [
       { name: uniqueName('Caesar Salad'), department: 'Salads', variantGroupKey: '' },
       { name: uniqueName('Greek Salad'),  department: 'Salads', variantGroupKey: '' },
     ], storeId);
+    seededMenuItemIds.push(...body.menuItemIds);
 
     expect(body.variantGroupsLinked).toBe(0);
   });
@@ -207,12 +247,14 @@ test.describe('Variant group auto-linking — integration', () => {
   // -------------------------------------------------------------------------
   test('two items sharing variantGroupKey → variantGroupsLinked is 1 and child is linked to parent', async ({ request }) => {
     const { sessionId, storeId } = await seedPendingSession(request);
+    seededSessionIds.push(sessionId);
     const groupKey = `vg-two-${Date.now()}`;
 
     const body = await approveSession(request, sessionId, [
       { name: uniqueName('Burger Small'), department: 'Burgers', variantGroupKey: groupKey, price: 9.99 },
       { name: uniqueName('Burger Large'), department: 'Burgers', variantGroupKey: groupKey, price: 12.99 },
     ], storeId);
+    seededMenuItemIds.push(...body.menuItemIds);
 
     expect(body.variantGroupsLinked).toBe(1);
     expect(body.menuItemsCreated).toBe(2);
@@ -237,6 +279,7 @@ test.describe('Variant group auto-linking — integration', () => {
   // -------------------------------------------------------------------------
   test('three items sharing variantGroupKey → variantGroupsLinked is 1 and two children linked', async ({ request }) => {
     const { sessionId, storeId } = await seedPendingSession(request);
+    seededSessionIds.push(sessionId);
     const groupKey = `vg-three-${Date.now()}`;
 
     const body = await approveSession(request, sessionId, [
@@ -244,6 +287,7 @@ test.describe('Variant group auto-linking — integration', () => {
       { name: uniqueName('Steak Medium'), department: 'Mains', variantGroupKey: groupKey },
       { name: uniqueName('Steak Large'),  department: 'Mains', variantGroupKey: groupKey },
     ], storeId);
+    seededMenuItemIds.push(...body.menuItemIds);
 
     expect(body.variantGroupsLinked).toBe(1);
     expect(body.menuItemsCreated).toBe(3);
@@ -260,6 +304,7 @@ test.describe('Variant group auto-linking — integration', () => {
   // -------------------------------------------------------------------------
   test('two distinct variantGroupKeys → variantGroupsLinked is 2', async ({ request }) => {
     const { sessionId, storeId } = await seedPendingSession(request);
+    seededSessionIds.push(sessionId);
     const groupA = `vg-a-${Date.now()}`;
     const groupB = `vg-b-${Date.now()}`;
 
@@ -269,6 +314,7 @@ test.describe('Variant group auto-linking — integration', () => {
       { name: uniqueName('Rib Small'),  department: 'Mains',    variantGroupKey: groupB },
       { name: uniqueName('Rib Large'),  department: 'Mains',    variantGroupKey: groupB },
     ], storeId);
+    seededMenuItemIds.push(...body.menuItemIds);
 
     expect(body.variantGroupsLinked).toBe(2);
     expect(body.menuItemsCreated).toBe(4);
@@ -279,11 +325,13 @@ test.describe('Variant group auto-linking — integration', () => {
   // -------------------------------------------------------------------------
   test('single item per variantGroupKey with no partner → variantGroupsLinked is 0', async ({ request }) => {
     const { sessionId, storeId } = await seedPendingSession(request);
+    seededSessionIds.push(sessionId);
 
     const body = await approveSession(request, sessionId, [
       { name: uniqueName('Soup'),  department: 'Starters', variantGroupKey: `vg-solo-a-${Date.now()}` },
       { name: uniqueName('Pasta'), department: 'Mains',    variantGroupKey: `vg-solo-b-${Date.now()}` },
     ], storeId);
+    seededMenuItemIds.push(...body.menuItemIds);
 
     expect(body.variantGroupsLinked).toBe(0);
     expect(body.menuItemsCreated).toBe(2);
@@ -297,6 +345,7 @@ test.describe('Variant group auto-linking — integration', () => {
   // -------------------------------------------------------------------------
   test('mixed items: keyed pair + unkeyed items → variantGroupsLinked is 1', async ({ request }) => {
     const { sessionId, storeId } = await seedPendingSession(request);
+    seededSessionIds.push(sessionId);
     const groupKey = `vg-mixed-${Date.now()}`;
 
     const body = await approveSession(request, sessionId, [
@@ -305,6 +354,7 @@ test.describe('Variant group auto-linking — integration', () => {
       { name: uniqueName('Water'),          department: 'Drinks' },
       { name: uniqueName('Juice'),          department: 'Drinks', variantGroupKey: '' },
     ], storeId);
+    seededMenuItemIds.push(...body.menuItemIds);
 
     expect(body.variantGroupsLinked).toBe(1);
     expect(body.menuItemsCreated).toBe(4);
@@ -315,6 +365,7 @@ test.describe('Variant group auto-linking — integration', () => {
   // -------------------------------------------------------------------------
   test('response always includes variantGroupsLinked even when no items are submitted', async ({ request }) => {
     const { sessionId, storeId } = await seedPendingSession(request);
+    seededSessionIds.push(sessionId);
 
     const body = await approveSession(request, sessionId, [], storeId);
 
@@ -329,11 +380,13 @@ test.describe('Variant group auto-linking — integration', () => {
   // -------------------------------------------------------------------------
   test('409 when session has already been approved', async ({ request }) => {
     const { sessionId, storeId } = await seedPendingSession(request);
+    seededSessionIds.push(sessionId);
 
     // First approve — should succeed
-    await approveSession(request, sessionId, [
+    const firstBody = await approveSession(request, sessionId, [
       { name: uniqueName('First Approve Item'), department: 'Test' },
     ], storeId);
+    seededMenuItemIds.push(...firstBody.menuItemIds);
 
     // Second approve of the same session — must be rejected
     const res = await request.post(
