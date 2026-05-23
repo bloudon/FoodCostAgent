@@ -649,7 +649,7 @@ function MatchingScreen({
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
       toast({ title: "Done!", description: "Ingredient links saved." });
-      navigate("/menu-items");
+      navigate("/menu-insights");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Save failed";
       toast({ title: "Save failed", description: message, variant: "destructive" });
@@ -702,8 +702,8 @@ function MatchingScreen({
             </p>
           </CardContent>
         </Card>
-        <Button onClick={() => navigate("/menu-items")} data-testid="button-go-to-menu">
-          Go to Menu Items
+        <Button onClick={() => navigate("/menu-insights")} data-testid="button-go-to-menu">
+          View Menu Insights
           <ArrowRight className="h-4 w-4 ml-2" />
         </Button>
       </div>
@@ -885,7 +885,7 @@ export default function MenuScanTool() {
 
   const handleFinish = () => {
     clearPersistedSession();
-    navigate("/menu-items");
+    navigate("/menu-insights");
   };
 
   const STEP_LABELS: Record<Screen, string> = {
@@ -978,7 +978,7 @@ export default function MenuScanTool() {
               }}
               onSkip={() => {
                 clearPersistedSession();
-                navigate("/menu-items");
+                navigate("/menu-insights");
               }}
             />
           )}
