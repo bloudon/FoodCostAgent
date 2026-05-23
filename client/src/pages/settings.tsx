@@ -47,17 +47,20 @@ import { hasFeature } from "@shared/tier-config";
 function QbSyncHistoryCard() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const { data: syncLogs = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/quickbooks/sync-logs"],
     retry: false,
   });
 
   const retryMutation = useMutation({
-    mutationFn: async (purchaseOrderId: string) => {
+    mutationFn: async ({ purchaseOrderId, logId }: { purchaseOrderId: string; logId: string }) => {
+      setRetryingId(logId);
       const res = await apiRequest("POST", "/api/quickbooks/export-bills", { purchaseOrderIds: [purchaseOrderId] });
       return res.json();
     },
     onSuccess: (data: any) => {
+      setRetryingId(null);
       queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/sync-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       const result = data?.data?.results?.[0];
@@ -68,6 +71,7 @@ function QbSyncHistoryCard() {
       }
     },
     onError: (error: any) => {
+      setRetryingId(null);
       toast({ title: "Retry failed", description: error.message, variant: "destructive" });
     },
   });
@@ -133,10 +137,15 @@ function QbSyncHistoryCard() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => retryMutation.mutate(log.purchaseOrderId)}
-                        disabled={retryMutation.isPending}
+                        onClick={() => retryMutation.mutate({ purchaseOrderId: log.purchaseOrderId, logId: log.id })}
+                        disabled={retryingId === log.id}
                         data-testid={`button-retry-sync-${log.id}`}
                       >
+                        {retryingId === log.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        ) : (
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                        )}
                         Retry
                       </Button>
                     )}
