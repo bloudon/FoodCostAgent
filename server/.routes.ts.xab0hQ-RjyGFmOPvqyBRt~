@@ -18631,43 +18631,6 @@ Human Handoff:
     }
   });
 
-  // ============ DEV-ONLY TEST HELPERS ============
-  // These endpoints are only registered in non-production environments.
-  // They exist solely to support automated integration tests.
-  if (process.env.NODE_ENV !== 'production') {
-    /**
-     * POST /api/dev/test/menu-import-session
-     * Creates a pending menuImportSessions record and returns its ID so that
-     * integration tests can exercise the approve endpoint without a real AI scan.
-     *
-     * Body (all optional):
-     *   storeId  — store to associate with the session
-     */
-    app.post("/api/dev/test/menu-import-session", requireAuth, async (req, res) => {
-      try {
-        const companyId = (req as any).companyId;
-        if (!companyId) return res.status(400).json({ error: "Company context required" });
-        // Resolve storeId: prefer explicit body param, then first company store
-        let storeId: string | null = req.body?.storeId ?? null;
-        if (!storeId) {
-          const stores = await db.select().from(companyStores)
-            .where(eq(companyStores.companyId, companyId))
-            .limit(1);
-          storeId = stores[0]?.id ?? null;
-        }
-        const [session] = await db.insert(menuImportSessions).values({
-          companyId,
-          storeId,
-          status: "pending",
-        }).returning();
-        return res.json({ sessionId: session.id, storeId });
-      } catch (err: any) {
-        console.error("[dev/test/menu-import-session]", err);
-        return res.status(500).json({ error: err.message });
-      }
-    });
-  }
-
   const httpServer = createServer(app);
   return httpServer;
 }
@@ -19182,6 +19145,36 @@ async function calculateActualUsage(
   }
 
   return usage;
+}
+
+// ============ DEV-ONLY TEST HELPERS ============
+// These endpoints are only registered in non-production environments.
+// They exist solely to support automated integration tests.
+if (process.env.NODE_ENV !== 'production') {
+  /**
+   * POST /api/dev/test/menu-import-session
+   * Creates a pending menuImportSessions record and returns its ID so that
+   * integration tests can exercise the approve endpoint without a real AI scan.
+   *
+   * Body (all optional):
+   *   storeId  — store to associate with the session
+   */
+  app.post("/api/dev/test/menu-import-session", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(400).json({ error: "Company context required" });
+      const storeId: string | null = req.body?.storeId ?? null;
+      const [session] = await db.insert(menuImportSessions).values({
+        companyId,
+        storeId,
+        status: "pending",
+      }).returning();
+      return res.json({ sessionId: session.id });
+    } catch (err: any) {
+      console.error("[dev/test/menu-import-session]", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
 }
 
 // ============ WEBSOCKET POS STREAMING ============
