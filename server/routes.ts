@@ -18957,6 +18957,89 @@ Human Handoff:
         return res.status(500).json({ error: err.message });
       }
     });
+
+    /**
+     * POST /api/dev/test/qb-po-state
+     * Seeds a purchase order in a specific QuickBooks export state so that
+     * integration tests can verify the status contract without needing a live
+     * QB connection.
+     *
+     * Body:
+     *   status          — "pending_qb_export" | "qb_exported" (required)
+     *   syncStatus      — "success" | "failed" | "retry_exhausted" | "pending" (optional)
+     *                     If provided, a qb_sync_log row is also created.
+     *   quickbooksBillId — string (optional, used when syncStatus = "success")
+     *   errorMessage    — string (optional, used when syncStatus = "failed")
+     *
+     * Returns: { poId, syncLogId }
+     */
+    app.post("/api/dev/test/qb-po-state", requireAuth, async (req, res) => {
+      try {
+        const companyId = (req as any).companyId;
+        if (!companyId) return res.status(400).json({ error: "Company context required" });
+
+        const { status, syncStatus, quickbooksBillId, errorMessage } = req.body as {
+          status: string;
+          syncStatus?: string;
+          quickbooksBillId?: string;
+          errorMessage?: string;
+        };
+
+        const ALLOWED_PO_STATUSES = ["pending_qb_export", "qb_exported", "received"];
+        if (!status || !ALLOWED_PO_STATUSES.includes(status)) {
+          return res.status(400).json({ error: `status must be one of: ${ALLOWED_PO_STATUSES.join(", ")}` });
+        }
+
+        // Resolve a store for the company
+        const storeRows = await db.select().from(companyStores)
+          .where(eq(companyStores.companyId, companyId))
+          .limit(1);
+        const storeId = storeRows[0]?.id;
+        if (!storeId) return res.status(400).json({ error: "No store found for company" });
+
+        // Resolve a vendor for the company
+        const vendorRows = await db.select().from(vendors)
+          .where(and(eq(vendors.companyId, companyId), eq(vendors.active, 1)))
+          .limit(1);
+        const vendorId = vendorRows[0]?.id;
+        if (!vendorId) return res.status(400).json({ error: "No vendor found for company — run ci-seed first" });
+
+        // Create the purchase order in the requested state
+        const { quickbooksSyncLogs: qbSyncLogsTable } = await import("@shared/schema");
+        const [po] = await db.insert(purchaseOrders).values({
+          companyId,
+          storeId,
+          vendorId,
+          status,
+          expectedDate: new Date(),
+        }).returning();
+
+        // Optionally create a qb_sync_log row
+        let syncLogId: string | null = null;
+        if (syncStatus) {
+          const ALLOWED_SYNC_STATUSES = ["success", "failed", "retry_exhausted", "pending"];
+          if (!ALLOWED_SYNC_STATUSES.includes(syncStatus)) {
+            return res.status(400).json({ error: `syncStatus must be one of: ${ALLOWED_SYNC_STATUSES.join(", ")}` });
+          }
+          const [syncLog] = await db.insert(qbSyncLogsTable).values({
+            companyId,
+            purchaseOrderId: po.id,
+            syncStatus,
+            quickbooksBillId: quickbooksBillId || null,
+            errorMessage: errorMessage || null,
+            attemptCount: 1,
+            lastAttemptAt: new Date(),
+            succeededAt: syncStatus === "success" ? new Date() : null,
+          }).returning();
+          syncLogId = syncLog.id;
+        }
+
+        return res.json({ poId: po.id, syncLogId, status, storeId, vendorId });
+      } catch (err: any) {
+        console.error("[dev/test/qb-po-state]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
   }
 
   const httpServer = createServer(app);
