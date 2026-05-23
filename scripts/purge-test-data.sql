@@ -39,6 +39,19 @@ BEGIN
   RAISE NOTICE 'Keeping company IDs: %', keep_ids;
 
   -- ------------------------------------------------------------------
+  -- CI test POs within kept companies (stamped notes = '__ci_test__')
+  -- These are left behind when afterEach teardown is skipped or fails.
+  -- ------------------------------------------------------------------
+  DELETE FROM quickbooks_sync_logs
+    WHERE purchase_order_id IN (
+      SELECT id FROM purchase_orders WHERE notes = '__ci_test__'
+    );
+  GET DIAGNOSTICS n = ROW_COUNT; RAISE NOTICE 'CI test quickbooks_sync_logs: %', n;
+
+  DELETE FROM purchase_orders WHERE notes = '__ci_test__';
+  GET DIAGNOSTICS n = ROW_COUNT; RAISE NOTICE 'CI test purchase_orders: %', n;
+
+  -- ------------------------------------------------------------------
   -- Delete in dependency order (children before parents)
   -- ------------------------------------------------------------------
 

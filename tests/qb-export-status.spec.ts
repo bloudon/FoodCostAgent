@@ -484,13 +484,40 @@ test.describe('POST /api/quickbooks/export-bills — request validation', () => 
 // that drives the badge rendering in the UI.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Teardown helper — deletes a seeded test PO and its sync log rows
+// ---------------------------------------------------------------------------
+
+async function deleteQbPoState(
+  request: APIRequestContext,
+  poId: string,
+): Promise<void> {
+  if (!poId) return;
+  const res = await request.delete(`${BASE_URL}/api/dev/test/qb-po-state/${poId}`);
+  // 404 means already gone; both outcomes are acceptable in teardown
+  if (res.status() !== 200 && res.status() !== 404) {
+    console.warn(`[afterEach] Failed to delete test PO ${poId}: HTTP ${res.status()}`);
+  }
+}
+
 test.describe('PO status data contract — API-level state verification', () => {
+  let seededPoIds: string[] = [];
+
   test.beforeEach(async ({ request }) => {
+    seededPoIds = [];
     await loginCookie(request);
+  });
+
+  test.afterEach(async ({ request }) => {
+    for (const poId of seededPoIds) {
+      await deleteQbPoState(request, poId);
+    }
+    seededPoIds = [];
   });
 
   test('seeded pending_qb_export PO is returned with correct status by GET /api/purchase-orders/:id', async ({ request }) => {
     const { poId } = await seedQbPoState(request, { status: 'pending_qb_export' });
+    seededPoIds.push(poId);
 
     const res = await request.get(`${BASE_URL}/api/purchase-orders/${poId}`);
     expect(res.status()).toBe(200);
@@ -505,6 +532,7 @@ test.describe('PO status data contract — API-level state verification', () => 
       syncStatus: 'success',
       quickbooksBillId: `QB-BILL-${Date.now()}`,
     });
+    seededPoIds.push(poId);
 
     const res = await request.get(`${BASE_URL}/api/purchase-orders/${poId}`);
     expect(res.status()).toBe(200);
@@ -521,6 +549,7 @@ test.describe('PO status data contract — API-level state verification', () => 
       syncStatus: 'failed',
       errorMessage: 'QB API error 403 — token expired',
     });
+    seededPoIds.push(poId);
 
     const res = await request.get(`${BASE_URL}/api/purchase-orders/${poId}`);
     expect(res.status()).toBe(200);
@@ -537,6 +566,7 @@ test.describe('PO status data contract — API-level state verification', () => 
       syncStatus: 'success',
       quickbooksBillId: `QB-DUPE-${Date.now()}`,
     });
+    seededPoIds.push(poId);
 
     const res = await request.post(`${BASE_URL}/api/quickbooks/export-bills`, {
       data: { purchaseOrderIds: [poId] },
@@ -559,6 +589,7 @@ test.describe('PO status data contract — API-level state verification', () => 
 
   test('export-bills rejects a received-status PO (not yet reconciled)', async ({ request }) => {
     const { poId } = await seedQbPoState(request, { status: 'received' });
+    seededPoIds.push(poId);
 
     const res = await request.post(`${BASE_URL}/api/quickbooks/export-bills`, {
       data: { purchaseOrderIds: [poId] },

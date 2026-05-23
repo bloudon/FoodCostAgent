@@ -19005,6 +19005,7 @@ Human Handoff:
         if (!vendorId) return res.status(400).json({ error: "No vendor found for company — run ci-seed first" });
 
         // Create the purchase order in the requested state
+        // notes is stamped with __ci_test__ so purge-test-data.sql can target it
         const { quickbooksSyncLogs: qbSyncLogsTable } = await import("@shared/schema");
         const [po] = await db.insert(purchaseOrders).values({
           companyId,
@@ -19012,6 +19013,7 @@ Human Handoff:
           vendorId,
           status,
           expectedDate: new Date(),
+          notes: "__ci_test__",
         }).returning();
 
         // Optionally create a qb_sync_log row
@@ -19037,6 +19039,46 @@ Human Handoff:
         return res.json({ poId: po.id, syncLogId, status, storeId, vendorId });
       } catch (err: any) {
         console.error("[dev/test/qb-po-state]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    /**
+     * DELETE /api/dev/test/qb-po-state/:poId
+     * Removes a test purchase order and any associated qb_sync_log rows.
+     * Used by afterEach hooks in automated tests to keep the dev database clean.
+     */
+    app.delete("/api/dev/test/qb-po-state/:poId", requireAuth, async (req, res) => {
+      try {
+        const companyId = (req as any).companyId;
+        if (!companyId) return res.status(400).json({ error: "Company context required" });
+
+        const { poId } = req.params;
+        if (!poId) return res.status(400).json({ error: "poId is required" });
+
+        const { quickbooksSyncLogs: qbSyncLogsTable } = await import("@shared/schema");
+
+        // Confirm the PO belongs to this company before deleting
+        const existing = await db.select({ id: purchaseOrders.id })
+          .from(purchaseOrders)
+          .where(and(eq(purchaseOrders.id, poId), eq(purchaseOrders.companyId, companyId)))
+          .limit(1);
+
+        if (existing.length === 0) {
+          return res.status(404).json({ error: "Purchase order not found or does not belong to this company" });
+        }
+
+        // Delete sync log rows first (FK → purchase_orders)
+        await db.delete(qbSyncLogsTable)
+          .where(eq(qbSyncLogsTable.purchaseOrderId, poId));
+
+        // Delete the purchase order
+        await db.delete(purchaseOrders)
+          .where(and(eq(purchaseOrders.id, poId), eq(purchaseOrders.companyId, companyId)));
+
+        return res.json({ deleted: true, poId });
+      } catch (err: any) {
+        console.error("[dev/test/qb-po-state DELETE]", err);
         return res.status(500).json({ error: err.message });
       }
     });
