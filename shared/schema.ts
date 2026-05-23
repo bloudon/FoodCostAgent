@@ -1324,6 +1324,30 @@ export const insertQuickBooksSyncLogSchema = createInsertSchema(quickbooksSyncLo
 export type InsertQuickBooksSyncLog = z.infer<typeof insertQuickBooksSyncLogSchema>;
 export type QuickBooksSyncLog = typeof quickbooksSyncLogs.$inferSelect;
 
+// QuickBooks Reconciliations (invoice # + total recorded before export)
+export const qbReconciliations = pgTable("qb_reconciliations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  purchaseOrderId: varchar("purchase_order_id").notNull().unique(),
+  receiptId: varchar("receipt_id").notNull(),
+  invoiceNumber: text("invoice_number"), // vendor invoice # (optional)
+  invoiceDate: timestamp("invoice_date"), // date on vendor invoice
+  invoiceTotal: real("invoice_total").notNull(), // total from vendor invoice
+  receiptTotal: real("receipt_total").notNull(), // total from our receipt
+  variance: real("variance").notNull().default(0), // invoiceTotal - receiptTotal
+  notes: text("notes"),
+  reconciledBy: varchar("reconciled_by"), // userId
+  reconciledAt: timestamp("reconciled_at").notNull().defaultNow(),
+}, (table) => ({
+  companyIdx: index("qb_reconciliations_company_idx").on(table.companyId),
+  poIdx: index("qb_reconciliations_po_idx").on(table.purchaseOrderId),
+}));
+
+export const insertQbReconciliationSchema = createInsertSchema(qbReconciliations)
+  .omit({ id: true, reconciledAt: true });
+export type InsertQbReconciliation = z.infer<typeof insertQbReconciliationSchema>;
+export type QbReconciliation = typeof qbReconciliations.$inferSelect;
+
 // QuickBooks Token Refresh Logs - Lightweight logging for token operations
 export const quickbooksTokenLogs = pgTable("quickbooks_token_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

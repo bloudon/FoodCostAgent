@@ -42,6 +42,72 @@ import {
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { UsersManagement } from "@/components/UsersManagement";
 
+function QbSyncHistoryCard() {
+  const { data: syncLogs = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/quickbooks/sync-logs"],
+    retry: false,
+  });
+
+  const statusBadge = (status: string) => {
+    if (status === "success") return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800">Success</Badge>;
+    if (status === "failed" || status === "retry_exhausted") return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800">{status === "retry_exhausted" ? "Failed (max retries)" : "Failed"}</Badge>;
+    if (status === "pending") return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800">Pending</Badge>;
+    return <Badge variant="outline">{status}</Badge>;
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Sync History</CardTitle>
+        <CardDescription>
+          Purchase orders exported to QuickBooks as bills
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading sync history...
+          </div>
+        ) : syncLogs.length === 0 ? (
+          <div className="text-center py-8 border rounded-lg border-dashed">
+            <p className="text-sm text-muted-foreground">No sync history yet. Export a received order to QuickBooks to see logs here.</p>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Purchase Order</TableHead>
+                <TableHead>QB Bill ID</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Attempts</TableHead>
+                <TableHead>Last Attempt</TableHead>
+                <TableHead>Error</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {syncLogs.map((log: any) => (
+                <TableRow key={log.id} data-testid={`sync-log-row-${log.id}`}>
+                  <TableCell className="font-mono text-sm">#{log.purchaseOrderId?.slice(0, 8)}</TableCell>
+                  <TableCell className="font-mono text-sm text-muted-foreground">{log.quickbooksBillId || "—"}</TableCell>
+                  <TableCell>{statusBadge(log.syncStatus)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{log.attemptCount}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {log.lastAttemptAt ? new Date(log.lastAttemptAt).toLocaleString() : "—"}
+                  </TableCell>
+                  <TableCell className="text-sm text-destructive max-w-[200px] truncate">
+                    {log.errorMessage || "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Settings() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("company");
@@ -1260,22 +1326,7 @@ export default function Settings() {
             </DialogContent>
           </Dialog>
 
-          {qbStatus?.connected && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Sync History</CardTitle>
-                <CardDescription>
-                  View synchronization logs and status for purchase orders
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-sm text-muted-foreground">
-                  Sync history and monitoring tools will be available here. Track which purchase orders
-                  have been synced to QuickBooks, view any errors, and retry failed synchronizations.
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          {qbStatus?.connected && <QbSyncHistoryCard />}
         </TabsContent>
 
         <TabsContent value="user" className="space-y-6">

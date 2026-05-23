@@ -15764,6 +15764,126 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
+  // GET /api/purchase-orders/:id/reconciliation - Get reconciliation data for a PO
+  app.get("/api/purchase-orders/:id/reconciliation", requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { id } = req.params;
+      const rec = await storage.getQbReconciliation(id, companyId);
+      res.json({ data: rec || null });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/purchase-orders/:id/reconcile - Save reconciliation data (invoice # + totals)
+  app.post("/api/purchase-orders/:id/reconcile", requireAuth, async (req, res) => {
+    try {
+      const { companyId, id: userId } = req.user!;
+      const { id: purchaseOrderId } = req.params;
+
+      const po = await storage.getPurchaseOrder(purchaseOrderId, companyId);
+      if (!po) return res.status(404).json({ error: "Purchase order not found" });
+      if (po.status !== "received" && po.status !== "pending_qb_export") {
+        return res.status(400).json({ error: "Purchase order must be in received status to reconcile" });
+      }
+
+      const { invoiceNumber, invoiceDate, invoiceTotal, receiptTotal, notes, receiptId } = req.body;
+      if (invoiceTotal == null || receiptTotal == null || !receiptId) {
+        return res.status(400).json({ error: "invoiceTotal, receiptTotal, and receiptId are required" });
+      }
+
+      const variance = parseFloat((invoiceTotal - receiptTotal).toFixed(2));
+
+      const existing = await storage.getQbReconciliation(purchaseOrderId, companyId);
+      let rec;
+      if (existing) {
+        rec = await storage.updateQbReconciliation(purchaseOrderId, companyId, {
+          invoiceNumber: invoiceNumber || null,
+          invoiceDate: invoiceDate ? new Date(invoiceDate) : null,
+          invoiceTotal: parseFloat(invoiceTotal),
+          receiptTotal: parseFloat(receiptTotal),
+          variance,
+          notes: notes || null,
+          reconciledBy: userId,
+          reconciledAt: new Date(),
+        });
+      } else {
+        rec = await storage.createQbReconciliation({
+          companyId,
+          purchaseOrderId,
+          receiptId,
+          invoiceNumber: invoiceNumber || null,
+          invoiceDate: invoiceDate ? new Date(invoiceDate) : null,
+          invoiceTotal: parseFloat(invoiceTotal),
+          receiptTotal: parseFloat(receiptTotal),
+          variance,
+          notes: notes || null,
+          reconciledBy: userId,
+        });
+      }
+
+      // Advance PO status to pending_qb_export if it's still at received
+      if (po.status === "received") {
+        await storage.updatePurchaseOrder(purchaseOrderId, { status: "pending_qb_export" });
+      }
+
+      res.json({ data: rec });
+    } catch (error: any) {
+      console.error("Reconcile error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/quickbooks/export-bills - Export one or more reconciled POs as QB Bills
+  app.post("/api/quickbooks/export-bills", requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { purchaseOrderIds } = req.body as { purchaseOrderIds: string[] };
+
+      if (!Array.isArray(purchaseOrderIds) || purchaseOrderIds.length === 0) {
+        return res.status(400).json({ error: "purchaseOrderIds array is required" });
+      }
+
+      // Check QB connection
+      const connection = await storage.getQuickBooksConnection(companyId);
+      if (!connection) {
+        return res.status(400).json({ error: "QuickBooks is not connected. Please connect in Settings." });
+      }
+
+      const { createBillFromReceipt } = await import("./services/quickbooks");
+
+      const results: Array<{ purchaseOrderId: string; success: boolean; billId?: string; error?: string }> = [];
+
+      for (const poId of purchaseOrderIds) {
+        const po = await storage.getPurchaseOrder(poId, companyId);
+        if (!po) {
+          results.push({ purchaseOrderId: poId, success: false, error: "Purchase order not found" });
+          continue;
+        }
+        if (po.status !== "pending_qb_export" && po.status !== "received") {
+          results.push({ purchaseOrderId: poId, success: false, error: "Order is not ready for export" });
+          continue;
+        }
+
+        const result = await createBillFromReceipt(companyId, poId);
+        results.push({ purchaseOrderId: poId, ...result });
+
+        if (result.success) {
+          await storage.updatePurchaseOrder(poId, { status: "qb_exported" });
+        }
+      }
+
+      const successCount = results.filter((r) => r.success).length;
+      const failureCount = results.filter((r) => !r.success).length;
+
+      res.json({ data: { results, successCount, failureCount } });
+    } catch (error: any) {
+      console.error("Export bills error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ============ ONBOARDING ROUTES ============
   
   // GET /api/onboarding/progress - Get onboarding progress for current company

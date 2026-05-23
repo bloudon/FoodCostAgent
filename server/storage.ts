@@ -58,6 +58,7 @@ import {
   quickbooksVendorMappings, type QuickBooksVendorMapping, type InsertQuickBooksVendorMapping,
   quickbooksSyncLogs, type QuickBooksSyncLog, type InsertQuickBooksSyncLog,
   quickbooksTokenLogs, type QuickBooksTokenLog, type InsertQuickBooksTokenLog,
+  qbReconciliations, type QbReconciliation, type InsertQbReconciliation,
   onboardingProgress, type OnboardingProgress, type InsertOnboardingProgress,
   menuItemSizes, type MenuItemSize, type InsertMenuItemSize,
   stations, type Station, type InsertStation,
@@ -550,6 +551,12 @@ export interface IStorage {
   getQuickBooksSyncLogs(companyId: string, syncStatus?: string): Promise<QuickBooksSyncLog[]>;
   createQuickBooksSyncLog(log: InsertQuickBooksSyncLog): Promise<QuickBooksSyncLog>;
   updateQuickBooksSyncLog(id: string, companyId: string, updates: Partial<QuickBooksSyncLog>): Promise<QuickBooksSyncLog | undefined>;
+
+  // QuickBooks - Reconciliations
+  getQbReconciliation(purchaseOrderId: string, companyId: string): Promise<QbReconciliation | undefined>;
+  getQbReconciliations(companyId: string): Promise<QbReconciliation[]>;
+  createQbReconciliation(rec: InsertQbReconciliation): Promise<QbReconciliation>;
+  updateQbReconciliation(purchaseOrderId: string, companyId: string, updates: Partial<QbReconciliation>): Promise<QbReconciliation | undefined>;
   
   // Onboarding Progress
   getOnboardingProgress(companyId: string): Promise<OnboardingProgress | undefined>;
@@ -4170,6 +4177,50 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(quickbooksSyncLogs.id, id),
           eq(quickbooksSyncLogs.companyId, companyId)
+        )
+      )
+      .returning();
+    return updated || undefined;
+  }
+
+  // QuickBooks - Reconciliations
+  async getQbReconciliation(purchaseOrderId: string, companyId: string): Promise<QbReconciliation | undefined> {
+    const [rec] = await db
+      .select()
+      .from(qbReconciliations)
+      .where(
+        and(
+          eq(qbReconciliations.purchaseOrderId, purchaseOrderId),
+          eq(qbReconciliations.companyId, companyId)
+        )
+      );
+    return rec || undefined;
+  }
+
+  async getQbReconciliations(companyId: string): Promise<QbReconciliation[]> {
+    return db
+      .select()
+      .from(qbReconciliations)
+      .where(eq(qbReconciliations.companyId, companyId))
+      .orderBy(desc(qbReconciliations.reconciledAt));
+  }
+
+  async createQbReconciliation(rec: InsertQbReconciliation): Promise<QbReconciliation> {
+    const [newRec] = await db
+      .insert(qbReconciliations)
+      .values(rec)
+      .returning();
+    return newRec;
+  }
+
+  async updateQbReconciliation(purchaseOrderId: string, companyId: string, updates: Partial<QbReconciliation>): Promise<QbReconciliation | undefined> {
+    const [updated] = await db
+      .update(qbReconciliations)
+      .set(updates)
+      .where(
+        and(
+          eq(qbReconciliations.purchaseOrderId, purchaseOrderId),
+          eq(qbReconciliations.companyId, companyId)
         )
       )
       .returning();

@@ -1,12 +1,14 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Save, PackageCheck, Search, RotateCcw, Package, Hash } from "lucide-react";
+import { ArrowLeft, Save, PackageCheck, Search, RotateCcw, Package, Hash, FileCheck, AlertTriangle, CheckCircle2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -33,6 +35,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatUnitName, formatDateString } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
+import { hasFeature } from "@shared/tier-config";
 
 type PurchaseOrderDetail = {
   id: string;
@@ -103,6 +107,7 @@ export default function ReceivingDetail() {
   const { poId } = useParams<{ poId: string }>();
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
   
   // Get receiptId from query parameter if present
   const searchParams = new URLSearchParams(location.split('?')[1]);
@@ -130,6 +135,14 @@ export default function ReceivingDetail() {
     reorderLevel: "",
   });
 
+  // Reconcile form state
+  const [reconcileForm, setReconcileForm] = useState({
+    invoiceNumber: "",
+    invoiceDate: "",
+    invoiceTotal: "",
+    notes: "",
+  });
+
   const { data: purchaseOrder, isLoading: loadingOrder} = useQuery<PurchaseOrderDetail>({
     queryKey: [`/api/purchase-orders/${poId}`],
   });
@@ -147,6 +160,17 @@ export default function ReceivingDetail() {
 
   const { data: categories } = useQuery<Category[]>({
     queryKey: ["/api/categories"],
+  });
+
+  // QB connection status + existing reconciliation
+  const { data: qbStatus } = useQuery<{ connected: boolean }>({
+    queryKey: ["/api/quickbooks/status"],
+    retry: false,
+  });
+
+  const { data: reconciliationData, refetch: refetchReconciliation } = useQuery<{ data: any }>({
+    queryKey: [`/api/purchase-orders/${poId}/reconciliation`],
+    enabled: !!poId,
   });
 
   // Load draft receipt data when available
@@ -275,6 +299,69 @@ export default function ReceivingDetail() {
       toast({
         title: "Error",
         description: error.message || "Failed to update item",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const reconcileMutation = useMutation({
+    mutationFn: async (data: {
+      invoiceNumber: string;
+      invoiceDate: string;
+      invoiceTotal: number;
+      receiptTotal: number;
+      notes: string;
+      receiptId: string;
+    }) => {
+      return await apiRequest("POST", `/api/purchase-orders/${poId}/reconcile`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}/reconciliation`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
+      refetchReconciliation();
+      toast({
+        title: "Reconciled",
+        description: "Invoice details saved. Ready to export to QuickBooks.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save reconciliation",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const exportToQbMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", "/api/quickbooks/export-bills", {
+        purchaseOrderIds: [poId],
+      });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/sync-logs"] });
+      const result = data?.data?.results?.[0];
+      if (result?.success) {
+        toast({
+          title: "Exported to QuickBooks",
+          description: `Bill created successfully${result.billNumber ? ` (#${result.billNumber})` : ""}.`,
+        });
+      } else {
+        toast({
+          title: "Export Failed",
+          description: result?.error || "Failed to create bill in QuickBooks",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to export to QuickBooks",
         variant: "destructive",
       });
     },
@@ -845,6 +932,170 @@ export default function ReceivingDetail() {
             </div>
           </CardContent>
         </Card>
+
+        {/* QuickBooks Reconcile & Export — shown when receipt is completed, Pro tier + QB connected */}
+        {isCompleted && hasFeature((user as any)?.subscriptionTier, "transfer_orders") && qbStatus?.connected && (
+          (() => {
+            const existing = reconciliationData?.data;
+            const isExported = purchaseOrder.status === "qb_exported";
+            const isPendingExport = purchaseOrder.status === "pending_qb_export";
+            const receiptTotal = filteredLines.reduce((sum, line) => {
+              const rqty = receivedQuantities[line.id] || 0;
+              const price = editedPrices[line.id] ?? line.pricePerUnit;
+              return sum + rqty * price;
+            }, 0);
+
+            return (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <FileCheck className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <CardTitle>Invoice Reconciliation &amp; QuickBooks Export</CardTitle>
+                      <CardDescription>
+                        Match the vendor invoice to this receipt, then push a bill to QuickBooks.
+                      </CardDescription>
+                    </div>
+                    {isExported && (
+                      <Badge className="ml-auto bg-green-500/10 text-green-700 border-green-500/20" data-testid="badge-qb-exported">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Exported to QB
+                      </Badge>
+                    )}
+                    {isPendingExport && !isExported && (
+                      <Badge className="ml-auto bg-blue-500/10 text-blue-700 border-blue-500/20" data-testid="badge-pending-export">
+                        Reconciled — Ready to Export
+                      </Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {isExported ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <span>This order has been exported to QuickBooks as a bill.</span>
+                      {existing?.invoiceNumber && (
+                        <span className="font-medium text-foreground">Invoice #{existing.invoiceNumber}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="invoice-number">Vendor Invoice # <span className="text-muted-foreground">(optional)</span></Label>
+                          <Input
+                            id="invoice-number"
+                            placeholder="e.g. INV-2025-001"
+                            value={reconcileForm.invoiceNumber}
+                            onChange={(e) => setReconcileForm(p => ({ ...p, invoiceNumber: e.target.value }))}
+                            defaultValue={existing?.invoiceNumber || ""}
+                            data-testid="input-invoice-number"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="invoice-date">Invoice Date <span className="text-muted-foreground">(optional)</span></Label>
+                          <Input
+                            id="invoice-date"
+                            type="date"
+                            value={reconcileForm.invoiceDate}
+                            onChange={(e) => setReconcileForm(p => ({ ...p, invoiceDate: e.target.value }))}
+                            defaultValue={existing?.invoiceDate ? existing.invoiceDate.split("T")[0] : ""}
+                            data-testid="input-invoice-date"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="invoice-total">Invoice Total ($) <span className="text-destructive">*</span></Label>
+                          <Input
+                            id="invoice-total"
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={reconcileForm.invoiceTotal || (existing?.invoiceTotal ?? "")}
+                            onChange={(e) => setReconcileForm(p => ({ ...p, invoiceTotal: e.target.value }))}
+                            data-testid="input-invoice-total"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Our Receipt Total</Label>
+                          <div className="h-9 flex items-center font-mono text-sm font-semibold" data-testid="text-receipt-total">
+                            ${receiptTotal.toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {reconcileForm.invoiceTotal && (
+                        (() => {
+                          const diff = parseFloat(reconcileForm.invoiceTotal) - receiptTotal;
+                          const absDiff = Math.abs(diff);
+                          if (absDiff < 0.01) return (
+                            <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
+                              <CheckCircle2 className="h-4 w-4" />
+                              Invoice matches receipt total exactly.
+                            </div>
+                          );
+                          return (
+                            <div className="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-400">
+                              <AlertTriangle className="h-4 w-4" />
+                              Variance of ${absDiff.toFixed(2)} — {diff > 0 ? "invoice is higher" : "invoice is lower"} than receipt.
+                            </div>
+                          );
+                        })()
+                      )}
+
+                      <div className="space-y-2">
+                        <Label htmlFor="reconcile-notes">Notes <span className="text-muted-foreground">(optional)</span></Label>
+                        <Textarea
+                          id="reconcile-notes"
+                          placeholder="e.g. short-shipped 2 cases of tomatoes"
+                          value={reconcileForm.notes}
+                          onChange={(e) => setReconcileForm(p => ({ ...p, notes: e.target.value }))}
+                          defaultValue={existing?.notes || ""}
+                          rows={2}
+                          data-testid="textarea-reconcile-notes"
+                        />
+                      </div>
+
+                      <Separator />
+
+                      <div className="flex flex-wrap gap-3">
+                        <Button
+                          onClick={() => {
+                            if (!draftReceiptId) return;
+                            const invoiceTotalNum = parseFloat(reconcileForm.invoiceTotal || String(existing?.invoiceTotal || receiptTotal));
+                            reconcileMutation.mutate({
+                              invoiceNumber: reconcileForm.invoiceNumber || existing?.invoiceNumber || "",
+                              invoiceDate: reconcileForm.invoiceDate || (existing?.invoiceDate ? existing.invoiceDate.split("T")[0] : ""),
+                              invoiceTotal: invoiceTotalNum,
+                              receiptTotal,
+                              notes: reconcileForm.notes || existing?.notes || "",
+                              receiptId: draftReceiptId,
+                            });
+                          }}
+                          disabled={reconcileMutation.isPending}
+                          variant="outline"
+                          data-testid="button-save-reconciliation"
+                        >
+                          {reconcileMutation.isPending ? "Saving..." : isPendingExport ? "Update Reconciliation" : "Save Reconciliation"}
+                        </Button>
+
+                        {(isPendingExport || existing) && (
+                          <Button
+                            onClick={() => exportToQbMutation.mutate()}
+                            disabled={exportToQbMutation.isPending}
+                            data-testid="button-export-to-qb"
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            {exportToQbMutation.isPending ? "Exporting..." : "Export Bill to QuickBooks"}
+                          </Button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()
+        )}
       </div>
 
       <Dialog open={!!editingItem} onOpenChange={(open) => !open && handleCloseItemEdit()}>

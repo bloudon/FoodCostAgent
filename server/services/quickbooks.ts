@@ -2,6 +2,170 @@ import OAuthClient from "intuit-oauth";
 import { storage } from "../storage";
 import type { QuickBooksConnection } from "@shared/schema";
 
+export interface BillLineItem {
+  description: string;
+  amount: number;
+}
+
+export interface CreateBillResult {
+  success: boolean;
+  billId?: string;
+  billNumber?: string;
+  errorMessage?: string;
+}
+
+export async function createBillFromReceipt(
+  companyId: string,
+  purchaseOrderId: string
+): Promise<CreateBillResult> {
+  const now = new Date();
+
+  // Load existing sync log if any (for retry counting)
+  let syncLog = await storage.getQuickBooksSyncLog(purchaseOrderId, companyId);
+
+  const attemptCount = syncLog ? syncLog.attemptCount + 1 : 1;
+
+  try {
+    // Get QB connection
+    const { client, connection } = await getAuthenticatedClient(companyId);
+
+    const apiUrl =
+      process.env.QUICKBOOKS_ENVIRONMENT === "production"
+        ? "https://quickbooks.api.intuit.com"
+        : "https://sandbox-quickbooks.api.intuit.com";
+
+    // Load PO and receipt
+    const po = await storage.getPurchaseOrder(purchaseOrderId, companyId);
+    if (!po) throw new Error("Purchase order not found");
+
+    // Find the completed receipt for this PO
+    const receipts = await storage.getReceipts(companyId);
+    const receipt = receipts.find(
+      (r) => r.purchaseOrderId === purchaseOrderId && r.status === "completed"
+    );
+    if (!receipt) throw new Error("No completed receipt found for this purchase order");
+
+    const receiptLines = await storage.getReceiptLinesByReceiptId(receipt.id);
+    if (!receiptLines.length) throw new Error("Receipt has no lines");
+
+    // Get reconciliation for invoice #
+    const reconciliation = await storage.getQbReconciliation(purchaseOrderId, companyId);
+
+    // Get QB vendor mapping for this vendor
+    const vendorMapping = await storage.getQuickBooksVendorMapping(po.vendorId, companyId);
+    if (!vendorMapping) {
+      throw new Error(
+        "No QuickBooks vendor mapping found. Please map this vendor in Settings → Integrations → QuickBooks before exporting."
+      );
+    }
+
+    // Build line items: one line per receipt line (group by amount for simplicity)
+    const lineItems: BillLineItem[] = receiptLines.map((rl) => ({
+      description: `Received item`,
+      amount: parseFloat((rl.receivedQty * rl.priceEach).toFixed(2)),
+    }));
+
+    const totalAmount = lineItems.reduce((sum, l) => sum + l.amount, 0);
+
+    // Build QB Bill payload
+    const billPayload: any = {
+      VendorRef: {
+        value: vendorMapping.quickbooksVendorId,
+        name: vendorMapping.quickbooksVendorName,
+      },
+      TxnDate: reconciliation?.invoiceDate
+        ? reconciliation.invoiceDate.toISOString().split("T")[0]
+        : now.toISOString().split("T")[0],
+      DueDate: reconciliation?.invoiceDate
+        ? reconciliation.invoiceDate.toISOString().split("T")[0]
+        : now.toISOString().split("T")[0],
+      PrivateNote: `FnB Cost Pro PO #${purchaseOrderId.slice(0, 8)}`,
+      Line: lineItems.map((li, idx) => ({
+        Id: String(idx + 1),
+        LineNum: idx + 1,
+        Description: li.description,
+        Amount: li.amount,
+        DetailType: "AccountBasedExpenseLineDetail",
+        AccountBasedExpenseLineDetail: {
+          AccountRef: { name: "Accounts Payable (A/P)" },
+        },
+      })),
+    };
+
+    if (reconciliation?.invoiceNumber) {
+      billPayload.DocNumber = reconciliation.invoiceNumber;
+    }
+
+    const url = `${apiUrl}/v3/company/${connection.realmId}/bill`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${client.getToken().access_token}`,
+      },
+      body: JSON.stringify(billPayload),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(`QB API error ${response.status}: ${errBody}`);
+    }
+
+    const data = await response.json();
+    const bill = data.Bill;
+    const billId: string = bill.Id;
+    const billNumber: string = bill.DocNumber || bill.Id;
+
+    // Upsert sync log
+    if (syncLog) {
+      await storage.updateQuickBooksSyncLog(syncLog.id, companyId, {
+        quickbooksBillId: billId,
+        syncStatus: "success",
+        attemptCount,
+        lastAttemptAt: now,
+        succeededAt: now,
+        errorMessage: null,
+        errorCode: null,
+      });
+    } else {
+      await storage.createQuickBooksSyncLog({
+        companyId,
+        purchaseOrderId,
+        quickbooksBillId: billId,
+        syncStatus: "success",
+        attemptCount,
+        lastAttemptAt: now,
+        succeededAt: now,
+      });
+    }
+
+    return { success: true, billId, billNumber };
+  } catch (error: any) {
+    const isExhausted = attemptCount >= 2;
+
+    if (syncLog) {
+      await storage.updateQuickBooksSyncLog(syncLog.id, companyId, {
+        syncStatus: isExhausted ? "retry_exhausted" : "failed",
+        attemptCount,
+        lastAttemptAt: now,
+        errorMessage: error.message,
+      });
+    } else {
+      await storage.createQuickBooksSyncLog({
+        companyId,
+        purchaseOrderId,
+        syncStatus: isExhausted ? "retry_exhausted" : "failed",
+        attemptCount,
+        lastAttemptAt: now,
+        errorMessage: error.message,
+      });
+    }
+
+    return { success: false, errorMessage: error.message };
+  }
+}
+
 // Initialize OAuth Client with environment configuration
 export function createOAuthClient(): OAuthClient {
   const clientId = process.env.QUICKBOOKS_CLIENT_ID?.trim();
