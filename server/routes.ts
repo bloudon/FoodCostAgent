@@ -1625,8 +1625,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
           storeId: newStore.id,
         });
 
+        // Auto-assign any recipes that were created before a store existed (e.g. from
+        // the menu-scan onboarding step) to this new store.
+        const { eq, notExists } = await import("drizzle-orm");
+        const unassignedRecipes = await tx
+          .select({ id: recipes.id, companyId: recipes.companyId })
+          .from(recipes)
+          .where(
+            and(
+              eq(recipes.companyId, companyId),
+              notExists(
+                tx.select({ id: storeRecipes.id })
+                  .from(storeRecipes)
+                  .where(
+                    and(
+                      eq(storeRecipes.recipeId, recipes.id),
+                      eq(storeRecipes.storeId, newStore.id)
+                    )
+                  )
+              )
+            )
+          );
+
+        if (unassignedRecipes.length > 0) {
+          await tx.insert(storeRecipes).values(
+            unassignedRecipes.map((r) => ({
+              companyId: r.companyId,
+              storeId: newStore.id,
+              recipeId: r.id,
+              active: 1,
+            }))
+          );
+          console.log(`[onboarding/store] Auto-assigned ${unassignedRecipes.length} existing recipe(s) to new store ${newStore.id}`);
+        }
+
         // Only seed default locations and categories on the FIRST store creation for this company
-        const { eq } = await import("drizzle-orm");
         const existingCategories = await tx.select({ id: categories.id }).from(categories).where(eq(categories.companyId, companyId));
 
         if (existingCategories.length === 0) {
@@ -13512,6 +13545,20 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       const data = insertCompanySchema.parse(req.body);
       const company = await storage.createCompany(data);
       
+      // Auto-create a default store so admins don't land on "No Stores"
+      const storeCode = company.name
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")
+        .slice(0, 6) || "STORE1";
+      const [defaultStore] = await db
+        .insert(companyStores)
+        .values({
+          companyId: company.id,
+          code: storeCode,
+          name: `${company.name}'s Store`,
+        })
+        .returning();
+
       // Create default storage locations for new company
       const defaultLocations = [
         { name: "Walk-In Cooler", sortOrder: 1 },
@@ -13529,7 +13576,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         });
       }
       
-      res.status(201).json(company);
+      res.status(201).json({ ...company, defaultStore });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
