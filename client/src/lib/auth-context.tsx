@@ -8,6 +8,7 @@ type AuthUser = User & {
   selectedCompanyId?: string | null;
   subscriptionTier?: string | null;
   companyName?: string | null;
+  lastSeenVersion?: string | null;
 };
 
 type AuthContextType = {

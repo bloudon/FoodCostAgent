@@ -2694,6 +2694,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .update(users)
         .set({ lastSeenVersion: APP_VERSION })
         .where(eq(users.id, user.id));
+      // Bust the user cache so /api/auth/me reflects the new value immediately
+      await cache.del(CacheKeys.user(user.id));
       res.json({ lastSeenVersion: APP_VERSION });
     } catch (err) {
       console.error("[AcknowledgeVersion] error:", err);

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -16,26 +15,27 @@ interface WhatsNewModalProps {
   onOpenChange: (open: boolean) => void;
   currentVersion: string;
   userLastSeenVersion: string | null | undefined;
+  onAcknowledged?: () => void;
 }
 
-export function WhatsNewModal({ open, onOpenChange, currentVersion, userLastSeenVersion }: WhatsNewModalProps) {
+export function WhatsNewModal({ open, onOpenChange, currentVersion, userLastSeenVersion, onAcknowledged }: WhatsNewModalProps) {
   const { data: entries = [], isLoading } = useQuery<ChangelogEntry[]>({
     queryKey: ["/api/changelog"],
     enabled: open,
+    staleTime: Infinity,
   });
 
   const acknowledgeMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/user/acknowledge-version"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      onAcknowledged?.();
     },
   });
 
   function handleOpenChange(isOpen: boolean) {
-    if (!isOpen) {
-      if (userLastSeenVersion !== currentVersion) {
-        acknowledgeMutation.mutate();
-      }
+    if (!isOpen && userLastSeenVersion !== currentVersion) {
+      acknowledgeMutation.mutate();
     }
     onOpenChange(isOpen);
   }
@@ -62,7 +62,7 @@ export function WhatsNewModal({ open, onOpenChange, currentVersion, userLastSeen
           {!isLoading && entries.map((entry, idx) => (
             <div key={entry.version} className="space-y-3">
               {idx > 0 && <Separator />}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <span className="font-semibold text-sm font-mono">v{entry.version}</span>
                 {entry.date && (
                   <span className="text-xs text-muted-foreground">{entry.date}</span>

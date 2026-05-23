@@ -297,7 +297,7 @@ function ProtectedLayoutContent() {
 
           <VersionBanner
             currentVersion={pkgJson.version}
-            userLastSeenVersion={(user as any)?.lastSeenVersion}
+            userLastSeenVersion={user?.lastSeenVersion}
             onAcknowledged={refreshAuth}
           />
 
@@ -377,7 +377,8 @@ function ProtectedLayoutContent() {
             open={whatsNewOpen}
             onOpenChange={setWhatsNewOpen}
             currentVersion={pkgJson.version}
-            userLastSeenVersion={(user as any)?.lastSeenVersion}
+            userLastSeenVersion={user?.lastSeenVersion}
+            onAcknowledged={refreshAuth}
           />
         </SidebarInset>
       </SidebarProvider>
