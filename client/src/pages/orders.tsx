@@ -110,6 +110,7 @@ export default function Orders() {
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const [selectedQbExportIds, setSelectedQbExportIds] = useState<Set<string>>(new Set());
+  const [exportResults, setExportResults] = useState<Record<string, { success: boolean; error?: string; quickbooksBillId?: string }>>({});
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { user } = useAuth();
@@ -138,6 +139,29 @@ export default function Orders() {
     ? (orders?.filter(o => o.type === "purchase" && o.status === "pending_qb_export") || [])
     : [];
 
+  // Fetch reconciliation data for all pending export orders (for invoice total + initials columns)
+  const { data: allReconciliations } = useQuery<{ data: any }[]>({
+    queryKey: ["/api/qb-reconciliations-for-pending", pendingQbOrders.map(o => o.id).join(",")],
+    queryFn: async () => {
+      if (!pendingQbOrders.length) return [];
+      const results = await Promise.all(
+        pendingQbOrders.map(o =>
+          fetch(`/api/purchase-orders/${o.id}/reconciliation`, { credentials: "include" }).then(r => r.json())
+        )
+      );
+      return results;
+    },
+    enabled: isQbPro && pendingQbOrders.length > 0,
+    retry: false,
+  });
+  const reconcByPoId: Record<string, any> = {};
+  if (allReconciliations) {
+    pendingQbOrders.forEach((o, idx) => {
+      const rec = allReconciliations[idx]?.data;
+      if (rec) reconcByPoId[o.id] = rec;
+    });
+  }
+
   const exportBillsMutation = useMutation({
     mutationFn: async (purchaseOrderIds: string[]) => {
       return await apiRequest("POST", "/api/quickbooks/export-bills", { purchaseOrderIds });
@@ -145,12 +169,26 @@ export default function Orders() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
       queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/sync-logs"] });
-      setSelectedQbExportIds(new Set());
-      const { successCount, failureCount } = data?.data || {};
-      if (failureCount > 0) {
+      const { results = [], successCount, failureCount } = data?.data || {};
+      // Store per-row results for inline feedback
+      const resultMap: Record<string, { success: boolean; error?: string; quickbooksBillId?: string }> = {};
+      for (const r of results) {
+        resultMap[r.poId] = { success: r.success, error: r.error, quickbooksBillId: r.quickbooksBillId };
+      }
+      setExportResults(resultMap);
+      // Keep failed selections checked for easy retry
+      const failedIds = results.filter((r: any) => !r.success).map((r: any) => r.poId);
+      setSelectedQbExportIds(new Set(failedIds));
+      if (failureCount > 0 && successCount === 0) {
+        toast({
+          title: "Export failed",
+          description: `${failureCount} order${failureCount !== 1 ? "s" : ""} could not be exported. See errors inline.`,
+          variant: "destructive",
+        });
+      } else if (failureCount > 0) {
         toast({
           title: `${successCount} exported, ${failureCount} failed`,
-          description: "Check the receiving detail pages for error details.",
+          description: "Failed orders remain checked for retry.",
           variant: "destructive",
         });
       } else {
@@ -288,47 +326,77 @@ export default function Orders() {
                     <TableHead>Order</TableHead>
                     <TableHead>Vendor</TableHead>
                     <TableHead>Received</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Invoice Total</TableHead>
+                    <TableHead className="text-center">Initials</TableHead>
+                    <TableHead className="text-center">Result</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pendingQbOrders.map(order => (
-                    <TableRow key={order.id} data-testid={`row-qb-export-${order.id}`}>
-                      <TableCell className="pl-4">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4"
-                          checked={selectedQbExportIds.has(order.id)}
-                          onChange={(e) => {
-                            const next = new Set(selectedQbExportIds);
-                            if (e.target.checked) next.add(order.id);
-                            else next.delete(order.id);
-                            setSelectedQbExportIds(next);
-                          }}
-                          data-testid={`checkbox-qb-export-${order.id}`}
-                        />
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">#{order.id.slice(0, 8)}</TableCell>
-                      <TableCell className="font-medium">{order.vendorName}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {order.completedAt ? new Date(order.completedAt).toLocaleDateString() : "-"}
-                      </TableCell>
-                      <TableCell className="text-right font-mono font-semibold">
-                        ${order.totalAmount.toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-right pr-4">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setLocation(`/receiving/${order.id}`)}
-                          data-testid={`button-view-qb-order-${order.id}`}
-                        >
-                          View
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {pendingQbOrders.map(order => {
+                    const rec = reconcByPoId[order.id];
+                    const result = exportResults[order.id];
+                    return (
+                      <TableRow key={order.id} data-testid={`row-qb-export-${order.id}`} className={result ? (result.success ? "bg-green-500/5" : "bg-destructive/5") : ""}>
+                        <TableCell className="pl-4">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={selectedQbExportIds.has(order.id)}
+                            onChange={(e) => {
+                              const next = new Set(selectedQbExportIds);
+                              if (e.target.checked) next.add(order.id);
+                              else next.delete(order.id);
+                              setSelectedQbExportIds(next);
+                            }}
+                            data-testid={`checkbox-qb-export-${order.id}`}
+                          />
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">#{order.id.slice(0, 8)}</TableCell>
+                        <TableCell className="font-medium">{order.vendorName}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {order.completedAt ? new Date(order.completedAt).toLocaleDateString() : "-"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-semibold" data-testid={`text-invoice-total-${order.id}`}>
+                          {rec?.invoiceTotal != null ? `$${parseFloat(rec.invoiceTotal).toFixed(2)}` : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center" data-testid={`text-initials-${order.id}`}>
+                          {rec?.initials ? (
+                            <span className="font-mono text-sm font-medium">{rec.initials.toUpperCase()}</span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center min-w-[110px]" data-testid={`text-export-result-${order.id}`}>
+                          {result ? (
+                            result.success ? (
+                              <span className="text-xs text-green-700 dark:text-green-400 font-medium">
+                                Exported
+                              </span>
+                            ) : (
+                              <span className="text-xs text-destructive font-medium truncate block max-w-[100px]" title={result.error}>
+                                {result.error || "Failed"}
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right pr-4">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setLocation(`/receiving/${order.id}`)}
+                            data-testid={`button-view-qb-order-${order.id}`}
+                          >
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>

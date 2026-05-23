@@ -97,11 +97,11 @@ function QbSyncHistoryCard() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Purchase Order</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Vendor</TableHead>
+                <TableHead>Amount</TableHead>
                 <TableHead>QB Bill ID</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Attempts</TableHead>
-                <TableHead>Last Attempt</TableHead>
                 <TableHead>Error</TableHead>
                 <TableHead></TableHead>
               </TableRow>
@@ -109,13 +109,15 @@ function QbSyncHistoryCard() {
             <TableBody>
               {syncLogs.map((log: any) => (
                 <TableRow key={log.id} data-testid={`sync-log-row-${log.id}`}>
-                  <TableCell className="font-mono text-sm">#{log.purchaseOrderId?.slice(0, 8)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                    {log.receivedAt ? new Date(log.receivedAt).toLocaleDateString() : (log.lastAttemptAt ? new Date(log.lastAttemptAt).toLocaleDateString() : "—")}
+                  </TableCell>
+                  <TableCell className="font-medium">{(log as any).vendorName || "—"}</TableCell>
+                  <TableCell className="font-mono text-sm">
+                    {(log as any).amount != null ? `$${parseFloat((log as any).amount).toFixed(2)}` : "—"}
+                  </TableCell>
                   <TableCell className="font-mono text-sm text-muted-foreground">{log.quickbooksBillId || "—"}</TableCell>
                   <TableCell>{statusBadge(log.syncStatus)}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{log.attemptCount}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {log.lastAttemptAt ? new Date(log.lastAttemptAt).toLocaleString() : "—"}
-                  </TableCell>
                   <TableCell className="text-sm text-destructive max-w-[200px] truncate">
                     {log.errorMessage || "—"}
                   </TableCell>

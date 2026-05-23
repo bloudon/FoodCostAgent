@@ -9,9 +9,9 @@ export interface BillLineItem {
 
 export interface CreateBillResult {
   success: boolean;
-  billId?: string;
+  quickbooksBillId?: string;
   billNumber?: string;
-  errorMessage?: string;
+  error?: string;
 }
 
 export async function createBillFromReceipt(
@@ -67,18 +67,18 @@ export async function createBillFromReceipt(
 
     const totalAmount = lineItems.reduce((sum, l) => sum + l.amount, 0);
 
-    // Build QB Bill payload
+    // Build QB Bill payload — TxnDate = receipt receivedAt (the actual delivery date)
+    const txnDate = receipt.receivedAt
+      ? receipt.receivedAt.toISOString().split("T")[0]
+      : now.toISOString().split("T")[0];
+
     const billPayload: any = {
       VendorRef: {
         value: vendorMapping.quickbooksVendorId,
         name: vendorMapping.quickbooksVendorName,
       },
-      TxnDate: reconciliation?.invoiceDate
-        ? reconciliation.invoiceDate.toISOString().split("T")[0]
-        : now.toISOString().split("T")[0],
-      DueDate: reconciliation?.invoiceDate
-        ? reconciliation.invoiceDate.toISOString().split("T")[0]
-        : now.toISOString().split("T")[0],
+      TxnDate: txnDate,
+      DueDate: txnDate,
       PrivateNote: `FnB Cost Pro PO #${purchaseOrderId.slice(0, 8)}`,
       Line: lineItems.map((li, idx) => ({
         Id: String(idx + 1),
@@ -154,7 +154,7 @@ export async function createBillFromReceipt(
       });
     }
 
-    return { success: true, billId, billNumber };
+    return { success: true, quickbooksBillId: billId, billNumber };
   } catch (error: any) {
     const isExhausted = attemptCount >= 2;
 
@@ -176,7 +176,7 @@ export async function createBillFromReceipt(
       });
     }
 
-    return { success: false, errorMessage: error.message };
+    return { success: false, error: error.message };
   }
 }
 

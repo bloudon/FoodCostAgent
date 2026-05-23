@@ -15787,7 +15787,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
-  // GET /api/quickbooks/sync-logs - Get sync logs
+  // GET /api/quickbooks/sync-logs - Get sync logs enriched with PO/vendor context
   app.get("/api/quickbooks/sync-logs", requireAuth, async (req, res) => {
     try {
       const { companyId } = req.user!;
@@ -15797,8 +15797,27 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         companyId,
         syncStatus as string | undefined
       );
+
+      // Enrich with PO + vendor context for the settings UI table
+      const enriched = await Promise.all(
+        logs.map(async (log) => {
+          try {
+            const po = await storage.getPurchaseOrder(log.purchaseOrderId, companyId);
+            const vendor = po?.vendorId ? await storage.getVendor(po.vendorId, companyId) : null;
+            const rec = await storage.getQbReconciliation(log.purchaseOrderId, companyId);
+            return {
+              ...log,
+              vendorName: vendor?.name || "Unknown Vendor",
+              receivedAt: po ? (po as any).completedAt || null : null,
+              amount: rec?.invoiceTotal ?? (po ? (po as any).totalAmount : null),
+            };
+          } catch {
+            return log;
+          }
+        })
+      );
       
-      res.json(logs);
+      res.json(enriched);
     } catch (error: any) {
       console.error("QuickBooks sync logs error:", error);
       res.status(500).json({ error: error.message });
@@ -15912,22 +15931,22 @@ Return format: ["ingredient1", "ingredient2", ...]`;
 
       const { createBillFromReceipt } = await import("./services/quickbooks");
 
-      const results: Array<{ purchaseOrderId: string; success: boolean; billId?: string; error?: string }> = [];
+      const results: Array<{ poId: string; success: boolean; quickbooksBillId?: string; error?: string }> = [];
 
       for (const poId of purchaseOrderIds) {
         const po = await storage.getPurchaseOrder(poId, companyId);
         if (!po) {
-          results.push({ purchaseOrderId: poId, success: false, error: "Purchase order not found" });
+          results.push({ poId, success: false, error: "Purchase order not found" });
           continue;
         }
         // Only allow orders that have been reconciled (pending_qb_export status)
         if (po.status !== "pending_qb_export") {
-          results.push({ purchaseOrderId: poId, success: false, error: "Order must be reconciled before exporting to QuickBooks" });
+          results.push({ poId, success: false, error: "Order must be reconciled before exporting to QuickBooks" });
           continue;
         }
 
         const result = await createBillFromReceipt(companyId, poId);
-        results.push({ purchaseOrderId: poId, ...result });
+        results.push({ poId, success: result.success, quickbooksBillId: result.quickbooksBillId, error: result.error });
 
         if (result.success) {
           await storage.updatePurchaseOrder(poId, { status: "qb_exported" });
