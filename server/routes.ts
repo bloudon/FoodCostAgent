@@ -453,6 +453,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  // ── QB Reconciliations table + schema migration ──────────────────────────
+  (async function migrateQbReconciliations() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      // Create table unconditionally (IF NOT EXISTS is safe)
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS qb_reconciliations (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          purchase_order_id VARCHAR NOT NULL UNIQUE,
+          receipt_id VARCHAR NOT NULL,
+          invoice_number TEXT,
+          invoice_date TIMESTAMPTZ,
+          invoice_total REAL NOT NULL,
+          tax_amount REAL NOT NULL DEFAULT 0,
+          receipt_total REAL NOT NULL,
+          variance REAL NOT NULL DEFAULT 0,
+          initials VARCHAR(10) NOT NULL DEFAULT '',
+          notes TEXT,
+          reconciled_by VARCHAR,
+          reconciled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS qb_reconciliations_company_idx ON qb_reconciliations(company_id);
+        CREATE INDEX IF NOT EXISTS qb_reconciliations_po_idx ON qb_reconciliations(purchase_order_id);
+      `);
+      // Add tax_amount / initials columns if they don't exist yet (idempotent ALTER)
+      await db.execute(sql`
+        ALTER TABLE qb_reconciliations ADD COLUMN IF NOT EXISTS tax_amount REAL NOT NULL DEFAULT 0;
+        ALTER TABLE qb_reconciliations ADD COLUMN IF NOT EXISTS initials VARCHAR(10) NOT NULL DEFAULT '';
+      `);
+      console.log("[Migration] qb_reconciliations table ready");
+    } catch (err) {
+      console.error("[Migration] qb_reconciliations error:", err);
+    }
+  })();
+
   (async function migrateMenuItemRecipes() {
     try {
       await db.execute(sql`
@@ -15765,10 +15806,13 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // GET /api/purchase-orders/:id/reconciliation - Get reconciliation data for a PO
-  app.get("/api/purchase-orders/:id/reconciliation", requireAuth, async (req, res) => {
+  app.get("/api/purchase-orders/:id/reconciliation", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const { companyId } = req.user!;
       const { id } = req.params;
+      // Verify QB connected
+      const connection = await storage.getQuickBooksConnection(companyId);
+      if (!connection) return res.status(400).json({ error: "QuickBooks is not connected" });
       const rec = await storage.getQbReconciliation(id, companyId);
       res.json({ data: rec || null });
     } catch (error: any) {
@@ -15776,11 +15820,15 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
-  // POST /api/purchase-orders/:id/reconcile - Save reconciliation data (invoice # + totals)
-  app.post("/api/purchase-orders/:id/reconcile", requireAuth, async (req, res) => {
+  // POST /api/purchase-orders/:id/reconcile - Save reconciliation data (invoice # + totals + initials)
+  app.post("/api/purchase-orders/:id/reconcile", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const { companyId, id: userId } = req.user!;
       const { id: purchaseOrderId } = req.params;
+
+      // Verify QB connected
+      const connection = await storage.getQuickBooksConnection(companyId);
+      if (!connection) return res.status(400).json({ error: "QuickBooks is not connected. Please connect in Settings." });
 
       const po = await storage.getPurchaseOrder(purchaseOrderId, companyId);
       if (!po) return res.status(404).json({ error: "Purchase order not found" });
@@ -15788,12 +15836,19 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         return res.status(400).json({ error: "Purchase order must be in received status to reconcile" });
       }
 
-      const { invoiceNumber, invoiceDate, invoiceTotal, receiptTotal, notes, receiptId } = req.body;
+      const { invoiceNumber, invoiceDate, invoiceTotal, taxAmount, receiptTotal, initials, notes, receiptId } = req.body;
       if (invoiceTotal == null || receiptTotal == null || !receiptId) {
         return res.status(400).json({ error: "invoiceTotal, receiptTotal, and receiptId are required" });
       }
+      const trimmedInitials = (initials || "").trim();
+      if (!trimmedInitials || trimmedInitials.length < 2 || trimmedInitials.length > 4) {
+        return res.status(400).json({ error: "initials is required and must be 2–4 characters" });
+      }
 
-      const variance = parseFloat((invoiceTotal - receiptTotal).toFixed(2));
+      const taxNum = parseFloat(taxAmount || 0);
+      const invoiceNum = parseFloat(invoiceTotal);
+      const receiptNum = parseFloat(receiptTotal);
+      const variance = parseFloat((invoiceNum + taxNum - receiptNum).toFixed(2));
 
       const existing = await storage.getQbReconciliation(purchaseOrderId, companyId);
       let rec;
@@ -15801,9 +15856,11 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         rec = await storage.updateQbReconciliation(purchaseOrderId, companyId, {
           invoiceNumber: invoiceNumber || null,
           invoiceDate: invoiceDate ? new Date(invoiceDate) : null,
-          invoiceTotal: parseFloat(invoiceTotal),
-          receiptTotal: parseFloat(receiptTotal),
+          invoiceTotal: invoiceNum,
+          taxAmount: taxNum,
+          receiptTotal: receiptNum,
           variance,
+          initials: trimmedInitials,
           notes: notes || null,
           reconciledBy: userId,
           reconciledAt: new Date(),
@@ -15815,15 +15872,17 @@ Return format: ["ingredient1", "ingredient2", ...]`;
           receiptId,
           invoiceNumber: invoiceNumber || null,
           invoiceDate: invoiceDate ? new Date(invoiceDate) : null,
-          invoiceTotal: parseFloat(invoiceTotal),
-          receiptTotal: parseFloat(receiptTotal),
+          invoiceTotal: invoiceNum,
+          taxAmount: taxNum,
+          receiptTotal: receiptNum,
           variance,
+          initials: trimmedInitials,
           notes: notes || null,
           reconciledBy: userId,
         });
       }
 
-      // Advance PO status to pending_qb_export if it's still at received
+      // Advance PO status to pending_qb_export only when coming from received
       if (po.status === "received") {
         await storage.updatePurchaseOrder(purchaseOrderId, { status: "pending_qb_export" });
       }
@@ -15836,7 +15895,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // POST /api/quickbooks/export-bills - Export one or more reconciled POs as QB Bills
-  app.post("/api/quickbooks/export-bills", requireAuth, async (req, res) => {
+  app.post("/api/quickbooks/export-bills", requireAuth, requireTier("pro"), async (req, res) => {
     try {
       const { companyId } = req.user!;
       const { purchaseOrderIds } = req.body as { purchaseOrderIds: string[] };
@@ -15861,8 +15920,9 @@ Return format: ["ingredient1", "ingredient2", ...]`;
           results.push({ purchaseOrderId: poId, success: false, error: "Purchase order not found" });
           continue;
         }
-        if (po.status !== "pending_qb_export" && po.status !== "received") {
-          results.push({ purchaseOrderId: poId, success: false, error: "Order is not ready for export" });
+        // Only allow orders that have been reconciled (pending_qb_export status)
+        if (po.status !== "pending_qb_export") {
+          results.push({ purchaseOrderId: poId, success: false, error: "Order must be reconciled before exporting to QuickBooks" });
           continue;
         }
 

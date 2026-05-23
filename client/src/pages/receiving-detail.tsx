@@ -140,6 +140,8 @@ export default function ReceivingDetail() {
     invoiceNumber: "",
     invoiceDate: "",
     invoiceTotal: "",
+    taxAmount: "",
+    initials: "",
     notes: "",
   });
 
@@ -309,7 +311,9 @@ export default function ReceivingDetail() {
       invoiceNumber: string;
       invoiceDate: string;
       invoiceTotal: number;
+      taxAmount: number;
       receiptTotal: number;
+      initials: string;
       notes: string;
       receiptId: string;
     }) => {
@@ -1004,7 +1008,7 @@ export default function ReceivingDetail() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="invoice-total">Invoice Total ($) <span className="text-destructive">*</span></Label>
+                          <Label htmlFor="invoice-total">Invoice Subtotal ($) <span className="text-destructive">*</span></Label>
                           <Input
                             id="invoice-total"
                             type="number"
@@ -1016,25 +1020,52 @@ export default function ReceivingDetail() {
                           />
                         </div>
                         <div className="space-y-2">
+                          <Label htmlFor="tax-amount">Tax / Other Charges ($)</Label>
+                          <Input
+                            id="tax-amount"
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={reconcileForm.taxAmount || (existing?.taxAmount ? String(existing.taxAmount) : "")}
+                            onChange={(e) => setReconcileForm(p => ({ ...p, taxAmount: e.target.value }))}
+                            data-testid="input-tax-amount"
+                          />
+                        </div>
+                        <div className="space-y-2">
                           <Label>Our Receipt Total</Label>
                           <div className="h-9 flex items-center font-mono text-sm font-semibold" data-testid="text-receipt-total">
                             ${receiptTotal.toFixed(2)}
                           </div>
                         </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reconcile-initials">Employee Initials <span className="text-destructive">*</span></Label>
+                          <Input
+                            id="reconcile-initials"
+                            placeholder="e.g. JD"
+                            maxLength={4}
+                            value={reconcileForm.initials || (existing?.initials ?? "")}
+                            onChange={(e) => setReconcileForm(p => ({ ...p, initials: e.target.value.toUpperCase() }))}
+                            data-testid="input-reconcile-initials"
+                            className="w-24"
+                          />
+                        </div>
                       </div>
 
-                      {reconcileForm.invoiceTotal && (
+                      {(reconcileForm.invoiceTotal || reconcileForm.taxAmount) && (
                         (() => {
-                          const diff = parseFloat(reconcileForm.invoiceTotal) - receiptTotal;
+                          const invoiceNum = parseFloat(reconcileForm.invoiceTotal || String(existing?.invoiceTotal || receiptTotal));
+                          const taxNum = parseFloat(reconcileForm.taxAmount || String(existing?.taxAmount || 0));
+                          const diff = invoiceNum + taxNum - receiptTotal;
                           const absDiff = Math.abs(diff);
                           if (absDiff < 0.01) return (
                             <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
                               <CheckCircle2 className="h-4 w-4" />
-                              Invoice matches receipt total exactly.
+                              Invoice total matches receipt total exactly.
                             </div>
                           );
+                          const color = absDiff <= 1 ? "text-yellow-700 dark:text-yellow-400" : "text-destructive";
                           return (
-                            <div className="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-400">
+                            <div className={`flex items-center gap-2 text-sm ${color}`}>
                               <AlertTriangle className="h-4 w-4" />
                               Variance of ${absDiff.toFixed(2)} — {diff > 0 ? "invoice is higher" : "invoice is lower"} than receipt.
                             </div>
@@ -1062,16 +1093,20 @@ export default function ReceivingDetail() {
                           onClick={() => {
                             if (!draftReceiptId) return;
                             const invoiceTotalNum = parseFloat(reconcileForm.invoiceTotal || String(existing?.invoiceTotal || receiptTotal));
+                            const taxNum = parseFloat(reconcileForm.taxAmount || String(existing?.taxAmount || 0));
+                            const initialsVal = (reconcileForm.initials || existing?.initials || "").trim();
                             reconcileMutation.mutate({
                               invoiceNumber: reconcileForm.invoiceNumber || existing?.invoiceNumber || "",
                               invoiceDate: reconcileForm.invoiceDate || (existing?.invoiceDate ? existing.invoiceDate.split("T")[0] : ""),
                               invoiceTotal: invoiceTotalNum,
+                              taxAmount: taxNum,
                               receiptTotal,
+                              initials: initialsVal,
                               notes: reconcileForm.notes || existing?.notes || "",
                               receiptId: draftReceiptId,
                             });
                           }}
-                          disabled={reconcileMutation.isPending}
+                          disabled={reconcileMutation.isPending || !(reconcileForm.initials || existing?.initials)}
                           variant="outline"
                           data-testid="button-save-reconciliation"
                         >

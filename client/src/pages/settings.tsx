@@ -43,9 +43,29 @@ import { ObjectUploader } from "@/components/ObjectUploader";
 import { UsersManagement } from "@/components/UsersManagement";
 
 function QbSyncHistoryCard() {
+  const { toast } = useToast();
   const { data: syncLogs = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/quickbooks/sync-logs"],
     retry: false,
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: async (purchaseOrderId: string) => {
+      return await apiRequest("POST", "/api/quickbooks/export-bills", { purchaseOrderIds: [purchaseOrderId] });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/sync-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
+      const result = data?.data?.results?.[0];
+      if (result?.success) {
+        toast({ title: "Retried successfully", description: "Bill created in QuickBooks." });
+      } else {
+        toast({ title: "Retry failed", description: result?.error || "Export failed", variant: "destructive" });
+      }
+    },
+    onError: (error: any) => {
+      toast({ title: "Retry failed", description: error.message, variant: "destructive" });
+    },
   });
 
   const statusBadge = (status: string) => {
@@ -83,6 +103,7 @@ function QbSyncHistoryCard() {
                 <TableHead>Attempts</TableHead>
                 <TableHead>Last Attempt</TableHead>
                 <TableHead>Error</TableHead>
+                <TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -97,6 +118,19 @@ function QbSyncHistoryCard() {
                   </TableCell>
                   <TableCell className="text-sm text-destructive max-w-[200px] truncate">
                     {log.errorMessage || "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {(log.syncStatus === "failed" || log.syncStatus === "retry_exhausted") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => retryMutation.mutate(log.purchaseOrderId)}
+                        disabled={retryMutation.isPending}
+                        data-testid={`button-retry-sync-${log.id}`}
+                      >
+                        Retry
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

@@ -1333,8 +1333,10 @@ export const qbReconciliations = pgTable("qb_reconciliations", {
   invoiceNumber: text("invoice_number"), // vendor invoice # (optional)
   invoiceDate: timestamp("invoice_date"), // date on vendor invoice
   invoiceTotal: real("invoice_total").notNull(), // total from vendor invoice
+  taxAmount: real("tax_amount").notNull().default(0), // tax / other charges
   receiptTotal: real("receipt_total").notNull(), // total from our receipt
-  variance: real("variance").notNull().default(0), // invoiceTotal - receiptTotal
+  variance: real("variance").notNull().default(0), // (invoiceTotal + taxAmount) - receiptTotal
+  initials: varchar("initials", { length: 10 }).notNull(), // employee sign-off (required)
   notes: text("notes"),
   reconciledBy: varchar("reconciled_by"), // userId
   reconciledAt: timestamp("reconciled_at").notNull().defaultNow(),

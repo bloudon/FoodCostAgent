@@ -96,6 +96,20 @@ export async function createBillFromReceipt(
       billPayload.DocNumber = reconciliation.invoiceNumber;
     }
 
+    // Add tax / other charges line if reconciliation recorded a taxAmount > 0
+    if (reconciliation?.taxAmount && reconciliation.taxAmount > 0) {
+      billPayload.Line.push({
+        Id: String(billPayload.Line.length + 1),
+        LineNum: billPayload.Line.length + 1,
+        Description: "Tax / Other Charges",
+        Amount: reconciliation.taxAmount,
+        DetailType: "AccountBasedExpenseLineDetail",
+        AccountBasedExpenseLineDetail: {
+          AccountRef: { name: "Accounts Payable (A/P)" },
+        },
+      });
+    }
+
     const url = `${apiUrl}/v3/company/${connection.realmId}/bill`;
     const response = await fetch(url, {
       method: "POST",
