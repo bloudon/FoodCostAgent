@@ -340,9 +340,10 @@ export default function ReceivingDetail() {
 
   const exportToQbMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("POST", "/api/quickbooks/export-bills", {
+      const res = await apiRequest("POST", "/api/quickbooks/export-bills", {
         purchaseOrderIds: [poId],
       });
+      return res.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}`] });

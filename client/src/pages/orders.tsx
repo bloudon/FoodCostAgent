@@ -164,7 +164,8 @@ export default function Orders() {
 
   const exportBillsMutation = useMutation({
     mutationFn: async (purchaseOrderIds: string[]) => {
-      return await apiRequest("POST", "/api/quickbooks/export-bills", { purchaseOrderIds });
+      const res = await apiRequest("POST", "/api/quickbooks/export-bills", { purchaseOrderIds });
+      return res.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });

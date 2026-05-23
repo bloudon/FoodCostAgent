@@ -41,8 +41,11 @@ import {
 } from "@/components/ui/dialog";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { UsersManagement } from "@/components/UsersManagement";
+import { useAuth } from "@/lib/auth-context";
+import { hasFeature } from "@shared/tier-config";
 
 function QbSyncHistoryCard() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const { data: syncLogs = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/quickbooks/sync-logs"],
@@ -51,7 +54,8 @@ function QbSyncHistoryCard() {
 
   const retryMutation = useMutation({
     mutationFn: async (purchaseOrderId: string) => {
-      return await apiRequest("POST", "/api/quickbooks/export-bills", { purchaseOrderIds: [purchaseOrderId] });
+      const res = await apiRequest("POST", "/api/quickbooks/export-bills", { purchaseOrderIds: [purchaseOrderId] });
+      return res.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/sync-logs"] });
@@ -74,6 +78,9 @@ function QbSyncHistoryCard() {
     if (status === "pending") return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800">Pending</Badge>;
     return <Badge variant="outline">{status}</Badge>;
   };
+
+  // Only Pro tier users can use QB export — guard the card
+  if (!hasFeature((user as any)?.subscriptionTier, "transfer_orders")) return null;
 
   return (
     <Card>
@@ -1363,6 +1370,7 @@ export default function Settings() {
           </Dialog>
 
           {qbStatus?.connected && <QbSyncHistoryCard />}
+
         </TabsContent>
 
         <TabsContent value="user" className="space-y-6">

@@ -15855,18 +15855,31 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         return res.status(400).json({ error: "Purchase order must be in received status to reconcile" });
       }
 
-      const { invoiceNumber, invoiceDate, invoiceTotal, taxAmount, receiptTotal, initials, notes, receiptId } = req.body;
-      if (invoiceTotal == null || receiptTotal == null || !receiptId) {
-        return res.status(400).json({ error: "invoiceTotal, receiptTotal, and receiptId are required" });
+      const { invoiceNumber, invoiceDate, invoiceTotal, taxAmount, initials, notes, receiptId } = req.body;
+      if (invoiceTotal == null || !receiptId) {
+        return res.status(400).json({ error: "invoiceTotal and receiptId are required" });
       }
       const trimmedInitials = (initials || "").trim();
       if (!trimmedInitials || trimmedInitials.length < 2 || trimmedInitials.length > 4) {
         return res.status(400).json({ error: "initials is required and must be 2–4 characters" });
       }
 
+      // Validate receipt belongs to this PO and company
+      const receipts = await storage.getReceipts(companyId);
+      const receipt = receipts.find(r => r.id === receiptId && r.purchaseOrderId === purchaseOrderId);
+      if (!receipt) {
+        return res.status(400).json({ error: "Receipt not found or does not belong to this purchase order" });
+      }
+
+      // Compute system total from server-side receipt lines — never trust client-supplied total
+      const lines = await storage.getReceiptLinesByReceiptId(receiptId);
+      const systemTotal = parseFloat(
+        lines.reduce((sum, l) => sum + (parseFloat(String(l.receivedQty || 0)) * parseFloat(String(l.priceEach || 0))), 0).toFixed(2)
+      );
+
       const taxNum = parseFloat(taxAmount || 0);
       const invoiceNum = parseFloat(invoiceTotal);
-      const receiptNum = parseFloat(receiptTotal);
+      const receiptNum = systemTotal;
       const variance = parseFloat((invoiceNum + taxNum - receiptNum).toFixed(2));
 
       const existing = await storage.getQbReconciliation(purchaseOrderId, companyId);
