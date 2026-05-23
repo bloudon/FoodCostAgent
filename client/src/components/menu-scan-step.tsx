@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import {
   Check, Loader2, Trash2, Camera, Sparkles, Plus, ArrowRight,
@@ -67,6 +68,7 @@ export function MenuScanStep({
     initialHasBar === null || initialHasBar === undefined ? undefined : initialHasBar === 1,
   );
   const [barSaving, setBarSaving] = useState(false);
+  const [disabledVariantGroups, setDisabledVariantGroups] = useState<Set<string>>(new Set());
 
   const handleUpload = async (objectPath: string) => {
     setUploadedImages([objectPath]);
@@ -153,7 +155,7 @@ export function MenuScanStep({
           category: i.category,
           size: i.size,
           price: i.price,
-          variantGroupKey: i.variantGroupKey || "",
+          variantGroupKey: (i.variantGroupKey && !disabledVariantGroups.has(i.variantGroupKey)) ? i.variantGroupKey : "",
         })),
         storeId: storeId || undefined,
       });
@@ -302,14 +304,17 @@ export function MenuScanStep({
     deptGroups.get(dept)!.push(idx);
   });
 
-  const detectedVariantGroupCount = (() => {
-    const keys = new Map<string, number>();
+  const variantGroups = (() => {
+    const keyToItems = new Map<string, { key: string; itemNames: string[] }>();
     for (const item of items) {
       const key = (item.variantGroupKey || "").trim();
-      if (key) keys.set(key, (keys.get(key) || 0) + 1);
+      if (!key) continue;
+      if (!keyToItems.has(key)) keyToItems.set(key, { key, itemNames: [] });
+      keyToItems.get(key)!.itemNames.push(item.name.trim() || "(unnamed)");
     }
-    return [...keys.values()].filter(count => count >= 2).length;
+    return Array.from(keyToItems.values()).filter(g => g.itemNames.length >= 2);
   })();
+  const detectedVariantGroupCount = variantGroups.length;
 
   const chainItems = [
     { Icon: BookOpen,     label: "Menu items",                     desc: "ready to cost as recipes" },
@@ -394,13 +399,47 @@ export function MenuScanStep({
           </div>
         )}
 
-        {detectedVariantGroupCount > 0 && (
-          <div className="flex items-start gap-2 rounded-md bg-primary/5 border border-primary/20 px-3 py-2.5" data-testid="banner-variant-groups-detected">
-            <Layers className="w-3.5 h-3.5 text-primary flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-muted-foreground leading-snug">
-              <span className="font-medium text-foreground">{detectedVariantGroupCount} size variant group{detectedVariantGroupCount !== 1 ? "s" : ""} detected</span>
-              {" — "}items in each group will be linked as size variants automatically on import.
-            </p>
+        {variantGroups.length > 0 && (
+          <div className="rounded-md border overflow-hidden" data-testid="section-variant-groups">
+            <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 border-b">
+              <Layers className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+              <p className="text-xs font-semibold text-foreground">
+                {detectedVariantGroupCount} size variant group{detectedVariantGroupCount !== 1 ? "s" : ""} detected
+              </p>
+            </div>
+            <div className="px-3 py-2 space-y-2.5">
+              <p className="text-xs text-muted-foreground">
+                Check each group you want linked as size variants. Unchecked groups import as separate standalone items.
+              </p>
+              {variantGroups.map((group) => {
+                const enabled = !disabledVariantGroups.has(group.key);
+                return (
+                  <div key={group.key} className="flex items-start gap-2.5" data-testid={`variant-group-${group.key}`}>
+                    <Checkbox
+                      checked={enabled}
+                      onCheckedChange={(checked) => {
+                        setDisabledVariantGroups(prev => {
+                          const next = new Set(prev);
+                          if (checked) next.delete(group.key);
+                          else next.add(group.key);
+                          return next;
+                        });
+                      }}
+                      data-testid={`checkbox-variant-group-${group.key}`}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap gap-1">
+                        {group.itemNames.map((name: string, i: number) => (
+                          <Badge key={i} variant="secondary" className={`text-xs ${!enabled ? "opacity-50" : ""}`}>
+                            {name}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

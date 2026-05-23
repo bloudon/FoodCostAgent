@@ -5752,6 +5752,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           price: z.number().nullable().optional(),
         })),
         storeId: z.string().optional(),
+        approvedVariantGroupKeys: z.array(z.string()).optional(),
       });
 
       const parsed = bodySchema.safeParse(req.body);
@@ -5759,7 +5760,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
       }
 
-      const { items } = parsed.data;
+      const { items, approvedVariantGroupKeys } = parsed.data;
+      const approvedGroupKeySet = approvedVariantGroupKeys ? new Set(approvedVariantGroupKeys) : null;
 
       // Verify session belongs to this company
       const [session] = await db.select().from(menuImportSessions)
@@ -5786,12 +5788,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const targetStoreIds = [resolvedStoreId];
 
       // Compute groups before transaction so we can pass the count back
-      type ItemGroup = { items: typeof items[number][], sortBase: number };
+      type ItemGroup = { items: typeof items[number][], sortBase: number, groupKey: string };
       const groups = new Map<string, ItemGroup>();
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const key = `${item.name.trim().toLowerCase()}|${(item.department||'').toLowerCase()}|${(item.category||'').toLowerCase()}`;
-        if (!groups.has(key)) groups.set(key, { items: [], sortBase: i });
+        if (!groups.has(key)) groups.set(key, { items: [], sortBase: i, groupKey: key });
         groups.get(key)!.items.push(item);
       }
 
@@ -5896,11 +5898,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const representative = group.items[0];
           // Only treat as multi-size variants when EVERY item has a non-empty size AND
           // there are at least 2 DISTINCT size values — this prevents duplicate rows
-          // with the same size from being incorrectly modeled as parent+variant pairs
+          // with the same size from being incorrectly modeled as parent+variant pairs.
+          // If approvedGroupKeySet is provided, also require this group's key to be in it
+          // (user opted in to auto-linking for this specific group).
           const nonEmptySizes = group.items.map(i => (i.size || '').trim()).filter(Boolean);
-          const hasMultipleSizes = group.items.length > 1
+          const structurallyMultiSize = group.items.length > 1
             && nonEmptySizes.length === group.items.length
             && new Set(nonEmptySizes).size >= 2;
+          const hasMultipleSizes = structurallyMultiSize
+            && (approvedGroupKeySet === null || approvedGroupKeySet.has(group.groupKey));
 
           const deptName = (representative.department || '').trim() || 'Other';
           const menuDepartmentId = await findOrCreateDepartmentId(deptName);

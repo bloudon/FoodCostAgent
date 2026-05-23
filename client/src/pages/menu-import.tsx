@@ -20,6 +20,7 @@ import {
   Check,
   CheckCheck,
   FilePlus2,
+  Layers,
   Loader2,
   Plus,
   Sparkles,
@@ -62,6 +63,8 @@ export default function MenuImport() {
   // pageBreaks tracks indices where additional scanned pages begin (UI-only, not persisted)
   const [pageBreaks, setPageBreaks] = useState<number[]>([]);
   const [showAddPageUploader, setShowAddPageUploader] = useState(false);
+  // Tracks which variant group keys the user has opted OUT of auto-linking
+  const [disabledVariantGroupKeys, setDisabledVariantGroupKeys] = useState<Set<string>>(new Set());
 
 
   // Rehydrate items from server if returning with a sessionId in URL
@@ -137,9 +140,27 @@ export default function MenuImport() {
     mutationFn: async () => {
       const approvedItems = items.filter((_: ExtractedItem, i: number) => selectedRowIndices.has(i));
       const selectedCount = approvedItems.length;
+
+      // Compute which variant group keys are approved for auto-linking
+      // (all structurally valid groups MINUS the ones the user disabled)
+      const groupKeyToSizes = new Map<string, string[]>();
+      for (const item of approvedItems) {
+        const key = `${item.name.trim().toLowerCase()}|${(item.department || '').toLowerCase()}|${(item.category || '').toLowerCase()}`;
+        if (!groupKeyToSizes.has(key)) groupKeyToSizes.set(key, []);
+        groupKeyToSizes.get(key)!.push((item.size || '').trim());
+      }
+      const structuralVariantGroupKeys = Array.from(groupKeyToSizes.entries())
+        .filter(([, sizes]) => {
+          const nonEmpty = sizes.filter(Boolean);
+          return sizes.length > 1 && nonEmpty.length === sizes.length && new Set(nonEmpty).size >= 2;
+        })
+        .map(([key]) => key);
+      const approvedVariantGroupKeys = structuralVariantGroupKeys.filter(k => !disabledVariantGroupKeys.has(k));
+
       const res = await apiRequest('POST', `/api/menu-import/${sessionId}/approve`, {
         items: approvedItems,
         storeId: selectedStoreId || undefined,
+        approvedVariantGroupKeys,
       });
       if (!res.ok) {
         const err = await res.json() as { error?: string };
@@ -611,75 +632,139 @@ export default function MenuImport() {
           )}
 
           {/* ── Step 3: Confirm ── */}
-          {step === 3 && (
-            <div className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Store className="h-5 w-5" />
-                    Confirm Import
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Summary */}
-                  <div className="text-center rounded-md bg-muted/50 p-6">
-                    <div className="text-4xl font-bold">{selectedCount}</div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      item{selectedCount !== 1 ? 's' : ''} ready to import
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-3">
-                      Items will be added to your current store.
-                      You can assign them to other stores after import.
-                    </div>
-                  </div>
+          {step === 3 && (() => {
+            const selectedItems = items.filter((_: ExtractedItem, i: number) => selectedRowIndices.has(i));
 
-                  {/* Item preview (first 5) */}
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">Items to import:</p>
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
-                      {items
-                        .filter((_: ExtractedItem, i: number) => selectedRowIndices.has(i))
-                        .slice(0, 10)
-                        .map((item, i) => (
-                          <div key={i} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
-                            <span>
-                              {item.name}
-                              {item.size && <span className="text-muted-foreground ml-1">({item.size})</span>}
-                            </span>
-                            {item.price != null && (
-                              <span className="text-muted-foreground">${item.price.toFixed(2)}</span>
-                            )}
-                          </div>
-                        ))}
-                      {selectedCount > 10 && (
-                        <p className="text-xs text-muted-foreground pt-1">
-                          …and {selectedCount - 10} more
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+            // Compute structural variant groups from the selected items
+            const step3GroupKeyToSizes = new Map<string, { sizes: string[]; names: string[] }>();
+            for (const item of selectedItems) {
+              const key = `${item.name.trim().toLowerCase()}|${(item.department || '').toLowerCase()}|${(item.category || '').toLowerCase()}`;
+              if (!step3GroupKeyToSizes.has(key)) step3GroupKeyToSizes.set(key, { sizes: [], names: [] });
+              step3GroupKeyToSizes.get(key)!.sizes.push((item.size || '').trim());
+              step3GroupKeyToSizes.get(key)!.names.push(item.name.trim() || '(unnamed)');
+            }
+            const step3VariantGroups = Array.from(step3GroupKeyToSizes.entries())
+              .filter(([, { sizes }]) => {
+                const nonEmpty = sizes.filter(Boolean);
+                return sizes.length > 1 && nonEmpty.length === sizes.length && new Set(nonEmpty).size >= 2;
+              })
+              .map(([key, { sizes, names }]) => ({ key, sizes, label: names[0] }));
 
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setStep(2)} data-testid="button-back-step2">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back
-                </Button>
-                <Button
-                  onClick={() => approveMutation.mutate()}
-                  disabled={approveMutation.isPending || selectedCount === 0}
-                  data-testid="button-confirm-import"
-                >
-                  {approveMutation.isPending ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing…</>
-                  ) : (
-                    <><Sparkles className="h-4 w-4 mr-2" />Import {selectedCount} item{selectedCount !== 1 ? 's' : ''}</>
-                  )}
-                </Button>
+            return (
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Store className="h-5 w-5" />
+                      Confirm Import
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {/* Summary */}
+                    <div className="text-center rounded-md bg-muted/50 p-6">
+                      <div className="text-4xl font-bold">{selectedCount}</div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        item{selectedCount !== 1 ? 's' : ''} ready to import
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-3">
+                        Items will be added to your current store.
+                        You can assign them to other stores after import.
+                      </div>
+                    </div>
+
+                    {/* Variant group confirmation */}
+                    {step3VariantGroups.length > 0 && (
+                      <div className="rounded-md border overflow-hidden" data-testid="section-variant-groups-confirm">
+                        <div className="flex items-center gap-2 px-3 py-2.5 bg-muted/40 border-b">
+                          <Layers className="h-4 w-4 text-primary flex-shrink-0" />
+                          <p className="text-sm font-semibold">
+                            {step3VariantGroups.length} size variant group{step3VariantGroups.length !== 1 ? 's' : ''} detected
+                          </p>
+                        </div>
+                        <div className="px-3 py-3 space-y-3">
+                          <p className="text-sm text-muted-foreground">
+                            Check each group you want linked as size variants on import. Unchecked groups will import as separate standalone items.
+                          </p>
+                          {step3VariantGroups.map((group) => {
+                            const enabled = !disabledVariantGroupKeys.has(group.key);
+                            return (
+                              <div key={group.key} className="flex items-start gap-3" data-testid={`variant-group-row-${group.key}`}>
+                                <Checkbox
+                                  checked={enabled}
+                                  onCheckedChange={(checked) => {
+                                    setDisabledVariantGroupKeys(prev => {
+                                      const next = new Set(prev);
+                                      if (checked) next.delete(group.key);
+                                      else next.add(group.key);
+                                      return next;
+                                    });
+                                  }}
+                                  data-testid={`checkbox-variant-group-${group.key}`}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm font-medium ${!enabled ? 'text-muted-foreground' : ''}`}>{group.label}</p>
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {group.sizes.map((size, i) => (
+                                      <Badge key={i} variant="secondary" className={`text-xs ${!enabled ? 'opacity-50' : ''}`}>
+                                        {size}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Item preview */}
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Items to import:</p>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {selectedItems
+                          .slice(0, 10)
+                          .map((item, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
+                              <span>
+                                {item.name}
+                                {item.size && <span className="text-muted-foreground ml-1">({item.size})</span>}
+                              </span>
+                              {item.price != null && (
+                                <span className="text-muted-foreground">${item.price.toFixed(2)}</span>
+                              )}
+                            </div>
+                          ))}
+                        {selectedCount > 10 && (
+                          <p className="text-xs text-muted-foreground pt-1">
+                            …and {selectedCount - 10} more
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setStep(2)} data-testid="button-back-step2">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Back
+                  </Button>
+                  <Button
+                    onClick={() => approveMutation.mutate()}
+                    disabled={approveMutation.isPending || selectedCount === 0}
+                    data-testid="button-confirm-import"
+                  >
+                    {approveMutation.isPending ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing…</>
+                    ) : (
+                      <><Sparkles className="h-4 w-4 mr-2" />Import {selectedCount} item{selectedCount !== 1 ? 's' : ''}</>
+                    )}
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* ── Done ── */}
           {step === 'done' && (
