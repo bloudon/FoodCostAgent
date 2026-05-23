@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   ArrowLeft, Users, UserCheck, UserX, Activity,
   Search, Building2, ShieldCheck, Shield, UserCog, User,
-  ArrowUpDown, ArrowUp, ArrowDown,
+  ArrowUpDown, ArrowUp, ArrowDown, Smartphone,
 } from "lucide-react";
 
 type AdminUser = {
@@ -28,6 +28,7 @@ type AdminUser = {
   subscription_tier: string | null;
   last_login_at: string | null;
   active_session_count: number | string;
+  mobile_session_count: number | string;
 };
 
 type AdminUsersResponse = {
@@ -203,9 +204,14 @@ function sortValue(u: AdminUser, col: SortColumn): string | number {
 export default function AdminUsers() {
   const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
+  const searchStr = useSearch();
+  const urlParams = new URLSearchParams(searchStr);
+  const initialMobile = urlParams.get("filter") === "mobile";
+
   const [searchInput, setSearchInput] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [mobileFilter, setMobileFilter] = useState(initialMobile);
   const [sortBy, setSortBy] = useState<SortColumn>("joined");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
 
@@ -251,7 +257,8 @@ export default function AdminUsers() {
         statusFilter === "all" ||
         (statusFilter === "active" && isActive) ||
         (statusFilter === "inactive" && !isActive);
-      return matchesSearch && matchesRole && matchesStatus;
+      const matchesMobile = !mobileFilter || Number(u.mobile_session_count) > 0;
+      return matchesSearch && matchesRole && matchesStatus && matchesMobile;
     });
 
     rows = [...rows].sort((a, b) => {
@@ -267,10 +274,10 @@ export default function AdminUsers() {
     });
 
     return rows;
-  }, [data?.users, search, roleFilter, statusFilter, sortBy, sortDir]);
+  }, [data?.users, search, roleFilter, statusFilter, mobileFilter, sortBy, sortDir]);
 
   const hasFilters =
-    searchInput.trim() !== "" || roleFilter !== "all" || statusFilter !== "all";
+    searchInput.trim() !== "" || roleFilter !== "all" || statusFilter !== "all" || mobileFilter;
 
   return (
     <div className="container mx-auto p-6 max-w-7xl">
@@ -372,6 +379,16 @@ export default function AdminUsers() {
             <SelectItem value="inactive">Inactive</SelectItem>
           </SelectContent>
         </Select>
+        <Button
+          variant={mobileFilter ? "default" : "outline"}
+          size="default"
+          onClick={() => setMobileFilter((v) => !v)}
+          className="gap-2"
+          data-testid="button-toggle-mobile-filter"
+        >
+          <Smartphone className="h-4 w-4" />
+          Mobile
+        </Button>
         {hasFilters && (
           <Button
             variant="ghost"
@@ -380,6 +397,7 @@ export default function AdminUsers() {
               setSearchInput("");
               setRoleFilter("all");
               setStatusFilter("all");
+              setMobileFilter(false);
             }}
             data-testid="button-clear-filters"
           >
@@ -467,12 +485,20 @@ export default function AdminUsers() {
                               ).toUpperCase()}
                             </div>
                             <div className="min-w-0">
-                              <p
-                                className="font-medium truncate"
-                                data-testid={`text-name-${u.id}`}
-                              >
-                                {displayName}
-                              </p>
+                              <div className="flex items-center gap-1.5">
+                                <p
+                                  className="font-medium truncate"
+                                  data-testid={`text-name-${u.id}`}
+                                >
+                                  {displayName}
+                                </p>
+                                {Number(u.mobile_session_count) > 0 && (
+                                  <Smartphone
+                                    className="h-3.5 w-3.5 shrink-0 text-blue-500"
+                                    data-testid={`icon-mobile-active-${u.id}`}
+                                  />
+                                )}
+                              </div>
                               <p className="text-xs text-muted-foreground truncate md:hidden">
                                 {u.email}
                               </p>

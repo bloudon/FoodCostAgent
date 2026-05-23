@@ -488,6 +488,7 @@ export default function Companies() {
           label="Mobile Users"
           value={adminStats?.mobileUsers ?? "—"}
           testId="card-stat-mobile-users"
+          onClick={() => setLocation("/admin/users?filter=mobile")}
         />
         <StatCard
           icon={

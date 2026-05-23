@@ -13312,10 +13312,11 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       const stripped = content.replace(/\x1b\[[0-9;]*m/g, "");
       const lines = stripped.split("\n");
 
-      // Step 1: Find the last run's header line ("FNB Cost Pro — IDrive Backup")
+      // Step 1: Find the last run's header line (contains "FNB Cost Pro" — matches
+      //  both "FNB Cost Pro — IDrive Backup" and "FNB Cost Pro — rclone Backup")
       let lastRunStartIndex = -1;
       for (let i = lines.length - 1; i >= 0; i--) {
-        if (lines[i].includes("FNB Cost Pro") && lines[i].includes("IDrive Backup")) {
+        if (lines[i].includes("FNB Cost Pro") && (lines[i].includes("Backup") || lines[i].includes("rclone"))) {
           lastRunStartIndex = i;
           break;
         }
@@ -14022,7 +14023,8 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         sql`SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.active, u.created_at,
                    c.id as company_id, c.name as company_name, c.subscription_tier,
                    MAX(s.last_active_at) as last_login_at,
-                   COUNT(CASE WHEN s.revoked_at IS NULL AND s.expires_at > NOW() THEN 1 END) as active_session_count
+                   COUNT(CASE WHEN s.revoked_at IS NULL AND s.expires_at > NOW() THEN 1 END) as active_session_count,
+                   COUNT(CASE WHEN s.revoked_at IS NULL AND s.expires_at > NOW() AND s.source = 'mobile' THEN 1 END) as mobile_session_count
             FROM users u
             LEFT JOIN companies c ON u.company_id = c.id
             LEFT JOIN auth_sessions s ON s.user_id = u.id
