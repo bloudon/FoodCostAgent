@@ -363,8 +363,8 @@ test.describe('POST /api/admin/backfill-vendor-pack-sizes — auth contract', ()
  *      the constants at the top of this file.
  */
 
-const GLOBAL_ADMIN_EMAIL    = process.env.GLOBAL_ADMIN_EMAIL    ?? TEST_EMAIL;
-const GLOBAL_ADMIN_PASSWORD = process.env.GLOBAL_ADMIN_PASSWORD ?? TEST_PASSWORD;
+const GLOBAL_ADMIN_EMAIL    = process.env.GLOBAL_ADMIN_EMAIL    ?? 'admin@pizza.com';
+const GLOBAL_ADMIN_PASSWORD = process.env.GLOBAL_ADMIN_PASSWORD ?? 'admin123';
 
 async function loginAsGlobalAdmin(request: APIRequestContext): Promise<boolean> {
   const res = await request.post(`${BASE_URL}/api/auth/login`, {
