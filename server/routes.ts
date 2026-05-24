@@ -12,6 +12,7 @@ import { createCheckoutSession, stripeWebhook, getPlans } from "./billing";
 import { storage } from "./storage";
 import { parseCSV } from "./services/tfcCsv";
 import { TheoreticalUsageService } from "./services/theoreticalUsage";
+import { parseCompoundPackSize } from "./integrations/csv/CsvOrderGuide";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
@@ -14209,6 +14210,86 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error("DELETE /api/admin/users/:id error:", err);
       res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/admin/backfill-vendor-pack-sizes — global admin only
+  // Re-derives innerPackSize from caseSizeRaw for vendor items that have inner_pack_size IS NULL
+  // and a matching order_guide_lines row with a compound pack string (e.g., "6/5 LB").
+  // Idempotent: only touches rows where inner_pack_size IS NULL.
+  app.post("/api/admin/backfill-vendor-pack-sizes", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.user!.id);
+      if (user?.role !== "global_admin") {
+        return res.status(403).json({ error: "Global admin only" });
+      }
+
+      // Find order guide lines that have a compound caseSizeRaw (contains "/")
+      // and a matched vendor item where inner_pack_size IS NULL.
+      // Join path: order_guide_lines → order_guides (for vendorId) → vendor_items
+      const candidates = await db.execute(sql`
+        SELECT DISTINCT
+          vi.id            AS vendor_item_id,
+          vi.case_size     AS current_case_size,
+          ogl.case_size_raw
+        FROM order_guide_lines ogl
+        JOIN order_guides og ON ogl.order_guide_id = og.id
+        JOIN vendor_items vi
+          ON vi.vendor_id = og.vendor_id
+         AND vi.vendor_sku = ogl.vendor_sku
+        WHERE ogl.case_size_raw IS NOT NULL
+          AND ogl.case_size_raw LIKE '%/%'
+          AND vi.inner_pack_size IS NULL
+          AND og.vendor_id IS NOT NULL
+      `);
+
+      const rows = (candidates as any).rows as Array<{
+        vendor_item_id: string;
+        current_case_size: number | null;
+        case_size_raw: string;
+      }>;
+
+      let updated = 0;
+      let skipped = 0;
+      const details: Array<{ vendorItemId: string; caseSizeRaw: string; newCaseSize: number; newInnerPack: number }> = [];
+
+      for (const row of rows) {
+        const parsed = parseCompoundPackSize(row.case_size_raw);
+        if (!parsed || !parsed.innerPack) {
+          skipped++;
+          continue;
+        }
+
+        // Update vendor_item: restore case_size to outer count, set inner_pack_size to inner count
+        await db.execute(sql`
+          UPDATE vendor_items
+          SET case_size      = ${parsed.caseSize},
+              inner_pack_size = ${parsed.innerPack}
+          WHERE id = ${row.vendor_item_id}
+            AND inner_pack_size IS NULL
+        `);
+
+        details.push({
+          vendorItemId: row.vendor_item_id,
+          caseSizeRaw: row.case_size_raw,
+          newCaseSize: parsed.caseSize,
+          newInnerPack: parsed.innerPack,
+        });
+        updated++;
+      }
+
+      console.log(`[backfill-vendor-pack-sizes] updated=${updated}, skipped=${skipped}`);
+      res.json({
+        data: {
+          candidatesFound: rows.length,
+          updated,
+          skipped,
+          details,
+        },
+      });
+    } catch (err: any) {
+      console.error("POST /api/admin/backfill-vendor-pack-sizes error:", err);
+      res.status(500).json({ error: err.message });
     }
   });
 

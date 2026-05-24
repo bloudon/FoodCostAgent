@@ -104,6 +104,44 @@ const GENERIC_COLUMN_PATTERNS: Record<keyof CsvColumnMapping, string[]> = {
 };
 
 /**
+ * Exported standalone version of parseCompoundPackSize for use in backfill utilities.
+ * Parses vendor pack size strings into their components.
+ * Handles formats like:
+ *   "6/5 LB"  → { caseSize: 6, innerPack: 5, unit: "LB" }
+ *   "24/1 CS" → { caseSize: 24, innerPack: 1, unit: "CS" }
+ *   "24 EA"   → { caseSize: 24, unit: "EA" }
+ *   "24"      → { caseSize: 24 }
+ * Returns null for unparseable strings.
+ */
+export function parseCompoundPackSize(value: string): { caseSize: number; innerPack?: number; unit?: string } | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+
+  const slashMatch = trimmed.match(/^([\d.]+)\s*\/\s*([\d.]+)\s*([A-Za-z]+)?$/);
+  if (slashMatch) {
+    const cs = parseFloat(slashMatch[1]);
+    const ip = parseFloat(slashMatch[2]);
+    const u = slashMatch[3] ? slashMatch[3].toUpperCase() : undefined;
+    if (!isNaN(cs) && !isNaN(ip)) return { caseSize: cs, innerPack: ip, unit: u };
+  }
+
+  const singleUnitMatch = trimmed.match(/^([\d.]+)\s+([A-Za-z]+)$/);
+  if (singleUnitMatch) {
+    const cs = parseFloat(singleUnitMatch[1]);
+    const u = singleUnitMatch[2].toUpperCase();
+    if (!isNaN(cs)) return { caseSize: cs, unit: u };
+  }
+
+  const plainMatch = trimmed.match(/^([\d.]+)$/);
+  if (plainMatch) {
+    const cs = parseFloat(plainMatch[1]);
+    if (!isNaN(cs)) return { caseSize: cs };
+  }
+
+  return null;
+}
+
+/**
  * CSV Order Guide Parser
  */
 export class CsvOrderGuide {
