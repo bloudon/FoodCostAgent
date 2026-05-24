@@ -19370,6 +19370,105 @@ Human Handoff:
         return res.status(500).json({ error: err.message });
       }
     });
+
+    /**
+     * POST /api/dev/test/vendor-pack-size-state
+     * Seeds a vendor_item with inner_pack_size = NULL and a matching order_guide +
+     * order_guide_line with a compound caseSizeRaw string (e.g. "6/5 LB").
+     * Used by automated tests for the Repair Pack Sizes admin tool.
+     *
+     * Body:
+     *   vendorId        — existing vendor ID (required)
+     *   purchaseUnitId  — existing unit ID to use for vendor_item.purchase_unit_id (required)
+     *   inventoryItemId — existing inventory item ID for vendor_item FK (required)
+     *   vendorSku       — SKU string shared by the vendor_item and order_guide_line (required)
+     *   caseSizeRaw     — compound pack string, e.g. "6/5 LB" (default: "6/5 LB")
+     *
+     * Returns: { vendorItemId, orderGuideId, orderGuideLineId }
+     */
+    app.post("/api/dev/test/vendor-pack-size-state", requireAuth, async (req, res) => {
+      try {
+        const companyId = (req as any).companyId;
+        if (!companyId) return res.status(400).json({ error: "Company context required" });
+
+        const {
+          vendorId,
+          purchaseUnitId,
+          inventoryItemId,
+          vendorSku,
+          caseSizeRaw = "6/5 LB",
+        } = req.body as {
+          vendorId: string;
+          purchaseUnitId: string;
+          inventoryItemId: string;
+          vendorSku: string;
+          caseSizeRaw?: string;
+        };
+
+        if (!vendorId || !purchaseUnitId || !inventoryItemId || !vendorSku) {
+          return res.status(400).json({ error: "vendorId, purchaseUnitId, inventoryItemId, and vendorSku are required" });
+        }
+
+        // Insert vendor_item with inner_pack_size intentionally NULL
+        const [vendorItem] = await db.execute(sql`
+          INSERT INTO vendor_items (vendor_id, inventory_item_id, vendor_sku, purchase_unit_id, case_size, inner_pack_size, last_price, last_case_price, active)
+          VALUES (${vendorId}, ${inventoryItemId}, ${vendorSku}, ${purchaseUnitId}, 30, NULL, 0, 0, 1)
+          RETURNING id
+        `);
+        const vendorItemId = (vendorItem as any).rows[0].id as string;
+
+        // Insert order_guide with the vendor's ID
+        const [orderGuide] = await db.execute(sql`
+          INSERT INTO order_guides (company_id, vendor_id, vendor_key, source, row_count, status)
+          VALUES (${companyId}, ${vendorId}, 'ci-test', 'csv', 1, 'approved')
+          RETURNING id
+        `);
+        const orderGuideId = (orderGuide as any).rows[0].id as string;
+
+        // Insert order_guide_line with compound caseSizeRaw and matching vendor_sku
+        const [orderGuideLine] = await db.execute(sql`
+          INSERT INTO order_guide_lines (order_guide_id, vendor_sku, product_name, case_size_raw, case_size, match_status)
+          VALUES (${orderGuideId}, ${vendorSku}, '__ci_pack_test__', ${caseSizeRaw}, 30, 'approved')
+          RETURNING id
+        `);
+        const orderGuideLineId = (orderGuideLine as any).rows[0].id as string;
+
+        return res.json({ vendorItemId, orderGuideId, orderGuideLineId });
+      } catch (err: any) {
+        console.error("[dev/test/vendor-pack-size-state POST]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    /**
+     * DELETE /api/dev/test/vendor-pack-size-state/:vendorItemId
+     * Removes the rows seeded by POST /api/dev/test/vendor-pack-size-state.
+     * Query params: orderGuideId, orderGuideLineId
+     */
+    app.delete("/api/dev/test/vendor-pack-size-state/:vendorItemId", requireAuth, async (req, res) => {
+      try {
+        const { vendorItemId } = req.params;
+        const { orderGuideId, orderGuideLineId } = req.query as {
+          orderGuideId?: string;
+          orderGuideLineId?: string;
+        };
+
+        if (orderGuideLineId) {
+          await db.execute(sql`DELETE FROM order_guide_lines WHERE id = ${orderGuideLineId}`);
+        }
+        if (orderGuideId) {
+          await db.execute(sql`DELETE FROM order_guides WHERE id = ${orderGuideId}`);
+        }
+        if (vendorItemId) {
+          await db.execute(sql`DELETE FROM vendor_items WHERE id = ${vendorItemId}`);
+        }
+
+        return res.json({ deleted: true, vendorItemId, orderGuideId, orderGuideLineId });
+      } catch (err: any) {
+        console.error("[dev/test/vendor-pack-size-state DELETE]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
   }
 
   const httpServer = createServer(app);
