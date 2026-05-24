@@ -2348,6 +2348,9 @@ export default function InventoryItemDetail() {
                                     </SelectContent>
                                   </Select>
                                 </div>
+                                {liveContainerLabel.toLowerCase() === "each" && (
+                                  <p className="text-xs text-muted-foreground mt-1">= per-each weight</p>
+                                )}
                               </td>
                               <td className="py-1.5 text-muted-foreground">
                                 {derivedCasePkgCount ?? "—"}
@@ -2384,6 +2387,50 @@ export default function InventoryItemDetail() {
                           <Plus className="h-3 w-3" />
                           Add Pack Size
                         </button>
+                      )}
+                      {/* Per-each weight: surfaces the derived weight clearly when label is "each" */}
+                      {liveContainerLabel.toLowerCase() === "each" && item.containerSize && item.containerSize > 0 && !showMiddleRow && (
+                        <div className="mt-3 rounded-md border bg-muted/20 p-3 space-y-2" data-testid="section-per-each-weight">
+                          <div>
+                            <p className="text-sm font-medium">Per-each weight</p>
+                            <p className="text-xs text-muted-foreground">
+                              Derived from order guide data. Each unit weighs{" "}
+                              <span className="font-medium">{parseFloat(Number(item.containerSize).toFixed(6)).toString()} {unit?.abbreviation || ""}</span>.
+                              Update to correct the recipe unit conversion.
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              step="any"
+                              value={containerDisplaySize}
+                              onChange={(e) => setContainerDisplaySize(e.target.value)}
+                              onBlur={() => {
+                                setShowMiddleRow(true);
+                                handleContainerSizeBlur();
+                              }}
+                              disabled={updateMutation.isPending}
+                              className="h-8 w-24"
+                              placeholder="e.g., 0.75"
+                              data-testid="input-per-each-weight"
+                            />
+                            <Select
+                              value={selectedContainerUnitId}
+                              onValueChange={handleContainerUnitChange}
+                              disabled={updateMutation.isPending}
+                            >
+                              <SelectTrigger className="h-8 w-20" data-testid="select-per-each-weight-unit">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(compatibleUnits ?? (unit ? [unit] : [])).map(u => (
+                                  <SelectItem key={u.id} value={u.id}>{u.abbreviation}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <span className="text-sm text-muted-foreground">per each</span>
+                          </div>
+                        </div>
                       )}
                         </TabsContent>
                         <TabsContent value="recipe-units">
