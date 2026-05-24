@@ -321,6 +321,8 @@ export default function OrderGuideReview() {
   const matchPercentage = reviewData.summary.total > 0
     ? Math.round((reviewData.summary.matched / reviewData.summary.total) * 100)
     : 0;
+  const matchedMismatchCount = reviewData.lines.matched.filter(hasPackSizeMismatch).length;
+  const ambiguousMismatchCount = reviewData.lines.ambiguous.filter(hasPackSizeMismatch).length;
   const selectedCount = selectedLineIds.size;
   const newSelectedCount = reviewData.lines.new.filter(l => selectedLineIds.has(l.id)).length;
   const isImageScan = reviewData.guide.source === 'image_scan';
@@ -552,7 +554,19 @@ export default function OrderGuideReview() {
                 <Button variant="outline" size="sm" onClick={() => deselectAllInCategory(reviewData.lines.matched)} data-testid="button-deselect-all-matched">Deselect All</Button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              {matchedMismatchCount > 0 && (
+                <div
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+                  data-testid="banner-matched-pack-size-mismatch"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                  <span>
+                    <span className="font-medium">{matchedMismatchCount} pack size {matchedMismatchCount === 1 ? 'change' : 'changes'} detected</span>
+                    {' '}— review rows marked with <AlertTriangle className="inline h-3.5 w-3.5 text-amber-500 align-text-bottom" /> before importing.
+                  </span>
+                </div>
+              )}
               <OrderGuideTable lines={reviewData.lines.matched} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} />
             </CardContent>
           </Card>
@@ -572,7 +586,19 @@ export default function OrderGuideReview() {
                 <Button variant="outline" size="sm" onClick={() => deselectAllInCategory(reviewData.lines.ambiguous)} data-testid="button-deselect-all-ambiguous">Deselect All</Button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              {ambiguousMismatchCount > 0 && (
+                <div
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+                  data-testid="banner-ambiguous-pack-size-mismatch"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                  <span>
+                    <span className="font-medium">{ambiguousMismatchCount} pack size {ambiguousMismatchCount === 1 ? 'change' : 'changes'} detected</span>
+                    {' '}— review rows marked with <AlertTriangle className="inline h-3.5 w-3.5 text-amber-500 align-text-bottom" /> before importing.
+                  </span>
+                </div>
+              )}
               <OrderGuideTable lines={reviewData.lines.ambiguous} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence />
             </CardContent>
           </Card>
