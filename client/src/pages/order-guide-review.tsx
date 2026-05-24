@@ -662,6 +662,18 @@ export default function OrderGuideReview() {
   );
 }
 
+function formatPackSize(line: OrderGuideLine): string {
+  if (line.caseSize != null && line.innerPack != null) {
+    const uom = line.uom ? ` ${line.uom}` : '';
+    return `${line.caseSize} × ${line.innerPack}${uom}`;
+  }
+  if (line.caseSize != null) {
+    const uom = line.uom ? ` ${line.uom}` : '';
+    return `${line.caseSize}${uom}`;
+  }
+  return line.uom || '-';
+}
+
 function OrderGuideTable({
   lines,
   selectedLineIds,
@@ -686,7 +698,6 @@ function OrderGuideTable({
             <TableHead>Vendor SKU</TableHead>
             <TableHead>Product Name</TableHead>
             <TableHead>Pack Size</TableHead>
-            <TableHead>Case Size</TableHead>
             <TableHead>Price</TableHead>
             {showConfidence && <TableHead>Match Confidence</TableHead>}
           </TableRow>
@@ -703,14 +714,9 @@ function OrderGuideTable({
               </TableCell>
               <TableCell className="font-mono text-sm">{line.vendorSku}</TableCell>
               <TableCell>{line.productName}</TableCell>
-              <TableCell className="text-muted-foreground">
-                {line.caseSizeRaw
-                  ? line.caseSizeRaw
-                  : line.caseSize != null
-                    ? `${line.caseSize}${line.innerPack ? `/${line.innerPack}` : ''} ${line.uom || ''}`.trim()
-                    : (line.uom || '-')}
+              <TableCell className="text-muted-foreground" data-testid={`text-packsize-${line.id}`}>
+                {formatPackSize(line)}
               </TableCell>
-              <TableCell>{line.caseSize ?? '-'}</TableCell>
               <TableCell>
                 {line.price ? (
                   <div className="flex flex-col items-start gap-0.5">
