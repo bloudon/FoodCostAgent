@@ -266,7 +266,8 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     expect(p.unit).toBe('LB');
   });
 
-  it('ignores G (grams) weight — derivation is skipped', async () => {
+  it('converts G (grams) weight to LB and derives eaPerCase', async () => {
+    // 500 G ÷ 453.592 ≈ 1.10231 LB total; ÷ 24 EA ≈ 0.04593 LB/each
     const csv = buildCsv(
       ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
       [['SKU001', 'Test Item', '24', 'EA', '500 G']],
@@ -282,7 +283,8 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
       },
     });
     const p = guide.products[0];
-    expect(p.eaPerCase).toBeUndefined();
+    expect(p.eaPerCase).toBeCloseTo(500 / 453.592 / 24);
+    expect(p.unit).toBe('LB');
   });
 
   it('returns null / skips derivation for zero weight value', async () => {
@@ -629,7 +631,8 @@ describe('parseCaseWeightLbs — invalid inputs skip derivation', () => {
     expect(p.eaPerCase).toBeUndefined();
   });
 
-  it('unrecognised unit suffix (G for grams) — derivation skipped', async () => {
+  it('converts G (grams) weight to LB and derives eaPerCase (suffix coverage)', async () => {
+    // Duplicate coverage via the suffix-test suite — 500 G → ~1.10231 LB ÷ 24 = ~0.04593 LB/each
     const csv = buildCsv(
       ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
       [['SKU001', 'Test Item', '24', 'EA', '500 G']],
@@ -645,7 +648,8 @@ describe('parseCaseWeightLbs — invalid inputs skip derivation', () => {
       },
     });
     const p = guide.products[0];
-    expect(p.eaPerCase).toBeUndefined();
+    expect(p.eaPerCase).toBeCloseTo(500 / 453.592 / 24);
+    expect(p.unit).toBe('LB');
   });
 });
 

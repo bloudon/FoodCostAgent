@@ -438,13 +438,13 @@ export class CsvOrderGuide {
    * Parse a case-weight string and return the value in LB.
    * Handles: "18 LB", "18.5 LB", "18 LBS", "18" (assumes LB).
    * Returns null when the value cannot be parsed or is not a recognised weight unit.
-   * Supports LB/LBS/POUND/POUNDS, OZ/OUNCE/OUNCES, KG/KILOGRAM/KILOGRAMS, and bare
-   * numbers (treated as LB for weight-designated columns).
+   * Supports LB/LBS/POUND/POUNDS, OZ/OUNCE/OUNCES, KG/KILOGRAM/KILOGRAMS,
+   * G/GRAM/GRAMS, and bare numbers (treated as LB for weight-designated columns).
    */
   private static parseCaseWeightLbs(value: string): number | null {
     if (!value) return null;
     const trimmed = value.trim();
-    const match = trimmed.match(/^([\d.]+)\s*(LBS?|POUNDS?|OZ|OUNCES?|KGS?|KILOGRAMS?)?$/i);
+    const match = trimmed.match(/^([\d.]+)\s*(LBS?|POUNDS?|OZ|OUNCES?|KGS?|KILOGRAMS?|GRAMS?|G)?$/i);
     if (match) {
       const num = parseFloat(match[1]);
       if (isNaN(num) || num <= 0) return null;
@@ -457,6 +457,11 @@ export class CsvOrderGuide {
       if (unit === 'KG' || unit === 'KGS' || unit === 'KILOGRAM' || unit === 'KILOGRAMS') {
         const lbs = num * 2.20462;
         console.log(`[CsvOrderGuide] case-weight KG→LB: ${num} kg = ${lbs.toFixed(4)} lb`);
+        return lbs;
+      }
+      if (unit === 'G' || unit === 'GRAM' || unit === 'GRAMS') {
+        const lbs = num / 453.592;
+        console.log(`[CsvOrderGuide] case-weight G→LB: ${num} g = ${lbs.toFixed(4)} lb`);
         return lbs;
       }
       // LB / POUND / bare number — no conversion needed
