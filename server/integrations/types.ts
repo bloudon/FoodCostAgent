@@ -19,6 +19,14 @@ export interface VendorProduct {
   upc?: string;
   lastUpdated?: string;
   isVariableWeight?: boolean;  // True if vendor marks item as variable/catch weight
+  /**
+   * Per-each weight in LB, derived when the vendor CSV provides both an EA count
+   * column and a separate case-weight column (e.g. 24 EA + 18 LB → 0.75 LB/each).
+   * When set, the parser has already adjusted `unit` to "LB", `innerPack` to this
+   * value, and `innerPackRaw` to "each" so the order-guide processor can seed an
+   * "each" Recipe Unit automatically via autoSeedRecipeUnitsForItem.
+   */
+  eaPerCase?: number;
 }
 
 export interface OrderGuide {

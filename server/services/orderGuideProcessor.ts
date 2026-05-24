@@ -7,6 +7,7 @@ import type {
   InsertOrderGuide,
   InsertOrderGuideLine,
 } from '@shared/schema';
+import { autoSeedRecipeUnitsForItem } from '../lib/recipeUnits';
 
 interface OrderGuideUploadResult {
   orderGuideId: string;
@@ -609,11 +610,24 @@ export class OrderGuideProcessor {
         ? (line.price ?? 0)
         : (line.price ? line.price / totalUnitsPerCase : 0);
 
-      // Derive container fields from compound pack data (e.g. "6/5 LB" → 6 packs × 5 LB each).
-      // This seeds Recipe Units for portioning by inner-pack size automatically.
+      // Derive container fields from compound pack data (e.g. "6/5 LB" → 6 packs × 5 LB each)
+      // or from EA+LB derivation (e.g. 24 EA / 18 LB → 0.75 LB per each).
+      // This seeds Recipe Units for portioning automatically via autoSeedRecipeUnitsForItem.
       const outerCount = line.caseSize && line.caseSize > 0 ? line.caseSize : null;
       const innerSize  = line.innerPack && line.innerPack > 0 ? line.innerPack : null;
       const hasCompound = outerCount && innerSize;
+
+      // Determine the container label for Recipe Unit seeding:
+      // - When innerPackRaw is a plain text label (e.g. "each" from EA+LB derivation),
+      //   use it directly so autoSeed creates an "each" Recipe Unit.
+      // - Otherwise fall back to the line UOM (e.g. "lb" for compound "6/5 LB" packs).
+      const innerPackRawTrimmed = (line.innerPackRaw ?? '').trim();
+      const innerPackRawIsLabel =
+        innerPackRawTrimmed.length > 0 &&
+        isNaN(parseFloat(innerPackRawTrimmed));  // "each" → NaN → true; "5 LB" → 5 → false
+      const derivedContainerLabel = innerPackRawIsLabel
+        ? innerPackRawTrimmed.toLowerCase()
+        : (line.uom ?? '').toLowerCase() || undefined;
 
       // Create inventory item with smart defaults
       const inventoryItem = await this.storage.createInventoryItem({
@@ -628,15 +642,24 @@ export class OrderGuideProcessor {
         reorderLevel: 0,
         active: 1,
         isVariableWeight: line.isVariableWeight || 0,
-        // Total units per case (base unit; e.g. 30 LB for a "6/5 LB" case)
+        // Total units per case (base unit; e.g. 30 LB for a "6/5 LB" case, 18 LB for "24 EA / 18 LB")
         caseSize: hasCompound ? outerCount! * innerSize! : (outerCount ?? 20),
         // Inner-pack breakdown enables "bag", "each", etc. Recipe Units via autoSeed
         ...(hasCompound ? {
-          casePkgCount: outerCount!,          // outer count (e.g. 6 bags)
-          containerSize: innerSize!,           // size per inner pack in inventory unit (e.g. 5 LB)
-          containerLabel: (line.uom ?? '').toLowerCase() || undefined,
+          casePkgCount: outerCount!,          // outer count (e.g. 6 bags or 24 each)
+          containerSize: innerSize!,           // size per inner pack in inventory unit (e.g. 5 LB or 0.75 LB)
+          containerLabel: derivedContainerLabel,
         } : {}),
       });
+
+      // Auto-seed Recipe Units from the pack breakdown (idempotent, safe to retry).
+      // For compound packs ("6/5 LB") this creates bag/lb units; for EA+LB derivations
+      // it creates an "each" Recipe Unit with the per-each weight as the conversion factor.
+      try {
+        await autoSeedRecipeUnitsForItem(inventoryItem);
+      } catch (seedErr: any) {
+        console.warn(`[OrderGuide] auto-seed Recipe Units failed for ${inventoryItem.id}:`, seedErr?.message || seedErr);
+      }
 
       // Assign to store location
       if (defaults.storageLocationId) {

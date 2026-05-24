@@ -29,6 +29,7 @@ export interface CsvColumnMapping {
   category?: string;
   upc?: string;
   variableWeight?: string;
+  caseWeight?: string;  // Column providing total case weight in LB (for EA+LB → per-each derivation)
 }
 
 /**
@@ -51,6 +52,7 @@ const VENDOR_MAPPINGS: Record<VendorKey, CsvColumnMapping> = {
     category: 'Category Code',
     upc: 'UPC',
     variableWeight: 'Variable Weight',
+    caseWeight: 'Net Weight',  // Sysco includes net case weight in LB
   },
   gfs: {
     vendorSku: 'Item Number',
@@ -64,6 +66,7 @@ const VENDOR_MAPPINGS: Record<VendorKey, CsvColumnMapping> = {
     category: 'Category',
     upc: 'GTIN',
     variableWeight: 'Variable Weight',
+    caseWeight: 'Case Weight',  // GFS includes case weight in LB
   },
   usfoods: {
     vendorSku: 'Item Code',
@@ -77,6 +80,7 @@ const VENDOR_MAPPINGS: Record<VendorKey, CsvColumnMapping> = {
     category: 'Category ID',
     upc: 'UPC Code',
     variableWeight: 'Catch Weight',
+    caseWeight: 'Gross Weight',  // US Foods includes gross case weight in LB
   },
 };
 
@@ -96,6 +100,7 @@ const GENERIC_COLUMN_PATTERNS: Record<keyof CsvColumnMapping, string[]> = {
   category: ['category', 'category code', 'category id', 'cat', 'class'],
   upc: ['upc', 'upc code', 'gtin', 'barcode', 'ean'],
   variableWeight: ['variable weight', 'variable', 'catch weight', 'catch', 'vw', 'cw', 'weight type'],
+  caseWeight: ['net weight', 'gross weight', 'case weight', 'total weight', 'case lbs', 'net wt', 'gross wt', 'wt'],
 };
 
 /**
@@ -229,21 +234,62 @@ export class CsvOrderGuide {
       // Use correctly parsed case count (first number from compound string like "6/5 LB" → 6)
       const caseSize = parsedCasePack ? parsedCasePack.caseSize : this.parseNumber(caseSizeRaw);
 
+      // ── EA + LB per-each derivation ────────────────────────────────────────
+      // When a vendor provides both a count column (e.g. "24 EA") and a separate
+      // case-weight column (e.g. "18 LB"), we can derive the per-each weight:
+      //   eaWeight = totalLbs ÷ eaCount   →   0.75 LB per each for 24 EA / 18 LB
+      // We then switch the product's tracking unit to LB and set innerPack to the
+      // per-each weight so autoSeedRecipeUnitsForItem creates an "each" Recipe Unit.
+      const caseWeightRaw = this.getValue(row, mapping.caseWeight);
+      let eaPerCase: number | undefined;
+      let finalUnit = unit;
+      let finalInnerPack = innerPack;
+      let finalInnerPackRaw = innerPackRaw || unitRaw || undefined;
+
+      if (
+        caseWeightRaw &&
+        caseSize != null && caseSize > 0 &&
+        this.isCountUnit(unit) &&
+        // Skip if the compound pack string already provided an inner-pack breakdown
+        // (e.g. "6/5 LB" already gives caseSize=6, innerPack=5, unit=LB — no need to
+        // derive from a separate weight column, and doing so would be wrong).
+        !parsedCasePack?.innerPack
+      ) {
+        const totalLbs = this.parseCaseWeightLbs(caseWeightRaw);
+        if (totalLbs != null && totalLbs > 0) {
+          eaPerCase = totalLbs / caseSize;
+          // Switch inventory tracking unit to LB (weight), not EA (count)
+          finalUnit = 'LB';
+          // Store per-each weight as innerPack so the compound-pack logic in
+          // createNewInventoryAndVendorItem computes containerSize correctly
+          finalInnerPack = eaPerCase;
+          // Use "each" as innerPackRaw — the processor reads this as the
+          // containerLabel when it is a non-numeric text string
+          finalInnerPackRaw = 'each';
+          console.log(
+            `[CsvOrderGuide] EA+LB derivation: ${caseSize} EA, ${totalLbs} LB total` +
+            ` → ${eaPerCase.toFixed(4)} LB/each; switching unit to LB`
+          );
+        }
+      }
+      // ──────────────────────────────────────────────────────────────────────
+
       const product: VendorProduct = {
         vendorSku: this.getValue(row, mapping.vendorSku),
         vendorProductName: productName,
         description: descriptionValue,
         caseSize,
         caseSizeRaw: caseSizeRaw || undefined,      // Preserve raw pack string (e.g., "6/5 LB")
-        innerPack: innerPack,
-        innerPackRaw: innerPackRaw || unitRaw || undefined,    // Preserve raw inner pack string
-        unit: unit,
+        innerPack: finalInnerPack,
+        innerPackRaw: finalInnerPackRaw,
+        unit: finalUnit,
         price: this.parsePrice(this.getValue(row, mapping.price)),
         brandName: this.getValue(row, mapping.brand),
         categoryCode: this.getValue(row, mapping.category),
         upc: this.getValue(row, mapping.upc),
         lastUpdated: new Date().toISOString(),
         isVariableWeight,
+        eaPerCase,
       };
 
       // For generic/unknown vendor imports, a product name alone is sufficient
@@ -348,6 +394,41 @@ export class CsvOrderGuide {
       }
     }
     return null;
+  }
+
+  /**
+   * Parse a case-weight string and return the value in LB.
+   * Handles: "18 LB", "18.5 LB", "18 LBS", "18" (assumes LB).
+   * Returns null when the value cannot be parsed or is not in pounds.
+   * Intentionally ignores OZ/KG/G to avoid silent unit-conversion errors.
+   */
+  private static parseCaseWeightLbs(value: string): number | null {
+    if (!value) return null;
+    const trimmed = value.trim();
+    // Match a positive number optionally followed by LB/LBS/POUND/POUNDS (case-insensitive)
+    // Also accept bare numbers (assume LB for weight-designated columns)
+    const match = trimmed.match(/^([\d.]+)\s*(LBS?|POUNDS?)?$/i);
+    if (match) {
+      const num = parseFloat(match[1]);
+      if (!isNaN(num) && num > 0) return num;
+    }
+    return null;
+  }
+
+  /**
+   * Return true when the UOM string represents a per-item count unit (EA, each, ct, pc…)
+   * rather than a case, weight, or volume measure.
+   *
+   * "CS" (case) is intentionally excluded: a row with UOM=CS and a net-weight column
+   * means the net weight IS the case weight in the base unit, not a per-each weight
+   * that needs derivation.  Including it would incorrectly label every case-UOM row
+   * as an "each" product.
+   */
+  private static isCountUnit(unit: string): boolean {
+    if (!unit) return false;
+    const u = unit.trim().toLowerCase();
+    // Only true EA-like units — deliberately excludes "cs" (case) to prevent false positives
+    return ['ea', 'each', 'unit', 'units', 'piece', 'pieces', 'pc', 'pcs', 'ct', 'count'].includes(u);
   }
 
   /**
