@@ -106,6 +106,8 @@ type ChatCorrection = {
   created_at: string;
 };
 
+type CompanyWithActivity = Company & { lastActivityAt: string | null };
+
 export default function Companies() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -118,7 +120,7 @@ export default function Companies() {
   const [correctionDraft, setCorrectionDraft] = useState<string>("");
   const [newCorrectionQuestion, setNewCorrectionQuestion] = useState<string>("");
 
-  const { data: companies, isLoading } = useQuery<Company[]>({
+  const { data: companies, isLoading } = useQuery<CompanyWithActivity[]>({
     queryKey: ["/api/companies"],
   });
 
@@ -992,8 +994,28 @@ export default function Companies() {
                     )}
                   </div>
 
+                  <div className="flex items-center gap-4 ml-8 flex-wrap">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground cursor-help">
+                          <Clock className="h-3 w-3" />
+                          <span>
+                            {company.lastActivityAt
+                              ? `Active ${formatAgo(company.lastActivityAt)}`
+                              : "No activity recorded"}
+                          </span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="text-xs">
+                        {company.lastActivityAt
+                          ? `Last session: ${new Date(company.lastActivityAt).toLocaleString()}`
+                          : "No sessions found for this company"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+
                   {company.addressLine1 && (
-                    <div className="flex items-start gap-2 text-sm text-muted-foreground ml-8">
+                    <div className="flex items-start gap-2 text-sm text-muted-foreground ml-8 mt-1">
                       <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
                       <div>
                         <div>{company.addressLine1}</div>

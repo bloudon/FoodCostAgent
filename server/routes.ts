@@ -25,8 +25,8 @@ import { createSession, requireAuth, optionalAuth, requireTier, verifyPassword, 
 import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
-import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes } from "@shared/schema";
+import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, max } from "drizzle-orm";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes } from "@shared/schema";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -13479,8 +13479,21 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       return res.status(403).json({ error: "Only global admins can access companies" });
     }
     
-    const companies = await storage.getCompanies();
-    res.json(companies);
+    const [companies, activityRows] = await Promise.all([
+      storage.getCompanies(),
+      db
+        .select({
+          companyId: users.companyId,
+          lastActivityAt: max(authSessions.lastActiveAt),
+        })
+        .from(authSessions)
+        .innerJoin(users, eq(authSessions.userId, users.id))
+        .where(isNotNull(users.companyId))
+        .groupBy(users.companyId),
+    ]);
+
+    const activityMap = new Map(activityRows.map(r => [r.companyId, r.lastActivityAt]));
+    res.json(companies.map(c => ({ ...c, lastActivityAt: activityMap.get(c.id) ?? null })));
   });
 
   app.get("/api/companies/:id", requireAuth, async (req, res) => {
