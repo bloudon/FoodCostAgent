@@ -1,5 +1,5 @@
 import { IStorage } from '../storage';
-import { CsvOrderGuide, CsvParseOptions } from '../integrations/csv/CsvOrderGuide';
+import { CsvOrderGuide, CsvParseOptions, parseCompoundPackSize } from '../integrations/csv/CsvOrderGuide';
 import { ItemMatcher } from './itemMatcher';
 import { VendorKey } from '../integrations/types';
 import * as XLSX from 'xlsx';
@@ -8,6 +8,8 @@ import type {
   InsertOrderGuideLine,
 } from '@shared/schema';
 import { autoSeedRecipeUnitsForItem } from '../lib/recipeUnits';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 
 interface OrderGuideUploadResult {
   orderGuideId: string;
@@ -417,11 +419,71 @@ export class OrderGuideProcessor {
       }
     }
 
+    // After processing all lines, auto-fix any vendor items that still have
+    // inner_pack_size IS NULL but whose matching order guide line carries a
+    // compound case_size_raw string (e.g. "6/5 LB"). This mirrors the admin
+    // backfill but runs automatically on every approve so re-imports stay clean.
+    await this.fixNullPackSizes(orderGuideId);
+
     return {
       vendorItemsCreated,
       inventoryItemsCreated,
       storeAssignmentsCreated,
     };
+  }
+
+  /**
+   * Fix vendor items that have inner_pack_size IS NULL when the matching order
+   * guide line has a compound case_size_raw value (e.g. "6/5 LB").
+   * Runs automatically at the end of approve() so every import keeps data clean
+   * without requiring a manual admin backfill run.
+   * Idempotent — only touches rows where inner_pack_size IS NULL.
+   */
+  private async fixNullPackSizes(orderGuideId: string): Promise<void> {
+    try {
+      const candidates = await db.execute(sql`
+        SELECT DISTINCT
+          vi.id            AS vendor_item_id,
+          ogl.case_size_raw
+        FROM order_guide_lines ogl
+        JOIN order_guides og ON ogl.order_guide_id = og.id
+        JOIN vendor_items vi
+          ON vi.vendor_id = og.vendor_id
+         AND vi.vendor_sku = ogl.vendor_sku
+        WHERE ogl.order_guide_id = ${orderGuideId}
+          AND ogl.case_size_raw IS NOT NULL
+          AND ogl.case_size_raw LIKE '%/%'
+          AND vi.inner_pack_size IS NULL
+          AND og.vendor_id IS NOT NULL
+      `);
+
+      const rows = (candidates as any).rows as Array<{
+        vendor_item_id: string;
+        case_size_raw: string;
+      }>;
+
+      let updated = 0;
+      for (const row of rows) {
+        const parsed = parseCompoundPackSize(row.case_size_raw);
+        if (!parsed || !parsed.innerPack) continue;
+
+        await db.execute(sql`
+          UPDATE vendor_items
+          SET case_size       = ${parsed.caseSize},
+              inner_pack_size = ${parsed.innerPack}
+          WHERE id = ${row.vendor_item_id}
+            AND inner_pack_size IS NULL
+        `);
+        updated++;
+      }
+
+      if (updated > 0) {
+        console.log(`[OrderGuide] Auto-fixed ${updated} vendor item(s) with null inner_pack_size after approving guide ${orderGuideId}`);
+      }
+    } catch (err: any) {
+      // Non-fatal — log and continue so the approval result is still returned.
+      console.warn(`[OrderGuide] fixNullPackSizes for guide ${orderGuideId} failed (non-fatal):`, err?.message || err);
+    }
   }
 
   /**
