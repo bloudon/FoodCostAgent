@@ -94,4 +94,34 @@ describe("tokenizeDescription", () => {
     expect(result).toContain("basil");
     expect(result).toContain("garlic");
   });
+
+  it("splits on periods in addition to commas", () => {
+    const result = tokenizeDescription("Bbq sauce. served with coleslaw and french fries.");
+    expect(result).toContain("Bbq sauce");
+    expect(result).toContain("coleslaw");
+    expect(result).toContain("french fries");
+    expect(result.every(t => !t.includes("served with"))).toBe(true);
+  });
+
+  it("extracts main item and accompaniments from period-separated clause", () => {
+    const result = tokenizeDescription("Bleu cheese crumbles. topped with chimichurri glaze.");
+    expect(result).toContain("Bleu cheese crumbles");
+    expect(result).toContain("chimichurri glaze");
+    expect(result.every(t => !t.includes("topped with"))).toBe(true);
+  });
+
+  it("splits on mid-token 'with' to separate main item from accompaniments", () => {
+    const result = tokenizeDescription("Breaded chicken breast with marinara and alfredo sauce");
+    expect(result).toContain("Breaded chicken breast");
+    expect(result).toContain("marinara");
+    expect(result).toContain("alfredo sauce");
+  });
+
+  it("splits 'and'-joined list after 'served with'", () => {
+    const result = tokenizeDescription("burger patty. served with lettuce and tomato and pickles.");
+    expect(result).toContain("burger patty");
+    expect(result).toContain("lettuce");
+    expect(result).toContain("tomato");
+    expect(result).toContain("pickles");
+  });
 });

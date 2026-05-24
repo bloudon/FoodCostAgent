@@ -5,9 +5,11 @@ import { storage } from '../storage';
 
 /**
  * Tokenizes a menu item description into individual ingredient names.
- * Splits on commas, strips leading/trailing whitespace, removes price callouts,
- * strips common preparation prefixes (topped with, served with, etc.), and
- * drops tokens that are too short to be meaningful ingredient names.
+ *
+ * Splits on commas AND sentence-ending periods, strips preparation prefixes
+ * (topped with, served with, etc.), further splits on " and " within
+ * prep-phrase clauses, handles mid-token " with " constructs, removes price
+ * callouts, and drops tokens that are too short or are pure measurements.
  */
 export function tokenizeDescription(description: string): string[] {
   if (!description || !description.trim()) return [];
@@ -17,12 +19,46 @@ export function tokenizeDescription(description: string): string[] {
     .replace(/[+\-]?\$\d+(?:\.\d+)?/g, '')
     .trim();
 
-  const LEADING_PREP = /^(?:topped\s+with|drizzled\s+with|served\s+with|finished\s+with|garnished\s+with|with|and|or|sub|add|no|a|an|our|house|fresh|crispy|grilled|smoked|fried|baked|steamed|house-made)\s+/i;
+  const LEADING_PREP = /^(?:topped\s+with|drizzled\s+with|served\s+with|finished\s+with|garnished\s+with|comes\s+with|choice\s+of|with|and|or|sub|add|no|a|an|our|house|fresh|crispy|grilled|smoked|fried|baked|steamed|house-made)\s+/i;
 
-  return cleaned
-    .split(',')
-    .map(t => t.trim())
-    .map(t => t.replace(LEADING_PREP, '').replace(LEADING_PREP, '').trim())
+  const results: string[] = [];
+
+  // Primary split: commas and sentence-ending periods
+  const segments = cleaned.split(/[,\.]+/);
+
+  for (const seg of segments) {
+    const t = seg.trim();
+    if (!t) continue;
+
+    // Strip leading prep phrases (two passes for compound phrases like "with fresh")
+    const once = t.replace(LEADING_PREP, '').trim();
+    const twice = once.replace(LEADING_PREP, '').trim();
+    const didStrip = twice !== t;
+
+    if (didStrip) {
+      // A prep phrase was stripped — split remainder on " and " to capture each
+      // listed item (e.g. "served with coleslaw and french fries" → two tokens)
+      for (const sub of twice.split(/\s+and\s+/i)) {
+        results.push(sub.trim());
+      }
+    } else {
+      // No leading prep phrase. If the segment contains " with " in the middle
+      // (e.g. "Breaded chicken breast with marinara and alfredo sauce"), split
+      // it into the main item and its accompaniments.
+      const withMatch = t.match(/^(.+?)\s+with\s+(.+)$/i);
+      if (withMatch) {
+        results.push(withMatch[1].trim());
+        // The part after "with" may contain " and " — split those out too
+        for (const sub of withMatch[2].split(/\s+and\s+/i)) {
+          results.push(sub.trim());
+        }
+      } else {
+        results.push(t);
+      }
+    }
+  }
+
+  return results
     .filter(t => t.length >= 3)
     .filter(t => !/^\d+(\.\d+)?\s*(oz|lb|g|ml|cup|tbsp|tsp|pcs|pc|oz\.)?\s*$/i.test(t));
 }

@@ -1888,10 +1888,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
 
       // Deduplicate: count unique recipeIds per ingredient name
+      // Also skip any stored tokens that look like full menu descriptions rather than
+      // clean ingredient names — these can occur when the tokenizer previously failed
+      // to split on periods (e.g. "Bbq sauce. served with coleslaw and french fries").
+      const BAD_TOKEN_RE = /\.\s|served\s+with|topped\s+with|drizzled\s+with|garnished\s+with|comes\s+with|finished\s+with/i;
       const ingredientMap = new Map<string, Set<string>>();
       for (const row of componentRows) {
         const name = (row.missingItemName as string).trim().toLowerCase();
         if (!name) continue;
+        if (BAD_TOKEN_RE.test(name)) continue;
         if (!ingredientMap.has(name)) {
           ingredientMap.set(name, new Set());
         }
