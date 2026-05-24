@@ -63,39 +63,29 @@ const SECTION_COLORS: Record<string, { accent: string; badge: string; icon: stri
 const GROUP_META: { icon: IconComponent; color: "green" | "orange" }[] = [
   { icon: Camera, color: "orange" },
   { icon: RefreshCw, color: "green" },
-  { icon: Truck, color: "green" },
   { icon: BarChart3, color: "orange" },
-  { icon: Camera, color: "orange" },
   { icon: Users, color: "green" },
 ];
 
 const GROUP_SCREENSHOTS: string[] = [
   "/screenshots/inventory-management.png",
   "/screenshots/recipe-card-vs-app.png",
-  "/screenshots/vendor-order-guides.png",
   "/screenshots/food-cost-variance.png",
-  "/screenshots/mobile-count-session.jpg",
   "/screenshots/multi-location.png",
 ];
 
 const GROUP_SCREENSHOT_ALTS: string[] = [
-  "FnB Cost Pro inventory management — set up your items from a photo",
-  "FnB Cost Pro recipe costing — photograph a handwritten recipe card and get exact food costs instantly",
-  "FnB Cost Pro vendor order guides — Sysco, GFS, US Foods catalogs",
+  "FnB Cost Pro — set up your inventory and recipes from photos",
+  "FnB Cost Pro recipe costing — live cost per portion that updates when vendor prices change",
   "FnB Cost Pro food cost variance report — theoretical vs actual food cost",
-  "FnB Cost Pro inventory counting on mobile — count by storage location on your phone",
   "FnB Cost Pro multi-location store management",
 ];
 
 // Groups where the screenshot is a phone/mobile feature — rendered in a phone frame
 // instead of a desktop browser frame. Indices match GROUP_SCREENSHOTS above.
-const GROUP_IS_PHONE: boolean[] = [false, false, false, false, true, false];
+const GROUP_IS_PHONE: boolean[] = [false, false, false, false];
 
-const GROUP_PHONE_CAPTIONS: string[] = [
-  "", "", "", "",
-  "Count by location — on your phone",
-  "",
-];
+const GROUP_PHONE_CAPTIONS: string[] = ["", "", "", ""];
 
 export default function WebsiteFeatures() {
   const { lang, t } = useLanguage();
@@ -122,14 +112,72 @@ export default function WebsiteFeatures() {
           <p className="text-lg text-gray-300 leading-relaxed mb-8">
             {feat.subheadline}
           </p>
-          <CTAButton href={appLink("/signup")} large>
-            {feat.startFree}
-          </CTAButton>
+          <div className="flex flex-wrap gap-4 justify-center mb-5">
+            <CTAButton href={appLink("/signup")} large>
+              {feat.startFree}
+            </CTAButton>
+            <a href="#menu-scan-feature">
+              <Button variant="outline" size="lg" className="border-white/40 text-white bg-white/10 backdrop-blur-sm">
+                {feat.heroSecondaryCtaLabel} <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </a>
+          </div>
+          <p className="text-sm text-gray-400">{feat.heroProofLine}</p>
+        </div>
+      </section>
+
+      <section className="py-16 bg-green-950 text-center" data-testid="section-guarantee">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <Badge variant="outline" className="text-green-300 bg-green-900/50 border-green-700 mb-6">
+            Guarantee
+          </Badge>
+          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-5">
+            {feat.guaranteeSection.title}
+          </h2>
+          <p className="text-green-200 leading-relaxed mb-6">
+            {feat.guaranteeSection.body}
+          </p>
+          <p className="text-xs text-green-400 italic max-w-2xl mx-auto">
+            {feat.guaranteeSection.disclaimer}
+          </p>
+        </div>
+      </section>
+
+      <section className="py-14 bg-gray-50" data-testid="section-what-you-bring">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">
+            {feat.whatYouBringSection.title}
+          </h2>
+          <ul className="space-y-3">
+            {feat.whatYouBringSection.bullets.map((bullet, i) => (
+              <li key={i} className="flex items-start gap-3 bg-white rounded-lg border border-gray-100 p-4">
+                <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                <span className="text-gray-700 text-sm leading-relaxed">{bullet}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section className="py-14 bg-white" data-testid="section-opportunities">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-3 text-center">
+            {feat.opportunitiesSection.title}
+          </h2>
+          <p className="text-gray-500 text-center mb-8 text-sm">{feat.opportunitiesSection.subtitle}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {feat.opportunitiesSection.bullets.map((bullet, i) => (
+              <div key={i} className="flex items-start gap-3 p-4 rounded-lg bg-gray-50 border border-gray-100">
+                <DollarSign className="h-4 w-4 text-orange-500 flex-shrink-0 mt-0.5" />
+                <span className="text-gray-700 text-sm leading-relaxed">{bullet}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {hasNewSections && (
-        <section className="bg-white">
+        <section id="menu-scan-feature" className="bg-white">
           {feat.sections.map((section, sectionIdx) => {
             const c = SECTION_COLORS[section.key] || SECTION_COLORS.manage;
             const icons = SECTION_ICONS[section.key] || [Camera];
