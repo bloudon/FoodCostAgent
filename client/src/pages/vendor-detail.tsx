@@ -107,7 +107,6 @@ export default function VendorDetail() {
                   <TableHead>SKU</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-right">Pack Size</TableHead>
-                  <TableHead className="text-right">Case Size</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                   <TableHead className="text-right">Unit</TableHead>
                   <TableHead className="text-right">Case Price</TableHead>
@@ -119,8 +118,7 @@ export default function VendorDetail() {
                     <TableCell><Skeleton className="h-4 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-                    <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                    <TableCell className="text-right"><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-4 w-24 ml-auto" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-5 w-16 mx-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
@@ -179,7 +177,6 @@ export default function VendorDetail() {
                         <TableHead>SKU</TableHead>
                         <TableHead className="text-right">Price</TableHead>
                         <TableHead className="text-right">Pack Size</TableHead>
-                        <TableHead className="text-right">Case Size</TableHead>
                         <TableHead className="text-center">Status</TableHead>
                         <TableHead className="text-right">Unit</TableHead>
                         <TableHead className="text-right">Case Price</TableHead>
@@ -211,19 +208,31 @@ export default function VendorDetail() {
                               )}
                             </TableCell>
                             <TableCell className="text-right" data-testid={`text-item-pack-${item.id}`}>
-                              {(item.innerPackSize ?? item.inventoryItem?.innerPackSize) != null ? (
-                                <>
-                                  {item.innerPackSize ?? item.inventoryItem?.innerPackSize}
-                                  {item.unit && (
-                                    <span className="text-muted-foreground text-sm ml-1">
-                                      {formatUnitName(item.unit.name)}
-                                    </span>
-                                  )}
-                                </>
-                              ) : "-"}
-                            </TableCell>
-                            <TableCell className="text-right" data-testid={`text-item-case-${item.id}`}>
-                              {item.caseSize ?? item.inventoryItem?.caseSize ?? "-"}
+                              {(() => {
+                                const outerCount = item.caseSize ?? item.inventoryItem?.caseSize;
+                                const innerCount = item.innerPackSize ?? item.inventoryItem?.innerPackSize;
+                                const unitLabel = item.unit ? formatUnitName(item.unit.name) : null;
+                                if (outerCount != null && innerCount != null) {
+                                  return (
+                                    <>
+                                      <span className="font-medium">{outerCount} × {innerCount}</span>
+                                      {unitLabel && (
+                                        <span className="text-muted-foreground text-sm ml-1">{unitLabel}</span>
+                                      )}
+                                    </>
+                                  );
+                                } else if (outerCount != null) {
+                                  return (
+                                    <>
+                                      <span>{outerCount}</span>
+                                      {unitLabel && (
+                                        <span className="text-muted-foreground text-sm ml-1">{unitLabel}</span>
+                                      )}
+                                    </>
+                                  );
+                                }
+                                return <span className="text-muted-foreground">-</span>;
+                              })()}
                             </TableCell>
                             <TableCell className="text-center">
                               <Badge variant={item.active ? "outline" : "secondary"} className="text-xs">
@@ -246,7 +255,7 @@ export default function VendorDetail() {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                             No items match "{searchQuery}"
                           </TableCell>
                         </TableRow>
