@@ -70,9 +70,9 @@ export default function LeadSignup() {
           <div className="flex justify-center">
             <img src={logoImage} alt="FNB Cost Pro" className="h-24 w-auto" />
           </div>
-          <CardTitle data-testid="text-signup-title">Start Your Free Trial</CardTitle>
+          <CardTitle data-testid="text-signup-title">Start Your 14-Day Opportunity Review</CardTitle>
           <CardDescription>
-            Create your account to start your 14-day trial.
+            Create your account to start your 14-day opportunity review.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -283,7 +283,7 @@ export default function WebsitePricing() {
       <section className="py-16 bg-green-900 text-center">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-white mb-4">
-            {lang === "es" ? "Inicia tu prueba gratuita de 14 días" : "Start Your 14-Day Free Trial"}
+            {lang === "es" ? "Inicia tu Revisión de 14 Días" : "Start Your 14-Day Opportunity Review"}
           </h2>
           <p className="text-green-200 mb-8 text-sm">
             {lang === "es"

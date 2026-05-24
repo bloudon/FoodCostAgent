@@ -141,7 +141,7 @@ export default function ChoosePlan() {
         <div className="bg-card rounded-lg border overflow-hidden mb-6">
           <div className="p-6 md:p-8 text-center">
             <Badge className="mb-3 bg-green-600 text-white no-default-active-elevate" data-testid="badge-trial">
-              {TRIAL_DAYS}-Day Free Trial
+              {TRIAL_DAYS}-Day Opportunity Review
             </Badge>
             <h1 className="text-2xl font-bold mb-2">Choose Your Plan</h1>
             <p className="text-muted-foreground text-sm">
@@ -199,7 +199,7 @@ export default function ChoosePlan() {
                 <Building2 className="w-5 h-5 text-muted-foreground" />
                 <h2 className="text-lg font-bold">Starter</h2>
               </div>
-              <p className="text-xs text-green-600 dark:text-green-400 font-medium mb-3">{TRIAL_DAYS}-day free trial included</p>
+              <p className="text-xs text-green-600 dark:text-green-400 font-medium mb-3">{TRIAL_DAYS}-day opportunity review included</p>
 
               <div className="mb-4">
                 <div className="flex items-baseline gap-1">
@@ -235,7 +235,7 @@ export default function ChoosePlan() {
                   </>
                 ) : (
                   <>
-                    Start {TRIAL_DAYS}-Day Free Trial
+                    Start {TRIAL_DAYS}-Day Opportunity Review
                     <ChevronRight className="w-4 h-4 ml-1" />
                   </>
                 )}
@@ -257,7 +257,7 @@ export default function ChoosePlan() {
                 <Zap className="w-5 h-5 text-primary" />
                 <h2 className="text-lg font-bold">Pro</h2>
               </div>
-              <p className="text-xs text-green-600 dark:text-green-400 font-medium mb-3">{TRIAL_DAYS}-day free trial included</p>
+              <p className="text-xs text-green-600 dark:text-green-400 font-medium mb-3">{TRIAL_DAYS}-day opportunity review included</p>
 
               <div className="mb-1">
                 <div className="flex items-baseline gap-1">
@@ -298,7 +298,7 @@ export default function ChoosePlan() {
                   </>
                 ) : (
                   <>
-                    Start {TRIAL_DAYS}-Day Free Trial
+                    Start {TRIAL_DAYS}-Day Opportunity Review
                     <ChevronRight className="w-4 h-4 ml-1" />
                   </>
                 )}
