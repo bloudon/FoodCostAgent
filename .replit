@@ -38,6 +38,10 @@ args = "Start application"
 task = "workflow.run"
 args = "test"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "csv-unit-tests"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -54,6 +58,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npx vitest run --config vitest.config.ts"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "csv-unit-tests"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx vitest run server/integrations/csv/CsvOrderGuide.test.ts"
 
 [workflows.workflow.metadata]
 isValidation = true
