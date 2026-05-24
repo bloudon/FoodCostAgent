@@ -2,6 +2,21 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.7.0] — 2026-05-24
+
+### Vendor & Order Guide Importing
+- Compound pack-size strings parsed correctly — "6/5 LB" now stores case qty (6) and inner-pack size (5) as separate fields instead of merging them, so unit price math is accurate.
+- EA portioning auto-derivation — when a vendor CSV has both a count column (EA/each/unit) and a weight column (LB), the system automatically calculates per-each weight and seeds it as a Recipe Unit on the inventory item. No manual entry required.
+- Admin backfill tool (`POST /api/admin/backfill-vendor-pack-sizes`) repairs any existing vendor items that were imported with merged pack sizes before this fix.
+- Per-each weight is now visible and editable on the vendor item detail panel.
+
+### QuickBooks Integration
+- OAuth Connect / Disconnect moved back to **Settings → Integrations** where each company manages their own connection.
+- Global Admin (`/companies`) gains a **QB App Configuration** card showing whether the platform-level `QUICKBOOKS_CLIENT_ID` and `QUICKBOOKS_CLIENT_SECRET` credentials are set, and which environment (sandbox / production) is active.
+- QuickBooks integration is now a **Pro plan feature**. Starter plan users see an upgrade prompt in Settings → Integrations instead of the connection UI.
+
+---
+
 ## [1.6.0] — 2025-05-23
 
 ### Menu Item Variant Costing
