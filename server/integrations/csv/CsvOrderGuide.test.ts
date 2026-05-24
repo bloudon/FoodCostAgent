@@ -120,6 +120,48 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     expect(p.unit).toBe('LB');
   });
 
+  it('converts OUNCE (singular) weight to LB and derives eaPerCase', async () => {
+    const csv = buildCsv(
+      ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
+      [['SKU001', 'Test Item', '24', 'EA', '18 OUNCE']],
+    );
+    const guide = await CsvOrderGuide.parse(csv, {
+      ...GENERIC_OPTS,
+      columnMapping: {
+        vendorSku: 'SKU',
+        productName: 'Name',
+        caseSize: 'Pack',
+        unit: 'UOM',
+        caseWeight: 'Weight',
+      },
+    });
+    const p = guide.products[0];
+    // 18 OUNCE → 1.125 LB total; 1.125 / 24 = 0.046875 LB/each
+    expect(p.eaPerCase).toBeCloseTo(0.046875);
+    expect(p.unit).toBe('LB');
+  });
+
+  it('converts OUNCES (plural) weight to LB and derives eaPerCase', async () => {
+    const csv = buildCsv(
+      ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
+      [['SKU001', 'Test Item', '24', 'EA', '18 OUNCES']],
+    );
+    const guide = await CsvOrderGuide.parse(csv, {
+      ...GENERIC_OPTS,
+      columnMapping: {
+        vendorSku: 'SKU',
+        productName: 'Name',
+        caseSize: 'Pack',
+        unit: 'UOM',
+        caseWeight: 'Weight',
+      },
+    });
+    const p = guide.products[0];
+    // 18 OUNCES → 1.125 LB total; 1.125 / 24 = 0.046875 LB/each
+    expect(p.eaPerCase).toBeCloseTo(0.046875);
+    expect(p.unit).toBe('LB');
+  });
+
   it('converts KG weight to LB and derives eaPerCase', async () => {
     const csv = buildCsv(
       ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
@@ -138,6 +180,89 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     const p = guide.products[0];
     // 8 KG → 17.63696 LB total; 17.63696 / 24 ≈ 0.734873 LB/each
     expect(p.eaPerCase).toBeCloseTo(17.63696 / 24);
+    expect(p.unit).toBe('LB');
+  });
+
+  it('converts KGS (plural) weight to LB and derives eaPerCase', async () => {
+    const csv = buildCsv(
+      ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
+      [['SKU001', 'Test Item', '24', 'EA', '8 KGS']],
+    );
+    const guide = await CsvOrderGuide.parse(csv, {
+      ...GENERIC_OPTS,
+      columnMapping: {
+        vendorSku: 'SKU',
+        productName: 'Name',
+        caseSize: 'Pack',
+        unit: 'UOM',
+        caseWeight: 'Weight',
+      },
+    });
+    const p = guide.products[0];
+    // 8 KGS → 17.63696 LB total; 17.63696 / 24 ≈ 0.734873 LB/each
+    expect(p.eaPerCase).toBeCloseTo(17.63696 / 24);
+    expect(p.unit).toBe('LB');
+  });
+
+  it('converts KILOGRAM (singular) weight to LB and derives eaPerCase', async () => {
+    const csv = buildCsv(
+      ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
+      [['SKU001', 'Test Item', '24', 'EA', '8 KILOGRAM']],
+    );
+    const guide = await CsvOrderGuide.parse(csv, {
+      ...GENERIC_OPTS,
+      columnMapping: {
+        vendorSku: 'SKU',
+        productName: 'Name',
+        caseSize: 'Pack',
+        unit: 'UOM',
+        caseWeight: 'Weight',
+      },
+    });
+    const p = guide.products[0];
+    // 8 KILOGRAM → 17.63696 LB total; 17.63696 / 24 ≈ 0.734873 LB/each
+    expect(p.eaPerCase).toBeCloseTo(17.63696 / 24);
+    expect(p.unit).toBe('LB');
+  });
+
+  it('converts KILOGRAMS (plural) weight to LB and derives eaPerCase', async () => {
+    const csv = buildCsv(
+      ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
+      [['SKU001', 'Test Item', '24', 'EA', '8 KILOGRAMS']],
+    );
+    const guide = await CsvOrderGuide.parse(csv, {
+      ...GENERIC_OPTS,
+      columnMapping: {
+        vendorSku: 'SKU',
+        productName: 'Name',
+        caseSize: 'Pack',
+        unit: 'UOM',
+        caseWeight: 'Weight',
+      },
+    });
+    const p = guide.products[0];
+    // 8 KILOGRAMS → 17.63696 LB total; 17.63696 / 24 ≈ 0.734873 LB/each
+    expect(p.eaPerCase).toBeCloseTo(17.63696 / 24);
+    expect(p.unit).toBe('LB');
+  });
+
+  it('accepts "18 POUND" (singular full word)', async () => {
+    const csv = buildCsv(
+      ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
+      [['SKU001', 'Test Item', '24', 'EA', '18 POUND']],
+    );
+    const guide = await CsvOrderGuide.parse(csv, {
+      ...GENERIC_OPTS,
+      columnMapping: {
+        vendorSku: 'SKU',
+        productName: 'Name',
+        caseSize: 'Pack',
+        unit: 'UOM',
+        caseWeight: 'Weight',
+      },
+    });
+    const p = guide.products[0];
+    expect(p.eaPerCase).toBeCloseTo(0.75);
     expect(p.unit).toBe('LB');
   });
 
@@ -443,6 +568,71 @@ describe('edge cases — invalid caseSize prevents derivation', () => {
     const csv = buildCsv(
       ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
       [['SKU001', 'Test Item', '', 'EA', '18 LB']],
+    );
+    const guide = await CsvOrderGuide.parse(csv, {
+      ...GENERIC_OPTS,
+      columnMapping: {
+        vendorSku: 'SKU',
+        productName: 'Name',
+        caseSize: 'Pack',
+        unit: 'UOM',
+        caseWeight: 'Weight',
+      },
+    });
+    const p = guide.products[0];
+    expect(p.eaPerCase).toBeUndefined();
+  });
+});
+
+// ─── parseCaseWeightLbs — invalid / unrecognised inputs skip derivation ──────
+
+describe('parseCaseWeightLbs — invalid inputs skip derivation', () => {
+  const INVALID_WEIGHTS = ['N/A', 'n/a', 'TBD', 'abc', '??', '--', 'none', 'null'];
+
+  for (const bad of INVALID_WEIGHTS) {
+    it(`"${bad}" — derivation skipped (eaPerCase undefined)`, async () => {
+      const csv = buildCsv(
+        ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
+        [['SKU001', 'Test Item', '24', 'EA', bad]],
+      );
+      const guide = await CsvOrderGuide.parse(csv, {
+        ...GENERIC_OPTS,
+        columnMapping: {
+          vendorSku: 'SKU',
+          productName: 'Name',
+          caseSize: 'Pack',
+          unit: 'UOM',
+          caseWeight: 'Weight',
+        },
+      });
+      const p = guide.products[0];
+      expect(p.eaPerCase).toBeUndefined();
+    });
+  }
+
+  it('negative number — derivation skipped', async () => {
+    const csv = buildCsv(
+      ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
+      [['SKU001', 'Test Item', '24', 'EA', '-5 LB']],
+    );
+    const guide = await CsvOrderGuide.parse(csv, {
+      ...GENERIC_OPTS,
+      columnMapping: {
+        vendorSku: 'SKU',
+        productName: 'Name',
+        caseSize: 'Pack',
+        unit: 'UOM',
+        caseWeight: 'Weight',
+      },
+    });
+    const p = guide.products[0];
+    expect(p.eaPerCase).toBeUndefined();
+  });
+
+  it('unrecognised unit suffix (G for grams) — derivation skipped', async () => {
+    const csv = buildCsv(
+      ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
+      [['SKU001', 'Test Item', '24', 'EA', '500 G']],
     );
     const guide = await CsvOrderGuide.parse(csv, {
       ...GENERIC_OPTS,
