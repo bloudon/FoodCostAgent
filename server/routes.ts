@@ -15607,11 +15607,13 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         refreshTokenExpiresAt,
       });
 
-      // Redirect to settings page with success message
-      const redirectPath = storeId 
-        ? `/settings?storeId=${storeId}&qb_connected=true`
-        : `/settings?qb_connected=true`;
-      
+      // Redirect back — admin-initiated flows return to the admin panel
+      const redirectPath = stateData.fromAdmin
+        ? `/companies?qb_connected=true`
+        : storeId
+          ? `/settings?storeId=${storeId}&qb_connected=true`
+          : `/settings?qb_connected=true`;
+
       res.redirect(redirectPath);
     } catch (error: any) {
       console.error("QuickBooks callback error:", error);
@@ -15655,6 +15657,68 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       });
     } catch (error: any) {
       console.error("QuickBooks status error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/admin/quickbooks/connections — QB status for every company (global admin only)
+  app.get("/api/admin/quickbooks/connections", requireAuth, async (req, res) => {
+    const user = req.user!;
+    if (user.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+    try {
+      const allCompanies = await storage.getCompanies();
+      const results = await Promise.all(allCompanies.map(async (company) => {
+        const conn = await storage.getQuickBooksConnection(company.id);
+        return {
+          companyId: company.id,
+          companyName: company.name,
+          connected: !!(conn?.isActive),
+          realmId: conn?.realmId ?? null,
+          connectionLevel: conn?.storeId ? "store" : "company",
+          lastSyncedAt: conn?.lastSyncedAt ?? null,
+          expiresAt: conn?.refreshTokenExpiresAt ?? null,
+        };
+      }));
+      res.json(results);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/admin/quickbooks/connect/:companyId — initiate OAuth on behalf of a company (global admin only)
+  app.get("/api/admin/quickbooks/connect/:companyId", requireAuth, async (req, res) => {
+    const user = req.user!;
+    if (user.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+    try {
+      const { companyId } = req.params;
+      const oauthClient = createOAuthClient();
+      const stateData = {
+        companyId,
+        storeId: null,
+        userId: user.id,
+        timestamp: Date.now(),
+        fromAdmin: true,
+      };
+      const state = createSignedState(stateData);
+      const authUri = oauthClient.authorizeUri({
+        scope: [OAuthClient.scopes.Accounting],
+        state,
+      });
+      res.redirect(authUri);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/admin/quickbooks/disconnect/:companyId — disconnect QB for any company (global admin only)
+  app.post("/api/admin/quickbooks/disconnect/:companyId", requireAuth, async (req, res) => {
+    const user = req.user!;
+    if (user.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+    try {
+      const { companyId } = req.params;
+      await storage.disconnectQuickBooks(companyId);
+      res.json({ success: true });
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });

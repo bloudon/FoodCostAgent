@@ -942,60 +942,14 @@ export default function Settings() {
                       </div>
                     )}
                   </div>
-                  <Separator />
-                  <Button
-                    variant="destructive"
-                    onClick={async () => {
-                      try {
-                        await apiRequest("POST", "/api/quickbooks/disconnect", {});
-                        refetchQbStatus();
-                        toast({
-                          title: "Success",
-                          description: "QuickBooks disconnected successfully",
-                        });
-                      } catch (error: any) {
-                        toast({
-                          title: "Error",
-                          description: error.message || "Failed to disconnect QuickBooks",
-                          variant: "destructive",
-                        });
-                      }
-                    }}
-                    data-testid="button-disconnect-quickbooks"
-                  >
-                    <XCircle className="h-4 w-4 mr-2" />
-                    Disconnect QuickBooks
-                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    To update or disconnect this connection, contact your administrator.
+                  </p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <XCircle className="h-5 w-5" />
-                    <span>Not connected to QuickBooks Online</span>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">What you get by connecting:</p>
-                    <ul className="text-sm text-muted-foreground list-disc pl-6 space-y-1">
-                      <li>Automatically create bills in QuickBooks when purchase orders are received</li>
-                      <li>Sync vendor information between systems</li>
-                      <li>Track synchronization status and history</li>
-                      <li>Reduce manual data entry and errors</li>
-                    </ul>
-                  </div>
-                  <Separator />
-                  <Button
-                    onClick={() => {
-                      window.location.href = "/api/quickbooks/connect";
-                    }}
-                    data-testid="button-connect-quickbooks"
-                  >
-                    <DollarSign className="h-4 w-4 mr-2" />
-                    Connect to QuickBooks Online
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    You'll be redirected to QuickBooks to authorize the connection.
-                  </p>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <XCircle className="h-5 w-5" />
+                  <span>Not connected — contact your administrator to set up the QuickBooks integration.</span>
                 </div>
               )}
             </CardContent>
