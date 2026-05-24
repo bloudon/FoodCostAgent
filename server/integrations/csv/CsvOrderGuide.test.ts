@@ -99,7 +99,7 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     expect(p.eaPerCase).toBeCloseTo(0.75);
   });
 
-  it('ignores OZ weight — derivation is skipped, eaPerCase is undefined', async () => {
+  it('converts OZ weight to LB and derives eaPerCase', async () => {
     const csv = buildCsv(
       ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
       [['SKU001', 'Test Item', '24', 'EA', '18 OZ']],
@@ -115,11 +115,12 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
       },
     });
     const p = guide.products[0];
-    expect(p.eaPerCase).toBeUndefined();
-    expect(p.unit).toBe('EA');
+    // 18 OZ → 1.125 LB total; 1.125 / 24 = 0.046875 LB/each
+    expect(p.eaPerCase).toBeCloseTo(0.046875);
+    expect(p.unit).toBe('LB');
   });
 
-  it('ignores KG weight — derivation is skipped, eaPerCase is undefined', async () => {
+  it('converts KG weight to LB and derives eaPerCase', async () => {
     const csv = buildCsv(
       ['SKU', 'Name', 'Pack', 'UOM', 'Weight'],
       [['SKU001', 'Test Item', '24', 'EA', '8 KG']],
@@ -135,8 +136,9 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
       },
     });
     const p = guide.products[0];
-    expect(p.eaPerCase).toBeUndefined();
-    expect(p.unit).toBe('EA');
+    // 8 KG → 17.63696 LB total; 17.63696 / 24 ≈ 0.734873 LB/each
+    expect(p.eaPerCase).toBeCloseTo(17.63696 / 24);
+    expect(p.unit).toBe('LB');
   });
 
   it('ignores G (grams) weight — derivation is skipped', async () => {

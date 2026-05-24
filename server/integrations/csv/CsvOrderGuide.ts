@@ -437,18 +437,30 @@ export class CsvOrderGuide {
   /**
    * Parse a case-weight string and return the value in LB.
    * Handles: "18 LB", "18.5 LB", "18 LBS", "18" (assumes LB).
-   * Returns null when the value cannot be parsed or is not in pounds.
-   * Intentionally ignores OZ/KG/G to avoid silent unit-conversion errors.
+   * Returns null when the value cannot be parsed or is not a recognised weight unit.
+   * Supports LB/LBS/POUND/POUNDS, OZ/OUNCE/OUNCES, KG/KILOGRAM/KILOGRAMS, and bare
+   * numbers (treated as LB for weight-designated columns).
    */
   private static parseCaseWeightLbs(value: string): number | null {
     if (!value) return null;
     const trimmed = value.trim();
-    // Match a positive number optionally followed by LB/LBS/POUND/POUNDS (case-insensitive)
-    // Also accept bare numbers (assume LB for weight-designated columns)
-    const match = trimmed.match(/^([\d.]+)\s*(LBS?|POUNDS?)?$/i);
+    const match = trimmed.match(/^([\d.]+)\s*(LBS?|POUNDS?|OZ|OUNCES?|KGS?|KILOGRAMS?)?$/i);
     if (match) {
       const num = parseFloat(match[1]);
-      if (!isNaN(num) && num > 0) return num;
+      if (isNaN(num) || num <= 0) return null;
+      const unit = (match[2] || '').toUpperCase();
+      if (unit === 'OZ' || unit === 'OZS' || unit === 'OUNCE' || unit === 'OUNCES') {
+        const lbs = num / 16;
+        console.log(`[CsvOrderGuide] case-weight OZ→LB: ${num} oz = ${lbs.toFixed(4)} lb`);
+        return lbs;
+      }
+      if (unit === 'KG' || unit === 'KGS' || unit === 'KILOGRAM' || unit === 'KILOGRAMS') {
+        const lbs = num * 2.20462;
+        console.log(`[CsvOrderGuide] case-weight KG→LB: ${num} kg = ${lbs.toFixed(4)} lb`);
+        return lbs;
+      }
+      // LB / POUND / bare number — no conversion needed
+      return num;
     }
     return null;
   }
