@@ -1,8 +1,8 @@
-import { Target, Heart, Lightbulb } from "lucide-react";
+import { Target, TrendingUp, Lightbulb, Wrench } from "lucide-react";
 import { MarketingLayout, MarketingHead, CTAButton, SectionHeading, appLink } from "@/components/website/marketing-layout";
 import { useLanguage } from "@/lib/language-context";
 
-const VALUE_ICONS = [Target, Heart, Lightbulb];
+const VALUE_ICONS = [Target, TrendingUp, Lightbulb, Wrench];
 
 export default function WebsiteAbout() {
   const { lang, t } = useLanguage();
@@ -23,8 +23,11 @@ export default function WebsiteAbout() {
           <h1 className="text-4xl sm:text-5xl font-extrabold text-white mb-6">
             {about.headline}
           </h1>
-          <p className="text-lg text-gray-300 leading-relaxed">
+          <p className="text-lg text-gray-300 leading-relaxed mb-4">
             {about.subheadline}
+          </p>
+          <p className="text-base text-gray-400 leading-relaxed">
+            {about.storyBody}
           </p>
         </div>
       </section>
@@ -49,7 +52,7 @@ export default function WebsiteAbout() {
       <section className="py-20 bg-gray-50">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading label={about.valuesLabel} title={about.valuesTitle} />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {about.values.map((v, i) => {
               const Icon = VALUE_ICONS[i];
               return (
@@ -96,9 +99,19 @@ export default function WebsiteAbout() {
           <p className="text-green-200 mb-8">
             {about.ctaSubtitle}
           </p>
-          <CTAButton href={appLink("/signup")} large>
-            {about.getStartedFree}
-          </CTAButton>
+          <div className="flex flex-wrap gap-4 justify-center">
+            <CTAButton href={appLink("/signup")} large>
+              {about.getStartedFree}
+            </CTAButton>
+            <a href={appLink("/signup")}>
+              <button
+                className="px-8 py-3 rounded-md text-base font-semibold text-white border border-white/40 bg-white/10 backdrop-blur-sm hover-elevate"
+                data-testid="btn-about-scan-menu"
+              >
+                {about.ctaSecondary}
+              </button>
+            </a>
+          </div>
         </div>
       </section>
     </MarketingLayout>

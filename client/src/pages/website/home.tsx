@@ -307,6 +307,8 @@ function RoiMathSection() {
 }
 
 // ── Mobile showcase section ───────────────────────────────────────────────────
+const MOBILE_CALLOUT_ICONS = [TrendingUp, RefreshCw, ClipboardList];
+
 function MobileShowcase() {
   const { t } = useLanguage();
   const home = t.home;
@@ -318,43 +320,42 @@ function MobileShowcase() {
             {home.menuScanLabel}
           </span>
           <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-            Every workflow feeds food cost insight
+            {home.mobileShowcaseTitle}
           </h2>
           <p className="text-gray-400 max-w-2xl mx-auto text-base">
-            Count inventory, scan invoices, cost recipes — each one closing the loop between what you spend and what you should spend. No app store needed.
+            {home.mobileShowcaseSubtitle}
           </p>
         </div>
         <div className="flex gap-10 justify-center items-start overflow-x-auto pb-4 px-4" style={{ scrollSnapType: "x mandatory" }}>
           <div style={{ scrollSnapAlign: "center" }}>
-            <PhoneFrame label="Actual vs. theoretical — find the variance">
+            <PhoneFrame label={home.mobilePhoneLabels[0]}>
               <ScreenInventoryCount />
             </PhoneFrame>
           </div>
           <div style={{ scrollSnapAlign: "center" }}>
-            <PhoneFrame label="Catch vendor price changes automatically">
+            <PhoneFrame label={home.mobilePhoneLabels[1]}>
               <ScreenInvoiceScan />
             </PhoneFrame>
           </div>
           <div style={{ scrollSnapAlign: "center" }}>
-            <PhoneFrame label="True plate cost — always current">
+            <PhoneFrame label={home.mobilePhoneLabels[2]}>
               <ScreenRecipeCosting />
             </PhoneFrame>
           </div>
         </div>
         <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-3xl mx-auto text-center">
-          {[
-            { Icon: TrendingUp, label: "Food cost visibility", sub: "Every scan feeds clearer cost insight" },
-            { Icon: RefreshCw, label: "Always current", sub: "Vendor price changes update recipes instantly" },
-            { Icon: ClipboardList, label: "Actual vs. theoretical", sub: "Counts feed directly into variance reports" },
-          ].map((item) => (
-            <div key={item.label} className="flex flex-col items-center gap-2">
-              <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center">
-                <item.Icon className="h-4 w-4 text-orange-400" />
+          {home.mobileCallouts.map((item, i) => {
+            const Icon = MOBILE_CALLOUT_ICONS[i];
+            return (
+              <div key={item.label} className="flex flex-col items-center gap-2">
+                <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center">
+                  <Icon className="h-4 w-4 text-orange-400" />
+                </div>
+                <div className="font-semibold text-white text-sm">{item.label}</div>
+                <div className="text-gray-500 text-xs">{item.sub}</div>
               </div>
-              <div className="font-semibold text-white text-sm">{item.label}</div>
-              <div className="text-gray-500 text-xs">{item.sub}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>
@@ -393,7 +394,7 @@ function MenuScanHighlight() {
                   className="bg-orange-500 text-white border-0 gap-1"
                   data-testid="btn-menu-scan-cta"
                 >
-                  Scan Your Menu <ChevronRight className="h-4 w-4" />
+                  {home.menuScanCTA} <ChevronRight className="h-4 w-4" />
                 </Button>
               </a>
             </div>
@@ -405,17 +406,12 @@ function MenuScanHighlight() {
                   <Camera className="h-4 w-4 text-orange-400" />
                 </div>
                 <div>
-                  <div className="text-white font-semibold text-sm">Menu scan complete</div>
-                  <div className="text-gray-400 text-xs">Brian's Bistro — 3 sections, 42 items</div>
+                  <div className="text-white font-semibold text-sm">{home.menuScanMockTitle}</div>
+                  <div className="text-gray-400 text-xs">{home.menuScanMockSub}</div>
                 </div>
               </div>
               <div className="space-y-2">
-                {[
-                  { section: "Appetizers", count: "8 items", avg: "avg $12.50" },
-                  { section: "Entrees", count: "18 items", avg: "avg $24.00" },
-                  { section: "Desserts", count: "6 items", avg: "avg $9.75" },
-                  { section: "Beverages", count: "10 items", avg: "avg $6.50" },
-                ].map((row, i) => (
+                {home.menuScanMockSections.map((row, i) => (
                   <div key={i} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2">
                     <div className="flex items-center gap-2">
                       <div className="w-1.5 h-1.5 rounded-full bg-orange-400" />
@@ -429,8 +425,8 @@ function MenuScanHighlight() {
                 ))}
               </div>
               <div className="mt-4 pt-4 border-t border-gray-800 flex items-center justify-between">
-                <span className="text-gray-400 text-xs">42 items ready for recipe build-out</span>
-                <span className="text-orange-400 text-xs font-semibold">Starting map created</span>
+                <span className="text-gray-400 text-xs">{home.menuScanMockFooter}</span>
+                <span className="text-orange-400 text-xs font-semibold">{home.menuScanMockStatus}</span>
               </div>
             </div>
           </div>

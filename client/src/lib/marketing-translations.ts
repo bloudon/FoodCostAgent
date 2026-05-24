@@ -190,6 +190,30 @@ export const translations = {
         "Identify at least one savings opportunity",
       ],
       stepLabel: "Step",
+      mobileShowcaseTitle: "Every workflow feeds food cost insight",
+      mobileShowcaseSubtitle:
+        "Count inventory, scan invoices, cost recipes — each one closing the loop between what you spend and what you should spend. No app store needed.",
+      mobilePhoneLabels: [
+        "Actual vs. theoretical — find the variance",
+        "Catch vendor price changes automatically",
+        "True plate cost — always current",
+      ],
+      mobileCallouts: [
+        { label: "Food cost visibility", sub: "Every scan feeds clearer cost insight" },
+        { label: "Always current", sub: "Vendor price changes update recipes instantly" },
+        { label: "Actual vs. theoretical", sub: "Counts feed directly into variance reports" },
+      ],
+      menuScanCTA: "Scan Your Menu",
+      menuScanMockTitle: "Menu scan complete",
+      menuScanMockSub: "Brian's Bistro — 3 sections, 42 items",
+      menuScanMockSections: [
+        { section: "Appetizers", count: "8 items", avg: "avg $12.50" },
+        { section: "Entrees", count: "18 items", avg: "avg $24.00" },
+        { section: "Desserts", count: "6 items", avg: "avg $9.75" },
+        { section: "Beverages", count: "10 items", avg: "avg $6.50" },
+      ],
+      menuScanMockFooter: "42 items ready for recipe build-out",
+      menuScanMockStatus: "Starting map created",
     },
     features: {
       meta: {
@@ -504,53 +528,59 @@ export const translations = {
     },
     about: {
       meta: {
-        title: "About FnB Cost Pro — Restaurant Inventory & Back of House Management",
+        title: "About FnB Cost Pro — We Help Restaurants Find Food Cost Opportunities Faster",
         description:
-          "FnB Cost Pro is restaurant inventory management software built by F&B operators. We replaced the keyboard with a camera — run your entire back of house from your phone.",
+          "FnB Cost Pro helps restaurants turn menus, recipes, invoices, and inventory data into food cost insight — starting with a 14-day guided process designed to find at least one savings opportunity.",
       },
       badge: "Our Story",
-      headline: "We Replaced the Keyboard with a Camera",
+      headline: "We Help Restaurants Find Food Cost Opportunities Faster",
       subheadline:
-        "FnB Cost Pro was born out of a simple frustration: restaurant back-office software required too much typing. We built the tool that fixes it.",
+        "FnB Cost Pro started with a simple frustration: restaurant operators were spending too much time typing menus, recipes, invoices, and inventory counts into software before they could see anything useful.",
+      storyBody:
+        "We built FnB Cost Pro to change that. By replacing much of the keyboard work with photo-based setup, operators can get to food cost visibility faster — starting with a guided 14-day process designed to identify at least one savings opportunity.",
       missionTitle: "Our Mission",
       mission1:
-        "Food & Beverage is one of the most margin-sensitive industries in the world. A 1–2% shift in food cost can be the difference between a profitable month and a loss. Yet most F&B operators are spending 6–10 hours a week on data entry just to keep their cost data current.",
+        "Food & Beverage is one of the most margin-sensitive industries in the world. A 1–2% shift in food cost can be the difference between a profitable month and a loss. For a restaurant doing $500,000 per year, every 1% improvement in food cost represents $5,000 annually.",
       mission2:
-        "We built FnB Cost Pro to change that. Photo scanning now handles what used to require hours of keyboard work — scanning your menu, reading your recipe cards, extracting your vendor invoices, counting your shelves. The operator points the camera. The software does the rest.",
+        "Yet most operators still lack a fast, practical way to turn menus, recipes, vendor invoices, and inventory counts into usable food cost insight. Our mission is to help operators find those opportunities faster.",
       mission3:
-        "We believe every Food & Beverage operator — from a single-location restaurant to a multi-unit F&B group — deserves access to professional-grade food cost management that doesn't require a dedicated data-entry person to run it.",
+        "The operator points the camera. FnB Cost Pro extracts the data, structures it, and helps the team review, confirm, and act.",
       valuesLabel: "Our Values",
       valuesTitle: "What Drives Us",
       values: [
         {
           title: "Built for Operators, by Operators",
-          body: "Every feature in FnB Cost Pro was designed by people who have run kitchens. We know what it's like to count inventory at 11pm and re-key invoices at 7am. We built the tool we wished we had.",
+          body: "Every feature in FnB Cost Pro is designed around real restaurant workflows: late-night inventory counts, vendor price changes, handwritten recipes, and the pressure to protect margin without adding admin work.",
         },
         {
-          title: "Photo Scanning That Actually Saves Time",
-          body: "Every scan feature in this product eliminates a real, time-consuming task: reading your printed menu, extracting recipe ingredients from a card, pulling line items from a vendor invoice, counting shelves from a label. You should feel the time savings on day one.",
+          title: "Food Cost Visibility Before Busywork",
+          body: "Operators should not have to spend weeks typing data before they can see where food cost may be leaking. FnB Cost Pro uses photo-based setup to get restaurants to insight faster.",
         },
         {
-          title: "No Keyboard Required",
-          body: "The best restaurant software is the one your team actually uses. We designed FnB Cost Pro to work entirely from a phone camera so there's no friction between the kitchen and the data.",
+          title: "Guided to the First Opportunity",
+          body: "Software alone does not fix food cost. FnB Cost Pro pairs fast setup with a guided 14-day process designed to identify at least one food cost savings opportunity.",
+        },
+        {
+          title: "Practical, Not Perfect",
+          body: "Restaurant data is messy. Menus change, invoices vary, recipes live on cards and clipboards. FnB Cost Pro is built to help operators turn imperfect data into useful decisions.",
         },
       ],
       whoLabel: "Who We're Built For",
-      whoTitle: "Any F&B Operator Who's Done Enough Data Entry",
+      whoTitle: "Built for Operators Who Need Food Cost Visibility Without More Admin Work",
       whoSubtitle:
-        "If you've ever spent a morning re-keying a vendor invoice, or an evening typing recipes into a spreadsheet, FnB Cost Pro was built for you.",
+        "Whether you're running one location or many, FnB Cost Pro is designed for operations where food cost matters and time is short.",
       whoItems: [
         {
           title: "Independent Restaurants",
-          body: "One location, owner-operated. You need food cost control without a full-time admin. FnB Cost Pro Starter gives you photo setup, live recipe costing, and Theoretical Food Cost variance for $149/month.",
+          body: "FnB Cost Pro Starter helps single-location operators scan menus, cost recipes, review invoices, and start identifying food cost opportunities without hiring an admin person.",
         },
         {
           title: "Multi-Unit Groups",
-          body: "Two locations or twenty. FnB Cost Pro Pro gives you per-store inventory, cross-location variance, transfer orders, and shelf scanning by phone — billed per location so costs scale with your operation.",
+          body: "Two locations or twenty. Use location-level reporting to compare where food cost, waste, vendor pricing, or recipe variance may be drifting. Billed per location so costs scale with your operation.",
         },
         {
           title: "Bars & Beverage Operations",
-          body: "Beverage cost control with the same photo-first workflow. Pour cost by recipe, variance tracking, and vendor order guides that handle spirits, beer, wine, and NA beverages.",
+          body: "Track beverage recipes, vendor costs, and variance using the same photo-first workflow. Pour cost by recipe, variance tracking, and vendor order guides for spirits, beer, wine, and NA beverages.",
         },
         {
           title: "Catering & Event F&B",
@@ -565,10 +595,11 @@ export const translations = {
           body: "Multiple outlets, complex menus, and tight budget accountability. Enterprise plan supports multi-brand management, custom integrations, and SLA-backed support.",
         },
       ],
-      ctaTitle: "Ready to Replace Your Clipboard?",
+      ctaTitle: "Ready to Find Your First Food Cost Opportunity?",
       ctaSubtitle:
-        "Start your 14-day free trial. Point your phone at your menu. See your food costs in minutes.",
-      getStartedFree: "Start Your Free Trial",
+        "Start your 14-day Food Cost Opportunity Review. Scan your menu, review your invoices, and let FnB Cost Pro help identify at least one area where food cost may be leaking.",
+      getStartedFree: "Start Your 14-Day Opportunity Review",
+      ctaSecondary: "Scan Your Menu",
     },
     contact: {
       meta: {
@@ -793,6 +824,30 @@ export const translations = {
         "Identifica al menos una oportunidad de ahorro",
       ],
       stepLabel: "Paso",
+      mobileShowcaseTitle: "Cada flujo de trabajo alimenta la visibilidad de costos",
+      mobileShowcaseSubtitle:
+        "Cuenta inventario, escanea facturas, costea recetas — cada uno cerrando el ciclo entre lo que gastas y lo que deberías gastar. Sin necesidad de descargar una app.",
+      mobilePhoneLabels: [
+        "Real vs. teórico — encuentra la varianza",
+        "Captura cambios de precios automáticamente",
+        "Costo real por plato — siempre actualizado",
+      ],
+      mobileCallouts: [
+        { label: "Visibilidad de costos", sub: "Cada escaneo alimenta mayor claridad en costos" },
+        { label: "Siempre actualizado", sub: "Los cambios de precio actualizan recetas al instante" },
+        { label: "Real vs. teórico", sub: "Los conteos alimentan directamente los reportes de varianza" },
+      ],
+      menuScanCTA: "Escanea tu menú",
+      menuScanMockTitle: "Escaneo de menú completo",
+      menuScanMockSub: "Brian's Bistro — 3 secciones, 42 ítems",
+      menuScanMockSections: [
+        { section: "Entradas", count: "8 ítems", avg: "prom $12.50" },
+        { section: "Platos principales", count: "18 ítems", avg: "prom $24.00" },
+        { section: "Postres", count: "6 ítems", avg: "prom $9.75" },
+        { section: "Bebidas", count: "10 ítems", avg: "prom $6.50" },
+      ],
+      menuScanMockFooter: "42 ítems listos para costeo de recetas",
+      menuScanMockStatus: "Mapa inicial creado",
     },
     features: {
       meta: {
@@ -1038,71 +1093,78 @@ export const translations = {
     },
     about: {
       meta: {
-        title: "Nosotros — FnB Cost Pro Gestión de Inventario y Cocina Trasera para Restaurantes",
+        title: "Nosotros — FnB Cost Pro Ayuda a Restaurantes a Encontrar Oportunidades de Ahorro en Costos",
         description:
-          "FnB Cost Pro es software de gestión de inventario para restaurantes creado por operadores de A&B. Reemplazamos el teclado con una cámara — gestiona tu cocina trasera desde tu teléfono.",
+          "FnB Cost Pro ayuda a los restaurantes a convertir menús, recetas, facturas e inventario en información sobre costos de alimentos — comenzando con un proceso guiado de 14 días para encontrar al menos una oportunidad de ahorro.",
       },
       badge: "Nuestra historia",
-      headline: "Reemplazamos el teclado con una cámara",
+      headline: "Ayudamos a los Restaurantes a Encontrar Oportunidades de Ahorro Más Rápido",
       subheadline:
-        "FnB Cost Pro nació de una frustración simple: el software de back office de restaurantes requería demasiado escribir. Creamos la herramienta que lo resuelve.",
+        "FnB Cost Pro nació de una frustración simple: los operadores de restaurantes pasaban demasiado tiempo escribiendo menús, recetas, facturas y conteos de inventario en software antes de poder ver algo útil.",
+      storyBody:
+        "Creamos FnB Cost Pro para cambiar eso. Al reemplazar gran parte del trabajo de teclado con configuración basada en fotos, los operadores pueden llegar a la visibilidad de costos de alimentos más rápido — comenzando con un proceso guiado de 14 días diseñado para identificar al menos una oportunidad de ahorro.",
       missionTitle: "Nuestra misión",
       mission1:
-        "Alimentos y Bebidas es una de las industrias más sensibles al margen del mundo. Un cambio del 1–2% en el costo de alimentos puede ser la diferencia entre un mes rentable y una pérdida. Sin embargo, la mayoría de los operadores pasan 6–10 horas a la semana en entrada de datos solo para mantener sus costos actualizados.",
+        "Alimentos y Bebidas es una de las industrias más sensibles al margen del mundo. Un cambio del 1–2% en el costo de alimentos puede ser la diferencia entre un mes rentable y una pérdida. Para un restaurante con $500,000 al año, cada 1% de mejora en el costo de alimentos representa $5,000 anuales.",
       mission2:
-        "Creamos FnB Cost Pro para cambiar eso. El escaneo por foto ahora maneja lo que antes requería horas de trabajo de teclado — escanear tu menú, leer tus tarjetas de recetas, extraer tus facturas de proveedores, contar tus estantes. El operador apunta la cámara. El software hace el resto.",
+        "Sin embargo, la mayoría de los operadores aún carecen de una forma rápida y práctica de convertir menús, recetas, facturas de proveedores y conteos de inventario en información utilizable sobre costos. Nuestra misión es ayudar a los operadores a encontrar esas oportunidades más rápido.",
       mission3:
-        "Creemos que todo operador de A&B — desde un restaurante de una sola sucursal hasta un grupo multi-sucursal — merece acceso a una gestión profesional de costos de alimentos que no requiere una persona dedicada a la entrada de datos.",
+        "El operador apunta la cámara. FnB Cost Pro extrae los datos, los estructura y ayuda al equipo a revisar, confirmar y actuar.",
       valuesLabel: "Nuestros valores",
       valuesTitle: "Lo que nos impulsa",
       values: [
         {
           title: "Creado por operadores, para operadores",
-          body: "Cada función en FnB Cost Pro fue diseñada por personas que han gestionado cocinas. Sabemos lo que es contar inventario a las 11pm y reingresar facturas a las 7am. Creamos la herramienta que deseábamos tener.",
+          body: "Cada función en FnB Cost Pro está diseñada en torno a flujos de trabajo reales de restaurante: conteos de inventario nocturnos, cambios de precios de proveedores, recetas escritas a mano y la presión de proteger los márgenes sin agregar trabajo administrativo.",
         },
         {
-          title: "Escaneo por foto que realmente ahorra tiempo",
-          body: "Cada función de escaneo en este producto elimina una tarea real y que consume tiempo: leer tu menú impreso, extraer ingredientes de una tarjeta de receta, obtener líneas de una factura de proveedor, contar estantes desde una etiqueta. Deberías sentir el ahorro de tiempo desde el día uno.",
+          title: "Visibilidad de costos antes que el papeleo",
+          body: "Los operadores no deberían tener que pasar semanas escribiendo datos antes de poder ver dónde puede estar perdiendo costos. FnB Cost Pro usa configuración basada en fotos para llevar a los restaurantes a la información más rápido.",
         },
         {
-          title: "Sin teclado requerido",
-          body: "El mejor software de restaurante es el que tu equipo realmente usa. Diseñamos FnB Cost Pro para funcionar completamente desde la cámara de un teléfono para que no haya fricción entre la cocina y los datos.",
+          title: "Guiado hacia la primera oportunidad",
+          body: "El software solo no arregla los costos de alimentos. FnB Cost Pro combina una configuración rápida con un proceso guiado de 14 días diseñado para identificar al menos una oportunidad de ahorro.",
+        },
+        {
+          title: "Práctico, no perfecto",
+          body: "Los datos de restaurante son complicados. Los menús cambian, las facturas varían, las recetas viven en tarjetas y portapapeles. FnB Cost Pro está construido para ayudar a los operadores a convertir datos imperfectos en decisiones útiles.",
         },
       ],
       whoLabel: "Para quién somos",
-      whoTitle: "Cualquier operador de A&B que ya ha hecho suficiente entrada de datos",
+      whoTitle: "Para Operadores que Necesitan Visibilidad de Costos Sin Más Trabajo Administrativo",
       whoSubtitle:
-        "Si alguna vez has pasado una mañana reingresando una factura de proveedor, FnB Cost Pro fue creado para ti.",
+        "Ya sea que gestiones una sucursal o muchas, FnB Cost Pro está diseñado para operaciones donde los costos de alimentos importan y el tiempo es escaso.",
       whoItems: [
         {
           title: "Restaurantes independientes",
-          body: "Una ubicación, operado por el propietario. Necesitas control de costos sin un administrador de tiempo completo. FnB Cost Pro Starter te da configuración por foto y costeo en vivo por $149/mes.",
+          body: "FnB Cost Pro Starter ayuda a operadores de una sola ubicación a escanear menús, costear recetas, revisar facturas e identificar oportunidades de costos sin contratar personal administrativo.",
         },
         {
           title: "Grupos multi-sucursal",
-          body: "Dos sucursales o veinte. FnB Cost Pro Pro te da inventario por tienda, varianza multi-sucursal, órdenes de transferencia y escaneo de estantes por teléfono.",
+          body: "Dos sucursales o veinte. Usa reportes a nivel de ubicación para comparar dónde los costos, el desperdicio, los precios de proveedores o la varianza de recetas pueden estar desviándose.",
         },
         {
           title: "Bares y operaciones de bebidas",
-          body: "Control de costos de bebidas con el mismo flujo de trabajo. Costo por receta, seguimiento de varianza y guías de proveedores para licores, cerveza, vino y bebidas.",
+          body: "Rastrea recetas de bebidas, costos de proveedores y varianza con el mismo flujo de trabajo foto-primero. Costo de vertido por receta, seguimiento de varianza y guías de proveedores.",
         },
         {
           title: "Catering y eventos",
-          body: "Costeo de recetas para producción de cantidad variable. Construye recetas de eventos, cóstalas por persona y rastrea costos de ingredientes.",
+          body: "Costeo de recetas para producción de cantidad variable. Construye recetas de eventos, cóstalas por persona y rastrea costos de ingredientes frente a los ingresos de catering.",
         },
         {
           title: "Cocinas fantasma",
-          body: "Operaciones multi-concepto bajo un mismo techo. Gestiona bibliotecas de recetas e inventario separados por concepto desde una cuenta.",
+          body: "Operaciones multi-concepto bajo un mismo techo. Gestiona bibliotecas de recetas e inventario separados por concepto desde una cuenta de FnB Cost Pro.",
         },
         {
           title: "Hoteles y resorts",
           body: "Múltiples puntos de venta y menús complejos. El plan Enterprise soporta gestión multi-marca, integraciones personalizadas y soporte con SLA.",
         },
       ],
-      ctaTitle: "¿Listo para reemplazar tu portapapeles?",
+      ctaTitle: "¿Listo para Encontrar tu Primera Oportunidad de Ahorro?",
       ctaSubtitle:
-        "Inicia tu prueba gratuita de 14 días. Apunta tu teléfono a tu menú. Ve tus costos de alimentos en minutos.",
-      getStartedFree: "Iniciar tu prueba gratis",
+        "Inicia tu Revisión de Oportunidades de Costos de 14 días. Escanea tu menú, revisa tus facturas y deja que FnB Cost Pro ayude a identificar al menos un área donde los costos de alimentos puedan estar escapándose.",
+      getStartedFree: "Inicia tu Revisión de 14 Días",
+      ctaSecondary: "Escanea tu menú",
     },
     contact: {
       meta: {
