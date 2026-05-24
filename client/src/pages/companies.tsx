@@ -5,7 +5,7 @@ import {
   Building2, MapPin, Plus, Settings2, UserCircle, Trash2, AlertTriangle,
   Users, CreditCard, Clock, MailWarning, RefreshCw, Activity,
   ChevronDown, ChevronUp, Wand2, MessageSquare, CheckCircle, XCircle,
-  Pencil, Smartphone, DatabaseBackup, DollarSign,
+  Pencil, Smartphone, DatabaseBackup, DollarSign, Package,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -130,6 +130,7 @@ export default function Companies() {
   const [expandedCorrectionForm, setExpandedCorrectionForm] = useState<string | null>(null);
   const [correctionDraft, setCorrectionDraft] = useState<string>("");
   const [newCorrectionQuestion, setNewCorrectionQuestion] = useState<string>("");
+  const [packSizeRepairResult, setPackSizeRepairResult] = useState<{ updated: number; skipped: number } | null>(null);
 
   const { data: companies, isLoading } = useQuery<CompanyWithActivity[]>({
     queryKey: ["/api/companies"],
@@ -223,6 +224,24 @@ export default function Companies() {
       toast({ description: "Correction deleted." });
     },
     onError: () => toast({ variant: "destructive", description: "Failed to delete correction." }),
+  });
+
+  const repairPackSizesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/backfill-vendor-pack-sizes", { method: "POST" });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      return res.json() as Promise<{ data: { candidatesFound: number; updated: number; skipped: number } }>;
+    },
+    onSuccess: (res) => {
+      const { updated, skipped } = res.data;
+      setPackSizeRepairResult({ updated, skipped });
+      if (updated > 0) {
+        toast({ description: `Updated ${updated} vendor item${updated === 1 ? "" : "s"}.` });
+      } else {
+        toast({ description: "All vendor pack sizes are already up to date." });
+      }
+    },
+    onError: () => toast({ variant: "destructive", description: "Failed to repair vendor pack sizes." }),
   });
 
   const { data: adminStats } = useQuery<AdminStats>({
@@ -814,6 +833,53 @@ export default function Companies() {
             )}
           </CardContent>
         )}
+      </Card>
+
+      {/* Vendor Pack Size Repair */}
+      <Card className="mb-4" data-testid="card-repair-pack-sizes">
+        <CardHeader className="pb-3 flex flex-row items-center gap-2">
+          <Package className="h-5 w-5 text-primary" />
+          <div className="flex-1">
+            <CardTitle className="text-base">Vendor Pack Size Repair</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <p className="text-sm text-muted-foreground mb-4">
+            Re-derives <code className="text-xs bg-muted px-1 py-0.5 rounded">innerPackSize</code> from compound pack strings (e.g. "6/5 LB") for any vendor items imported before the split-pack fix. Safe to run multiple times — only touches rows where <code className="text-xs bg-muted px-1 py-0.5 rounded">inner_pack_size</code> is null.
+          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => repairPackSizesMutation.mutate()}
+              disabled={
+                repairPackSizesMutation.isPending ||
+                (packSizeRepairResult !== null && packSizeRepairResult.updated === 0)
+              }
+              data-testid="button-repair-pack-sizes"
+            >
+              {repairPackSizesMutation.isPending ? (
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <Package className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              {repairPackSizesMutation.isPending ? "Repairing..." : "Repair Pack Sizes"}
+            </Button>
+            {packSizeRepairResult !== null && (
+              packSizeRepairResult.updated === 0 ? (
+                <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="text-pack-size-up-to-date">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  Already up to date
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400" data-testid="text-pack-size-updated">
+                  <CheckCircle className="h-4 w-4" />
+                  Updated {packSizeRepairResult.updated} vendor item{packSizeRepairResult.updated === 1 ? "" : "s"}
+                </span>
+              )
+            )}
+          </div>
+        </CardContent>
       </Card>
 
       {/* AI Chat Logs & Corrections */}
