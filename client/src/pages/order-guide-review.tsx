@@ -52,6 +52,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useStoreContext } from '@/hooks/use-store-context';
+import { hasPackSizeMismatch, formatStoredPackSize } from '@/lib/orderGuidePackSize';
 import {
   Collapsible,
   CollapsibleContent,
@@ -708,27 +709,6 @@ function formatPackSize(line: OrderGuideLine): string {
   return line.uom || '-';
 }
 
-function formatStoredPackSize(line: OrderGuideLine): string {
-  if (line.storedCaseSize == null) return '-';
-  if (line.storedInnerPackSize != null && line.storedInnerPackSize > 1) {
-    const uom = line.uom ? ` ${line.uom}` : '';
-    return `${line.storedCaseSize} × ${line.storedInnerPackSize}${uom}`;
-  }
-  const uom = line.uom ? ` ${line.uom}` : '';
-  return `${line.storedCaseSize}${uom}`;
-}
-
-function hasPackSizeMismatch(line: OrderGuideLine): boolean {
-  if (line.storedCaseSize == null) return false;
-  const importedCaseSize = line.caseSize ?? 1;
-  const importedInnerPack = line.innerPack ?? 1;
-  const storedCaseSize = line.storedCaseSize;
-  const storedInnerPack = line.storedInnerPackSize ?? 1;
-  return (
-    Math.abs(importedCaseSize - storedCaseSize) > 0.001 ||
-    Math.abs(importedInnerPack - storedInnerPack) > 0.001
-  );
-}
 
 function OrderGuideTable({
   lines,

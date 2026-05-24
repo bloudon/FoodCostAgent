@@ -5195,6 +5195,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const review = await processor.getForReview(id);
       res.json(review);
     } catch (error: any) {
+      if (error.message === 'Order guide not found') {
+        return res.status(404).json({ error: error.message });
+      }
       console.error('[Order Guide Review Error]', error);
       res.status(500).json({ error: error.message });
     }
