@@ -15742,6 +15742,23 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
+  // GET /api/admin/quickbooks/app-status — check if platform QB app credentials are configured (global admin only)
+  app.get("/api/admin/quickbooks/app-status", requireAuth, async (req, res) => {
+    const user = req.user!;
+    if (user.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+    const hasClientId = !!process.env.QUICKBOOKS_CLIENT_ID;
+    const hasClientSecret = !!process.env.QUICKBOOKS_CLIENT_SECRET;
+    const environment = process.env.QB_ENVIRONMENT || process.env.QUICKBOOKS_ENVIRONMENT || "sandbox";
+    res.json({
+      data: {
+        configured: hasClientId && hasClientSecret,
+        hasClientId,
+        hasClientSecret,
+        environment,
+      }
+    });
+  });
+
   // GET /api/admin/quickbooks/connections — QB status for every company (global admin only)
   app.get("/api/admin/quickbooks/connections", requireAuth, async (req, res) => {
     const user = req.user!;

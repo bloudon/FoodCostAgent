@@ -135,6 +135,10 @@ export default function Companies() {
     queryKey: ["/api/companies"],
   });
 
+  const qbAppStatusQuery = useQuery<{ data: { configured: boolean; hasClientId: boolean; hasClientSecret: boolean; environment: string } }>({
+    queryKey: ["/api/admin/quickbooks/app-status"],
+  });
+
   const qbConnectionsQuery = useQuery<QbConnectionStatus[]>({
     queryKey: ["/api/admin/quickbooks/connections"],
     enabled: qbConnectionsExpanded,
@@ -684,6 +688,52 @@ export default function Companies() {
         </Card>
       )}
 
+      {/* QuickBooks App Configuration */}
+      <Card className="mb-4" data-testid="card-qb-app-status">
+        <CardHeader className="pb-3 flex flex-row items-center gap-2">
+          <DollarSign className="h-5 w-5 text-primary" />
+          <div>
+            <CardTitle className="text-base">QuickBooks App Configuration</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {qbAppStatusQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">Checking...</p>
+          ) : qbAppStatusQuery.data?.data ? (
+            <div className="flex flex-wrap gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                {qbAppStatusQuery.data.data.hasClientId ? (
+                  <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
+                ) : (
+                  <XCircle className="h-4 w-4 text-destructive" />
+                )}
+                <span className="text-muted-foreground">Client ID</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {qbAppStatusQuery.data.data.hasClientSecret ? (
+                  <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
+                ) : (
+                  <XCircle className="h-4 w-4 text-destructive" />
+                )}
+                <span className="text-muted-foreground">Client Secret</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs capitalize" data-testid="badge-qb-environment">
+                  {qbAppStatusQuery.data.data.environment}
+                </Badge>
+              </div>
+              {!qbAppStatusQuery.data.data.configured && (
+                <p className="w-full text-xs text-destructive mt-1">
+                  Set QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET in the server environment to enable QB OAuth.
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Unable to load QB app configuration.</p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* QuickBooks Connections */}
       <Card className="mb-6" data-testid="card-qb-connections">
         <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
@@ -746,7 +796,7 @@ export default function Companies() {
                       )}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {item.connected ? (
+                      {item.connected && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -755,15 +805,6 @@ export default function Companies() {
                           data-testid={`button-qb-disconnect-${item.companyId}`}
                         >
                           Disconnect
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => { window.location.href = `/api/admin/quickbooks/connect/${item.companyId}`; }}
-                          data-testid={`button-qb-connect-${item.companyId}`}
-                        >
-                          Connect
                         </Button>
                       )}
                     </div>

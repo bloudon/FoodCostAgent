@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw, Wrench, AlertTriangle, Pencil } from "lucide-react";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw, Wrench, AlertTriangle, Pencil, Lock } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -43,6 +43,104 @@ import { ObjectUploader } from "@/components/ObjectUploader";
 import { UsersManagement } from "@/components/UsersManagement";
 import { useAuth } from "@/lib/auth-context";
 import { hasFeature } from "@shared/tier-config";
+import { useTier } from "@/hooks/use-tier";
+
+function QbIntegrationCard({
+  qbStatus,
+  qbStatusLoading,
+  qbDisconnectMutation,
+}: {
+  qbStatus: any;
+  qbStatusLoading: boolean;
+  qbDisconnectMutation: any;
+}) {
+  const { hasFeature } = useTier();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>QuickBooks Online</CardTitle>
+        <CardDescription>
+          Connect your QuickBooks Online account to automatically sync received purchase orders as bills
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {!hasFeature("quickbooks_integration") ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+              <Lock className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="font-medium">Pro Plan Required</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                QuickBooks integration is available on the Pro plan and above.
+              </p>
+            </div>
+            <Button asChild size="sm" data-testid="button-upgrade-qb">
+              <a href="/choose-plan">Upgrade to Pro</a>
+            </Button>
+          </div>
+        ) : qbStatusLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Checking connection status...</span>
+          </div>
+        ) : qbStatus?.connected ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500" />
+              <span className="font-medium">Connected to QuickBooks Online</span>
+            </div>
+            <div className="grid gap-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Connection Level:</span>
+                <Badge variant="outline">
+                  {qbStatus.connectionLevel === "company" ? "Company-Wide" : "Store-Specific"}
+                </Badge>
+              </div>
+              {qbStatus.lastSyncedAt && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Last Synced:</span>
+                  <span>{new Date(qbStatus.lastSyncedAt).toLocaleString()}</span>
+                </div>
+              )}
+              {qbStatus.expiresAt && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Token Expires:</span>
+                  <span>{new Date(qbStatus.expiresAt).toLocaleDateString()}</span>
+                </div>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => qbDisconnectMutation.mutate()}
+              disabled={qbDisconnectMutation.isPending}
+              data-testid="button-qb-disconnect"
+            >
+              {qbDisconnectMutation.isPending && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
+              Disconnect QuickBooks
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <XCircle className="h-5 w-5" />
+              <span>Not connected</span>
+            </div>
+            <Button
+              onClick={() => { window.location.href = "/api/quickbooks/connect"; }}
+              data-testid="button-qb-connect"
+            >
+              <LinkIcon className="h-4 w-4 mr-2" />
+              Connect QuickBooks Online
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function QbSyncHistoryCard() {
   const { user } = useAuth();
@@ -342,6 +440,21 @@ export default function Settings() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to save store information.", variant: "destructive" });
+    },
+  });
+
+  const qbDisconnectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/quickbooks/disconnect", {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/status"] });
+      refetchQbStatus();
+      toast({ title: "QuickBooks disconnected", description: "Your QuickBooks connection has been removed." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to disconnect QuickBooks.", variant: "destructive" });
     },
   });
 
@@ -903,57 +1016,11 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="integrations" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>QuickBooks Online</CardTitle>
-              <CardDescription>
-                Connect your QuickBooks Online account to automatically sync received purchase orders as bills
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {qbStatusLoading ? (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Checking connection status...</span>
-                </div>
-              ) : qbStatus?.connected ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500" />
-                    <span className="font-medium">Connected to QuickBooks Online</span>
-                  </div>
-                  <div className="grid gap-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Connection Level:</span>
-                      <Badge variant="outline">
-                        {qbStatus.connectionLevel === "company" ? "Company-Wide" : "Store-Specific"}
-                      </Badge>
-                    </div>
-                    {qbStatus.lastSyncedAt && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Last Synced:</span>
-                        <span>{new Date(qbStatus.lastSyncedAt).toLocaleString()}</span>
-                      </div>
-                    )}
-                    {qbStatus.expiresAt && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Token Expires:</span>
-                        <span>{new Date(qbStatus.expiresAt).toLocaleDateString()}</span>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    To update or disconnect this connection, contact your administrator.
-                  </p>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <XCircle className="h-5 w-5" />
-                  <span>Not connected — contact your administrator to set up the QuickBooks integration.</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <QbIntegrationCard
+            qbStatus={qbStatus}
+            qbStatusLoading={qbStatusLoading}
+            qbDisconnectMutation={qbDisconnectMutation}
+          />
 
           {qbStatus?.connected && (
             <Card>

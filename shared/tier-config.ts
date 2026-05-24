@@ -31,7 +31,8 @@ export type Feature =
   | "custom_security_levels"
   | "enterprise_analytics"
   | "ai_assistant"
-  | "prep_chart";
+  | "prep_chart"
+  | "quickbooks_integration";
 
 const FEATURE_MIN_TIER: Record<Feature, Tier> = {
   order_reminders: "basic",
@@ -47,6 +48,7 @@ const FEATURE_MIN_TIER: Record<Feature, Tier> = {
   unlimited_locations: "pro",
   custom_security_levels: "pro",
   prep_chart: "pro",
+  quickbooks_integration: "pro",
   enterprise_analytics: "enterprise",
   ai_assistant: "basic",
 };
