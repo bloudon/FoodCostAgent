@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import {
   ChevronRight, Camera, ScanLine, BarChart3, Users, RefreshCw, Truck,
   CheckCircle, ClipboardList, Calculator, ListChecks, DollarSign, Clock, TrendingDown,
-  Wifi, Battery, Signal, MapPin, Scale, Package, ArrowLeft, CheckCircle2,
+  Wifi, Battery, Signal, Scale, ArrowLeft, CheckCircle2, TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarketingLayout, MarketingHead, CTAButton, SectionHeading, appLink } from "@/components/website/marketing-layout";
@@ -68,20 +68,16 @@ function PhoneFrame({ children, label }: { children: React.ReactNode; label: str
         className="relative rounded-[2.5rem] bg-gray-900 shadow-2xl"
         style={{ width: 220, height: 460, border: "6px solid #374151" }}
       >
-        {/* Side buttons */}
         <div className="absolute -left-[8px] top-20 w-[4px] h-8 bg-gray-600 rounded-l-sm" />
         <div className="absolute -left-[8px] top-32 w-[4px] h-12 bg-gray-600 rounded-l-sm" />
         <div className="absolute -right-[8px] top-24 w-[4px] h-14 bg-gray-600 rounded-r-sm" />
-        {/* Screen area */}
         <div className="absolute inset-0 rounded-[2rem] overflow-hidden bg-gray-50">
-          {/* Status bar */}
           <div className="flex items-center justify-between px-4 pt-2 pb-1 bg-white" style={{ fontSize: 9 }}>
             <span className="font-semibold text-gray-800">9:41</span>
             <div className="absolute left-1/2 -translate-x-1/2 top-1 w-16 h-4 bg-gray-900 rounded-full" />
             <div className="flex items-center gap-1 text-gray-800">
               <Signal className="h-2.5 w-2.5" />
               <Wifi className="h-2.5 w-2.5" />
-              <Battery className="h-2.5 w-2.5" />
             </div>
           </div>
           {children}
@@ -95,7 +91,6 @@ function PhoneFrame({ children, label }: { children: React.ReactNode; label: str
 function ScreenInventoryCount() {
   return (
     <div className="flex flex-col h-full bg-gray-50" style={{ fontSize: 10 }}>
-      {/* Header */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 bg-white border-b border-gray-100">
         <div className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center">
           <ArrowLeft className="h-2.5 w-2.5 text-gray-500" />
@@ -108,7 +103,6 @@ function ScreenInventoryCount() {
           Apply
         </div>
       </div>
-      {/* Location chips */}
       <div className="flex gap-1.5 px-2 py-1.5 overflow-x-hidden border-b border-gray-100 bg-white">
         <div className="flex items-center gap-1 bg-slate-600 text-white rounded-full px-2 py-0.5 flex-shrink-0" style={{ fontSize: 8 }}>
           <span className="font-medium">Walk-In</span>
@@ -122,12 +116,10 @@ function ScreenInventoryCount() {
           Freezer 0/12
         </div>
       </div>
-      {/* Cost bar */}
       <div className="flex items-center justify-between px-3 py-1 bg-slate-50 border-b border-gray-100">
         <span className="text-gray-500" style={{ fontSize: 8 }}>Walk-In: <span className="font-semibold text-gray-700">$2,340</span></span>
         <span className="text-gray-500" style={{ fontSize: 8 }}>Session: <span className="font-semibold text-gray-700">$4,120</span></span>
       </div>
-      {/* Item list */}
       <div className="flex-1 overflow-hidden divide-y divide-gray-100">
         {[
           { name: "Ground Beef", qty: "12.50 lb", cost: "$187.50", counted: true, mode: null },
@@ -156,7 +148,6 @@ function ScreenInventoryCount() {
 function ScreenInvoiceScan() {
   return (
     <div className="flex flex-col h-full bg-gray-50" style={{ fontSize: 10 }}>
-      {/* Header */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 bg-white border-b border-gray-100">
         <div className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center">
           <ArrowLeft className="h-2.5 w-2.5 text-gray-500" />
@@ -169,7 +160,6 @@ function ScreenInvoiceScan() {
           13/14 matched
         </div>
       </div>
-      {/* Scan banner */}
       <div className="mx-2 mt-2 mb-1 rounded-lg bg-blue-50 border border-blue-200 flex items-center gap-2 px-3 py-2">
         <Camera className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
         <div>
@@ -177,7 +167,6 @@ function ScreenInvoiceScan() {
           <div className="text-blue-500" style={{ fontSize: 8 }}>All line items extracted automatically</div>
         </div>
       </div>
-      {/* Matched items */}
       <div className="flex-1 overflow-hidden divide-y divide-gray-100 mx-1">
         {[
           { name: "80/20 Ground Beef", pack: "10 lb cs", price: "$42.80", ok: true },
@@ -203,7 +192,6 @@ function ScreenInvoiceScan() {
           </div>
         ))}
       </div>
-      {/* Footer */}
       <div className="px-3 py-2 bg-white border-t border-gray-100">
         <div className="bg-slate-600 text-white rounded-lg py-1.5 text-center font-semibold" style={{ fontSize: 9 }}>
           Confirm Receipt — $314.50
@@ -216,7 +204,6 @@ function ScreenInvoiceScan() {
 function ScreenRecipeCosting() {
   return (
     <div className="flex flex-col h-full bg-gray-50" style={{ fontSize: 10 }}>
-      {/* Header */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 bg-white border-b border-gray-100">
         <div className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center">
           <ArrowLeft className="h-2.5 w-2.5 text-gray-500" />
@@ -230,21 +217,19 @@ function ScreenRecipeCosting() {
           <div className="text-gray-400" style={{ fontSize: 8 }}>18.2% cost</div>
         </div>
       </div>
-      {/* Scan banner */}
       <div className="mx-2 mt-2 mb-1 rounded-lg bg-orange-50 border border-orange-200 flex items-center gap-2 px-3 py-1.5">
         <Camera className="h-3 w-3 text-orange-500 flex-shrink-0" />
         <div className="font-semibold text-orange-700" style={{ fontSize: 8 }}>
           Scanned from recipe card · 5 ingredients extracted
         </div>
       </div>
-      {/* Ingredient rows */}
       <div className="flex-1 overflow-hidden divide-y divide-gray-100 mx-1">
         {[
-          { name: "Pizza Dough", qty: "14 oz", unit: "oz", cost: "$0.42" },
-          { name: "Tomato Sauce", qty: "4 oz", unit: "oz", cost: "$0.18" },
-          { name: "Mozzarella", qty: "6 oz", unit: "oz", cost: "$1.24" },
-          { name: "Fresh Basil", qty: "0.5 oz", unit: "oz", cost: "$0.08" },
-          { name: "Olive Oil", qty: "1 oz", unit: "oz", cost: "$0.26" },
+          { name: "Pizza Dough", qty: "14 oz", cost: "$0.42" },
+          { name: "Tomato Sauce", qty: "4 oz", cost: "$0.18" },
+          { name: "Mozzarella", qty: "6 oz", cost: "$1.24" },
+          { name: "Fresh Basil", qty: "0.5 oz", cost: "$0.08" },
+          { name: "Olive Oil", qty: "1 oz", cost: "$0.26" },
         ].map((item, i) => (
           <div key={i} className="flex items-center gap-2 px-2 py-2">
             <div className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0 mt-0.5" />
@@ -256,7 +241,6 @@ function ScreenRecipeCosting() {
           </div>
         ))}
       </div>
-      {/* Total footer */}
       <div className="px-3 py-2 border-t border-gray-100 bg-white">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-gray-500" style={{ fontSize: 8 }}>Food cost per serving</span>
@@ -277,54 +261,179 @@ function ScreenRecipeCosting() {
   );
 }
 
+// ── ROI Math Table section ────────────────────────────────────────────────────
+function RoiMathSection() {
+  const { t } = useLanguage();
+  const home = t.home;
+  return (
+    <section className="py-20 bg-gray-950" id="roi-math" data-testid="roi-math-section">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-10">
+          <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-400 mb-3">
+            {home.roiMathLabel}
+          </span>
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+            {home.roiMathTitle}
+          </h2>
+          <p className="text-gray-400 max-w-2xl mx-auto text-base">
+            {home.roiMathSubtitle}
+          </p>
+        </div>
+
+        <div className="rounded-xl overflow-hidden border border-gray-800">
+          <div className="grid grid-cols-4 bg-gray-800">
+            <div className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">{home.roiMathHeaders.sales}</div>
+            <div className="px-4 py-3 text-xs font-semibold text-orange-400 uppercase tracking-wide text-right">{home.roiMathHeaders.half}</div>
+            <div className="px-4 py-3 text-xs font-semibold text-orange-400 uppercase tracking-wide text-right">{home.roiMathHeaders.one}</div>
+            <div className="px-4 py-3 text-xs font-semibold text-orange-400 uppercase tracking-wide text-right">{home.roiMathHeaders.two}</div>
+          </div>
+          {home.roiMathRows.map((row, i) => (
+            <div
+              key={i}
+              className={`grid grid-cols-4 border-t border-gray-800 ${i === 1 ? "bg-gray-800/60" : "bg-gray-900"}`}
+            >
+              <div className="px-4 py-4 text-sm font-semibold text-white">{row.sales}</div>
+              <div className="px-4 py-4 text-sm text-emerald-400 font-mono text-right">{row.half}</div>
+              <div className="px-4 py-4 text-sm text-emerald-400 font-mono font-semibold text-right">{row.one}</div>
+              <div className="px-4 py-4 text-sm text-emerald-400 font-mono font-bold text-right">{row.two}</div>
+            </div>
+          ))}
+        </div>
+
+        <p className="mt-6 text-center text-xs text-gray-500 italic">{home.roiMathNote}</p>
+      </div>
+    </section>
+  );
+}
+
+// ── Mobile showcase section ───────────────────────────────────────────────────
 function MobileShowcase() {
+  const { t } = useLanguage();
+  const home = t.home;
   return (
     <section className="py-20 bg-gray-950 overflow-hidden" id="mobile-showcase">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14">
           <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-400 mb-3">
-            Built for the phone in your pocket
+            {home.menuScanLabel}
           </span>
           <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-            Every workflow runs on mobile
+            Every workflow feeds food cost insight
           </h2>
           <p className="text-gray-400 max-w-2xl mx-auto text-base">
-            Count inventory, scan invoices, cost recipes — your entire back office from the phone you already carry. No app store needed.
+            Count inventory, scan invoices, cost recipes — each one closing the loop between what you spend and what you should spend. No app store needed.
           </p>
         </div>
-        {/* Phone grid — horizontal scroll on small screens */}
         <div className="flex gap-10 justify-center items-start overflow-x-auto pb-4 px-4" style={{ scrollSnapType: "x mandatory" }}>
           <div style={{ scrollSnapAlign: "center" }}>
-            <PhoneFrame label="Count inventory by location">
+            <PhoneFrame label="Actual vs. theoretical — find the variance">
               <ScreenInventoryCount />
             </PhoneFrame>
           </div>
           <div style={{ scrollSnapAlign: "center" }}>
-            <PhoneFrame label="Scan vendor invoices by photo">
+            <PhoneFrame label="Catch vendor price changes automatically">
               <ScreenInvoiceScan />
             </PhoneFrame>
           </div>
           <div style={{ scrollSnapAlign: "center" }}>
-            <PhoneFrame label="Live recipe costing, always current">
+            <PhoneFrame label="True plate cost — always current">
               <ScreenRecipeCosting />
             </PhoneFrame>
           </div>
         </div>
-        {/* Callout strip */}
         <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-3xl mx-auto text-center">
           {[
-            { icon: "📱", label: "No app download", sub: "Runs in any mobile browser" },
-            { icon: "⚡", label: "Works offline", sub: "Counts sync when back online" },
-            { icon: "🔒", label: "Always secure", sub: "Your data, encrypted end-to-end" },
+            { Icon: TrendingUp, label: "Food cost visibility", sub: "Every scan feeds clearer cost insight" },
+            { Icon: RefreshCw, label: "Always current", sub: "Vendor price changes update recipes instantly" },
+            { Icon: ClipboardList, label: "Actual vs. theoretical", sub: "Counts feed directly into variance reports" },
           ].map((item) => (
             <div key={item.label} className="flex flex-col items-center gap-2">
-              <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center text-lg">
-                {item.icon}
+              <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center">
+                <item.Icon className="h-4 w-4 text-orange-400" />
               </div>
               <div className="font-semibold text-white text-sm">{item.label}</div>
               <div className="text-gray-500 text-xs">{item.sub}</div>
             </div>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Menu Scan Highlight section ───────────────────────────────────────────────
+function MenuScanHighlight() {
+  const { t } = useLanguage();
+  const home = t.home;
+  return (
+    <section className="py-20 bg-white" id="menu-scan" data-testid="menu-scan-section">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col lg:flex-row gap-12 items-center">
+          <div className="flex-1">
+            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">
+              {home.menuScanLabel}
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4 leading-tight">
+              {home.menuScanTitle}
+            </h2>
+            <p className="text-gray-500 text-base leading-relaxed mb-8">
+              {home.menuScanSubtitle}
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {home.menuScanCallouts.map((callout) => (
+                <div key={callout} className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                  <span className="text-sm text-gray-700">{callout}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-8">
+              <a href={appLink("/signup")}>
+                <Button
+                  className="bg-orange-500 text-white border-0 gap-1"
+                  data-testid="btn-menu-scan-cta"
+                >
+                  Scan Your Menu <ChevronRight className="h-4 w-4" />
+                </Button>
+              </a>
+            </div>
+          </div>
+          <div className="flex-1 w-full">
+            <div className="bg-gray-900 rounded-xl p-6 shadow-xl">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                  <Camera className="h-4 w-4 text-orange-400" />
+                </div>
+                <div>
+                  <div className="text-white font-semibold text-sm">Menu scan complete</div>
+                  <div className="text-gray-400 text-xs">Brian's Bistro — 3 sections, 42 items</div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {[
+                  { section: "Appetizers", count: "8 items", avg: "avg $12.50" },
+                  { section: "Entrees", count: "18 items", avg: "avg $24.00" },
+                  { section: "Desserts", count: "6 items", avg: "avg $9.75" },
+                  { section: "Beverages", count: "10 items", avg: "avg $6.50" },
+                ].map((row, i) => (
+                  <div key={i} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-orange-400" />
+                      <span className="text-white text-sm font-medium">{row.section}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-gray-400 text-xs">{row.count}</span>
+                      <span className="text-emerald-400 text-xs font-mono">{row.avg}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 pt-4 border-t border-gray-800 flex items-center justify-between">
+                <span className="text-gray-400 text-xs">42 items ready for recipe build-out</span>
+                <span className="text-orange-400 text-xs font-semibold">Starting map created</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -343,6 +452,7 @@ export default function WebsiteHome() {
         lang={lang}
       />
 
+      {/* Hero */}
       <section className="relative min-h-[90vh] flex items-center" data-testid="hero-section">
         <HeroBackground />
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
@@ -382,6 +492,7 @@ export default function WebsiteHome() {
         </div>
       </section>
 
+      {/* Stats strip */}
       <section className="py-12 bg-gray-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
@@ -395,9 +506,17 @@ export default function WebsiteHome() {
         </div>
       </section>
 
+      {/* ROI Math Table */}
+      <RoiMathSection />
+
+      {/* Mobile Showcase */}
       <MobileShowcase />
 
-      <section className="py-20 bg-white" id="features">
+      {/* Menu Scan Highlight */}
+      <MenuScanHighlight />
+
+      {/* Features grid */}
+      <section className="py-20 bg-gray-50" id="features">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
             label={home.featuresLabel}
@@ -410,7 +529,7 @@ export default function WebsiteHome() {
               return (
                 <div
                   key={f.title}
-                  className="p-6 rounded-lg border border-gray-100 bg-gray-50 hover-elevate"
+                  className="p-6 rounded-lg border border-gray-100 bg-white hover-elevate"
                   data-testid={`feature-card-${i}`}
                 >
                   <div className="w-11 h-11 rounded-lg bg-green-100 flex items-center justify-center mb-4">
@@ -432,6 +551,7 @@ export default function WebsiteHome() {
         </div>
       </section>
 
+      {/* ROI / Labor savings — reframed as secondary payoff */}
       <section className="py-20 bg-gray-900" id="roi" data-testid="roi-section">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
@@ -470,6 +590,7 @@ export default function WebsiteHome() {
         </div>
       </section>
 
+      {/* Recipe costing */}
       <section className="py-20 bg-gray-50" id="recipe-costing" data-testid="recipe-costing-section">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col lg:flex-row gap-12 items-center">
@@ -526,6 +647,7 @@ export default function WebsiteHome() {
         </div>
       </section>
 
+      {/* How it works — Guided Launch Journey */}
       <section className="py-20 bg-green-900" id="how-it-works">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
@@ -545,6 +667,7 @@ export default function WebsiteHome() {
         </div>
       </section>
 
+      {/* Final CTA */}
       <section className="py-20 bg-gray-50" id="cta-bottom">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">

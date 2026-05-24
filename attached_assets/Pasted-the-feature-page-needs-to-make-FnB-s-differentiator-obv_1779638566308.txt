@@ -1,0 +1,305 @@
+the feature page needs to make FnB’s differentiator obvious: faster path to insight from the materials the operator already has.
+
+Main Recommendation
+
+Change the page from:
+
+Here are all the things the app can scan.
+
+to:
+
+Here is how FnB Cost Pro gets you from messy restaurant data to your first food cost opportunity.
+
+The camera-first story is still the proof mechanism. It should not be the headline promise.
+
+Current Page Problem
+
+The current page repeats the same concept several times:
+
+“Photo-First. No Keyboard.”
+“Set Up by Photo.”
+“Point your camera…”
+“No keyboard.”
+“Set Up by Photo” appears again as a repeated section.
+“Photograph your menu, recipe cards, and vendor invoices…”
+
+This creates a strong theme, but it risks making the product sound like a scanning tool rather than a profitability system.
+
+The bigger promise should be:
+
+Scan your operation. Find the food cost leak.
+
+Suggested New Page Hero
+
+Replace:
+
+Photo-First. No Keyboard.
+Your Kitchen Back of House — Run From Your Phone
+
+With:
+
+Food Cost Visibility Starts With a Photo
+
+Subhead:
+
+FnB Cost Pro turns your menu, recipes, vendor invoices, and inventory counts into structured food cost insight — so you can identify savings opportunities faster.
+
+CTA:
+
+Start Your 14-Day Opportunity Review
+
+Secondary CTA:
+
+See the Menu Scan
+
+Small proof line:
+
+Guided launch. Menu scan included. Designed to find your first food cost opportunity in 14 days.
+
+Recommended Page Flow
+1. Hero: Outcome + Mechanism
+
+Lead with food cost visibility and the 14-day opportunity guarantee.
+
+2. “Start With Your Menu” WOW Section
+
+This should move up near the top.
+
+Current Menu Scan copy:
+
+“Photograph your printed menu — every dish, section, and price is extracted automatically. Your recipe library is seeded in minutes, not hours.”
+
+Good, but it should now connect to insight:
+
+Upload your menu and FnB Cost Pro begins organizing your items, departments, prices, and ingredient clues. That gives your Guided Launch a starting map for recipe costing, vendor price review, and food cost opportunity discovery.
+
+Add a visible callout:
+
+Your menu becomes the map. Your invoices reveal the cost. Your counts expose the variance.
+
+3. Guided Launch / 14-Day Opportunity Section
+
+This page currently says:
+
+“Start with a 14-day trial. Cancel anytime.”
+
+Replace with:
+
+The 14-Day Food Cost Opportunity Guarantee
+
+In your first 14 days, we’ll help identify at least one food cost savings opportunity using your menu, recipes, invoices, vendor pricing, or inventory process.
+
+Clarifying line:
+
+We identify the opportunity. Actual savings depend on your team taking action.
+
+This should appear before the feature grid, not only at the bottom.
+
+4. Feature Groups Organized by Business Outcome
+
+Instead of “Set Up by Photo / Count by Photo / Manage & Analyze,” I’d reframe as:
+
+Build the Starting Map
+
+Includes:
+
+Menu Scan
+Recipe Scan
+Vendor Invoice Scan
+Keep Costs Current
+
+Includes:
+
+Live Recipe Costing
+Vendor & Order Guides
+Invoice price updates
+Nested recipes
+Find the Gap
+
+Includes:
+
+Theoretical Food Cost Variance
+Inventory counts
+Shelf scan
+Waste logging
+category-level variance
+Scale the System
+
+Includes:
+
+Multi-location management
+transfers
+role-based access
+cross-shop vendor pricing
+QuickBooks export
+
+This makes the page less like a feature inventory and more like an operating system.
+
+Specific Copy Updates
+Current Copy	Recommended Update
+“Photo-First. No Keyboard.”	“Food Cost Visibility Starts With a Photo.”
+“The app does the rest.”	“FnB Cost Pro structures the data so your team can review, confirm, and act.”
+“Start Free Trial”	“Start Your 14-Day Opportunity Review”
+“Your entire back of house — set up in an afternoon”	“Get operational in an afternoon. Start finding food cost opportunities within 14 days.”
+“A 50-item menu: ~2 minutes vs. 12–25 hours manually”	Keep, but add “then use it as the starting map for recipe costing and margin review.”
+“Each recipe: seconds vs. 15–30 minutes manually”	Soften to “recipe setup starts in seconds once scanned and matched.”
+“Saves 50–75% of count time”	Keep only if you can support/test it; otherwise “designed to reduce count time.”
+“Spot over-portioning, waste, and theft instantly”	Change to “surface signs of over-portioning, waste, shrinkage, or process gaps.”
+“Start Your 14-Day Free Trial”	“Start Your 14-Day Food Cost Opportunity Review.”
+Claims I Would Soften
+
+A few current phrases are strong enough that I’d recommend softening them until you have beta proof.
+
+“The app does the rest.”
+
+Better:
+
+FnB Cost Pro extracts the data, then your team reviews and confirms it.
+
+“Your system is built automatically.”
+
+Better:
+
+Your system starts building automatically, with review and confirmation during Guided Launch.
+
+“Food cost per portion calculated automatically.”
+
+Better:
+
+Food cost per portion begins calculating as ingredients are matched to inventory and vendor pricing.
+
+“Spot over-portioning, waste, and theft instantly.”
+
+Better:
+
+Surface patterns that may point to over-portioning, waste, shrinkage, or process gaps.
+
+“No manual updates, ever.”
+
+Better:
+
+Reduce manual updates as vendor pricing flows into recipe costs.
+
+You do not want the first beta users holding you to absolute claims before the workflow has been hardened.
+
+Add One Missing Section: “What We Need From You”
+
+Because the 14-day guarantee depends on restaurant participation, add a short section:
+
+What You Bring to the 14-Day Review
+
+To identify your first food cost opportunity, we’ll ask for a current menu, recent vendor invoices or order guides, and a short Guided Launch session with an owner or manager.
+
+Bullets:
+
+current menu
+recent vendor invoice or order guide
+recipe cards or prep notes, if available
+one manager or owner for the launch session
+willingness to review one opportunity area
+
+This sets expectations and protects the guarantee.
+
+Add One Missing Section: “What Counts as an Opportunity?”
+
+Add this to reduce ambiguity:
+
+What Kind of Savings Opportunity Might We Find?
+
+Examples:
+
+vendor price creep
+outdated recipe costs
+high-cost menu items
+invoice price changes
+over-portioning clues
+waste or shrinkage patterns
+theoretical vs. actual usage gaps
+category-level food cost variance
+
+This bridges the gap between the features and the promise.
+
+Pricing Section Needs Correction
+
+The current Pro copy says:
+
+“unlimited locations”
+
+But our pricing model is:
+
+$79 platform + $149/location/month
+
+So “unlimited locations” can create confusion.
+
+Change:
+
+“unlimited locations”
+
+to:
+
+Add unlimited locations at $149/location/month
+
+or:
+
+Built for multi-location operators — add locations as you grow.
+
+This is important. Otherwise, a prospect may think Pro at $228/month covers unlimited locations.
+
+Feature Page SEO Recommendation
+
+Current page likely targets “restaurant inventory management,” “recipe costing,” and “food cost software.” Those are good, but add the new outcome keywords.
+
+Suggested page title:
+
+Restaurant Food Cost Software Features | FnB Cost Pro
+
+Meta description:
+
+Scan menus, recipes, invoices, and inventory from your phone. FnB Cost Pro helps restaurants identify food cost savings opportunities with guided launch, live recipe costing, vendor pricing, and theoretical food cost variance.
+
+Suggested H1:
+
+Features Built to Find Food Cost Opportunities Faster
+
+Best Rewrite Direction
+
+The page should open like this:
+
+Features Built to Find Food Cost Opportunities Faster
+
+FnB Cost Pro helps restaurant operators turn everyday materials — menus, recipes, invoices, and inventory counts — into structured food cost insight. Start with a menu scan, complete a guided launch, and identify your first food cost savings opportunity in 14 days.
+
+Then the feature blocks become:
+
+Start With What You Already Have
+menu scan
+recipe scan
+invoice scan
+Keep Recipe Costs Current
+live recipe costing
+vendor pricing
+nested recipes
+Find the Gap Between Expected and Actual
+theoretical food cost
+inventory count
+variance reporting
+waste/shrinkage clues
+Control More Than One Location
+multi-location
+transfers
+cross-location reporting
+cross-shop vendor pricing
+Launch With Guidance
+14-day opportunity review
+Guided Launch
+menu + invoice + recipe setup
+first opportunity review
+Bottom Line
+
+The features page is strong technically, but it is too feature-led.
+
+The recommended repositioning is:
+
+FnB Cost Pro doesn’t just scan restaurant data. It uses those scans to help you find food cost opportunities faster.
+
+Your current page proves the product can reduce setup friction. The updated page should prove the product can drive a business outcome.
