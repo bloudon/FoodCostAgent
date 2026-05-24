@@ -42,7 +42,13 @@ import {
   ChevronDown,
   Building2,
   Plus,
+  AlertTriangle,
 } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useStoreContext } from '@/hooks/use-store-context';
@@ -71,6 +77,8 @@ interface OrderGuideLine {
   matchStatus: string;
   matchedInventoryItemId: string | null;
   matchConfidence: number | null;
+  storedCaseSize: number | null;
+  storedInnerPackSize: number | null;
 }
 
 interface ReviewData {
@@ -674,6 +682,28 @@ function formatPackSize(line: OrderGuideLine): string {
   return line.uom || '-';
 }
 
+function formatStoredPackSize(line: OrderGuideLine): string {
+  if (line.storedCaseSize == null) return '-';
+  if (line.storedInnerPackSize != null && line.storedInnerPackSize > 1) {
+    const uom = line.uom ? ` ${line.uom}` : '';
+    return `${line.storedCaseSize} × ${line.storedInnerPackSize}${uom}`;
+  }
+  const uom = line.uom ? ` ${line.uom}` : '';
+  return `${line.storedCaseSize}${uom}`;
+}
+
+function hasPackSizeMismatch(line: OrderGuideLine): boolean {
+  if (line.storedCaseSize == null) return false;
+  const importedCaseSize = line.caseSize ?? 1;
+  const importedInnerPack = line.innerPack ?? 1;
+  const storedCaseSize = line.storedCaseSize;
+  const storedInnerPack = line.storedInnerPackSize ?? 1;
+  return (
+    Math.abs(importedCaseSize - storedCaseSize) > 0.001 ||
+    Math.abs(importedInnerPack - storedInnerPack) > 0.001
+  );
+}
+
 function OrderGuideTable({
   lines,
   selectedLineIds,
@@ -714,8 +744,23 @@ function OrderGuideTable({
               </TableCell>
               <TableCell className="font-mono text-sm">{line.vendorSku}</TableCell>
               <TableCell>{line.productName}</TableCell>
-              <TableCell className="text-muted-foreground" data-testid={`text-packsize-${line.id}`}>
-                {formatPackSize(line)}
+              <TableCell data-testid={`text-packsize-${line.id}`}>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">{formatPackSize(line)}</span>
+                  {hasPackSizeMismatch(line) && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <AlertTriangle
+                          className="h-4 w-4 text-amber-500 shrink-0 cursor-default"
+                          data-testid={`icon-packsize-mismatch-${line.id}`}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p>Pack size changed — was {formatStoredPackSize(line)}, now {formatPackSize(line)}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
               </TableCell>
               <TableCell>
                 {line.price ? (

@@ -9,7 +9,8 @@ import type {
 } from '@shared/schema';
 import { autoSeedRecipeUnitsForItem } from '../lib/recipeUnits';
 import { db } from '../db';
-import { sql } from 'drizzle-orm';
+import { sql, eq, inArray, and } from 'drizzle-orm';
+import { vendorItems } from '@shared/schema';
 
 interface OrderGuideUploadResult {
   orderGuideId: string;
@@ -247,16 +248,52 @@ export class OrderGuideProcessor {
       } catch {}
     }
 
+    // Look up existing vendor items for matched inventory items to detect pack size changes.
+    // Only compare against the vendor item that belongs to the guide's assigned vendor.
+    // If no vendor is assigned to the guide, or no vendor-specific record exists, skip comparison
+    // (storedCaseSize/storedInnerPackSize remain null → no warning shown).
+    const storedPackSizeMap = new Map<string, { caseSize: number; innerPackSize: number | null }>();
+    const guideVendorId = guide.vendorId;
+    if (matchedIds.length > 0 && guideVendorId) {
+      const existingVendorItems = await db
+        .select({
+          inventoryItemId: vendorItems.inventoryItemId,
+          caseSize: vendorItems.caseSize,
+          innerPackSize: vendorItems.innerPackSize,
+        })
+        .from(vendorItems)
+        .where(
+          and(
+            eq(vendorItems.vendorId, guideVendorId),
+            inArray(vendorItems.inventoryItemId, matchedIds)
+          )
+        );
+
+      for (const vi of existingVendorItems) {
+        storedPackSizeMap.set(vi.inventoryItemId, {
+          caseSize: vi.caseSize,
+          innerPackSize: vi.innerPackSize,
+        });
+      }
+    }
+
     // Enrich lines with matched item name and priceSource.
     // priceSource is stored on the line by the scan pipeline; fall back to nullability-derived
     // value for lines imported via CSV (which only ever have case prices).
-    const enrichedLines = lines.map(l => ({
-      ...l,
-      matchedInventoryItemName: l.matchedInventoryItemId
-        ? (inventoryNameMap.get(l.matchedInventoryItemId) ?? null)
-        : null,
-      priceSource: l.priceSource ?? (l.price != null ? 'case' : null),
-    }));
+    const enrichedLines = lines.map(l => {
+      const storedPackSize = l.matchedInventoryItemId
+        ? (storedPackSizeMap.get(l.matchedInventoryItemId) ?? null)
+        : null;
+      return {
+        ...l,
+        matchedInventoryItemName: l.matchedInventoryItemId
+          ? (inventoryNameMap.get(l.matchedInventoryItemId) ?? null)
+          : null,
+        priceSource: l.priceSource ?? (l.price != null ? 'case' : null),
+        storedCaseSize: storedPackSize?.caseSize ?? null,
+        storedInnerPackSize: storedPackSize?.innerPackSize ?? null,
+      };
+    });
 
     // Group lines by match status
     const grouped = {
