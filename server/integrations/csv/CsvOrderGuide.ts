@@ -189,20 +189,35 @@ export class CsvOrderGuide {
       const innerPackRaw = this.getValue(row, mapping.innerPack);
       const unitRaw = this.getValue(row, mapping.unit);
       
+      // Parse compound pack size string like "6/5 LB" → {caseSize:6, innerPack:5, unit:"LB"}
+      // Fixes the parseNumber bug where "6/5 LB" strips to "65" instead of giving 6.
+      const parsedCasePack = this.parseCompoundPackSize(caseSizeRaw);
+      if (parsedCasePack?.innerPack) {
+        console.log(`[CsvOrderGuide] Parsed compound pack: "${caseSizeRaw}" → caseSize:${parsedCasePack.caseSize}, innerPack:${parsedCasePack.innerPack}, unit:${parsedCasePack.unit ?? 'none'}`);
+      }
+
       // Try to parse combined size+unit values like "1 LB", "6 LB", "48 OZ"
       // This handles cases where the Size column contains both pack weight and unit
       const parsedSizeUnit = this.parseSizeWithUnit(unitRaw);
       
-      // Determine innerPack: use explicit innerPack column first, then parsed from unit column
+      // Determine innerPack: explicit column first, then unit column "18 LB" style,
+      // then compound pack string "6/5 LB" style
       let innerPack = this.parseNumber(innerPackRaw);
       let unit = unitRaw;
       
       if (parsedSizeUnit && !innerPack) {
-        // If unit column contains combined value like "1 LB" and no explicit innerPack,
-        // extract the numeric part as innerPack and the unit abbreviation
         innerPack = parsedSizeUnit.size;
         unit = parsedSizeUnit.unit;
         console.log(`[CsvOrderGuide] Parsed size+unit: "${unitRaw}" → innerPack: ${innerPack}, unit: ${unit}`);
+      }
+
+      if (parsedCasePack) {
+        if (!innerPack && parsedCasePack.innerPack) {
+          innerPack = parsedCasePack.innerPack;
+        }
+        if ((!unit || unit === unitRaw) && parsedCasePack.unit && !unitRaw) {
+          unit = parsedCasePack.unit;
+        }
       }
       
       // Detect variable weight from column or description text
@@ -211,11 +226,14 @@ export class CsvOrderGuide {
       const descriptionValue = this.getValue(row, mapping.description);
       const isVariableWeight = this.detectVariableWeight(variableWeightValue, productName, descriptionValue);
       
+      // Use correctly parsed case count (first number from compound string like "6/5 LB" → 6)
+      const caseSize = parsedCasePack ? parsedCasePack.caseSize : this.parseNumber(caseSizeRaw);
+
       const product: VendorProduct = {
         vendorSku: this.getValue(row, mapping.vendorSku),
         vendorProductName: productName,
         description: descriptionValue,
-        caseSize: this.parseNumber(caseSizeRaw),
+        caseSize,
         caseSizeRaw: caseSizeRaw || undefined,      // Preserve raw pack string (e.g., "6/5 LB")
         innerPack: innerPack,
         innerPackRaw: innerPackRaw || unitRaw || undefined,    // Preserve raw inner pack string
@@ -271,6 +289,46 @@ export class CsvOrderGuide {
     if (!value) return undefined;
     const price = parseFloat(value.replace(/[$,]/g, ''));
     return isNaN(price) ? undefined : price;
+  }
+
+  /**
+   * Parse compound vendor pack size strings into their components.
+   * Handles formats like:
+   *   "6/5 LB"  → { caseSize: 6, innerPack: 5, unit: "LB" }  (6 inner packs × 5 LB each)
+   *   "24/1 CS" → { caseSize: 24, innerPack: 1, unit: "CS" }
+   *   "24 EA"   → { caseSize: 24, unit: "EA" }
+   *   "24"      → { caseSize: 24 }
+   * Returns null for unparseable strings.
+   */
+  private static parseCompoundPackSize(value: string): { caseSize: number; innerPack?: number; unit?: string } | null {
+    if (!value) return null;
+    const trimmed = value.trim();
+
+    // "6/5 LB" or "6/5" — slash-separated with optional trailing unit
+    const slashMatch = trimmed.match(/^([\d.]+)\s*\/\s*([\d.]+)\s*([A-Za-z]+)?$/);
+    if (slashMatch) {
+      const cs = parseFloat(slashMatch[1]);
+      const ip = parseFloat(slashMatch[2]);
+      const u = slashMatch[3] ? slashMatch[3].toUpperCase() : undefined;
+      if (!isNaN(cs) && !isNaN(ip)) return { caseSize: cs, innerPack: ip, unit: u };
+    }
+
+    // "24 EA" or "18 LB" — number then unit (space-separated)
+    const singleUnitMatch = trimmed.match(/^([\d.]+)\s+([A-Za-z]+)$/);
+    if (singleUnitMatch) {
+      const cs = parseFloat(singleUnitMatch[1]);
+      const u = singleUnitMatch[2].toUpperCase();
+      if (!isNaN(cs)) return { caseSize: cs, unit: u };
+    }
+
+    // Plain number
+    const plainMatch = trimmed.match(/^([\d.]+)$/);
+    if (plainMatch) {
+      const cs = parseFloat(plainMatch[1]);
+      if (!isNaN(cs)) return { caseSize: cs };
+    }
+
+    return null;
   }
 
   /**

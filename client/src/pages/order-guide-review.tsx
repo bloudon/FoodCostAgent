@@ -64,6 +64,7 @@ interface OrderGuideLine {
   packSize: string | null;
   uom: string | null;
   caseSize: number | null;
+  caseSizeRaw: string | null;
   innerPack: number | null;
   price: number | null;
   priceSource?: 'unit' | 'case' | 'zero';
@@ -703,7 +704,11 @@ function OrderGuideTable({
               <TableCell className="font-mono text-sm">{line.vendorSku}</TableCell>
               <TableCell>{line.productName}</TableCell>
               <TableCell className="text-muted-foreground">
-                {line.innerPack ? `${line.innerPack} ${line.uom || ''}`.trim() : (line.uom || '-')}
+                {line.caseSizeRaw
+                  ? line.caseSizeRaw
+                  : line.caseSize != null
+                    ? `${line.caseSize}${line.innerPack ? `/${line.innerPack}` : ''} ${line.uom || ''}`.trim()
+                    : (line.uom || '-')}
               </TableCell>
               <TableCell>{line.caseSize ?? '-'}</TableCell>
               <TableCell>
