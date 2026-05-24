@@ -973,29 +973,11 @@ export default function Settings() {
                     <XCircle className="h-5 w-5" />
                     <span>Not connected to QuickBooks Online</span>
                   </div>
-                  
-                  <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
-                    <h4 className="text-sm font-semibold">Setup Required</h4>
-                    <div className="space-y-2 text-sm text-muted-foreground">
-                      <p>Before connecting, you need to set up QuickBooks credentials in <strong>Replit Secrets</strong>:</p>
-                      <ol className="list-decimal pl-6 space-y-1">
-                        <li>Click the lock icon (🔒) in the left sidebar to open Secrets</li>
-                        <li>Add these two secrets:
-                          <ul className="list-disc pl-6 mt-1">
-                            <li><code className="text-xs bg-background px-1 py-0.5 rounded">QUICKBOOKS_CLIENT_ID</code></li>
-                            <li><code className="text-xs bg-background px-1 py-0.5 rounded">QUICKBOOKS_CLIENT_SECRET</code></li>
-                          </ul>
-                        </li>
-                        <li>Get credentials from <a href="https://developer.intuit.com/app/developer/qbo/docs/get-started" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">QuickBooks Developer Portal</a></li>
-                        <li>Optional: Set <code className="text-xs bg-background px-1 py-0.5 rounded">QUICKBOOKS_ENVIRONMENT</code> to "production" (defaults to "sandbox")</li>
-                      </ol>
-                    </div>
-                  </div>
 
                   <div className="space-y-2">
-                    <p className="text-sm font-medium">Benefits of connecting:</p>
+                    <p className="text-sm font-medium">What you get by connecting:</p>
                     <ul className="text-sm text-muted-foreground list-disc pl-6 space-y-1">
-                      <li>Automatically create bills when purchase orders are received</li>
+                      <li>Automatically create bills in QuickBooks when purchase orders are received</li>
                       <li>Sync vendor information between systems</li>
                       <li>Track synchronization status and history</li>
                       <li>Reduce manual data entry and errors</li>
@@ -1012,7 +994,7 @@ export default function Settings() {
                     Connect to QuickBooks Online
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    After setting up credentials, click this button. You'll be redirected to QuickBooks to authorize the connection.
+                    You'll be redirected to QuickBooks to authorize the connection.
                   </p>
                 </div>
               )}
