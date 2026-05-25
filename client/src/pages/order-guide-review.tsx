@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useRoute, useLocation } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -121,6 +121,24 @@ export default function OrderGuideReview() {
 
   const [isAddVendorOpen, setIsAddVendorOpen] = useState(false);
   const [newVendorName, setNewVendorName] = useState('');
+
+  const matchedTableRef = useRef<HTMLDivElement>(null);
+  const ambiguousTableRef = useRef<HTMLDivElement>(null);
+
+  const scrollToFirstMismatch = useCallback((containerRef: React.RefObject<HTMLDivElement>) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const firstIcon = container.querySelector('[data-testid^="icon-packsize-mismatch-"]');
+    if (!firstIcon) return;
+    const row = firstIcon.closest('tr');
+    if (!row) return;
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('bg-amber-100', 'transition-colors', 'duration-500');
+    setTimeout(() => {
+      row.classList.remove('bg-amber-100');
+      setTimeout(() => row.classList.remove('transition-colors', 'duration-500'), 600);
+    }, 1500);
+  }, []);
 
   useEffect(() => {
     if (stores.length > 0 && targetStoreIds.size === 0) {
@@ -558,17 +576,23 @@ export default function OrderGuideReview() {
             <CardContent className="space-y-3">
               {matchedMismatchCount > 0 && (
                 <div
-                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 cursor-pointer select-none hover-elevate"
                   data-testid="banner-matched-pack-size-mismatch"
+                  onClick={() => scrollToFirstMismatch(matchedTableRef)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => e.key === 'Enter' && scrollToFirstMismatch(matchedTableRef)}
+                  aria-label="Jump to first pack size mismatch"
                 >
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
                   <span>
                     <span className="font-medium">{matchedMismatchCount} pack size {matchedMismatchCount === 1 ? 'change' : 'changes'} detected</span>
                     {' '}— review rows marked with <AlertTriangle className="inline h-3.5 w-3.5 text-amber-500 align-text-bottom" /> before importing.
+                    <span className="ml-1 underline underline-offset-2 text-amber-700 dark:text-amber-400">Click to jump to first</span>
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={reviewData.lines.matched} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} />
+              <OrderGuideTable lines={reviewData.lines.matched} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} containerRef={matchedTableRef} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -590,17 +614,23 @@ export default function OrderGuideReview() {
             <CardContent className="space-y-3">
               {ambiguousMismatchCount > 0 && (
                 <div
-                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 cursor-pointer select-none hover-elevate"
                   data-testid="banner-ambiguous-pack-size-mismatch"
+                  onClick={() => scrollToFirstMismatch(ambiguousTableRef)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => e.key === 'Enter' && scrollToFirstMismatch(ambiguousTableRef)}
+                  aria-label="Jump to first pack size mismatch"
                 >
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
                   <span>
                     <span className="font-medium">{ambiguousMismatchCount} pack size {ambiguousMismatchCount === 1 ? 'change' : 'changes'} detected</span>
                     {' '}— review rows marked with <AlertTriangle className="inline h-3.5 w-3.5 text-amber-500 align-text-bottom" /> before importing.
+                    <span className="ml-1 underline underline-offset-2 text-amber-700 dark:text-amber-400">Click to jump to first</span>
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={reviewData.lines.ambiguous} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence />
+              <OrderGuideTable lines={reviewData.lines.ambiguous} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence containerRef={ambiguousTableRef} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -715,18 +745,20 @@ function OrderGuideTable({
   selectedLineIds,
   onToggleSelection,
   showConfidence = false,
+  containerRef,
 }: {
   lines: OrderGuideLine[];
   selectedLineIds: Set<string>;
   onToggleSelection: (lineId: string) => void;
   showConfidence?: boolean;
+  containerRef?: React.RefObject<HTMLDivElement>;
 }) {
   if (lines.length === 0) {
     return <div className="text-center py-8 text-muted-foreground">No items in this category</div>;
   }
 
   return (
-    <div className="rounded-md border">
+    <div className="rounded-md border" ref={containerRef}>
       <Table>
         <TableHeader>
           <TableRow>
