@@ -767,6 +767,7 @@ function OrderGuideTable({
             <TableHead>Product Name</TableHead>
             <TableHead>Pack Size</TableHead>
             <TableHead>Price</TableHead>
+            <TableHead>Est. Case Price</TableHead>
             {showConfidence && <TableHead>Match Confidence</TableHead>}
           </TableRow>
         </TableHeader>
@@ -815,6 +816,35 @@ function OrderGuideTable({
                     )}
                   </div>
                 ) : '-'}
+              </TableCell>
+              <TableCell>
+                {(() => {
+                  if (!line.price) return <span className="text-muted-foreground">-</span>;
+                  const cs = line.caseSize ?? 1;
+                  const ip = line.innerPack ?? 1;
+                  const estCasePrice = line.price * cs * ip;
+                  const isHigh = estCasePrice > 500;
+                  return (
+                    <div className="flex items-center gap-1.5">
+                      <span className={isHigh ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                        ${estCasePrice.toFixed(2)}
+                      </span>
+                      {isHigh && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <AlertTriangle
+                              className="h-4 w-4 text-amber-500 shrink-0 cursor-default"
+                              data-testid={`icon-high-case-price-${line.id}`}
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            <p>High case price — verify pack size and unit before committing</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                  );
+                })()}
               </TableCell>
               {showConfidence && (
                 <TableCell>

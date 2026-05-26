@@ -653,6 +653,54 @@ describe('parseCaseWeightLbs — invalid inputs skip derivation', () => {
   });
 });
 
+// ─── CS UOM override — compound measurement unit preferred over "CS" ───────────
+
+describe('CS UOM in separate column — measurement unit from compound string wins', () => {
+  it('"12/10 Oz" pack + UOM="CS" → unit=OZ, caseSize=12, innerPack=10 (not lb. fallback)', async () => {
+    const csv = buildCsv(
+      ['SKU', 'Name', 'Pack Size', 'UOM', 'Price'],
+      [['PA312', 'Pretzel Bavarian Soft', '12/10 Oz', 'CS', '40.53']],
+    );
+    const guide = await CsvOrderGuide.parse(csv, {
+      ...GENERIC_OPTS,
+      columnMapping: {
+        vendorSku: 'SKU',
+        productName: 'Name',
+        caseSize: 'Pack Size',
+        unit: 'UOM',
+        price: 'Price',
+      },
+    });
+    const p = guide.products[0];
+    expect(p.caseSize).toBe(12);
+    expect(p.innerPack).toBe(10);
+    // Measurement unit from compound string must win over "CS" ordering unit
+    expect(p.unit).toBe('OZ');
+    // EA+LB derivation must NOT fire (CS is not a count unit)
+    expect(p.eaPerCase).toBeUndefined();
+  });
+
+  it('"6/5 LB" pack + UOM="CS" → unit=LB, caseSize=6, innerPack=5', async () => {
+    const csv = buildCsv(
+      ['SKU', 'Name', 'Pack', 'UOM'],
+      [['SKU001', 'Butter Blend', '6/5 LB', 'CS']],
+    );
+    const guide = await CsvOrderGuide.parse(csv, {
+      ...GENERIC_OPTS,
+      columnMapping: {
+        vendorSku: 'SKU',
+        productName: 'Name',
+        caseSize: 'Pack',
+        unit: 'UOM',
+      },
+    });
+    const p = guide.products[0];
+    expect(p.caseSize).toBe(6);
+    expect(p.innerPack).toBe(5);
+    expect(p.unit).toBe('LB');
+  });
+});
+
 // ─── Compound pack string guard ────────────────────────────────────────────────
 
 describe('compound pack string already provides inner-pack — weight column skipped', () => {

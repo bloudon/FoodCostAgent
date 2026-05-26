@@ -739,6 +739,7 @@ export class OrderGuideProcessor {
         yieldPercent: 100,
         parLevel: 0,
         reorderLevel: 0,
+        manufacturer: line.brandName || undefined,
         active: 1,
         isVariableWeight: line.isVariableWeight || 0,
         // Total units per case (base unit; e.g. 30 LB for a "6/5 LB" case, 18 LB for "24 EA / 18 LB")
@@ -915,6 +916,11 @@ export class OrderGuideProcessor {
         console.log(`[OrderGuide] Syncing case size ${mergedCaseSize} to inventory item ${inventoryItem.id}`);
       }
       
+      // Sync brand to manufacturer field if not already set
+      if (line.brandName && !inventoryItem.manufacturer) {
+        updates.manufacturer = line.brandName;
+      }
+
       // Sync variable weight flag if vendor marks item as variable weight
       if (line.isVariableWeight === 1 && inventoryItem.isVariableWeight !== 1) {
         updates.isVariableWeight = 1;

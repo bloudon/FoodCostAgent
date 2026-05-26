@@ -258,7 +258,13 @@ export class CsvOrderGuide {
         if (!innerPack && parsedCasePack.innerPack) {
           innerPack = parsedCasePack.innerPack;
         }
-        if ((!unit || unit === unitRaw) && parsedCasePack.unit && !unitRaw) {
+        // Prefer the measurement unit embedded in the compound pack string (e.g. "OZ" from "12/10 Oz")
+        // over a UOM column that names the purchase/ordering unit (e.g. "CS" = case).
+        // "CS" doesn't map to a measurement unit; using it causes the wrong inventory unit (lb. fallback).
+        const unitRawIsSalesUnit = unitRaw
+          ? ['cs', 'case', 'cases'].includes(unitRaw.trim().toLowerCase())
+          : false;
+        if (parsedCasePack.unit && (!unitRaw || unitRawIsSalesUnit)) {
           unit = parsedCasePack.unit;
         }
       }
