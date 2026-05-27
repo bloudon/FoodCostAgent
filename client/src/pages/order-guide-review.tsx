@@ -230,12 +230,29 @@ export default function OrderGuideReview() {
     vendorMutation.mutate({ vendorId: newVendorId, previousVendorId });
   };
 
+  const [unitOverrides, setUnitOverrides] = useState<Record<string, string>>({});
+
+  const handleUnitOverrideChange = (lineId: string, unit: string) => {
+    setUnitOverrides(prev => {
+      const next = { ...prev };
+      if (unit === '__auto__') {
+        delete next[lineId];
+      } else {
+        next[lineId] = unit;
+      }
+      return next;
+    });
+  };
+
   const approveMutation = useMutation({
     mutationFn: async ({ importAll }: { importAll: boolean }) => {
-      const payload = {
+      const payload: Record<string, unknown> = {
         ...(importAll ? { importAll: true } : { selectedLineIds: Array.from(selectedLineIds) }),
         targetStoreIds: Array.from(targetStoreIds),
       };
+      if (Object.keys(unitOverrides).length > 0) {
+        payload.unitOverrides = unitOverrides;
+      }
       return apiRequest('POST', `/api/order-guides/${orderGuideId}/approve`, payload);
     },
     onSuccess: (data: any) => {
@@ -593,7 +610,7 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={reviewData.lines.matched} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} containerRef={matchedTableRef} />
+              <OrderGuideTable lines={reviewData.lines.matched} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} containerRef={matchedTableRef} showUnitSelector={false} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -631,7 +648,7 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={reviewData.lines.ambiguous} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence containerRef={ambiguousTableRef} />
+              <OrderGuideTable lines={reviewData.lines.ambiguous} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence containerRef={ambiguousTableRef} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -651,7 +668,7 @@ export default function OrderGuideReview() {
               </div>
             </CardHeader>
             <CardContent>
-              <OrderGuideTable lines={reviewData.lines.new} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} />
+              <OrderGuideTable lines={reviewData.lines.new} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -728,18 +745,32 @@ export default function OrderGuideReview() {
   );
 }
 
+const UNIT_AUTO_SENTINEL = '__auto__';
+
+const UNIT_OPTIONS: { value: string; label: string }[] = [
+  { value: UNIT_AUTO_SENTINEL, label: 'Auto' },
+  { value: 'each', label: 'ea' },
+  { value: 'pound', label: 'lb' },
+  { value: 'ounce', label: 'oz' },
+  { value: 'gallon', label: 'gal' },
+  { value: 'quart', label: 'qt' },
+  { value: 'liter', label: 'liter' },
+  { value: 'fluid ounce', label: 'fl oz' },
+];
+
 /**
  * Derive unit price from a case price — mirrors deriveUnitPrice() on the server.
  * Uses the matched inventory item's unit when available; falls back to the CSV UOM.
+ * When overrideUnitName is provided it takes highest priority over all other sources.
  */
-function deriveDisplayUnitPrice(line: OrderGuideLine): { unitPrice: number; unitLabel: string } | null {
+function deriveDisplayUnitPrice(line: OrderGuideLine, overrideUnitName?: string): { unitPrice: number; unitLabel: string } | null {
   if (!line.price || line.price <= 0) return null;
   const outerCount = Math.max(line.caseSize ?? 1, 1);
   const innerSize  = Math.max(line.innerPack ?? 1, 1);
   const packUom    = (line.uom ?? '').toLowerCase().trim();
 
-  // Prefer the matched inventory item's unit; fall back to the CSV UOM
-  const inventoryUnitName = (line.matchedInventoryItemUnitName ?? packUom).toLowerCase().trim();
+  // Priority: explicit override > matched inventory item unit > CSV UOM
+  const inventoryUnitName = (overrideUnitName ?? line.matchedInventoryItemUnitName ?? packUom).toLowerCase().trim();
 
   // "each" family
   if (['each', 'ea', 'piece', 'unit', 'count', 'ct'].includes(inventoryUnitName)) {
@@ -779,12 +810,18 @@ function OrderGuideTable({
   onToggleSelection,
   showConfidence = false,
   containerRef,
+  showUnitSelector = false,
+  unitOverrides,
+  onUnitChange,
 }: {
   lines: OrderGuideLine[];
   selectedLineIds: Set<string>;
   onToggleSelection: (lineId: string) => void;
   showConfidence?: boolean;
   containerRef?: React.RefObject<HTMLDivElement>;
+  showUnitSelector?: boolean;
+  unitOverrides?: Record<string, string>;
+  onUnitChange?: (lineId: string, unit: string) => void;
 }) {
   if (lines.length === 0) {
     return <div className="text-center py-8 text-muted-foreground">No items in this category</div>;
@@ -805,44 +842,87 @@ function OrderGuideTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {lines.map((line) => (
-            <TableRow key={line.id} data-testid={`row-product-${line.id}`}>
-              <TableCell>
-                <Checkbox
-                  checked={selectedLineIds.has(line.id)}
-                  onCheckedChange={() => onToggleSelection(line.id)}
-                  data-testid={`checkbox-${line.id}`}
-                />
-              </TableCell>
-              <TableCell className="font-mono text-sm">{line.vendorSku}</TableCell>
-              <TableCell>{line.productName}</TableCell>
-              <TableCell data-testid={`text-packsize-${line.id}`}>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground">{formatPackSize(line)}</span>
-                  {hasPackSizeMismatch(line) && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <AlertTriangle
-                          className="h-4 w-4 text-amber-500 shrink-0 cursor-default"
-                          data-testid={`icon-packsize-mismatch-${line.id}`}
-                        />
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p>Pack size changed — was {formatStoredPackSize(line)}, now {formatPackSize(line)}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                {line.price != null ? `$${line.price.toFixed(2)}` : '-'}
-              </TableCell>
-              <TableCell>
-                {(() => {
-                  const derived = deriveDisplayUnitPrice(line);
-                  if (!derived) return <span className="text-muted-foreground">-</span>;
-                  const isUnusual = derived.unitPrice < 0.05 || derived.unitPrice > 200;
-                  return (
+          {lines.map((line) => {
+            const isNewOrAmbiguous = line.matchStatus === 'new' || line.matchStatus === 'ambiguous';
+            const canOverrideUnit = showUnitSelector && isNewOrAmbiguous;
+            const overrideUnit = canOverrideUnit ? (unitOverrides?.[line.id] ?? UNIT_AUTO_SENTINEL) : undefined;
+            const effectiveOverride = (overrideUnit && overrideUnit !== UNIT_AUTO_SENTINEL) ? overrideUnit : undefined;
+            const derived = deriveDisplayUnitPrice(line, effectiveOverride);
+            const isUnusual = derived ? (derived.unitPrice < 0.05 || derived.unitPrice > 200) : false;
+
+            return (
+              <TableRow key={line.id} data-testid={`row-product-${line.id}`}>
+                <TableCell>
+                  <Checkbox
+                    checked={selectedLineIds.has(line.id)}
+                    onCheckedChange={() => onToggleSelection(line.id)}
+                    data-testid={`checkbox-${line.id}`}
+                  />
+                </TableCell>
+                <TableCell className="font-mono text-sm">{line.vendorSku}</TableCell>
+                <TableCell>{line.productName}</TableCell>
+                <TableCell data-testid={`text-packsize-${line.id}`}>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">{formatPackSize(line)}</span>
+                    {hasPackSizeMismatch(line) && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <AlertTriangle
+                            className="h-4 w-4 text-amber-500 shrink-0 cursor-default"
+                            data-testid={`icon-packsize-mismatch-${line.id}`}
+                          />
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          <p>Pack size changed — was {formatStoredPackSize(line)}, now {formatPackSize(line)}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {line.price != null ? `$${line.price.toFixed(2)}` : '-'}
+                </TableCell>
+                <TableCell>
+                  {!derived ? (
+                    <span className="text-muted-foreground">-</span>
+                  ) : canOverrideUnit ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className={isUnusual ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                        ${derived.unitPrice.toFixed(4)}&nbsp;/
+                      </span>
+                      <Select
+                        value={overrideUnit}
+                        onValueChange={(val) => onUnitChange?.(line.id, val)}
+                      >
+                        <SelectTrigger
+                          className="h-7 w-24 text-xs px-2"
+                          data-testid={`select-unit-${line.id}`}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {UNIT_OPTIONS.map(opt => (
+                            <SelectItem key={opt.value || '__auto__'} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {isUnusual && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <AlertTriangle
+                              className="h-4 w-4 text-amber-500 shrink-0 cursor-default"
+                              data-testid={`icon-unusual-unit-price-${line.id}`}
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            <p>Unit price looks unusual — verify pack size and unit before committing</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                  ) : (
                     <div className="flex items-center gap-1.5">
                       <span className={isUnusual ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
                         ${derived.unitPrice.toFixed(4)}&nbsp;/&nbsp;{derived.unitLabel}
@@ -861,18 +941,18 @@ function OrderGuideTable({
                         </Tooltip>
                       )}
                     </div>
-                  );
-                })()}
-              </TableCell>
-              {showConfidence && (
-                <TableCell>
-                  <Badge variant={getConfidenceBadgeVariant(line.matchConfidence)}>
-                    {line.matchConfidence ? `${line.matchConfidence}%` : 'N/A'}
-                  </Badge>
+                  )}
                 </TableCell>
-              )}
-            </TableRow>
-          ))}
+                {showConfidence && (
+                  <TableCell>
+                    <Badge variant={getConfidenceBadgeVariant(line.matchConfidence)}>
+                      {line.matchConfidence ? `${line.matchConfidence}%` : 'N/A'}
+                    </Badge>
+                  </TableCell>
+                )}
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

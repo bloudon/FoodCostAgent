@@ -397,12 +397,14 @@ export class OrderGuideProcessor {
     lineOverrides?: Record<string, string>;
     /** Per-line vendor overrides: lineId → vendorId (overrides the guide-level vendor for that row) */
     vendorOverrides?: Record<string, string>;
+    /** Per-line unit overrides: lineId → unit name (e.g. "each", "pound", "ounce") */
+    unitOverrides?: Record<string, string>;
   }): Promise<{
     vendorItemsCreated: number;
     inventoryItemsCreated: number;
     storeAssignmentsCreated: number;
   }> {
-    const { orderGuideId, companyId, targetStoreIds, importAll = false, selectedLineIds = [], lineOverrides = {}, vendorOverrides = {} } = params;
+    const { orderGuideId, companyId, targetStoreIds, importAll = false, selectedLineIds = [], lineOverrides = {}, vendorOverrides = {}, unitOverrides = {} } = params;
 
     // Get order guide and lines
     const guide = await this.storage.getOrderGuide(orderGuideId);
@@ -490,12 +492,14 @@ export class OrderGuideProcessor {
 
       if (effectiveLine.matchStatus === 'new') {
         // Create new inventory item + vendor item, assigning to all target stores
+        const unitOverrideName = unitOverrides[line.id] || undefined;
         const result = await this.createNewInventoryAndVendorItem(
           effectiveLine, 
           effectiveVendorId, 
           companyId, 
           targetStoreIds, 
-          defaults
+          defaults,
+          unitOverrideName
         );
         if (result.inventoryCreated) inventoryItemsCreated++;
         if (result.vendorItemCreated) vendorItemsCreated++;
@@ -750,14 +754,27 @@ export class OrderGuideProcessor {
     vendorId: string | null,
     companyId: string,
     targetStoreIds: string[],
-    defaults: any
+    defaults: any,
+    unitOverrideName?: string
   ): Promise<{ inventoryCreated: boolean; vendorItemCreated: boolean; storeAssignmentsCreated: number }> {
     try {
       // Detect category
       const categoryId = await this.detectCategory(line.category, defaults);
 
-      // Map unit
-      const unitId = await this.mapVendorUnitToSystemUnit(line.uom, defaults);
+      // Map unit — use reviewer's explicit override when provided
+      let unitId: string | null;
+      if (unitOverrideName) {
+        const overrideUnit = defaults.units.find((u: any) =>
+          u.name.toLowerCase() === unitOverrideName.toLowerCase() ||
+          u.abbreviation?.toLowerCase() === unitOverrideName.toLowerCase()
+        );
+        unitId = overrideUnit?.id ?? await this.mapVendorUnitToSystemUnit(line.uom, defaults);
+        if (overrideUnit) {
+          console.log(`[OrderGuide] Unit override applied for "${line.productName}": ${unitOverrideName} → id ${unitId}`);
+        }
+      } else {
+        unitId = await this.mapVendorUnitToSystemUnit(line.uom, defaults);
+      }
 
       // Ensure we have required fields
       if (!unitId) {
