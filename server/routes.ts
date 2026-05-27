@@ -2560,7 +2560,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (line.action === "update" && line.inventoryItemId) {
           // Verify item belongs to this company before updating
-          const existing = await db.select({ id: inventoryItems.id, companyId: inventoryItems.companyId })
+          const existing = await db.select({ id: inventoryItems.id, companyId: inventoryItems.companyId, unitId: inventoryItems.unitId })
             .from(inventoryItems)
             .where(and(eq(inventoryItems.id, line.inventoryItemId), eq(inventoryItems.companyId, companyId)))
             .limit(1);
@@ -2573,15 +2573,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           // Also update lastCasePrice on any existing vendorItems association for this inventory item
           if (line.casePrice && line.casePrice > 0) {
-            const existingVendorItems = await db.select({ id: vendorItems.id, caseSize: vendorItems.caseSize, innerPackSize: vendorItems.innerPackSize })
+            // Resolve the inventory item's base unit name for unit-aware price derivation
+            const itemUnitName = allUnits.find(u => u.id === existing[0].unitId)?.name ?? 'pound';
+            const existingVendorItems = await db.select({ id: vendorItems.id, caseSize: vendorItems.caseSize, innerPackSize: vendorItems.innerPackSize, packUom: vendorItems.packUom })
               .from(vendorItems)
               .where(eq(vendorItems.inventoryItemId, line.inventoryItemId));
             for (const vi of existingVendorItems) {
-              const caseSize = vi.caseSize ?? 1;
-              const innerPackSize = vi.innerPackSize ?? 1;
-              const derivedUnitPrice = caseSize > 0 && innerPackSize > 0
-                ? line.casePrice / (caseSize * innerPackSize)
-                : effectiveUnitPrice;
+              const caseSize = Math.max(vi.caseSize ?? 1, 1);
+              const innerPackSize = Math.max(vi.innerPackSize ?? 1, 1);
+              const { unitPrice: derivedUnitPrice } = deriveUnitPrice(
+                line.casePrice, caseSize, innerPackSize, vi.packUom ?? '', itemUnitName
+              );
               await db.update(vendorItems)
                 .set({ lastCasePrice: line.casePrice, lastPrice: derivedUnitPrice })
                 .where(eq(vendorItems.id, vi.id));
