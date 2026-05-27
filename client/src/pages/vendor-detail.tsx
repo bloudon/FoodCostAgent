@@ -30,6 +30,7 @@ interface VendorItemWithDetails {
   lastPrice: number;
   lastCasePrice: number | null;
   displayCasePrice: number;
+  inventoryUnitName: string | null;
   active: number;
   inventoryItem?: {
     id: string;
@@ -201,11 +202,11 @@ export default function VendorDetail() {
                             </TableCell>
                             <TableCell className="text-right" data-testid={`text-item-price-${item.id}`}>
                               <span className="font-medium">
-                                ${(item.inventoryItem?.pricePerUnit ?? item.lastPrice ?? 0).toFixed(2)}
+                                ${(item.inventoryItem?.pricePerUnit ?? item.lastPrice ?? 0).toFixed(4)}
                               </span>
-                              {item.unit && (
+                              {item.inventoryUnitName && (
                                 <span className="text-muted-foreground text-sm ml-1">
-                                  / {formatUnitName(item.unit.name)}
+                                  / {formatUnitName(item.inventoryUnitName)}
                                 </span>
                               )}
                             </TableCell>

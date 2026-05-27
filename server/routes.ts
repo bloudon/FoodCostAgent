@@ -7662,10 +7662,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return vi.lastPrice * divisor;
       })();
 
+      const invUnitForDisplay = item ? units.find((u) => u.id === item.unitId) : undefined;
+
       return {
         ...vi,
         inventoryItemName: item?.name || "",
         purchaseUnitName: unit?.name || "",
+        inventoryUnitName: invUnitForDisplay?.name ?? null,
         categoryId: item?.categoryId || null,
         categoryName: category?.name || null,
         displayCasePrice,

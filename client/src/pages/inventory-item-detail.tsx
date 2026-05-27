@@ -1470,6 +1470,7 @@ export default function InventoryItemDetail() {
                     const cs = parseFloat(rowData.caseSize || "1");
                     return cs > 0 ? (cp / cs).toFixed(4) : "0.0000";
                   })();
+                  const inventoryUnitLabel = unit ? formatUnitName(unit.name) : null;
                   return (
                     <div className="border rounded-lg p-4 mb-2 space-y-3 bg-muted/30" data-testid={`vendor-form-mobile-${rowId}`}>
                       <p className="text-sm font-semibold">{editingVendorItemId ? "Edit Vendor" : "Add Vendor"}</p>
@@ -1539,7 +1540,7 @@ export default function InventoryItemDetail() {
                       </div>
 
                       <p className="text-xs text-muted-foreground">
-                        Unit price: ${derivedUnitPrice}
+                        Unit price: ${derivedUnitPrice}{inventoryUnitLabel ? ` / ${inventoryUnitLabel}` : ''}
                       </p>
 
                       <div className="space-y-1">
@@ -1728,7 +1729,7 @@ export default function InventoryItemDetail() {
                                   const casePrice = parseFloat(rowData.lastCasePrice || "0");
                                   const caseSize = parseFloat(rowData.caseSize || "1");
                                   return caseSize > 0 ? (casePrice / caseSize).toFixed(4) : "0.0000";
-                                })()}
+                                })()}{unit ? ` / ${formatUnitName(unit.name)}` : ''}
                               </TableCell>
                               <TableCell className="text-muted-foreground">
                                 {vi.lastOrderDate ? new Date(vi.lastOrderDate).toLocaleDateString() : "-"}
@@ -1881,7 +1882,7 @@ export default function InventoryItemDetail() {
                             const casePrice = parseFloat(vendorRowEdits.new.lastCasePrice || "0");
                             const caseSize = parseFloat(vendorRowEdits.new.caseSize || "1");
                             return caseSize > 0 ? (casePrice / caseSize).toFixed(4) : "0.0000";
-                          })()}
+                          })()}{unit ? ` / ${formatUnitName(unit.name)}` : ''}
                         </TableCell>
                         <TableCell className="text-muted-foreground">-</TableCell>
                         <TableCell>
