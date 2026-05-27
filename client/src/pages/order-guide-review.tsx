@@ -77,6 +77,7 @@ interface OrderGuideLine {
   priceSource?: 'unit' | 'case' | 'zero';
   matchStatus: string;
   matchedInventoryItemId: string | null;
+  matchedInventoryItemUnitName?: string | null;
   matchConfidence: number | null;
   storedCaseSize: number | null;
   storedInnerPackSize: number | null;
@@ -727,6 +728,38 @@ export default function OrderGuideReview() {
   );
 }
 
+/**
+ * Derive unit price from a case price — mirrors deriveUnitPrice() on the server.
+ * Uses the matched inventory item's unit when available; falls back to the CSV UOM.
+ */
+function deriveDisplayUnitPrice(line: OrderGuideLine): { unitPrice: number; unitLabel: string } | null {
+  if (!line.price || line.price <= 0) return null;
+  const outerCount = Math.max(line.caseSize ?? 1, 1);
+  const innerSize  = Math.max(line.innerPack ?? 1, 1);
+  const packUom    = (line.uom ?? '').toLowerCase().trim();
+
+  // Prefer the matched inventory item's unit; fall back to the CSV UOM
+  const inventoryUnitName = (line.matchedInventoryItemUnitName ?? packUom).toLowerCase().trim();
+
+  // "each" family
+  if (['each', 'piece', 'unit', 'count', 'ct'].includes(inventoryUnitName)) {
+    return { unitPrice: line.price / outerCount, unitLabel: 'ea' };
+  }
+  // "lb" family
+  if (['pound', 'lb', 'lbs'].includes(inventoryUnitName)) {
+    const totalLbs = ['oz', 'ounce', 'ounces'].includes(packUom)
+      ? (outerCount * innerSize) / 16
+      : outerCount * innerSize;
+    return { unitPrice: line.price / Math.max(totalLbs, 0.0001), unitLabel: 'lb' };
+  }
+  // "oz" family
+  if (['ounce', 'oz', 'ounces'].includes(inventoryUnitName)) {
+    return { unitPrice: line.price / (outerCount * innerSize), unitLabel: 'oz' };
+  }
+  // Default
+  return { unitPrice: line.price / (outerCount * innerSize), unitLabel: inventoryUnitName || 'unit' };
+}
+
 function formatPackSize(line: OrderGuideLine): string {
   if (line.caseSize != null && line.innerPack != null) {
     const uom = line.uom ? ` ${line.uom}` : '';
@@ -766,8 +799,8 @@ function OrderGuideTable({
             <TableHead>Vendor SKU</TableHead>
             <TableHead>Product Name</TableHead>
             <TableHead>Pack Size</TableHead>
-            <TableHead>Price</TableHead>
-            <TableHead>Est. Case Price</TableHead>
+            <TableHead>Case Price</TableHead>
+            <TableHead>Unit Price</TableHead>
             {showConfidence && <TableHead>Match Confidence</TableHead>}
           </TableRow>
         </TableHeader>
@@ -802,43 +835,28 @@ function OrderGuideTable({
                 </div>
               </TableCell>
               <TableCell>
-                {line.price ? (
-                  <div className="flex flex-col items-start gap-0.5">
-                    <span>${line.price.toFixed(2)}</span>
-                    {line.priceSource === 'case' && (
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-600 dark:text-amber-400 no-default-active-elevate"
-                        title="The AI extracted a case price from this invoice. Verify the per-unit cost before committing."
-                      >
-                        case price
-                      </Badge>
-                    )}
-                  </div>
-                ) : '-'}
+                {line.price != null ? `$${line.price.toFixed(2)}` : '-'}
               </TableCell>
               <TableCell>
                 {(() => {
-                  if (!line.price) return <span className="text-muted-foreground">-</span>;
-                  const cs = line.caseSize ?? 1;
-                  const ip = line.innerPack ?? 1;
-                  const estCasePrice = line.price * cs * ip;
-                  const isHigh = estCasePrice > 500;
+                  const derived = deriveDisplayUnitPrice(line);
+                  if (!derived) return <span className="text-muted-foreground">-</span>;
+                  const isUnusual = derived.unitPrice < 0.05 || derived.unitPrice > 200;
                   return (
                     <div className="flex items-center gap-1.5">
-                      <span className={isHigh ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
-                        ${estCasePrice.toFixed(2)}
+                      <span className={isUnusual ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                        ${derived.unitPrice.toFixed(4)}&nbsp;/&nbsp;{derived.unitLabel}
                       </span>
-                      {isHigh && (
+                      {isUnusual && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <AlertTriangle
                               className="h-4 w-4 text-amber-500 shrink-0 cursor-default"
-                              data-testid={`icon-high-case-price-${line.id}`}
+                              data-testid={`icon-unusual-unit-price-${line.id}`}
                             />
                           </TooltipTrigger>
                           <TooltipContent side="top">
-                            <p>High case price — verify pack size and unit before committing</p>
+                            <p>Unit price looks unusual — verify pack size and unit before committing</p>
                           </TooltipContent>
                         </Tooltip>
                       )}

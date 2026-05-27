@@ -23,6 +23,67 @@ interface OrderGuideUploadResult {
 }
 
 /**
+ * Derive unit price from a case price, using the inventory item's base unit
+ * to choose the correct divisor.
+ *
+ * Pack strings like "12/10 Oz" mean 12 outer items × 10 oz each (outerCount=12, innerSize=10, packUom="oz").
+ * The right divisor depends on what unit the inventory item uses:
+ *
+ *   "each" family  → divide by outerCount only
+ *                    e.g. 12 pretzels at $40.53/case → $40.53÷12 = $3.3775/ea
+ *
+ *   "lb" family    → convert total pack weight to lbs, divide by that
+ *                    e.g. 40 portions × 4 oz ÷ 16 = 10 lb → $84.50÷10 = $8.45/lb
+ *                    if packUom is already "lb": outerCount × innerSize lbs directly
+ *
+ *   "oz" family    → divide by outerCount × innerSize (total oz)
+ *                    e.g. 12×10 oz = 120 oz → $40.53÷120 = $0.3378/oz
+ *
+ *   anything else  → divide by outerCount × innerSize (safe default)
+ */
+export function deriveUnitPrice(
+  casePrice: number,
+  outerCount: number,         // caseSize  (number of outer items in the case)
+  innerSize: number,          // innerPack (size of each inner item)
+  packUom: string,            // resolved UOM after pack parsing (e.g. "OZ", "LB", "CS")
+  inventoryUnitName: string,  // the inventory item's base unit name (e.g. "pound", "ounce", "each")
+): { unitPrice: number; unitLabel: string; divisor: number } {
+  const invUnit = (inventoryUnitName || '').toLowerCase().trim();
+  const pUom    = (packUom || '').toLowerCase().trim();
+
+  const safeOuter = Math.max(outerCount, 1);
+  const safeInner = Math.max(innerSize, 1);
+
+  // "each" family: price per individual countable item — divide by outer count only
+  if (['each', 'piece', 'unit', 'count', 'ct'].includes(invUnit)) {
+    return { unitPrice: casePrice / safeOuter, unitLabel: 'ea', divisor: safeOuter };
+  }
+
+  // "lb" family: convert pack total to pounds
+  if (['pound', 'lb', 'lbs'].includes(invUnit)) {
+    let totalLbs: number;
+    if (['oz', 'ounce', 'ounces'].includes(pUom)) {
+      totalLbs = (safeOuter * safeInner) / 16;
+    } else {
+      // packUom is lb (or unknown) — treat innerSize as already in lbs
+      totalLbs = safeOuter * safeInner;
+    }
+    const divisor = Math.max(totalLbs, 0.0001);
+    return { unitPrice: casePrice / divisor, unitLabel: 'lb', divisor };
+  }
+
+  // "oz" family: divide by total ounces
+  if (['ounce', 'oz', 'ounces'].includes(invUnit)) {
+    const divisor = safeOuter * safeInner;
+    return { unitPrice: casePrice / divisor, unitLabel: 'oz', divisor };
+  }
+
+  // Default: treat innerSize as total units in inventory's native unit
+  const divisor = safeOuter * safeInner;
+  return { unitPrice: casePrice / divisor, unitLabel: invUnit || 'unit', divisor };
+}
+
+/**
  * OrderGuideProcessor - Handles vendor order guide import workflow
  */
 export class OrderGuideProcessor {
@@ -235,16 +296,21 @@ export class OrderGuideProcessor {
 
     const lines = await this.storage.getOrderGuideLines(orderGuideId);
 
-    // Fetch matched inventory item names for display in review UI
+    // Fetch matched inventory item names + units for display in review UI
     const matchedIds = lines
       .filter(l => l.matchedInventoryItemId)
       .map(l => l.matchedInventoryItemId as string);
-    
-    const inventoryNameMap = new Map<string, string>();
+
+    const inventoryItemMap = new Map<string, { name: string; unitName: string | null }>();
+    let allUnitsCache: any[] | null = null;
     for (const itemId of matchedIds) {
       try {
         const item = await this.storage.getInventoryItem(itemId);
-        if (item) inventoryNameMap.set(itemId, item.name);
+        if (item) {
+          if (!allUnitsCache) allUnitsCache = await this.storage.getUnits();
+          const unit = allUnitsCache.find((u: any) => u.id === item.unitId);
+          inventoryItemMap.set(itemId, { name: item.name, unitName: unit?.name ?? null });
+        }
       } catch {}
     }
 
@@ -277,18 +343,20 @@ export class OrderGuideProcessor {
       }
     }
 
-    // Enrich lines with matched item name and priceSource.
+    // Enrich lines with matched item name, unit, and priceSource.
     // priceSource is stored on the line by the scan pipeline; fall back to nullability-derived
     // value for lines imported via CSV (which only ever have case prices).
     const enrichedLines = lines.map(l => {
       const storedPackSize = l.matchedInventoryItemId
         ? (storedPackSizeMap.get(l.matchedInventoryItemId) ?? null)
         : null;
+      const invData = l.matchedInventoryItemId
+        ? (inventoryItemMap.get(l.matchedInventoryItemId) ?? null)
+        : null;
       return {
         ...l,
-        matchedInventoryItemName: l.matchedInventoryItemId
-          ? (inventoryNameMap.get(l.matchedInventoryItemId) ?? null)
-          : null,
+        matchedInventoryItemName: invData?.name ?? null,
+        matchedInventoryItemUnitName: invData?.unitName ?? null,
         priceSource: l.priceSource ?? (l.price != null ? 'case' : null),
         storedCaseSize: storedPackSize?.caseSize ?? null,
         storedInnerPackSize: storedPackSize?.innerPackSize ?? null,
@@ -697,17 +765,21 @@ export class OrderGuideProcessor {
         return { inventoryCreated: false, vendorItemCreated: false, storeAssignmentsCreated: 0 };
       }
 
-      // Calculate unit price from case price
+      // Calculate unit price from case price (unit-aware)
       // line.price is the CASE price unless priceSource === 'unit' (scan-only scenario).
       // For unit-priced lines we use price directly as the unit price and skip lastCasePrice.
       // Guard against zero/negative values that would cause Infinity
       const rawCaseSize = Math.max(line.caseSize ?? 1, 1);
       const rawInnerPack = Math.max(line.innerPack ?? 1, 1);
-      const totalUnitsPerCase = rawCaseSize * rawInnerPack; // merged caseSize
       const isUnitPrice = (line as any).priceSource === 'unit';
+      // Resolve the unit name for the new item (from defaults.units using the mapped unitId)
+      const newItemUnit = defaults.units.find((u: any) => u.id === unitId);
+      const newItemUnitName = newItemUnit?.name ?? 'pound';
       const unitPrice = isUnitPrice
         ? (line.price ?? 0)
-        : (line.price ? line.price / totalUnitsPerCase : 0);
+        : (line.price
+            ? deriveUnitPrice(line.price, rawCaseSize, rawInnerPack, line.uom ?? '', newItemUnitName).unitPrice
+            : 0);
 
       // Derive container fields from compound pack data (e.g. "6/5 LB" → 6 packs × 5 LB each)
       // or from EA+LB derivation (e.g. 24 EA / 18 LB → 0.75 LB per each).
@@ -843,12 +915,16 @@ export class OrderGuideProcessor {
 
       const outerCnt = Math.max(line.caseSize ?? 1, 1);
       const innerSz  = Math.max(line.innerPack ?? 1, 1);
-      const totalUnits = outerCnt * innerSz;
+
+      // Resolve item's unit name for unit-aware pricing
+      const allUnitsForVendor = await this.storage.getUnits();
+      const itemUnitForVendor = allUnitsForVendor.find((u: any) => u.id === inventoryItem.unitId);
+      const itemUnitNameForVendor = itemUnitForVendor?.name ?? 'pound';
 
       if (existing) {
         // Vendor item already exists — update pricing and pack info if we have new price data.
         if (line.price != null && line.price > 0) {
-          const unitPrice = line.price / totalUnits;
+          const { unitPrice } = deriveUnitPrice(line.price, outerCnt, innerSz, line.uom ?? '', itemUnitNameForVendor);
           await this.storage.updateVendorItem(existing.id, {
             lastPrice: unitPrice,
             lastCasePrice: line.price,
@@ -862,8 +938,8 @@ export class OrderGuideProcessor {
       }
 
       // No existing vendor item — create one with separate caseSize + innerPackSize.
-      const caseUnitPrice = line.price != null && line.price > 0 && totalUnits > 0
-        ? line.price / totalUnits
+      const caseUnitPrice = line.price != null && line.price > 0
+        ? deriveUnitPrice(line.price, outerCnt, innerSz, line.uom ?? '', itemUnitNameForVendor).unitPrice
         : (line.price ?? undefined);
       await this.storage.createVendorItem({
         vendorId,
@@ -897,16 +973,20 @@ export class OrderGuideProcessor {
     try {
       const updates: any = {};
       
-      // Sync price if vendor has pricing data
-      // line.price is the CASE price; fold innerPack into caseSize for total units per case
-      // Guard against zero/negative values that would cause Infinity
+      // Sync price if vendor has pricing data — use unit-aware divisor
+      // line.price is the CASE price; derive unit price based on the matched item's base unit
       if (line.price && line.price > 0) {
         const rawCaseSize = Math.max(line.caseSize ?? 1, 1);
         const rawInnerPack = Math.max(line.innerPack ?? 1, 1);
-        const totalUnitsPerCase = rawCaseSize * rawInnerPack;
-        const unitPrice = line.price / totalUnitsPerCase;
+        // Look up the matched inventory item's unit name for correct divisor
+        const allUnits = await this.storage.getUnits();
+        const itemUnit = allUnits.find((u: any) => u.id === inventoryItem.unitId);
+        const itemUnitName = itemUnit?.name ?? 'pound';
+        const { unitPrice, unitLabel, divisor } = deriveUnitPrice(
+          line.price, rawCaseSize, rawInnerPack, line.uom ?? '', itemUnitName
+        );
         updates.pricePerUnit = unitPrice;
-        console.log(`[OrderGuide] Syncing unit price ${unitPrice.toFixed(4)} (case price ${line.price} ÷ ${totalUnitsPerCase} units) to inventory item ${inventoryItem.id}`);
+        console.log(`[OrderGuide] Syncing unit price ${unitPrice.toFixed(4)}/${unitLabel} (case price ${line.price} ÷ ${divisor} ${unitLabel}) to inventory item ${inventoryItem.id}`);
       }
       
       // Sync merged case size (innerPack folded in) if vendor has case size data
