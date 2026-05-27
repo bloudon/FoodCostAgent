@@ -28,6 +28,8 @@ interface VendorItemWithDetails {
   caseSize: number | null;
   innerPackSize: number | null;
   lastPrice: number;
+  lastCasePrice: number | null;
+  displayCasePrice: number;
   active: number;
   inventoryItem?: {
     id: string;
@@ -243,13 +245,7 @@ export default function VendorDetail() {
                               {item.unit ? formatUnitName(item.unit.name) : "-"}
                             </TableCell>
                             <TableCell className="text-right font-medium" data-testid={`text-item-case-price-${item.id}`}>
-                              {(() => {
-                                const unitPrice = item.inventoryItem?.pricePerUnit ?? item.lastPrice ?? 0;
-                                const caseSize = item.caseSize ?? item.inventoryItem?.caseSize ?? 1;
-                                const innerPack = item.innerPackSize ?? item.inventoryItem?.innerPackSize ?? 1;
-                                const casePrice = unitPrice * caseSize * innerPack;
-                                return `$${casePrice.toFixed(2)}`;
-                              })()}
+                              {`$${item.displayCasePrice.toFixed(2)}`}
                             </TableCell>
                           </TableRow>
                         ))

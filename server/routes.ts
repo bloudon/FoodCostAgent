@@ -13,6 +13,7 @@ import { storage } from "./storage";
 import { parseCSV } from "./services/tfcCsv";
 import { TheoreticalUsageService } from "./services/theoreticalUsage";
 import { parseCompoundPackSize } from "./integrations/csv/CsvOrderGuide";
+import { deriveUnitPrice } from "./services/orderGuideProcessor";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
@@ -7624,12 +7625,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const item = inventoryItems.find((i) => i.id === vi.inventoryItemId);
       const unit = units.find((u) => u.id === vi.purchaseUnitId);
       const category = item?.categoryId ? categories.find((c) => c.id === item.categoryId) : null;
+
+      // Compute the case price to display using the same unit-aware divisor as deriveUnitPrice,
+      // so the displayed value is always consistent with how prices were stored.
+      //
+      // Primary source: lastCasePrice (set by order guide processor / receipt entry for all
+      // modern data — this path is taken for the vast majority of rows).
+      //
+      // Fallback: reconstruct from lastPrice × divisor by calling deriveUnitPrice with the
+      // inventory item's base unit (same input used when lastPrice was originally derived).
+      const displayCasePrice = (() => {
+        if (vi.lastCasePrice && vi.lastCasePrice > 0) {
+          return vi.lastCasePrice;
+        }
+        if (!vi.lastPrice || vi.lastPrice <= 0) {
+          return 0;
+        }
+        // Resolve the inventory item's base unit name — this is the unit deriveUnitPrice
+        // used when computing lastPrice, so we must use the same unit here.
+        const invItem     = inventoryItems.find((i) => i.id === vi.inventoryItemId);
+        const invUnitObj  = invItem ? units.find((u) => u.id === invItem.unitId) : undefined;
+        const invUnitName = invUnitObj?.name ?? 'pound';
+        const outerCount  = Math.max(vi.caseSize ?? 1, 1);
+        const innerSize   = Math.max(vi.innerPackSize ?? 1, 1);
+        const packUomStr  = vi.packUom ?? '';
+        // Call deriveUnitPrice with casePrice = lastPrice * safeMax(outerCount*innerSize) as a
+        // proxy just to extract the divisor, then compute: displayCasePrice = lastPrice * divisor.
+        const { divisor } = deriveUnitPrice(
+          /* casePrice — value doesn't matter, we only need divisor */
+          1,
+          outerCount,
+          innerSize,
+          packUomStr,
+          invUnitName,
+        );
+        return vi.lastPrice * divisor;
+      })();
+
       return {
         ...vi,
         inventoryItemName: item?.name || "",
         purchaseUnitName: unit?.name || "",
         categoryId: item?.categoryId || null,
         categoryName: category?.name || null,
+        displayCasePrice,
         inventoryItem: item ? {
           id: item.id,
           name: item.name,

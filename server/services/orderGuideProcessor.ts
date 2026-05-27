@@ -931,6 +931,8 @@ export class OrderGuideProcessor {
             // Keep separate pack fields
             caseSize: outerCnt,
             innerPackSize: line.innerPack ?? undefined,
+            // Store the pack UOM so the vendor detail page can reconstruct case price correctly
+            packUom: line.uom ?? undefined,
           });
           await this.syncVendorDataToInventoryItem(line, inventoryItem);
         }
@@ -949,6 +951,8 @@ export class OrderGuideProcessor {
         purchaseUnitId: inventoryItem.unitId,
         caseSize: outerCnt,
         innerPackSize: line.innerPack ?? undefined,
+        // Store the pack UOM so the vendor detail page can reconstruct case price correctly
+        packUom: line.uom ?? undefined,
         lastPrice: caseUnitPrice,
         lastCasePrice: line.price ?? undefined,
       });

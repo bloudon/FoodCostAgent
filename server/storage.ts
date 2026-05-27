@@ -1570,10 +1570,13 @@ export class DatabaseStorage implements IStorage {
           vendorId: vendorItems.vendorId,
           inventoryItemId: vendorItems.inventoryItemId,
           vendorSku: vendorItems.vendorSku,
+          brandName: vendorItems.brandName,
           purchaseUnitId: vendorItems.purchaseUnitId,
           caseSize: vendorItems.caseSize,
           innerPackSize: vendorItems.innerPackSize,
+          packUom: vendorItems.packUom,
           lastPrice: vendorItems.lastPrice,
+          lastCasePrice: vendorItems.lastCasePrice,
           active: vendorItems.active,
         })
         .from(vendorItems)
@@ -1584,7 +1587,7 @@ export class DatabaseStorage implements IStorage {
         ))
         .where(conditions.length > 0 ? and(...conditions) : undefined);
       
-      return result;
+      return result as VendorItem[];
     }
     
     // Filter by company if provided - join with vendors table
@@ -1602,15 +1605,18 @@ export class DatabaseStorage implements IStorage {
           vendorId: vendorItems.vendorId,
           inventoryItemId: vendorItems.inventoryItemId,
           vendorSku: vendorItems.vendorSku,
+          brandName: vendorItems.brandName,
           purchaseUnitId: vendorItems.purchaseUnitId,
           caseSize: vendorItems.caseSize,
           innerPackSize: vendorItems.innerPackSize,
+          packUom: vendorItems.packUom,
           lastPrice: vendorItems.lastPrice,
+          lastCasePrice: vendorItems.lastCasePrice,
           active: vendorItems.active,
         })
         .from(vendorItems)
         .innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
-        .where(and(...companyConditions));
+        .where(and(...companyConditions)) as unknown as Promise<VendorItem[]>;
     }
     
     if (conditions.length > 0) {

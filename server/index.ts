@@ -178,6 +178,8 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE menu_import_sessions ADD COLUMN IF NOT EXISTS disabled_variant_group_keys jsonb DEFAULT '[]'::jsonb`);
     // Task #298: last-seen version for What's New banner
     await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_version text`);
+    // Task #351: pack_uom on vendor_items — stores pack dimension unit for unit-aware case-price display
+    await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS pack_uom text`);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

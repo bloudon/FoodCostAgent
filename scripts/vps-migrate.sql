@@ -982,3 +982,22 @@ BEGIN
       VALUES ('v038', 'Task #204: add price_source column to order_guide_lines');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v039 — Task #351: pack_uom column on vendor_items
+-- Stores the pack dimension unit of measure (e.g. "oz", "lb", "cs") so that
+-- the unit-aware case-price display can correctly reconstruct the case price
+-- from the stored unit price when lastCasePrice is absent (legacy rows).
+-- The column is nullable; NULL means unknown/not set (safe fallback: treat
+-- innerSize as already in the inventory item's native unit).
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v039') THEN
+
+    ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS pack_uom text;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v039', 'Task #351: add pack_uom column to vendor_items for unit-aware case-price display');
+  END IF;
+END $$;
