@@ -742,7 +742,7 @@ function deriveDisplayUnitPrice(line: OrderGuideLine): { unitPrice: number; unit
   const inventoryUnitName = (line.matchedInventoryItemUnitName ?? packUom).toLowerCase().trim();
 
   // "each" family
-  if (['each', 'piece', 'unit', 'count', 'ct'].includes(inventoryUnitName)) {
+  if (['each', 'ea', 'piece', 'unit', 'count', 'ct'].includes(inventoryUnitName)) {
     return { unitPrice: line.price / outerCount, unitLabel: 'ea' };
   }
   // "lb" family

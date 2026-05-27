@@ -31,6 +31,12 @@ describe('deriveUnitPrice — each unit', () => {
     const { unitPrice } = deriveUnitPrice(24, 8, 5, 'OZ', 'ct');
     expect(unitPrice).toBeCloseTo(24 / 8);
   });
+
+  it('"ea" alias is treated as each family (common CSV UOM)', () => {
+    const { unitPrice, unitLabel } = deriveUnitPrice(40.53, 12, 10, 'OZ', 'ea');
+    expect(unitPrice).toBeCloseTo(40.53 / 12);
+    expect(unitLabel).toBe('ea');
+  });
 });
 
 // ─── "lb" unit family ─────────────────────────────────────────────────────────

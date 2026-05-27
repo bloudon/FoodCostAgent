@@ -55,7 +55,7 @@ export function deriveUnitPrice(
   const safeInner = Math.max(innerSize, 1);
 
   // "each" family: price per individual countable item — divide by outer count only
-  if (['each', 'piece', 'unit', 'count', 'ct'].includes(invUnit)) {
+  if (['each', 'ea', 'piece', 'unit', 'count', 'ct'].includes(invUnit)) {
     return { unitPrice: casePrice / safeOuter, unitLabel: 'ea', divisor: safeOuter };
   }
 
@@ -891,7 +891,7 @@ export class OrderGuideProcessor {
    * Also syncs case size and pricing from vendor data to the linked inventory item
    */
   private async createVendorItemForExisting(
-    line: { vendorSku: string; brandName?: string | null; matchedInventoryItemId?: string | null; caseSize?: number | null; innerPack?: number | null; price?: number | null },
+    line: { vendorSku: string; brandName?: string | null; matchedInventoryItemId?: string | null; caseSize?: number | null; innerPack?: number | null; price?: number | null; uom?: string | null },
     vendorId: string,
     companyId: string
   ): Promise<boolean> {
