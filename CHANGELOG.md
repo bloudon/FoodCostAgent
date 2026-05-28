@@ -2,6 +2,29 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.9.0] — 2026-05-28
+
+### Pack-Size Accuracy — Name-Count Hint System
+
+A new detection layer catches cases where the count embedded in a vendor's product name (e.g. "Cheesecake Strawberry Swirl **16 Slices**") disagrees with the pack-size column in the order guide CSV (e.g. "80 EA"). Left uncorrected these mismatches produce a unit price that is off by a factor of 5 or more.
+
+- **Amber inline hint on the review screen** — when a product name contains a recognisable count that differs from the CSV case-size, an amber "Name says 16 — use that?" link appears in the Unit Price column. One click re-calculates the displayed unit price and flags that count for storage at commit time. The fix is written to the vendor item's `caseSize` field so every downstream cost calculation is correct from the moment of import.
+- **Extended pattern recognition** — the count extractor understands weight suffixes (oz, lb, g, fl oz), count words (slices, CT, count, pcs, pks, pieces, portions, servings), and "Box/Pack/Bag/Tray of N" phrasings in addition to plain numbers.
+- **Suspicious ratio banner** — when the name-count and the CSV case-size differ by more than 5×, an amber banner appears at the top of each review tab (Matched / Needs Review / New Items) showing how many rows are flagged. Clicking the banner scrolls to and briefly highlights the first offending row, mirroring the existing pack-size change banner UX.
+- **Dismiss per hint** — reviewers can dismiss individual hints they've already checked (e.g. "yes, 80 EA is correct here"). Dismissed hints are remembered for the session so they don't reappear on page refresh.
+- **Manual count input** — a small hash-icon button in the Unit Price column (on ambiguous and new rows) reveals a compact numeric field. Reviewers can type any count to override the CSV value, even when the product name contains no hint. Changing the value live-recalculates the price; clearing it reverts to the CSV default.
+- **Pack-size warning badge on the vendor list** — vendors with a pending order guide containing suspicious pack-size ratios now show an amber "N warning(s)" badge in the Order Guide column. Clicking navigates directly to the review page.
+- **Post-import summary email** — after a guide is committed, the approving user receives an email listing any rows where the name-embedded count differed from the CSV pack-size by more than 5×, so the data quality issue is flagged even if the reviewer missed it during import.
+
+### Test Infrastructure
+
+- 60 new unit tests covering `extractNameCount()` (all keyword families, edge cases, null inputs) and `hasNameCountSuspiciousRatio()`.
+- 22 new Playwright browser tests covering banner visibility, row markers, dismissal behaviour, and all three review tabs.
+- Playwright test suite now runs with Firefox in the Replit dev environment (avoids Chromium SIGSEGV) and with up to 4 parallel workers locally, cutting local wall-clock time from ~7 minutes to under 2 minutes. CI behaviour is unchanged.
+- Shared `mockReviewPageShell` helper consolidated into `tests/test-helpers.ts` — no more copy-pasted setup between spec files.
+
+---
+
 ## [1.8.0] — 2026-05-27
 
 ### Order Guide & Pricing Accuracy
