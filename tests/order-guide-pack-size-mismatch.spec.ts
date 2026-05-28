@@ -29,7 +29,7 @@
  *   Order guide ID: 3d91e5f0-71c6-457a-88cb-17353ae49e00 (must exist in dev DB)
  */
 
-import { test, expect, Page, APIRequestContext } from 'playwright/test';
+import { test, expect, type Page, type APIRequestContext } from './test-helpers';
 
 const BASE_URL        = 'http://localhost:5000';
 const TEST_EMAIL      = 'admin@brians.pizza';
