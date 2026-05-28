@@ -43,6 +43,8 @@ import {
   Building2,
   Plus,
   AlertTriangle,
+  Hash,
+  X,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -893,6 +895,25 @@ function OrderGuideTable({
   countOverrides?: Record<string, number>;
   onCountOverride?: (lineId: string, count: number | null) => void;
 }) {
+  const [expandedCounts, setExpandedCounts] = useState<Set<string>>(new Set());
+
+  const toggleCountInput = (lineId: string) => {
+    setExpandedCounts(prev => {
+      const next = new Set(prev);
+      if (next.has(lineId)) next.delete(lineId);
+      else next.add(lineId);
+      return next;
+    });
+  };
+
+  const collapseCountInput = (lineId: string) => {
+    setExpandedCounts(prev => {
+      const next = new Set(prev);
+      next.delete(lineId);
+      return next;
+    });
+  };
+
   if (lines.length === 0) {
     return <div className="text-center py-8 text-muted-foreground">No items in this category</div>;
   }
@@ -929,6 +950,12 @@ function OrderGuideTable({
               line.nameCount !== (line.caseSize ?? 0);
             const showNameCountHint = nameCountDiffersFromCase && !activeCountOverride;
             const showNameCountUsing = !!activeCountOverride && activeCountOverride === line.nameCount;
+
+            // Manual count input: show when expanded by user OR when there's an active manual override
+            // (i.e. override is set but doesn't match the name-count hint path)
+            const isManualOverride = !!activeCountOverride && activeCountOverride !== line.nameCount;
+            const showCountInput = canOverrideUnit && (expandedCounts.has(line.id) || isManualOverride);
+            const countInputActive = canOverrideUnit && (showCountInput || showNameCountUsing);
 
             return (
               <TableRow key={line.id} data-testid={`row-product-${line.id}`}>
@@ -989,6 +1016,21 @@ function OrderGuideTable({
                             ))}
                           </SelectContent>
                         </Select>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              className={`rounded p-0.5 transition-colors ${countInputActive ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground hover:text-foreground'}`}
+                              onClick={() => toggleCountInput(line.id)}
+                              data-testid={`button-edit-count-${line.id}`}
+                              aria-label="Edit pack count"
+                            >
+                              <Hash className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            <p>Override pack count for unit price calculation</p>
+                          </TooltipContent>
+                        </Tooltip>
                         {isUnusual && (
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -1003,7 +1045,37 @@ function OrderGuideTable({
                           </Tooltip>
                         )}
                       </div>
-                      {showNameCountHint && (
+                      {showCountInput && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground">Count:</span>
+                          <Input
+                            type="number"
+                            className="h-6 w-16 text-xs px-1.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            value={activeCountOverride ?? ''}
+                            placeholder={String(line.caseSize ?? 1)}
+                            min={1}
+                            onChange={e => {
+                              const val = parseInt(e.target.value, 10);
+                              onCountOverride?.(line.id, isNaN(val) || val <= 0 ? null : val);
+                            }}
+                            data-testid={`input-count-override-${line.id}`}
+                          />
+                          {activeCountOverride && (
+                            <button
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                onCountOverride?.(line.id, null);
+                                if (!line.nameCount) collapseCountInput(line.id);
+                              }}
+                              data-testid={`button-clear-count-override-${line.id}`}
+                              aria-label="Clear count override"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {showNameCountHint && !showCountInput && (
                         <button
                           className="text-left text-xs text-amber-600 dark:text-amber-400 underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300"
                           onClick={() => onCountOverride?.(line.id, line.nameCount!)}
@@ -1012,7 +1084,7 @@ function OrderGuideTable({
                           Name says {line.nameCount} — use that?
                         </button>
                       )}
-                      {showNameCountUsing && (
+                      {showNameCountUsing && !showCountInput && (
                         <div className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
                           <span>Using {activeCountOverride}</span>
                           <button
