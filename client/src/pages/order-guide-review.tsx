@@ -236,6 +236,26 @@ export default function OrderGuideReview() {
 
   const [unitOverrides, setUnitOverrides] = useState<Record<string, string>>({});
   const [countOverrides, setCountOverrides] = useState<Record<string, number>>({});
+  const sessionKey = orderGuideId ? `nameCountDismissed:${orderGuideId}` : null;
+
+  const [dismissedNameCountHints, setDismissedNameCountHints] = useState<Set<string>>(() => {
+    if (!orderGuideId) return new Set<string>();
+    try {
+      const stored = sessionStorage.getItem(`nameCountDismissed:${orderGuideId}`);
+      if (stored) return new Set<string>(JSON.parse(stored));
+    } catch { /* ignore */ }
+    return new Set<string>();
+  });
+
+  const dismissNameCountHint = (lineId: string) => {
+    setDismissedNameCountHints(prev => {
+      const next = new Set([...prev, lineId]);
+      if (sessionKey) {
+        try { sessionStorage.setItem(sessionKey, JSON.stringify([...next])); } catch { /* ignore */ }
+      }
+      return next;
+    });
+  };
 
   const handleUnitOverrideChange = (lineId: string, unit: string) => {
     setUnitOverrides(prev => {
@@ -388,9 +408,9 @@ export default function OrderGuideReview() {
     if (!line.nameCount || !line.caseSize || line.caseSize <= 0) return false;
     return Math.max(line.nameCount / line.caseSize, line.caseSize / line.nameCount) > 5;
   }
-  const matchedSuspiciousCount = reviewData.lines.matched.filter(hasSuspiciousNameCountRatio).length;
-  const ambiguousSuspiciousCount = reviewData.lines.ambiguous.filter(hasSuspiciousNameCountRatio).length;
-  const newSuspiciousCount = reviewData.lines.new.filter(hasSuspiciousNameCountRatio).length;
+  const matchedSuspiciousCount = reviewData.lines.matched.filter(l => hasSuspiciousNameCountRatio(l) && !dismissedNameCountHints.has(l.id)).length;
+  const ambiguousSuspiciousCount = reviewData.lines.ambiguous.filter(l => hasSuspiciousNameCountRatio(l) && !dismissedNameCountHints.has(l.id)).length;
+  const newSuspiciousCount = reviewData.lines.new.filter(l => hasSuspiciousNameCountRatio(l) && !dismissedNameCountHints.has(l.id)).length;
   const selectedCount = selectedLineIds.size;
   const newSelectedCount = reviewData.lines.new.filter(l => selectedLineIds.has(l.id)).length;
   const isImageScan = reviewData.guide.source === 'image_scan';
@@ -653,7 +673,7 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={reviewData.lines.matched} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} containerRef={matchedTableRef} showUnitSelector={false} countOverrides={countOverrides} onCountOverride={handleCountOverride} />
+              <OrderGuideTable lines={reviewData.lines.matched} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} containerRef={matchedTableRef} showUnitSelector={false} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -703,7 +723,7 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={reviewData.lines.ambiguous} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence containerRef={ambiguousTableRef} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} />
+              <OrderGuideTable lines={reviewData.lines.ambiguous} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence containerRef={ambiguousTableRef} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -735,7 +755,7 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={reviewData.lines.new} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} />
+              <OrderGuideTable lines={reviewData.lines.new} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -883,6 +903,8 @@ function OrderGuideTable({
   onUnitChange,
   countOverrides,
   onCountOverride,
+  dismissedNameCountHints,
+  onDismissNameCountHint,
 }: {
   lines: OrderGuideLine[];
   selectedLineIds: Set<string>;
@@ -894,6 +916,8 @@ function OrderGuideTable({
   onUnitChange?: (lineId: string, unit: string) => void;
   countOverrides?: Record<string, number>;
   onCountOverride?: (lineId: string, count: number | null) => void;
+  dismissedNameCountHints?: Set<string>;
+  onDismissNameCountHint?: (lineId: string) => void;
 }) {
   const [expandedCounts, setExpandedCounts] = useState<Set<string>>(new Set());
 
@@ -948,7 +972,7 @@ function OrderGuideTable({
               line.nameCount != null &&
               line.nameCount > 0 &&
               line.nameCount !== (line.caseSize ?? 0);
-            const showNameCountHint = nameCountDiffersFromCase && !activeCountOverride;
+            const showNameCountHint = nameCountDiffersFromCase && !activeCountOverride && !dismissedNameCountHints?.has(line.id);
             const showNameCountUsing = !!activeCountOverride && activeCountOverride === line.nameCount;
 
             // Manual count input: show when expanded by user OR when there's an active manual override
@@ -1076,13 +1100,24 @@ function OrderGuideTable({
                         </div>
                       )}
                       {showNameCountHint && !showCountInput && (
-                        <button
-                          className="text-left text-xs text-amber-600 dark:text-amber-400 underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300"
-                          onClick={() => onCountOverride?.(line.id, line.nameCount!)}
-                          data-testid={`button-use-name-count-${line.id}`}
-                        >
-                          Name says {line.nameCount} — use that?
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            className="text-left text-xs text-amber-600 dark:text-amber-400 underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300"
+                            onClick={() => onCountOverride?.(line.id, line.nameCount!)}
+                            data-testid={`button-use-name-count-${line.id}`}
+                          >
+                            Name says {line.nameCount} — use that?
+                          </button>
+                          <button
+                            className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => onDismissNameCountHint?.(line.id)}
+                            data-testid={`button-dismiss-name-count-${line.id}`}
+                            aria-label="Dismiss hint"
+                          >
+                            <X className="h-3 w-3" />
+                            <span>dismiss</span>
+                          </button>
+                        </div>
                       )}
                       {showNameCountUsing && !showCountInput && (
                         <div className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
@@ -1118,13 +1153,24 @@ function OrderGuideTable({
                         )}
                       </div>
                       {showNameCountHint && (
-                        <button
-                          className="text-left text-xs text-amber-600 dark:text-amber-400 underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300"
-                          onClick={() => onCountOverride?.(line.id, line.nameCount!)}
-                          data-testid={`button-use-name-count-${line.id}`}
-                        >
-                          Name says {line.nameCount} — use that?
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            className="text-left text-xs text-amber-600 dark:text-amber-400 underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300"
+                            onClick={() => onCountOverride?.(line.id, line.nameCount!)}
+                            data-testid={`button-use-name-count-${line.id}`}
+                          >
+                            Name says {line.nameCount} — use that?
+                          </button>
+                          <button
+                            className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => onDismissNameCountHint?.(line.id)}
+                            data-testid={`button-dismiss-name-count-${line.id}`}
+                            aria-label="Dismiss hint"
+                          >
+                            <X className="h-3 w-3" />
+                            <span>dismiss</span>
+                          </button>
+                        </div>
                       )}
                       {showNameCountUsing && (
                         <div className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
