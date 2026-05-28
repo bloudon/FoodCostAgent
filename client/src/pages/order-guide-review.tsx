@@ -129,6 +129,7 @@ export default function OrderGuideReview() {
 
   const matchedTableRef = useRef<HTMLDivElement>(null);
   const ambiguousTableRef = useRef<HTMLDivElement>(null);
+  const newTableRef = useRef<HTMLDivElement>(null);
 
   const scrollToFirstMismatch = useCallback((containerRef: React.RefObject<HTMLDivElement>) => {
     const container = containerRef.current;
@@ -136,6 +137,21 @@ export default function OrderGuideReview() {
     const firstIcon = container.querySelector('[data-testid^="icon-packsize-mismatch-"]');
     if (!firstIcon) return;
     const row = firstIcon.closest('tr');
+    if (!row) return;
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('bg-amber-100', 'transition-colors', 'duration-500');
+    setTimeout(() => {
+      row.classList.remove('bg-amber-100');
+      setTimeout(() => row.classList.remove('transition-colors', 'duration-500'), 600);
+    }, 1500);
+  }, []);
+
+  const scrollToFirstNameCountSuspicious = useCallback((containerRef: React.RefObject<HTMLDivElement>) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const firstMarker = container.querySelector('[data-testid^="marker-namecount-suspicious-"]');
+    if (!firstMarker) return;
+    const row = firstMarker.closest('tr');
     if (!row) return;
     row.scrollIntoView({ behavior: 'smooth', block: 'center' });
     row.classList.add('bg-amber-100', 'transition-colors', 'duration-500');
@@ -438,9 +454,21 @@ export default function OrderGuideReview() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">Review Import</h1>
-            <p className="text-sm text-muted-foreground">
-              {reviewData.guide.fileName || 'Imported order guide'}
-            </p>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <p className="text-sm text-muted-foreground">
+                {reviewData.guide.fileName || 'Imported order guide'}
+              </p>
+              {(matchedSuspiciousCount + ambiguousSuspiciousCount + newSuspiciousCount) > 0 && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30"
+                  data-testid="badge-namecount-warnings-total"
+                >
+                  <AlertTriangle className="h-3 w-3" />
+                  {matchedSuspiciousCount + ambiguousSuspiciousCount + newSuspiciousCount} pack-size {matchedSuspiciousCount + ambiguousSuspiciousCount + newSuspiciousCount === 1 ? 'warning' : 'warnings'}
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex flex-col gap-3 items-end">
@@ -663,13 +691,19 @@ export default function OrderGuideReview() {
               )}
               {matchedSuspiciousCount > 0 && (
                 <div
-                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 cursor-pointer select-none hover-elevate"
                   data-testid="banner-matched-name-count-suspicious"
+                  onClick={() => scrollToFirstNameCountSuspicious(matchedTableRef)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => e.key === 'Enter' && scrollToFirstNameCountSuspicious(matchedTableRef)}
+                  aria-label="Jump to first name-count warning"
                 >
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
                   <span>
                     <span className="font-medium">{matchedSuspiciousCount} {matchedSuspiciousCount === 1 ? 'item has' : 'items have'} a name-count that differs from the CSV pack size by more than 5×</span>
                     {' '}— the unit embedded in the product name may not match the case count. Check the "Name says…" hints on affected rows.
+                    <span className="ml-1 underline underline-offset-2 text-amber-700 dark:text-amber-400">Click to jump to first</span>
                   </span>
                 </div>
               )}
@@ -713,13 +747,19 @@ export default function OrderGuideReview() {
               )}
               {ambiguousSuspiciousCount > 0 && (
                 <div
-                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 cursor-pointer select-none hover-elevate"
                   data-testid="banner-ambiguous-name-count-suspicious"
+                  onClick={() => scrollToFirstNameCountSuspicious(ambiguousTableRef)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => e.key === 'Enter' && scrollToFirstNameCountSuspicious(ambiguousTableRef)}
+                  aria-label="Jump to first name-count warning"
                 >
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
                   <span>
                     <span className="font-medium">{ambiguousSuspiciousCount} {ambiguousSuspiciousCount === 1 ? 'item has' : 'items have'} a name-count that differs from the CSV pack size by more than 5×</span>
                     {' '}— the unit embedded in the product name may not match the case count. Check the "Name says…" hints on affected rows.
+                    <span className="ml-1 underline underline-offset-2 text-amber-700 dark:text-amber-400">Click to jump to first</span>
                   </span>
                 </div>
               )}
@@ -745,17 +785,23 @@ export default function OrderGuideReview() {
             <CardContent className="space-y-3">
               {newSuspiciousCount > 0 && (
                 <div
-                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 cursor-pointer select-none hover-elevate"
                   data-testid="banner-new-name-count-suspicious"
+                  onClick={() => scrollToFirstNameCountSuspicious(newTableRef)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => e.key === 'Enter' && scrollToFirstNameCountSuspicious(newTableRef)}
+                  aria-label="Jump to first name-count warning"
                 >
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
                   <span>
                     <span className="font-medium">{newSuspiciousCount} {newSuspiciousCount === 1 ? 'item has' : 'items have'} a name-count that differs from the CSV pack size by more than 5×</span>
                     {' '}— the unit embedded in the product name may not match the case count. Check the "Name says…" hints on affected rows.
+                    <span className="ml-1 underline underline-offset-2 text-amber-700 dark:text-amber-400">Click to jump to first</span>
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={reviewData.lines.new} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} />
+              <OrderGuideTable lines={reviewData.lines.new} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} containerRef={newTableRef} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -981,9 +1027,22 @@ function OrderGuideTable({
             const showCountInput = canOverrideUnit && (expandedCounts.has(line.id) || isManualOverride);
             const countInputActive = canOverrideUnit && (showCountInput || showNameCountUsing);
 
+            // Suspicious ratio: name-count vs caseSize differ by more than 5×, and hint not dismissed
+            const isSuspiciousNameCount = (() => {
+              if (!line.nameCount || !line.caseSize || line.caseSize <= 0) return false;
+              return Math.max(line.nameCount / line.caseSize, line.caseSize / line.nameCount) > 5;
+            })() && !dismissedNameCountHints?.has(line.id);
+
             return (
               <TableRow key={line.id} data-testid={`row-product-${line.id}`}>
                 <TableCell>
+                  {isSuspiciousNameCount && (
+                    <span
+                      className="sr-only"
+                      data-testid={`marker-namecount-suspicious-${line.id}`}
+                      aria-hidden="true"
+                    />
+                  )}
                   <Checkbox
                     checked={selectedLineIds.has(line.id)}
                     onCheckedChange={() => onToggleSelection(line.id)}

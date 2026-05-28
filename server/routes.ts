@@ -5348,8 +5348,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const { OrderGuideProcessor } = await import('./services/orderGuideProcessor');
+      const { OrderGuideProcessor, extractNameCount, hasNameCountSuspiciousRatio } = await import('./services/orderGuideProcessor');
       const processor = new OrderGuideProcessor(storage);
+
+      // Fetch guide + lines before approval (guide becomes non-pending_review after approve)
+      const guideForEmail = await storage.getOrderGuide(id);
+      const allLinesForEmail = await storage.getOrderGuideLines(id);
 
       const result = await processor.approve({
         orderGuideId: id,
@@ -5363,6 +5367,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json(result);
+
+      // Send import summary email non-blocking (best-effort)
+      if (guideForEmail && userId) {
+        import('./email').then(async ({ sendImportSummaryEmail }) => {
+          try {
+            const user = await storage.getUser(userId);
+            if (!user?.email) return;
+
+            // Identify which imported lines have suspicious name-count ratios
+            const importedLineIds = new Set(
+              importAll ? allLinesForEmail.map((l: any) => l.id) : (selectedLineIds || [])
+            );
+            const suspiciousLines = allLinesForEmail
+              .filter((l: any) => importedLineIds.has(l.id))
+              .map((l: any) => ({
+                productName: l.productName,
+                caseSize: l.caseSize,
+                nameCount: extractNameCount(l.productName),
+              }))
+              .filter((l: { productName: string; caseSize: number | null; nameCount: number | null }) =>
+                hasNameCountSuspiciousRatio(l.nameCount, l.caseSize)
+              );
+
+            let vendorName: string | null = null;
+            if (guideForEmail.vendorId) {
+              const vendors = await storage.getVendors(companyId);
+              vendorName = vendors.find((v: any) => v.id === guideForEmail.vendorId)?.name ?? null;
+            }
+
+            await sendImportSummaryEmail({
+              to: user.email,
+              firstName: user.firstName || 'there',
+              fileName: guideForEmail.fileName || 'Order guide',
+              vendorName,
+              vendorItemsCreated: result.vendorItemsCreated,
+              inventoryItemsCreated: result.inventoryItemsCreated,
+              suspiciousLines,
+            });
+          } catch (err) {
+            console.error('[Order Guide] Import summary email failed:', err);
+          }
+        }).catch((err) => {
+          console.error('[Order Guide] Failed to import email module:', err);
+        });
+      }
     } catch (error: any) {
       console.error('[Order Guide Approval Error]', error);
       // Determine appropriate HTTP status code

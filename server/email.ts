@@ -279,6 +279,111 @@ export async function sendWelcomeEmail(opts: {
   }
 }
 
+export async function sendImportSummaryEmail(opts: {
+  to: string;
+  firstName: string;
+  fileName: string;
+  vendorName: string | null;
+  vendorItemsCreated: number;
+  inventoryItemsCreated: number;
+  suspiciousLines: Array<{ productName: string; caseSize: number | null; nameCount: number | null }>;
+}) {
+  const transport = createTransport();
+  if (!transport) {
+    console.warn("[Email] Skipping import summary email — no transport configured");
+    return;
+  }
+
+  const { to, firstName, fileName, vendorName, vendorItemsCreated, inventoryItemsCreated, suspiciousLines } = opts;
+  const totalImported = vendorItemsCreated + inventoryItemsCreated;
+
+  const suspiciousRowsHtml = suspiciousLines.length > 0 ? `
+    <div style="margin-top: 24px;">
+      <h3 style="color: #92400e; font-size: 15px; margin: 0 0 8px 0;">
+        &#9888;&#xFE0F; ${suspiciousLines.length} Pack-Size ${suspiciousLines.length === 1 ? 'Warning' : 'Warnings'}
+      </h3>
+      <p style="color: #475569; font-size: 13px; margin: 0 0 12px 0;">
+        The following rows had a count hint in the product name that differs from the CSV pack-size column by more than 5&times;.
+        Verify these items in your vendor price list before the next food-cost run.
+      </p>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <thead>
+          <tr style="background: #fef3c7;">
+            <th style="text-align: left; padding: 6px 8px; color: #92400e; border-bottom: 1px solid #fde68a;">Product Name</th>
+            <th style="text-align: center; padding: 6px 8px; color: #92400e; border-bottom: 1px solid #fde68a; white-space: nowrap;">CSV Pack Size</th>
+            <th style="text-align: center; padding: 6px 8px; color: #92400e; border-bottom: 1px solid #fde68a; white-space: nowrap;">Name Says</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${suspiciousLines.map((l, i) => `
+            <tr style="background: ${i % 2 === 0 ? '#fffbeb' : '#ffffff'};">
+              <td style="padding: 6px 8px; color: #1e293b; border-bottom: 1px solid #fef3c7;">${l.productName}</td>
+              <td style="padding: 6px 8px; color: #475569; text-align: center; border-bottom: 1px solid #fef3c7;">${l.caseSize ?? '—'}</td>
+              <td style="padding: 6px 8px; color: #92400e; font-weight: bold; text-align: center; border-bottom: 1px solid #fef3c7;">${l.nameCount ?? '—'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  ` : '';
+
+  const suspiciousRowsText = suspiciousLines.length > 0 ? `\n\nPACK-SIZE WARNINGS (${suspiciousLines.length} rows)\nThe following product names contain a count hint that differs from the CSV pack-size by more than 5x:\n${suspiciousLines.map(l => `  • ${l.productName} — CSV: ${l.caseSize ?? '?'}, Name says: ${l.nameCount ?? '?'}`).join('\n')}` : '';
+
+  try {
+    await transport.sendMail({
+      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+      to,
+      subject: `Order guide imported: ${fileName}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #1e293b; padding: 24px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">
+              <span style="color: #ffffff;">FNB</span>
+              <span style="color: #22c55e; font-size: 16px;"> cost pro</span>
+            </h1>
+          </div>
+          <div style="padding: 32px; background: #ffffff;">
+            <h2 style="color: #1e293b; margin-top: 0;">Hi ${firstName},</h2>
+            <p style="color: #475569; line-height: 1.6;">
+              Your order guide has been imported successfully${vendorName ? ` for <strong>${vendorName}</strong>` : ''}.
+            </p>
+            <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+              <tr>
+                <td style="padding: 8px 0; color: #64748b;">File</td>
+                <td style="padding: 8px 0; color: #1e293b; font-weight: 500;">${fileName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #64748b;">Items imported</td>
+                <td style="padding: 8px 0; color: #1e293b; font-weight: 500;">${totalImported}</td>
+              </tr>
+              ${inventoryItemsCreated > 0 ? `
+              <tr>
+                <td style="padding: 8px 0; color: #64748b;">New inventory items</td>
+                <td style="padding: 8px 0; color: #1e293b; font-weight: 500;">${inventoryItemsCreated}</td>
+              </tr>` : ''}
+              ${suspiciousLines.length > 0 ? `
+              <tr>
+                <td style="padding: 8px 0; color: #92400e;">Pack-size warnings</td>
+                <td style="padding: 8px 0; color: #92400e; font-weight: 500;">${suspiciousLines.length}</td>
+              </tr>` : ''}
+            </table>
+            ${suspiciousRowsHtml}
+          </div>
+          <div style="background: #f1f5f9; padding: 16px; text-align: center;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} FNB Cost Pro. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${firstName},\n\nYour order guide "${fileName}" has been imported successfully${vendorName ? ` for ${vendorName}` : ''}.\n\nItems imported: ${totalImported}${inventoryItemsCreated > 0 ? `\nNew inventory items: ${inventoryItemsCreated}` : ''}${suspiciousLines.length > 0 ? `\nPack-size warnings: ${suspiciousLines.length}` : ''}${suspiciousRowsText}`,
+    });
+    console.log(`[Email] Import summary email sent to ${to}`);
+  } catch (err) {
+    console.error("[Email] Failed to send import summary email:", err);
+  }
+}
+
 export async function sendContactEmail(opts: {
   name: string;
   email: string;
