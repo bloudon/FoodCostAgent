@@ -6,15 +6,21 @@ import { defineConfig, devices } from 'playwright/test';
  * problem and is used for all local (non-CI) test runs instead.
  *
  * CI (GitHub Actions) uses Chromium — that environment works correctly.
+ *
+ * Worker / parallelism notes:
+ *   All UI tests mock every API route via page.route(), making them fully
+ *   isolated across browser contexts.  Running them in parallel is safe.
+ *   CI is kept at 1 worker to avoid contention on the shared test database.
+ *   Local runs use up to 4 workers (capped so Replit containers don't OOM).
  */
 const isCI = !!process.env.CI;
 
 export default defineConfig({
   testDir: './tests',
-  fullyParallel: false,
+  fullyParallel: !isCI,
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
-  workers: 1,
+  workers: isCI ? 1 : 4,
   reporter: isCI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: 'http://localhost:5000',
