@@ -12,6 +12,23 @@ import { db } from '../db';
 import { sql, eq, inArray, and } from 'drizzle-orm';
 import { vendorItems } from '@shared/schema';
 
+/**
+ * Regex to detect a count embedded in a product name, e.g.:
+ *   "Cheesecake Strawberry Swirl 16 Slices Frozen" → 16
+ *   "Burger Buns 12 CT"                            → 12
+ *   "Dinner Rolls 24 Pcs"                          → 24
+ * Returns the extracted count, or null when nothing matches / count ≤ 1.
+ */
+const NAME_COUNT_REGEX = /\b(\d+)\s*-?\s*(slices?|cts?\.?|counts?|pcs?|pks?|pieces?|portions?|servings?)\b/i;
+
+function extractNameCount(productName: string | null | undefined): number | null {
+  if (!productName) return null;
+  const match = productName.match(NAME_COUNT_REGEX);
+  if (!match) return null;
+  const n = parseInt(match[1], 10);
+  return isNaN(n) || n <= 1 ? null : n;
+}
+
 interface OrderGuideUploadResult {
   orderGuideId: string;
   totalItems: number;
@@ -343,9 +360,11 @@ export class OrderGuideProcessor {
       }
     }
 
-    // Enrich lines with matched item name, unit, and priceSource.
+    // Enrich lines with matched item name, unit, priceSource, and nameCount hint.
     // priceSource is stored on the line by the scan pipeline; fall back to nullability-derived
     // value for lines imported via CSV (which only ever have case prices).
+    // nameCount: a count extracted from the product name (e.g. "16" from "Cheesecake 16 Slices Frozen")
+    // that can differ from the vendor's pack-size count and helps reviewers catch mislabelled packs.
     const enrichedLines = lines.map(l => {
       const storedPackSize = l.matchedInventoryItemId
         ? (storedPackSizeMap.get(l.matchedInventoryItemId) ?? null)
@@ -360,6 +379,7 @@ export class OrderGuideProcessor {
         priceSource: l.priceSource ?? (l.price != null ? 'case' : null),
         storedCaseSize: storedPackSize?.caseSize ?? null,
         storedInnerPackSize: storedPackSize?.innerPackSize ?? null,
+        nameCount: extractNameCount(l.productName),
       };
     });
 
@@ -399,12 +419,14 @@ export class OrderGuideProcessor {
     vendorOverrides?: Record<string, string>;
     /** Per-line unit overrides: lineId → unit name (e.g. "each", "pound", "ounce") */
     unitOverrides?: Record<string, string>;
+    /** Per-line count overrides: lineId → count (use this number as caseSize instead of the CSV value) */
+    countOverrides?: Record<string, number>;
   }): Promise<{
     vendorItemsCreated: number;
     inventoryItemsCreated: number;
     storeAssignmentsCreated: number;
   }> {
-    const { orderGuideId, companyId, targetStoreIds, importAll = false, selectedLineIds = [], lineOverrides = {}, vendorOverrides = {}, unitOverrides = {} } = params;
+    const { orderGuideId, companyId, targetStoreIds, importAll = false, selectedLineIds = [], lineOverrides = {}, vendorOverrides = {}, unitOverrides = {}, countOverrides = {} } = params;
 
     // Get order guide and lines
     const guide = await this.storage.getOrderGuide(orderGuideId);
@@ -485,6 +507,16 @@ export class OrderGuideProcessor {
         } else {
           effectiveLine = { ...line, matchStatus: 'matched', matchedInventoryItemId: lineOverride };
         }
+      }
+
+      // Apply count override: reviewer chose to use the count embedded in the product name
+      // (e.g. "16 Slices") instead of the vendor's pack-size column value.
+      // This replaces caseSize so downstream unit-price derivation and vendor item storage
+      // both use the corrected count.
+      const countOverride = countOverrides[line.id];
+      if (countOverride && countOverride > 0) {
+        effectiveLine = { ...effectiveLine, caseSize: countOverride };
+        console.log(`[OrderGuide] Count override applied for "${effectiveLine.productName}": caseSize ${line.caseSize} → ${countOverride}`);
       }
 
       // Per-row vendor override: user may assign a different vendor for this specific row

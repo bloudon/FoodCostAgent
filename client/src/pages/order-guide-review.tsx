@@ -81,6 +81,8 @@ interface OrderGuideLine {
   matchConfidence: number | null;
   storedCaseSize: number | null;
   storedInnerPackSize: number | null;
+  /** Count extracted from the product name (e.g. 16 from "Cheesecake 16 Slices"). Null when no hint found. */
+  nameCount?: number | null;
 }
 
 interface ReviewData {
@@ -231,6 +233,7 @@ export default function OrderGuideReview() {
   };
 
   const [unitOverrides, setUnitOverrides] = useState<Record<string, string>>({});
+  const [countOverrides, setCountOverrides] = useState<Record<string, number>>({});
 
   const handleUnitOverrideChange = (lineId: string, unit: string) => {
     setUnitOverrides(prev => {
@@ -244,6 +247,18 @@ export default function OrderGuideReview() {
     });
   };
 
+  const handleCountOverride = (lineId: string, count: number | null) => {
+    setCountOverrides(prev => {
+      const next = { ...prev };
+      if (count === null || count <= 0) {
+        delete next[lineId];
+      } else {
+        next[lineId] = count;
+      }
+      return next;
+    });
+  };
+
   const approveMutation = useMutation({
     mutationFn: async ({ importAll }: { importAll: boolean }) => {
       const payload: Record<string, unknown> = {
@@ -252,6 +267,9 @@ export default function OrderGuideReview() {
       };
       if (Object.keys(unitOverrides).length > 0) {
         payload.unitOverrides = unitOverrides;
+      }
+      if (Object.keys(countOverrides).length > 0) {
+        payload.countOverrides = countOverrides;
       }
       return apiRequest('POST', `/api/order-guides/${orderGuideId}/approve`, payload);
     },
@@ -610,7 +628,7 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={reviewData.lines.matched} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} containerRef={matchedTableRef} showUnitSelector={false} />
+              <OrderGuideTable lines={reviewData.lines.matched} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} containerRef={matchedTableRef} showUnitSelector={false} countOverrides={countOverrides} onCountOverride={handleCountOverride} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -648,7 +666,7 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={reviewData.lines.ambiguous} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence containerRef={ambiguousTableRef} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} />
+              <OrderGuideTable lines={reviewData.lines.ambiguous} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence containerRef={ambiguousTableRef} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -668,7 +686,7 @@ export default function OrderGuideReview() {
               </div>
             </CardHeader>
             <CardContent>
-              <OrderGuideTable lines={reviewData.lines.new} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} />
+              <OrderGuideTable lines={reviewData.lines.new} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -762,10 +780,11 @@ const UNIT_OPTIONS: { value: string; label: string }[] = [
  * Derive unit price from a case price — mirrors deriveUnitPrice() on the server.
  * Uses the matched inventory item's unit when available; falls back to the CSV UOM.
  * When overrideUnitName is provided it takes highest priority over all other sources.
+ * When countOverride is provided it is used as the outer count divisor (for the "each" family).
  */
-function deriveDisplayUnitPrice(line: OrderGuideLine, overrideUnitName?: string): { unitPrice: number; unitLabel: string } | null {
+function deriveDisplayUnitPrice(line: OrderGuideLine, overrideUnitName?: string, countOverride?: number): { unitPrice: number; unitLabel: string } | null {
   if (!line.price || line.price <= 0) return null;
-  const outerCount = Math.max(line.caseSize ?? 1, 1);
+  const outerCount = countOverride && countOverride > 0 ? countOverride : Math.max(line.caseSize ?? 1, 1);
   const innerSize  = Math.max(line.innerPack ?? 1, 1);
   const packUom    = (line.uom ?? '').toLowerCase().trim();
 
@@ -813,6 +832,8 @@ function OrderGuideTable({
   showUnitSelector = false,
   unitOverrides,
   onUnitChange,
+  countOverrides,
+  onCountOverride,
 }: {
   lines: OrderGuideLine[];
   selectedLineIds: Set<string>;
@@ -822,6 +843,8 @@ function OrderGuideTable({
   showUnitSelector?: boolean;
   unitOverrides?: Record<string, string>;
   onUnitChange?: (lineId: string, unit: string) => void;
+  countOverrides?: Record<string, number>;
+  onCountOverride?: (lineId: string, count: number | null) => void;
 }) {
   if (lines.length === 0) {
     return <div className="text-center py-8 text-muted-foreground">No items in this category</div>;
@@ -847,8 +870,18 @@ function OrderGuideTable({
             const canOverrideUnit = showUnitSelector && isNewOrAmbiguous;
             const overrideUnit = canOverrideUnit ? (unitOverrides?.[line.id] ?? UNIT_AUTO_SENTINEL) : undefined;
             const effectiveOverride = (overrideUnit && overrideUnit !== UNIT_AUTO_SENTINEL) ? overrideUnit : undefined;
-            const derived = deriveDisplayUnitPrice(line, effectiveOverride);
+            const activeCountOverride = countOverrides?.[line.id];
+            const derived = deriveDisplayUnitPrice(line, effectiveOverride, activeCountOverride);
             const isUnusual = derived ? (derived.unitPrice < 0.05 || derived.unitPrice > 200) : false;
+
+            // Name count hint: show when the product name suggests a count that differs from caseSize
+            // and the reviewer has not already accepted or dismissed it
+            const nameCountDiffersFromCase =
+              line.nameCount != null &&
+              line.nameCount > 0 &&
+              line.nameCount !== (line.caseSize ?? 0);
+            const showNameCountHint = nameCountDiffersFromCase && !activeCountOverride;
+            const showNameCountUsing = !!activeCountOverride && activeCountOverride === line.nameCount;
 
             return (
               <TableRow key={line.id} data-testid={`row-product-${line.id}`}>
@@ -886,59 +919,105 @@ function OrderGuideTable({
                   {!derived ? (
                     <span className="text-muted-foreground">-</span>
                   ) : canOverrideUnit ? (
-                    <div className="flex items-center gap-1.5">
-                      <span className={isUnusual ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
-                        ${derived.unitPrice.toFixed(4)}&nbsp;/
-                      </span>
-                      <Select
-                        value={overrideUnit}
-                        onValueChange={(val) => onUnitChange?.(line.id, val)}
-                      >
-                        <SelectTrigger
-                          className="h-7 w-24 text-xs px-2"
-                          data-testid={`select-unit-${line.id}`}
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className={isUnusual ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                          ${derived.unitPrice.toFixed(4)}&nbsp;/
+                        </span>
+                        <Select
+                          value={overrideUnit}
+                          onValueChange={(val) => onUnitChange?.(line.id, val)}
                         >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {UNIT_OPTIONS.map(opt => (
-                            <SelectItem key={opt.value || '__auto__'} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {isUnusual && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <AlertTriangle
-                              className="h-4 w-4 text-amber-500 shrink-0 cursor-default"
-                              data-testid={`icon-unusual-unit-price-${line.id}`}
-                            />
-                          </TooltipTrigger>
-                          <TooltipContent side="top">
-                            <p>Unit price looks unusual — verify pack size and unit before committing</p>
-                          </TooltipContent>
-                        </Tooltip>
+                          <SelectTrigger
+                            className="h-7 w-24 text-xs px-2"
+                            data-testid={`select-unit-${line.id}`}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {UNIT_OPTIONS.map(opt => (
+                              <SelectItem key={opt.value || '__auto__'} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {isUnusual && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertTriangle
+                                className="h-4 w-4 text-amber-500 shrink-0 cursor-default"
+                                data-testid={`icon-unusual-unit-price-${line.id}`}
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p>Unit price looks unusual — verify pack size and unit before committing</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                      {showNameCountHint && (
+                        <button
+                          className="text-left text-xs text-amber-600 dark:text-amber-400 underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300"
+                          onClick={() => onCountOverride?.(line.id, line.nameCount!)}
+                          data-testid={`button-use-name-count-${line.id}`}
+                        >
+                          Name says {line.nameCount} — use that?
+                        </button>
+                      )}
+                      {showNameCountUsing && (
+                        <div className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
+                          <span>Using {activeCountOverride}</span>
+                          <button
+                            className="underline underline-offset-2 hover:opacity-70"
+                            onClick={() => onCountOverride?.(line.id, null)}
+                            data-testid={`button-undo-count-override-${line.id}`}
+                          >
+                            undo
+                          </button>
+                        </div>
                       )}
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1.5">
-                      <span className={isUnusual ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
-                        ${derived.unitPrice.toFixed(4)}&nbsp;/&nbsp;{derived.unitLabel}
-                      </span>
-                      {isUnusual && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <AlertTriangle
-                              className="h-4 w-4 text-amber-500 shrink-0 cursor-default"
-                              data-testid={`icon-unusual-unit-price-${line.id}`}
-                            />
-                          </TooltipTrigger>
-                          <TooltipContent side="top">
-                            <p>Unit price looks unusual — verify pack size and unit before committing</p>
-                          </TooltipContent>
-                        </Tooltip>
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className={isUnusual ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                          ${derived.unitPrice.toFixed(4)}&nbsp;/&nbsp;{derived.unitLabel}
+                        </span>
+                        {isUnusual && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertTriangle
+                                className="h-4 w-4 text-amber-500 shrink-0 cursor-default"
+                                data-testid={`icon-unusual-unit-price-${line.id}`}
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p>Unit price looks unusual — verify pack size and unit before committing</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                      {showNameCountHint && (
+                        <button
+                          className="text-left text-xs text-amber-600 dark:text-amber-400 underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300"
+                          onClick={() => onCountOverride?.(line.id, line.nameCount!)}
+                          data-testid={`button-use-name-count-${line.id}`}
+                        >
+                          Name says {line.nameCount} — use that?
+                        </button>
+                      )}
+                      {showNameCountUsing && (
+                        <div className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
+                          <span>Using {activeCountOverride}</span>
+                          <button
+                            className="underline underline-offset-2 hover:opacity-70"
+                            onClick={() => onCountOverride?.(line.id, null)}
+                            data-testid={`button-undo-count-override-${line.id}`}
+                          >
+                            undo
+                          </button>
+                        </div>
                       )}
                     </div>
                   )}
