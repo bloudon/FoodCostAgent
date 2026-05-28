@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { SortableTableHead, useTableSort, sortData } from "@/components/sortable-table-head";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin, ScanLine } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin, ScanLine, TriangleAlert } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -123,6 +123,11 @@ export default function Vendors() {
   });
 
   // Fetch store assignments for each vendor
+  const { data: warningCounts } = useQuery<Record<string, { warningCount: number; orderGuideId: string }>>({
+    queryKey: ["/api/order-guides/warning-counts"],
+    staleTime: 60_000,
+  });
+
   const { data: vendorStoreAssignments } = useQuery<Record<string, VendorStoreAssignment[]>>({
     queryKey: ["/api/vendor-store-assignments", vendors?.map(v => v.id).join(",")],
     queryFn: async () => {
@@ -654,16 +659,34 @@ export default function Vendors() {
                       </Badge>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
-                      {vendor.orderGuideType === "electronic" ? (
-                        <Badge variant="outline" className="gap-1" data-testid={`badge-order-guide-${vendor.id}`}>
-                          <Zap className="h-3 w-3" />
-                          Electronic
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" data-testid={`badge-order-guide-${vendor.id}`}>
-                          Manual
-                        </Badge>
-                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {vendor.orderGuideType === "electronic" ? (
+                          <Badge variant="outline" className="gap-1" data-testid={`badge-order-guide-${vendor.id}`}>
+                            <Zap className="h-3 w-3" />
+                            Electronic
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" data-testid={`badge-order-guide-${vendor.id}`}>
+                            Manual
+                          </Badge>
+                        )}
+                        {warningCounts?.[vendor.id] && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge
+                                variant="outline"
+                                className="gap-1 cursor-pointer border-amber-500 text-amber-600 dark:text-amber-400"
+                                onClick={() => setLocation(`/order-guides/${warningCounts[vendor.id].orderGuideId}/review`)}
+                                data-testid={`badge-pack-size-warnings-${vendor.id}`}
+                              >
+                                <TriangleAlert className="h-3 w-3" />
+                                {warningCounts[vendor.id].warningCount} {warningCounts[vendor.id].warningCount === 1 ? "warning" : "warnings"}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>Pack-size warnings detected — click to review</TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell" data-testid={`text-delivery-days-${vendor.id}`}>
                       {vendor.deliveryDays && vendor.deliveryDays.length > 0 

@@ -5171,6 +5171,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/order-guides/warning-counts
+  // Returns warning counts per vendorId for all pending_review order guides in the company.
+  // Response: Record<vendorId, { warningCount: number; orderGuideId: string }>
+  app.get("/api/order-guides/warning-counts", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { extractNameCount, hasNameCountSuspiciousRatio } = await import('./services/orderGuideProcessor');
+
+      // Fetch all pending_review order guides for this company that have a vendorId
+      const pendingGuides = await db
+        .select()
+        .from(orderGuides)
+        .where(and(
+          eq(orderGuides.companyId, companyId),
+          eq(orderGuides.status, 'pending_review'),
+        ));
+
+      const result: Record<string, { warningCount: number; orderGuideId: string }> = {};
+
+      for (const guide of pendingGuides) {
+        if (!guide.vendorId) continue;
+
+        const lines = await storage.getOrderGuideLines(guide.id);
+        const warningCount = lines.filter(l =>
+          hasNameCountSuspiciousRatio(extractNameCount(l.productName), l.caseSize)
+        ).length;
+
+        if (warningCount > 0) {
+          // Keep the guide with the most warnings if multiple pending guides share a vendor
+          const existing = result[guide.vendorId];
+          if (!existing || warningCount > existing.warningCount) {
+            result[guide.vendorId] = { warningCount, orderGuideId: guide.id };
+          }
+        }
+      }
+
+      return res.json(result);
+    } catch (error: any) {
+      console.error('[Order Guide Warning Counts Error]', error);
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
   /**
    * @swagger
    * /api/order-guides/{id}/review:
