@@ -23,66 +23,11 @@
  * Mocking pattern mirrors tests/order-guide-pack-size-mismatch.spec.ts.
  */
 
-import { test, expect, type Page } from './test-helpers';
+import { test, expect, mockReviewPageShell } from './test-helpers';
 
 const BASE_URL   = 'http://localhost:5000';
 const TEST_EMAIL = 'admin@brians.pizza';
 const FAKE_OG_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
-
-// ---------------------------------------------------------------------------
-// Shared mock helpers
-// ---------------------------------------------------------------------------
-
-async function mockReviewPageShell(page: Page): Promise<void> {
-  await page.route('**/api/auth/me', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        id: 'test-user-id',
-        email: TEST_EMAIL,
-        companyId: 'test-company-id',
-        companyName: "Brian's Pizza",
-        role: 'company_admin',
-        firstName: 'Test',
-        lastName: 'User',
-        active: 1,
-        subscriptionTier: 'pro',
-      }),
-    }),
-  );
-
-  await page.route('**/api/stores', (route) => {
-    if (!route.request().url().includes('/api/stores/')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([{ id: 'store-1', name: "Brian's Main" }]),
-      });
-    }
-    return route.continue();
-  });
-
-  await page.route('**/api/onboarding/milestones', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ dismissed: true, milestones: [] }),
-    }),
-  );
-
-  await page.route('**/api/categories', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
-  );
-
-  await page.route('**/api/vendors', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify([{ id: 'vendor-1', name: 'Sysco' }]),
-    }),
-  );
-}
 
 interface LineSeed {
   id: string;
