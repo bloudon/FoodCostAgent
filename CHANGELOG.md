@@ -2,6 +2,19 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.8.0] — 2026-05-27
+
+### Order Guide & Pricing Accuracy
+
+- **Unit-aware case price math** — order guide import now correctly derives the per-unit cost based on each item's inventory unit. "Each" items (pretzels, portions) divide by outer count only; weight-based items convert oz packs to lbs before dividing. Fixes cases where a 12-count pretzel case at $40.53 was being priced at $0.34/oz instead of $3.38/ea.
+- **Unit override selector on the review screen** — new and ambiguous rows now include a compact unit selector (Auto / ea / lb / oz / gal / qt / liter / fl oz) directly in the Unit Price column. Changing it live-recalculates the price and the selected unit is applied when the import is committed.
+- **Case price column corrected** — the old "Est. Case Price" column (which incorrectly multiplied price × caseSize × innerPack) is replaced with a "Case Price" column showing the raw CSV price and a "Unit Price" column showing the correctly derived per-unit cost with an amber flag when the value looks unusual.
+- **Vendor detail page** — unit price column now shows the inventory base unit label (e.g. "$3.3775 / ea") instead of the purchase unit name ("/ Case"), and uses 4-decimal precision to match the import review screen.
+- **Receipt entry** — applying a receipt now uses the same `deriveUnitPrice` logic as the order guide processor, so each-based and weight-based items get the correct unit price written back to their vendor item record.
+- **Manual vendor item form** — the unit price preview shown while adding or editing a vendor item now includes the inventory item's base unit label so it matches what's displayed after saving.
+
+---
+
 ## [1.7.0] — 2026-05-24
 
 ### Vendor & Order Guide Importing
