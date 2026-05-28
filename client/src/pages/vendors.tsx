@@ -1117,6 +1117,22 @@ export default function Vendors() {
                   ))}
                 </SelectContent>
               </Select>
+              {vendors !== undefined && vendors.filter(v => v.active === 1).length === 0 && (
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  No vendors yet.{" "}
+                  <button
+                    type="button"
+                    className="text-primary underline underline-offset-2 hover:opacity-75"
+                    data-testid="link-add-vendor-from-import"
+                    onClick={() => {
+                      setIsImportDialogOpen(false);
+                      setIsDialogOpen(true);
+                    }}
+                  >
+                    Add a vendor first
+                  </button>
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

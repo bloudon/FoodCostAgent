@@ -1301,23 +1301,33 @@ export function VendorsOrderGuidesStep({ onComplete }: { onComplete: () => void 
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Select Vendor</label>
-              {vendors && vendors.length > 0 ? (
-                <Select value={selectedVendorForImport} onValueChange={setSelectedVendorForImport}>
-                  <SelectTrigger data-testid="select-vendor-import">
-                    <SelectValue placeholder="Choose a vendor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {vendors.filter(v => v.active === 1).map(vendor => (
-                      <SelectItem key={vendor.id} value={vendor.id}>
-                        {vendor.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <div className="text-sm text-muted-foreground p-3 bg-muted rounded-md">
-                  No vendors added yet. Please add a vendor first using the "Add Vendor" button.
-                </div>
+              <Select value={selectedVendorForImport} onValueChange={setSelectedVendorForImport}>
+                <SelectTrigger data-testid="select-vendor-import">
+                  <SelectValue placeholder="Choose a vendor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {vendors?.filter(v => v.active === 1).map(vendor => (
+                    <SelectItem key={vendor.id} value={vendor.id}>
+                      {vendor.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {vendors !== undefined && vendors.filter(v => v.active === 1).length === 0 && (
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  No vendors yet.{" "}
+                  <button
+                    type="button"
+                    className="text-primary underline underline-offset-2 hover:opacity-75"
+                    data-testid="link-add-vendor-from-import"
+                    onClick={() => {
+                      setIsImportDialogOpen(false);
+                      setIsVendorDialogOpen(true);
+                    }}
+                  >
+                    Add a vendor first
+                  </button>
+                </p>
               )}
             </div>
 
