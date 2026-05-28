@@ -727,3 +727,163 @@ describe('compound pack string already provides inner-pack — weight column ski
     expect(p.unit).toBe('LB');
   });
 });
+
+// ─── extractNameCount — new pattern coverage ──────────────────────────────────
+
+import { extractNameCount, hasNameCountSuspiciousRatio } from '../../services/orderGuideProcessor';
+
+describe('extractNameCount — weight-based suffix patterns', () => {
+  it('extracts count from "16 oz" suffix', () => {
+    expect(extractNameCount('Ribeye Steak 16 oz')).toBe(16);
+  });
+
+  it('extracts count from "16 OZ" (uppercase)', () => {
+    expect(extractNameCount('Sirloin 16 OZ')).toBe(16);
+  });
+
+  it('extracts count from "8 oz." (with trailing period)', () => {
+    expect(extractNameCount('Chicken Breast 8 oz.')).toBe(8);
+  });
+
+  it('extracts count from "5 lb" suffix', () => {
+    expect(extractNameCount('Ground Beef 5 lb')).toBe(5);
+  });
+
+  it('extracts count from "5 lb bag"', () => {
+    expect(extractNameCount('Butter 5 lb bag')).toBe(5);
+  });
+
+  it('extracts count from "5 LB" (uppercase)', () => {
+    expect(extractNameCount('Pork Shoulder 5 LB')).toBe(5);
+  });
+
+  it('extracts count from "5 lbs" (plural)', () => {
+    expect(extractNameCount('Flour 5 lbs')).toBe(5);
+  });
+
+  it('extracts count from "10 pound" (full word)', () => {
+    expect(extractNameCount('Salmon Fillet 10 pound')).toBe(10);
+  });
+
+  it('extracts count from "500 g" (gram abbreviation)', () => {
+    expect(extractNameCount('Yogurt Cup 500 g')).toBe(500);
+  });
+
+  it('extracts count from "250 grams" (full word plural)', () => {
+    expect(extractNameCount('Cheese Wedge 250 grams')).toBe(250);
+  });
+
+  it('extracts count from "100 gram" (full word singular)', () => {
+    expect(extractNameCount('Smoked Salmon 100 gram')).toBe(100);
+  });
+
+  it('extracts count from "16 ounces" (full word plural)', () => {
+    expect(extractNameCount('Cream Cheese 16 ounces')).toBe(16);
+  });
+
+  it('extracts count from "32 fl oz" (fluid ounce)', () => {
+    expect(extractNameCount('Orange Juice 32 fl oz')).toBe(32);
+  });
+
+  it('extracts count from "32 FL OZ" (uppercase fluid ounce)', () => {
+    expect(extractNameCount('Apple Cider 32 FL OZ')).toBe(32);
+  });
+});
+
+describe('extractNameCount — "Box/Pack/Bag/Tray of N" patterns', () => {
+  it('extracts count from "Box of 12"', () => {
+    expect(extractNameCount('Dinner Rolls Box of 12')).toBe(12);
+  });
+
+  it('extracts count from "Pack of 24"', () => {
+    expect(extractNameCount('Water Bottles Pack of 24')).toBe(24);
+  });
+
+  it('extracts count from "Bag of 6"', () => {
+    expect(extractNameCount('Pretzel Buns Bag of 6')).toBe(6);
+  });
+
+  it('extracts count from "Tray of 48"', () => {
+    expect(extractNameCount('Mini Muffins Tray of 48')).toBe(48);
+  });
+
+  it('extracts count from "BOX OF 12" (uppercase)', () => {
+    expect(extractNameCount('Croissants BOX OF 12')).toBe(12);
+  });
+
+  it('returns null for "Box of 1" (count ≤ 1 is filtered)', () => {
+    expect(extractNameCount('Sample Box of 1')).toBeNull();
+  });
+});
+
+describe('extractNameCount — legacy count-unit patterns still work', () => {
+  it('still extracts from "16 Slices"', () => {
+    expect(extractNameCount('Cheesecake Strawberry Swirl 16 Slices Frozen')).toBe(16);
+  });
+
+  it('still extracts from "12 CT"', () => {
+    expect(extractNameCount('Burger Buns 12 CT')).toBe(12);
+  });
+
+  it('still extracts from "24 Pcs"', () => {
+    expect(extractNameCount('Dinner Rolls 24 Pcs')).toBe(24);
+  });
+
+  it('returns null for a plain product name with no hint', () => {
+    expect(extractNameCount('Fresh Atlantic Salmon')).toBeNull();
+  });
+
+  it('returns null for count ≤ 1', () => {
+    expect(extractNameCount('Single Serve 1 oz')).toBeNull();
+  });
+
+  it('returns null for null input', () => {
+    expect(extractNameCount(null)).toBeNull();
+  });
+
+  it('returns null for empty string', () => {
+    expect(extractNameCount('')).toBeNull();
+  });
+});
+
+describe('hasNameCountSuspiciousRatio — >5× detection', () => {
+  it('flags nameCount=16, caseSize=2 (ratio=8, suspicious)', () => {
+    expect(hasNameCountSuspiciousRatio(16, 2)).toBe(true);
+  });
+
+  it('flags nameCount=500, caseSize=24 (ratio≈20.8, suspicious)', () => {
+    expect(hasNameCountSuspiciousRatio(500, 24)).toBe(true);
+  });
+
+  it('does NOT flag nameCount=16, caseSize=12 (ratio≈1.33, fine)', () => {
+    expect(hasNameCountSuspiciousRatio(16, 12)).toBe(false);
+  });
+
+  it('does NOT flag nameCount=24, caseSize=24 (ratio=1, identical)', () => {
+    expect(hasNameCountSuspiciousRatio(24, 24)).toBe(false);
+  });
+
+  it('flags nameCount=2, caseSize=12 (ratio=6, suspicious)', () => {
+    expect(hasNameCountSuspiciousRatio(2, 12)).toBe(true);
+  });
+
+  it('returns false when nameCount is null', () => {
+    expect(hasNameCountSuspiciousRatio(null, 12)).toBe(false);
+  });
+
+  it('returns false when caseSize is null', () => {
+    expect(hasNameCountSuspiciousRatio(16, null)).toBe(false);
+  });
+
+  it('returns false when caseSize is 0', () => {
+    expect(hasNameCountSuspiciousRatio(16, 0)).toBe(false);
+  });
+
+  it('boundary: ratio exactly 5 is NOT flagged (must be strictly >5)', () => {
+    expect(hasNameCountSuspiciousRatio(10, 2)).toBe(false);
+  });
+
+  it('boundary: ratio of 5.1 IS flagged', () => {
+    expect(hasNameCountSuspiciousRatio(51, 10)).toBe(true);
+  });
+});

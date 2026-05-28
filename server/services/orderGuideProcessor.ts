@@ -13,20 +13,48 @@ import { sql, eq, inArray, and } from 'drizzle-orm';
 import { vendorItems } from '@shared/schema';
 
 /**
- * Regex to detect a count embedded in a product name, e.g.:
+ * Regex to detect a count or weight-per-unit hint embedded in a product name, e.g.:
  *   "Cheesecake Strawberry Swirl 16 Slices Frozen" → 16
  *   "Burger Buns 12 CT"                            → 12
  *   "Dinner Rolls 24 Pcs"                          → 24
+ *   "Ribeye Steak 16 oz"                           → 16
+ *   "Butter 5 lb bag"                              → 5
+ *   "Yogurt Cup 500 g"                             → 500
+ *   "Box of 12"                                    → 12
+ *   "Pack of 24"                                   → 24
+ *
+ * Two alternatives:
+ *   Alt 1 — number followed by a unit keyword (count or weight suffix)
+ *   Alt 2 — "box/pack/bag/tray of N" (number captured in group 2)
+ *
  * Returns the extracted count, or null when nothing matches / count ≤ 1.
  */
-const NAME_COUNT_REGEX = /\b(\d+)\s*-?\s*(slices?|cts?\.?|counts?|pcs?|pks?|pieces?|portions?|servings?)\b/i;
+const NAME_COUNT_REGEX =
+  /\b(\d+)\s*-?\s*(?:slices?|cts?\.?|counts?|pcs?|pks?|pieces?|portions?|servings?|fl\.?\s*oz\.?|oz\.?|ounces?|lbs?\.?|pounds?|grams?|g)\b|\b(?:box|pack|bag|tray)\s+of\s+(\d+)\b/i;
 
-function extractNameCount(productName: string | null | undefined): number | null {
+export function extractNameCount(productName: string | null | undefined): number | null {
   if (!productName) return null;
   const match = productName.match(NAME_COUNT_REGEX);
   if (!match) return null;
-  const n = parseInt(match[1], 10);
+  // Alt 1 puts count in group 1; Alt 2 ("box/pack of N") puts count in group 2
+  const raw = match[1] ?? match[2];
+  const n = parseInt(raw, 10);
   return isNaN(n) || n <= 1 ? null : n;
+}
+
+/**
+ * Returns true when the count hint embedded in a product name differs from the
+ * vendor's CSV case-size by more than 5×.  At that magnitude it is almost
+ * certainly a mismatch (e.g. the name encodes individual oz while the CSV
+ * case-size column shows the count of items in the case).
+ */
+export function hasNameCountSuspiciousRatio(
+  nameCount: number | null | undefined,
+  caseSize: number | null | undefined,
+): boolean {
+  if (!nameCount || !caseSize || caseSize <= 0) return false;
+  const ratio = Math.max(nameCount / caseSize, caseSize / nameCount);
+  return ratio > 5;
 }
 
 interface OrderGuideUploadResult {

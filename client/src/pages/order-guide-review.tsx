@@ -378,6 +378,17 @@ export default function OrderGuideReview() {
     : 0;
   const matchedMismatchCount = reviewData.lines.matched.filter(hasPackSizeMismatch).length;
   const ambiguousMismatchCount = reviewData.lines.ambiguous.filter(hasPackSizeMismatch).length;
+
+  // Count lines per tab where the name-count hint and the CSV case-size differ by more than 5×.
+  // At that magnitude the column values are almost certainly not the same thing (e.g. the name
+  // encodes individual oz while the CSV case-size shows the number of items in the case).
+  function hasSuspiciousNameCountRatio(line: OrderGuideLine): boolean {
+    if (!line.nameCount || !line.caseSize || line.caseSize <= 0) return false;
+    return Math.max(line.nameCount / line.caseSize, line.caseSize / line.nameCount) > 5;
+  }
+  const matchedSuspiciousCount = reviewData.lines.matched.filter(hasSuspiciousNameCountRatio).length;
+  const ambiguousSuspiciousCount = reviewData.lines.ambiguous.filter(hasSuspiciousNameCountRatio).length;
+  const newSuspiciousCount = reviewData.lines.new.filter(hasSuspiciousNameCountRatio).length;
   const selectedCount = selectedLineIds.size;
   const newSelectedCount = reviewData.lines.new.filter(l => selectedLineIds.has(l.id)).length;
   const isImageScan = reviewData.guide.source === 'image_scan';
@@ -628,6 +639,18 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
+              {matchedSuspiciousCount > 0 && (
+                <div
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+                  data-testid="banner-matched-name-count-suspicious"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                  <span>
+                    <span className="font-medium">{matchedSuspiciousCount} {matchedSuspiciousCount === 1 ? 'item has' : 'items have'} a name-count that differs from the CSV pack size by more than 5×</span>
+                    {' '}— the unit embedded in the product name may not match the case count. Check the "Name says…" hints on affected rows.
+                  </span>
+                </div>
+              )}
               <OrderGuideTable lines={reviewData.lines.matched} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} containerRef={matchedTableRef} showUnitSelector={false} countOverrides={countOverrides} onCountOverride={handleCountOverride} />
             </CardContent>
           </Card>
@@ -666,6 +689,18 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
+              {ambiguousSuspiciousCount > 0 && (
+                <div
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+                  data-testid="banner-ambiguous-name-count-suspicious"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                  <span>
+                    <span className="font-medium">{ambiguousSuspiciousCount} {ambiguousSuspiciousCount === 1 ? 'item has' : 'items have'} a name-count that differs from the CSV pack size by more than 5×</span>
+                    {' '}— the unit embedded in the product name may not match the case count. Check the "Name says…" hints on affected rows.
+                  </span>
+                </div>
+              )}
               <OrderGuideTable lines={reviewData.lines.ambiguous} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence containerRef={ambiguousTableRef} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} />
             </CardContent>
           </Card>
@@ -685,7 +720,19 @@ export default function OrderGuideReview() {
                 <Button variant="outline" size="sm" onClick={() => deselectAllInCategory(reviewData.lines.new)} data-testid="button-deselect-all-new">Deselect All</Button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              {newSuspiciousCount > 0 && (
+                <div
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+                  data-testid="banner-new-name-count-suspicious"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                  <span>
+                    <span className="font-medium">{newSuspiciousCount} {newSuspiciousCount === 1 ? 'item has' : 'items have'} a name-count that differs from the CSV pack size by more than 5×</span>
+                    {' '}— the unit embedded in the product name may not match the case count. Check the "Name says…" hints on affected rows.
+                  </span>
+                </div>
+              )}
               <OrderGuideTable lines={reviewData.lines.new} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} />
             </CardContent>
           </Card>
