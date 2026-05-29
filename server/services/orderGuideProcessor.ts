@@ -8,6 +8,7 @@ import type {
   InsertOrderGuideLine,
 } from '@shared/schema';
 import { autoSeedRecipeUnitsForItem } from '../lib/recipeUnits';
+import { isBottleOrCanWithFluidOz } from '@shared/orderGuideUtils';
 import { db } from '../db';
 import { sql, eq, inArray, and } from 'drizzle-orm';
 import { vendorItems } from '@shared/schema';
@@ -86,25 +87,6 @@ interface OrderGuideUploadResult {
  *
  *   anything else  → divide by outerCount × innerSize (safe default)
  */
-/**
- * Returns true when the product name clearly describes individual bottles or
- * cans AND the pack UOM is a fluid/volume unit (oz, fl oz).
- *
- * In that scenario a pack string like "24 × 12 OZ" means 24 containers of
- * 12 oz each, so the correct inventory unit is "each" (price per bottle/can),
- * not "oz" (which would produce a per-ounce price that is ~24× too low).
- */
-export function isBottleOrCanWithFluidOz(
-  productName: string | null,
-  packUom: string | null,
-): boolean {
-  const name = (productName ?? '').toLowerCase();
-  const uom  = (packUom ?? '').toLowerCase().trim();
-  const hasBottleOrCan = /\b(bottle|bottles|can|cans)\b/.test(name);
-  const hasFluidOzUom  = ['oz', 'ounce', 'ounces', 'fl oz', 'fluid ounce', 'fluid ounces'].includes(uom);
-  return hasBottleOrCan && hasFluidOzUom;
-}
-
 export function deriveUnitPrice(
   casePrice: number,
   outerCount: number,         // caseSize  (number of outer items in the case)

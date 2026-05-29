@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractNameCount } from './orderGuideProcessor';
+import { isBottleOrCanWithFluidOz } from '../../shared/orderGuideUtils';
 
 /**
  * Unit tests for extractNameCount().
@@ -112,5 +113,93 @@ describe('extractNameCount — edge cases', () => {
 
   it('count embedded mid-name → correctly extracted', () => {
     expect(extractNameCount('Frozen Pizza 8 Slices Pepperoni')).toBe(8);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isBottleOrCanWithFluidOz
+// ---------------------------------------------------------------------------
+
+describe('isBottleOrCanWithFluidOz — positive (should return true)', () => {
+  it('"Soda Root Beer Plastic Bottle" + "OZ" → true', () => {
+    expect(isBottleOrCanWithFluidOz('Soda Root Beer Plastic Bottle', 'OZ')).toBe(true);
+  });
+
+  it('"Soda Root Beer 12 Ounce Can Fridge Pack" + "oz" → true', () => {
+    expect(isBottleOrCanWithFluidOz('Soda Root Beer 12 Ounce Can Fridge Pack', 'oz')).toBe(true);
+  });
+
+  it('"Water Bottles 24pk" + "oz" → true (plural "bottles")', () => {
+    expect(isBottleOrCanWithFluidOz('Water Bottles 24pk', 'oz')).toBe(true);
+  });
+
+  it('"Beer Cans Variety Pack" + "oz" → true (plural "cans")', () => {
+    expect(isBottleOrCanWithFluidOz('Beer Cans Variety Pack', 'oz')).toBe(true);
+  });
+
+  it('normalises "fl. oz." → matches', () => {
+    expect(isBottleOrCanWithFluidOz('Juice Bottle', 'fl. oz.')).toBe(true);
+  });
+
+  it('normalises "fl. oz" → matches', () => {
+    expect(isBottleOrCanWithFluidOz('Juice Bottle', 'fl. oz')).toBe(true);
+  });
+
+  it('normalises "floz" (no space) → matches', () => {
+    expect(isBottleOrCanWithFluidOz('Juice Bottle', 'floz')).toBe(true);
+  });
+
+  it('normalises "oz." (trailing period) → matches', () => {
+    expect(isBottleOrCanWithFluidOz('Soda Bottle', 'oz.')).toBe(true);
+  });
+
+  it('normalises "OUNCE" (uppercase) → matches', () => {
+    expect(isBottleOrCanWithFluidOz('Sparkling Water Bottle', 'OUNCE')).toBe(true);
+  });
+
+  it('normalises "FL OZ" (uppercase, no period) → matches', () => {
+    expect(isBottleOrCanWithFluidOz('Juice Can', 'FL OZ')).toBe(true);
+  });
+});
+
+describe('isBottleOrCanWithFluidOz — negative (should return false)', () => {
+  it('no bottle/can keyword → false', () => {
+    expect(isBottleOrCanWithFluidOz('Chicken Wings 24 oz', 'oz')).toBe(false);
+  });
+
+  it('"canola oil" — "can" is not a whole word → false', () => {
+    expect(isBottleOrCanWithFluidOz('Canola Oil', 'oz')).toBe(false);
+  });
+
+  it('"pelican" — "can" is not a whole word → false', () => {
+    expect(isBottleOrCanWithFluidOz('Pelican Seafood Mix', 'oz')).toBe(false);
+  });
+
+  it('"canonical" — "can" is not a whole word → false', () => {
+    expect(isBottleOrCanWithFluidOz('Canonical Brand Sauce', 'oz')).toBe(false);
+  });
+
+  it('bottle keyword present but UOM is LB (not fluid oz) → false', () => {
+    expect(isBottleOrCanWithFluidOz('BBQ Sauce Bottle', 'LB')).toBe(false);
+  });
+
+  it('bottle keyword present but UOM is EA → false', () => {
+    expect(isBottleOrCanWithFluidOz('Water Bottle', 'EA')).toBe(false);
+  });
+
+  it('null product name → false', () => {
+    expect(isBottleOrCanWithFluidOz(null, 'oz')).toBe(false);
+  });
+
+  it('null UOM → false', () => {
+    expect(isBottleOrCanWithFluidOz('Soda Bottle', null)).toBe(false);
+  });
+
+  it('both null → false', () => {
+    expect(isBottleOrCanWithFluidOz(null, null)).toBe(false);
+  });
+
+  it('empty strings → false', () => {
+    expect(isBottleOrCanWithFluidOz('', '')).toBe(false);
   });
 });
