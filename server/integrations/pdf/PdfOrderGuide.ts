@@ -22,8 +22,10 @@ export interface PdfParseResult {
  * All pages are extracted in a single pass — no page-by-page looping needed.
  */
 export async function parsePdfOrderGuide(pdfBuffer: Buffer): Promise<PdfParseResult> {
-  const m = await import('pdf-parse');
-  const pdfParse = (m.default ?? m) as typeof m.default;
+  const { createRequire } = await import('module');
+  const require = createRequire(import.meta.url);
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pdfParse = require('pdf-parse') as (buf: Buffer, opts?: object) => Promise<{ text: string; numpages: number }>;
   const data = await pdfParse(pdfBuffer);
   const products = extractProductsFromText(data.text);
   return { products, pageCount: data.numpages };
