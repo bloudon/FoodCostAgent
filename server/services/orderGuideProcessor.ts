@@ -86,6 +86,25 @@ interface OrderGuideUploadResult {
  *
  *   anything else  → divide by outerCount × innerSize (safe default)
  */
+/**
+ * Returns true when the product name clearly describes individual bottles or
+ * cans AND the pack UOM is a fluid/volume unit (oz, fl oz).
+ *
+ * In that scenario a pack string like "24 × 12 OZ" means 24 containers of
+ * 12 oz each, so the correct inventory unit is "each" (price per bottle/can),
+ * not "oz" (which would produce a per-ounce price that is ~24× too low).
+ */
+export function isBottleOrCanWithFluidOz(
+  productName: string | null,
+  packUom: string | null,
+): boolean {
+  const name = (productName ?? '').toLowerCase();
+  const uom  = (packUom ?? '').toLowerCase().trim();
+  const hasBottleOrCan = /\b(bottle|bottles|can|cans)\b/.test(name);
+  const hasFluidOzUom  = ['oz', 'ounce', 'ounces', 'fl oz', 'fluid ounce', 'fluid ounces'].includes(uom);
+  return hasBottleOrCan && hasFluidOzUom;
+}
+
 export function deriveUnitPrice(
   casePrice: number,
   outerCount: number,         // caseSize  (number of outer items in the case)
@@ -831,6 +850,16 @@ export class OrderGuideProcessor {
         unitId = overrideUnit?.id ?? await this.mapVendorUnitToSystemUnit(line.uom, defaults);
         if (overrideUnit) {
           console.log(`[OrderGuide] Unit override applied for "${line.productName}": ${unitOverrideName} → id ${unitId}`);
+        }
+      } else if (isBottleOrCanWithFluidOz(line.productName, line.uom)) {
+        // Bottles and cans with an oz pack UOM (e.g. "24 × 12 OZ") should be
+        // priced per individual container ("each"), not per ounce.
+        const eachUnit = defaults.units.find((u: any) =>
+          u.name.toLowerCase() === 'each' || u.abbreviation?.toLowerCase() === 'ea'
+        );
+        unitId = eachUnit?.id ?? await this.mapVendorUnitToSystemUnit(line.uom, defaults);
+        if (eachUnit) {
+          console.log(`[OrderGuide] Bottle/can + oz pack detected for "${line.productName}": defaulting inventory unit to "each"`);
         }
       } else {
         unitId = await this.mapVendorUnitToSystemUnit(line.uom, defaults);

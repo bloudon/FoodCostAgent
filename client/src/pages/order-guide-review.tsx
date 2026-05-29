@@ -903,8 +903,19 @@ function deriveDisplayUnitPrice(line: OrderGuideLine, overrideUnitName?: string,
   const innerSize  = Math.max(line.innerPack ?? 1, 1);
   const packUom    = (line.uom ?? '').toLowerCase().trim();
 
-  // Priority: explicit override > matched inventory item unit > CSV UOM
-  const inventoryUnitName = (overrideUnitName ?? line.matchedInventoryItemUnitName ?? packUom).toLowerCase().trim();
+  // Auto-detect "each" for bottles/cans with an oz pack UOM when no higher-priority
+  // source supplies a unit. "24 × 12 OZ" on a "Can" or "Bottle" product means
+  // 24 individual containers — price per bottle, not per ounce.
+  const bottleCanAutoUnit = (() => {
+    if (overrideUnitName || line.matchedInventoryItemUnitName) return null;
+    const name = (line.productName ?? '').toLowerCase();
+    const hasBottleOrCan = /\b(bottle|bottles|can|cans)\b/.test(name);
+    const hasFluidOzUom  = ['oz', 'ounce', 'ounces', 'fl oz', 'fluid ounce', 'fluid ounces'].includes(packUom);
+    return hasBottleOrCan && hasFluidOzUom ? 'ea' : null;
+  })();
+
+  // Priority: explicit override > matched inventory item unit > bottle/can auto-detect > CSV UOM
+  const inventoryUnitName = (overrideUnitName ?? line.matchedInventoryItemUnitName ?? bottleCanAutoUnit ?? packUom).toLowerCase().trim();
 
   // "each" family
   if (['each', 'ea', 'piece', 'unit', 'count', 'ct'].includes(inventoryUnitName)) {
