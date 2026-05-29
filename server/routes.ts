@@ -3535,12 +3535,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const imageUpload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 },
+    limits: { fileSize: 20 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
-      if (file.mimetype.startsWith("image/")) {
+      if (file.mimetype.startsWith("image/") || file.mimetype === "application/pdf") {
         cb(null, true);
       } else {
-        cb(new Error("Only image files are allowed"));
+        cb(new Error("Only image files and PDFs are allowed"));
       }
     },
   });
@@ -5015,6 +5015,171 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error('[Vendor Receipt Scan Error]', error);
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * POST /api/order-guides/process-pdf
+   * Accepts an already-uploaded PDF objectPath, extracts all product data via text parsing
+   * (no AI Vision calls), runs it through ItemMatcher, and creates a pending_review order guide.
+   * All PDF pages are handled in a single pass — no page queuing needed.
+   * Returns the same FirstScanResult shape as /api/order-guides/scan-image.
+   */
+  app.post("/api/order-guides/process-pdf", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const storeId = (req as any).storeId;
+      const userId = (req as any).user?.id;
+
+      const bodySchema = z.object({
+        objectPath: z.string().min(1, "objectPath is required"),
+        vendorId: z.string().optional(),
+        storeIds: z.array(z.string()).optional(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+      const { objectPath, vendorId, storeIds } = parsed.data;
+
+      // Validate vendorId
+      let validatedVendorId: string | null = null;
+      if (vendorId) {
+        const vendor = await storage.getVendor(vendorId, companyId);
+        if (!vendor || vendor.companyId !== companyId) {
+          return res.status(403).json({ error: "Vendor not found or access denied." });
+        }
+        validatedVendorId = vendorId;
+      }
+
+      // Validate storeIds
+      let validatedStoreIds: string[] = [];
+      if (storeIds && storeIds.length > 0) {
+        const companyStoresList = await storage.getCompanyStores(companyId);
+        const companyStoreIds = new Set(companyStoresList.map((s: any) => s.id));
+        validatedStoreIds = storeIds.filter((id: string) => companyStoreIds.has(id));
+        if (validatedStoreIds.length === 0) {
+          return res.status(400).json({ error: "No valid stores found for your company in the provided storeIds." });
+        }
+      } else if (storeId) {
+        validatedStoreIds = [storeId];
+      }
+
+      // Read PDF buffer from storage (reuses the same helper as image scan)
+      const { buffer } = await readImageBuffer(objectPath, companyId, userId);
+
+      // Verify it's actually a PDF (magic bytes %PDF)
+      if (buffer.length < 4 || buffer[0] !== 0x25 || buffer[1] !== 0x50 || buffer[2] !== 0x44 || buffer[3] !== 0x46) {
+        return res.status(415).json({ error: "The uploaded file does not appear to be a valid PDF." });
+      }
+
+      // Extract products from PDF text
+      const { parsePdfOrderGuide } = await import('./integrations/pdf/PdfOrderGuide');
+      const { products, pageCount } = await parsePdfOrderGuide(buffer);
+
+      if (products.length === 0) {
+        return res.status(422).json({
+          error: "No product line items could be extracted from this PDF. Make sure it is a text-based (not scanned) catalog PDF.",
+        });
+      }
+
+      // Convert to VendorProduct[] shape
+      const vendorProducts = products.map((p, index) => ({
+        vendorSku: p.vendorSku || `pdf-${index + 1}`,
+        vendorProductName: p.productName,
+        description: undefined as string | undefined,
+        caseSizeRaw: undefined as string | undefined,
+        unit: undefined as string | undefined,
+        price: p.price ?? undefined,
+        priceSource: p.price != null ? ('case' as const) : undefined,
+        categoryCode: undefined as string | undefined,
+      }));
+
+      // Match products against inventory
+      const { ItemMatcher } = await import('./services/itemMatcher');
+      const matcher = new ItemMatcher(storage);
+
+      const pageLabel = pageCount > 1 ? ` (${pageCount} pages)` : '';
+      const guideFileName = `PDF Catalog${pageLabel} — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+      const effectiveStoreId = validatedStoreIds[0] || storeId;
+
+      const guideInsert = {
+        companyId,
+        vendorId: validatedVendorId,
+        vendorKey: 'generic' as const,
+        fileName: guideFileName,
+        rowCount: vendorProducts.length,
+        status: 'pending_review' as const,
+        source: 'pdf_import' as const,
+        detectedVendorName: null,
+      };
+
+      const createdGuide = await storage.createOrderGuide(guideInsert);
+
+      if (validatedStoreIds.length > 0) {
+        await storage.setOrderGuideStores(createdGuide.id, validatedStoreIds);
+      }
+
+      if (validatedVendorId) {
+        await storage.supersedePreviousOrderGuides(validatedVendorId, createdGuide.id);
+      }
+
+      const lines = [];
+      for (const product of vendorProducts) {
+        const match = await matcher.findBestMatch(product, companyId, effectiveStoreId);
+
+        let matchStatus: 'matched' | 'ambiguous' | 'new';
+        if (match.confidence === 'high') matchStatus = 'matched';
+        else if (match.confidence === 'medium' || match.confidence === 'low') matchStatus = 'ambiguous';
+        else matchStatus = 'new';
+
+        lines.push({
+          orderGuideId: createdGuide.id,
+          vendorSku: product.vendorSku,
+          productName: product.vendorProductName,
+          packSize: null,
+          uom: product.unit || null,
+          caseSize: null,
+          caseSizeRaw: product.caseSizeRaw || null,
+          innerPack: null,
+          innerPackRaw: null,
+          price: product.price ?? null,
+          priceSource: product.priceSource ?? null,
+          brandName: null,
+          category: product.categoryCode || null,
+          gtin: null,
+          matchStatus,
+          matchedInventoryItemId: match.inventoryItemId,
+          matchConfidence: Math.round(match.score * 100),
+          isVariableWeight: 0,
+        });
+      }
+
+      await storage.createOrderGuideLinesBatch(lines);
+
+      const stats = {
+        highConfidenceMatches: lines.filter(l => l.matchStatus === 'matched').length,
+        ambiguousMatches: lines.filter(l => l.matchStatus === 'ambiguous').length,
+        noMatches: lines.filter(l => l.matchStatus === 'new').length,
+      };
+
+      console.log(`[PDF Import] Extracted ${products.length} products from ${pageCount}-page PDF → orderGuide ${createdGuide.id}`);
+
+      return res.json({
+        orderGuideId: createdGuide.id,
+        totalItems: vendorProducts.length,
+        highConfidenceMatches: stats.highConfidenceMatches,
+        mediumConfidenceMatches: stats.ambiguousMatches,
+        lowConfidenceMatches: 0,
+        noMatches: stats.noMatches,
+        readyForReview: true,
+        detectedVendorId: null,
+        detectedVendorName: null,
+        pageCount,
+      });
+    } catch (error: any) {
+      console.error('[PDF Order Guide Import Error]', error);
       return res.status(500).json({ error: error.message });
     }
   });

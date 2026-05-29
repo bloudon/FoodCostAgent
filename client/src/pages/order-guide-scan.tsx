@@ -204,6 +204,55 @@ export default function OrderGuideScan() {
     return { lines: merged, breaks: newBreaks, pageCount: data.pageNumber };
   }, []);
 
+  const [isPdfProcessing, setIsPdfProcessing] = useState(false);
+
+  // Step 1 → PDF catalog import (text extraction, no AI Vision)
+  const processPdfMutation = useMutation({
+    mutationFn: async (objectPath: string) => {
+      const res = await apiRequest('POST', '/api/order-guides/process-pdf', {
+        objectPath,
+        vendorId: vendorId !== '__none__' ? vendorId : undefined,
+        storeIds: storeIds.length > 0 ? storeIds : undefined,
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error || 'PDF import failed');
+      }
+      return res.json() as Promise<FirstScanResult & { pageCount?: number }>;
+    },
+    onSuccess: async (data) => {
+      setIsPdfProcessing(false);
+      const ogId = data.orderGuideId;
+      setOrderGuideId(ogId);
+      setPageCount(data.pageCount ?? 1);
+
+      let currentLines: ScannedLine[] = [];
+      try {
+        const reviewRes = await fetch(`/api/order-guides/${ogId}/review`, { credentials: 'include' });
+        if (reviewRes.ok) {
+          const reviewData = await reviewRes.json();
+          currentLines = [
+            ...reviewData.lines.matched,
+            ...reviewData.lines.ambiguous,
+            ...reviewData.lines.new,
+          ];
+          setLines(currentLines);
+          lastLinesRef.current = currentLines;
+        }
+      } catch { /* non-fatal */ }
+
+      toast({
+        title: 'PDF imported',
+        description: `Extracted ${data.totalItems} item${data.totalItems !== 1 ? 's' : ''} from ${data.pageCount ?? 1} page${(data.pageCount ?? 1) !== 1 ? 's' : ''} — ${data.highConfidenceMatches} auto-matched`,
+      });
+      setStep(2);
+    },
+    onError: (err: Error) => {
+      setIsPdfProcessing(false);
+      toast({ title: 'PDF import failed', description: err.message, variant: 'destructive' });
+    },
+  });
+
   // Step 1 → first scan
   const firstScanMutation = useMutation({
     mutationFn: async (objectPath: string) => {
@@ -330,13 +379,26 @@ export default function OrderGuideScan() {
     },
   });
 
+  const isPdf = (path: string, file?: File): boolean => {
+    if (file?.type === 'application/pdf') return true;
+    return path.toLowerCase().includes('.pdf');
+  };
+
   // Handler for multi-image upload on Step 1
-  const handleMultiUpload = useCallback((paths: string[]) => {
+  const handleMultiUpload = useCallback((paths: string[], files?: File[]) => {
     if (storeIds.length === 0) {
       toast({ title: 'Select a store', description: 'Please select at least one store before scanning.', variant: 'destructive' });
       return;
     }
     if (paths.length === 0) return;
+
+    // If the first file is a PDF, route through the text-extraction pipeline
+    if (isPdf(paths[0], files?.[0])) {
+      setIsPdfProcessing(true);
+      processPdfMutation.mutate(paths[0]);
+      return;
+    }
+
     const [first, ...rest] = paths;
     setMultiTotal(paths.length);
     setScanningPage(1);
@@ -345,7 +407,7 @@ export default function OrderGuideScan() {
       queuedPathsRef.current = rest;
     }
     firstScanMutation.mutate(first);
-  }, [storeIds, firstScanMutation, toast]);
+  }, [storeIds, firstScanMutation, processPdfMutation, toast]);
 
   const { matched: matchedCount, ambiguous: ambiguousCount, newItems: newCount } = computeMatchCounts(lines);
 
@@ -357,7 +419,9 @@ export default function OrderGuideScan() {
 
   // Scanning in progress (either first scan or multi-page queue)
   const isScanning = firstScanMutation.isPending || scanningPage !== null;
-  const scanProgressLabel = isScanning
+  const scanProgressLabel = isPdfProcessing
+    ? 'Extracting products from PDF…'
+    : isScanning
     ? (multiTotal > 1
         ? `Scanning page ${scanningPage ?? 1} of ${multiTotal} — this may take 10–20 seconds each`
         : 'Scanning page 1 with AI…')
@@ -464,19 +528,19 @@ export default function OrderGuideScan() {
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <ScanLine className="h-4 w-4" />
-                  Upload Invoice Image(s)
+                  Upload Invoice or Catalog
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Take a clear photo of your invoice or receipt. You can select multiple images at once for multi-page invoices — they will be scanned in order automatically.
+                  Upload a PDF catalog or a photo of your invoice. Multi-page PDFs are imported in one go — no need to export pages separately.
                 </p>
 
-                {isScanning ? (
+                {(isScanning || isPdfProcessing) ? (
                   <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
                     <Loader2 className="h-10 w-10 animate-spin" />
                     <p className="font-medium">{scanProgressLabel}</p>
-                    {multiTotal > 1 && (
+                    {!isPdfProcessing && multiTotal > 1 && (
                       <div className="w-full max-w-xs bg-muted rounded-full h-1.5">
                         <div
                           className="bg-primary h-1.5 rounded-full transition-all"
@@ -484,26 +548,27 @@ export default function OrderGuideScan() {
                         />
                       </div>
                     )}
-                    <p className="text-xs">This may take 10–20 seconds per page</p>
+                    {!isPdfProcessing && <p className="text-xs">This may take 10–20 seconds per page</p>}
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-4">
                     <ObjectUploader
                       multiple
-                      onUploadComplete={(path) => {
+                      accept="image/*,application/pdf"
+                      onUploadComplete={(path, file) => {
                         if (storeIds.length === 0) {
                           toast({ title: 'Select a store', description: 'Please select at least one store before scanning.', variant: 'destructive' });
                           return;
                         }
-                        handleMultiUpload([path]);
+                        handleMultiUpload([path], file ? [file] : undefined);
                       }}
-                      onMultipleUploadsComplete={(paths) => handleMultiUpload(paths)}
-                      buttonText="Select Invoice Image(s)"
+                      onMultipleUploadsComplete={(paths, files) => handleMultiUpload(paths, files)}
+                      buttonText="Select Invoice or PDF Catalog"
                       dataTestId="button-upload-invoice"
                       visibility="private"
                       icon={<ScanLine className="h-4 w-4" />}
                     />
-                    <p className="text-xs text-muted-foreground">Supports JPG, PNG, WebP up to 10 MB — select multiple files for multi-page invoices</p>
+                    <p className="text-xs text-muted-foreground">PDF catalogs or JPG/PNG/WebP images up to 20 MB — multi-page PDFs supported</p>
                   </div>
                 )}
               </CardContent>

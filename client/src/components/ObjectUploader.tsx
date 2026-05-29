@@ -3,8 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Upload, Loader2 } from "lucide-react";
 
 interface SimpleObjectUploaderProps {
-  onUploadComplete: (url: string) => void;
-  onMultipleUploadsComplete?: (urls: string[]) => void;
+  onUploadComplete: (url: string, file?: File) => void;
+  onMultipleUploadsComplete?: (urls: string[], files?: File[]) => void;
   multiple?: boolean;
   buttonText?: string;
   dataTestId?: string;
@@ -13,6 +13,7 @@ interface SimpleObjectUploaderProps {
   visibility?: "public" | "private";
   capture?: "environment" | "user";
   icon?: React.ReactNode;
+  accept?: string;
 }
 
 export function ObjectUploader({
@@ -21,11 +22,12 @@ export function ObjectUploader({
   multiple = false,
   buttonText = "Upload Image",
   dataTestId = "button-upload-image",
-  maxFileSize = 10485760,
+  maxFileSize = 20971520,
   buttonVariant = "outline",
   visibility = "private",
   capture,
   icon,
+  accept = "image/*",
 }: SimpleObjectUploaderProps) {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,8 +36,11 @@ export function ObjectUploader({
     if (file.size > maxFileSize) {
       throw new Error(`File "${file.name}" is too large. Maximum size is ${Math.round(maxFileSize / 1024 / 1024)}MB.`);
     }
-    if (!file.type.startsWith("image/")) {
-      throw new Error(`"${file.name}" is not an image file.`);
+
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    const isImage = file.type.startsWith("image/");
+    if (!isPdf && !isImage) {
+      throw new Error(`"${file.name}" is not a supported file type. Please upload an image or PDF.`);
     }
 
     const formData = new FormData();
@@ -80,18 +85,20 @@ export function ObjectUploader({
     try {
       if (multiple && files.length > 1 && onMultipleUploadsComplete) {
         const paths: string[] = [];
+        const fileList: File[] = [];
         for (let i = 0; i < files.length; i++) {
           const path = await uploadSingleFile(files[i]);
           paths.push(path);
+          fileList.push(files[i]);
         }
-        onMultipleUploadsComplete(paths);
+        onMultipleUploadsComplete(paths, fileList);
       } else {
         const path = await uploadSingleFile(files[0]);
-        onUploadComplete(path);
+        onUploadComplete(path, files[0]);
       }
     } catch (error: any) {
       console.error("Upload error:", error);
-      alert(error?.message || "Failed to upload image. Please try again.");
+      alert(error?.message || "Failed to upload file. Please try again.");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -105,7 +112,7 @@ export function ObjectUploader({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept={accept}
         capture={capture}
         multiple={multiple}
         onChange={handleFileSelect}
