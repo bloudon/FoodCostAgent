@@ -89,3 +89,15 @@ id = "T0VOVniMlWi-_-k6GLnLY"
 uri = "file://client/public/screenshots/recipe-card-phone-scene.png"
 type = "image"
 title = "Composite — AI lifestyle photo: recipe card beside phone on wooden table"
+
+[[outputs]]
+id = "JAiaEon2u6OfY6tzRD8Ey"
+uri = "file://scanning-processes.md"
+type = "text"
+title = "AI Scanning & Import Processes"
+
+[[outputs]]
+id = "NOK_ZlLrrsHWwTqGqiEsz"
+uri = "file://attached_assets/generated_videos/fnb-cost-pro-overview.mp4"
+type = "video"
+title = "FNB Cost Pro — Overview Video"
