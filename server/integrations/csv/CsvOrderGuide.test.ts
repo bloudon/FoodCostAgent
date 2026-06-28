@@ -37,7 +37,7 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     });
     const p = guide.products[0];
     expect(p.eaPerCase).toBeCloseTo(18 / 24);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 
   it('accepts "18 LB" (number + LB suffix)', async () => {
@@ -58,7 +58,7 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     });
     const p = guide.products[0];
     expect(p.eaPerCase).toBeCloseTo(0.75);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 
   it('accepts "18 LBS" (LBS plural suffix)', async () => {
@@ -117,7 +117,7 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     const p = guide.products[0];
     // 18 OZ → 1.125 LB total; 1.125 / 24 = 0.046875 LB/each
     expect(p.eaPerCase).toBeCloseTo(0.046875);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 
   it('converts OUNCE (singular) weight to LB and derives eaPerCase', async () => {
@@ -138,7 +138,7 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     const p = guide.products[0];
     // 18 OUNCE → 1.125 LB total; 1.125 / 24 = 0.046875 LB/each
     expect(p.eaPerCase).toBeCloseTo(0.046875);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 
   it('converts OUNCES (plural) weight to LB and derives eaPerCase', async () => {
@@ -159,7 +159,7 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     const p = guide.products[0];
     // 18 OUNCES → 1.125 LB total; 1.125 / 24 = 0.046875 LB/each
     expect(p.eaPerCase).toBeCloseTo(0.046875);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 
   it('converts KG weight to LB and derives eaPerCase', async () => {
@@ -180,7 +180,7 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     const p = guide.products[0];
     // 8 KG → 17.63696 LB total; 17.63696 / 24 ≈ 0.734873 LB/each
     expect(p.eaPerCase).toBeCloseTo(17.63696 / 24);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 
   it('converts KGS (plural) weight to LB and derives eaPerCase', async () => {
@@ -201,7 +201,7 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     const p = guide.products[0];
     // 8 KGS → 17.63696 LB total; 17.63696 / 24 ≈ 0.734873 LB/each
     expect(p.eaPerCase).toBeCloseTo(17.63696 / 24);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 
   it('converts KILOGRAM (singular) weight to LB and derives eaPerCase', async () => {
@@ -222,7 +222,7 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     const p = guide.products[0];
     // 8 KILOGRAM → 17.63696 LB total; 17.63696 / 24 ≈ 0.734873 LB/each
     expect(p.eaPerCase).toBeCloseTo(17.63696 / 24);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 
   it('converts KILOGRAMS (plural) weight to LB and derives eaPerCase', async () => {
@@ -243,7 +243,7 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     const p = guide.products[0];
     // 8 KILOGRAMS → 17.63696 LB total; 17.63696 / 24 ≈ 0.734873 LB/each
     expect(p.eaPerCase).toBeCloseTo(17.63696 / 24);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 
   it('accepts "18 POUND" (singular full word)', async () => {
@@ -263,7 +263,7 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     });
     const p = guide.products[0];
     expect(p.eaPerCase).toBeCloseTo(0.75);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 
   it('converts G (grams) weight to LB and derives eaPerCase', async () => {
@@ -284,7 +284,7 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     });
     const p = guide.products[0];
     expect(p.eaPerCase).toBeCloseTo(500 / 453.592 / 24);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 
   it('returns null / skips derivation for zero weight value', async () => {
@@ -323,7 +323,7 @@ describe('parseCaseWeightLbs — tested through the EA+LB derivation path', () =
     });
     const p = guide.products[0];
     expect(p.eaPerCase).toBeUndefined();
-    expect(p.unit).toBe('EA');
+    expect(p.unit).toBe('each');
   });
 });
 
@@ -352,7 +352,7 @@ describe('isCountUnit — only EA-like units trigger per-each derivation', () =>
       });
       const p = guide.products[0];
       expect(p.eaPerCase).toBeCloseTo(0.75);
-      expect(p.unit).toBe('LB');
+      expect(p.unit).toBe('lb.');
     });
   }
 
@@ -405,7 +405,7 @@ describe('EA+LB derivation — core integration scenario', () => {
 
     expect(p.eaPerCase).toBeCloseTo(0.75);
     expect(p.innerPack).toBeCloseTo(0.75);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
     expect(p.innerPackRaw).toBe('each');
 
     // Core fields still present
@@ -432,7 +432,7 @@ describe('EA+LB derivation — core integration scenario', () => {
     const p = guide.products[0];
     expect(p.eaPerCase).toBeCloseTo(0.75);
     expect(p.innerPack).toBeCloseTo(0.75);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
     expect(p.innerPackRaw).toBe('each');
   });
 
@@ -453,7 +453,7 @@ describe('EA+LB derivation — core integration scenario', () => {
     });
     const p = guide.products[0];
     expect(p.eaPerCase).toBeCloseTo(1.625);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
     expect(p.innerPackRaw).toBe('each');
   });
 });
@@ -479,7 +479,7 @@ describe('rows without a weight column are unaffected', () => {
     });
     const p = guide.products[0];
     expect(p.eaPerCase).toBeUndefined();
-    expect(p.unit).toBe('EA');
+    expect(p.unit).toBe('each');
     expect(p.caseSize).toBe(500);
   });
 
@@ -500,7 +500,7 @@ describe('rows without a weight column are unaffected', () => {
     });
     const p = guide.products[0];
     expect(p.eaPerCase).toBeUndefined();
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 
   it('multiple rows — only the EA+weight row gets derivation applied', async () => {
@@ -529,13 +529,13 @@ describe('rows without a weight column are unaffected', () => {
     // Row 0 — EA + weight → derived
     const wings = guide.products[0];
     expect(wings.eaPerCase).toBeCloseTo(0.75);
-    expect(wings.unit).toBe('LB');
+    expect(wings.unit).toBe('lb.');
     expect(wings.innerPackRaw).toBe('each');
 
     // Row 1 — LB unit, no weight → untouched
     const flour = guide.products[1];
     expect(flour.eaPerCase).toBeUndefined();
-    expect(flour.unit).toBe('LB');
+    expect(flour.unit).toBe('lb.');
 
     // Row 2 — CS unit (excluded from isCountUnit) → derivation skipped even though weight present
     const plates = guide.products[2];
@@ -649,7 +649,7 @@ describe('parseCaseWeightLbs — invalid inputs skip derivation', () => {
     });
     const p = guide.products[0];
     expect(p.eaPerCase).toBeCloseTo(500 / 453.592 / 24);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 });
 
@@ -675,7 +675,7 @@ describe('CS UOM in separate column — measurement unit from compound string wi
     expect(p.caseSize).toBe(12);
     expect(p.innerPack).toBe(10);
     // Measurement unit from compound string must win over "CS" ordering unit
-    expect(p.unit).toBe('OZ');
+    expect(p.unit).toBe('oz');
     // EA+LB derivation must NOT fire (CS is not a count unit)
     expect(p.eaPerCase).toBeUndefined();
   });
@@ -697,7 +697,7 @@ describe('CS UOM in separate column — measurement unit from compound string wi
     const p = guide.products[0];
     expect(p.caseSize).toBe(6);
     expect(p.innerPack).toBe(5);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 });
 
@@ -724,7 +724,7 @@ describe('compound pack string already provides inner-pack — weight column ski
     expect(p.eaPerCase).toBeUndefined();
     expect(p.caseSize).toBe(6);
     expect(p.innerPack).toBe(5);
-    expect(p.unit).toBe('LB');
+    expect(p.unit).toBe('lb.');
   });
 });
 

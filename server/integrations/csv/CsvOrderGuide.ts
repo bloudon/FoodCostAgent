@@ -1,5 +1,6 @@
 import { parse } from 'csv-parse/sync';
 import type { OrderGuide, VendorProduct, VendorKey } from '../types';
+import { normalizeVendorUnit, SALE_ONLY_UNITS, isCountUnit } from '../../lib/vendorPackParser';
 
 /**
  * CSV Order Guide Parser
@@ -262,7 +263,7 @@ export class CsvOrderGuide {
         // over a UOM column that names the purchase/ordering unit (e.g. "CS" = case).
         // "CS" doesn't map to a measurement unit; using it causes the wrong inventory unit (lb. fallback).
         const unitRawIsSalesUnit = unitRaw
-          ? ['cs', 'case', 'cases'].includes(unitRaw.trim().toLowerCase())
+          ? SALE_ONLY_UNITS.has(unitRaw.trim().toLowerCase())
           : false;
         if (parsedCasePack.unit && (!unitRaw || unitRawIsSalesUnit)) {
           unit = parsedCasePack.unit;
@@ -293,7 +294,7 @@ export class CsvOrderGuide {
       if (
         caseWeightRaw &&
         caseSize != null && caseSize > 0 &&
-        this.isCountUnit(unit) &&
+        isCountUnit(unit) &&
         // Skip if the compound pack string already provided an inner-pack breakdown
         // (e.g. "6/5 LB" already gives caseSize=6, innerPack=5, unit=LB — no need to
         // derive from a separate weight column, and doing so would be wrong).
@@ -326,7 +327,7 @@ export class CsvOrderGuide {
         caseSizeRaw: caseSizeRaw || undefined,      // Preserve raw pack string (e.g., "6/5 LB")
         innerPack: finalInnerPack,
         innerPackRaw: finalInnerPackRaw,
-        unit: finalUnit,
+        unit: finalUnit ? (normalizeVendorUnit(finalUnit) ?? finalUnit) : undefined,
         price: this.parsePrice(this.getValue(row, mapping.price)),
         brandName: this.getValue(row, mapping.brand),
         categoryCode: this.getValue(row, mapping.category),
@@ -474,22 +475,6 @@ export class CsvOrderGuide {
       return num;
     }
     return null;
-  }
-
-  /**
-   * Return true when the UOM string represents a per-item count unit (EA, each, ct, pc…)
-   * rather than a case, weight, or volume measure.
-   *
-   * "CS" (case) is intentionally excluded: a row with UOM=CS and a net-weight column
-   * means the net weight IS the case weight in the base unit, not a per-each weight
-   * that needs derivation.  Including it would incorrectly label every case-UOM row
-   * as an "each" product.
-   */
-  private static isCountUnit(unit: string): boolean {
-    if (!unit) return false;
-    const u = unit.trim().toLowerCase();
-    // Only true EA-like units — deliberately excludes "cs" (case) to prevent false positives
-    return ['ea', 'each', 'unit', 'units', 'piece', 'pieces', 'pc', 'pcs', 'ct', 'count'].includes(u);
   }
 
   /**
