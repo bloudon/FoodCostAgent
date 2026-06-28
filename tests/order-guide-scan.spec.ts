@@ -28,7 +28,7 @@ test.describe('Order Guide Scan — multi-page invoice scan flow', () => {
     await expect(page.getByText('Review')).toBeVisible();
     await expect(page.getByTestId('button-back')).toBeVisible();
     await expect(page.getByText('Vendor (Optional)')).toBeVisible();
-    await expect(page.getByText('Upload Invoice Image(s)')).toBeVisible();
+    await expect(page.getByText('Upload Invoice or Catalog')).toBeVisible();
     await expect(page.getByTestId('button-review-commit')).not.toBeVisible();
   });
 
@@ -122,7 +122,7 @@ test.describe('Order Guide Scan — multi-page invoice scan flow', () => {
     await page.waitForTimeout(500);
 
     await expect(page.getByTestId('select-vendor')).toBeVisible();
-    await expect(page.getByText('Upload Invoice Image(s)')).toBeVisible();
+    await expect(page.getByText('Upload Invoice or Catalog')).toBeVisible();
     await expect(page.getByTestId('button-review-commit')).not.toBeVisible();
 
     expect(page.url()).not.toContain('ogId=');
