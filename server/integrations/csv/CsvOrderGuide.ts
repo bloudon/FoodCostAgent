@@ -253,6 +253,7 @@ export class CsvOrderGuide {
       bom: true, // Handle UTF-8 BOM (belt-and-suspenders after stripMetadataRows)
       delimiter,
       from: skipRows + 1, // Skip header rows if needed
+      relax_column_count: true, // Tolerate footer/summary rows with fewer columns and any extra columns
     }) as Record<string, string>[];
 
     if (records.length === 0) {
