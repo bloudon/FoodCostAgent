@@ -182,21 +182,75 @@ export class CsvOrderGuide {
   }
 
   /**
+   * Auto-detect the delimiter used in this CSV content.
+   * Inspects the first several non-empty lines and picks the delimiter (comma or tab)
+   * that produces the most columns, breaking ties in favor of comma.
+   */
+  private static detectDelimiter(raw: string): string {
+    const candidates = [',', '\t'];
+    const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0).slice(0, 10);
+    if (lines.length === 0) return ',';
+    const avgCols = (delim: string) => {
+      const counts = lines.map(l => l.split(delim).length);
+      return counts.reduce((a, b) => a + b, 0) / counts.length;
+    };
+    const tabAvg = avgCols('\t');
+    const commaAvg = avgCols(',');
+    return tabAvg > commaAvg + 1 ? '\t' : ',';
+  }
+
+  /**
+   * Strip BOM and leading metadata rows so that csv-parse always sees the real
+   * column-header row first.
+   * A "metadata row" is any non-empty line that, when split by the detected
+   * delimiter, produces fewer than 2 tokens — i.e. it isn't a structured row.
+   * Returns the trimmed content starting from the first multi-column line.
+   */
+  private static stripMetadataRows(raw: string, delimiter: string): string {
+    // Strip UTF-8 BOM if present (csv-parse's bom:true only works on its own input,
+    // not on content we split manually here).
+    const content = raw.startsWith('\uFEFF') ? raw.slice(1) : raw;
+    const lines = content.split('\n');
+    for (let i = 0; i < Math.min(lines.length, 30); i++) {
+      const trimmed = lines[i].trim();
+      if (trimmed.length === 0) continue; // blank — keep scanning
+      const cols = trimmed.split(delimiter).length;
+      if (cols >= 2) {
+        // This is the real header row — return from here onward
+        return lines.slice(i).join('\n');
+      }
+    }
+    // Couldn't find a multi-column row — return as-is and let csv-parse error naturally
+    return content;
+  }
+
+  /**
    * Parse CSV file to OrderGuide
    */
   static async parse(
     csvContent: string,
     options: CsvParseOptions
   ): Promise<OrderGuide> {
-    const { vendorKey, skipRows = 0, delimiter = ',' } = options;
+    const { vendorKey, skipRows = 0 } = options;
     const vendorMapping = VENDOR_MAPPINGS[vendorKey];
 
+    // Auto-detect delimiter (comma vs tab) unless caller specified one explicitly
+    const delimiter = options.delimiter ?? CsvOrderGuide.detectDelimiter(csvContent);
+
+    // Strip BOM + any leading metadata rows (single-column title/report rows) so
+    // csv-parse always sees the real column-header row first.
+    // Only do this when the caller hasn't already specified skipRows > 0, to avoid
+    // double-skipping on vendor-specific formats that are known to need skipping.
+    const processedContent = skipRows === 0
+      ? CsvOrderGuide.stripMetadataRows(csvContent, delimiter)
+      : csvContent;
+
     // Parse CSV with robust csv-parse library
-    const records = parse(csvContent, {
+    const records = parse(processedContent, {
       columns: true,
       skip_empty_lines: true,
       trim: true,
-      bom: true, // Handle UTF-8 BOM
+      bom: true, // Handle UTF-8 BOM (belt-and-suspenders after stripMetadataRows)
       delimiter,
       from: skipRows + 1, // Skip header rows if needed
     }) as Record<string, string>[];
