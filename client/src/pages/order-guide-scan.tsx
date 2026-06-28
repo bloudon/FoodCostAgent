@@ -348,7 +348,10 @@ export default function OrderGuideScan() {
   const appendMutation = useMutation({
     mutationFn: async (objectPath: string) => {
       if (!orderGuideId) throw new Error('No active scan session');
-      const res = await apiRequest('POST', `/api/order-guides/${orderGuideId}/append-scan`, {
+      const endpoint = isPdf(objectPath)
+        ? `/api/order-guides/${orderGuideId}/append-pdf`
+        : `/api/order-guides/${orderGuideId}/append-scan`;
+      const res = await apiRequest('POST', endpoint, {
         objectPath,
         // Pass wizard storeIds so matching context is consistent across all pages
         storeIds: storeIds.length > 0 ? storeIds : undefined,
@@ -711,7 +714,7 @@ export default function OrderGuideScan() {
               <div className="rounded-md border bg-muted/30 p-4 space-y-2">
                 <p className="text-sm font-medium">Scan another page</p>
                 <p className="text-xs text-muted-foreground">
-                  Upload the next page of your invoice. Items will be appended below with a page-break divider.
+                  Upload the next page as an image or PDF. Items will be appended below with a page-break divider.
                 </p>
                 {appendMutation.isPending ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
@@ -722,7 +725,8 @@ export default function OrderGuideScan() {
                   <div className="flex items-center gap-2">
                     <ObjectUploader
                       onUploadComplete={(path) => appendMutation.mutate(path)}
-                      buttonText="Select Page Image"
+                      accept="image/*,application/pdf"
+                      buttonText="Select Image or PDF"
                       dataTestId="button-upload-next-page"
                       visibility="private"
                     />

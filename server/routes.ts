@@ -5336,6 +5336,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * POST /api/order-guides/:id/append-pdf
+   * Appends items from an additional PDF page to an existing pending_review order guide.
+   * Uses text-based PDF extraction (no AI Vision). Returns same AppendResult shape as append-scan.
+   */
+  app.post("/api/order-guides/:id/append-pdf", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const storeId = (req as any).storeId;
+      const userId = (req as any).user?.id;
+      const { id: orderGuideId } = req.params;
+
+      const bodySchema = z.object({
+        objectPath: z.string().min(1, "objectPath is required"),
+        storeIds: z.array(z.string()).optional(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+      const { objectPath, storeIds: bodyStoreIds } = parsed.data;
+
+      const guide = await storage.getOrderGuide(orderGuideId);
+      if (!guide || guide.companyId !== companyId) {
+        return res.status(404).json({ error: "Order guide not found." });
+      }
+      if (guide.status !== 'pending_review') {
+        return res.status(409).json({ error: "Order guide is no longer in pending review status." });
+      }
+
+      let currentPageCount = 1;
+      if (guide.fileName) {
+        const pageMatch = guide.fileName.match(/\((\d+)\s+pages?\)/i);
+        if (pageMatch) currentPageCount = parseInt(pageMatch[1], 10);
+      }
+      const newPageCount = currentPageCount + 1;
+
+      const existingLines = await storage.getOrderGuideLines(orderGuideId);
+
+      const { buffer } = await readImageBuffer(objectPath, companyId, userId);
+
+      if (buffer.length < 4 || buffer[0] !== 0x25 || buffer[1] !== 0x50 || buffer[2] !== 0x44 || buffer[3] !== 0x46) {
+        return res.status(415).json({ error: "The uploaded file does not appear to be a valid PDF." });
+      }
+
+      const { parsePdfOrderGuide } = await import('./integrations/pdf/PdfOrderGuide');
+      const { products } = await parsePdfOrderGuide(buffer);
+
+      if (products.length === 0) {
+        return res.status(422).json({ error: "No product line items could be extracted from this PDF. Make sure it is a text-based (not scanned) catalog PDF." });
+      }
+
+      const vendorProducts = products.map((p, index) => ({
+        vendorSku: p.vendorSku || `pdf-p${newPageCount}-${index + 1}`,
+        vendorProductName: p.productName,
+        description: undefined as string | undefined,
+        caseSizeRaw: undefined as string | undefined,
+        unit: undefined as string | undefined,
+        price: p.price ?? undefined,
+        priceSource: p.price != null ? ('case' as const) : undefined,
+        categoryCode: undefined as string | undefined,
+      }));
+
+      const { ItemMatcher } = await import('./services/itemMatcher');
+      const matcher = new ItemMatcher(storage);
+      const effectiveStoreId = (bodyStoreIds && bodyStoreIds.length > 0) ? bodyStoreIds[0] : storeId;
+
+      const newLineInserts = [];
+      for (const product of vendorProducts) {
+        const match = await matcher.findBestMatch(product, companyId, effectiveStoreId);
+        let matchStatus: 'matched' | 'ambiguous' | 'new';
+        if (match.confidence === 'high') matchStatus = 'matched';
+        else if (match.confidence === 'medium' || match.confidence === 'low') matchStatus = 'ambiguous';
+        else matchStatus = 'new';
+
+        newLineInserts.push({
+          orderGuideId,
+          vendorSku: product.vendorSku,
+          productName: product.vendorProductName,
+          packSize: null,
+          uom: product.unit || null,
+          caseSize: null,
+          caseSizeRaw: product.caseSizeRaw || null,
+          innerPack: null,
+          innerPackRaw: null,
+          price: product.price ?? null,
+          priceSource: (product as any).priceSource ?? null,
+          brandName: null,
+          category: product.categoryCode || null,
+          gtin: null,
+          matchStatus,
+          matchedInventoryItemId: match.inventoryItemId,
+          matchConfidence: Math.round(match.score * 100),
+          isVariableWeight: 0,
+        });
+      }
+
+      const newLines = await storage.createOrderGuideLinesBatch(newLineInserts);
+      const totalItems = existingLines.length + newLines.length;
+
+      const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const newFileName = `PDF Catalog — ${dateStr} (${newPageCount} pages)`;
+      await storage.updateOrderGuideRowCount(orderGuideId, totalItems, newFileName);
+
+      return res.json({
+        newLines: newLines.map(l => ({
+          id: l.id,
+          vendorSku: l.vendorSku,
+          productName: l.productName,
+          packSize: l.packSize,
+          uom: l.uom,
+          price: l.price,
+          priceSource: l.priceSource ?? (l.price != null ? 'case' : null),
+          matchStatus: l.matchStatus,
+          matchConfidence: l.matchConfidence,
+        })),
+        newItems: newLines.length,
+        totalItems,
+        pageNumber: newPageCount,
+      });
+    } catch (error: any) {
+      console.error('[Order Guide Append PDF Error]', error);
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
   // GET /api/order-guides/warning-counts
   // Returns warning counts per vendorId for all pending_review order guides in the company.
   // Response: Record<vendorId, { warningCount: number; orderGuideId: string }>
