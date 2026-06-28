@@ -1,4 +1,11 @@
-import pdfParse from 'pdf-parse';
+import { createRequire } from 'module';
+const _require = createRequire(import.meta.url);
+// pdf-parse is CJS and has no ESM default export — createRequire bypasses Node ESM interop entirely.
+// We load from the lib path to avoid the test-runner wrapper in pdf-parse's index.js.
+const pdfParse = _require('pdf-parse/lib/pdf-parse.js') as (
+  buf: Buffer,
+  opts?: object
+) => Promise<{ text: string; numpages: number }>;
 
 export interface PdfProduct {
   productName: string;
