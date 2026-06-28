@@ -156,11 +156,15 @@ export function extractPackInfoFromName(name: string): {
 } {
   const NULL_RESULT = { caseSize: null, caseSizeRaw: null, innerPack: null, unit: null };
 
+  // Pre-normalize known two-word unit sequences so the single-token regex captures them.
+  // "FL OZ", "fl. oz", "Fl Oz" → "floz"  (normalizeVendorUnit maps floz → "fl oz")
+  const searchName = name.replace(/\bfl\.?\s+oz\b/gi, 'floz');
+
   // Pass 1: N/N[unit] — right side starts with a digit
-  // Matches: "4/1gal", "12/32oz", "2/5 lb", "4/1 CS"
+  // Matches: "4/1gal", "12/32oz", "2/5 lb", "4/1 CS", "12/32floz"
   const slashDigitRe = /([\d,]+)\s*\/\s*([\d.]+)\s*([A-Za-z][A-Za-z.]*)?/g;
   let match: RegExpExecArray | null;
-  while ((match = slashDigitRe.exec(name)) !== null) {
+  while ((match = slashDigitRe.exec(searchName)) !== null) {
     const csRaw = match[1].replace(/,/g, '');
     const ipRaw = match[2];
     const unitRaw = (match[3] ?? '').trim();
@@ -182,7 +186,7 @@ export function extractPackInfoFromName(name: string): {
 
   // Pass 2: N/WORD — right side is a named sale unit word (no leading digit)
   const namedUnitRe = /([\d,]+)\s*\/\s*(case|cs|ea|each|pk|pack|ct|count|bag|can)/i;
-  const namedMatch = name.match(namedUnitRe);
+  const namedMatch = searchName.match(namedUnitRe);
   if (namedMatch) {
     const cs = parseFloat(namedMatch[1].replace(/,/g, ''));
     if (!isFinite(cs) || cs <= 0) return NULL_RESULT;

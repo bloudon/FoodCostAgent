@@ -130,6 +130,36 @@ describe('extractPackInfoFromName', () => {
     });
   });
 
+  describe('Pass 1 — FL OZ two-word variants', () => {
+    it('parses 12/32 FL OZ (spaced, uppercase)', () => {
+      const r = extractPackInfoFromName('Juice - 12/32 FL OZ');
+      expect(r.caseSize).toBe(12);
+      expect(r.innerPack).toBe(32);
+      expect(r.unit).toBe('fl oz');
+    });
+
+    it('parses 24/12 fl oz (spaced, lowercase)', () => {
+      const r = extractPackInfoFromName('Soda - 24/12 fl oz');
+      expect(r.caseSize).toBe(24);
+      expect(r.innerPack).toBe(12);
+      expect(r.unit).toBe('fl oz');
+    });
+
+    it('parses 6/32 fl. oz (period variant)', () => {
+      const r = extractPackInfoFromName('Sauce - 6/32 fl. oz');
+      expect(r.caseSize).toBe(6);
+      expect(r.innerPack).toBe(32);
+      expect(r.unit).toBe('fl oz');
+    });
+
+    it('parses 12/32FLOZ (no space, uppercase)', () => {
+      const r = extractPackInfoFromName('Drink - 12/32FLOZ');
+      expect(r.caseSize).toBe(12);
+      expect(r.innerPack).toBe(32);
+      expect(r.unit).toBe('fl oz');
+    });
+  });
+
   describe('Pass 2 — named-unit format (N/WORD)', () => {
     it('parses 2,500/Case', () => {
       const r = extractPackInfoFromName('Lid - 1.5, 2, 2.5oz - 62mm PET Clear PLastic - 2,500/Case');
