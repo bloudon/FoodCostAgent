@@ -13,6 +13,8 @@ export interface PdfProduct {
   price: number | null;
   caseSize: number | null;
   caseSizeRaw: string | null;
+  innerPack: number | null;
+  unit: string | null;
 }
 
 export interface PdfParseResult {
@@ -64,16 +66,130 @@ function isGarbage(line: string): boolean {
 }
 
 /**
- * Extracts a case quantity from a product name containing patterns like:
- *   "2,500/Case"  "500/CS"  "1/EA"  "24/Pack"  "12/Pk"  "100/Ct"
- * Returns { caseSize, caseSizeRaw } or nulls if no match found.
+ * Maps a raw unit string (from vendor pack strings) to a canonical system unit.
+ * Returns null for sale-only units (cs, case, pkg, pack, can, bag) and unknowns.
  */
-function extractCaseSizeFromName(name: string): { caseSize: number | null; caseSizeRaw: string | null } {
-  const match = name.match(/([\d,]+)\s*\/\s*(case|cs|ea|each|pk|pack|ct|count)/i);
-  if (!match) return { caseSize: null, caseSizeRaw: null };
-  const num = parseFloat(match[1].replace(/,/g, ''));
-  if (!isFinite(num) || num <= 0) return { caseSize: null, caseSizeRaw: null };
-  return { caseSize: num, caseSizeRaw: match[0] };
+export function normalizeVendorUnit(raw: string): string | null {
+  const u = raw.trim().toLowerCase().replace(/\.$/, '').replace(/\s+/g, '');
+  const MAP: Record<string, string | null> = {
+    // Weight
+    lb: 'lb.',
+    lbs: 'lb.',
+    pound: 'lb.',
+    pounds: 'lb.',
+    oz: 'oz',
+    ounce: 'oz',
+    ounces: 'oz',
+    kg: 'kg',
+    kilogram: 'kg',
+    kilograms: 'kg',
+    g: 'g',
+    gram: 'g',
+    grams: 'g',
+    // Volume
+    gal: 'gal',
+    gallon: 'gal',
+    gallons: 'gal',
+    qt: 'qt',
+    quart: 'qt',
+    quarts: 'qt',
+    pt: 'pt',
+    pint: 'pt',
+    pints: 'pt',
+    floz: 'fl oz',
+    'fl.oz': 'fl oz',
+    'fluidoz': 'fl oz',
+    ml: 'ml',
+    milliliter: 'ml',
+    milliliters: 'ml',
+    l: 'l',
+    liter: 'l',
+    litre: 'l',
+    liters: 'l',
+    litres: 'l',
+    // Count-like (meaningful measurement)
+    ea: 'each',
+    each: 'each',
+    ct: 'each',
+    count: 'each',
+    pc: 'each',
+    pcs: 'each',
+    piece: 'each',
+    pieces: 'each',
+    // Sale-only (not a useful measurement unit for recipes)
+    cs: null,
+    case: null,
+    pkg: null,
+    pack: null,
+    pk: null,
+    can: null,
+    bag: null,
+  };
+  return u in MAP ? MAP[u] : null;
+}
+
+// Units that represent a sales/purchasing denomination, not a measurable quantity.
+// When these appear after the slash (e.g. "4/1CS"), they carry no recipe-useful unit info.
+const SALE_ONLY_UNITS = new Set(['cs', 'case', 'pkg', 'pack', 'pk', 'can', 'bag']);
+
+/**
+ * Extracts pack size information from a product name.
+ *
+ * Handles two formats found embedded in product name strings:
+ *
+ * Pass 1 — slash+digit format (e.g. "4/1gal", "12/32oz", "2/5lb"):
+ *   Left number  = caseSize (units per case)
+ *   Right number = innerPack (size of each unit)
+ *   Alpha suffix = unit (normalized via normalizeVendorUnit)
+ *   - Sale-only suffix (cs, case, pack…) → caseSize only, innerPack dropped
+ *   - Unknown suffix → innerPack preserved, unit set to null
+ *
+ * Pass 2 — named-unit format (e.g. "2,500/Case", "500/CS", "24/Pack"):
+ *   Left number = caseSize only; innerPack and unit stay null
+ *   (sale-unit words are not meaningful measurement units)
+ */
+export function extractPackInfoFromName(name: string): {
+  caseSize: number | null;
+  caseSizeRaw: string | null;
+  innerPack: number | null;
+  unit: string | null;
+} {
+  const NULL_RESULT = { caseSize: null, caseSizeRaw: null, innerPack: null, unit: null };
+
+  // Pass 1: N/N[unit] — right side starts with a digit
+  // Matches: "4/1gal", "12/32oz", "2/5 lb", "4/1 CS"
+  const slashDigitRe = /([\d,]+)\s*\/\s*([\d.]+)\s*([A-Za-z][A-Za-z.]*)?/g;
+  let match: RegExpExecArray | null;
+  while ((match = slashDigitRe.exec(name)) !== null) {
+    const csRaw = match[1].replace(/,/g, '');
+    const ipRaw = match[2];
+    const unitRaw = (match[3] ?? '').trim();
+    const cs = parseFloat(csRaw);
+    const ip = parseFloat(ipRaw);
+    if (!isFinite(cs) || cs <= 0 || !isFinite(ip)) continue;
+
+    const unitLower = unitRaw.toLowerCase();
+
+    if (unitRaw && SALE_ONLY_UNITS.has(unitLower)) {
+      // "4/1CS", "6/1Case" — sale-only suffix: caseSize only, innerPack not meaningful
+      return { caseSize: cs, caseSizeRaw: match[0], innerPack: null, unit: null };
+    }
+
+    // Known or unknown measurement unit — keep innerPack, normalize unit (null if unknown)
+    const normalizedUnit = unitRaw ? normalizeVendorUnit(unitRaw) : null;
+    return { caseSize: cs, caseSizeRaw: match[0], innerPack: ip, unit: normalizedUnit };
+  }
+
+  // Pass 2: N/WORD — right side is a named sale unit word (no leading digit)
+  const namedUnitRe = /([\d,]+)\s*\/\s*(case|cs|ea|each|pk|pack|ct|count|bag|can)/i;
+  const namedMatch = name.match(namedUnitRe);
+  if (namedMatch) {
+    const cs = parseFloat(namedMatch[1].replace(/,/g, ''));
+    if (!isFinite(cs) || cs <= 0) return NULL_RESULT;
+    return { caseSize: cs, caseSizeRaw: namedMatch[0], innerPack: null, unit: null };
+  }
+
+  return NULL_RESULT;
 }
 
 function extractProductsFromText(text: string): PdfProduct[] {
@@ -100,13 +216,15 @@ function extractProductsFromText(text: string): PdfProduct[] {
       if (priceMatch) {
         const productName = nameLines.join(' ').trim();
         if (productName) {
-          const { caseSize, caseSizeRaw } = extractCaseSizeFromName(productName);
+          const { caseSize, caseSizeRaw, innerPack, unit } = extractPackInfoFromName(productName);
           products.push({
             productName,
             vendorSku: currentSku,
             price: parseFloat(priceMatch[1].replace(/,/g, '')),
             caseSize,
             caseSizeRaw,
+            innerPack,
+            unit,
           });
         }
         nameLines = [];
