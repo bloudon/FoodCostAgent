@@ -440,9 +440,9 @@ export default function OrderGuideScan() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Scan Invoice / Receipt</h1>
+            <h1 className="text-2xl font-bold">Import Order Guide</h1>
             <p className="text-sm text-muted-foreground">
-              AI reads your vendor invoice and extracts product names, SKUs, and prices
+              Upload a PDF catalog or photo of an invoice — AI extracts product names, SKUs, and prices
             </p>
           </div>
         </div>

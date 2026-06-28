@@ -322,9 +322,20 @@ export default function Vendors() {
     if (!selectedFile || !selectedVendorForImport) {
       toast({
         title: 'Missing Information',
-        description: 'Please select both a vendor and a file (CSV or Excel)',
+        description: 'Please select both a vendor and a file',
         variant: 'destructive',
       });
+      return;
+    }
+
+    // PDF catalogs → navigate to order-guide-scan which handles PDFs natively
+    if (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf')) {
+      setIsImportDialogOpen(false);
+      setSelectedFile(null);
+      const params = new URLSearchParams();
+      params.set('vendorId', selectedVendorForImport);
+      if (selectedStoreId) params.set('storeId', selectedStoreId);
+      setLocation(`/order-guide-scan?${params.toString()}`);
       return;
     }
 
@@ -551,7 +562,7 @@ export default function Vendors() {
               data-testid="button-scan-invoice"
             >
               <ScanLine className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Scan Invoice</span>
+              <span className="hidden sm:inline">Scan Invoice / PDF</span>
             </Button>
             <Button 
               variant="outline" 
@@ -713,7 +724,7 @@ export default function Vendors() {
                               <ScanLine className="h-4 w-4" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Scan Invoice</TooltipContent>
+                          <TooltipContent>Scan Invoice / Import PDF</TooltipContent>
                         </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -1122,7 +1133,7 @@ export default function Vendors() {
           <DialogHeader>
             <DialogTitle>Import Order Guide</DialogTitle>
             <DialogDescription>
-              Upload an order guide (CSV or Excel) from Sysco, US Foods, or GFS. The system will automatically match products to your inventory.
+              Upload a CSV, Excel, or PDF catalog from any vendor. Products are automatically matched to your inventory.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1162,15 +1173,21 @@ export default function Vendors() {
               <label className="text-sm font-medium">Upload Order Guide File</label>
               <Input
                 type="file"
-                accept=".csv,.xlsx,.xls"
+                accept=".csv,.xlsx,.xls,.pdf"
                 onChange={handleFileChange}
                 data-testid="input-file-import"
               />
               {selectedFile && (
                 <p className="text-sm text-muted-foreground">
                   Selected: {selectedFile.name}
+                  {(selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf')) && (
+                    <span className="ml-2 text-xs text-blue-600 dark:text-blue-400">(PDF — opens import page)</span>
+                  )}
                 </p>
               )}
+              <p className="text-xs text-muted-foreground">
+                CSV or Excel from Sysco, US Foods, GFS — or a PDF price catalog from any vendor
+              </p>
             </div>
 
             <div className="rounded-lg bg-muted p-4 space-y-2">
