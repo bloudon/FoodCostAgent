@@ -188,7 +188,7 @@ describe("OrderGuideScan page — Step 1 configuration UI", () => {
 
   it("renders the page heading", () => {
     render(React.createElement(OrderGuideScan));
-    expect(screen.getByText("Scan Invoice / Receipt")).toBeInTheDocument();
+    expect(screen.getByText("Import Order Guide")).toBeInTheDocument();
   });
 
   it("shows the vendor selector on step 1", () => {
