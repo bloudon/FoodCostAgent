@@ -11,6 +11,8 @@ export interface PdfProduct {
   productName: string;
   vendorSku: string;
   price: number | null;
+  caseSize: number | null;
+  caseSizeRaw: string | null;
 }
 
 export interface PdfParseResult {
@@ -61,6 +63,19 @@ function isGarbage(line: string): boolean {
   return GARBAGE_PATTERNS.some(p => p.test(line));
 }
 
+/**
+ * Extracts a case quantity from a product name containing patterns like:
+ *   "2,500/Case"  "500/CS"  "1/EA"  "24/Pack"  "12/Pk"  "100/Ct"
+ * Returns { caseSize, caseSizeRaw } or nulls if no match found.
+ */
+function extractCaseSizeFromName(name: string): { caseSize: number | null; caseSizeRaw: string | null } {
+  const match = name.match(/([\d,]+)\s*\/\s*(case|cs|ea|each|pk|pack|ct|count)/i);
+  if (!match) return { caseSize: null, caseSizeRaw: null };
+  const num = parseFloat(match[1].replace(/,/g, ''));
+  if (!isFinite(num) || num <= 0) return { caseSize: null, caseSizeRaw: null };
+  return { caseSize: num, caseSizeRaw: match[0] };
+}
+
 function extractProductsFromText(text: string): PdfProduct[] {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
@@ -85,10 +100,13 @@ function extractProductsFromText(text: string): PdfProduct[] {
       if (priceMatch) {
         const productName = nameLines.join(' ').trim();
         if (productName) {
+          const { caseSize, caseSizeRaw } = extractCaseSizeFromName(productName);
           products.push({
             productName,
             vendorSku: currentSku,
             price: parseFloat(priceMatch[1].replace(/,/g, '')),
+            caseSize,
+            caseSizeRaw,
           });
         }
         nameLines = [];
