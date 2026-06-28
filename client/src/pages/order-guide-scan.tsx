@@ -33,7 +33,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useStoreContext } from '@/hooks/use-store-context';
 import { ObjectUploader } from '@/components/ObjectUploader';
 import {
@@ -201,6 +201,7 @@ export default function OrderGuideScan() {
     }
     const data = await res.json() as AppendResult;
     const { lines: merged, pageBreaks: newBreaks } = mergeAppendedLines(currentLines, currentBreaks, data.newLines);
+    queryClient.invalidateQueries({ queryKey: ['/api/order-guides', ogId, 'review'] });
     return { lines: merged, breaks: newBreaks, pageCount: data.pageNumber };
   }, []);
 
@@ -240,6 +241,9 @@ export default function OrderGuideScan() {
           lastLinesRef.current = currentLines;
         }
       } catch { /* non-fatal */ }
+
+      // Ensure any previously cached review data for this guide is cleared
+      queryClient.invalidateQueries({ queryKey: ['/api/order-guides', ogId, 'review'] });
 
       toast({
         title: 'PDF imported',
@@ -372,6 +376,10 @@ export default function OrderGuideScan() {
       setPageBreaks(newBreaks);
       setPageCount(data.pageNumber);
       setShowAddPageUploader(false);
+      // Bust the review cache so navigating to Review & Commit fetches fresh data
+      if (orderGuideId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/order-guides', orderGuideId, 'review'] });
+      }
       toast({
         title: `Page ${data.pageNumber} scanned`,
         description: `Added ${data.newItems} item${data.newItems !== 1 ? 's' : ''} — ${data.totalItems} total`,
