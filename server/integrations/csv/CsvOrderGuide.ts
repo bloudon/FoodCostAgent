@@ -254,6 +254,7 @@ export class CsvOrderGuide {
       delimiter,
       from: skipRows + 1, // Skip header rows if needed
       relax_column_count: true, // Tolerate footer/summary rows with fewer columns and any extra columns
+      relax_quotes: true,       // Tolerate mid-field quote characters (e.g. footer rows like 'Disclaimer: "text"')
     }) as Record<string, string>[];
 
     if (records.length === 0) {
