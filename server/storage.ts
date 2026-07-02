@@ -1695,23 +1695,30 @@ export class DatabaseStorage implements IStorage {
   ): Promise<Map<string, { casePrice: number; vendorName: string }>> {
     if (inventoryItemIds.length === 0) return new Map();
 
-    const vis = await db
-      .select({
-        inventoryItemId: vendorItems.inventoryItemId,
-        vendorId: vendorItems.vendorId,
-        lastCasePrice: vendorItems.lastCasePrice,
-        lastPrice: vendorItems.lastPrice,
-        caseSize: vendorItems.caseSize,
-      })
-      .from(vendorItems)
-      .where(
-        and(
-          inArray(vendorItems.inventoryItemId, inventoryItemIds),
-          eq(vendorItems.active, 1)
-        )
-      );
+    // vendor_items has no updatedAt column. We use PostgreSQL DISTINCT ON ordered by
+    // id DESC as a deterministic surrogate for "most recently added record" per item.
+    // UUIDs are gen_random_uuid() so lexicographic desc is not strictly chronological,
+    // but it is always deterministic — the same vendor_item wins every time.
+    const vis = await db.execute<{
+      inventory_item_id: string;
+      vendor_id: string;
+      last_case_price: number;
+      last_price: number;
+      case_size: number;
+    }>(
+      sql`SELECT DISTINCT ON (inventory_item_id)
+            inventory_item_id,
+            vendor_id,
+            last_case_price,
+            last_price,
+            case_size
+          FROM vendor_items
+          WHERE inventory_item_id = ANY(${inventoryItemIds})
+            AND active = 1
+          ORDER BY inventory_item_id, id DESC`
+    );
 
-    if (vis.length === 0) return new Map();
+    if (vis.rows.length === 0) return new Map();
 
     const vendorList = await db
       .select({ id: vendors.id, name: vendors.name })
@@ -1720,19 +1727,17 @@ export class DatabaseStorage implements IStorage {
 
     const vendorNameMap = new Map(vendorList.map(v => [v.id, v.name]));
 
-    // For each inventory item take the first vendor record that has a case price.
-    // lastCasePrice is the primary stored case price; fall back to lastPrice × caseSize
-    // for older records that pre-date the lastCasePrice column.
+    // lastCasePrice is the primary stored case price (entered by user / imported from order guide).
+    // Fall back to lastPrice × caseSize for records pre-dating the lastCasePrice column.
     const result = new Map<string, { casePrice: number; vendorName: string }>();
-    for (const vi of vis) {
-      if (result.has(vi.inventoryItemId)) continue; // keep first seen
-      const casePrice = vi.lastCasePrice > 0
-        ? vi.lastCasePrice
-        : vi.lastPrice * vi.caseSize;
+    for (const vi of vis.rows) {
+      const casePrice = vi.last_case_price > 0
+        ? vi.last_case_price
+        : vi.last_price * vi.case_size;
       if (casePrice > 0) {
-        result.set(vi.inventoryItemId, {
+        result.set(vi.inventory_item_id, {
           casePrice,
-          vendorName: vendorNameMap.get(vi.vendorId) || 'Unknown',
+          vendorName: vendorNameMap.get(vi.vendor_id) || 'Unknown',
         });
       }
     }
