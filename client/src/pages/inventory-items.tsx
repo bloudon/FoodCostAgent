@@ -71,6 +71,8 @@ type InventoryItemDisplay = {
   active: number;
   isPowerItem: number | boolean;
   vendorSkus: string[];
+  latestCasePrice: number | null;
+  latestCasePriceVendor: string | null;
   locations: Array<{
     id: string;
     name: string;
@@ -254,6 +256,7 @@ export default function InventoryItems() {
         case "wac": return item.avgCostPerUnit;
         case "quantity": return item.onHandQty;
         case "estOnHand": return estimatedOnHandMap.get(item.id) ?? null;
+        case "casePrice": return item.latestCasePrice ?? null;
         default: return null;
       }
     }),
@@ -399,6 +402,7 @@ export default function InventoryItems() {
                   <SortableTableHead field="wac" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden lg:table-cell">Avg Cost (WAC)</SortableTableHead>
                   <SortableTableHead field="quantity" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden md:table-cell">Quantity</SortableTableHead>
                   <SortableTableHead field="estOnHand" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden md:table-cell">Est. On-Hand</SortableTableHead>
+                  <SortableTableHead field="casePrice" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden xl:table-cell">Case Price</SortableTableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -543,6 +547,18 @@ export default function InventoryItems() {
                           <span className="text-blue-600 dark:text-blue-400">
                             {estimatedOnHandMap.get(item.id)?.toFixed(2)}
                           </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell
+                        className="text-right font-mono cursor-pointer hidden xl:table-cell text-muted-foreground"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                        data-testid={`cell-case-price-${item.id}`}
+                        title={item.latestCasePriceVendor ? `Vendor: ${item.latestCasePriceVendor}` : undefined}
+                      >
+                        {item.latestCasePrice != null ? (
+                          `$${item.latestCasePrice.toFixed(2)}`
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}

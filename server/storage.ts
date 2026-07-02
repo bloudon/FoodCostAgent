@@ -197,6 +197,7 @@ export interface IStorage {
   getVendorItems(vendorId?: string, companyId?: string, storeId?: string): Promise<VendorItem[]>;
   getVendorItem(id: string): Promise<VendorItem | undefined>;
   getVendorSkusBatch(inventoryItemIds: string[]): Promise<Map<string, string[]>>;
+  getVendorCasePricesBatch(inventoryItemIds: string[], companyId: string): Promise<Map<string, { casePrice: number; vendorName: string }>>;
   createVendorItem(vendorItem: InsertVendorItem): Promise<VendorItem>;
   updateVendorItem(id: string, vendorItem: Partial<InsertVendorItem>): Promise<VendorItem | undefined>;
   deleteVendorItem(id: string): Promise<void>;
@@ -1686,6 +1687,49 @@ export class DatabaseStorage implements IStorage {
     }
 
     return grouped;
+  }
+
+  async getVendorCasePricesBatch(
+    inventoryItemIds: string[],
+    companyId: string
+  ): Promise<Map<string, { casePrice: number; vendorName: string }>> {
+    if (inventoryItemIds.length === 0) return new Map();
+
+    const vis = await db
+      .select({
+        inventoryItemId: vendorItems.inventoryItemId,
+        vendorId: vendorItems.vendorId,
+        lastCasePrice: vendorItems.lastCasePrice,
+      })
+      .from(vendorItems)
+      .where(
+        and(
+          inArray(vendorItems.inventoryItemId, inventoryItemIds),
+          eq(vendorItems.active, 1),
+          gt(vendorItems.lastCasePrice, 0)
+        )
+      );
+
+    if (vis.length === 0) return new Map();
+
+    const vendorList = await db
+      .select({ id: vendors.id, name: vendors.name })
+      .from(vendors)
+      .where(eq(vendors.companyId, companyId));
+
+    const vendorNameMap = new Map(vendorList.map(v => [v.id, v.name]));
+
+    const result = new Map<string, { casePrice: number; vendorName: string }>();
+    for (const vi of vis) {
+      const existing = result.get(vi.inventoryItemId);
+      if (!existing || vi.lastCasePrice > existing.casePrice) {
+        result.set(vi.inventoryItemId, {
+          casePrice: vi.lastCasePrice,
+          vendorName: vendorNameMap.get(vi.vendorId) || 'Unknown',
+        });
+      }
+    }
+    return result;
   }
 
   async createVendorItem(insertVI: InsertVendorItem): Promise<VendorItem> {
