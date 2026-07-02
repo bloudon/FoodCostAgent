@@ -1700,13 +1700,14 @@ export class DatabaseStorage implements IStorage {
         inventoryItemId: vendorItems.inventoryItemId,
         vendorId: vendorItems.vendorId,
         lastCasePrice: vendorItems.lastCasePrice,
+        lastPrice: vendorItems.lastPrice,
+        caseSize: vendorItems.caseSize,
       })
       .from(vendorItems)
       .where(
         and(
           inArray(vendorItems.inventoryItemId, inventoryItemIds),
-          eq(vendorItems.active, 1),
-          gt(vendorItems.lastCasePrice, 0)
+          eq(vendorItems.active, 1)
         )
       );
 
@@ -1719,12 +1720,18 @@ export class DatabaseStorage implements IStorage {
 
     const vendorNameMap = new Map(vendorList.map(v => [v.id, v.name]));
 
+    // For each inventory item take the first vendor record that has a case price.
+    // lastCasePrice is the primary stored case price; fall back to lastPrice × caseSize
+    // for older records that pre-date the lastCasePrice column.
     const result = new Map<string, { casePrice: number; vendorName: string }>();
     for (const vi of vis) {
-      const existing = result.get(vi.inventoryItemId);
-      if (!existing || vi.lastCasePrice > existing.casePrice) {
+      if (result.has(vi.inventoryItemId)) continue; // keep first seen
+      const casePrice = vi.lastCasePrice > 0
+        ? vi.lastCasePrice
+        : vi.lastPrice * vi.caseSize;
+      if (casePrice > 0) {
         result.set(vi.inventoryItemId, {
-          casePrice: vi.lastCasePrice,
+          casePrice,
           vendorName: vendorNameMap.get(vi.vendorId) || 'Unknown',
         });
       }

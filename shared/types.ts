@@ -36,6 +36,8 @@ export interface EnrichedInventoryItem {
   };
   vendorSkus: string[];
   isPowerItem: number;
+  latestCasePrice: number | null;
+  latestCasePriceVendor: string | null;
 }
 
 export interface EnrichedRecipe {
