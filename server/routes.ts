@@ -7472,7 +7472,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           const unitPrice = vi.lastPrice;
           const caseSize = vi.caseSize || 1;
-          const casePrice = unitPrice * caseSize;
+          const casePrice = (vi.lastCasePrice != null && vi.lastCasePrice > 0)
+            ? vi.lastCasePrice
+            : unitPrice * caseSize;
           
           return {
             vendorId: vi.vendorId,
