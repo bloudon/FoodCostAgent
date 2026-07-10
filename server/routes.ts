@@ -11015,7 +11015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = (req as any).userId;
       const po = await storage.getPurchaseOrder(req.params.id, companyId);
       if (!po) return res.status(404).json({ error: "Purchase order not found" });
-      const log = await storage.confirmPoExportLog(req.params.logId, userId);
+      const log = await storage.confirmPoExportLog(req.params.logId, req.params.id, companyId, userId);
       if (!log) return res.status(404).json({ error: "Export log not found" });
       return res.json({ data: log });
     } catch (err: any) {

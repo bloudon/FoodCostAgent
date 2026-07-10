@@ -498,6 +498,7 @@ export const vendorItems = pgTable("vendor_items", {
   lastPrice: real("last_price").notNull().default(0), // derived unit price (casePrice / (caseSize * innerPackSize))
   lastCasePrice: real("last_case_price").notNull().default(0), // entered case price (primary entry field)
   active: integer("active").notNull().default(1),
+  updatedAt: timestamp("updated_at").defaultNow(),               // tracks last price/qty update for recency selection
 });
 
 export const insertVendorItemSchema = createInsertSchema(vendorItems).omit({ id: true });

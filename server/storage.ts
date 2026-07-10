@@ -355,7 +355,7 @@ export interface IStorage {
   // PO Export Logs
   createPoExportLog(log: InsertPoExportLog): Promise<PoExportLog>;
   getPoExportLogs(purchaseOrderId: string, companyId: string): Promise<PoExportLog[]>;
-  confirmPoExportLog(id: string, userId: string): Promise<PoExportLog | undefined>;
+  confirmPoExportLog(id: string, purchaseOrderId: string, companyId: string, userId: string): Promise<PoExportLog | undefined>;
 
   // Receipts
   getReceipts(companyId: string, storeId?: string): Promise<Receipt[]>;
@@ -1701,27 +1701,26 @@ export class DatabaseStorage implements IStorage {
   ): Promise<Map<string, { casePrice: number; vendorName: string }>> {
     if (inventoryItemIds.length === 0) return new Map();
 
-    // vendor_items has no updatedAt column. We use PostgreSQL DISTINCT ON ordered by
-    // id DESC as a deterministic surrogate for "most recently added record" per item.
-    // UUIDs are gen_random_uuid() so lexicographic desc is not strictly chronological,
-    // but it is always deterministic — the same vendor_item wins every time.
+    // DISTINCT ON picks one vendor item per inventory item, ordered by updated_at DESC so
+    // the most recently modified record wins. updated_at is set on every updateVendorItem call;
+    // rows pre-dating the column have updated_at = migration timestamp (all equal → tie-broken
+    // by id DESC, which is deterministic). Case price is always computed as lastPrice × caseSize
+    // per the task spec — lastCasePrice is the portal input value and is not used here.
     const vis = await db.execute<{
       inventory_item_id: string;
       vendor_id: string;
-      last_case_price: number;
       last_price: number;
       case_size: number;
     }>(
       sql`SELECT DISTINCT ON (inventory_item_id)
             inventory_item_id,
             vendor_id,
-            last_case_price,
             last_price,
             case_size
           FROM vendor_items
           WHERE inventory_item_id = ANY(${inventoryItemIds})
             AND active = 1
-          ORDER BY inventory_item_id, id DESC`
+          ORDER BY inventory_item_id, updated_at DESC NULLS LAST, id DESC`
     );
 
     if (vis.rows.length === 0) return new Map();
@@ -1733,13 +1732,11 @@ export class DatabaseStorage implements IStorage {
 
     const vendorNameMap = new Map(vendorList.map(v => [v.id, v.name]));
 
-    // lastCasePrice is the primary stored case price (entered by user / imported from order guide).
-    // Fall back to lastPrice × caseSize for records pre-dating the lastCasePrice column.
+    // Case price = lastPrice × caseSize (per spec).
+    // lastPrice is the derived unit price; multiply by caseSize to get per-case cost.
     const result = new Map<string, { casePrice: number; vendorName: string }>();
     for (const vi of vis.rows) {
-      const casePrice = vi.last_case_price > 0
-        ? vi.last_case_price
-        : vi.last_price * vi.case_size;
+      const casePrice = vi.last_price * vi.case_size;
       if (casePrice > 0) {
         result.set(vi.inventory_item_id, {
           casePrice,
@@ -1758,7 +1755,7 @@ export class DatabaseStorage implements IStorage {
   async updateVendorItem(id: string, updates: Partial<InsertVendorItem>): Promise<VendorItem | undefined> {
     const [vendorItem] = await db
       .update(vendorItems)
-      .set(updates)
+      .set({ ...updates, updatedAt: new Date() })
       .where(eq(vendorItems.id, id))
       .returning();
     return vendorItem || undefined;
@@ -3076,11 +3073,17 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(poExportLogs.exportedAt));
   }
 
-  async confirmPoExportLog(id: string, userId: string): Promise<PoExportLog | undefined> {
+  async confirmPoExportLog(id: string, purchaseOrderId: string, companyId: string, userId: string): Promise<PoExportLog | undefined> {
     const [log] = await db
       .update(poExportLogs)
       .set({ manuallyConfirmedAt: new Date(), manuallyConfirmedBy: userId })
-      .where(eq(poExportLogs.id, id))
+      .where(
+        and(
+          eq(poExportLogs.id, id),
+          eq(poExportLogs.purchaseOrderId, purchaseOrderId),
+          eq(poExportLogs.companyId, companyId)
+        )
+      )
       .returning();
     return log || undefined;
   }

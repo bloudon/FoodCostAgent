@@ -180,6 +180,8 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_version text`);
     // Task #351: pack_uom on vendor_items — stores pack dimension unit for unit-aware case-price display
     await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS pack_uom text`);
+    // Task #386: vendor_items.updated_at — tracks last price/qty change for correct recency selection in case-price batch query
+    await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS updated_at timestamp DEFAULT now()`);
     // M1 Procurement Connector: po_export_logs — audit trail for supplier-formatted order file exports
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS po_export_logs (

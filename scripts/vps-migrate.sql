@@ -1003,7 +1003,25 @@ BEGIN
 END $$;
 
 -- =============================================================================
--- v040 — M1 Procurement Connector: po_export_logs table
+-- v040 — Task #386: vendor_items.updated_at for correct recency selection
+-- The batch case-price query uses DISTINCT ON ordered by updated_at DESC to
+-- pick the most recently modified vendor item per inventory item.
+-- DEFAULT now() back-fills existing rows at migration time; subsequent
+-- updateVendorItem calls set this column explicitly on every price change.
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v040') THEN
+
+    ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS updated_at timestamp DEFAULT now();
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v040', 'Task #386: add updated_at to vendor_items for recency-based case-price selection');
+  END IF;
+END $$;
+
+-- =============================================================================
+-- v041 — M1 Procurement Connector: po_export_logs table
 -- Audit trail for every supplier-formatted order CSV generated from a PO.
 -- Tracks connector used, user, timestamp, line count, warnings, and whether
 -- the operator manually confirmed they uploaded the file to the supplier portal.
