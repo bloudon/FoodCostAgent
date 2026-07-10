@@ -26,12 +26,13 @@ export class UsFoodsAdapter implements VendorAdapter {
   key = 'usfoods' as const;
   name = 'US Foods';
 
-  supports = {
-    edi: true,
-    punchout: true,
-    csv: true,
-    api: true,
-  };
+  capabilities = [
+    { capability: 'order_guide_import'    as const, transport: 'csv'      as const },
+    { capability: 'purchase_order_export' as const, transport: 'edi'      as const },
+    { capability: 'purchase_order_export' as const, transport: 'punchout' as const },
+    { capability: 'invoice_fetch'         as const, transport: 'api'      as const },
+    { capability: 'punchout_shop'         as const, transport: 'punchout' as const },
+  ];
 
   constructor(private credentials: VendorCredentials) {}
 

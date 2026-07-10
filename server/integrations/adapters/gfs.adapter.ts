@@ -21,12 +21,11 @@ export class GfsAdapter implements VendorAdapter {
   key = 'gfs' as const;
   name = 'Gordon Food Service';
 
-  supports = {
-    edi: true,
-    punchout: false,
-    csv: true,
-    api: true,
-  };
+  capabilities = [
+    { capability: 'order_guide_import'    as const, transport: 'csv' as const },
+    { capability: 'purchase_order_export' as const, transport: 'edi' as const },
+    { capability: 'invoice_fetch'         as const, transport: 'api' as const },
+  ];
 
   constructor(private credentials: VendorCredentials) {}
 

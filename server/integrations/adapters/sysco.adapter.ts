@@ -21,12 +21,12 @@ export class SyscoAdapter implements VendorAdapter {
   key = 'sysco' as const;
   name = 'Sysco';
 
-  supports = {
-    edi: true,
-    punchout: false,
-    csv: true,
-    api: true,
-  };
+  capabilities = [
+    { capability: 'order_guide_import'    as const, transport: 'csv' as const },
+    { capability: 'purchase_order_export' as const, transport: 'edi' as const },
+    { capability: 'invoice_fetch'         as const, transport: 'api' as const },
+    { capability: 'price_sync'            as const, transport: 'api' as const },
+  ];
 
   constructor(private credentials: VendorCredentials) {}
 

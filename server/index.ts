@@ -202,6 +202,21 @@ async function runStartupMigrations() {
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS po_export_logs_po_idx ON po_export_logs (purchase_order_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS po_export_logs_company_idx ON po_export_logs (company_id)`);
+    // M2 Connector Registry: customer_supplier_connections — per-company connector + transport configuration
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS customer_supplier_connections (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id varchar NOT NULL,
+        vendor_id varchar NOT NULL,
+        connector_id text NOT NULL,
+        transport_overrides jsonb,
+        is_active integer NOT NULL DEFAULT 1,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS csc_company_vendor_uniq ON customer_supplier_connections (company_id, vendor_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS csc_company_idx ON customer_supplier_connections (company_id)`);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

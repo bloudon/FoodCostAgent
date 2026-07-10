@@ -71,6 +71,7 @@ import {
   prepChartRuns, type PrepChartRun, type InsertPrepChartRun,
   prepChartLines, type PrepChartLine, type InsertPrepChartLine,
   shelfScanSessions, type ShelfScanSession, type InsertShelfScanSession,
+  customerSupplierConnections, type CustomerSupplierConnection, type InsertCustomerSupplierConnection,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -449,6 +450,12 @@ export interface IStorage {
   // System Preferences
   getSystemPreferences(): Promise<SystemPreferences | undefined>;
   updateSystemPreferences(preferences: Partial<SystemPreferences>): Promise<SystemPreferences>;
+
+  // Customer Supplier Connections (M2 — per-company connector+transport config)
+  getCustomerSupplierConnection(companyId: string, vendorId: string): Promise<CustomerSupplierConnection | null>;
+  getCompanySupplierConnections(companyId: string): Promise<CustomerSupplierConnection[]>;
+  upsertCustomerSupplierConnection(data: InsertCustomerSupplierConnection): Promise<CustomerSupplierConnection>;
+  deleteCustomerSupplierConnection(id: string, companyId: string): Promise<void>;
 
   // Vendor Credentials
   getVendorCredentials(): Promise<VendorCredentials[]>;
@@ -4692,6 +4699,54 @@ export class DatabaseStorage implements IStorage {
       totalItems: r.totalItems,
       countedItems: r.countedItems,
     }));
+  }
+
+  // ===== Customer Supplier Connections (M2) =====
+
+  async getCustomerSupplierConnection(companyId: string, vendorId: string): Promise<CustomerSupplierConnection | null> {
+    const [row] = await db
+      .select()
+      .from(customerSupplierConnections)
+      .where(and(
+        eq(customerSupplierConnections.companyId, companyId),
+        eq(customerSupplierConnections.vendorId, vendorId),
+      ))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async getCompanySupplierConnections(companyId: string): Promise<CustomerSupplierConnection[]> {
+    return db
+      .select()
+      .from(customerSupplierConnections)
+      .where(eq(customerSupplierConnections.companyId, companyId))
+      .orderBy(asc(customerSupplierConnections.createdAt));
+  }
+
+  async upsertCustomerSupplierConnection(data: InsertCustomerSupplierConnection): Promise<CustomerSupplierConnection> {
+    const existing = await this.getCustomerSupplierConnection(data.companyId, data.vendorId);
+    if (existing) {
+      const [updated] = await db
+        .update(customerSupplierConnections)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(customerSupplierConnections.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db
+      .insert(customerSupplierConnections)
+      .values(data)
+      .returning();
+    return created;
+  }
+
+  async deleteCustomerSupplierConnection(id: string, companyId: string): Promise<void> {
+    await db
+      .delete(customerSupplierConnections)
+      .where(and(
+        eq(customerSupplierConnections.id, id),
+        eq(customerSupplierConnections.companyId, companyId),
+      ));
   }
 }
 

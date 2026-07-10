@@ -4,6 +4,39 @@
 
 export type VendorKey = 'sysco' | 'gfs' | 'usfoods' | 'pfs' | 'sofo' | 'generic';
 
+/**
+ * M2 — Connector Registry and Capability Transport Model
+ *
+ * Transport: the wire protocol used to exchange data with a supplier.
+ * Capability: a named operation the connector can perform.
+ * CapabilitySpec: binds a capability to its default transport for a given connector.
+ *
+ * One connector may advertise the same capability over multiple transports
+ * (e.g. US Foods supports purchase_order_export via both 'edi' and 'punchout').
+ * The first entry in the capabilities array is the preferred/default transport.
+ */
+export type ConnectorTransport =
+  | 'csv'
+  | 'excel'
+  | 'edi'
+  | 'sftp'
+  | 'api'
+  | 'punchout'
+  | 'email'
+  | 'manual';
+
+export type ConnectorCapability =
+  | 'order_guide_import'
+  | 'purchase_order_export'
+  | 'invoice_fetch'
+  | 'price_sync'
+  | 'punchout_shop';
+
+export interface CapabilitySpec {
+  capability: ConnectorCapability;
+  transport: ConnectorTransport;
+}
+
 export interface VendorProduct {
   vendorSku: string;
   vendorProductName: string;

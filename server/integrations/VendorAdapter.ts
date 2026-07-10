@@ -1,5 +1,6 @@
 import type {
   VendorKey,
+  CapabilitySpec,
   OrderGuide,
   PurchaseOrder,
   Invoice,
@@ -14,48 +15,52 @@ import type {
 
 /**
  * VendorAdapter Interface
- * 
- * Each food distributor (Sysco, GFS, US Foods) implements this interface.
- * Supports multiple integration methods: EDI, CSV, API, PunchOut.
+ *
+ * Each food distributor (Sysco, GFS, US Foods, etc.) implements this interface.
+ *
+ * M2: capabilities replaces the M1 boolean `supports` flags.
+ * Instead of { edi: true, csv: true, punchout: false } use a CapabilitySpec array
+ * that explicitly binds each capability to its transport:
+ *   [
+ *     { capability: 'order_guide_import',    transport: 'csv' },
+ *     { capability: 'purchase_order_export', transport: 'edi' },
+ *     { capability: 'invoice_fetch',         transport: 'api' },
+ *   ]
  */
 export interface VendorAdapter {
   key: VendorKey;
   name: string;
-  
-  supports: {
-    edi: boolean;
-    punchout: boolean;
-    csv: boolean;
-    api: boolean;
-  };
+
+  /** M2 capability-transport bindings (replaces boolean `supports` flags). */
+  capabilities: CapabilitySpec[];
 
   /**
-   * Sync order guide from vendor
-   * Returns list of products with pricing and availability
+   * Sync order guide from vendor.
+   * Returns list of products with pricing and availability.
    */
   syncOrderGuide(opts: SyncOrderGuideOptions): Promise<OrderGuide>;
 
   /**
-   * Submit purchase order to vendor
-   * Returns external order ID and submission status
+   * Submit purchase order to vendor.
+   * Returns external order ID and submission status.
    */
   submitPO(po: PurchaseOrder): Promise<SubmitPOResponse>;
 
   /**
-   * Fetch invoices from vendor for a date range
-   * Used for reconciliation and receiving
+   * Fetch invoices from vendor for a date range.
+   * Used for reconciliation and receiving.
    */
   fetchInvoices(range: FetchInvoicesRange): Promise<Invoice[]>;
 
   /**
-   * Optional: Initialize PunchOut shopping session
-   * Returns redirect URL for vendor catalog
+   * Optional: Initialize PunchOut shopping session.
+   * Returns redirect URL for vendor catalog.
    */
   punchoutInit?(req: PunchoutInitRequest): Promise<PunchoutInitResponse>;
 
   /**
-   * Optional: Process PunchOut cart return
-   * Converts vendor cart to internal order draft
+   * Optional: Process PunchOut cart return.
+   * Converts vendor cart to internal order draft.
    */
   punchoutReturn?(payload: PunchoutCartReturn): Promise<PunchoutOrderDraft>;
 }

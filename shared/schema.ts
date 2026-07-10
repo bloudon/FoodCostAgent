@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, timestamp, unique, index, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, timestamp, unique, index, uniqueIndex, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1706,3 +1706,33 @@ export const shelfScanSessions = pgTable("shelf_scan_sessions", {
 export const insertShelfScanSessionSchema = createInsertSchema(shelfScanSessions).omit({ id: true, createdAt: true });
 export type InsertShelfScanSession = z.infer<typeof insertShelfScanSessionSchema>;
 export type ShelfScanSession = typeof shelfScanSessions.$inferSelect;
+
+// ===== M2: Customer Supplier Connections =====
+// Links a company's vendor to a connector with capability-transport configuration.
+// When a row exists, capabilityRouter.ts uses it instead of name-based detection.
+export const customerSupplierConnections = pgTable("customer_supplier_connections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  vendorId: varchar("vendor_id").notNull(),
+  /** Connector identifier — must match a key in connectorRegistry.ts */
+  connectorId: text("connector_id").notNull(),
+  /**
+   * Per-capability transport overrides stored as a JSON object.
+   * Keys are ConnectorCapability values; values are ConnectorTransport values.
+   * Example: { "purchase_order_export": "email" }
+   * When absent for a capability, the connector's default transport is used.
+   */
+  transportOverrides: jsonb("transport_overrides"),
+  isActive: integer("is_active").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  companyVendorUniq: uniqueIndex("csc_company_vendor_uniq").on(table.companyId, table.vendorId),
+  companyIdx: index("csc_company_idx").on(table.companyId),
+}));
+
+export const insertCustomerSupplierConnectionSchema = createInsertSchema(customerSupplierConnections).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type InsertCustomerSupplierConnection = z.infer<typeof insertCustomerSupplierConnectionSchema>;
+export type CustomerSupplierConnection = typeof customerSupplierConnections.$inferSelect;

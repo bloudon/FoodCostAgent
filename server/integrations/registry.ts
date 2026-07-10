@@ -129,21 +129,34 @@ export const clearAdapterCache = (vendorKey?: VendorKey): void => {
  * Get all available vendors (without credentials check)
  */
 export const getAllVendors = (): VendorAdapter[] => {
-  // Return stub adapters for listing purposes
-  return [
-    { key: 'sysco', name: 'Sysco', supports: { edi: true, punchout: false, csv: true, api: true } } as VendorAdapter,
-    { key: 'gfs', name: 'Gordon Food Service', supports: { edi: true, punchout: false, csv: true, api: true } } as VendorAdapter,
-    { key: 'usfoods', name: 'US Foods', supports: { edi: true, punchout: true, csv: true, api: true } } as VendorAdapter,
-  ];
+  // Return stub adapters for listing purposes (M2: capabilities replace boolean supports)
+  const { listConnectorDefinitions } = require('./connectorRegistry');
+  return listConnectorDefinitions().map((def: any) => ({
+    key: def.connectorId,
+    name: def.displayName,
+    capabilities: def.capabilities,
+    syncOrderGuide: async () => { throw new Error('Stub — use adapter instance'); },
+    submitPO: async () => { throw new Error('Stub — use adapter instance'); },
+    fetchInvoices: async () => { throw new Error('Stub — use adapter instance'); },
+  })) as VendorAdapter[];
 };
 
 /**
- * Check if vendor supports a specific integration method
+ * Check if a connector supports a specific capability (M2).
+ * Uses the static ConnectorRegistry — no DB call needed.
  */
 export const vendorSupports = async (
   key: VendorKey,
   method: 'edi' | 'punchout' | 'csv' | 'api'
 ): Promise<boolean> => {
-  const adapter = await getVendor(key);
-  return adapter.supports[method] ?? false;
+  // M2 shim: map legacy method names to capability names
+  const { connectorSupports } = await import('./connectorRegistry');
+  const capabilityMap: Record<string, import('./types').ConnectorCapability> = {
+    csv:      'order_guide_import',
+    edi:      'purchase_order_export',
+    punchout: 'punchout_shop',
+    api:      'invoice_fetch',
+  };
+  const capability = capabilityMap[method];
+  return capability ? connectorSupports(key, capability) : false;
 };

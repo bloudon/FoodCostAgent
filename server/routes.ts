@@ -30,6 +30,8 @@ import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, max } from "drizzle-orm";
 import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs } from "@shared/schema";
 import { getExportRenderer, detectConnectorFromVendorName } from "./integrations/export";
+import { resolveConnectorId } from "./integrations/capabilityRouter";
+import { listConnectorDefinitions } from "./integrations/connectorRegistry";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -10943,7 +10945,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       });
 
-      const connectorId = requestedConnector || detectConnectorFromVendorName(vendor.name);
+      const connectorId = requestedConnector || await resolveConnectorId(companyId, po.vendorId);
       const renderer = getExportRenderer(connectorId);
 
       const exportInput = {
@@ -11074,14 +11076,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     returnUrl: z.string().url(),
   });
 
-  // Get all available vendor integrations
+  // Get all available vendor integrations (M2: capabilities replace boolean supports)
   app.get("/api/vendor-integrations", requireAuth, async (req, res) => {
     const vendors = getAllVendors();
     res.json(vendors.map(v => ({
       key: v.key,
       name: v.name,
-      supports: v.supports,
+      capabilities: v.capabilities,
     })));
+  });
+
+  // List all connector definitions (static registry — no auth required for UI discovery)
+  app.get("/api/connector-definitions", requireAuth, async (_req, res) => {
+    res.json({ data: listConnectorDefinitions() });
+  });
+
+  // ── Supplier Connections (per-company connector + transport config) ───────────
+
+  // GET /api/supplier-connections — list all connections for this company
+  app.get("/api/supplier-connections", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const connections = await storage.getCompanySupplierConnections(companyId);
+      res.json({ data: connections });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PUT /api/supplier-connections/:vendorId — upsert connection for a vendor
+  const upsertSupplierConnectionSchema = z.object({
+    connectorId: z.string().min(1),
+    transportOverrides: z.record(z.string()).optional().nullable(),
+    isActive: z.number().int().min(0).max(1).optional(),
+  });
+
+  app.put("/api/supplier-connections/:vendorId", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { vendorId } = req.params;
+      const vendor = await storage.getVendor(vendorId, companyId);
+      if (!vendor) return res.status(404).json({ error: "Vendor not found" });
+      const parsed = upsertSupplierConnectionSchema.parse(req.body);
+      const connection = await storage.upsertCustomerSupplierConnection({
+        companyId,
+        vendorId,
+        connectorId: parsed.connectorId,
+        transportOverrides: parsed.transportOverrides ?? null,
+        isActive: parsed.isActive ?? 1,
+      });
+      res.json({ data: connection });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // DELETE /api/supplier-connections/:id — remove a connection by row ID
+  app.delete("/api/supplier-connections/:id", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      await storage.deleteCustomerSupplierConnection(req.params.id, companyId);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // Sync order guide from vendor

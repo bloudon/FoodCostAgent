@@ -1054,3 +1054,24 @@ BEGIN
       VALUES ('v041', 'M1 Procurement Connector: add po_export_logs table for supplier order export audit trail');
   END IF;
 END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v042') THEN
+    -- M2 Connector Registry: per-company connector + transport configuration
+    CREATE TABLE IF NOT EXISTS customer_supplier_connections (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      vendor_id varchar NOT NULL,
+      connector_id text NOT NULL,
+      transport_overrides jsonb,
+      is_active integer NOT NULL DEFAULT 1,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS csc_company_vendor_uniq ON customer_supplier_connections (company_id, vendor_id);
+    CREATE INDEX IF NOT EXISTS csc_company_idx ON customer_supplier_connections (company_id);
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v042', 'M2 Connector Registry: add customer_supplier_connections table for per-company connector and transport configuration');
+  END IF;
+END $$;
