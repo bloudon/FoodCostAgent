@@ -1718,7 +1718,7 @@ export class DatabaseStorage implements IStorage {
             last_price,
             case_size
           FROM vendor_items
-          WHERE inventory_item_id = ANY(${inventoryItemIds})
+          WHERE inventory_item_id = ANY(${inventoryItemIds}::uuid[])
             AND active = 1
           ORDER BY inventory_item_id, updated_at DESC NULLS LAST, id DESC`
     );
