@@ -672,6 +672,30 @@ export const insertPOLineSchema = createInsertSchema(poLines).omit({ id: true })
 export type InsertPOLine = z.infer<typeof insertPOLineSchema>;
 export type POLine = typeof poLines.$inferSelect;
 
+// PO Export Logs — audit trail for every supplier-formatted order file generated
+export const poExportLogs = pgTable("po_export_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  purchaseOrderId: varchar("purchase_order_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  vendorId: varchar("vendor_id").notNull(),
+  connectorId: text("connector_id").notNull(),           // "sysco" | "gfs" | "usfoods" | "generic"
+  exportedBy: varchar("exported_by").notNull(),
+  exportedAt: timestamp("exported_at").notNull().defaultNow(),
+  fileFormat: text("file_format").notNull().default("csv"),
+  filePath: text("file_path"),                           // object storage path (nullable until storage added)
+  lineCount: integer("line_count"),
+  warnings: jsonb("warnings"),                           // string[]
+  manuallyConfirmedAt: timestamp("manually_confirmed_at"),
+  manuallyConfirmedBy: varchar("manually_confirmed_by"),
+}, (table) => ({
+  poIdx: index("po_export_logs_po_idx").on(table.purchaseOrderId),
+  companyIdx: index("po_export_logs_company_idx").on(table.companyId),
+}));
+
+export const insertPoExportLogSchema = createInsertSchema(poExportLogs).omit({ id: true, exportedAt: true });
+export type InsertPoExportLog = z.infer<typeof insertPoExportLogSchema>;
+export type PoExportLog = typeof poExportLogs.$inferSelect;
+
 // Receipts
 export const receipts = pgTable("receipts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

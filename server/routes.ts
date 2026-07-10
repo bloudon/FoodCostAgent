@@ -28,7 +28,8 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, max } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs } from "@shared/schema";
+import { getExportRenderer, detectConnectorFromVendorName } from "./integrations/export";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
@@ -10905,6 +10906,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ error: error.message });
     }
   });
+
+  // ── PO Export ────────────────────────────────────────────────────────────────
+
+  // Validate or generate a supplier-formatted order CSV
+  // ?validateOnly=true returns validation result without rendering the file
+  app.post("/api/purchase-orders/:id/export", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const userId = (req as any).userId;
+      const { connectorId: requestedConnector } = req.body || {};
+
+      const po = await storage.getPurchaseOrder(req.params.id, companyId);
+      if (!po) return res.status(404).json({ error: "Purchase order not found" });
+
+      const [vendor] = await db.select().from(vendors).where(eq(vendors.id, po.vendorId));
+      if (!vendor) return res.status(404).json({ error: "Vendor not found" });
+
+      const lines = await storage.getPOLines(req.params.id);
+      const allVendorItems = await storage.getVendorItems(po.vendorId);
+      const allInventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
+      const units = await storage.getUnits();
+
+      const enrichedLines = lines.map((line) => {
+        const vi = allVendorItems.find((vi) => vi.id === line.vendorItemId);
+        const item = allInventoryItems.find((i) => i.id === vi?.inventoryItemId);
+        const unit = units.find((u) => u.id === line.unitId);
+        return {
+          itemName: item?.name || "Unknown",
+          vendorSku: vi?.vendorSku || null,
+          orderedQty: line.orderedQty,
+          caseQuantity: line.caseQuantity,
+          unitName: unit?.name || "",
+          priceEach: line.priceEach,
+          caseSize: vi?.caseSize || 1,
+        };
+      });
+
+      const connectorId = requestedConnector || detectConnectorFromVendorName(vendor.name);
+      const renderer = getExportRenderer(connectorId);
+
+      const exportInput = {
+        purchaseOrderId: po.id,
+        vendorName: vendor.name,
+        accountNumber: vendor.accountNumber || null,
+        expectedDate: po.expectedDate ? new Date(po.expectedDate).toISOString().slice(0, 10) : null,
+        notes: (po as any).notes || null,
+        exportedAt: new Date(),
+        lines: enrichedLines,
+      };
+
+      const validation = renderer.validate(exportInput);
+
+      // Validate-only: return result without rendering
+      if (req.query.validateOnly === "true") {
+        return res.json({
+          data: {
+            validation,
+            connectorId,
+            displayName: renderer.displayName,
+          },
+        });
+      }
+
+      if (!validation.canExport) {
+        return res.status(422).json({ error: "Export blocked by validation errors", errors: validation.errors });
+      }
+
+      const result = renderer.render(exportInput);
+
+      await storage.createPoExportLog({
+        purchaseOrderId: po.id,
+        companyId,
+        vendorId: po.vendorId,
+        connectorId,
+        exportedBy: userId,
+        fileFormat: renderer.format,
+        lineCount: result.lineCount,
+        warnings: result.warnings.length > 0 ? (result.warnings as any) : null,
+      });
+
+      res.setHeader("Content-Type", result.mimeType);
+      res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+      return res.send(result.buffer);
+    } catch (err: any) {
+      console.error("[PO Export]", err);
+      return res.status(500).json({ error: err.message || "Export failed" });
+    }
+  });
+
+  // List export history for a PO
+  app.get("/api/purchase-orders/:id/export-logs", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const po = await storage.getPurchaseOrder(req.params.id, companyId);
+      if (!po) return res.status(404).json({ error: "Purchase order not found" });
+      const logs = await storage.getPoExportLogs(req.params.id, companyId);
+      return res.json({ data: logs });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Mark an export as manually submitted to the supplier portal
+  app.patch("/api/purchase-orders/:id/export-logs/:logId/confirm", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const userId = (req as any).userId;
+      const po = await storage.getPurchaseOrder(req.params.id, companyId);
+      if (!po) return res.status(404).json({ error: "Purchase order not found" });
+      const log = await storage.confirmPoExportLog(req.params.logId, userId);
+      if (!log) return res.status(404).json({ error: "Export log not found" });
+      return res.json({ data: log });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   app.delete("/api/purchase-orders/:id", requireAuth, async (req, res) => {
     try {

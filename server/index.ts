@@ -180,6 +180,26 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_version text`);
     // Task #351: pack_uom on vendor_items — stores pack dimension unit for unit-aware case-price display
     await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS pack_uom text`);
+    // M1 Procurement Connector: po_export_logs — audit trail for supplier-formatted order file exports
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS po_export_logs (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        purchase_order_id varchar NOT NULL,
+        company_id varchar NOT NULL,
+        vendor_id varchar NOT NULL,
+        connector_id text NOT NULL,
+        exported_by varchar NOT NULL,
+        exported_at timestamp NOT NULL DEFAULT now(),
+        file_format text NOT NULL DEFAULT 'csv',
+        file_path text,
+        line_count integer,
+        warnings jsonb,
+        manually_confirmed_at timestamp,
+        manually_confirmed_by varchar
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS po_export_logs_po_idx ON po_export_logs (purchase_order_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS po_export_logs_company_idx ON po_export_logs (company_id)`);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

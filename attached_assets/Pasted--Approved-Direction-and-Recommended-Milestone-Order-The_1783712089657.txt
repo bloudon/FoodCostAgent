@@ -1,0 +1,131 @@
+# Approved Direction and Recommended Milestone Order
+
+The analysis is approved.
+
+The connector framework should be implemented as two independent capability tracks:
+
+1. Supplier order output
+2. Supplier catalog and pricing input
+
+Do not require browser-extension ingestion before supplier-formatted order exports can ship.
+
+## Milestone 1 — Supplier Order Export Templates
+
+Design and implement the simplest valuable procurement workflow first:
+
+```text
+Existing FnB Purchase Order
+    → connector-specific template renderer
+    → downloadable supplier-formatted CSV or Excel file
+    → user uploads file into supplier portal
+    → supplier portal performs final validation and submission
+```
+
+Initial targets should use suppliers for which FnB already has order-guide adapters or known formats, such as:
+
+* Sysco
+* GFS
+* US Foods
+
+Before coding, confirm whether the supplier’s order-upload format differs from its order-guide download format. Do not assume the existing import adapter can be reversed directly.
+
+### Requirements
+
+* Add `exportOrderTemplate` as an independent connector capability.
+* Generate files using existing PO lines, vendor SKUs, quantities, units, and customer account information.
+* Validate missing SKUs or invalid quantities before export.
+* Display a clear export summary and warnings.
+* Preserve an audit record of the exported file, user, timestamp, connector, vendor, and PO.
+* Do not mark the PO as submitted merely because a file was generated.
+* Allow the user to manually confirm that the order was uploaded or submitted.
+
+## Milestone 2 — Connector Registry and Capability Transport Model
+
+Create the connector registry using transport values rather than boolean flags.
+
+Use one shared transport vocabulary across:
+
+* Connector capability definitions
+* Customer supplier connections
+* Capability routing
+
+A connector must be able to use different transports for different capabilities.
+
+## Milestone 3 — Connector Ingestion Batch and Provenance
+
+Create persisted ingestion batches with:
+
+* Raw payload
+* Raw row and raw fields
+* Connector and connection identity
+* Retrieval timestamp
+* Processing state
+* Review state
+* Retention policy
+* Reprocessing support
+
+Raw source data should not be committed directly to `vendor_items`.
+
+## Milestone 4 — External Vendor Discovery and Resolution
+
+Treat this as a substantial new workflow, not a minor connector task.
+
+Support:
+
+* matched
+* suggested_match
+* ambiguous
+* new_vendor
+* ignored
+
+Only user-approved mappings should become persistent `ExternalVendorMapping` records.
+
+Ignored external vendors must also persist so they do not reappear on every sync.
+
+## Milestone 5 — Extension Pairing and Scoped Authentication
+
+Use a short-lived pairing code exchanged for a revocable, limited connector token.
+
+The token must be scoped to:
+
+* companyId
+* userId
+* connectorId
+* extensionInstallationId
+* allowed permissions
+
+Do not use or expose the normal SPA session cookie to the browser extension.
+
+## Milestone 6 — Read-Only Browser Extension MVP
+
+The initial extension may only:
+
+* Detect supported portal
+* Read approved supplier catalog data
+* Discover external vendors
+* Submit ingestion batches
+* View ingestion status
+
+It must not:
+
+* Store supplier passwords
+* Bypass MFA or CAPTCHA
+* Modify portal data
+* Populate carts
+* Submit orders
+* Access unrelated FnB APIs
+
+## Architecture Deliverable Requested
+
+Before implementation, provide:
+
+1. Proposed database changes
+2. Connector registry design
+3. Capability transport routing design
+4. PO export-template architecture
+5. Ingestion batch lifecycle
+6. Vendor resolution UX flow
+7. Extension pairing and token lifecycle
+8. Security and retention considerations
+9. Milestone estimates and dependencies
+10. Identification of reusable existing services and components

@@ -27,6 +27,7 @@ import {
   inventoryCountEntries, type InventoryCountEntry, type InsertInventoryCountEntry,
   purchaseOrders, type PurchaseOrder, type InsertPurchaseOrder,
   poLines, type POLine, type InsertPOLine,
+  poExportLogs, type PoExportLog, type InsertPoExportLog,
   receipts, type Receipt, type InsertReceipt,
   receiptLines, type ReceiptLine, type InsertReceiptLine,
   posSales, type POSSale, type InsertPOSSale,
@@ -350,6 +351,11 @@ export interface IStorage {
   getPOLines(poId: string): Promise<POLine[]>;
   createPOLine(line: InsertPOLine): Promise<POLine>;
   deletePOLine(id: string): Promise<void>;
+
+  // PO Export Logs
+  createPoExportLog(log: InsertPoExportLog): Promise<PoExportLog>;
+  getPoExportLogs(purchaseOrderId: string, companyId: string): Promise<PoExportLog[]>;
+  confirmPoExportLog(id: string, userId: string): Promise<PoExportLog | undefined>;
 
   // Receipts
   getReceipts(companyId: string, storeId?: string): Promise<Receipt[]>;
@@ -3049,6 +3055,34 @@ export class DatabaseStorage implements IStorage {
 
   async deletePOLine(id: string): Promise<void> {
     await db.delete(poLines).where(eq(poLines.id, id));
+  }
+
+  // PO Export Logs
+  async createPoExportLog(insertLog: InsertPoExportLog): Promise<PoExportLog> {
+    const [log] = await db.insert(poExportLogs).values(insertLog).returning();
+    return log;
+  }
+
+  async getPoExportLogs(purchaseOrderId: string, companyId: string): Promise<PoExportLog[]> {
+    return db
+      .select()
+      .from(poExportLogs)
+      .where(
+        and(
+          eq(poExportLogs.purchaseOrderId, purchaseOrderId),
+          eq(poExportLogs.companyId, companyId)
+        )
+      )
+      .orderBy(desc(poExportLogs.exportedAt));
+  }
+
+  async confirmPoExportLog(id: string, userId: string): Promise<PoExportLog | undefined> {
+    const [log] = await db
+      .update(poExportLogs)
+      .set({ manuallyConfirmedAt: new Date(), manuallyConfirmedBy: userId })
+      .where(eq(poExportLogs.id, id))
+      .returning();
+    return log || undefined;
   }
 
   // Receipts

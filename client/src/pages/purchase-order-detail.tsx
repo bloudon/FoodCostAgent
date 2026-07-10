@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Save, Package, Search, PackageCheck, TrendingDown, CalendarIcon } from "lucide-react";
+import { ArrowLeft, Save, Package, Search, PackageCheck, TrendingDown, CalendarIcon, Download, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -144,6 +144,16 @@ export default function PurchaseOrderDetail() {
   const [compareItemId, setCompareItemId] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   
+  // Export state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [isLoadingExportInfo, setIsLoadingExportInfo] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportInfo, setExportInfo] = useState<{
+    connectorId: string;
+    displayName: string;
+    validation: { canExport: boolean; errors: string[]; warnings: string[] };
+  } | null>(null);
+
   // Track case quantities for each vendor item
   const [caseQuantities, setCaseQuantities] = useState<Record<string, number>>({});
   const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
@@ -230,6 +240,95 @@ export default function PurchaseOrderDetail() {
     queryKey: [`/api/inventory-items/${compareItemId}/vendor-prices`],
     enabled: !!compareItemId,
   });
+
+  // Fetch export history for this PO
+  type ExportLog = {
+    id: string;
+    connectorId: string;
+    exportedAt: string;
+    fileFormat: string;
+    lineCount: number | null;
+    warnings: string[] | null;
+    manuallyConfirmedAt: string | null;
+    manuallyConfirmedBy: string | null;
+  };
+  const { data: exportLogs } = useQuery({
+    queryKey: [`/api/purchase-orders/${id}/export-logs`],
+    enabled: !isNew,
+    select: (data: any) => (data?.data || []) as ExportLog[],
+  });
+
+  const confirmExportMutation = useMutation({
+    mutationFn: async (logId: string) =>
+      apiRequest("PATCH", `/api/purchase-orders/${id}/export-logs/${logId}/confirm`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${id}/export-logs`] });
+      toast({ title: "Marked as submitted", description: "Order recorded as uploaded to supplier portal" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to confirm submission", variant: "destructive" });
+    },
+  });
+
+  const handleOpenExportModal = async () => {
+    setShowExportModal(true);
+    setExportInfo(null);
+    setIsLoadingExportInfo(true);
+    try {
+      const response = await fetch(`/api/purchase-orders/${id}/export?validateOnly=true`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const data = await response.json();
+      setExportInfo(data.data || null);
+    } catch {
+      setExportInfo(null);
+    } finally {
+      setIsLoadingExportInfo(false);
+    }
+  };
+
+  const handleDownloadExport = async () => {
+    if (!exportInfo) return;
+    setIsExporting(true);
+    try {
+      const response = await fetch(`/api/purchase-orders/${id}/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ connectorId: exportInfo.connectorId }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Export failed");
+      }
+
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get("Content-Disposition");
+      const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
+      const filename = filenameMatch?.[1] || "purchase-order.csv";
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${id}/export-logs`] });
+      setShowExportModal(false);
+      toast({ title: "File downloaded", description: "Upload the file to your supplier portal to place the order." });
+    } catch (err: any) {
+      toast({ title: "Export failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const savePOMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -498,7 +597,7 @@ export default function PurchaseOrderDetail() {
                 </p>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {purchaseOrder && purchaseOrder.status !== "received" && !isNew && (
                 <Button
                   asChild
@@ -509,6 +608,16 @@ export default function PurchaseOrderDetail() {
                     <PackageCheck className="h-4 w-4 mr-2" />
                     Receive Order
                   </Link>
+                </Button>
+              )}
+              {!isNew && !isMiscGrocery && (
+                <Button
+                  variant="outline"
+                  onClick={handleOpenExportModal}
+                  data-testid="button-export-po"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download Order
                 </Button>
               )}
               {!isReceived && (
@@ -1357,6 +1466,75 @@ export default function PurchaseOrderDetail() {
           </div>
         )}
 
+        {/* Export History Section */}
+        {!isNew && exportLogs && exportLogs.length > 0 && (
+          <div className="mt-6">
+            <h2 className="text-lg font-semibold mb-4">Download History</h2>
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Connector</TableHead>
+                    <TableHead>Downloaded</TableHead>
+                    <TableHead className="text-right">Lines</TableHead>
+                    <TableHead>Warnings</TableHead>
+                    <TableHead>Portal Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {exportLogs.map((log) => (
+                    <TableRow key={log.id} data-testid={`row-export-log-${log.id}`}>
+                      <TableCell className="font-medium capitalize">{log.connectorId}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {new Date(log.exportedAt).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {log.lineCount ?? '—'}
+                      </TableCell>
+                      <TableCell>
+                        {log.warnings && log.warnings.length > 0 ? (
+                          <Badge variant="outline" className="text-amber-600 border-amber-300">
+                            {log.warnings.length} warning{log.warnings.length !== 1 ? 's' : ''}
+                          </Badge>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">None</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {log.manuallyConfirmedAt ? (
+                          <div className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400">
+                            <CheckCircle2 className="h-4 w-4" />
+                            Submitted
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                            <Clock className="h-4 w-4" />
+                            Not confirmed
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {!log.manuallyConfirmedAt && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => confirmExportMutation.mutate(log.id)}
+                            disabled={confirmExportMutation.isPending}
+                            data-testid={`button-confirm-export-${log.id}`}
+                          >
+                            Mark as Submitted
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+
         {/* Received Orders Section - Only show completed receipts */}
         {receipts && receipts.filter(r => r.status === "completed").length > 0 && (
           <div className="mt-6">
@@ -1406,6 +1584,86 @@ export default function PurchaseOrderDetail() {
         )}
         </div>
       </div>
+
+      {/* PO Export Modal */}
+      <Dialog open={showExportModal} onOpenChange={(open) => { if (!isExporting) setShowExportModal(open); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Download Order File</DialogTitle>
+            <DialogDescription>
+              {isLoadingExportInfo
+                ? "Checking order…"
+                : exportInfo
+                ? `Generate a ${exportInfo.displayName}-formatted CSV to upload to your supplier portal.`
+                : "Could not load export information."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {isLoadingExportInfo && (
+            <div className="py-6 text-center text-muted-foreground text-sm">Validating order lines…</div>
+          )}
+
+          {!isLoadingExportInfo && exportInfo && (
+            <div className="space-y-4">
+              {/* Errors — blocking */}
+              {exportInfo.validation.errors.length > 0 && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 space-y-1">
+                  <div className="flex items-center gap-2 text-sm font-medium text-destructive">
+                    <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                    Cannot export — fix these issues first:
+                  </div>
+                  <ul className="list-disc list-inside space-y-0.5 pl-1">
+                    {exportInfo.validation.errors.map((e, i) => (
+                      <li key={i} className="text-sm text-destructive">{e}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Warnings — non-blocking */}
+              {exportInfo.validation.warnings.length > 0 && (
+                <div className="rounded-md border border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-1">
+                  <div className="flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                    Review before uploading:
+                  </div>
+                  <ul className="list-disc list-inside space-y-0.5 pl-1">
+                    {exportInfo.validation.warnings.map((w, i) => (
+                      <li key={i} className="text-sm text-amber-700 dark:text-amber-400">{w}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {exportInfo.validation.canExport && exportInfo.validation.errors.length === 0 && exportInfo.validation.warnings.length === 0 && (
+                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Order is ready to export — no issues found.
+                </div>
+              )}
+
+              <p className="text-sm text-muted-foreground">
+                After downloading, upload the file to your {exportInfo.displayName} portal to place the order.
+                Come back here and click <strong>Mark as Submitted</strong> in the download history once you've uploaded it.
+              </p>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowExportModal(false)} disabled={isExporting} data-testid="button-export-cancel">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDownloadExport}
+              disabled={isLoadingExportInfo || !exportInfo?.validation.canExport || isExporting}
+              data-testid="button-export-download"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              {isExporting ? "Downloading…" : "Download File"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Vendor Price Comparison Dialog */}
       <Dialog open={!!compareItemId} onOpenChange={(open) => !open && setCompareItemId(null)}>

@@ -1001,3 +1001,38 @@ BEGIN
       VALUES ('v039', 'Task #351: add pack_uom column to vendor_items for unit-aware case-price display');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v040 — M1 Procurement Connector: po_export_logs table
+-- Audit trail for every supplier-formatted order CSV generated from a PO.
+-- Tracks connector used, user, timestamp, line count, warnings, and whether
+-- the operator manually confirmed they uploaded the file to the supplier portal.
+-- filePath is nullable — object storage integration added in a later milestone.
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v040') THEN
+
+    CREATE TABLE IF NOT EXISTS po_export_logs (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      purchase_order_id varchar NOT NULL,
+      company_id varchar NOT NULL,
+      vendor_id varchar NOT NULL,
+      connector_id text NOT NULL,
+      exported_by varchar NOT NULL,
+      exported_at timestamp NOT NULL DEFAULT now(),
+      file_format text NOT NULL DEFAULT 'csv',
+      file_path text,
+      line_count integer,
+      warnings jsonb,
+      manually_confirmed_at timestamp,
+      manually_confirmed_by varchar
+    );
+
+    CREATE INDEX IF NOT EXISTS po_export_logs_po_idx ON po_export_logs (purchase_order_id);
+    CREATE INDEX IF NOT EXISTS po_export_logs_company_idx ON po_export_logs (company_id);
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v040', 'M1 Procurement Connector: add po_export_logs table for supplier order export audit trail');
+  END IF;
+END $$;

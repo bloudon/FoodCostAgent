@@ -1,0 +1,205 @@
+## Architecture Follow-Up: Connector Ingestion and Vendor Discovery
+
+The proposed connector-versus-connection distinction is approved.
+
+Before implementation, incorporate the following refinements.
+
+### 1. Treat Portal Platforms Separately From Vendors
+
+A connector may represent a procurement platform such as Pepper rather than a single vendor.
+
+One customer supplier connection may expose multiple external vendors and catalogs.
+
+The ingestion pipeline must therefore support:
+
+1. External vendor discovery and resolution
+2. Vendor-item discovery and resolution
+
+Do not assume a vendor already exists before connector ingestion begins.
+
+---
+
+### 2. Add Persistent External Vendor Mapping
+
+Create a persistent mapping between an external supplier identity and an FnB vendor record.
+
+Suggested model:
+
+```typescript
+interface ExternalVendorMapping {
+  id: string;
+  companyId: string;
+  connectionId: string;
+  connectorId: string;
+
+  externalVendorId: string;
+  externalVendorName: string;
+
+  vendorId: string;
+
+  approvedBy: string;
+  approvedAt: Date;
+
+  lastSeenAt: Date;
+}
+```
+
+Once approved, future ingestions should automatically resolve that external supplier unless the mapping becomes invalid.
+
+---
+
+### 3. Add Vendor Resolution States
+
+Each discovered vendor must be classified as:
+
+```typescript
+type VendorResolutionStatus =
+  | "matched"
+  | "suggested_match"
+  | "new_vendor"
+  | "ambiguous"
+  | "ignored";
+```
+
+The review experience must allow users to:
+
+* Confirm a suggested vendor match
+* Select a different existing vendor
+* Create a new vendor
+* Ignore an external vendor/catalog
+* Persist the decision for future syncs
+
+---
+
+### 4. Preserve Raw Connector Data
+
+The extension should submit known normalized fields, but it must also preserve original source values.
+
+Example:
+
+```json
+{
+  "sku": "12345",
+  "name": "Mozzarella Whole Milk",
+  "caseSize": "6/5 LB",
+  "price": 82.40,
+  "availability": true,
+  "rawFields": {
+    "brand": "Grande",
+    "pack": "6/5 LB",
+    "portalUnit": "CS",
+    "availabilityText": "In Stock"
+  },
+  "rawRow": "original captured row or serialized representation"
+}
+```
+
+This provides provenance and allows future parsing improvements without requiring the portal to be scraped again.
+
+---
+
+### 5. Do Not Finalize Cookie-Based Extension Authentication Without Testing
+
+Do not assume the browser extension can safely rely on or directly read the existing SPA session cookie.
+
+Evaluate:
+
+* HttpOnly cookie behavior
+* SameSite settings
+* CORS
+* CSRF protection
+* Chrome extension host permissions
+* Production and staging domains
+* Token revocation
+* Public extension distribution risks
+
+Preferred architecture:
+
+1. User opens FnB Settings.
+2. User selects “Connect Browser Extension.”
+3. FnB generates a short-lived pairing code.
+4. The extension exchanges the pairing code for a scoped connector token.
+5. The token permits only required connector actions.
+6. The token can be revoked from FnB Settings.
+
+Suggested permissions:
+
+```typescript
+[
+  "connector:ingest",
+  "connection:read",
+  "ingestion:status"
+]
+```
+
+The extension must not receive unrestricted access to the user’s FnB account.
+
+---
+
+### 6. Keep Connector Capabilities Independent
+
+A connector may use different methods for different procurement actions.
+
+Example:
+
+```typescript
+{
+  connectorId: "pepper",
+  capabilities: {
+    retrieveCatalog: "browser_extension",
+    retrievePrices: "browser_extension",
+    retrieveInvoices: "manual_or_email",
+    exportOrderTemplate: "csv",
+    populateCart: "unsupported",
+    submitOrder: "unsupported"
+  }
+}
+```
+
+Do not force a connector to use one transport mechanism for all operations.
+
+---
+
+### 7. MVP Scope
+
+The browser-extension MVP should include only:
+
+* Detect supported portal
+* Identify customer supplier connection
+* Discover external vendors/catalogs
+* Read visible approved catalog fields
+* Submit ingestion batch to FnB
+* Resolve new or existing vendors
+* Run existing pack-size, unit-cost, and item-matching pipelines
+* Present review and approval
+* Record source and retrieval timestamp
+
+The MVP must not:
+
+* Store supplier passwords
+* Bypass MFA or CAPTCHA
+* Populate carts
+* Submit orders
+* Modify portal data
+* Run unattended server-side login
+* Scrape unrelated customer data
+
+---
+
+### 8. Separate Catalog Ingestion From Order Export
+
+Catalog and price retrieval is one capability.
+
+Generating a supplier-compatible order-upload template is another.
+
+The first ordering milestone should be:
+
+```text
+FnB Purchase Order
+    → supplier-specific export template
+    → user uploads into supplier portal
+    → supplier portal performs final validation
+    → user submits order
+```
+
+This approach should be implemented before direct portal cart population or API submission.
