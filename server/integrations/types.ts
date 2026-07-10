@@ -2,7 +2,7 @@
  * Shared domain types for vendor integrations
  */
 
-export type VendorKey = 'sysco' | 'gfs' | 'usfoods' | 'generic';
+export type VendorKey = 'sysco' | 'gfs' | 'usfoods' | 'pfs' | 'sofo' | 'generic';
 
 export interface VendorProduct {
   vendorSku: string;

@@ -80,6 +80,14 @@ export function normalizeVendorUnit(raw: string): string | null {
     pk: null,
     can: null,
     bag: null,
+    // Agricultural / specialty packaging
+    bshl: 'bu.',
+    bushel: 'bu.',
+    bushels: 'bu.',
+    bx: 'each',
+    box: 'each',
+    boxes: 'each',
+    '#10': 'each',  // #10 can (standard 106 oz commercial can) — treat as single-unit container
   };
   return u in MAP ? MAP[u] : null;
 }

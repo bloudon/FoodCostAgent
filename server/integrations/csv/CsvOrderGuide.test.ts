@@ -887,3 +887,197 @@ describe('hasNameCountSuspiciousRatio — >5× detection', () => {
     expect(hasNameCountSuspiciousRatio(51, 10)).toBe(true);
   });
 });
+
+// ─── PFS (Performance Foodservice) vendor mapping ────────────────────────────
+
+describe('PFS vendor mapping', () => {
+  it('detects PFS format and parses EA-order row — cheesecake 1/4 Lb', async () => {
+    const csv = [
+      'Custom Product Description,Product Description,Brand,StateOfOrigin,Domestic,Custom Product Number,Product Number,Pack Size,UOM,Price,Last Purchase (qty & date)',
+      ',"Cheesecake New York 10"" 16 Count Frozen",Sweet Encore,,No,,CV009,1/4 Lb,EA,$37.48,1 EA 05/21/2026',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfs' });
+    expect(guide.products).toHaveLength(1);
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('CV009');
+    expect(p.caseSize).toBe(1);
+    expect(p.innerPack).toBe(4);
+    expect(p.unit).toBe('lb.');
+    expect(p.price).toBeCloseTo(37.48);
+    expect(p.brandName).toBe('Sweet Encore');
+  });
+
+  it('parses CS-order row — 48/6 Oz hoagie rolls', async () => {
+    const csv = [
+      'Custom Product Description,Product Description,Brand,StateOfOrigin,Domestic,Custom Product Number,Product Number,Pack Size,UOM,Price,Last Purchase (qty & date)',
+      ',"Roll Hoagie White Unsliced 12"" Approximately 8 Bag 6 Per Bag Frozen",Roma,,No,,FC340,48/6 Oz,CS,$40.36,1 CS 04/23/2026',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfs' });
+    expect(guide.products).toHaveLength(1);
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('FC340');
+    expect(p.caseSize).toBe(48);
+    expect(p.innerPack).toBe(6);
+    expect(p.unit).toBe('oz');
+    expect(p.price).toBeCloseTo(40.36);
+  });
+
+  it('detects variable weight from $/lb price suffix', async () => {
+    const csv = [
+      'Custom Product Description,Product Description,Brand,StateOfOrigin,Domestic,Custom Product Number,Product Number,Pack Size,UOM,Price,Last Purchase (qty & date)',
+      ',Cheese Mozzarella Whole Milk Loaf Refrigerated,Leprino Foods,,No,398513,AMV14,8/6 Lb,CS,$2.65/lb,2 CS 05/21/2026',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfs' });
+    expect(guide.products).toHaveLength(1);
+    const p = guide.products[0];
+    expect(p.isVariableWeight).toBe(true);
+    expect(p.price).toBeCloseTo(2.65);
+    expect(p.vendorSku).toBe('AMV14');
+    expect(p.caseSize).toBe(8);
+    expect(p.innerPack).toBe(6);
+    expect(p.unit).toBe('lb.');
+  });
+
+  it('parses #10Can pack size — 6/#10Can mushrooms', async () => {
+    const csv = [
+      'Custom Product Description,Product Description,Brand,StateOfOrigin,Domestic,Custom Product Number,Product Number,Pack Size,UOM,Price,Last Purchase (qty & date)',
+      ',Mushroom Pieces And Stem 68 Ounce Drained Weight,Roma,,No,231802,CK270,6/#10Can,CS,$62.82,1 CS 05/21/2026',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfs' });
+    expect(guide.products).toHaveLength(1);
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('CK270');
+    expect(p.caseSize).toBe(6);
+    expect(p.innerPack).toBe(10);
+  });
+
+  it('auto-strips 8-row metadata header and finds real column headers', async () => {
+    const csv = [
+      'Performance Foodservice',
+      'Order Guide',
+      'Wsp 117 Valrico (PFS Orlando - 03549)',
+      '3327 Lithia Pinecrest Rd',
+      'Westshore Pizza',
+      'Valrico FL 33596',
+      'Area Manager: David Whisler',
+      '',
+      'Custom Product Description,Product Description,Brand,StateOfOrigin,Domestic,Custom Product Number,Product Number,Pack Size,UOM,Price,Last Purchase (qty & date)',
+      ',Soda Coke Classic 2 Liter Plastic Bottle,Coca Cola,,No,,75096,8/2 L,CS,$24.76,1 CS 05/21/2026',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfs' });
+    expect(guide.products).toHaveLength(1);
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('75096');
+    expect(p.caseSize).toBe(8);
+    expect(p.innerPack).toBe(2);
+  });
+
+  it('uses Custom Product Description as description when non-empty', async () => {
+    const csv = [
+      'Custom Product Description,Product Description,Brand,StateOfOrigin,Domestic,Custom Product Number,Product Number,Pack Size,UOM,Price,Last Purchase (qty & date)',
+      '"My Custom Name","Crust Pizza 12"" Gluten Free  Partial Baked Frozen",Elaines,,No,5671901,AMG84,20/7.13,CS,$73.24,1 CS 04/16/2026',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfs' });
+    expect(guide.products).toHaveLength(1);
+    const p = guide.products[0];
+    expect(p.description).toBe('My Custom Name');
+    expect(p.vendorProductName).toContain('Crust Pizza');
+  });
+
+  it('parses 1/5 Gal pack size', async () => {
+    const csv = [
+      'Custom Product Description,Product Description,Brand,StateOfOrigin,Domestic,Custom Product Number,Product Number,Pack Size,UOM,Price,Last Purchase (qty & date)',
+      ',Beverage Syrup Coca Cola Classic Bag In Box Coke,Coca Cola,,No,,28372,1/5 Gal,CS,$143.20,',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfs' });
+    const p = guide.products[0];
+    expect(p.caseSize).toBe(1);
+    expect(p.innerPack).toBe(5);
+    expect(p.unit).toBe('gal');
+  });
+});
+
+// ─── SOFO Foods vendor mapping ────────────────────────────────────────────────
+
+describe('SOFO Foods vendor mapping', () => {
+  it('detects SOFO format — Pack=6, Size=1 LB', async () => {
+    const csv = 'Item,Pack,Size,Brand,Description,Price\n20108,6,1 LB,BELLISSIMO,CHEESE MOZZ FRESH LOG SLC 26CT,4.64';
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'sofo' });
+    expect(guide.products).toHaveLength(1);
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('20108');
+    expect(p.caseSize).toBe(6);
+    expect(p.innerPack).toBe(1);
+    expect(p.unit).toBe('lb.');
+    expect(p.price).toBeCloseTo(4.64);
+    expect(p.brandName).toBe('BELLISSIMO');
+  });
+
+  it('parses Pack=6, Size=6 LB (36 lb case)', async () => {
+    const csv = 'Item,Pack,Size,Brand,Description,Price\n20344,6,6 LB,VANTAGGIO,CHEESE MOZZ WISC DICED WM,2.13';
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'sofo' });
+    const p = guide.products[0];
+    expect(p.caseSize).toBe(6);
+    expect(p.innerPack).toBe(6);
+    expect(p.unit).toBe('lb.');
+    expect(p.price).toBeCloseTo(2.13);
+  });
+
+  it('parses #10 can size — Pack=6, Size=#10', async () => {
+    const csv = 'Item,Pack,Size,Brand,Description,Price\n190183,6,#10,SAPORITO,SAUCE PIZZA W/FRESH BASIL,46.27';
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'sofo' });
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('190183');
+    expect(p.caseSize).toBe(6);
+    expect(p.unit).toBe('each');
+    expect(p.price).toBeCloseTo(46.27);
+  });
+
+  it('parses BSHL (bushel) unit', async () => {
+    const csv = 'Item,Pack,Size,Brand,Description,Price\n260520,1,BSHL,SOFO IMPERIAL,PEPPERS GREEN JUMBO,29.72';
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'sofo' });
+    const p = guide.products[0];
+    expect(p.caseSize).toBe(1);
+    expect(p.unit).toBe('bu.');
+    expect(p.price).toBeCloseTo(29.72);
+  });
+
+  it('parses OZ size — Pack=6, Size=48 OZ', async () => {
+    const csv = 'Item,Pack,Size,Brand,Description,Price\n90721,6,48 OZ,BELLISSIMO,CHEESE RICOTTA WM,2.26';
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'sofo' });
+    const p = guide.products[0];
+    expect(p.caseSize).toBe(6);
+    expect(p.innerPack).toBe(48);
+    expect(p.unit).toBe('oz');
+    expect(p.price).toBeCloseTo(2.26);
+  });
+
+  it('parses CT unit — Pack=50, Size=50 CT', async () => {
+    const csv = 'Item,Pack,Size,Brand,Description,Price\n890759,50,50 CT,JOVIALS,CUP SOUFFLE 2OZ BLK,24.86';
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'sofo' });
+    const p = guide.products[0];
+    expect(p.caseSize).toBe(50);
+    expect(p.innerPack).toBe(50);
+    expect(p.unit).toBe('each');
+    expect(p.price).toBeCloseTo(24.86);
+  });
+
+  it('handles trailing empty columns from Excel export', async () => {
+    const csv = 'Item,Pack,Size,Brand,Description,Price,,,,,,,,,,\n30135,2,4 LB,SOFO,CHEESE CHED FNCY SHRD,3.05,,,,,,,,,,';
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'sofo' });
+    expect(guide.products).toHaveLength(1);
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('30135');
+    expect(p.caseSize).toBe(2);
+    expect(p.innerPack).toBe(4);
+    expect(p.unit).toBe('lb.');
+    expect(p.price).toBeCloseTo(3.05);
+  });
+
+  it('parses plain decimal price (no $ prefix)', async () => {
+    const csv = 'Item,Pack,Size,Brand,Description,Price\n170065,2,5 LB,MARGHERITA,PEPPERONI PEPATO 38MM CUPPING SLC,5.08';
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'sofo' });
+    const p = guide.products[0];
+    expect(p.price).toBeCloseTo(5.08);
+  });
+});

@@ -2,6 +2,8 @@ import { GenericRenderer } from './renderers/GenericRenderer';
 import { SyscoRenderer } from './renderers/SyscoRenderer';
 import { GfsRenderer } from './renderers/GfsRenderer';
 import { UsFoodsRenderer } from './renderers/UsFoodsRenderer';
+import { PfsRenderer } from './renderers/PfsRenderer';
+import { SofoRenderer } from './renderers/SofoRenderer';
 import type { PoExportRenderer } from './PoExportRenderer';
 
 export type { PoExportRenderer, ExportInput, ExportResult, ExportValidationResult, ExportLineInput } from './PoExportRenderer';
@@ -11,6 +13,8 @@ const renderers: Record<string, PoExportRenderer> = {
   sysco: new SyscoRenderer(),
   gfs: new GfsRenderer(),
   usfoods: new UsFoodsRenderer(),
+  pfs: new PfsRenderer(),
+  sofo: new SofoRenderer(),
 };
 
 export function getExportRenderer(connectorId: string): PoExportRenderer {
@@ -27,6 +31,8 @@ export function detectConnectorFromVendorName(vendorName: string): string {
   if (lower.includes('sysco')) return 'sysco';
   if (lower.includes('gordon') || lower.includes(' gfs')) return 'gfs';
   if (lower.includes('us foods') || lower.includes('usfoods')) return 'usfoods';
+  if (lower.includes('performance food') || lower.includes(' pfs') || lower === 'pfs') return 'pfs';
+  if (lower.includes('sofo')) return 'sofo';
   return 'generic';
 }
 

@@ -83,6 +83,24 @@ const VENDOR_MAPPINGS: Record<VendorKey, CsvColumnMapping> = {
     variableWeight: 'Catch Weight',
     caseWeight: 'Gross Weight',  // US Foods includes gross case weight in LB
   },
+  pfs: {
+    vendorSku: 'Product Number',
+    productName: 'Product Description',
+    description: 'Custom Product Description',
+    caseSize: 'Pack Size',
+    // unit intentionally omitted — PFS UOM column is EA/CS (purchase denomination only).
+    // Measurement unit is derived solely from the Pack Size compound string.
+    price: 'Price',
+    brand: 'Brand',
+  },
+  sofo: {
+    vendorSku: 'Item',
+    productName: 'Description',
+    caseSize: 'Pack',
+    unit: 'Size',  // SOFO Size column contains inner-pack measurement (e.g. "1 LB", "#10", "BSHL")
+    price: 'Price',
+    brand: 'Brand',
+  },
 };
 
 /**
@@ -118,7 +136,8 @@ export function parseCompoundPackSize(value: string): { caseSize: number; innerP
   if (!value) return null;
   const trimmed = value.trim();
 
-  const slashMatch = trimmed.match(/^([\d.]+)\s*\/\s*([\d.]+)\s*([A-Za-z]+)?$/);
+  // "6/5 LB", "6/5", "6/#10Can" — slash-separated with optional leading "#" on second segment
+  const slashMatch = trimmed.match(/^([\d.]+)\s*\/\s*#?([\d.]+)\s*([A-Za-z]+)?$/);
   if (slashMatch) {
     const cs = parseFloat(slashMatch[1]);
     const ip = parseFloat(slashMatch[2]);
@@ -177,8 +196,11 @@ export class CsvOrderGuide {
    */
   private static vendorMappingMatches(headers: string[], mapping: CsvColumnMapping): boolean {
     const headerSet = new Set(headers.map(h => h.toLowerCase().trim()));
-    // Check if at least the vendorSku column matches
-    return headerSet.has(mapping.vendorSku.toLowerCase());
+    // Require both the SKU column and the product-name column to be present.
+    // A single column match (e.g. "Item") is too ambiguous across formats.
+    const skuMatch = !!mapping.vendorSku && headerSet.has(mapping.vendorSku.toLowerCase());
+    const nameMatch = !!mapping.productName && headerSet.has(mapping.productName.toLowerCase());
+    return skuMatch && nameMatch;
   }
 
   /**
@@ -326,11 +348,13 @@ export class CsvOrderGuide {
         }
       }
       
-      // Detect variable weight from column or description text
+      // Detect variable weight from column, description text, or $/lb price suffix (e.g. PFS "$2.65/lb")
       const variableWeightValue = this.getValue(row, mapping.variableWeight);
       const productName = this.getValue(row, mapping.productName);
       const descriptionValue = this.getValue(row, mapping.description);
-      const isVariableWeight = this.detectVariableWeight(variableWeightValue, productName, descriptionValue);
+      const priceRaw = this.getValue(row, mapping.price);
+      const isVariableWeight = this.detectVariableWeight(variableWeightValue, productName, descriptionValue)
+        || /\/lb/i.test(priceRaw);
       
       // Use correctly parsed case count (first number from compound string like "6/5 LB" → 6)
       const caseSize = parsedCasePack ? parsedCasePack.caseSize : this.parseNumber(caseSizeRaw);
@@ -451,8 +475,8 @@ export class CsvOrderGuide {
     if (!value) return null;
     const trimmed = value.trim();
 
-    // "6/5 LB" or "6/5" — slash-separated with optional trailing unit
-    const slashMatch = trimmed.match(/^([\d.]+)\s*\/\s*([\d.]+)\s*([A-Za-z]+)?$/);
+    // "6/5 LB", "6/5", "6/#10Can" — slash-separated with optional leading "#" on second segment
+    const slashMatch = trimmed.match(/^([\d.]+)\s*\/\s*#?([\d.]+)\s*([A-Za-z]+)?$/);
     if (slashMatch) {
       const cs = parseFloat(slashMatch[1]);
       const ip = parseFloat(slashMatch[2]);
