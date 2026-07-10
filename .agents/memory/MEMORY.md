@@ -1,0 +1,1 @@
+- [Drizzle array params](drizzle-array-params.md) — pass string[] to raw sql`` via sql.join, never ANY(${array}) or ::uuid[] cast.
