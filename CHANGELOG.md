@@ -2,6 +2,20 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.10.0] — 2026-07-10
+
+### Procurement Connector Framework — PFS & SOFO
+
+Adds two new vendor CSV connectors and closes a correctness bug in batch pricing queries.
+
+- **Performance Food Service (PFS) connector** — auto-detected when a PFS order guide CSV is uploaded. Maps PFS column headers (`ITEM NUMBER`, `BRAND`, `DESCRIPTION`, `PACK`, `PRICE`) to the internal product model. Handles PFS-style pack strings (e.g. "6/5 LB", "CS/24 EA") and extracts case size, inner pack, and UOM correctly.
+- **SOFO connector** — auto-detected for Southern Foods order guides. Maps SOFO column headers and pack formats with the same precision as PFS.
+- **`detectConnectorFromVendorName` updated** — both connectors are now returned when the vendor name contains "Performance Food", "PFS", "Southern Foods", or "SOFO", so the correct parser is selected automatically without any manual configuration.
+- **Bug fix: batch case-price query** — `getVendorCasePricesBatch` was passing a JavaScript array directly to a Drizzle `ANY()` call, which Drizzle serialises as a PostgreSQL record type rather than an array literal. Rewrote using an `IN (...)` clause built with `sql.join` so the query executes correctly when loading case prices for a set of inventory items.
+- **15 new unit tests** — cover PFS and SOFO column detection, pack-string parsing, price extraction, and `detectConnectorFromVendorName` routing for both connectors (597 total passing).
+
+---
+
 ## [1.9.0] — 2026-05-28
 
 ### Pack-Size Accuracy — Name-Count Hint System
