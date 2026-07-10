@@ -19916,6 +19916,119 @@ Human Handoff:
         return res.status(500).json({ error: err.message });
       }
     });
+
+    /**
+     * POST /api/dev/test/vendor-price-state
+     * Seeds a vendor_item with explicit lastCasePrice and lastPrice values so that
+     * automated tests can verify GET /api/inventory-items/:id/vendor-prices returns
+     * the stored lastCasePrice rather than deriving it.
+     *
+     * Body:
+     *   vendorId        — existing vendor ID (required)
+     *   purchaseUnitId  — existing unit ID (required)
+     *   inventoryItemId — existing inventory item ID (required)
+     *   vendorSku       — unique SKU string (required)
+     *   caseSize        — number of units per case (default: 10)
+     *   lastPrice       — unit price stored in last_price (required)
+     *   lastCasePrice   — case price stored in last_case_price; pass 0 to exercise the
+     *                     derived-value fallback (lastCasePrice <= 0 triggers fallback)
+     *
+     * Returns: { vendorItemId }
+     */
+    app.post("/api/dev/test/vendor-price-state", requireAuth, async (req, res) => {
+      try {
+        const companyId = (req as any).companyId;
+        if (!companyId) return res.status(400).json({ error: "Company context required" });
+
+        const {
+          vendorId,
+          purchaseUnitId,
+          inventoryItemId,
+          vendorSku,
+          caseSize = 10,
+          lastPrice,
+          lastCasePrice = 0,
+        } = req.body as {
+          vendorId: string;
+          purchaseUnitId: string;
+          inventoryItemId: string;
+          vendorSku: string;
+          caseSize?: number;
+          lastPrice: number;
+          lastCasePrice?: number;
+        };
+
+        if (!vendorId || !purchaseUnitId || !inventoryItemId || !vendorSku || lastPrice == null) {
+          return res.status(400).json({ error: "vendorId, purchaseUnitId, inventoryItemId, vendorSku, and lastPrice are required" });
+        }
+
+        const vendorItemId = crypto.randomUUID();
+        await db
+          .insert(vendorItems)
+          .values({ id: vendorItemId, vendorId, inventoryItemId, vendorSku, purchaseUnitId, caseSize, lastPrice, lastCasePrice, active: 1 });
+
+        return res.json({ vendorItemId });
+      } catch (err: any) {
+        console.error("[dev/test/vendor-price-state POST]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    /**
+     * DELETE /api/dev/test/vendor-price-state/:vendorItemId
+     * Removes a row seeded by POST /api/dev/test/vendor-price-state.
+     */
+    app.delete("/api/dev/test/vendor-price-state/:vendorItemId", requireAuth, async (req, res) => {
+      try {
+        const { vendorItemId } = req.params;
+        await db.delete(vendorItems).where(eq(vendorItems.id, vendorItemId));
+        return res.json({ deleted: true, vendorItemId });
+      } catch (err: any) {
+        console.error("[dev/test/vendor-price-state DELETE]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    /**
+     * GET /api/dev/test/vendor-price-anchors
+     * Returns a single { vendorId, purchaseUnitId, inventoryItemId } tuple
+     * pulled directly from the DB for the authenticated company.  Used by
+     * automated tests so they do not need to call the full /api/inventory-items
+     * route (which runs expensive enrichment queries that can crash the server
+     * when run with an empty array in test environments).
+     */
+    app.get("/api/dev/test/vendor-price-anchors", requireAuth, async (req, res) => {
+      try {
+        const companyId = (req as any).companyId;
+        if (!companyId) return res.status(400).json({ error: "Company context required" });
+
+        const item = await db.query.inventoryItems.findFirst({
+          where: (t, { eq }) => eq(t.companyId, companyId),
+          columns: { id: true },
+        });
+        if (!item) {
+          return res.status(404).json({ error: "No inventory items found for this company" });
+        }
+
+        const vendor = await db.query.vendors.findFirst({
+          where: (t, { eq }) => eq(t.companyId, companyId),
+          columns: { id: true },
+        });
+        if (!vendor) {
+          return res.status(404).json({ error: "No vendors found for this company" });
+        }
+
+        const unit = await db.query.units.findFirst({ columns: { id: true } });
+        if (!unit) {
+          return res.status(404).json({ error: "No units found" });
+        }
+
+        return res.json({ vendorId: vendor.id, purchaseUnitId: unit.id, inventoryItemId: item.id });
+      } catch (err: any) {
+        console.error("[dev/test/vendor-price-anchors GET]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
   }
 
   const httpServer = createServer(app);
