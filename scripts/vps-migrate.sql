@@ -1029,7 +1029,7 @@ END $$;
 -- =============================================================================
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v040') THEN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v041') THEN
 
     CREATE TABLE IF NOT EXISTS po_export_logs (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1051,6 +1051,6 @@ BEGIN
     CREATE INDEX IF NOT EXISTS po_export_logs_company_idx ON po_export_logs (company_id);
 
     INSERT INTO _migration_log (version, description)
-      VALUES ('v040', 'M1 Procurement Connector: add po_export_logs table for supplier order export audit trail');
+      VALUES ('v041', 'M1 Procurement Connector: add po_export_logs table for supplier order export audit trail');
   END IF;
 END $$;
