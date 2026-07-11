@@ -1016,12 +1016,15 @@ export default function Vendors() {
                     <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
                     Distributor Connector <span className="text-muted-foreground font-normal">(Optional)</span>
                   </label>
-                  <Select value={connectorId} onValueChange={setConnectorId}>
+                  <Select
+                    value={connectorId || "__none__"}
+                    onValueChange={(v) => setConnectorId(v === "__none__" ? "" : v)}
+                  >
                     <SelectTrigger data-testid="select-connector-id">
                       <SelectValue placeholder="Select a known distributor…" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="" data-testid="option-connector-none">None / not configured</SelectItem>
+                      <SelectItem value="__none__" data-testid="option-connector-none">None / not configured</SelectItem>
                       {connectorDefs.filter(d => d.connectorId !== "generic").map(d => (
                         <SelectItem key={d.connectorId} value={d.connectorId} data-testid={`option-connector-${d.connectorId}`}>
                           {d.displayName}
