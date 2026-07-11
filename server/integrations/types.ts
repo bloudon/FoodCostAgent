@@ -44,19 +44,31 @@ export interface CapabilitySpec {
 
 /**
  * Per-company connection instance for a supplier connector.
- * Type-only in M2 — no DB table yet; persisted via existing
- * customerSupplierConnections table in M1.
+ *
+ * A single connection may use different transports for different capabilities
+ * (e.g. retrieve the catalog over CSV while submitting orders over EDI).
+ * `transportOverrides` is therefore a per-capability map, not a single field.
+ * When a capability is absent from the map the connector's registry default
+ * transport is used.
+ *
+ * Type-only in M2 — persisted via the `customer_supplier_connections` DB table
+ * (see shared/schema.ts `customerSupplierConnections`).
  */
 export interface CustomerSupplierConnection {
-  /** Maps to VendorKey — identifies which connector definition to use. */
-  connectorId: VendorKey;
+  /** Identifies which connector definition to use (matches connectorRegistry key). */
+  connectorId: string;
   companyId: string;
-  /** Optional: when connection is scoped to a specific location. */
+  /** Optional: when connection is scoped to a specific store location. */
   locationId?: string;
-  /** Which transport this company prefers for this connector. */
-  preferredTransport: ConnectorTransport;
-  /** Foreign key reference to vendorCredentials row. */
-  credentialRef: string;
+  /**
+   * Per-capability transport overrides.
+   * Key:   ConnectorCapability ('retrieveCatalog', 'submitOrder', …)
+   * Value: ConnectorTransport  ('csv', 'edi', 'punchout', …)
+   * Absent key → fall through to connector registry default.
+   */
+  transportOverrides?: Partial<Record<ConnectorCapability, ConnectorTransport>>;
+  /** Optional reference to a vendorCredentials row for this connection. */
+  credentialRef?: string;
   isActive: boolean;
 }
 
