@@ -1,4 +1,4 @@
-import type { VendorAdapter } from '../VendorAdapter';
+import type { ProcurementConnector } from '../ProcurementConnector';
 import type {
   OrderGuide,
   PurchaseOrder,
@@ -22,17 +22,17 @@ import type {
  * - CSV order guide downloads
  * - US Foods Online API
  */
-export class UsFoodsAdapter implements VendorAdapter {
-  key = 'usfoods' as const;
-  name = 'US Foods';
+export class UsFoodsAdapter implements ProcurementConnector {
+  connectorId = 'usfoods' as const;
+  displayName = 'US Foods';
 
-  capabilities = [
-    { capability: 'order_guide_import'    as const, transport: 'csv'      as const },
-    { capability: 'purchase_order_export' as const, transport: 'edi'      as const },
-    { capability: 'purchase_order_export' as const, transport: 'punchout' as const },
-    { capability: 'invoice_fetch'         as const, transport: 'api'      as const },
-    { capability: 'punchout_shop'         as const, transport: 'punchout' as const },
-  ];
+  capabilities = {
+    retrieveCatalog:     'csv'                  as const,
+    submitOrder:         ['edi', 'punchout']    as ['edi', 'punchout'],
+    exportOrderTemplate: 'csv'                  as const,
+    retrieveInvoices:    'api'                  as const,
+    populateCart:        'punchout'             as const,
+  };
 
   constructor(private credentials: VendorCredentials) {}
 

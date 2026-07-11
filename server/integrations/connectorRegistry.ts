@@ -4,76 +4,89 @@
  * Single source of truth for what each connector can do and which transport
  * it uses by default. Consumed by:
  *   - capabilityRouter.ts  (resolving per-company transport for a capability)
- *   - VendorAdapter stubs  (getAllVendors capability lists)
+ *   - registry.ts          (VendorAdapter stubs for getAllVendors)
  *   - REST endpoints       (GET /api/connector-definitions)
  *
  * Adding a new connector: append an entry to CONNECTOR_DEFINITIONS and export
  * its connectorId in VendorKey (types.ts). No other file needs editing.
+ *
+ * Capability vocabulary (M2 canonical names):
+ *   retrieveCatalog    — sync/import the vendor's order guide / product catalog
+ *   retrievePrices     — fetch current pricing without a full catalog sync
+ *   retrieveInvoices   — pull invoice records for reconciliation
+ *   exportOrderTemplate— generate a file the buyer uploads to the vendor portal
+ *   populateCart       — launch a PunchOut session to fill a shopping cart
+ *   submitOrder        — transmit a confirmed purchase order to the vendor
  */
 
-import type { ConnectorCapability, ConnectorTransport, CapabilitySpec } from './types';
+import type { ConnectorCapability, ConnectorTransport } from './types';
 
 export interface ConnectorDefinition {
   connectorId: string;
   displayName: string;
-  /** Ordered list of capability-transport bindings. First entry per capability is the preferred default. */
-  capabilities: CapabilitySpec[];
+  /**
+   * Map from capability to transport(s). When multiple transports are listed for
+   * a capability (array form), the first element is the preferred/default transport.
+   */
+  capabilities: Partial<Record<ConnectorCapability, ConnectorTransport | ConnectorTransport[]>>;
 }
 
 const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
   {
     connectorId: 'sysco',
     displayName: 'Sysco',
-    capabilities: [
-      { capability: 'order_guide_import',    transport: 'csv'  },
-      { capability: 'purchase_order_export', transport: 'edi'  },
-      { capability: 'invoice_fetch',         transport: 'api'  },
-      { capability: 'price_sync',            transport: 'api'  },
-    ],
+    capabilities: {
+      retrieveCatalog:     'csv',
+      submitOrder:         'edi',
+      exportOrderTemplate: 'csv',
+      retrieveInvoices:    'api',
+      retrievePrices:      'api',
+    },
   },
   {
     connectorId: 'gfs',
     displayName: 'Gordon Food Service',
-    capabilities: [
-      { capability: 'order_guide_import',    transport: 'csv' },
-      { capability: 'purchase_order_export', transport: 'edi' },
-      { capability: 'invoice_fetch',         transport: 'api' },
-    ],
+    capabilities: {
+      retrieveCatalog:     'csv',
+      submitOrder:         'edi',
+      exportOrderTemplate: 'csv',
+      retrieveInvoices:    'api',
+    },
   },
   {
     connectorId: 'usfoods',
     displayName: 'US Foods',
-    capabilities: [
-      { capability: 'order_guide_import',    transport: 'csv'      },
-      { capability: 'purchase_order_export', transport: 'edi'      },
-      { capability: 'purchase_order_export', transport: 'punchout' },
-      { capability: 'invoice_fetch',         transport: 'api'      },
-      { capability: 'punchout_shop',         transport: 'punchout' },
-    ],
+    capabilities: {
+      retrieveCatalog:     'csv',
+      submitOrder:         ['edi', 'punchout'],
+      exportOrderTemplate: 'csv',
+      retrieveInvoices:    'api',
+      populateCart:        'punchout',
+    },
   },
   {
     connectorId: 'pfs',
     displayName: 'Performance Food Service',
-    capabilities: [
-      { capability: 'order_guide_import',    transport: 'csv' },
-      { capability: 'purchase_order_export', transport: 'csv' },
-    ],
+    capabilities: {
+      retrieveCatalog:     'csv',
+      exportOrderTemplate: 'csv',
+    },
   },
   {
     connectorId: 'sofo',
     displayName: 'Southern Foods',
-    capabilities: [
-      { capability: 'order_guide_import',    transport: 'csv' },
-      { capability: 'purchase_order_export', transport: 'csv' },
-    ],
+    capabilities: {
+      retrieveCatalog:     'csv',
+      exportOrderTemplate: 'csv',
+    },
   },
   {
     connectorId: 'generic',
     displayName: 'Generic Vendor',
-    capabilities: [
-      { capability: 'order_guide_import',    transport: 'csv' },
-      { capability: 'purchase_order_export', transport: 'csv' },
-    ],
+    capabilities: {
+      retrieveCatalog:     'csv',
+      exportOrderTemplate: 'csv',
+    },
   },
 ];
 
@@ -85,9 +98,9 @@ export function getConnectorDefinition(connectorId: string): ConnectorDefinition
 }
 
 /**
- * Get the default transport for a capability on a given connector.
+ * Get the preferred (first) transport for a capability on a given connector.
  * When a connector lists the same capability with multiple transports (e.g. US Foods
- * EDI + PunchOut for purchase_order_export), the first entry is the preferred default.
+ * ['edi', 'punchout'] for submitOrder), the first entry is the preferred default.
  * Returns null when the connector does not support that capability at all.
  */
 export function getConnectorCapability(
@@ -96,7 +109,20 @@ export function getConnectorCapability(
 ): ConnectorTransport | null {
   const def = getConnectorDefinition(connectorId);
   if (!def) return null;
-  return def.capabilities.find(c => c.capability === capability)?.transport ?? null;
+  const value = def.capabilities[capability];
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] : value;
+}
+
+/**
+ * Alias for getConnectorCapability — returns the preferred transport for a
+ * capability. Named getPreferredTransport to make intent explicit at call sites.
+ */
+export function getPreferredTransport(
+  connectorId: string,
+  capability: ConnectorCapability,
+): ConnectorTransport | null {
+  return getConnectorCapability(connectorId, capability);
 }
 
 /**

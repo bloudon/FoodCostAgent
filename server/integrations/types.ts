@@ -12,29 +12,52 @@ export type VendorKey = 'sysco' | 'gfs' | 'usfoods' | 'pfs' | 'sofo' | 'generic'
  * CapabilitySpec: binds a capability to its default transport for a given connector.
  *
  * One connector may advertise the same capability over multiple transports
- * (e.g. US Foods supports purchase_order_export via both 'edi' and 'punchout').
+ * (e.g. US Foods supports submitOrder via both 'edi' and 'punchout').
  * The first entry in the capabilities array is the preferred/default transport.
  */
 export type ConnectorTransport =
-  | 'csv'
-  | 'excel'
-  | 'edi'
-  | 'sftp'
   | 'api'
-  | 'punchout'
+  | 'csv'
+  | 'edi'
   | 'email'
-  | 'manual';
+  | 'excel'
+  | 'manual'
+  | 'manual_or_email'
+  | 'ocr'
+  | 'punchout'
+  | 'sftp'
+  | 'browser_extension'
+  | 'unsupported';
 
 export type ConnectorCapability =
-  | 'order_guide_import'
-  | 'purchase_order_export'
-  | 'invoice_fetch'
-  | 'price_sync'
-  | 'punchout_shop';
+  | 'retrieveCatalog'
+  | 'retrievePrices'
+  | 'retrieveInvoices'
+  | 'exportOrderTemplate'
+  | 'populateCart'
+  | 'submitOrder';
 
 export interface CapabilitySpec {
   capability: ConnectorCapability;
   transport: ConnectorTransport;
+}
+
+/**
+ * Per-company connection instance for a supplier connector.
+ * Type-only in M2 — no DB table yet; persisted via existing
+ * customerSupplierConnections table in M1.
+ */
+export interface CustomerSupplierConnection {
+  /** Maps to VendorKey — identifies which connector definition to use. */
+  connectorId: VendorKey;
+  companyId: string;
+  /** Optional: when connection is scoped to a specific location. */
+  locationId?: string;
+  /** Which transport this company prefers for this connector. */
+  preferredTransport: ConnectorTransport;
+  /** Foreign key reference to vendorCredentials row. */
+  credentialRef: string;
+  isActive: boolean;
 }
 
 export interface VendorProduct {

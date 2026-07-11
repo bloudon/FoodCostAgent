@@ -1,4 +1,4 @@
-import type { VendorAdapter } from '../VendorAdapter';
+import type { ProcurementConnector } from '../ProcurementConnector';
 import type {
   OrderGuide,
   PurchaseOrder,
@@ -17,16 +17,17 @@ import type {
  * - CSV order guide downloads
  * - API (if credentials available)
  */
-export class SyscoAdapter implements VendorAdapter {
-  key = 'sysco' as const;
-  name = 'Sysco';
+export class SyscoAdapter implements ProcurementConnector {
+  connectorId = 'sysco' as const;
+  displayName = 'Sysco';
 
-  capabilities = [
-    { capability: 'order_guide_import'    as const, transport: 'csv' as const },
-    { capability: 'purchase_order_export' as const, transport: 'edi' as const },
-    { capability: 'invoice_fetch'         as const, transport: 'api' as const },
-    { capability: 'price_sync'            as const, transport: 'api' as const },
-  ];
+  capabilities = {
+    retrieveCatalog:     'csv'  as const,
+    submitOrder:         'edi'  as const,
+    exportOrderTemplate: 'csv'  as const,
+    retrieveInvoices:    'api'  as const,
+    retrievePrices:      'api'  as const,
+  };
 
   constructor(private credentials: VendorCredentials) {}
 

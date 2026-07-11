@@ -1,9 +1,10 @@
-import type { VendorAdapter } from './VendorAdapter';
+import type { ProcurementConnector } from './ProcurementConnector';
 import type { VendorKey, VendorCredentials as IntegrationCredentials } from './types';
 import { SyscoAdapter } from './adapters/sysco.adapter';
 import { GfsAdapter } from './adapters/gfs.adapter';
 import { UsFoodsAdapter } from './adapters/usfoods.adapter';
 import { storage } from '../storage';
+import { listConnectorDefinitions, connectorSupports, getPreferredTransport } from './connectorRegistry';
 
 /**
  * Vendor Adapter Registry
@@ -13,7 +14,7 @@ import { storage } from '../storage';
  */
 
 // Cache for adapters to avoid recreating them on every request
-const adapterCache: Partial<Record<VendorKey, VendorAdapter>> = {};
+const adapterCache: Partial<Record<VendorKey, ProcurementConnector>> = {};
 
 /**
  * Convert database credentials to integration credentials
@@ -69,7 +70,7 @@ const getCredentials = async (vendorKey: VendorKey): Promise<IntegrationCredenti
 /**
  * Create adapter for a vendor with credentials
  */
-const createAdapter = async (vendorKey: VendorKey): Promise<VendorAdapter> => {
+const createAdapter = async (vendorKey: VendorKey): Promise<ProcurementConnector> => {
   const credentials = await getCredentials(vendorKey);
   
   switch (vendorKey) {
@@ -88,7 +89,7 @@ const createAdapter = async (vendorKey: VendorKey): Promise<VendorAdapter> => {
  * Get vendor adapter by key (loads credentials from database)
  * Only returns adapters for active credentials
  */
-export const getVendor = async (key: VendorKey): Promise<VendorAdapter> => {
+export const getVendor = async (key: VendorKey): Promise<ProcurementConnector> => {
   // Check if credentials are active before using cache
   const dbCreds = await storage.getVendorCredentialsByKey(key);
   
@@ -126,37 +127,43 @@ export const clearAdapterCache = (vendorKey?: VendorKey): void => {
 };
 
 /**
- * Get all available vendors (without credentials check)
+ * Get all available vendors (without credentials check).
+ * Returns lightweight stub objects shaped for the /api/vendor-integrations response.
+ * The key/name fields preserve the legacy property names consumed by existing routes.
  */
-export const getAllVendors = (): VendorAdapter[] => {
-  // Return stub adapters for listing purposes (M2: capabilities replace boolean supports)
-  const { listConnectorDefinitions } = require('./connectorRegistry');
-  return listConnectorDefinitions().map((def: any) => ({
+export const getAllVendors = () => {
+  return listConnectorDefinitions().map(def => ({
     key: def.connectorId,
     name: def.displayName,
     capabilities: def.capabilities,
+    connectorId: def.connectorId as VendorKey,
+    displayName: def.displayName,
     syncOrderGuide: async () => { throw new Error('Stub — use adapter instance'); },
     submitPO: async () => { throw new Error('Stub — use adapter instance'); },
     fetchInvoices: async () => { throw new Error('Stub — use adapter instance'); },
-  })) as VendorAdapter[];
+  }));
 };
 
 /**
  * Check if a connector supports a specific capability (M2).
  * Uses the static ConnectorRegistry — no DB call needed.
+ *
+ * The method parameter accepts the legacy transport-name vocabulary
+ * ('edi', 'punchout', 'csv', 'api') for backward compatibility with
+ * call sites that have not yet been migrated to capability names.
  */
-export const vendorSupports = async (
+export const vendorSupports = (
   key: VendorKey,
   method: 'edi' | 'punchout' | 'csv' | 'api'
-): Promise<boolean> => {
-  // M2 shim: map legacy method names to capability names
-  const { connectorSupports } = await import('./connectorRegistry');
+): boolean => {
   const capabilityMap: Record<string, import('./types').ConnectorCapability> = {
-    csv:      'order_guide_import',
-    edi:      'purchase_order_export',
-    punchout: 'punchout_shop',
-    api:      'invoice_fetch',
+    csv:      'retrieveCatalog',
+    edi:      'submitOrder',
+    punchout: 'populateCart',
+    api:      'retrieveInvoices',
   };
   const capability = capabilityMap[method];
   return capability ? connectorSupports(key, capability) : false;
 };
+
+export { listConnectorDefinitions, connectorSupports, getPreferredTransport };
