@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Table,
   TableBody,
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { SortableTableHead, useTableSort, sortData } from "@/components/sortable-table-head";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin, ScanLine, TriangleAlert } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin, ScanLine, TriangleAlert, Link2 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -100,6 +100,8 @@ export default function Vendors() {
   const [storeAccountNumbers, setStoreAccountNumbers] = useState<Record<string, string>>({});
 
 
+  const [connectorId, setConnectorId] = useState<string>("");
+
   const { toast } = useToast();
   const { selectedStoreId, stores } = useStoreContext();
   const [, setLocation] = useLocation();
@@ -120,6 +122,20 @@ export default function Vendors() {
 
   const { data: vendorItems, isLoading: vendorItemsLoading } = useQuery<VendorItem[]>({
     queryKey: ["/api/vendor-items"],
+  });
+
+  interface ConnectorDefinition {
+    connectorId: string;
+    displayName: string;
+  }
+  const { data: connectorDefsData } = useQuery<{ data: ConnectorDefinition[] }>({
+    queryKey: ["/api/connector-definitions"],
+    staleTime: Infinity,
+  });
+  const connectorDefs = connectorDefsData?.data ?? [];
+
+  const { data: supplierConnectionsData } = useQuery<{ data: Array<{ id: string; vendorId: string; connectorId: string }> }>({
+    queryKey: ["/api/supplier-connections"],
   });
 
   // Fetch store assignments for each vendor
@@ -170,12 +186,23 @@ export default function Vendors() {
     },
   });
 
+  const upsertConnector = async (vendorId: string, cid: string) => {
+    if (!cid) return;
+    try {
+      await apiRequest("PUT", `/api/supplier-connections/${vendorId}`, { connectorId: cid, isActive: 1 });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier-connections"] });
+    } catch {
+      // non-fatal — vendor was created/updated successfully
+    }
+  };
+
   const createMutation = useMutation({
     mutationFn: async (data: VendorFormData) => {
       const res = await apiRequest("POST", "/api/vendors", data);
       return await res.json() as Vendor;
     },
-    onSuccess: (createdVendor: Vendor) => {
+    onSuccess: async (createdVendor: Vendor) => {
+      await upsertConnector(createdVendor.id, connectorId);
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       toast({
         title: "Success",
@@ -183,6 +210,7 @@ export default function Vendors() {
       });
       setIsDialogOpen(false);
       form.reset();
+      setConnectorId("");
       if (stores.length > 0) {
         setVendorToAssign(createdVendor);
         setSelectedStoreIds(selectedStoreId ? [selectedStoreId] : []);
@@ -203,7 +231,8 @@ export default function Vendors() {
     mutationFn: async ({ id, data }: { id: string; data: Partial<VendorFormData> }) => {
       return await apiRequest("PATCH", `/api/vendors/${id}`, data);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      if (editingVendor) await upsertConnector(editingVendor.id, connectorId);
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       toast({
         title: "Success",
@@ -211,6 +240,7 @@ export default function Vendors() {
       });
       setIsDialogOpen(false);
       setEditingVendor(null);
+      setConnectorId("");
       form.reset();
     },
     onError: (error: Error) => {
@@ -434,8 +464,19 @@ export default function Vendors() {
     });
   }, [filteredVendors, sortField, sortDirection, vendorItems]);
 
+  const detectConnector = (name: string): string => {
+    const n = name.toLowerCase();
+    if (n.includes("sysco")) return "sysco";
+    if (n.includes("gfs") || n.includes("gordon food")) return "gfs";
+    if (n.includes("us foods") || n.includes("usfoods")) return "usfoods";
+    if (n.includes("performance food") || n.includes(" pfs")) return "pfs";
+    if (n.includes("southern food") || n.includes("sofo")) return "sofo";
+    return "";
+  };
+
   const handleCreateClick = () => {
     setEditingVendor(null);
+    setConnectorId("");
     form.reset({ 
       name: "", 
       accountNumber: "", 
@@ -457,6 +498,8 @@ export default function Vendors() {
 
   const handleEditClick = (vendor: Vendor) => {
     setEditingVendor(vendor);
+    const existing = supplierConnectionsData?.data?.find(c => c.vendorId === vendor.id);
+    setConnectorId(existing?.connectorId ?? detectConnector(vendor.name));
     form.reset({
       name: vendor.name,
       accountNumber: vendor.accountNumber || "",
@@ -784,307 +827,324 @@ export default function Vendors() {
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Name</FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="Vendor name" 
-                        {...field} 
-                        data-testid="input-vendor-name"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="accountNumber"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Account Number (Optional)</FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="Account number" 
-                        {...field}
-                        value={field.value || ""}
-                        data-testid="input-vendor-account"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="phone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Ordering Phone (Optional)</FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="(555) 123-4567" 
-                        {...field}
-                        value={field.value || ""}
-                        onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))}
-                        data-testid="input-vendor-phone"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="website"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Website (Optional)</FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="https://vendor.com" 
-                        {...field}
-                        value={field.value || ""}
-                        data-testid="input-vendor-website"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="deliveryDays"
-                render={() => (
-                  <FormItem>
-                    <FormLabel>Delivery Days (Optional)</FormLabel>
-                    <FormDescription>
-                      Select the days of the week when this vendor delivers
-                    </FormDescription>
-                    <div className="grid grid-cols-2 gap-3 mt-2">
-                      {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => (
-                        <FormField
-                          key={day}
-                          control={form.control}
-                          name="deliveryDays"
-                          render={({ field }) => {
-                            return (
-                              <FormItem
-                                key={day}
-                                className="flex flex-row items-center space-x-2 space-y-0"
-                              >
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+
+              {/* ── Vendor Info ─────────────────────────────────── */}
+              <div className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Name</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Vendor name"
+                          {...field}
+                          data-testid="input-vendor-name"
+                          onChange={(e) => {
+                            field.onChange(e);
+                            if (!editingVendor) {
+                              const detected = detectConnector(e.target.value);
+                              if (detected) setConnectorId(detected);
+                            }
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="accountNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Account Number <span className="text-muted-foreground font-normal">(Optional)</span></FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Account number"
+                          {...field}
+                          value={field.value || ""}
+                          data-testid="input-vendor-account"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* ── Contact ─────────────────────────────────────── */}
+              <div className="pt-4 border-t space-y-4">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Contact</h4>
+                <FormField
+                  control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Ordering Phone <span className="text-muted-foreground font-normal">(Optional)</span></FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="(555) 123-4567"
+                          {...field}
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))}
+                          data-testid="input-vendor-phone"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="website"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Website <span className="text-muted-foreground font-normal">(Optional)</span></FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="https://vendor.com"
+                          {...field}
+                          value={field.value || ""}
+                          data-testid="input-vendor-website"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* ── Delivery Schedule ───────────────────────────── */}
+              <div className="pt-4 border-t space-y-4">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Delivery Schedule</h4>
+                <FormField
+                  control={form.control}
+                  name="deliveryDays"
+                  render={() => (
+                    <FormItem>
+                      <FormLabel>Delivery Days <span className="text-muted-foreground font-normal">(Optional)</span></FormLabel>
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => (
+                          <FormField
+                            key={day}
+                            control={form.control}
+                            name="deliveryDays"
+                            render={({ field }) => (
+                              <FormItem key={day} className="flex flex-row items-center space-x-2 space-y-0">
                                 <FormControl>
                                   <Checkbox
                                     checked={field.value?.includes(day as any)}
                                     onCheckedChange={(checked) => {
-                                      const currentValue = field.value || [];
-                                      return checked
-                                        ? field.onChange([...currentValue, day])
-                                        : field.onChange(
-                                            currentValue.filter((value) => value !== day)
-                                          );
+                                      const cur = field.value || [];
+                                      field.onChange(checked ? [...cur, day] : cur.filter(v => v !== day));
                                     }}
                                     data-testid={`checkbox-delivery-${day.toLowerCase()}`}
                                   />
                                 </FormControl>
-                                <FormLabel className="text-sm font-normal cursor-pointer">
-                                  {day}
-                                </FormLabel>
+                                <FormLabel className="text-sm font-normal cursor-pointer">{day}</FormLabel>
                               </FormItem>
-                            );
-                          }}
-                        />
-                      ))}
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="leadDaysAhead"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Lead Days Ahead (Optional)</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="number"
-                        min="0"
-                        max="30"
-                        placeholder="e.g., 2" 
-                        {...field}
-                        value={field.value ?? ""}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          field.onChange(value === "" ? undefined : parseInt(value, 10));
-                        }}
-                        data-testid="input-lead-days-ahead"
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Number of days in advance to place orders before delivery
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="orderGuideType"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Order Guide Type</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                            )}
+                          />
+                        ))}
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="leadDaysAhead"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Lead Days Ahead <span className="text-muted-foreground font-normal">(Optional)</span></FormLabel>
                       <FormControl>
-                        <SelectTrigger data-testid="select-order-guide-type">
-                          <SelectValue placeholder="Select order guide type" />
-                        </SelectTrigger>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="30"
+                          placeholder="e.g., 2"
+                          {...field}
+                          value={field.value ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            field.onChange(v === "" ? undefined : parseInt(v, 10));
+                          }}
+                          data-testid="input-lead-days-ahead"
+                        />
                       </FormControl>
-                      <SelectContent>
-                        <SelectItem value="manual" data-testid="option-manual">Manual</SelectItem>
-                        <SelectItem value="electronic" data-testid="option-electronic">Electronic</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      Electronic vendors use EDI, API, or PunchOut integrations. Manual vendors require manual order entry.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
-                name="receiveByUnit"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center space-x-3 space-y-0">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value === 1}
-                        onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
-                        data-testid="checkbox-receive-by-unit"
-                      />
-                    </FormControl>
-                    <div className="space-y-1 leading-none">
-                      <FormLabel className="font-normal cursor-pointer">
-                        Receive by Unit (default)
-                      </FormLabel>
-                      <FormDescription>
-                        When enabled, the receiving screen defaults to unit-level quantities instead of cases. Case math is bypassed.
-                      </FormDescription>
-                    </div>
-                  </FormItem>
-                )}
-              />
+                      <FormDescription>Days in advance to place orders before delivery</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
-              <div className="pt-4 border-t">
-                <h4 className="text-sm font-semibold mb-4">Compliance & Accounting</h4>
-                
-                <div className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="taxId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Tax ID / EIN (Optional)</FormLabel>
+              {/* ── Ordering ────────────────────────────────────── */}
+              <div className="pt-4 border-t space-y-4">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Ordering</h4>
+                <FormField
+                  control={form.control}
+                  name="orderGuideType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Order Guide Type</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
-                          <Input 
-                            placeholder="12-3456789" 
-                            {...field}
-                            value={field.value || ""}
-                            data-testid="input-vendor-tax-id"
-                          />
+                          <SelectTrigger data-testid="select-order-guide-type">
+                            <SelectValue placeholder="Select order guide type" />
+                          </SelectTrigger>
                         </FormControl>
+                        <SelectContent>
+                          <SelectItem value="manual" data-testid="option-manual">Manual</SelectItem>
+                          <SelectItem value="electronic" data-testid="option-electronic">Electronic</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        Electronic vendors use EDI, API, or PunchOut. Manual vendors require manual order entry.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Connector integration — always visible */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-1.5">
+                    <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    Distributor Connector <span className="text-muted-foreground font-normal">(Optional)</span>
+                  </label>
+                  <Select value={connectorId} onValueChange={setConnectorId}>
+                    <SelectTrigger data-testid="select-connector-id">
+                      <SelectValue placeholder="Select a known distributor…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="" data-testid="option-connector-none">None / not configured</SelectItem>
+                      {connectorDefs.filter(d => d.connectorId !== "generic").map(d => (
+                        <SelectItem key={d.connectorId} value={d.connectorId} data-testid={`option-connector-${d.connectorId}`}>
+                          {d.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Links this vendor to a known distributor so PO exports and order guide imports use the right format automatically.
+                  </p>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="receiveByUnit"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value === 1}
+                          onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
+                          data-testid="checkbox-receive-by-unit"
+                        />
+                      </FormControl>
+                      <div className="space-y-0.5 leading-none">
+                        <FormLabel className="font-normal cursor-pointer">Receive by Unit</FormLabel>
                         <FormDescription>
-                          Required for 1099 reporting
+                          Receiving screen defaults to unit-level quantities instead of cases.
                         </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="requires1099"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value === 1}
-                            onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
-                            data-testid="checkbox-requires-1099"
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel className="font-normal cursor-pointer">
-                            Requires 1099 reporting
-                          </FormLabel>
-                          <FormDescription>
-                            Check if this vendor requires annual 1099 forms
-                          </FormDescription>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-                  
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* ── Compliance & Accounting ─────────────────────── */}
+              <div className="pt-4 border-t space-y-4">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Compliance &amp; Accounting</h4>
+                <FormField
+                  control={form.control}
+                  name="taxId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tax ID / EIN <span className="text-muted-foreground font-normal">(Optional)</span></FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="12-3456789"
+                          {...field}
+                          value={field.value || ""}
+                          data-testid="input-vendor-tax-id"
+                        />
+                      </FormControl>
+                      <FormDescription>Required for 1099 reporting</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="requires1099"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value === 1}
+                          onCheckedChange={(checked) => field.onChange(checked ? 1 : 0)}
+                          data-testid="checkbox-requires-1099"
+                        />
+                      </FormControl>
+                      <div className="space-y-0.5 leading-none">
+                        <FormLabel className="font-normal cursor-pointer">Requires 1099 reporting</FormLabel>
+                        <FormDescription>Check if this vendor requires annual 1099 forms</FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="paymentTerms"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Payment Terms (Optional)</FormLabel>
+                        <FormLabel>Payment Terms <span className="text-muted-foreground font-normal">(Optional)</span></FormLabel>
                         <FormControl>
-                          <Input 
-                            placeholder="e.g., Net 30, COD, Net 15" 
+                          <Input
+                            placeholder="e.g., Net 30, COD"
                             {...field}
                             value={field.value || ""}
                             data-testid="input-vendor-payment-terms"
                           />
                         </FormControl>
-                        <FormDescription>
-                          Payment terms agreed with vendor
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                  
                   <FormField
                     control={form.control}
                     name="creditLimit"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Credit Limit (Optional)</FormLabel>
+                        <FormLabel>Credit Limit <span className="text-muted-foreground font-normal">(Optional)</span></FormLabel>
                         <FormControl>
-                          <Input 
+                          <Input
                             type="number"
                             min="0"
                             step="0.01"
-                            placeholder="e.g., 10000.00" 
+                            placeholder="e.g., 10000.00"
                             {...field}
                             value={field.value ?? ""}
                             onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value === "" ? undefined : parseFloat(value));
+                              const v = e.target.value;
+                              field.onChange(v === "" ? undefined : parseFloat(v));
                             }}
                             data-testid="input-vendor-credit-limit"
                           />
                         </FormControl>
-                        <FormDescription>
-                          Maximum credit limit approved for this vendor
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </div>
               </div>
-              
+
               <DialogFooter>
                 <Button 
                   type="button" 
