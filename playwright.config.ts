@@ -3,7 +3,12 @@ import { defineConfig, devices } from 'playwright/test';
 /**
  * In the Replit development container, Chromium crashes with SIGSEGV due to
  * the --unsafe-swiftshader GPU emulation bug. Firefox does not have this
- * problem and is used for all local (non-CI) test runs instead.
+ * problem and is preferred for local (non-CI) test runs.
+ *
+ * When Firefox is not installed (e.g. first-time Replit clone), Chromium is
+ * used as a fallback with --no-sandbox / --disable-gpu flags that avoid the
+ * SwiftShader SIGSEGV crash.  Set PLAYWRIGHT_BROWSER=chromium to force
+ * Chromium locally even if Firefox is present.
  *
  * CI (GitHub Actions) uses Chromium — that environment works correctly.
  *
@@ -14,6 +19,27 @@ import { defineConfig, devices } from 'playwright/test';
  *   Local runs use up to 4 workers (capped so Replit containers don't OOM).
  */
 const isCI = !!process.env.CI;
+
+/**
+ * Use Chromium locally when the Firefox binary is not present or when
+ * PLAYWRIGHT_BROWSER=chromium is explicitly set.
+ */
+const useLocalChromium =
+  process.env.PLAYWRIGHT_BROWSER === 'chromium' ||
+  (!isCI &&
+    (() => {
+      try {
+        require('fs').statSync(
+          require('path').join(
+            process.env.HOME ?? '/home/runner',
+            '.cache/ms-playwright/firefox-1509/firefox/firefox',
+          ),
+        );
+        return false; // Firefox exists, use it
+      } catch {
+        return true; // Firefox not found, fall back to Chromium
+      }
+    })());
 
 export default defineConfig({
   testDir: './tests',
@@ -32,6 +58,24 @@ export default defineConfig({
         {
           name: 'chromium',
           use: { ...devices['Desktop Chrome'] },
+        },
+      ]
+    : useLocalChromium
+    ? [
+        {
+          name: 'chromium',
+          use: {
+            ...devices['Desktop Chrome'],
+            launchOptions: {
+              args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+              ],
+            },
+          },
         },
       ]
     : [

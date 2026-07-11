@@ -1075,3 +1075,17 @@ DO $$ BEGIN
       VALUES ('v042', 'M2 Connector Registry: add customer_supplier_connections table for per-company connector and transport configuration');
   END IF;
 END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v043') THEN
+    -- categories: enforce unique category names per company (schema.ts unique constraint backfill)
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'categories_company_id_name_unique'
+    ) THEN
+      ALTER TABLE categories ADD CONSTRAINT categories_company_id_name_unique UNIQUE (company_id, name);
+    END IF;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v043', 'categories: add categories_company_id_name_unique constraint to match shared/schema.ts');
+  END IF;
+END $$;
