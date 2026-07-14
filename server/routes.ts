@@ -11225,6 +11225,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Vendor-registry admin endpoint aliases matching specified API contract ──
+
+  /**
+   * GET /api/vendor-registry/pending — global_admin only
+   * Lists pending registry entries awaiting review.
+   */
+  app.get("/api/vendor-registry/pending", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+      const rows = await db.execute(sql`
+        SELECT pvr.*, c.name AS company_name
+        FROM platform_vendor_registry pvr
+        LEFT JOIN companies c ON c.id = pvr.submitted_by_company_id
+        WHERE pvr.status = 'pending'
+        ORDER BY pvr.created_at DESC
+      `);
+      const data = (rows as any).rows ?? (Array.isArray(rows) ? rows : []);
+      res.json({ data });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * POST /api/vendor-registry/:id/approve — global_admin only
+   * Approves a pending registry entry.
+   * Body: { reviewNotes?: string }
+   */
+  app.post("/api/vendor-registry/:id/approve", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+      const { id } = req.params;
+      const { reviewNotes } = z.object({ reviewNotes: z.string().optional() }).parse(req.body);
+      await db.execute(sql`
+        UPDATE platform_vendor_registry
+        SET status = 'approved', review_notes = ${reviewNotes ?? null}, reviewed_at = now()
+        WHERE id = ${id}
+      `);
+      res.json({ data: { ok: true } });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  /**
+   * POST /api/vendor-registry/:id/reject — global_admin only
+   * Rejects a pending registry entry.
+   * Body: { reviewNotes?: string }
+   */
+  app.post("/api/vendor-registry/:id/reject", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+      const { id } = req.params;
+      const { reviewNotes } = z.object({ reviewNotes: z.string().optional() }).parse(req.body);
+      await db.execute(sql`
+        UPDATE platform_vendor_registry
+        SET status = 'rejected', review_notes = ${reviewNotes ?? null}, reviewed_at = now()
+        WHERE id = ${id}
+      `);
+      res.json({ data: { ok: true } });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   /**
    * GET /api/admin/vendor-registry — global_admin only
    * Lists registry entries. Query param: ?status=pending|approved|rejected|all (default: all)

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useLocation } from "wouter";
@@ -74,12 +74,14 @@ export default function AdminVendorRegistry() {
   const [reviewNotes, setReviewNotes] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  if (user?.role !== "global_admin") {
-    return (
-      <div className="p-8 text-center text-muted-foreground">
-        Access restricted to global admins.
-      </div>
-    );
+  useEffect(() => {
+    if (user !== undefined && user?.role !== "global_admin") {
+      setLocation("/");
+    }
+  }, [user, setLocation]);
+
+  if (!user || user.role !== "global_admin") {
+    return null;
   }
 
   const { data, isLoading, error } = useQuery<{ data: RegistryEntry[] }>({

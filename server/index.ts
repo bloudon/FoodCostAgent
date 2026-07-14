@@ -254,7 +254,7 @@ async function runStartupMigrations() {
          ARRAY['sysco.com','shop.sysco.com','syscofoodservice.com','sygmanetwork.com'],
          'sysco', 'approved', 'seed'),
         ('gordon food service',
-         ARRAY['gfs','gordon food service','gordon foodservice','gordon food svc','gordon food'],
+         ARRAY['gfs','gordon food service','gordon''s food service','gordon foodservice','gordon food svc','gordon food'],
          ARRAY['gfs.com','gordonfoodservice.com'],
          'gfs', 'approved', 'seed'),
         ('us foods',
@@ -262,11 +262,11 @@ async function runStartupMigrations() {
          ARRAY['usfoods.com','usfood.com','usfoodservice.com'],
          'usfoods', 'approved', 'seed'),
         ('performance food service',
-         ARRAY['pfs','performance food service','performance foodservice','performance food group','pfg','reinhart','reinhart foodservice','vistar'],
-         ARRAY['pfgc.com','performancefoodservice.com','reinhartfoodservice.com'],
+         ARRAY['pfs','performance food service','performance food','performance foodservice','performance food group','pfg','reinhart','reinhart foodservice','vistar'],
+         ARRAY['pfgc.com','pfg.com','performancefoodservice.com','reinhartfoodservice.com'],
          'pfs', 'approved', 'seed'),
         ('southern foods',
-         ARRAY['sofo','sofo foods','southern foods','southern food service','southern food group'],
+         ARRAY['sofo','sofo foods','southern foods','southern food','southern food service','southern food group'],
          ARRAY['sofofoods.com','southernfoods.com'],
          'sofo', 'approved', 'seed')
       ON CONFLICT (normalized_name, connector_id) DO UPDATE

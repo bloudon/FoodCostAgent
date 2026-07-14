@@ -1162,7 +1162,7 @@ DO $$ BEGIN
       WHERE normalized_name = 'sysco' AND connector_id = 'sysco';
 
     UPDATE platform_vendor_registry
-      SET aliases = ARRAY['gfs','gordon food service','gordon foodservice','gordon food svc','gordon food'],
+      SET aliases = ARRAY['gfs','gordon food service','gordon''s food service','gordon foodservice','gordon food svc','gordon food'],
           website_domains = ARRAY['gfs.com','gordonfoodservice.com']
       WHERE normalized_name = 'gordon food service' AND connector_id = 'gfs';
 
@@ -1172,12 +1172,12 @@ DO $$ BEGIN
       WHERE normalized_name = 'us foods' AND connector_id = 'usfoods';
 
     UPDATE platform_vendor_registry
-      SET aliases = ARRAY['pfs','performance food service','performance foodservice','performance food group','pfg','reinhart','reinhart foodservice','vistar'],
-          website_domains = ARRAY['pfgc.com','performancefoodservice.com','reinhartfoodservice.com']
+      SET aliases = ARRAY['pfs','performance food service','performance food','performance foodservice','performance food group','pfg','reinhart','reinhart foodservice','vistar'],
+          website_domains = ARRAY['pfgc.com','pfg.com','performancefoodservice.com','reinhartfoodservice.com']
       WHERE normalized_name = 'performance food service' AND connector_id = 'pfs';
 
     UPDATE platform_vendor_registry
-      SET aliases = ARRAY['sofo','sofo foods','southern foods','southern food service','southern food group'],
+      SET aliases = ARRAY['sofo','sofo foods','southern foods','southern food','southern food service','southern food group'],
           website_domains = ARRAY['sofofoods.com','southernfoods.com']
       WHERE normalized_name = 'southern foods' AND connector_id = 'sofo';
 
