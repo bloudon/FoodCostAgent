@@ -362,8 +362,9 @@ export default function AdminVendorRegistry() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium capitalize">{entry.normalized_name}</span>
                   {entry.connector_id && (
-                    <Badge variant="outline" className="text-xs" data-testid={`badge-connector-${entry.id}`}>
+                    <Badge variant="outline" className="text-xs gap-1.5" data-testid={`badge-connector-${entry.id}`}>
                       {CONNECTOR_LABELS[entry.connector_id] ?? entry.connector_id}
+                      <span className="font-mono text-[10px] bg-muted px-1 rounded" data-testid={`text-connector-id-${entry.id}`}>{entry.connector_id}</span>
                     </Badge>
                   )}
                   {entry.category && (

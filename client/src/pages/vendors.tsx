@@ -963,6 +963,9 @@ export default function Vendors() {
                               <span className="font-medium">{titleName}</span>
                               <div className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
                                 {r.connectorDisplayName && <span>{r.connectorDisplayName}</span>}
+                                {r.connectorId && (
+                                  <span className="font-mono bg-muted text-muted-foreground px-1 rounded text-[10px]">{r.connectorId}</span>
+                                )}
                                 {r.category && <span className="opacity-70">· {r.category}</span>}
                               </div>
                             </button>
@@ -971,14 +974,29 @@ export default function Vendors() {
                       </div>
                     )}
                   </div>
-                  {regQuery.trim() && !regLoading && regResults.length === 0 && (
-                    <p className="text-xs text-muted-foreground">No match found — fill in the details below manually.</p>
-                  )}
-                  {!regQuery && (
-                    <p className="text-xs text-muted-foreground">
-                      Selecting a known distributor pre-fills the name, website, and connector type.
-                    </p>
-                  )}
+                  <div className="flex items-center justify-between">
+                    {regQuery.trim() && !regLoading && regResults.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">No match found — fill in the details below manually.</p>
+                    ) : !regQuery ? (
+                      <p className="text-xs text-muted-foreground">
+                        Selecting a known distributor pre-fills the name, website, and connector type.
+                      </p>
+                    ) : <span />}
+                    {regQuery.trim() && (
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 shrink-0"
+                        data-testid="button-skip-registry"
+                        onClick={() => {
+                          setRegQuery("");
+                          setRegResults([]);
+                          setRegPickerOpen(false);
+                        }}
+                      >
+                        Skip / enter manually
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
