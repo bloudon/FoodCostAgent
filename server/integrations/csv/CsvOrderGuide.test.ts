@@ -1081,3 +1081,194 @@ describe('SOFO Foods vendor mapping', () => {
     expect(p.price).toBeCloseTo(5.08);
   });
 });
+
+// ─── Ben E. Keith (BEK) vendor mapping ───────────────────────────────────────
+
+describe('BEK vendor mapping', () => {
+  it('parses split Pack + Size — Pack=6, Size="5 LB"', async () => {
+    const csv = [
+      'Item Number,Description,Pack,Size,UOM,Your Price,Brand,Category',
+      'BEK001,CHEESE MOZZARELLA WHOLE MILK LOAF,6,5 LB,CS,$28.75,GRANDE,Dairy',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'bek' });
+    expect(guide.products).toHaveLength(1);
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('BEK001');
+    expect(p.vendorProductName).toContain('CHEESE MOZZARELLA');
+    expect(p.caseSize).toBe(6);
+    expect(p.innerPack).toBe(5);
+    expect(p.unit).toBe('lb.');
+    expect(p.price).toBeCloseTo(28.75);
+    expect(p.brandName).toBe('GRANDE');
+  });
+
+  it('parses Pack=12, Size="32 OZ"', async () => {
+    const csv = [
+      'Item Number,Description,Pack,Size,UOM,Your Price,Brand,Category',
+      'BEK002,SALSA CHUNKY MILD,12,32 OZ,CS,$34.20,PACE,Condiments',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'bek' });
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('BEK002');
+    expect(p.caseSize).toBe(12);
+    expect(p.innerPack).toBe(32);
+    expect(p.unit).toBe('oz');
+    expect(p.price).toBeCloseTo(34.20);
+  });
+
+  it('parses #10 can size — Pack=6, Size="#10"', async () => {
+    const csv = [
+      'Item Number,Description,Pack,Size,UOM,Your Price,Brand,Category',
+      'BEK003,TOMATOES DICED CANNED,6,#10,CS,$46.50,REDPACK,Canned Goods',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'bek' });
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('BEK003');
+    expect(p.caseSize).toBe(6);
+    // #10 resolves to a can (each) unit
+    expect(p.unit).toBe('each');
+    expect(p.price).toBeCloseTo(46.50);
+  });
+
+  it('parses dollar-sign price prefix', async () => {
+    const csv = [
+      'Item Number,Description,Pack,Size,UOM,Your Price,Brand,Category',
+      'BEK004,BUTTER UNSALTED SOLID,36,1 LB,CS,$72.00,LAND O LAKES,Dairy',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'bek' });
+    const p = guide.products[0];
+    expect(p.price).toBeCloseTo(72.00);
+    expect(p.caseSize).toBe(36);
+    expect(p.innerPack).toBe(1);
+    expect(p.unit).toBe('lb.');
+  });
+
+  it('parses Pack=1, Size="50 LB" (bulk bag)', async () => {
+    const csv = [
+      'Item Number,Description,Pack,Size,UOM,Your Price,Brand,Category',
+      'BEK005,FLOUR ALL PURPOSE ENRICHED,1,50 LB,EA,$22.85,PILLSBURY,Dry Goods',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'bek' });
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('BEK005');
+    expect(p.caseSize).toBe(1);
+    expect(p.innerPack).toBe(50);
+    expect(p.unit).toBe('lb.');
+    expect(p.price).toBeCloseTo(22.85);
+  });
+
+  it('parses multiple rows and returns all products', async () => {
+    const csv = [
+      'Item Number,Description,Pack,Size,UOM,Your Price,Brand,Category',
+      'BEK010,CHICKEN BREAST BONELESS,1,40 LB,EA,$89.50,PILGRIM\'S,Protein',
+      'BEK011,OIL VEGETABLE SOYBEAN,6,1 GAL,CS,$38.40,ADMIRATION,Oils & Fats',
+      'BEK012,NAPKINS DINNER WHITE 2PLY,3000,15 X 17,CS,$41.10,STANDARD,Supplies',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'bek' });
+    expect(guide.products).toHaveLength(3);
+    expect(guide.products[0].vendorSku).toBe('BEK010');
+    expect(guide.products[1].vendorSku).toBe('BEK011');
+    expect(guide.products[2].vendorSku).toBe('BEK012');
+  });
+});
+
+// ─── Performance Food Group (PFG) vendor mapping ─────────────────────────────
+
+describe('PFG vendor mapping', () => {
+  it('parses compound Pack Size "6/5 LB"', async () => {
+    const csv = [
+      'Item Code,Item Description,Pack Size,UOM,Your Price,Brand,Category',
+      'PFG001,CHEESE MOZZARELLA WHOLE MILK LOAF,6/5 LB,CS,$29.10,GRANDE,Dairy',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfg' });
+    expect(guide.products).toHaveLength(1);
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('PFG001');
+    expect(p.vendorProductName).toContain('CHEESE MOZZARELLA');
+    expect(p.caseSize).toBe(6);
+    expect(p.innerPack).toBe(5);
+    expect(p.unit).toBe('lb.');
+    expect(p.price).toBeCloseTo(29.10);
+    expect(p.brandName).toBe('GRANDE');
+  });
+
+  it('parses compound Pack Size "12/32 OZ"', async () => {
+    const csv = [
+      'Item Code,Item Description,Pack Size,UOM,Your Price,Brand,Category',
+      'PFG002,SALSA MEDIUM CHUNKY,12/32 OZ,CS,$36.00,PACE,Condiments',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfg' });
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('PFG002');
+    expect(p.caseSize).toBe(12);
+    expect(p.innerPack).toBe(32);
+    expect(p.unit).toBe('oz');
+    expect(p.price).toBeCloseTo(36.00);
+  });
+
+  it('parses compound Pack Size "24/1 CS" (case-pack items)', async () => {
+    const csv = [
+      'Item Code,Item Description,Pack Size,UOM,Your Price,Brand,Category',
+      'PFG003,GLOVES NITRILE MEDIUM,24/1 CS,CS,$4.25,CARDINAL,Supplies',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfg' });
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('PFG003');
+    expect(p.caseSize).toBe(24);
+    expect(p.innerPack).toBe(1);
+  });
+
+  it('parses Extended Description field into description', async () => {
+    const csv = [
+      'Item Code,Item Description,Extended Description,Pack Size,UOM,Your Price,Brand,Category',
+      'PFG004,CHICKEN BREAST RAW,Customer Custom Name,1/40 LB,CS,$92.00,PILGRIM\'S,Protein',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfg' });
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('PFG004');
+    expect(p.description).toBe('Customer Custom Name');
+    expect(p.caseSize).toBe(1);
+    expect(p.innerPack).toBe(40);
+    expect(p.unit).toBe('lb.');
+    expect(p.price).toBeCloseTo(92.00);
+  });
+
+  it('parses dollar-sign price prefix', async () => {
+    const csv = [
+      'Item Code,Item Description,Pack Size,UOM,Your Price,Brand,Category',
+      'PFG005,FLOUR ALL PURPOSE,1/50 LB,EA,$23.50,PILLSBURY,Dry Goods',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfg' });
+    const p = guide.products[0];
+    expect(p.price).toBeCloseTo(23.50);
+    expect(p.caseSize).toBe(1);
+    expect(p.innerPack).toBe(50);
+    expect(p.unit).toBe('lb.');
+  });
+
+  it('parses compound Pack Size "6/#10 CAN"', async () => {
+    const csv = [
+      'Item Code,Item Description,Pack Size,UOM,Your Price,Brand,Category',
+      'PFG006,TOMATOES CRUSHED,6/#10 CAN,CS,$52.75,ESCALON,Canned Goods',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfg' });
+    const p = guide.products[0];
+    expect(p.vendorSku).toBe('PFG006');
+    expect(p.caseSize).toBe(6);
+    expect(p.innerPack).toBe(10);
+  });
+
+  it('parses multiple rows and returns all products', async () => {
+    const csv = [
+      'Item Code,Item Description,Pack Size,UOM,Your Price,Brand,Category',
+      'PFG010,OIL OLIVE EXTRA VIRGIN,6/1 GAL,CS,$68.00,BERTOLLI,Oils',
+      'PFG011,BEEF GROUND 80/20,1/10 LB,EA,$34.50,GROUND,Protein',
+      'PFG012,SALT KOSHER,6/3 LB,CS,$18.00,DIAMOND,Dry Goods',
+    ].join('\n');
+    const guide = await CsvOrderGuide.parse(csv, { vendorKey: 'pfg' });
+    expect(guide.products).toHaveLength(3);
+    expect(guide.products[0].vendorSku).toBe('PFG010');
+    expect(guide.products[1].vendorSku).toBe('PFG011');
+    expect(guide.products[2].vendorSku).toBe('PFG012');
+  });
+});
