@@ -42,9 +42,11 @@ type RegistryEntry = {
   company_name: string | null;
   reviewed_at: string | null;
   review_notes: string | null;
+  /** Stored at submission time: confidence tier the detect logic computed for this entry */
+  detection_confidence: "high" | "medium" | "low" | null;
+  /** Stored at submission time: human-readable reason for the confidence tier */
+  detection_reason: string | null;
   created_at: string;
-  /** Only present on pending entries returned from the detect endpoint, not stored */
-  confidence?: "high" | "medium" | "low";
 };
 
 type ReviewDialogState = {
@@ -228,13 +230,20 @@ export default function AdminVendorRegistry() {
                   )}
                 </div>
 
-                {entry.confidence && (
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${CONFIDENCE_COLORS[entry.confidence]}`}
-                    data-testid={`badge-confidence-${entry.id}`}
-                  >
-                    {entry.confidence} confidence
-                  </span>
+                {entry.detection_confidence && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium cursor-default ${CONFIDENCE_COLORS[entry.detection_confidence]}`}
+                        data-testid={`badge-confidence-${entry.id}`}
+                      >
+                        {entry.detection_confidence} confidence
+                      </span>
+                    </TooltipTrigger>
+                    {entry.detection_reason && (
+                      <TooltipContent>{entry.detection_reason}</TooltipContent>
+                    )}
+                  </Tooltip>
                 )}
                 {entry.exact_aliases?.length > 0 && (
                   <p className="text-xs text-muted-foreground">

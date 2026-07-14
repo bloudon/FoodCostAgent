@@ -1227,3 +1227,22 @@ DO $$ BEGIN
       VALUES ('v046', 'Task #400: Add exact_aliases column + redistribute abbreviations from aliases');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v047 — Task #400: Add detection_confidence and detection_reason columns
+-- Stores the confidence tier and reason text from the original detect call on
+-- user-submitted registry entries so admins can see them during review.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v047') THEN
+
+    ALTER TABLE platform_vendor_registry
+      ADD COLUMN IF NOT EXISTS detection_confidence text;
+
+    ALTER TABLE platform_vendor_registry
+      ADD COLUMN IF NOT EXISTS detection_reason text;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v047', 'Task #400: detection_confidence and detection_reason on platform_vendor_registry');
+  END IF;
+END $$;

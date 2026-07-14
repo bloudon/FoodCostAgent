@@ -11107,19 +11107,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
   ): Promise<void> {
     try {
       const normalizedName = vendorName.trim().toLowerCase();
-      const domains: string[] = website
-        ? [website.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].split("?")[0]]
-        : [];
+      const domain = website
+        ? website.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].split("?")[0]
+        : "";
+      const domains: string[] = domain ? [domain] : [];
 
+      // Check if an approved entry already covers this name (via exact_aliases too)
       const existing = await db.execute(sql`
         SELECT id FROM platform_vendor_registry
         WHERE connector_id = ${connectorId}
           AND status = 'approved'
-          AND (normalized_name = ${normalizedName} OR ${normalizedName} = ANY(aliases))
+          AND (
+            normalized_name = ${normalizedName}
+            OR ${normalizedName} = ANY(exact_aliases)
+            OR ${normalizedName} = ANY(aliases)
+          )
         LIMIT 1
       `);
       const existingRow = (existing as any).rows?.[0] ?? (Array.isArray(existing) ? existing[0] : null);
       if (existingRow) return;
+
+      // Compute detect confidence for this submission so the admin can see it during review
+      let detectionConfidence: "high" | "medium" | "low" = "low";
+      let detectionReason = "no approved entry found for this connector";
+      const approvedRow = await db.execute(sql`
+        SELECT normalized_name, exact_aliases, aliases, website_domains
+        FROM platform_vendor_registry
+        WHERE connector_id = ${connectorId} AND status = 'approved'
+        LIMIT 1
+      `);
+      const ar = (approvedRow as any).rows?.[0] ?? (Array.isArray(approvedRow) ? approvedRow[0] : null);
+      if (ar) {
+        const exactAliases: string[] = ar.exact_aliases ?? [];
+        const containsAliases: string[] = ar.aliases ?? [];
+        const domainList: string[] = ar.website_domains ?? [];
+        if (ar.normalized_name === normalizedName) {
+          detectionConfidence = "high"; detectionReason = `matched name "${ar.normalized_name}"`;
+        } else if (normalizedName && exactAliases.includes(normalizedName)) {
+          detectionConfidence = "medium"; detectionReason = `matched abbreviation "${normalizedName}"`;
+        } else if (domain && domainList.some(d => domain === d || domain.endsWith("." + d))) {
+          detectionConfidence = "high";
+          const matched = domainList.find(d => domain === d || domain.endsWith("." + d))!;
+          detectionReason = `matched domain "${matched}"`;
+        } else if (normalizedName && normalizedName.includes(ar.normalized_name)) {
+          detectionConfidence = "medium"; detectionReason = `name contains "${ar.normalized_name}"`;
+        } else {
+          const aliasMatch = containsAliases.find(a => normalizedName.includes(a));
+          detectionConfidence = aliasMatch ? "medium" : "low";
+          detectionReason = aliasMatch ? `name contains "${aliasMatch}"` : "partial match";
+        }
+      }
 
       await db.insert(platformVendorRegistry).values({
         normalizedName,
@@ -11129,6 +11166,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "pending",
         source: "user_submitted",
         submittedByCompanyId: companyId,
+        detectionConfidence,
+        detectionReason,
       }).onConflictDoNothing();
     } catch (e) {
       console.error("[vendor-registry] triggerRegistrySuggest error:", e);
@@ -11208,7 +11247,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         confidence = "high";
         reason = `matched name "${row.normalized_name}"`;
       } else if (name && exactAliases.includes(name)) {
-        confidence = "high";
+        confidence = "medium";
         reason = `matched abbreviation "${name}"`;
       } else if (domain && domainList.some(d => domain === d || domain.endsWith("." + d))) {
         confidence = "high";

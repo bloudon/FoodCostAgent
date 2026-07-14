@@ -1732,6 +1732,10 @@ export const platformVendorRegistry = pgTable("platform_vendor_registry", {
   reviewedAt: timestamp("reviewed_at"),
   /** Optional notes from the reviewer */
   reviewNotes: text("review_notes"),
+  /** Confidence tier from the original detect call (user_submitted entries only): high | medium | low */
+  detectionConfidence: text("detection_confidence"),
+  /** Human-readable reason for the confidence tier, e.g. "matched domain sysco.com" */
+  detectionReason: text("detection_reason"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   normalizedConnectorUniq: uniqueIndex("pvr_normalized_connector_uniq").on(table.normalizedName, table.connectorId),
