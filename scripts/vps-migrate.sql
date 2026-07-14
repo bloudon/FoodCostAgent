@@ -1147,3 +1147,41 @@ DO $$ BEGIN
       VALUES ('v044', 'Task #396: platform_vendor_registry table with seed data for known distributors');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v045 — Task #396: Expand platform_vendor_registry seed aliases and domains
+-- Updates existing seed rows with comprehensive alias lists so partial-name
+-- detection works for common real-world vendor name variations.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v045') THEN
+
+    UPDATE platform_vendor_registry
+      SET aliases = ARRAY['sysco','sysco corporation','sysco foods','sysco foodservice','sysco food service','sygma','sygma network','sysco guest supply'],
+          website_domains = ARRAY['sysco.com','shop.sysco.com','syscofoodservice.com','sygmanetwork.com']
+      WHERE normalized_name = 'sysco' AND connector_id = 'sysco';
+
+    UPDATE platform_vendor_registry
+      SET aliases = ARRAY['gfs','gordon food service','gordon foodservice','gordon food svc','gordon food'],
+          website_domains = ARRAY['gfs.com','gordonfoodservice.com']
+      WHERE normalized_name = 'gordon food service' AND connector_id = 'gfs';
+
+    UPDATE platform_vendor_registry
+      SET aliases = ARRAY['usfoods','us foods','us foodservice','us food service','us foods inc','u.s. foods','u.s. foodservice'],
+          website_domains = ARRAY['usfoods.com','usfood.com','usfoodservice.com']
+      WHERE normalized_name = 'us foods' AND connector_id = 'usfoods';
+
+    UPDATE platform_vendor_registry
+      SET aliases = ARRAY['pfs','performance food service','performance foodservice','performance food group','pfg','reinhart','reinhart foodservice','vistar'],
+          website_domains = ARRAY['pfgc.com','performancefoodservice.com','reinhartfoodservice.com']
+      WHERE normalized_name = 'performance food service' AND connector_id = 'pfs';
+
+    UPDATE platform_vendor_registry
+      SET aliases = ARRAY['sofo','sofo foods','southern foods','southern food service','southern food group'],
+          website_domains = ARRAY['sofofoods.com','southernfoods.com']
+      WHERE normalized_name = 'southern foods' AND connector_id = 'sofo';
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v045', 'Task #396: Expand platform_vendor_registry seed aliases and domains');
+  END IF;
+END $$;

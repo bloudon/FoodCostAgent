@@ -186,20 +186,11 @@ export default function Vendors() {
     },
   });
 
-  const upsertConnector = async (vendorId: string, cid: string, vendorName: string, vendorWebsite?: string) => {
+  const upsertConnector = async (vendorId: string, cid: string, _vendorName: string, _vendorWebsite?: string) => {
     try {
-      if (cid) {
-        await apiRequest("PUT", `/api/supplier-connections/${vendorId}`, { connectorId: cid, isActive: 1 });
-        // Suggest this name→connector mapping for the registry (non-blocking)
-        apiRequest("POST", "/api/vendor-registry/suggest", {
-          vendorName,
-          connectorId: cid,
-          websiteDomain: vendorWebsite || undefined,
-        }).catch(() => {});
-      } else {
-        // Connector was cleared — delete the connection row if one exists
-        await apiRequest("DELETE", `/api/supplier-connections/by-vendor/${vendorId}`);
-      }
+      // PUT handles both cases: non-empty cid = upsert, empty cid = unlink (delete row).
+      // Server-side PUT also triggers the registry suggest for non-empty connectorIds.
+      await apiRequest("PUT", `/api/supplier-connections/${vendorId}`, { connectorId: cid, isActive: 1 });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier-connections"] });
     } catch {
       // non-fatal — vendor was created/updated successfully

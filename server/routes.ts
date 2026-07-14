@@ -11094,11 +11094,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Platform Vendor Registry (Task #396) ─────────────────────────────────────
 
   /**
+   * Internal helper: non-blocking suggest — creates a pending registry entry when a
+   * vendor is saved with a connector that isn't already in the approved registry.
+   * Called server-side from PUT /api/supplier-connections/:vendorId (authoritative),
+   * also exposed via POST /api/vendor-registry/suggest for legacy client calls.
+   */
+  async function triggerRegistrySuggest(
+    companyId: string,
+    vendorName: string,
+    connectorId: string,
+    website?: string | null
+  ): Promise<void> {
+    try {
+      const normalizedName = vendorName.trim().toLowerCase();
+      const domains: string[] = website
+        ? [website.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].split("?")[0]]
+        : [];
+
+      const existing = await db.execute(sql`
+        SELECT id FROM platform_vendor_registry
+        WHERE connector_id = ${connectorId}
+          AND status = 'approved'
+          AND (normalized_name = ${normalizedName} OR ${normalizedName} = ANY(aliases))
+        LIMIT 1
+      `);
+      const existingRow = (existing as any).rows?.[0] ?? (Array.isArray(existing) ? existing[0] : null);
+      if (existingRow) return;
+
+      await db.insert(platformVendorRegistry).values({
+        normalizedName,
+        aliases: [normalizedName],
+        websiteDomains: domains,
+        connectorId,
+        status: "pending",
+        source: "user_submitted",
+        submittedByCompanyId: companyId,
+      }).onConflictDoNothing();
+    } catch (e) {
+      console.error("[vendor-registry] triggerRegistrySuggest error:", e);
+    }
+  }
+
+  /**
    * GET /api/vendor-registry/detect?name=&website=
    * Looks up the approved registry for a connector match by vendor name or website domain.
-   * No auth required — safe to call from the vendor form without company context.
+   * Requires auth to prevent unauthenticated enumeration of registry entries.
    */
-  app.get("/api/vendor-registry/detect", async (req, res) => {
+  app.get("/api/vendor-registry/detect", requireAuth, async (req, res) => {
     try {
       const name = (req.query.name as string | undefined)?.trim().toLowerCase() ?? "";
       const website = (req.query.website as string | undefined)?.trim().toLowerCase() ?? "";
@@ -11107,17 +11149,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ data: null });
       }
 
-      // Extract just the domain portion from URL inputs
+      // Extract just the hostname from URL inputs
       let domain = website;
       try {
         if (website.startsWith("http://") || website.startsWith("https://")) {
           domain = new URL(website).hostname.replace(/^www\./, "");
         } else if (website.includes(".")) {
-          domain = website.replace(/^www\./, "").split("/")[0];
+          domain = website.replace(/^www\./, "").split("/")[0].split("?")[0];
         }
       } catch { domain = website; }
 
-      // Build query: match by normalized_name, any alias, or any domain — approved only
+      // Build query: input contains a known alias or domain matches (exact or subdomain)
+      // Ordering: exact normalized-name > exact alias > domain > partial-name
       const rows = await db.execute(sql`
         SELECT id, normalized_name, connector_id, aliases, website_domains
         FROM platform_vendor_registry
@@ -11126,16 +11169,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ${name} = ANY(aliases)
             OR normalized_name = ${name}
             OR (${name} != '' AND (
-              normalized_name ILIKE ${'%' + name + '%'}
-              OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE a ILIKE ${'%' + name + '%'})
+              ${name} ILIKE '%' || normalized_name || '%'
+              OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE ${name} ILIKE '%' || a || '%')
             ))
-            OR (${domain} != '' AND ${domain} = ANY(website_domains))
+            OR (${domain} != '' AND EXISTS (
+              SELECT 1 FROM unnest(website_domains) d
+              WHERE ${domain} = d OR ${domain} LIKE '%.' || d
+            ))
           )
         ORDER BY
           CASE
             WHEN normalized_name = ${name} THEN 0
             WHEN ${name} = ANY(aliases) THEN 1
-            WHEN ${domain} != '' AND ${domain} = ANY(website_domains) THEN 2
+            WHEN ${domain} != '' AND EXISTS (
+              SELECT 1 FROM unnest(website_domains) d2
+              WHERE ${domain} = d2 OR ${domain} LIKE '%.' || d2
+            ) THEN 2
             ELSE 3
           END
         LIMIT 1
@@ -11157,6 +11206,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Called after a vendor is saved with a connector selection that isn't yet in the
    * approved registry. Creates a pending row for global_admin review.
    * Body: { vendorName, connectorId, websiteDomain? }
+   * Note: the authoritative suggest path is server-side via PUT /api/supplier-connections/:vendorId.
+   * This endpoint remains for backward compat and manual triggers.
    */
   app.post("/api/vendor-registry/suggest", requireAuth, async (req, res) => {
     try {
@@ -11167,35 +11218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         websiteDomain: z.string().optional(),
       }).parse(req.body);
 
-      const normalizedName = parsed.vendorName.trim().toLowerCase();
-      const domains: string[] = parsed.websiteDomain
-        ? [parsed.websiteDomain.replace(/^www\./, "").split("/")[0]]
-        : [];
-
-      // Only create if no approved entry already covers this name+connector
-      const existing = await db.execute(sql`
-        SELECT id FROM platform_vendor_registry
-        WHERE connector_id = ${parsed.connectorId}
-          AND status = 'approved'
-          AND (normalized_name = ${normalizedName} OR ${normalizedName} = ANY(aliases))
-        LIMIT 1
-      `);
-      const existingRow = (existing as any).rows?.[0] ?? (Array.isArray(existing) ? existing[0] : null);
-      if (existingRow) {
-        return res.json({ data: { skipped: true, reason: "already_approved" } });
-      }
-
-      // Insert pending row — idempotent via ON CONFLICT DO NOTHING
-      await db.insert(platformVendorRegistry).values({
-        normalizedName,
-        aliases: [normalizedName],
-        websiteDomains: domains,
-        connectorId: parsed.connectorId,
-        status: "pending",
-        source: "user_submitted",
-        submittedByCompanyId: companyId,
-      }).onConflictDoNothing();
-
+      await triggerRegistrySuggest(companyId, parsed.vendorName, parsed.connectorId, parsed.websiteDomain);
       res.json({ data: { submitted: true } });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -11285,9 +11308,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // PUT /api/supplier-connections/:vendorId — upsert connection for a vendor
+  // PUT /api/supplier-connections/:vendorId — upsert connection for a vendor.
+  // Passing an empty connectorId (or omitting it) deletes the connection (unlink).
   const upsertSupplierConnectionSchema = z.object({
-    connectorId: z.string().min(1),
+    connectorId: z.string(),  // allow empty string to signal unlink
     transportOverrides: z.record(z.string()).optional().nullable(),
     isActive: z.number().int().min(0).max(1).optional(),
   });
@@ -11299,6 +11323,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const vendor = await storage.getVendor(vendorId, companyId);
       if (!vendor) return res.status(404).json({ error: "Vendor not found" });
       const parsed = upsertSupplierConnectionSchema.parse(req.body);
+
+      // Empty connectorId = unlink: delete the existing connection row
+      if (!parsed.connectorId) {
+        await db
+          .delete(customerSupplierConnections)
+          .where(and(
+            eq(customerSupplierConnections.companyId, companyId),
+            eq(customerSupplierConnections.vendorId, vendorId),
+          ));
+        return res.json({ data: { unlinked: true } });
+      }
+
       const connection = await storage.upsertCustomerSupplierConnection({
         companyId,
         vendorId,
@@ -11306,6 +11342,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         transportOverrides: parsed.transportOverrides ?? null,
         isActive: parsed.isActive ?? 1,
       });
+
+      // Server-side authoritative suggest: feed this mapping into the registry if not already known
+      triggerRegistrySuggest(companyId, vendor.name, parsed.connectorId, vendor.website).catch(() => {});
+
       res.json({ data: connection });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
