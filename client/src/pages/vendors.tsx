@@ -488,6 +488,8 @@ export default function Vendors() {
         const res = await fetch(`/api/vendor-registry/detect?${params}`, { credentials: "include" });
         if (!res.ok) return;
         const json = await res.json();
+        // Re-check: user may have manually selected while the request was in flight
+        if (connectorSelectionSourceRef.current === "manual") return;
         if (json?.data?.connectorId) {
           setConnectorId(json.data.connectorId);
           connectorSelectionSourceRef.current = "auto";
@@ -849,7 +851,17 @@ export default function Vendors() {
         </Table>
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        setIsDialogOpen(open);
+        if (!open) {
+          if (detectTimerRef.current) {
+            clearTimeout(detectTimerRef.current);
+            detectTimerRef.current = null;
+          }
+          connectorSelectionSourceRef.current = "none";
+          setConnectorSelectionSource("none");
+        }
+      }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dialog-vendor-form">
           <DialogHeader>
             <DialogTitle data-testid="text-dialog-title">
@@ -1059,6 +1071,11 @@ export default function Vendors() {
                     <Select
                       value={connectorId || "__none__"}
                       onValueChange={(v) => {
+                        // Cancel any pending auto-detect before it fires
+                        if (detectTimerRef.current) {
+                          clearTimeout(detectTimerRef.current);
+                          detectTimerRef.current = null;
+                        }
                         connectorSelectionSourceRef.current = "manual";
                         setConnectorSelectionSource("manual");
                         setConnectorId(v === "__none__" ? "" : v);
