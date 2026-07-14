@@ -1,0 +1,420 @@
+# Vendor Registry MVP Reset
+
+## Decision
+
+The vendor registry has not been used in production.
+
+Do not proceed with the large migration, compatibility layer, reference-only classification project, manufacturer-role classification, complex diff process or preservation of the original 141-row seed.
+
+Trim the implementation back to the MVP requirement.
+
+## Actual MVP requirement
+
+The registry exists to help a restaurant select a company it normally:
+
+* Places orders with
+* Receives invoices from
+* Pays directly
+* Downloads an order guide from
+* Connects to through an ordering portal
+
+It is not intended to contain every manufacturer, brand, buying group or company involved in the food supply chain.
+
+## Remove from MVP scope
+
+Do not seed companies such as:
+
+```text
+Tyson Foodservice
+Cargill Meat Solutions
+Sara Lee Foodservice
+Georgia-Pacific Professional
+Kraft Heinz Foodservice
+Campbell's Foodservice
+McCormick Foodservice
+Nestlé Professional
+Unilever Food Solutions
+Smithfield Culinary
+Perdue Foodservice
+JBS Foodservice
+Lamb Weston
+McCain Foods
+Dairy Farmers of America
+Land O'Lakes Foodservice
+Red Bull North America
+Bumble Bee Foodservice
+StarKist Foodservice
+```
+
+These are manufacturers, processors or brands.
+
+Manufacturer information is already maintained on inventory items and products. It should not be duplicated in the ordering-vendor registry.
+
+Also exclude from the MVP picker:
+
+* Buying groups
+* Distributor cooperatives
+* Redistributors
+* Closed franchise supply systems
+* Contract-chain supply organizations
+* Manufacturer brands
+* Industry membership organizations
+* Vendors without evidence of direct restaurant ordering
+
+Examples:
+
+```text
+Golbon
+UniPro
+Frosty Acres
+Distribution Market Advantage
+Dot Foods
+Honor Foods
+National DCP
+Chick-fil-A Supply
+Quality Custom Distribution
+```
+
+## Delete the oversized seed
+
+The current registry seed is development-only and has no production dependencies.
+
+Remove:
+
+* The 141-row hardcoded seed
+* Manufacturer and brand records
+* Reference-only records
+* Unverified review records
+* Complex migration-diff logic
+* Compatibility logic designed solely to preserve unused seed rows
+* Startup reseeding behavior
+
+Replace it with a clean, versioned MVP seed.
+
+No production-data migration is required.
+
+## MVP keeper criteria
+
+A vendor may be globally seeded only when at least one of the following is verified:
+
+```text
+The company directly accepts restaurant orders
+The company invoices restaurant operators
+The company operates a customer ordering portal
+The company provides customer order guides
+The company delivers directly to restaurant locations
+The company supports a verified ordering connector or file workflow
+```
+
+## Initial MVP seed
+
+Seed a focused group of common direct-order foodservice distributors.
+
+### National and major broadline distributors
+
+```text
+Sysco
+US Foods
+Gordon Food Service
+Performance Foodservice
+Ben E. Keith Foods
+McLane Foodservice
+Shamrock Foods
+Cheney Brothers
+```
+
+### Major regional and specialty distributors
+
+```text
+The Chefs' Warehouse
+FreshPoint
+Baldor Specialty Foods
+What Chefs Want
+Saval Foodservice
+Sofo Foods
+Cash-Wa Distributing
+Feeser's
+Ginsberg's Foods
+SGC Foodservice
+Upper Lakes Foods
+Van Eerden Foodservice
+Wood Fruitticher Food Service
+Martin Bros. Distributing
+Nicholas and Company
+Harbor Foods
+Loffredo Fresh Foods
+Maplevale Farms
+Palmer Food Services
+Prime Source Foods
+Quaker Valley Foods
+Sanwa Food Group
+Y. Hata
+Suisan
+BiRite Foodservice
+Ace Endico
+Kuna Foodservice
+Kohl Wholesale
+Dennis Food Service
+DiCarlo Distributors
+Jordano's Foodservice
+Jake's Finer Foods
+International Gourmet Foods
+```
+
+### Online ordering vendors
+
+```text
+WebstaurantStore
+FoodServiceDirect
+Baker's Authority
+D'Artagnan
+Web Food Store
+```
+
+This is enough to make onboarding feel intelligent without pretending to be exhaustive.
+
+## Minimal schema
+
+Keep the current useful matching fields, but avoid adding research-heavy metadata.
+
+```ts
+platformVendorRegistry {
+  id
+  canonicalName
+  normalizedName
+  exactAliases[]
+  aliases[]
+  websiteDomains[]
+  connectorId
+  orderingUrl
+  orderingMode
+  countryCode
+  serviceRegionCodes[]
+  status
+  source
+  createdAt
+}
+```
+
+### Required values
+
+```text
+status:
+approved
+pending
+rejected
+inactive
+```
+
+```text
+source:
+seed
+user_submitted
+global_admin
+```
+
+```text
+orderingMode:
+connector
+portal_link
+public_ecommerce
+contact_vendor
+```
+
+Do not add for MVP:
+
+* Vendor-role taxonomy
+* Verification-status taxonomy
+* Reference-only visibility system
+* Parent-company relationship graph
+* Industry memberships
+* Research notes
+* Acquisition history
+* Usage analytics
+* Exact delivery-area guarantees
+* Manufacturer records
+
+Parent-company relationships and additional classifications can be added later only when a demonstrated product need exists.
+
+## Connector scope
+
+Retain the existing working connectors.
+
+Add shared connector definitions only where they provide immediate value:
+
+```text
+cut_and_dry
+powernet_pnet
+food_order_entry
+```
+
+Initial capabilities must remain conservative.
+
+### Cut+Dry
+
+```ts
+{
+  openPortal: true,
+  exportOrderFile: "csv",
+  populateCart: false,
+  retrieveCatalog: false,
+  submitOrder: false
+}
+```
+
+### PowerNet / PNET
+
+```ts
+{
+  openPortal: true,
+  exportOrderFile: false,
+  populateCart: false,
+  retrieveCatalog: false,
+  submitOrder: false
+}
+```
+
+### Food Order Entry
+
+```ts
+{
+  openPortal: true,
+  exportOrderFile: false,
+  populateCart: false,
+  retrieveCatalog: false,
+  submitOrder: false
+}
+```
+
+A portal link must not be described as punchout or cart population.
+
+## Customer-created vendors
+
+The global seed does not need to contain every regional or local vendor.
+
+When a customer cannot find its vendor:
+
+```text
+Allow the customer to create the vendor immediately
+Make the vendor usable by that company
+Submit the vendor name and domain as pending
+Do not block onboarding
+```
+
+Global administrators can later:
+
+```text
+Approve
+Merge
+Reject
+Keep company-specific
+Assign a connector
+```
+
+## Global growth rule
+
+Promote a pending vendor globally when:
+
+* Its website and identity are verified
+* It directly accepts restaurant orders
+* Multiple companies submit or use it
+* A global administrator approves it
+
+Do not conduct broad directory research merely to increase the registry count.
+
+Real customer usage should determine expansion priority.
+
+## Geography
+
+Geography is optional ranking metadata.
+
+Use it only when explicitly known:
+
+```text
+US-FL
+US-GA
+CA-ON
+CA-QC
+```
+
+Do not treat missing geography as national coverage.
+
+Do not guarantee that a vendor serves every ZIP within a listed region.
+
+## Search priority
+
+```text
+1. Exact canonical-name match
+2. Exact alias match
+3. Website-domain match
+4. Matching customer region
+5. Matching customer country
+6. Other approved vendors
+```
+
+## Implementation plan
+
+### Ticket 1 — Remove the oversized development seed
+
+* Delete the existing 141-row hardcoded seed.
+* Remove continuous startup reseeding.
+* Clear the development registry table.
+* Confirm there are no production dependencies.
+
+### Ticket 2 — Keep the minimal schema
+
+* Preserve useful matching and connector fields.
+* Add only `canonical_name`, `ordering_mode`, country and optional region codes if missing.
+* Do not implement the larger research schema.
+
+### Ticket 3 — Seed the MVP keeper list
+
+* Insert only the verified direct-ordering vendors listed above.
+* Preserve the seven existing connector-enabled vendors where appropriate.
+* Use proper canonical names, aliases and domains.
+
+### Ticket 4 — Add shared connector definitions
+
+Add:
+
+```text
+cut_and_dry
+powernet_pnet
+food_order_entry
+```
+
+with conservative capabilities.
+
+### Ticket 5 — Preserve the learning workflow
+
+* Search the approved registry.
+* Allow manual company vendor creation.
+* Submit unknown vendors as pending.
+* Allow global-admin approval, merge and rejection.
+
+### Ticket 6 — Add lightweight geographic ranking
+
+* Use country and region only as ranking boosts.
+* Do not build delivery-area management.
+
+## Definition of done
+
+```text
+The manufacturer and brand clutter is gone
+The picker contains only actual ordering-vendor candidates
+The seed is small and understandable
+The registry recognizes common distributors
+Known connectors are suggested
+Customers can add any missing local vendor
+Unknown vendors enter the admin-review workflow
+No startup process continually rewrites the registry
+No unnecessary migration or compatibility architecture remains
+```
+
+## Guiding rule
+
+Before adding a company to the global ordering-vendor registry, ask:
+
+> Would a restaurant normally place an order with this company and receive an invoice from it?
+
+If the answer is no, do not seed it.

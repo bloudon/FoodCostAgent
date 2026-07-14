@@ -11321,30 +11321,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const rows = await db.execute(sql`
         SELECT id, normalized_name, canonical_name, website, connector_id, category,
-               ordering_mode, service_scope, service_region_codes
+               ordering_mode, country_code, service_region_codes
         FROM platform_vendor_registry
         WHERE status = 'approved'
-          AND COALESCE(visibility, 'public') = 'public'
           AND (
             normalized_name ILIKE ${"%" + q + "%"}
             OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE a ILIKE ${"%" + q + "%"})
             OR EXISTS (SELECT 1 FROM unnest(exact_aliases) ea WHERE ea ILIKE ${"%" + q + "%"})
           )
         ORDER BY
-          -- Tier 0: connector-enabled (integrated CSV/EDI)
+          -- Tier 0: connector-enabled vendors first
           CASE WHEN connector_id IS NOT NULL THEN 0 ELSE 1 END,
-          -- Tier 1: scope quality
-          CASE
-            WHEN service_scope IN ('national', 'online_nationwide') THEN 0
-            WHEN service_scope IN ('multi_region', 'regional') THEN 1
-            ELSE 2
-          END,
-          -- Tier 2: geography boost when caller supplied a state code
+          -- Tier 1: geography boost when caller supplied a state code
           CASE
             WHEN ${regionTag} <> '' AND ${regionTag} = ANY(service_region_codes) THEN 0
             ELSE 1
           END,
-          -- Tier 3: name-match quality
+          -- Tier 2: name-match quality (starts-with beats contains)
           CASE
             WHEN normalized_name ILIKE ${q + "%"} THEN 0
             WHEN normalized_name ILIKE ${"%" + q + "%"} THEN 1
@@ -11367,7 +11360,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           connectorDisplayName: def?.displayName ?? (r.connector_id as string | null) ?? null,
           category: (r.category as string | null) ?? null,
           orderingMode: (r.ordering_mode as string | null) ?? 'contact_vendor',
-          serviceScope: (r.service_scope as string | null) ?? 'unknown',
         };
       });
 

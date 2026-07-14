@@ -268,7 +268,7 @@ async function runStartupMigrations() {
       CREATE UNIQUE INDEX IF NOT EXISTS pvr_normalized_connector_uniq
         ON platform_vendor_registry (normalized_name, COALESCE(connector_id, ''))
     `);
-    // T0: Ensure _migration_log table exists (shared with vps-migrate.sql for one-time seed gating)
+    // T0: Ensure _migration_log table exists
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS _migration_log (
         version     text        PRIMARY KEY,
@@ -277,278 +277,339 @@ async function runStartupMigrations() {
       )
     `);
 
-    // T1 (Vendor Registry v2): Add classification, geography, and parent-relation columns
-    // parent_vendor_id is varchar (not uuid) to match the id column type; values are UUID strings.
+    // Schema: Add MVP columns (idempotent)
     await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS canonical_name text`);
-    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'public'`);
-    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS verification_status text NOT NULL DEFAULT 'verified'`);
-    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS last_verified_at timestamptz`);
-    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS parent_vendor_id varchar REFERENCES platform_vendor_registry(id) ON DELETE SET NULL`);
-    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS service_country_codes text[] NOT NULL DEFAULT '{}'`);
-    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS service_region_codes text[] NOT NULL DEFAULT '{}'`);
-    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS service_scope text NOT NULL DEFAULT 'unknown'`);
-    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS vendor_role text`);
     await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS ordering_mode text NOT NULL DEFAULT 'contact_vendor'`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS service_region_codes text[] NOT NULL DEFAULT '{}'`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS country_code text`);
+
+    // Schema: Drop v2 research columns not in MVP scope (IF EXISTS — safe on fresh or already-clean DBs)
+    await db.execute(sql`ALTER TABLE platform_vendor_registry DROP COLUMN IF EXISTS visibility`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry DROP COLUMN IF EXISTS verification_status`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry DROP COLUMN IF EXISTS last_verified_at`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry DROP COLUMN IF EXISTS parent_vendor_id`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry DROP COLUMN IF EXISTS service_country_codes`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry DROP COLUMN IF EXISTS service_scope`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry DROP COLUMN IF EXISTS vendor_role`);
+
+    // Schema: Replace over-engineered CHECK constraints with MVP ordering_mode values
     await db.execute(sql`
       DO $$ BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_visibility_check') THEN
-          ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_visibility_check
-            CHECK (visibility IN ('public','reference_only','hidden'));
-        END IF;
-      END $$
-    `);
-    await db.execute(sql`
-      DO $$ BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_verification_status_check') THEN
-          ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_verification_status_check
-            CHECK (verification_status IN ('verified','needs_review','stale'));
-        END IF;
-      END $$
-    `);
-    await db.execute(sql`
-      DO $$ BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_service_scope_check') THEN
-          ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_service_scope_check
-            CHECK (service_scope IN ('national','online_nationwide','multi_region','regional','local','unknown'));
-        END IF;
-      END $$
-    `);
-    await db.execute(sql`
-      DO $$ BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_ordering_mode_check') THEN
-          ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_ordering_mode_check
-            CHECK (ordering_mode IN ('integrated','file_export','portal_link','public_ecommerce','contact_vendor'));
-        END IF;
-      END $$
-    `);
-    await db.execute(sql`
-      DO $$ BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_vendor_role_check') THEN
-          ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_vendor_role_check
-            CHECK (vendor_role IS NULL OR vendor_role IN (
-              'broadline_distributor','specialty_distributor','produce_distributor',
-              'protein_distributor','manufacturer_direct','redistributor','buying_group',
-              'closed_supply_system','contract_distributor','online_retailer',
-              'beverage_distributor','paper_and_packaging'
-            ));
+        ALTER TABLE platform_vendor_registry DROP CONSTRAINT IF EXISTS pvr_visibility_check;
+        ALTER TABLE platform_vendor_registry DROP CONSTRAINT IF EXISTS pvr_verification_status_check;
+        ALTER TABLE platform_vendor_registry DROP CONSTRAINT IF EXISTS pvr_service_scope_check;
+        ALTER TABLE platform_vendor_registry DROP CONSTRAINT IF EXISTS pvr_vendor_role_check;
+        ALTER TABLE platform_vendor_registry DROP CONSTRAINT IF EXISTS pvr_ordering_mode_check;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_ordering_mode_mvp_check') THEN
+          ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_ordering_mode_mvp_check
+            CHECK (ordering_mode IN ('connector','portal_link','public_ecommerce','contact_vendor'));
         END IF;
       END $$
     `);
 
-    // T0: Gate Block 1 — 7 connector-enabled distributors (one-time seed; DO NOTHING prevents overwriting reviewed data)
-    // freshpoint and reinhart/vistar aliases moved to standalone rows in T3/T6.
+    // MVP seed: focused direct-order foodservice distributors only
     {
-      const _b1 = await db.execute(sql`SELECT 1 FROM _migration_log WHERE version = 'pvr-seed-block1-v1'`);
-      if (((_b1 as any).rows ?? []).length === 0) {
+      const _mvp = await db.execute(sql`SELECT 1 FROM _migration_log WHERE version = 'pvr-mvp-seed-v1'`);
+      if (((_mvp as any).rows ?? []).length === 0) {
+        // Clear all old seed rows before inserting clean MVP data
+        await db.execute(sql`DELETE FROM platform_vendor_registry WHERE source = 'seed'`);
         await db.execute(sql`
           INSERT INTO platform_vendor_registry
-            (normalized_name, exact_aliases, aliases, website_domains, connector_id, category, website, ordering_url, portal_status, status, source)
+            (normalized_name, exact_aliases, aliases, website_domains, connector_id, category,
+             website, ordering_url, ordering_mode, country_code, service_region_codes,
+             status, source, canonical_name)
           VALUES
+            -- === National broadline (connector-enabled) ===
             ('sysco',
              ARRAY['sygma'],
              ARRAY['sysco corporation','sysco foods','sysco foodservice','sysco food service','sygma network','sysco guest supply'],
              ARRAY['sysco.com','shop.sysco.com','syscofoodservice.com','sygmanetwork.com'],
-             'sysco','Broadline','https://www.sysco.com','https://shop.sysco.com','Self-serve portal','approved','seed'),
-            ('gordon food service',
-             ARRAY['gfs'],
-             ARRAY['gordon food service','gordon''s food service','gordon foodservice','gordon food svc','gordon food'],
-             ARRAY['gfs.com','gordonfoodservice.com'],
-             'gfs','Broadline','https://www.gfs.com','https://www.gfs.com/store','Self-serve portal','approved','seed'),
+             'sysco','Broadline','https://www.sysco.com','https://shop.sysco.com',
+             'connector','US','{}','approved','seed','Sysco'),
             ('us foods',
              ARRAY['usfoods'],
              ARRAY['us foods','us foodservice','us food service','us foods inc','u.s. foods','u.s. foodservice'],
              ARRAY['usfoods.com','usfood.com','usfoodservice.com'],
-             'usfoods','Broadline','https://www.usfoods.com','https://www.usfoods.com/our-services/online-ordering.html','Self-serve portal','approved','seed'),
-            ('performance food group',
+             'usfoods','Broadline','https://www.usfoods.com','https://www.usfoods.com/our-services/online-ordering.html',
+             'connector','US','{}','approved','seed','US Foods'),
+            ('gordon food service',
+             ARRAY['gfs'],
+             ARRAY['gordon food service','gordon''s food service','gordon foodservice','gordon food svc','gordon food'],
+             ARRAY['gfs.com','gordonfoodservice.com'],
+             'gfs','Broadline','https://www.gfs.com','https://www.gfs.com/store',
+             'connector','US','{}','approved','seed','Gordon Food Service'),
+            ('performance foodservice',
              ARRAY['pfg'],
-             ARRAY['performance food group','performance net','pfg foodservice'],
+             ARRAY['performance food group','performance net','performance foodservice','pfg foodservice'],
              ARRAY['pfgc.com','performancenet.com'],
-             'pfg','Broadline','https://www.pfgc.com','https://www.performancenet.com','Self-serve portal (Performance Net)','approved','seed'),
+             'pfg','Broadline','https://www.pfgc.com','https://www.performancenet.com',
+             'connector','US','{}','approved','seed','Performance Foodservice'),
             ('performance food service',
              ARRAY['pfs'],
-             ARRAY['performance food service','performance food','performance foodservice'],
+             ARRAY['performance food service','performance food'],
              ARRAY['performancefoodservice.com'],
-             'pfs','Broadline','https://www.pfgc.com',NULL,'Contact rep','approved','seed'),
-            ('ben e. keith',
+             'pfs','Broadline','https://www.pfgc.com',NULL,
+             'connector','US','{}','approved','seed','Performance Food Service'),
+            ('ben e. keith foods',
              ARRAY['bek'],
-             ARRAY['ben e keith','ben e. keith foods','ben e. keith beverages','bek foods'],
+             ARRAY['ben e keith','ben e. keith','ben e. keith foods','ben e. keith beverages','bek foods'],
              ARRAY['bek.com','benekeith.com'],
-             'bek','Broadline','https://www.bek.com','https://www.bek.com','Self-serve portal (My BEK)','approved','seed'),
-            ('southern foods',
+             'bek','Broadline','https://www.bek.com','https://www.bek.com',
+             'connector','US',ARRAY['US-TX','US-OK','US-AR','US-LA','US-NM','US-CO'],'approved','seed','Ben E. Keith Foods'),
+            ('sofo foods',
              ARRAY['sofo'],
-             ARRAY['sofo foods','southern food','southern food service','southern food group'],
-             ARRAY['sofofoods.com','southernfoods.com'],
-             'sofo','Broadline','https://www.sofofoods.com',NULL,'Contact rep','approved','seed')
+             ARRAY['sofo foods','southern food service','sofo food service'],
+             ARRAY['sofofoods.com'],
+             'sofo','Broadline','https://www.sofofoods.com',NULL,
+             'connector','US',ARRAY['US-OH','US-MI','US-IN','US-PA','US-WV'],'approved','seed','Sofo Foods'),
+            -- === National broadline (no connector) ===
+            ('mclane foodservice',
+             '{}',
+             ARRAY['mclane food service','mclane company','mclane'],
+             ARRAY['mclane.com'],
+             NULL,'Broadline','https://www.mclane.com',NULL,
+             'portal_link','US','{}','approved','seed','McLane Foodservice'),
+            ('shamrock foods',
+             '{}',
+             ARRAY['shamrock food','shamrock foodservice','shamrock food service'],
+             ARRAY['shamrockfoods.com'],
+             NULL,'Broadline','https://www.shamrockfoods.com',NULL,
+             'contact_vendor','US',ARRAY['US-AZ','US-CA','US-CO','US-NM','US-NV','US-UT'],'approved','seed','Shamrock Foods'),
+            ('cheney brothers',
+             '{}',
+             ARRAY['cheney brothers inc','cheney bro','cheney'],
+             ARRAY['cheneybrothers.com'],
+             NULL,'Broadline','https://www.cheneybrothers.com',NULL,
+             'contact_vendor','US',ARRAY['US-FL','US-GA','US-SC','US-NC','US-AL'],'approved','seed','Cheney Brothers'),
+            -- === Specialty & regional ===
+            ('the chefs'' warehouse',
+             '{}',
+             ARRAY['chefs warehouse','chefs'' warehouse','chefs warehouse inc'],
+             ARRAY['chefswarehouse.com'],
+             NULL,'Specialty & Gourmet','https://www.chefswarehouse.com','https://www.chefswarehouse.com',
+             'portal_link','US','{}','approved','seed','The Chefs'' Warehouse'),
+            ('freshpoint',
+             '{}',
+             ARRAY['fresh point','freshpoint inc','freshpoint fresh cut'],
+             ARRAY['freshpoint.com'],
+             NULL,'Produce','https://www.freshpoint.com',NULL,
+             'contact_vendor','US','{}','approved','seed','FreshPoint'),
+            ('baldor specialty foods',
+             '{}',
+             ARRAY['baldor foods','baldor'],
+             ARRAY['baldorfood.com'],
+             NULL,'Specialty & Gourmet','https://www.baldorfood.com',NULL,
+             'contact_vendor','US',ARRAY['US-NY','US-NJ','US-CT','US-MA','US-PA','US-DC'],'approved','seed','Baldor Specialty Foods'),
+            ('what chefs want',
+             '{}',
+             ARRAY['what chefs want inc'],
+             ARRAY['whatchefswant.com'],
+             'cut_and_dry','Specialty & Gourmet','https://www.whatchefswant.com',NULL,
+             'connector','US',ARRAY['US-KY','US-TN','US-IN','US-OH'],'approved','seed','What Chefs Want'),
+            ('saval foodservice',
+             '{}',
+             ARRAY['saval food service','saval'],
+             ARRAY['saval.com'],
+             'powernet_pnet','Broadline','https://www.saval.com',NULL,
+             'connector','US',ARRAY['US-MD','US-VA','US-DC','US-PA','US-DE','US-NC'],'approved','seed','Saval Foodservice'),
+            ('sgc foodservice',
+             '{}',
+             ARRAY['sgc food service','sgc'],
+             ARRAY['sgcfoodservice.com'],
+             'powernet_pnet','Broadline','https://www.sgcfoodservice.com',NULL,
+             'connector','US',ARRAY['US-VA','US-NC','US-SC','US-GA','US-TN'],'approved','seed','SGC Foodservice'),
+            ('wood fruitticher food service',
+             '{}',
+             ARRAY['wood fruitticher','wood fruitticher grocery','wood and fruitticher'],
+             ARRAY['woodfruitticher.com'],
+             'food_order_entry','Broadline','https://www.woodfruitticher.com',NULL,
+             'connector','US',ARRAY['US-TX','US-OK','US-AR','US-LA','US-MS','US-AL'],'approved','seed','Wood Fruitticher Food Service'),
+            ('cash-wa distributing',
+             '{}',
+             ARRAY['cashwa','cash wa distributing','cash-wa'],
+             ARRAY['cash-wa.com','cashwa.com'],
+             NULL,'Broadline','https://www.cash-wa.com',NULL,
+             'contact_vendor','US',ARRAY['US-NE','US-IA','US-KS','US-MO','US-SD','US-ND','US-MN'],'approved','seed','Cash-Wa Distributing'),
+            ('feeser''s',
+             '{}',
+             ARRAY['feesers','feeser food','feeser''s food distributors'],
+             ARRAY['feesers.com'],
+             NULL,'Broadline','https://www.feesers.com',NULL,
+             'contact_vendor','US',ARRAY['US-PA','US-MD','US-VA','US-DE','US-NJ','US-NY'],'approved','seed','Feeser''s'),
+            ('ginsberg''s foods',
+             '{}',
+             ARRAY['ginsbergs foods','ginsberg foods','ginsberg''s'],
+             ARRAY['ginsbergsfoods.com'],
+             NULL,'Broadline','https://www.ginsbergsfoods.com',NULL,
+             'contact_vendor','US',ARRAY['US-NY','US-NJ','US-CT'],'approved','seed','Ginsberg''s Foods'),
+            ('upper lakes foods',
+             '{}',
+             ARRAY['upper lakes food','upper lakes'],
+             ARRAY['upperlakesfoods.com'],
+             NULL,'Broadline','https://www.upperlakesfoods.com',NULL,
+             'contact_vendor','US',ARRAY['US-MN','US-WI','US-MI','US-ND','US-SD'],'approved','seed','Upper Lakes Foods'),
+            ('van eerden foodservice',
+             '{}',
+             ARRAY['van eerden food service','van eerden'],
+             ARRAY['vaneerdenfoodservice.com'],
+             NULL,'Broadline','https://www.vaneerdenfoodservice.com',NULL,
+             'contact_vendor','US',ARRAY['US-MI','US-IN','US-OH','US-WI'],'approved','seed','Van Eerden Foodservice'),
+            ('martin bros. distributing',
+             '{}',
+             ARRAY['martin brothers','martin brothers distributing','martin bro','martin bros'],
+             ARRAY['martinbrothers.com'],
+             NULL,'Broadline','https://www.martinbrothers.com',NULL,
+             'contact_vendor','US',ARRAY['US-IA','US-MN','US-WI','US-IL','US-MO','US-SD','US-ND'],'approved','seed','Martin Bros. Distributing'),
+            ('nicholas and company',
+             '{}',
+             ARRAY['nicholas & company','nicholas co','nicholas and co'],
+             ARRAY['nicholasandco.com'],
+             NULL,'Broadline','https://www.nicholasandco.com',NULL,
+             'contact_vendor','US',ARRAY['US-UT','US-CO','US-ID','US-MT','US-WY','US-NV','US-AZ'],'approved','seed','Nicholas and Company'),
+            ('harbor foods',
+             '{}',
+             ARRAY['harbor food','harbor foods inc','harbor foodservice'],
+             ARRAY['harborfoods.com'],
+             NULL,'Broadline','https://www.harborfoods.com',NULL,
+             'contact_vendor','US',ARRAY['US-WA','US-OR'],'approved','seed','Harbor Foods'),
+            ('loffredo fresh foods',
+             '{}',
+             ARRAY['loffredo','loffredo fresh produce','loffredo foods'],
+             ARRAY['loffredo.com'],
+             NULL,'Produce','https://www.loffredo.com',NULL,
+             'contact_vendor','US',ARRAY['US-IA','US-NE','US-MO','US-KS'],'approved','seed','Loffredo Fresh Foods'),
+            ('maplevale farms',
+             '{}',
+             ARRAY['maple vale farms','maplevale farm'],
+             ARRAY['maplevale.com'],
+             NULL,'Broadline','https://www.maplevale.com',NULL,
+             'contact_vendor','US',ARRAY['US-NY','US-PA','US-NJ','US-CT'],'approved','seed','Maplevale Farms'),
+            ('palmer food services',
+             '{}',
+             ARRAY['palmer foodservice','palmer food service','palmer foods'],
+             ARRAY['palmerfoodservices.com'],
+             NULL,'Broadline','https://www.palmerfoodservices.com',NULL,
+             'contact_vendor','US',ARRAY['US-NY','US-PA','US-NJ','US-CT','US-MA'],'approved','seed','Palmer Food Services'),
+            ('prime source foods',
+             '{}',
+             ARRAY['primesource foods','prime source food','prime source foodservice'],
+             ARRAY['primesourcefoods.com'],
+             NULL,'Broadline','https://www.primesourcefoods.com',NULL,
+             'contact_vendor','US',ARRAY['US-TX','US-OK','US-AR','US-LA','US-MS'],'approved','seed','Prime Source Foods'),
+            ('quaker valley foods',
+             '{}',
+             ARRAY['quaker valley food','quaker valley'],
+             ARRAY['qvf.com'],
+             NULL,'Broadline','https://www.qvf.com',NULL,
+             'contact_vendor','US',ARRAY['US-PA','US-NJ','US-DE','US-MD','US-VA','US-NY'],'approved','seed','Quaker Valley Foods'),
+            ('sanwa food group',
+             '{}',
+             ARRAY['sanwa food','sanwa foods'],
+             ARRAY['sanwafoodgroup.com'],
+             NULL,'Asian & Specialty','https://www.sanwafoodgroup.com',NULL,
+             'contact_vendor','US',ARRAY['US-CA'],'approved','seed','Sanwa Food Group'),
+            ('y. hata',
+             '{}',
+             ARRAY['y hata','y hata & co','yhata'],
+             ARRAY['yhata.com'],
+             NULL,'Broadline','https://www.yhata.com',NULL,
+             'contact_vendor','US',ARRAY['US-HI'],'approved','seed','Y. Hata'),
+            ('suisan',
+             '{}',
+             ARRAY['suisan company','suisan co'],
+             ARRAY['suisan.com'],
+             NULL,'Broadline','https://www.suisan.com',NULL,
+             'contact_vendor','US',ARRAY['US-HI'],'approved','seed','Suisan'),
+            ('birite foodservice',
+             '{}',
+             ARRAY['bi-rite foodservice','bi rite foodservice','birite food service'],
+             ARRAY['biritefoodservice.com'],
+             NULL,'Broadline','https://www.biritefoodservice.com',NULL,
+             'contact_vendor','US',ARRAY['US-CA','US-NV','US-OR'],'approved','seed','BiRite Foodservice'),
+            ('ace endico',
+             '{}',
+             ARRAY['ace endico corporation','ace endico foods'],
+             ARRAY['aceendico.com'],
+             NULL,'Broadline','https://www.aceendico.com',NULL,
+             'contact_vendor','US',ARRAY['US-NY','US-NJ','US-CT'],'approved','seed','Ace Endico'),
+            ('kuna foodservice',
+             '{}',
+             ARRAY['kuna food service','kuna foods'],
+             ARRAY['kunafoodservice.com'],
+             NULL,'Broadline','https://www.kunafoodservice.com',NULL,
+             'contact_vendor','US',ARRAY['US-ID','US-OR','US-WA','US-MT','US-WY'],'approved','seed','Kuna Foodservice'),
+            ('kohl wholesale',
+             '{}',
+             ARRAY['kohl food','kohl wholesale company'],
+             ARRAY['kohlwholesale.com'],
+             NULL,'Broadline','https://www.kohlwholesale.com',NULL,
+             'contact_vendor','US',ARRAY['US-NE','US-KS','US-MO','US-IA','US-SD'],'approved','seed','Kohl Wholesale'),
+            ('dennis food service',
+             '{}',
+             ARRAY['dennis foodservice','dennis food svc'],
+             ARRAY['dennisfoodservice.com'],
+             NULL,'Broadline','https://www.dennisfoodservice.com',NULL,
+             'contact_vendor','US',ARRAY['US-ME','US-NH','US-MA','US-VT'],'approved','seed','Dennis Food Service'),
+            ('dicarlo distributors',
+             '{}',
+             ARRAY['di carlo distributors','dicarlo food service'],
+             ARRAY['dicarlodistributors.com'],
+             NULL,'Broadline','https://www.dicarlodistributors.com',NULL,
+             'contact_vendor','US',ARRAY['US-NY','US-NJ','US-PA','US-CT'],'approved','seed','DiCarlo Distributors'),
+            ('jordano''s foodservice',
+             '{}',
+             ARRAY['jordanos foodservice','jordano''s','jordanos food service'],
+             ARRAY['jordanos.com'],
+             NULL,'Broadline','https://www.jordanos.com',NULL,
+             'contact_vendor','US',ARRAY['US-CA'],'approved','seed','Jordano''s Foodservice'),
+            ('jake''s finer foods',
+             '{}',
+             ARRAY['jakes finer foods','jake''s fine foods','jake''s foods'],
+             ARRAY['jakesfinerfoods.com'],
+             NULL,'Broadline','https://www.jakesfinerfoods.com',NULL,
+             'contact_vendor','US',ARRAY['US-IL','US-IN','US-OH','US-WI','US-MO'],'approved','seed','Jake''s Finer Foods'),
+            ('international gourmet foods',
+             '{}',
+             ARRAY['international gourmet food','igf'],
+             ARRAY['igfood.com'],
+             NULL,'Specialty & Gourmet','https://www.igfood.com',NULL,
+             'contact_vendor','US',ARRAY['US-VA','US-DC','US-MD','US-PA'],'approved','seed','International Gourmet Foods'),
+            -- === Online ordering vendors ===
+            ('webstaurantstore',
+             '{}',
+             ARRAY['webstaurant store','webstaurant'],
+             ARRAY['webstaurantstore.com'],
+             NULL,'Online Retail','https://www.webstaurantstore.com','https://www.webstaurantstore.com',
+             'public_ecommerce','US','{}','approved','seed','WebstaurantStore'),
+            ('foodservicedirect',
+             '{}',
+             ARRAY['food service direct','fsd','foodservice direct'],
+             ARRAY['foodservicedirect.com'],
+             NULL,'Online Retail','https://www.foodservicedirect.com','https://www.foodservicedirect.com',
+             'public_ecommerce','US','{}','approved','seed','FoodServiceDirect'),
+            ('baker''s authority',
+             '{}',
+             ARRAY['bakers authority'],
+             ARRAY['bakersauthority.com'],
+             NULL,'Online Retail','https://www.bakersauthority.com','https://www.bakersauthority.com',
+             'public_ecommerce','US','{}','approved','seed','Baker''s Authority'),
+            ('d''artagnan',
+             '{}',
+             ARRAY['dartagnan','d artagnan'],
+             ARRAY['dartagnan.com'],
+             NULL,'Specialty & Gourmet','https://www.dartagnan.com','https://www.dartagnan.com',
+             'public_ecommerce','US','{}','approved','seed','D''Artagnan'),
+            ('web food store',
+             '{}',
+             ARRAY['webfoodstore'],
+             ARRAY['webfoodstore.com'],
+             NULL,'Online Retail','https://www.webfoodstore.com','https://www.webfoodstore.com',
+             'public_ecommerce','US','{}','approved','seed','Web Food Store')
           ON CONFLICT (normalized_name, (COALESCE(connector_id, ''))) DO NOTHING
         `);
         await db.execute(sql`
           INSERT INTO _migration_log (version, description)
-          VALUES ('pvr-seed-block1-v1', 'One-time seed: 7 connector-enabled distributor rows')
-          ON CONFLICT DO NOTHING
-        `);
-      }
-    }
-
-    // T0: Gate Block 2 — null-connector purveyors (one-time seed; DO NOTHING prevents overwriting reviewed data)
-    {
-      const _b2 = await db.execute(sql`SELECT 1 FROM _migration_log WHERE version = 'pvr-seed-block2-v1'`);
-      if (((_b2 as any).rows ?? []).length === 0) {
-    await db.execute(sql`
-      INSERT INTO platform_vendor_registry
-        (normalized_name, aliases, website_domains, connector_id, category, website, ordering_url, portal_status, status, source)
-      VALUES
-        -- Broadline Distributors
-        ('reinhart foodservice',ARRAY['reinhart','reinhart foods'],ARRAY['reinhartfoodservice.com'],NULL,'Broadline','https://www.reinhartfoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('cheney brothers',ARRAY['cheney brothers inc','cheney bro'],ARRAY['cheneybrothers.com'],NULL,'Broadline','https://www.cheneybrothers.com',NULL,'Contact rep','approved','seed'),
-        ('nicholas & company',ARRAY['nicholas and company','nicholas co'],ARRAY['nicholasandco.com'],NULL,'Broadline','https://www.nicholasandco.com',NULL,'Contact rep','approved','seed'),
-        ('labatt food service',ARRAY['labatt foodservice','labatt'],ARRAY['labattfoodservice.com'],NULL,'Broadline','https://www.labattfoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('shamrock foods',ARRAY['shamrock food','shamrock foodservice'],ARRAY['shamrockfoods.com'],NULL,'Broadline','https://www.shamrockfoods.com',NULL,'Contact rep','approved','seed'),
-        ('ace endico',ARRAY['ace endico corporation'],ARRAY['aceendico.com'],NULL,'Broadline','https://www.aceendico.com',NULL,'Contact rep','approved','seed'),
-        ('roma food',ARRAY['roma foods','roma food enterprises'],ARRAY['romafood.com'],NULL,'Broadline','https://www.romafood.com',NULL,'Contact rep','approved','seed'),
-        ('martin brothers',ARRAY['martin brothers distributing','martin bro'],ARRAY['martinbrothers.com'],NULL,'Broadline','https://www.martinbrothers.com',NULL,'Contact rep','approved','seed'),
-        ('dot foods',ARRAY['dot foods inc'],ARRAY['dotfoods.com'],NULL,'Redistributor','https://www.dotfoods.com',NULL,'Contact rep','approved','seed'),
-        ('restaurant depot',ARRAY['jetro cash & carry','jetro'],ARRAY['restaurantdepot.com','jetro.com'],NULL,'Cash & Carry','https://www.restaurantdepot.com',NULL,'Self-serve portal','approved','seed'),
-        ('food services of america',ARRAY['fsa','foods services of america'],ARRAY['fsafood.com'],NULL,'Broadline','https://www.fsafood.com',NULL,'Contact rep','approved','seed'),
-        ('maines paper & food service',ARRAY['maines','maines food service'],ARRAY['mainesfoodservice.com'],NULL,'Broadline','https://www.mainesfoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('lipari foods',ARRAY['lipari'],ARRAY['liparifoods.com'],NULL,'Broadline','https://www.liparifoods.com',NULL,'Contact rep','approved','seed'),
-        ('merchants food service',ARRAY['merchants foodservice'],ARRAY['merchantsfoodservice.com'],NULL,'Broadline','https://www.merchantsfoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('honor foods',ARRAY['honor foods inc'],ARRAY['honorfoods.com'],NULL,'Broadline','https://www.honorfoods.com',NULL,'Contact rep','approved','seed'),
-        ('vistar',ARRAY['vistar corporation'],ARRAY['vistar.com'],NULL,'Convenience & Vending','https://www.vistar.com',NULL,'Contact rep','approved','seed'),
-        ('piazza produce',ARRAY['piazza produce & specialty foods','piazza'],ARRAY['piazzaproduce.com'],NULL,'Broadline','https://www.piazzaproduce.com',NULL,'Contact rep','approved','seed'),
-        ('glazier foods',ARRAY['glazier food company'],ARRAY['glazierfoods.com'],NULL,'Broadline','https://www.glazierfoods.com',NULL,'Contact rep','approved','seed'),
-        ('clark food service',ARRAY['clark foodservice'],ARRAY['clarkfoodservice.com'],NULL,'Broadline','https://www.clarkfoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('associated wholesale grocers',ARRAY['awg'],ARRAY['awginc.com'],NULL,'Wholesale','https://www.awginc.com',NULL,'Contact rep','approved','seed'),
-        ('amcon distributing',ARRAY['amcon'],ARRAY['amcon.com'],NULL,'Broadline','https://www.amcon.com',NULL,'Contact rep','approved','seed'),
-        ('c&s wholesale grocers',ARRAY['c and s wholesale','cs wholesale'],ARRAY['cswg.com'],NULL,'Wholesale','https://www.cswg.com',NULL,'Contact rep','approved','seed'),
-        ('webstaurant store',ARRAY['webstaurantstore'],ARRAY['webstaurantstore.com'],NULL,'Online Retail','https://www.webstaurantstore.com','https://www.webstaurantstore.com','Self-serve portal','approved','seed'),
-        -- Produce Distributors
-        ('baldor specialty foods',ARRAY['baldor'],ARRAY['baldorfood.com'],NULL,'Produce & Specialty','https://www.baldorfood.com',NULL,'Contact rep','approved','seed'),
-        ('four seasons produce',ARRAY['four seasons'],ARRAY['fsproduce.com'],NULL,'Produce','https://www.fsproduce.com',NULL,'Contact rep','approved','seed'),
-        ('robinson fresh',ARRAY['robinson fresh llc'],ARRAY['robinsonfresh.com'],NULL,'Produce','https://www.robinsonfresh.com',NULL,'Contact rep','approved','seed'),
-        ('produce alliance','{}',ARRAY['producealliance.com'],NULL,'Produce','https://www.producealliance.com',NULL,'Contact rep','approved','seed'),
-        ('markon cooperative',ARRAY['markon'],ARRAY['markon.com'],NULL,'Produce','https://www.markon.com',NULL,'Contact rep','approved','seed'),
-        ('pro*act',ARRAY['proact','pro act'],ARRAY['proactusa.com'],NULL,'Produce','https://www.proactusa.com',NULL,'Contact rep','approved','seed'),
-        ('church brothers farms',ARRAY['church brothers'],ARRAY['churchbrothers.com'],NULL,'Produce','https://www.churchbrothers.com',NULL,'Contact rep','approved','seed'),
-        ('earthbound farm',ARRAY['earthbound'],ARRAY['earthboundfarm.com'],NULL,'Organic Produce','https://www.earthboundfarm.com',NULL,'Contact rep','approved','seed'),
-        ('dole foodservice',ARRAY['dole food service','dole'],ARRAY['dolefoodservice.com','dole.com'],NULL,'Produce','https://www.dolefoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('ready pac foods',ARRAY['ready pac','ready pac biase'],ARRAY['readypac.com'],NULL,'Produce & Value-Added','https://www.readypac.com',NULL,'Contact rep','approved','seed'),
-        ('grimmway farms',ARRAY['grimmway'],ARRAY['grimmway.com'],NULL,'Produce','https://www.grimmway.com',NULL,'Contact rep','approved','seed'),
-        ('mann packing',ARRAY['mann farms'],ARRAY['freshfrommann.com'],NULL,'Produce','https://www.freshfrommann.com',NULL,'Contact rep','approved','seed'),
-        ('cal-organic farms',ARRAY['cal organic','calorganic'],ARRAY['calorganic.com'],NULL,'Organic Produce','https://www.calorganic.com',NULL,'Contact rep','approved','seed'),
-        ('paradise produce','{}','{}',NULL,'Produce',NULL,NULL,'Contact rep','approved','seed'),
-        -- Protein Distributors
-        ('tyson foodservice',ARRAY['tyson food service','tyson'],ARRAY['tysonfoodservice.com'],NULL,'Protein','https://www.tysonfoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('jbs foodservice',ARRAY['jbs usa','jbs food service'],ARRAY['jbssa.com'],NULL,'Protein','https://www.jbssa.com',NULL,'Contact rep','approved','seed'),
-        ('smithfield culinary',ARRAY['smithfield foods','smithfield food service'],ARRAY['smithfieldculinary.com'],NULL,'Protein','https://www.smithfieldculinary.com',NULL,'Contact rep','approved','seed'),
-        ('cargill meat solutions',ARRAY['cargill','cargill meat'],ARRAY['cargill.com'],NULL,'Protein','https://www.cargill.com',NULL,'Contact rep','approved','seed'),
-        ('perdue foodservice',ARRAY['perdue food service','perdue farms'],ARRAY['perduefoodservice.com'],NULL,'Protein','https://www.perduefoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('wayne-sanderson farms',ARRAY['wayne sanderson','wayne farms','sanderson farms'],ARRAY['waynesandersonfarms.com','sandersonfarms.com'],NULL,'Protein','https://www.waynesandersonfarms.com',NULL,'Contact rep','approved','seed'),
-        ('national beef packing',ARRAY['national beef'],ARRAY['nationalbeef.com'],NULL,'Protein','https://www.nationalbeef.com',NULL,'Contact rep','approved','seed'),
-        ('greater omaha packing',ARRAY['greater omaha'],ARRAY['greateromaha.com'],NULL,'Protein','https://www.greateromaha.com',NULL,'Contact rep','approved','seed'),
-        ('allen harim',ARRAY['allen harim foods'],ARRAY['allenharimfoods.com'],NULL,'Protein','https://www.allenharimfoods.com',NULL,'Contact rep','approved','seed'),
-        ('koch foods',ARRAY['koch food'],ARRAY['kochfoods.com'],NULL,'Protein','https://www.kochfoods.com',NULL,'Contact rep','approved','seed'),
-        ('pilgrim''s pride',ARRAY['pilgrims pride','pilgrims'],ARRAY['pilgrims.com'],NULL,'Protein','https://www.pilgrims.com',NULL,'Contact rep','approved','seed'),
-        ('keystone foods',ARRAY['keystone food'],ARRAY['keystonefoods.com'],NULL,'Protein','https://www.keystonefoods.com',NULL,'Contact rep','approved','seed'),
-        ('case farms',ARRAY['case farms llc'],ARRAY['casefarms.com'],NULL,'Protein','https://www.casefarms.com',NULL,'Contact rep','approved','seed'),
-        ('harvest meat company',ARRAY['harvest meat'],ARRAY['harvestmeat.com'],NULL,'Protein','https://www.harvestmeat.com',NULL,'Contact rep','approved','seed'),
-        -- Seafood Distributors
-        ('high liner foods',ARRAY['high liner'],ARRAY['highlinerfoods.com'],NULL,'Seafood','https://www.highlinerfoods.com',NULL,'Contact rep','approved','seed'),
-        ('gorton''s commercial',ARRAY['gortons','gorton fish'],ARRAY['gortons.com'],NULL,'Seafood','https://www.gortons.com',NULL,'Contact rep','approved','seed'),
-        ('orca bay seafoods',ARRAY['orca bay'],ARRAY['orcabayseafoods.com'],NULL,'Seafood','https://www.orcabayseafoods.com',NULL,'Contact rep','approved','seed'),
-        ('ocean beauty seafoods',ARRAY['ocean beauty'],ARRAY['oceanbeauty.com'],NULL,'Seafood','https://www.oceanbeauty.com',NULL,'Contact rep','approved','seed'),
-        ('pacific seafood',ARRAY['pacific seafood group'],ARRAY['pacificseafood.com'],NULL,'Seafood','https://www.pacificseafood.com',NULL,'Contact rep','approved','seed'),
-        ('trident seafoods',ARRAY['trident seafood'],ARRAY['tridentseafoods.com'],NULL,'Seafood','https://www.tridentseafoods.com',NULL,'Contact rep','approved','seed'),
-        ('bumble bee foodservice',ARRAY['bumble bee foods','bumble bee'],ARRAY['bumblebeefoods.com'],NULL,'Seafood','https://www.bumblebeefoods.com',NULL,'Contact rep','approved','seed'),
-        ('starkist foodservice',ARRAY['starkist food service','starkist'],ARRAY['starkist.com'],NULL,'Seafood','https://www.starkist.com',NULL,'Contact rep','approved','seed'),
-        ('true north seafood',ARRAY['true north'],ARRAY['truenorthseafood.com'],NULL,'Seafood','https://www.truenorthseafood.com',NULL,'Contact rep','approved','seed'),
-        ('harbor seafood',ARRAY['harbor fish','harbor foods'],'{}',NULL,'Seafood',NULL,NULL,'Contact rep','approved','seed'),
-        ('premier catch',ARRAY['premier catch seafood'],ARRAY['premiercatch.com'],NULL,'Seafood','https://www.premiercatch.com',NULL,'Contact rep','approved','seed'),
-        -- Dairy & Eggs
-        ('dairy farmers of america',ARRAY['dfa','dfa milk'],ARRAY['dfamilk.com'],NULL,'Dairy','https://www.dfamilk.com',NULL,'Contact rep','approved','seed'),
-        ('land o''lakes foodservice',ARRAY['land o lakes','landolakes'],ARRAY['landolakesfoodservice.com'],NULL,'Dairy','https://www.landolakesfoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('darigold foodservice',ARRAY['darigold food service','darigold'],ARRAY['darigold.com'],NULL,'Dairy','https://www.darigold.com',NULL,'Contact rep','approved','seed'),
-        ('saputo usa',ARRAY['saputo cheese','saputo dairy'],ARRAY['saputo.com'],NULL,'Dairy','https://www.saputo.com',NULL,'Contact rep','approved','seed'),
-        ('bel brands usa',ARRAY['bel brands','bel cheese'],ARRAY['belbrandsusa.com'],NULL,'Dairy','https://www.belbrandsusa.com',NULL,'Contact rep','approved','seed'),
-        ('lactalis usa',ARRAY['lactalis american group','lactalis'],ARRAY['lactalisusa.com'],NULL,'Dairy','https://www.lactalisusa.com',NULL,'Contact rep','approved','seed'),
-        ('tillamook foodservice',ARRAY['tillamook food service','tillamook creamery'],ARRAY['tillamook.com'],NULL,'Dairy','https://www.tillamook.com',NULL,'Contact rep','approved','seed'),
-        ('organic valley foodservice',ARRAY['organic valley food service','organic valley'],ARRAY['organicvalley.coop'],NULL,'Organic Dairy','https://www.organicvalley.coop',NULL,'Contact rep','approved','seed'),
-        ('horizon organic foodservice',ARRAY['horizon organic food service','horizon organic'],ARRAY['horizonorganic.com'],NULL,'Organic Dairy','https://www.horizonorganic.com',NULL,'Contact rep','approved','seed'),
-        ('crystal farms',ARRAY['crystal farms dairy'],ARRAY['crystalfarms.com'],NULL,'Dairy','https://www.crystalfarms.com',NULL,'Contact rep','approved','seed'),
-        ('hillandale farms',ARRAY['hillandale'],ARRAY['hillandalefarms.com'],NULL,'Eggs','https://www.hillandalefarms.com',NULL,'Contact rep','approved','seed'),
-        ('cal-maine foods',ARRAY['cal maine','calmaine'],ARRAY['calmaine.com'],NULL,'Eggs','https://www.calmaine.com',NULL,'Contact rep','approved','seed'),
-        ('rose acre farms',ARRAY['rose acre'],ARRAY['roseacre.com'],NULL,'Eggs','https://www.roseacre.com',NULL,'Contact rep','approved','seed'),
-        ('michael foods',ARRAY['michael foods inc','michael food'],ARRAY['michaelfoods.com'],NULL,'Eggs & Potato','https://www.michaelfoods.com',NULL,'Contact rep','approved','seed'),
-        -- Beverage Distributors
-        ('coca-cola north america',ARRAY['coca cola','coke','coca-cola','coke foodservice'],ARRAY['coca-cola.com','coca-colacompany.com'],NULL,'Beverage','https://www.coca-colacompany.com',NULL,'Contact rep','approved','seed'),
-        ('pepsico foodservice',ARRAY['pepsi food service','pepsico','pepsi'],ARRAY['pepsicofoodservice.com'],NULL,'Beverage','https://www.pepsicofoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('reyes beverage group',ARRAY['reyes beverage'],ARRAY['reyesbeveragegroup.com'],NULL,'Beverage Distributor','https://www.reyesbeveragegroup.com',NULL,'Contact rep','approved','seed'),
-        ('swire coca-cola usa',ARRAY['swire coca cola','swire cc'],ARRAY['swirecc.com'],NULL,'Beverage Distributor','https://www.swirecc.com',NULL,'Contact rep','approved','seed'),
-        ('southern glazer''s wine & spirits',ARRAY['southern glazers','southern wine spirits'],ARRAY['sgws.com'],NULL,'Beverage Distributor','https://www.sgws.com',NULL,'Contact rep','approved','seed'),
-        ('republic national distributing',ARRAY['rndc','republic national'],ARRAY['rndc-usa.com'],NULL,'Beverage Distributor','https://www.rndc-usa.com',NULL,'Contact rep','approved','seed'),
-        ('breakthru beverage group',ARRAY['breakthru beverage'],ARRAY['breakthrubev.com'],NULL,'Beverage Distributor','https://www.breakthrubev.com',NULL,'Contact rep','approved','seed'),
-        ('national distributing company',ARRAY['ndc','national distributing'],ARRAY['ndc.com'],NULL,'Beverage Distributor','https://www.ndc.com',NULL,'Contact rep','approved','seed'),
-        ('glazer''s beer and beverage',ARRAY['glazers beer','glazer beer'],ARRAY['glazersbeer.com'],NULL,'Beverage Distributor','https://www.glazersbeer.com',NULL,'Contact rep','approved','seed'),
-        ('red bull north america',ARRAY['red bull'],ARRAY['redbull.com'],NULL,'Beverage','https://www.redbull.com',NULL,'Contact rep','approved','seed'),
-        -- Specialty & Gourmet
-        ('chefs'' warehouse',ARRAY['chefs warehouse inc','the chefs warehouse'],ARRAY['chefswarehouse.com'],NULL,'Specialty & Gourmet','https://www.chefswarehouse.com',NULL,'Contact rep','approved','seed'),
-        ('gourmet foods international',ARRAY['gfi','gourmet foods intl'],ARRAY['gfi-atl.com'],NULL,'Specialty & Gourmet','https://www.gfi-atl.com',NULL,'Contact rep','approved','seed'),
-        ('cuisine solutions',ARRAY['cuisine solutions inc'],ARRAY['cuisinesolutions.com'],NULL,'Specialty & Sous Vide','https://www.cuisinesolutions.com',NULL,'Contact rep','approved','seed'),
-        ('la preferida',ARRAY['la preferida inc'],ARRAY['lapreferida.com'],NULL,'Ethnic & Specialty','https://www.lapreferida.com',NULL,'Contact rep','approved','seed'),
-        ('goya foods',ARRAY['goya'],ARRAY['goya.com'],NULL,'Ethnic & Specialty','https://www.goya.com',NULL,'Contact rep','approved','seed'),
-        ('megamex foods',ARRAY['megamex'],ARRAY['megamexfoods.com'],NULL,'Ethnic & Specialty','https://www.megamexfoods.com',NULL,'Contact rep','approved','seed'),
-        ('don miguel mexican foods',ARRAY['don miguel'],ARRAY['donmiguel.com'],NULL,'Ethnic & Specialty','https://www.donmiguel.com',NULL,'Contact rep','approved','seed'),
-        -- Frozen & Manufactured Foods
-        ('schwan food company',ARRAY['schwan''s food service','schwan food service'],ARRAY['schwansfoodservice.com'],NULL,'Frozen','https://www.schwansfoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('conagra foodservice',ARRAY['conagra food service','conagra brands'],ARRAY['conagrabrands.com'],NULL,'Frozen & Center of Plate','https://www.conagrabrands.com',NULL,'Contact rep','approved','seed'),
-        ('mccain foods usa',ARRAY['mccain food service','mccain'],ARRAY['mccainusafoodservice.com'],NULL,'Frozen Potato','https://www.mccainusafoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('lamb weston',ARRAY['lamb weston holdings'],ARRAY['lambweston.com'],NULL,'Frozen Potato','https://www.lambweston.com',NULL,'Contact rep','approved','seed'),
-        ('simplot food group',ARRAY['simplot','j.r. simplot'],ARRAY['simplotfoods.com'],NULL,'Frozen Potato','https://www.simplotfoods.com',NULL,'Contact rep','approved','seed'),
-        ('rich products corporation',ARRAY['rich''s','rich products'],ARRAY['richs.com'],NULL,'Frozen Bakery & Dairy','https://www.richs.com',NULL,'Contact rep','approved','seed'),
-        ('bridgford foods',ARRAY['bridgford'],ARRAY['bridgford.com'],NULL,'Frozen','https://www.bridgford.com',NULL,'Contact rep','approved','seed'),
-        ('bob evans foodservice',ARRAY['bob evans food service','bob evans'],ARRAY['bobevans.com'],NULL,'Frozen & Prepared','https://www.bobevans.com',NULL,'Contact rep','approved','seed'),
-        ('cavendish farms',ARRAY['cavendish'],ARRAY['cavendishfarms.com'],NULL,'Frozen Potato','https://www.cavendishfarms.com',NULL,'Contact rep','approved','seed'),
-        -- Dry Goods, Grocery & Natural
-        ('kehe distributors',ARRAY['kehe','keHE'],ARRAY['kehe.com'],NULL,'Natural & Specialty','https://www.kehe.com',NULL,'Contact rep','approved','seed'),
-        ('unfi foodservice',ARRAY['unfi','united natural foods'],ARRAY['unfi.com'],NULL,'Natural & Organic','https://www.unfi.com',NULL,'Contact rep','approved','seed'),
-        ('tree top food service',ARRAY['tree top','treetop'],ARRAY['treetop.com'],NULL,'Fruit & Beverage','https://www.treetop.com',NULL,'Contact rep','approved','seed'),
-        ('pacific foods',ARRAY['pacific foods of oregon'],ARRAY['pacificfoods.com'],NULL,'Soup & Broth','https://www.pacificfoods.com',NULL,'Contact rep','approved','seed'),
-        ('kraft heinz foodservice',ARRAY['kraft heinz food service','kraft foodservice','heinz foodservice'],ARRAY['kraftheinzfoodservice.com'],NULL,'Manufactured Foods','https://www.kraftheinzfoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('campbell''s foodservice',ARRAY['campbells food service','campbell soup'],ARRAY['campbellsfoodservice.com'],NULL,'Soup & Manufactured Foods','https://www.campbellsfoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('mccormick foodservice',ARRAY['mccormick food service','mccormick & company'],ARRAY['mccormickfoodservice.com'],NULL,'Spices & Sauces','https://www.mccormickfoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('nestle professional',ARRAY['nestlé professional','nestle food service'],ARRAY['nestleprofessional.com'],NULL,'Manufactured Foods','https://www.nestleprofessional.com',NULL,'Contact rep','approved','seed'),
-        ('unilever food solutions',ARRAY['unilever foodservice','ufs'],ARRAY['unileverfoodsolutions.us'],NULL,'Manufactured Foods','https://www.unileverfoodsolutions.us',NULL,'Contact rep','approved','seed'),
-        ('del monte foodservice',ARRAY['del monte food service'],ARRAY['delmonte.com'],NULL,'Canned & Prepared','https://www.delmonte.com',NULL,'Contact rep','approved','seed'),
-        ('bush''s best foodservice',ARRAY['bushs best food service','bush brothers','bush''s beans'],ARRAY['bushbeans.com'],NULL,'Canned Goods','https://www.bushbeans.com',NULL,'Contact rep','approved','seed'),
-        ('barilla america foodservice',ARRAY['barilla food service','barilla'],ARRAY['barilla.com'],NULL,'Pasta','https://www.barilla.com',NULL,'Contact rep','approved','seed'),
-        -- Paper, Packaging & Non-food Supplies
-        ('imperial dade',ARRAY['imperial bag','imperial paper'],ARRAY['imperialdade.com'],NULL,'Paper & Packaging','https://www.imperialdade.com',NULL,'Contact rep','approved','seed'),
-        ('bunzl distribution',ARRAY['bunzl'],ARRAY['bunzldistribution.com'],NULL,'Paper & Packaging','https://www.bunzldistribution.com',NULL,'Contact rep','approved','seed'),
-        ('waxie sanitary supply',ARRAY['waxie'],ARRAY['waxie.com'],NULL,'Sanitation & Supplies','https://www.waxie.com',NULL,'Contact rep','approved','seed'),
-        ('american paper & twine',ARRAY['american paper twine','apt'],ARRAY['americanpaper.com'],NULL,'Paper & Packaging','https://www.americanpaper.com',NULL,'Contact rep','approved','seed'),
-        -- Specialty/National Brands (manufacturer-direct)
-        ('molson coors beverage',ARRAY['molson coors','coors','miller coors'],ARRAY['molsoncoors.com'],NULL,'Beverage','https://www.molsoncoors.com',NULL,'Contact rep','approved','seed'),
-        ('boston beer company',ARRAY['boston beer','samuel adams','sam adams'],ARRAY['bostonbeer.com'],NULL,'Beverage','https://www.bostonbeer.com',NULL,'Contact rep','approved','seed'),
-        ('diageo north america',ARRAY['diageo'],ARRAY['diageo.com'],NULL,'Spirits','https://www.diageo.com',NULL,'Contact rep','approved','seed'),
-        ('brown-forman distributing',ARRAY['brown forman','jack daniels distillery'],ARRAY['brown-forman.com'],NULL,'Spirits','https://www.brown-forman.com',NULL,'Contact rep','approved','seed'),
-        -- Regional & Specialty
-        ('shamrock farms',ARRAY['shamrock farm','shamrock dairy'],ARRAY['shamrockfarms.com'],NULL,'Dairy','https://www.shamrockfarms.com',NULL,'Contact rep','approved','seed'),
-        ('oregon potato company',ARRAY['oregon potato'],ARRAY['oregonpotato.com'],NULL,'Produce','https://www.oregonpotato.com',NULL,'Contact rep','approved','seed'),
-        ('draper valley farms',ARRAY['draper valley'],ARRAY['drapervalleyfarms.com'],NULL,'Protein','https://www.drapervalleyfarms.com',NULL,'Contact rep','approved','seed'),
-        ('birds eye foodservice',ARRAY['birds eye food service','birds eye'],ARRAY['birdseye.com'],NULL,'Frozen Vegetables','https://www.birdseye.com',NULL,'Contact rep','approved','seed'),
-        ('us foods chef''store',ARRAY['chef''store','chefstore'],ARRAY['chefstore.com'],NULL,'Cash & Carry','https://www.chefstore.com','https://www.chefstore.com','Self-serve portal','approved','seed'),
-        ('pacific coast producers',ARRAY['pacific coast prod'],ARRAY['pacificcoastproducers.com'],NULL,'Canned Produce','https://www.pacificcoastproducers.com',NULL,'Contact rep','approved','seed'),
-        ('fresh express',ARRAY['fresh express inc'],ARRAY['freshexpress.com'],NULL,'Produce','https://www.freshexpress.com',NULL,'Contact rep','approved','seed'),
-        ('flowers foods foodservice',ARRAY['flowers foods food service','flowers bakeries'],ARRAY['flowersfoodservice.com'],NULL,'Bakery','https://www.flowersfoodservice.com',NULL,'Contact rep','approved','seed'),
-        ('sara lee foodservice',ARRAY['sara lee food service'],ARRAY['saralee.com'],NULL,'Frozen Bakery','https://www.saralee.com',NULL,'Contact rep','approved','seed'),
-        ('frito-lay foodservice',ARRAY['frito lay food service','frito lay'],ARRAY['fritolay.com'],NULL,'Snacks','https://www.fritolay.com',NULL,'Contact rep','approved','seed'),
-        ('georgia-pacific professional',ARRAY['georgia pacific','gp professional'],ARRAY['gppro.com'],NULL,'Paper & Sanitation','https://www.gppro.com',NULL,'Contact rep','approved','seed'),
-        ('uline','{}',ARRAY['uline.com'],NULL,'Packaging & Supplies','https://www.uline.com','https://www.uline.com','Self-serve portal','approved','seed')
-      ON CONFLICT (normalized_name, (COALESCE(connector_id, ''))) DO NOTHING
-    `);
-
-        await db.execute(sql`
-          INSERT INTO _migration_log (version, description)
-          VALUES ('pvr-seed-block2-v1', 'One-time seed: 134 null-connector purveyor rows')
+          VALUES ('pvr-mvp-seed-v1', 'MVP seed: 47 direct-order foodservice distributors')
           ON CONFLICT DO NOTHING
         `);
       }
