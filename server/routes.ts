@@ -11392,6 +11392,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
+   * POST /api/admin/vendor-registry — global_admin only
+   * Create a new registry entry (seeded/admin-created, auto-approved).
+   */
+  app.post("/api/admin/vendor-registry", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+
+      const parsed = z.object({
+        normalizedName: z.string().min(1),
+        connectorId: z.string().optional().nullable(),
+        category: z.string().optional().nullable(),
+        website: z.string().optional().nullable(),
+        orderingUrl: z.string().optional().nullable(),
+        portalStatus: z.string().optional().nullable(),
+        status: z.enum(["approved", "pending"]).default("approved"),
+      }).parse(req.body);
+
+      const inserted = await db.insert(platformVendorRegistry).values({
+        normalizedName: parsed.normalizedName.trim().toLowerCase(),
+        connectorId: parsed.connectorId ?? null,
+        category: parsed.category ?? null,
+        website: parsed.website ?? null,
+        orderingUrl: parsed.orderingUrl ?? null,
+        portalStatus: parsed.portalStatus ?? null,
+        status: parsed.status,
+        source: "seed",
+      }).returning();
+      res.json({ data: inserted[0] ?? null });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  /**
+   * PATCH /api/admin/vendor-registry/:id — global_admin only
+   * Update editable fields on any registry entry.
+   */
+  app.patch("/api/admin/vendor-registry/:id", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+
+      const { id } = req.params;
+      const parsed = z.object({
+        normalizedName: z.string().min(1).optional(),
+        connectorId: z.string().optional().nullable(),
+        category: z.string().optional().nullable(),
+        website: z.string().optional().nullable(),
+        orderingUrl: z.string().optional().nullable(),
+        portalStatus: z.string().optional().nullable(),
+        status: z.enum(["approved", "pending", "rejected"]).optional(),
+      }).parse(req.body);
+
+      const updates: Record<string, unknown> = {};
+      if (parsed.normalizedName !== undefined) updates.normalizedName = parsed.normalizedName.trim().toLowerCase();
+      if ("connectorId" in parsed) updates.connectorId = parsed.connectorId ?? null;
+      if ("category" in parsed) updates.category = parsed.category ?? null;
+      if ("website" in parsed) updates.website = parsed.website ?? null;
+      if ("orderingUrl" in parsed) updates.orderingUrl = parsed.orderingUrl ?? null;
+      if ("portalStatus" in parsed) updates.portalStatus = parsed.portalStatus ?? null;
+      if (parsed.status !== undefined) updates.status = parsed.status;
+
+      if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No fields to update" });
+
+      await db.update(platformVendorRegistry)
+        .set(updates as any)
+        .where(eq(platformVendorRegistry.id, id));
+      res.json({ data: { ok: true } });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  /**
    * GET /api/admin/vendor-registry — global_admin only
    * Lists registry entries. Query param: ?status=pending|approved|rejected|all (default: all)
    */
