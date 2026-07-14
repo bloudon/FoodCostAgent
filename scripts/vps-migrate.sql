@@ -1185,3 +1185,45 @@ DO $$ BEGIN
       VALUES ('v045', 'Task #396: Expand platform_vendor_registry seed aliases and domains');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v046 — Task #400: Add exact_aliases column to platform_vendor_registry
+-- Separates abbreviations (exact match only) from descriptive aliases (contains
+-- match). Prevents false positives like "ABC GFS Distribution" matching GFS.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v046') THEN
+
+    ALTER TABLE platform_vendor_registry
+      ADD COLUMN IF NOT EXISTS exact_aliases text[] NOT NULL DEFAULT '{}';
+
+    -- Reassign abbreviations from aliases to exact_aliases for all seed entries
+    UPDATE platform_vendor_registry
+      SET exact_aliases = ARRAY['sygma'],
+          aliases       = ARRAY['sysco corporation','sysco foods','sysco foodservice','sysco food service','sygma network','sysco guest supply']
+      WHERE normalized_name = 'sysco' AND connector_id = 'sysco';
+
+    UPDATE platform_vendor_registry
+      SET exact_aliases = ARRAY['gfs'],
+          aliases       = ARRAY['gordon food service','gordon''s food service','gordon foodservice','gordon food svc','gordon food']
+      WHERE normalized_name = 'gordon food service' AND connector_id = 'gfs';
+
+    UPDATE platform_vendor_registry
+      SET exact_aliases = ARRAY['usfoods'],
+          aliases       = ARRAY['us foods','us foodservice','us food service','us foods inc','u.s. foods','u.s. foodservice']
+      WHERE normalized_name = 'us foods' AND connector_id = 'usfoods';
+
+    UPDATE platform_vendor_registry
+      SET exact_aliases = ARRAY['pfs','pfg','reinhart','vistar'],
+          aliases       = ARRAY['performance food service','performance food','performance foodservice','performance food group','reinhart foodservice']
+      WHERE normalized_name = 'performance food service' AND connector_id = 'pfs';
+
+    UPDATE platform_vendor_registry
+      SET exact_aliases = ARRAY['sofo'],
+          aliases       = ARRAY['sofo foods','southern food','southern food service','southern food group']
+      WHERE normalized_name = 'southern foods' AND connector_id = 'sofo';
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v046', 'Task #400: Add exact_aliases column + redistribute abbreviations from aliases');
+  END IF;
+END $$;

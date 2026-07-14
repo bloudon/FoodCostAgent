@@ -1714,7 +1714,9 @@ export const platformVendorRegistry = pgTable("platform_vendor_registry", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   /** Canonical lower-cased name, e.g. "sysco" */
   normalizedName: text("normalized_name").notNull(),
-  /** Alternative names/abbreviations that match this entry, e.g. ["sysco corporation", "sysco foods"] */
+  /** Abbreviations/short codes requiring an exact match, e.g. ["gfs", "pfs"] — avoids substring false-positives */
+  exactAliases: text("exact_aliases").array().notNull().default(sql`'{}'::text[]`),
+  /** Longer names matched by contains (input ILIKE '%alias%'), e.g. ["sysco corporation", "sysco foods"] */
   aliases: text("aliases").array().notNull().default(sql`'{}'::text[]`),
   /** Website domains associated with this distributor, e.g. ["sysco.com"] */
   websiteDomains: text("website_domains").array().notNull().default(sql`'{}'::text[]`),

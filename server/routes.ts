@@ -11159,15 +11159,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       } catch { domain = website; }
 
-      // Build query: input contains a known alias or domain matches (exact or subdomain)
-      // Ordering: exact normalized-name > exact alias > domain > partial-name
+      // Build query:
+      //   exact_aliases: abbreviations like "gfs" — only match when input IS exactly that string
+      //   aliases: descriptive names — match when input CONTAINS the alias (ILIKE)
+      //   normalized_name: always exact
+      // Ordering: exact normalized-name > exact_alias > domain > contains
       const rows = await db.execute(sql`
-        SELECT id, normalized_name, connector_id, aliases, website_domains
+        SELECT id, normalized_name, connector_id, exact_aliases, aliases, website_domains
         FROM platform_vendor_registry
         WHERE status = 'approved'
           AND (
-            ${name} = ANY(aliases)
-            OR normalized_name = ${name}
+            normalized_name = ${name}
+            OR (${name} != '' AND ${name} = ANY(exact_aliases))
             OR (${name} != '' AND (
               ${name} ILIKE '%' || normalized_name || '%'
               OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE ${name} ILIKE '%' || a || '%')
@@ -11180,7 +11183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ORDER BY
           CASE
             WHEN normalized_name = ${name} THEN 0
-            WHEN ${name} = ANY(aliases) THEN 1
+            WHEN ${name} != '' AND ${name} = ANY(exact_aliases) THEN 1
             WHEN ${domain} != '' AND EXISTS (
               SELECT 1 FROM unnest(website_domains) d2
               WHERE ${domain} = d2 OR ${domain} LIKE '%.' || d2
@@ -11193,8 +11196,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const row = (rows as any).rows?.[0] ?? (Array.isArray(rows) ? rows[0] : null);
       if (!row) return res.json({ data: null });
 
+      // Compute confidence + reason based on which clause matched
+      const exactAliases: string[] = row.exact_aliases ?? [];
+      const containsAliases: string[] = row.aliases ?? [];
+      const domainList: string[] = row.website_domains ?? [];
+
+      let confidence: "high" | "medium" | "low";
+      let reason: string;
+
+      if (row.normalized_name === name) {
+        confidence = "high";
+        reason = `matched name "${row.normalized_name}"`;
+      } else if (name && exactAliases.includes(name)) {
+        confidence = "high";
+        reason = `matched abbreviation "${name}"`;
+      } else if (domain && domainList.some(d => domain === d || domain.endsWith("." + d))) {
+        confidence = "high";
+        const matched = domainList.find(d => domain === d || domain.endsWith("." + d))!;
+        reason = `matched domain "${matched}"`;
+      } else if (name && name.includes(row.normalized_name)) {
+        confidence = "medium";
+        reason = `name contains "${row.normalized_name}"`;
+      } else {
+        const aliasMatch = containsAliases.find(a => name.includes(a));
+        if (aliasMatch) {
+          confidence = "medium";
+          reason = `name contains "${aliasMatch}"`;
+        } else {
+          confidence = "low";
+          reason = "partial match";
+        }
+      }
+
       const def = listConnectorDefinitions().find(d => d.connectorId === row.connector_id);
-      res.json({ data: { connectorId: row.connector_id, displayName: def?.displayName ?? row.connector_id } });
+      res.json({ data: { connectorId: row.connector_id, displayName: def?.displayName ?? row.connector_id, confidence, reason } });
     } catch (error: any) {
       console.error("GET /api/vendor-registry/detect error:", error);
       res.json({ data: null });

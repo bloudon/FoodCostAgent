@@ -32,6 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 type RegistryEntry = {
   id: string;
   normalized_name: string;
+  exact_aliases: string[];
   aliases: string[];
   website_domains: string[];
   connector_id: string;
@@ -42,6 +43,8 @@ type RegistryEntry = {
   reviewed_at: string | null;
   review_notes: string | null;
   created_at: string;
+  /** Only present on pending entries returned from the detect endpoint, not stored */
+  confidence?: "high" | "medium" | "low";
 };
 
 type ReviewDialogState = {
@@ -53,6 +56,12 @@ const STATUS_COLORS: Record<string, string> = {
   approved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
   rejected: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+};
+
+const CONFIDENCE_COLORS: Record<string, string> = {
+  high: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  medium: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  low: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
 };
 
 const CONNECTOR_LABELS: Record<string, string> = {
@@ -219,9 +228,22 @@ export default function AdminVendorRegistry() {
                   )}
                 </div>
 
+                {entry.confidence && (
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${CONFIDENCE_COLORS[entry.confidence]}`}
+                    data-testid={`badge-confidence-${entry.id}`}
+                  >
+                    {entry.confidence} confidence
+                  </span>
+                )}
+                {entry.exact_aliases?.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Exact: {entry.exact_aliases.join(", ")}
+                  </p>
+                )}
                 {entry.aliases?.length > 0 && (
                   <p className="text-xs text-muted-foreground">
-                    Aliases: {entry.aliases.join(", ")}
+                    Contains: {entry.aliases.join(", ")}
                   </p>
                 )}
                 {entry.website_domains?.length > 0 && (

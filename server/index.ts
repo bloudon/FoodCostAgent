@@ -246,31 +246,41 @@ async function runStartupMigrations() {
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS pvr_normalized_connector_uniq ON platform_vendor_registry (normalized_name, connector_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS pvr_status_idx ON platform_vendor_registry (status)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS pvr_connector_idx ON platform_vendor_registry (connector_id)`);
-    // Seed known distributor entries — DO UPDATE so aliases/domains stay current on every deploy
+    // Task #400: Add exact_aliases column for abbreviation-only (non-substring) matching
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS exact_aliases text[] NOT NULL DEFAULT '{}'`);
+    // Seed known distributor entries — DO UPDATE so aliases/domains/exact_aliases stay current on every deploy
+    // exact_aliases: abbreviations that must match EXACTLY (e.g. "gfs") — prevents "ABC GFS Distribution" false-positives
+    // aliases: longer descriptive names matched via ILIKE contains
     await db.execute(sql`
-      INSERT INTO platform_vendor_registry (normalized_name, aliases, website_domains, connector_id, status, source) VALUES
+      INSERT INTO platform_vendor_registry (normalized_name, exact_aliases, aliases, website_domains, connector_id, status, source) VALUES
         ('sysco',
-         ARRAY['sysco','sysco corporation','sysco foods','sysco foodservice','sysco food service','sygma','sygma network','sysco guest supply'],
+         ARRAY['sygma'],
+         ARRAY['sysco corporation','sysco foods','sysco foodservice','sysco food service','sygma network','sysco guest supply'],
          ARRAY['sysco.com','shop.sysco.com','syscofoodservice.com','sygmanetwork.com'],
          'sysco', 'approved', 'seed'),
         ('gordon food service',
-         ARRAY['gfs','gordon food service','gordon''s food service','gordon foodservice','gordon food svc','gordon food'],
+         ARRAY['gfs'],
+         ARRAY['gordon food service','gordon''s food service','gordon foodservice','gordon food svc','gordon food'],
          ARRAY['gfs.com','gordonfoodservice.com'],
          'gfs', 'approved', 'seed'),
         ('us foods',
-         ARRAY['usfoods','us foods','us foodservice','us food service','us foods inc','u.s. foods','u.s. foodservice'],
+         ARRAY['usfoods'],
+         ARRAY['us foods','us foodservice','us food service','us foods inc','u.s. foods','u.s. foodservice'],
          ARRAY['usfoods.com','usfood.com','usfoodservice.com'],
          'usfoods', 'approved', 'seed'),
         ('performance food service',
-         ARRAY['pfs','performance food service','performance food','performance foodservice','performance food group','pfg','reinhart','reinhart foodservice','vistar'],
+         ARRAY['pfs','pfg','reinhart','vistar'],
+         ARRAY['performance food service','performance food','performance foodservice','performance food group','reinhart foodservice'],
          ARRAY['pfgc.com','pfg.com','performancefoodservice.com','reinhartfoodservice.com'],
          'pfs', 'approved', 'seed'),
         ('southern foods',
-         ARRAY['sofo','sofo foods','southern foods','southern food','southern food service','southern food group'],
+         ARRAY['sofo'],
+         ARRAY['sofo foods','southern food','southern food service','southern food group'],
          ARRAY['sofofoods.com','southernfoods.com'],
          'sofo', 'approved', 'seed')
       ON CONFLICT (normalized_name, connector_id) DO UPDATE
-        SET aliases = EXCLUDED.aliases,
+        SET exact_aliases = EXCLUDED.exact_aliases,
+            aliases = EXCLUDED.aliases,
             website_domains = EXCLUDED.website_domains
     `);
     console.log('✅ Startup migrations applied');
