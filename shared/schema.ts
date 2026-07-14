@@ -1720,8 +1720,16 @@ export const platformVendorRegistry = pgTable("platform_vendor_registry", {
   aliases: text("aliases").array().notNull().default(sql`'{}'::text[]`),
   /** Website domains associated with this distributor, e.g. ["sysco.com"] */
   websiteDomains: text("website_domains").array().notNull().default(sql`'{}'::text[]`),
-  /** Connector identifier — must match a key in connectorRegistry.ts */
-  connectorId: text("connector_id").notNull(),
+  /** Connector identifier — must match a key in connectorRegistry.ts; null for vendors without a CSV/EDI connector */
+  connectorId: text("connector_id"),
+  /** Distributor category, e.g. "Broadline", "Produce", "Protein", "Seafood", "Dairy", "Beverage" */
+  category: text("category"),
+  /** Primary website URL, e.g. "https://www.sysco.com" */
+  website: text("website"),
+  /** Customer ordering portal URL, e.g. "https://shop.sysco.com" */
+  orderingUrl: text("ordering_url"),
+  /** Human-readable portal status, e.g. "Self-serve portal", "Contact rep", "EDI only" */
+  portalStatus: text("portal_status"),
   /** Lifecycle state: approved | pending | rejected */
   status: text("status").notNull().default("approved"),
   /** How this entry was created: seed | user_submitted */
@@ -1742,7 +1750,15 @@ export const platformVendorRegistry = pgTable("platform_vendor_registry", {
   submittedByCompanyIds: text("submitted_by_company_ids").array().notNull().default(sql`'{}'::text[]`),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
-  normalizedConnectorUniq: uniqueIndex("pvr_normalized_connector_uniq").on(table.normalizedName, table.connectorId),
+  // NOTE: The actual DB unique constraint is a COALESCE-based functional index managed by
+  // raw SQL migrations (vps-migrate.sql v049 / runStartupMigrations):
+  //   CREATE UNIQUE INDEX pvr_normalized_connector_uniq
+  //     ON platform_vendor_registry (normalized_name, COALESCE(connector_id, ''));
+  // This handles NULL connector_id rows without index conflicts.
+  // A plain uniqueIndex on (normalizedName, connectorId) is NOT declared here because
+  // Drizzle cannot express functional/expression indexes, and the DB-level constraint
+  // already enforces the correct uniqueness semantics.
+  normalizedNameIdx: index("pvr_normalized_name_idx").on(table.normalizedName),
   statusIdx: index("pvr_status_idx").on(table.status),
   connectorIdx: index("pvr_connector_idx").on(table.connectorId),
 }));

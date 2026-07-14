@@ -93,6 +93,32 @@ const VENDOR_MAPPINGS: Record<VendorKey, CsvColumnMapping> = {
     price: 'Price',
     brand: 'Brand',
   },
+  pfg: {
+    // Performance Food Group — Performance Net portal CSV export format
+    // Source: rrgconsulting.com/export-your-performance-net-order-guide.html
+    // Pack Size is a compound string (e.g. "6/5 LB") parsed by parseCompoundPackSize.
+    // UOM is the ordering denomination (CS/EA), not the measurement unit — omitted.
+    vendorSku: 'Item Code',
+    productName: 'Item Description',
+    description: 'Extended Description',
+    caseSize: 'Pack Size',
+    price: 'Your Price',
+    brand: 'Brand',
+    category: 'Category',
+  },
+  bek: {
+    // Ben E. Keith — My BEK / BEK.com order guide CSV export format
+    // Source: Costguard documentation (costguard.zendesk.com) and BEK portal exports
+    // Pack = outer count (e.g. "6"); Size = inner measurement (e.g. "5 LB", "32 OZ")
+    // UOM is the ordering denomination (CS/EA) — omitted in favor of Size measurement unit.
+    vendorSku: 'Item Number',
+    productName: 'Description',
+    caseSize: 'Pack',
+    unit: 'Size',   // Contains measurement info: "5 LB", "32 OZ", "#10" — parsed as innerPack+unit
+    price: 'Your Price',
+    brand: 'Brand',
+    category: 'Category',
+  },
   sofo: {
     vendorSku: 'Item',
     productName: 'Description',

@@ -73,6 +73,22 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
     },
   },
   {
+    connectorId: 'pfg',
+    displayName: 'Performance Food Group (Performance Net)',
+    capabilities: {
+      retrieveCatalog:     'csv',
+      exportOrderTemplate: 'csv',
+    },
+  },
+  {
+    connectorId: 'bek',
+    displayName: 'Ben E. Keith',
+    capabilities: {
+      retrieveCatalog:     'csv',
+      exportOrderTemplate: 'csv',
+    },
+  },
+  {
     connectorId: 'sofo',
     displayName: 'Southern Foods',
     capabilities: {

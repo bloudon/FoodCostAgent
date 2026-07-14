@@ -2,7 +2,7 @@
  * Shared domain types for vendor integrations
  */
 
-export type VendorKey = 'sysco' | 'gfs' | 'usfoods' | 'pfs' | 'sofo' | 'generic';
+export type VendorKey = 'sysco' | 'gfs' | 'usfoods' | 'pfs' | 'pfg' | 'bek' | 'sofo' | 'generic';
 
 /**
  * M2 — Connector Registry and Capability Transport Model
