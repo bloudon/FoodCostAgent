@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { SortableTableHead, useTableSort, sortData } from "@/components/sortable-table-head";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin, ScanLine, TriangleAlert, Link2 } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin, ScanLine, TriangleAlert, Link2, RefreshCw } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -101,6 +101,9 @@ export default function Vendors() {
 
 
   const [connectorId, setConnectorId] = useState<string>("");
+  // Tracks how the connector was last set: "none" = untouched, "auto" = registry detect, "manual" = user explicitly chose
+  const connectorSelectionSourceRef = useRef<"auto" | "manual" | "none">("none");
+  const [connectorSelectionSource, setConnectorSelectionSource] = useState<"auto" | "manual" | "none">("none");
 
   const { toast } = useToast();
   const { selectedStoreId, stores } = useStoreContext();
@@ -473,6 +476,8 @@ export default function Vendors() {
   // query the registry API to auto-suggest a connector.
   const detectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detectConnectorFromRegistry = useCallback((name: string, website: string) => {
+    // If the user explicitly chose a connector (or chose "None"), respect that choice — don't override it
+    if (connectorSelectionSourceRef.current === "manual") return;
     if (detectTimerRef.current) clearTimeout(detectTimerRef.current);
     if (!name.trim() && !website.trim()) return;
     detectTimerRef.current = setTimeout(async () => {
@@ -485,6 +490,8 @@ export default function Vendors() {
         const json = await res.json();
         if (json?.data?.connectorId) {
           setConnectorId(json.data.connectorId);
+          connectorSelectionSourceRef.current = "auto";
+          setConnectorSelectionSource("auto");
         }
       } catch { /* non-fatal */ }
     }, 400);
@@ -493,6 +500,8 @@ export default function Vendors() {
   const handleCreateClick = () => {
     setEditingVendor(null);
     setConnectorId("");
+    connectorSelectionSourceRef.current = "none";
+    setConnectorSelectionSource("none");
     form.reset({ 
       name: "", 
       accountNumber: "", 
@@ -517,6 +526,9 @@ export default function Vendors() {
     const existing = supplierConnectionsData?.data?.find(c => c.vendorId === vendor.id);
     const existingConnectorId = existing?.connectorId ?? "";
     setConnectorId(existingConnectorId);
+    // Reset selection source so this session starts fresh
+    connectorSelectionSourceRef.current = "none";
+    setConnectorSelectionSource("none");
     // If no existing connection, auto-detect from registry
     if (!existingConnectorId) {
       detectConnectorFromRegistry(vendor.name, vendor.website ?? "");
@@ -865,9 +877,7 @@ export default function Vendors() {
                           data-testid="input-vendor-name"
                           onChange={(e) => {
                             field.onChange(e);
-                            if (!connectorId) {
-                              detectConnectorFromRegistry(e.target.value, form.getValues("website") ?? "");
-                            }
+                            detectConnectorFromRegistry(e.target.value, form.getValues("website") ?? "");
                           }}
                         />
                       </FormControl>
@@ -931,9 +941,7 @@ export default function Vendors() {
                           data-testid="input-vendor-website"
                           onChange={(e) => {
                             field.onChange(e);
-                            if (!connectorId) {
-                              detectConnectorFromRegistry(form.getValues("name") ?? "", e.target.value);
-                            }
+                            detectConnectorFromRegistry(form.getValues("name") ?? "", e.target.value);
                           }}
                         />
                       </FormControl>
@@ -1041,25 +1049,56 @@ export default function Vendors() {
                   <label className="text-sm font-medium flex items-center gap-1.5">
                     <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
                     Distributor Connector <span className="text-muted-foreground font-normal">(Optional)</span>
+                    {connectorSelectionSource === "auto" && (
+                      <span className="text-xs font-normal text-blue-600 dark:text-blue-400" data-testid="label-auto-detected">
+                        Auto-detected
+                      </span>
+                    )}
                   </label>
-                  <Select
-                    value={connectorId || "__none__"}
-                    onValueChange={(v) => setConnectorId(v === "__none__" ? "" : v)}
-                  >
-                    <SelectTrigger data-testid="select-connector-id">
-                      <SelectValue placeholder="Select a known distributor…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__" data-testid="option-connector-none">None / not configured</SelectItem>
-                      {connectorDefs.filter(d => d.connectorId !== "generic").map(d => (
-                        <SelectItem key={d.connectorId} value={d.connectorId} data-testid={`option-connector-${d.connectorId}`}>
-                          {d.displayName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex gap-2 items-center">
+                    <Select
+                      value={connectorId || "__none__"}
+                      onValueChange={(v) => {
+                        connectorSelectionSourceRef.current = "manual";
+                        setConnectorSelectionSource("manual");
+                        setConnectorId(v === "__none__" ? "" : v);
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-connector-id" className="flex-1">
+                        <SelectValue placeholder="Select a known distributor…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__" data-testid="option-connector-none">None / not configured</SelectItem>
+                        {connectorDefs.filter(d => d.connectorId !== "generic").map(d => (
+                          <SelectItem key={d.connectorId} value={d.connectorId} data-testid={`option-connector-${d.connectorId}`}>
+                            {d.displayName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      title="Detect again from name and website"
+                      data-testid="button-detect-again"
+                      onClick={() => {
+                        connectorSelectionSourceRef.current = "none";
+                        setConnectorSelectionSource("none");
+                        detectConnectorFromRegistry(
+                          form.getValues("name") ?? "",
+                          form.getValues("website") ?? ""
+                        );
+                      }}
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     Links this vendor to a known distributor so PO exports and order guide imports use the right format automatically.
+                    {connectorSelectionSource === "manual" && (
+                      <span className="ml-1 text-muted-foreground/70">Manually selected — auto-detect paused.</span>
+                    )}
                   </p>
                 </div>
 
