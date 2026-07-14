@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { SortableTableHead, useTableSort, sortData } from "@/components/sortable-table-head";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin, ScanLine, TriangleAlert, Link2, RefreshCw, Building2 } from "lucide-react";
+import { VendorLogo } from "@/components/vendor-logo";
 import { Link, useLocation } from "wouter";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -944,7 +945,7 @@ export default function Vendors() {
                             <button
                               key={r.id}
                               type="button"
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-start justify-between gap-3"
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between gap-3"
                               data-testid={`option-registry-${r.id}`}
                               onMouseDown={(e) => {
                                 e.preventDefault();
@@ -960,7 +961,10 @@ export default function Vendors() {
                                 setRegPickerOpen(false);
                               }}
                             >
-                              <span className="font-medium">{titleName}</span>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <VendorLogo website={r.website} name={r.normalizedName} size={24} />
+                                <span className="font-medium truncate">{titleName}</span>
+                              </div>
                               <div className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
                                 {r.connectorDisplayName && <span>{r.connectorDisplayName}</span>}
                                 {r.connectorId && (

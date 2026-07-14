@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useLocation } from "wouter";
 import { ArrowLeft, CheckCircle, XCircle, Trash2, Clock, Globe, Search, RotateCcw, Users, Pencil, Plus, ExternalLink, ShoppingCart } from "lucide-react";
+import { VendorLogo } from "@/components/vendor-logo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -356,6 +357,7 @@ export default function AdminVendorRegistry() {
               className="border rounded-md p-4 bg-card flex flex-col sm:flex-row sm:items-start gap-3"
               data-testid={`card-registry-${entry.id}`}
             >
+              <VendorLogo website={entry.website} name={entry.normalized_name} size={40} />
               {/* Main info */}
               <div className="flex-1 min-w-0 space-y-1.5">
                 {/* Name + badges row */}
