@@ -251,6 +251,9 @@ async function runStartupMigrations() {
     // Task #400: Store the detect confidence/reason on user-submitted entries for admin review
     await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS detection_confidence text`);
     await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS detection_reason text`);
+    // Task #402: Track re-submissions on rejected entries
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS submission_count int NOT NULL DEFAULT 1`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS submitted_by_company_ids text[] NOT NULL DEFAULT '{}'`);
     // Seed known distributor entries — DO UPDATE so aliases/domains/exact_aliases stay current on every deploy
     // exact_aliases: abbreviations that must match EXACTLY (e.g. "gfs") — prevents "ABC GFS Distribution" false-positives
     // aliases: longer descriptive names matched via ILIKE contains

@@ -1246,3 +1246,22 @@ DO $$ BEGIN
       VALUES ('v047', 'Task #400: detection_confidence and detection_reason on platform_vendor_registry');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v048 — Task #402: submission_count and submitted_by_company_ids on platform_vendor_registry
+-- Tracks how many companies have submitted the same name→connector mapping so
+-- admins can see rising interest in rejected entries and choose to reopen them.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v048') THEN
+
+    ALTER TABLE platform_vendor_registry
+      ADD COLUMN IF NOT EXISTS submission_count int NOT NULL DEFAULT 1;
+
+    ALTER TABLE platform_vendor_registry
+      ADD COLUMN IF NOT EXISTS submitted_by_company_ids text[] NOT NULL DEFAULT '{}';
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v048', 'Task #402: submission_count and submitted_by_company_ids on platform_vendor_registry');
+  END IF;
+END $$;

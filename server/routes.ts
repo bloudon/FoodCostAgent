@@ -11158,6 +11158,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Check if a rejected row already exists for this (normalized_name, connector_id).
+      // If so, increment submission_count and append this company ID (deduped) — do NOT reset to pending.
+      const rejectedRow = await db.execute(sql`
+        SELECT id FROM platform_vendor_registry
+        WHERE normalized_name = ${normalizedName}
+          AND connector_id = ${connectorId}
+          AND status = 'rejected'
+        LIMIT 1
+      `);
+      const rejected = (rejectedRow as any).rows?.[0] ?? (Array.isArray(rejectedRow) ? rejectedRow[0] : null);
+      if (rejected) {
+        await db.execute(sql`
+          UPDATE platform_vendor_registry
+          SET submission_count = submission_count + 1,
+              submitted_by_company_ids = ARRAY(
+                SELECT DISTINCT unnest(submitted_by_company_ids || ARRAY[${companyId}::text])
+              )
+          WHERE id = ${rejected.id}
+        `);
+        return;
+      }
+
+      // No existing entry — insert a new pending submission
       await db.insert(platformVendorRegistry).values({
         normalizedName,
         aliases: [normalizedName],
@@ -11166,6 +11189,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "pending",
         source: "user_submitted",
         submittedByCompanyId: companyId,
+        submittedByCompanyIds: [companyId],
         detectionConfidence,
         detectionReason,
       }).onConflictDoNothing();
@@ -11388,6 +11412,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       `);
       const data = (rows as any).rows ?? (Array.isArray(rows) ? rows : []);
       res.json({ data });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * PATCH /api/admin/vendor-registry/:id/reopen — global_admin only
+   * Resets a rejected entry back to pending so it re-enters the review queue.
+   */
+  app.patch("/api/admin/vendor-registry/:id/reopen", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+      const { id } = req.params;
+      await db.execute(sql`
+        UPDATE platform_vendor_registry
+        SET status = 'pending',
+            review_notes = NULL,
+            reviewed_at = NULL
+        WHERE id = ${id} AND status = 'rejected'
+      `);
+      res.json({ data: { ok: true } });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

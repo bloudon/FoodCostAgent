@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useLocation } from "wouter";
-import { ArrowLeft, CheckCircle, XCircle, Trash2, Clock, Globe, Search } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Trash2, Clock, Globe, Search, RotateCcw, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,10 @@ type RegistryEntry = {
   detection_confidence: "high" | "medium" | "low" | null;
   /** Stored at submission time: human-readable reason for the confidence tier */
   detection_reason: string | null;
+  /** Total submissions for this name→connector mapping (increments on re-submission after rejection) */
+  submission_count: number;
+  /** All company IDs that have submitted this mapping */
+  submitted_by_company_ids: string[];
   created_at: string;
 };
 
@@ -150,6 +154,19 @@ export default function AdminVendorRegistry() {
     },
   });
 
+  const reopenMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("PATCH", `/api/admin/vendor-registry/${id}/reopen`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/vendor-registry"] });
+      toast({ title: "Reopened", description: "Entry moved back to pending review." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const pendingCount = (data?.data ?? []).filter((e) => e.status === "pending").length;
 
   return (
@@ -245,6 +262,28 @@ export default function AdminVendorRegistry() {
                     )}
                   </Tooltip>
                 )}
+                {entry.submission_count > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium cursor-default flex items-center gap-1 ${
+                          entry.status === "rejected" && entry.submission_count > 1
+                            ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                        data-testid={`badge-submission-count-${entry.id}`}
+                      >
+                        <Users className="h-3 w-3" />
+                        {entry.submission_count} {entry.submission_count === 1 ? "submission" : "submissions"}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {entry.status === "rejected" && entry.submission_count > 1
+                        ? `${entry.submission_count} companies have submitted this mapping — consider reopening`
+                        : `${entry.submission_count} ${entry.submission_count === 1 ? "company has" : "companies have"} submitted this mapping`}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                 {entry.exact_aliases?.length > 0 && (
                   <p className="text-xs text-muted-foreground">
                     Exact: {entry.exact_aliases.join(", ")}
@@ -300,6 +339,23 @@ export default function AdminVendorRegistry() {
                       Reject
                     </Button>
                   </>
+                )}
+                {entry.status === "rejected" && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={reopenMutation.isPending}
+                        onClick={() => reopenMutation.mutate(entry.id)}
+                        data-testid={`button-reopen-${entry.id}`}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                        Reopen
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Move back to pending review</TooltipContent>
+                  </Tooltip>
                 )}
                 {entry.status !== "pending" && entry.source === "user_submitted" && (
                   <Tooltip>

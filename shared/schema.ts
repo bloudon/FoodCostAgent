@@ -1736,6 +1736,10 @@ export const platformVendorRegistry = pgTable("platform_vendor_registry", {
   detectionConfidence: text("detection_confidence"),
   /** Human-readable reason for the confidence tier, e.g. "matched domain sysco.com" */
   detectionReason: text("detection_reason"),
+  /** Total number of companies that have submitted this mapping (incremented on re-submission after rejection) */
+  submissionCount: integer("submission_count").notNull().default(1),
+  /** All company IDs that have submitted this mapping (deduped; seed rows use empty array) */
+  submittedByCompanyIds: text("submitted_by_company_ids").array().notNull().default(sql`'{}'::text[]`),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   normalizedConnectorUniq: uniqueIndex("pvr_normalized_connector_uniq").on(table.normalizedName, table.connectorId),
