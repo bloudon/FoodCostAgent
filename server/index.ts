@@ -268,59 +268,131 @@ async function runStartupMigrations() {
       CREATE UNIQUE INDEX IF NOT EXISTS pvr_normalized_connector_uniq
         ON platform_vendor_registry (normalized_name, COALESCE(connector_id, ''))
     `);
-    // Seed connected distributors — DO UPDATE keeps metadata current on every deploy.
-    // exact_aliases: abbreviations matched EXACTLY; aliases: longer names matched via ILIKE contains.
-    // FreshPoint added as sysco alias (it's a Sysco subsidiary sharing the same CSV column format).
+    // T0: Ensure _migration_log table exists (shared with vps-migrate.sql for one-time seed gating)
     await db.execute(sql`
-      INSERT INTO platform_vendor_registry
-        (normalized_name, exact_aliases, aliases, website_domains, connector_id, category, website, ordering_url, portal_status, status, source)
-      VALUES
-        ('sysco',
-         ARRAY['sygma'],
-         ARRAY['sysco corporation','sysco foods','sysco foodservice','sysco food service','sygma network','sysco guest supply','freshpoint','fresh point'],
-         ARRAY['sysco.com','shop.sysco.com','syscofoodservice.com','sygmanetwork.com','freshpoint.com'],
-         'sysco','Broadline','https://www.sysco.com','https://shop.sysco.com','Self-serve portal','approved','seed'),
-        ('gordon food service',
-         ARRAY['gfs'],
-         ARRAY['gordon food service','gordon''s food service','gordon foodservice','gordon food svc','gordon food'],
-         ARRAY['gfs.com','gordonfoodservice.com'],
-         'gfs','Broadline','https://www.gfs.com','https://www.gfs.com/store','Self-serve portal','approved','seed'),
-        ('us foods',
-         ARRAY['usfoods'],
-         ARRAY['us foods','us foodservice','us food service','us foods inc','u.s. foods','u.s. foodservice'],
-         ARRAY['usfoods.com','usfood.com','usfoodservice.com'],
-         'usfoods','Broadline','https://www.usfoods.com','https://www.usfoods.com/our-services/online-ordering.html','Self-serve portal','approved','seed'),
-        ('performance food group',
-         ARRAY['pfg'],
-         ARRAY['performance food group','performance net','pfg foodservice'],
-         ARRAY['pfgc.com','performancenet.com'],
-         'pfg','Broadline','https://www.pfgc.com','https://www.performancenet.com','Self-serve portal (Performance Net)','approved','seed'),
-        ('performance food service',
-         ARRAY['pfs','reinhart','vistar'],
-         ARRAY['performance food service','performance food','performance foodservice','reinhart foodservice','vistar corporation'],
-         ARRAY['performancefoodservice.com','reinhartfoodservice.com','vistar.com'],
-         'pfs','Broadline','https://www.pfgc.com',NULL,'Contact rep','approved','seed'),
-        ('ben e. keith',
-         ARRAY['bek'],
-         ARRAY['ben e keith','ben e. keith foods','ben e. keith beverages','bek foods'],
-         ARRAY['bek.com','benekeith.com'],
-         'bek','Broadline','https://www.bek.com','https://www.bek.com','Self-serve portal (My BEK)','approved','seed'),
-        ('southern foods',
-         ARRAY['sofo'],
-         ARRAY['sofo foods','southern food','southern food service','southern food group'],
-         ARRAY['sofofoods.com','southernfoods.com'],
-         'sofo','Broadline','https://www.sofofoods.com',NULL,'Contact rep','approved','seed')
-      ON CONFLICT (normalized_name, (COALESCE(connector_id, ''))) DO UPDATE
-        SET exact_aliases  = EXCLUDED.exact_aliases,
-            aliases        = EXCLUDED.aliases,
-            website_domains= EXCLUDED.website_domains,
-            category       = EXCLUDED.category,
-            website        = EXCLUDED.website,
-            ordering_url   = EXCLUDED.ordering_url,
-            portal_status  = EXCLUDED.portal_status
+      CREATE TABLE IF NOT EXISTS _migration_log (
+        version     text        PRIMARY KEY,
+        description text        NOT NULL,
+        applied_at  timestamptz NOT NULL DEFAULT now()
+      )
     `);
-    // Task #407: Seed 141 U.S. food purveyors — vendors without a CSV/EDI connector (connector_id = NULL).
-    // Uses ON CONFLICT on normalized_name where connector_id IS NULL (covered by the COALESCE index above).
+
+    // T1 (Vendor Registry v2): Add classification, geography, and parent-relation columns
+    // parent_vendor_id is varchar (not uuid) to match the id column type; values are UUID strings.
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS canonical_name text`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'public'`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS verification_status text NOT NULL DEFAULT 'verified'`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS last_verified_at timestamptz`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS parent_vendor_id varchar REFERENCES platform_vendor_registry(id) ON DELETE SET NULL`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS service_country_codes text[] NOT NULL DEFAULT '{}'`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS service_region_codes text[] NOT NULL DEFAULT '{}'`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS service_scope text NOT NULL DEFAULT 'unknown'`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS vendor_role text`);
+    await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS ordering_mode text NOT NULL DEFAULT 'contact_vendor'`);
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_visibility_check') THEN
+          ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_visibility_check
+            CHECK (visibility IN ('public','reference_only','hidden'));
+        END IF;
+      END $$
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_verification_status_check') THEN
+          ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_verification_status_check
+            CHECK (verification_status IN ('verified','needs_review','stale'));
+        END IF;
+      END $$
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_service_scope_check') THEN
+          ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_service_scope_check
+            CHECK (service_scope IN ('national','online_nationwide','multi_region','regional','local','unknown'));
+        END IF;
+      END $$
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_ordering_mode_check') THEN
+          ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_ordering_mode_check
+            CHECK (ordering_mode IN ('integrated','file_export','portal_link','public_ecommerce','contact_vendor'));
+        END IF;
+      END $$
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_vendor_role_check') THEN
+          ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_vendor_role_check
+            CHECK (vendor_role IS NULL OR vendor_role IN (
+              'broadline_distributor','specialty_distributor','produce_distributor',
+              'protein_distributor','manufacturer_direct','redistributor','buying_group',
+              'closed_supply_system','contract_distributor','online_retailer',
+              'beverage_distributor','paper_and_packaging'
+            ));
+        END IF;
+      END $$
+    `);
+
+    // T0: Gate Block 1 — 7 connector-enabled distributors (one-time seed; DO NOTHING prevents overwriting reviewed data)
+    // freshpoint and reinhart/vistar aliases moved to standalone rows in T3/T6.
+    {
+      const _b1 = await db.execute(sql`SELECT 1 FROM _migration_log WHERE version = 'pvr-seed-block1-v1'`);
+      if (((_b1 as any).rows ?? []).length === 0) {
+        await db.execute(sql`
+          INSERT INTO platform_vendor_registry
+            (normalized_name, exact_aliases, aliases, website_domains, connector_id, category, website, ordering_url, portal_status, status, source)
+          VALUES
+            ('sysco',
+             ARRAY['sygma'],
+             ARRAY['sysco corporation','sysco foods','sysco foodservice','sysco food service','sygma network','sysco guest supply'],
+             ARRAY['sysco.com','shop.sysco.com','syscofoodservice.com','sygmanetwork.com'],
+             'sysco','Broadline','https://www.sysco.com','https://shop.sysco.com','Self-serve portal','approved','seed'),
+            ('gordon food service',
+             ARRAY['gfs'],
+             ARRAY['gordon food service','gordon''s food service','gordon foodservice','gordon food svc','gordon food'],
+             ARRAY['gfs.com','gordonfoodservice.com'],
+             'gfs','Broadline','https://www.gfs.com','https://www.gfs.com/store','Self-serve portal','approved','seed'),
+            ('us foods',
+             ARRAY['usfoods'],
+             ARRAY['us foods','us foodservice','us food service','us foods inc','u.s. foods','u.s. foodservice'],
+             ARRAY['usfoods.com','usfood.com','usfoodservice.com'],
+             'usfoods','Broadline','https://www.usfoods.com','https://www.usfoods.com/our-services/online-ordering.html','Self-serve portal','approved','seed'),
+            ('performance food group',
+             ARRAY['pfg'],
+             ARRAY['performance food group','performance net','pfg foodservice'],
+             ARRAY['pfgc.com','performancenet.com'],
+             'pfg','Broadline','https://www.pfgc.com','https://www.performancenet.com','Self-serve portal (Performance Net)','approved','seed'),
+            ('performance food service',
+             ARRAY['pfs'],
+             ARRAY['performance food service','performance food','performance foodservice'],
+             ARRAY['performancefoodservice.com'],
+             'pfs','Broadline','https://www.pfgc.com',NULL,'Contact rep','approved','seed'),
+            ('ben e. keith',
+             ARRAY['bek'],
+             ARRAY['ben e keith','ben e. keith foods','ben e. keith beverages','bek foods'],
+             ARRAY['bek.com','benekeith.com'],
+             'bek','Broadline','https://www.bek.com','https://www.bek.com','Self-serve portal (My BEK)','approved','seed'),
+            ('southern foods',
+             ARRAY['sofo'],
+             ARRAY['sofo foods','southern food','southern food service','southern food group'],
+             ARRAY['sofofoods.com','southernfoods.com'],
+             'sofo','Broadline','https://www.sofofoods.com',NULL,'Contact rep','approved','seed')
+          ON CONFLICT (normalized_name, (COALESCE(connector_id, ''))) DO NOTHING
+        `);
+        await db.execute(sql`
+          INSERT INTO _migration_log (version, description)
+          VALUES ('pvr-seed-block1-v1', 'One-time seed: 7 connector-enabled distributor rows')
+          ON CONFLICT DO NOTHING
+        `);
+      }
+    }
+
+    // T0: Gate Block 2 — null-connector purveyors (one-time seed; DO NOTHING prevents overwriting reviewed data)
+    {
+      const _b2 = await db.execute(sql`SELECT 1 FROM _migration_log WHERE version = 'pvr-seed-block2-v1'`);
+      if (((_b2 as any).rows ?? []).length === 0) {
     await db.execute(sql`
       INSERT INTO platform_vendor_registry
         (normalized_name, aliases, website_domains, connector_id, category, website, ordering_url, portal_status, status, source)
@@ -353,7 +425,7 @@ async function runStartupMigrations() {
         ('baldor specialty foods',ARRAY['baldor'],ARRAY['baldorfood.com'],NULL,'Produce & Specialty','https://www.baldorfood.com',NULL,'Contact rep','approved','seed'),
         ('four seasons produce',ARRAY['four seasons'],ARRAY['fsproduce.com'],NULL,'Produce','https://www.fsproduce.com',NULL,'Contact rep','approved','seed'),
         ('robinson fresh',ARRAY['robinson fresh llc'],ARRAY['robinsonfresh.com'],NULL,'Produce','https://www.robinsonfresh.com',NULL,'Contact rep','approved','seed'),
-        ('produce alliance',ARRAY[],ARRAY['producealliance.com'],NULL,'Produce','https://www.producealliance.com',NULL,'Contact rep','approved','seed'),
+        ('produce alliance','{}',ARRAY['producealliance.com'],NULL,'Produce','https://www.producealliance.com',NULL,'Contact rep','approved','seed'),
         ('markon cooperative',ARRAY['markon'],ARRAY['markon.com'],NULL,'Produce','https://www.markon.com',NULL,'Contact rep','approved','seed'),
         ('pro*act',ARRAY['proact','pro act'],ARRAY['proactusa.com'],NULL,'Produce','https://www.proactusa.com',NULL,'Contact rep','approved','seed'),
         ('church brothers farms',ARRAY['church brothers'],ARRAY['churchbrothers.com'],NULL,'Produce','https://www.churchbrothers.com',NULL,'Contact rep','approved','seed'),
@@ -363,7 +435,7 @@ async function runStartupMigrations() {
         ('grimmway farms',ARRAY['grimmway'],ARRAY['grimmway.com'],NULL,'Produce','https://www.grimmway.com',NULL,'Contact rep','approved','seed'),
         ('mann packing',ARRAY['mann farms'],ARRAY['freshfrommann.com'],NULL,'Produce','https://www.freshfrommann.com',NULL,'Contact rep','approved','seed'),
         ('cal-organic farms',ARRAY['cal organic','calorganic'],ARRAY['calorganic.com'],NULL,'Organic Produce','https://www.calorganic.com',NULL,'Contact rep','approved','seed'),
-        ('paradise produce',ARRAY[],ARRAY[],NULL,'Produce',NULL,NULL,'Contact rep','approved','seed'),
+        ('paradise produce','{}','{}',NULL,'Produce',NULL,NULL,'Contact rep','approved','seed'),
         -- Protein Distributors
         ('tyson foodservice',ARRAY['tyson food service','tyson'],ARRAY['tysonfoodservice.com'],NULL,'Protein','https://www.tysonfoodservice.com',NULL,'Contact rep','approved','seed'),
         ('jbs foodservice',ARRAY['jbs usa','jbs food service'],ARRAY['jbssa.com'],NULL,'Protein','https://www.jbssa.com',NULL,'Contact rep','approved','seed'),
@@ -389,7 +461,7 @@ async function runStartupMigrations() {
         ('bumble bee foodservice',ARRAY['bumble bee foods','bumble bee'],ARRAY['bumblebeefoods.com'],NULL,'Seafood','https://www.bumblebeefoods.com',NULL,'Contact rep','approved','seed'),
         ('starkist foodservice',ARRAY['starkist food service','starkist'],ARRAY['starkist.com'],NULL,'Seafood','https://www.starkist.com',NULL,'Contact rep','approved','seed'),
         ('true north seafood',ARRAY['true north'],ARRAY['truenorthseafood.com'],NULL,'Seafood','https://www.truenorthseafood.com',NULL,'Contact rep','approved','seed'),
-        ('harbor seafood',ARRAY['harbor fish','harbor foods'],ARRAY[],NULL,'Seafood',NULL,NULL,'Contact rep','approved','seed'),
+        ('harbor seafood',ARRAY['harbor fish','harbor foods'],'{}',NULL,'Seafood',NULL,NULL,'Contact rep','approved','seed'),
         ('premier catch',ARRAY['premier catch seafood'],ARRAY['premiercatch.com'],NULL,'Seafood','https://www.premiercatch.com',NULL,'Contact rep','approved','seed'),
         -- Dairy & Eggs
         ('dairy farmers of america',ARRAY['dfa','dfa milk'],ARRAY['dfamilk.com'],NULL,'Dairy','https://www.dfamilk.com',NULL,'Contact rep','approved','seed'),
@@ -470,15 +542,17 @@ async function runStartupMigrations() {
         ('sara lee foodservice',ARRAY['sara lee food service'],ARRAY['saralee.com'],NULL,'Frozen Bakery','https://www.saralee.com',NULL,'Contact rep','approved','seed'),
         ('frito-lay foodservice',ARRAY['frito lay food service','frito lay'],ARRAY['fritolay.com'],NULL,'Snacks','https://www.fritolay.com',NULL,'Contact rep','approved','seed'),
         ('georgia-pacific professional',ARRAY['georgia pacific','gp professional'],ARRAY['gppro.com'],NULL,'Paper & Sanitation','https://www.gppro.com',NULL,'Contact rep','approved','seed'),
-        ('uline',ARRAY[],ARRAY['uline.com'],NULL,'Packaging & Supplies','https://www.uline.com','https://www.uline.com','Self-serve portal','approved','seed')
-      ON CONFLICT (normalized_name, (COALESCE(connector_id, ''))) DO UPDATE
-        SET category     = EXCLUDED.category,
-            website      = EXCLUDED.website,
-            ordering_url = EXCLUDED.ordering_url,
-            portal_status= EXCLUDED.portal_status,
-            aliases      = EXCLUDED.aliases,
-            website_domains = EXCLUDED.website_domains
+        ('uline','{}',ARRAY['uline.com'],NULL,'Packaging & Supplies','https://www.uline.com','https://www.uline.com','Self-serve portal','approved','seed')
+      ON CONFLICT (normalized_name, (COALESCE(connector_id, ''))) DO NOTHING
     `);
+
+        await db.execute(sql`
+          INSERT INTO _migration_log (version, description)
+          VALUES ('pvr-seed-block2-v1', 'One-time seed: 134 null-connector purveyor rows')
+          ON CONFLICT DO NOTHING
+        `);
+      }
+    }
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

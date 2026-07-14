@@ -1,0 +1,433 @@
+Remaining material problems
+1. It is still mixing totals with import deltas
+
+The workbook has:
+
+186 data records
+187 spreadsheet rows including the header
+102 total Approved seed
+65 total Review before seed
+19 total Reference only
+
+Those are category totals, not automatically new records.
+
+Replit says:
+
+“Import the 45 net-new Approved records. Import 65 Review records…”
+
+That does not follow from the workbook totals.
+
+Because Replit’s current 141-record database appears different from the original 141-record research workbook, it must generate a real database-to-v2 diff with these buckets:
+
+Existing database record matched to v2
+v2-only Approved seed
+v2-only Review before seed
+v2-only Reference only
+Database-only record
+Possible duplicate
+Possible operating-brand/parent conflict
+
+Until that exact diff exists, “45 new approved” is not proven.
+
+2. Existing approved records should not become pending
+
+This proposed action is unsafe:
+
+AMCON Distributing
+approved → pending
+
+pending represents an approval lifecycle. It should not also mean “the geography research is incomplete.”
+
+Use separate concepts:
+
+status: approved | pending | rejected | inactive
+verificationStatus: verified | needs_review | stale
+visibility: public | reference_only | hidden
+
+An existing approved vendor with customer usage should remain approved while being flagged needs_review.
+
+3. The connector count and taxonomy are still inaccurate
+
+The workbook contains 16 distinct nonblank connector keys across 27 vendor records, not simply “17+.”
+
+Notable corrections:
+
+food_order_entry applies to Ginsberg’s and Wood Fruitticher, not just Ginsberg’s.
+public_ecommerce is not truly an integration connector. It is primarily a link-out capability.
+unknown_branded_portal is a research placeholder, not something that should be implemented as a connector.
+GFS has no connector key in the v2 workbook, but the current application already has a working GFS connector. Keep the current implementation.
+cut_and_dry and powernet_pnet are the clearest reusable shared-platform opportunities.
+
+Suggested distinction:
+
+connectorType:
+  cut_and_dry
+  powernet_pnet
+  food_order_entry
+  sysco_shop
+  us_foods_moxe
+  ...
+
+orderingMode:
+  integrated
+  file_export
+  portal_link
+  public_ecommerce
+  contact_vendor
+4. The international count is wrong
+
+The workbook contains 20 non-mainland-U.S. records:
+
+Bermuda: 1
+Brazil: 1
+Canada: 7
+Puerto Rico: 1
+South Korea: 10
+
+Of those:
+
+18 are net-new approved records
+Greenbridge Foodservice is net-new and reference-only
+Mendez & Co. in Puerto Rico already existed in the prior research set
+
+Replit’s “17 international records” count is incorrect.
+
+5. Geography is useful, but not fully “production-ready”
+
+There are 66 approved U.S. vendors with state codes, not 63.
+
+However, state lists still contain:
+
+Partial-state service
+Facility-state inference
+Metro-only service
+Delivery-route uncertainty
+
+The data is ready for ranking, not filtering or guarantees.
+
+6. Do not blanket-hide manufacturers
+
+Replit proposes hiding manufacturers and seafood brands because they are not conventional distributors.
+
+That may be correct for many records, but it should not be automatic. Large restaurant groups can buy directly from manufacturers, processors, brokers and specialty suppliers.
+
+Use a role field:
+
+broadline_distributor
+specialty_distributor
+manufacturer_direct
+redistributor
+buying_group
+closed_supply_system
+online_retailer
+
+Then decide whether each role appears by default.
+
+Send this correction to Replit
+Vendor Registry Evaluation — Required Final Corrections
+
+The second evaluation is much closer, but do not begin implementation yet.
+
+The workbook category totals have been read correctly, but the migration deltas are still not established.
+
+1. Generate an exact database-to-v2 diff
+
+The workbook contains:
+
+186 data records
+102 Approved seed
+65 Review before seed
+19 Reference only
+
+The 187 spreadsheet-row count includes the header.
+
+These totals must not be treated as import counts.
+
+The current application database contains a different 141-record mix than the original research workbook. Therefore, calculate the diff from the actual platform_vendor_registry table.
+
+Use normalized canonical names, aliases and website domains to classify every record into:
+
+MATCHED_EXISTING
+V2_ONLY_APPROVED
+V2_ONLY_REVIEW
+V2_ONLY_REFERENCE
+DATABASE_ONLY
+POSSIBLE_DUPLICATE
+PARENT_OPERATING_BRAND_CONFLICT
+
+Return exact counts and names for every category.
+
+Do not use approximate counts.
+
+2. Do not downgrade existing approved vendors to pending
+
+Do not perform changes such as:
+
+approved → pending
+
+merely because geography, website or confidence data requires review.
+
+Keep three separate concepts:
+
+status:
+  approved
+  pending
+  rejected
+  inactive
+
+visibility:
+  public
+  reference_only
+  hidden
+
+verificationStatus:
+  verified
+  needs_review
+  stale
+
+Rules:
+
+Existing approved vendor with customer usage:
+    retain status = approved
+    retain current visibility
+    set verificationStatus = needs_review when appropriate
+
+Existing unused vendor requiring review:
+    retain approved status unless an admin explicitly changes it
+    optionally set visibility = hidden
+
+Net-new Review before seed record:
+    status = pending
+    visibility = hidden
+    verificationStatus = needs_review
+3. Produce reference counts before hiding anything
+
+Before changing visibility, query:
+
+customer_supplier_connections
+company vendors
+products
+vendor order guides
+purchase orders
+invoices
+receipts
+integrations
+imports
+audit records
+
+For every proposed hidden, inactive or merged vendor, return:
+
+vendor ID
+canonical name
+company usage count
+transaction reference count
+connector reference count
+safe-to-change assessment
+
+Do not assume that Reinhart, Vistar, AMCON or any other record has no attached customer data.
+
+4. Correct the connector taxonomy
+
+The v2 workbook contains 16 distinct nonblank connector keys across 27 records.
+
+Important classifications:
+
+Shared integration platforms
+cut_and_dry
+powernet_pnet
+food_order_entry
+Vendor-specific portals
+sysco_shop
+us_foods_moxe
+pfg_customerfirst
+ben_e_keith_entree
+cheney_central
+my_shamrock
+my_freshpoint
+baldor_portal
+chefs_warehouse_portal
+van_eerden_portal
+megabite
+Link-out capability, not a true integration
+public_ecommerce
+Research placeholder, not implementation-ready
+unknown_branded_portal
+
+food_order_entry applies to both:
+
+Ginsberg's Foods
+Wood Fruitticher Food Service
+
+Retain the existing GFS connector even though the v2 workbook has no GFS connector key.
+
+Recommended model:
+
+connectorId: string | null
+
+orderingMode:
+  integrated
+  file_export
+  portal_link
+  public_ecommerce
+  contact_vendor
+
+Do not present a website link as equivalent to an ordering integration.
+
+5. Correct international handling
+
+The workbook contains:
+
+Bermuda: 1
+Brazil: 1
+Canada: 7
+Puerto Rico: 1
+South Korea: 10
+
+Use ISO country codes:
+
+BM
+BR
+CA
+PR
+KR
+US
+
+Use ISO subdivision codes where available:
+
+US-FL
+US-PA
+CA-ON
+CA-QC
+
+International vendors may be imported, but they should rank by customer country and should not crowd U.S. search results.
+
+6. Geography must be ranking metadata
+
+There are 66 approved U.S. records with state codes.
+
+This geography may be used to rank candidates, but not to:
+
+Guarantee delivery
+Exclude exact search matches
+Block vendor selection
+Claim statewide service
+
+Ranking order:
+
+1. Exact canonical-name match
+2. Exact alias match
+3. Website-domain match
+4. Vendor already used by company
+5. Matching country and region
+6. Matching country
+7. National vendor
+8. Other approved vendors
+
+Suggested customer wording:
+
+Commonly available in your region. Confirm delivery availability with the vendor.
+
+7. Do not automatically hide all manufacturers
+
+Add or normalize a vendor-role field:
+
+broadline_distributor
+specialty_distributor
+produce_distributor
+protein_distributor
+manufacturer_direct
+redistributor
+buying_group
+closed_supply_system
+contract_distributor
+online_retailer
+
+Default picker behavior may hide:
+
+buying_group
+redistributor
+closed_supply_system
+contract_distributor
+
+Do not automatically hide manufacturer_direct records without reviewing whether customers can purchase from them directly.
+
+8. Revised implementation order
+Ticket 1 — Add safe classification fields
+
+Add:
+
+canonical_name
+visibility
+verification_status
+last_verified_at
+parent_vendor_id
+country_codes
+service_region_codes
+
+Keep the existing exact_aliases and aliases split.
+
+Ticket 2 — Generate and approve the actual diff
+
+Return exact lists for:
+
+V2_ONLY_APPROVED
+V2_ONLY_REVIEW
+V2_ONLY_REFERENCE
+DATABASE_ONLY
+POSSIBLE_DUPLICATE
+
+No import until the lists are reviewed.
+
+Ticket 3 — Add shared connector definitions
+
+Prioritize:
+
+cut_and_dry
+powernet_pnet
+food_order_entry
+
+Treat public_ecommerce as an ordering mode or link-out capability rather than an integration connector.
+
+Ticket 4 — Import approved additions only
+
+After the diff is approved:
+
+V2_ONLY_APPROVED:
+    status = approved
+    visibility = public
+    source = import
+
+V2_ONLY_REVIEW:
+    status = pending
+    visibility = hidden
+    source = import
+
+V2_ONLY_REFERENCE:
+    status = approved
+    visibility = reference_only
+    source = import
+Ticket 5 — Update existing matched records
+
+Update aliases, domains, canonical names, geography, parent relationships, ordering URLs and connector keys in place.
+
+Preserve existing IDs.
+
+Ticket 6 — Add geography-ranked search
+
+Implement ranking only after country and region codes are loaded.
+
+Ticket 7 — Add merge and soft-deactivation support later
+
+Do not hard-delete or merge records until dependent references can be redirected safely.
+
+Required response before implementation
+
+Return:
+
+Exact diff counts from the actual database.
+Exact names in each diff category.
+Usage/reference counts for every record proposed for hiding, merging or inactivation.
+The exact connector-key mapping after separating integrations from link-outs.
+The exact international record list.
+Revised tickets based on the actual diff.
+Confirmation that no schema migration, import, merge, deletion or status downgrade has yet been performed.

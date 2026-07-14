@@ -11300,26 +11300,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
-   * GET /api/vendor-registry/search?q=&limit=
-   * Full-text search over approved registry entries. Used by the Add Vendor picker.
-   * Returns up to `limit` (default 8) matches sorted by relevance.
+   * GET /api/vendor-registry/search?q=&limit=&state=XX
+   * Full-text search over approved, public registry entries. Used by the Add Vendor picker.
+   * Returns up to `limit` (default 8) matches sorted by:
+   *   Tier 0 — connector-enabled vendors (have a CSV/EDI integration)
+   *   Tier 1 — national / online-nationwide scope
+   *   Tier 2 — regional match when `state` query param provided
+   *   Tier 3 — unknown scope or no region data
+   * Within each tier, vendors whose name starts with the query string rank above contains matches.
    */
   app.get("/api/vendor-registry/search", requireAuth, async (req, res) => {
     try {
       const q = (req.query.q as string | undefined)?.trim().toLowerCase() ?? "";
       const limit = Math.min(parseInt((req.query.limit as string | undefined) ?? "8", 10) || 8, 20);
+      const stateCode = (req.query.state as string | undefined)?.trim().toUpperCase() ?? "";
       if (!q) return res.json({ data: [] });
 
+      // Geography boost: match on service_region_codes when caller supplies a US state
+      const regionTag = stateCode ? `US-${stateCode}` : "";
+
       const rows = await db.execute(sql`
-        SELECT id, normalized_name, website, connector_id, category
+        SELECT id, normalized_name, canonical_name, website, connector_id, category,
+               ordering_mode, service_scope, service_region_codes
         FROM platform_vendor_registry
         WHERE status = 'approved'
+          AND COALESCE(visibility, 'public') = 'public'
           AND (
             normalized_name ILIKE ${"%" + q + "%"}
             OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE a ILIKE ${"%" + q + "%"})
             OR EXISTS (SELECT 1 FROM unnest(exact_aliases) ea WHERE ea ILIKE ${"%" + q + "%"})
           )
         ORDER BY
+          -- Tier 0: connector-enabled (integrated CSV/EDI)
+          CASE WHEN connector_id IS NOT NULL THEN 0 ELSE 1 END,
+          -- Tier 1: scope quality
+          CASE
+            WHEN service_scope IN ('national', 'online_nationwide') THEN 0
+            WHEN service_scope IN ('multi_region', 'regional') THEN 1
+            ELSE 2
+          END,
+          -- Tier 2: geography boost when caller supplied a state code
+          CASE
+            WHEN ${regionTag} <> '' AND ${regionTag} = ANY(service_region_codes) THEN 0
+            ELSE 1
+          END,
+          -- Tier 3: name-match quality
           CASE
             WHEN normalized_name ILIKE ${q + "%"} THEN 0
             WHEN normalized_name ILIKE ${"%" + q + "%"} THEN 1
@@ -11336,10 +11361,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return {
           id: r.id,
           normalizedName: r.normalized_name as string,
+          canonicalName: (r.canonical_name as string | null) ?? (r.normalized_name as string),
           website: (r.website as string | null) ?? null,
           connectorId: (r.connector_id as string | null) ?? null,
           connectorDisplayName: def?.displayName ?? (r.connector_id as string | null) ?? null,
           category: (r.category as string | null) ?? null,
+          orderingMode: (r.ordering_mode as string | null) ?? 'contact_vendor',
+          serviceScope: (r.service_scope as string | null) ?? 'unknown',
         };
       });
 

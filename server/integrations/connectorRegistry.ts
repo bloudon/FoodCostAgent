@@ -104,6 +104,30 @@ const CONNECTOR_DEFINITIONS: ConnectorDefinition[] = [
       exportOrderTemplate: 'csv',
     },
   },
+  // T4 — Shared portal connectors (open a vendor-branded ordering portal;
+  // no CSV/EDI integration — connector_id just marks which platform hosts the portal).
+  {
+    connectorId: 'cut_and_dry',
+    displayName: 'Cut+Dry',
+    capabilities: {
+      openPortal:          'browser_extension',
+      exportOrderTemplate: 'csv',
+    },
+  },
+  {
+    connectorId: 'powernet_pnet',
+    displayName: 'PowerNet (PNet)',
+    capabilities: {
+      openPortal: 'browser_extension',
+    },
+  },
+  {
+    connectorId: 'food_order_entry',
+    displayName: 'Food Order Entry',
+    capabilities: {
+      openPortal: 'browser_extension',
+    },
+  },
 ];
 
 /**

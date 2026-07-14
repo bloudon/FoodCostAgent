@@ -1504,3 +1504,616 @@ DO $$ BEGIN
       VALUES ('v049', 'Task #407: nullable connector_id, display metadata columns, COALESCE unique index, 141-vendor seed, PFG/BEK adapters, FreshPoint as Sysco alias');
   END IF;
 END $$;
+
+
+-- =============================================================================
+-- v050 — T0: Permanently neutralize recurring vendor registry seed behavior
+-- Records both seed block versions so server/index.ts skips them on every VPS deploy.
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v050') THEN
+
+    -- Mark both seed blocks as permanently complete (they ran via v049 on VPS).
+    INSERT INTO _migration_log (version, description)
+      VALUES ('pvr-seed-block1-v1', 'One-time seed: 7 connector-enabled distributor rows')
+      ON CONFLICT DO NOTHING;
+    INSERT INTO _migration_log (version, description)
+      VALUES ('pvr-seed-block2-v1', 'One-time seed: 134 null-connector purveyor rows')
+      ON CONFLICT DO NOTHING;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v050', 'T0: Permanently neutralize recurring vendor registry seed blocks');
+  END IF;
+END $$;
+
+-- =============================================================================
+-- v051 — T1: Add v2 classification, geography, and parent-relation columns
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v051') THEN
+
+    -- Classification columns
+    ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS canonical_name text;
+    ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'public';
+    ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS verification_status text NOT NULL DEFAULT 'verified';
+    ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS last_verified_at timestamptz;
+    -- parent_vendor_id: varchar to match id column type (semantically UUID values)
+    ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS parent_vendor_id varchar
+      REFERENCES platform_vendor_registry(id) ON DELETE SET NULL;
+
+    -- Geography columns
+    ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS service_country_codes text[] NOT NULL DEFAULT '{}';
+    ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS service_region_codes text[] NOT NULL DEFAULT '{}';
+    ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS service_scope text NOT NULL DEFAULT 'unknown';
+
+    -- Role and ordering columns
+    ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS vendor_role text;
+    ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS ordering_mode text NOT NULL DEFAULT 'contact_vendor';
+
+    -- CHECK constraints (idempotent via pg_constraint guard)
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_visibility_check') THEN
+      ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_visibility_check
+        CHECK (visibility IN ('public','reference_only','hidden'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_verification_status_check') THEN
+      ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_verification_status_check
+        CHECK (verification_status IN ('verified','needs_review','stale'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_service_scope_check') THEN
+      ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_service_scope_check
+        CHECK (service_scope IN ('national','online_nationwide','multi_region','regional','local','unknown'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_ordering_mode_check') THEN
+      ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_ordering_mode_check
+        CHECK (ordering_mode IN ('integrated','file_export','portal_link','public_ecommerce','contact_vendor'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_vendor_role_check') THEN
+      ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_vendor_role_check
+        CHECK (vendor_role IS NULL OR vendor_role IN (
+          'broadline_distributor','specialty_distributor','produce_distributor',
+          'protein_distributor','manufacturer_direct','redistributor','buying_group',
+          'closed_supply_system','contract_distributor','online_retailer',
+          'beverage_distributor','paper_and_packaging'
+        ));
+    END IF;
+
+    -- Index on service_scope for geography-ranked search
+    CREATE INDEX IF NOT EXISTS pvr_service_scope_idx ON platform_vendor_registry (service_scope);
+    CREATE INDEX IF NOT EXISTS pvr_visibility_idx ON platform_vendor_registry (visibility);
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v051', 'T1: Add canonical_name, visibility, verification_status, parent_vendor_id, service_*, vendor_role, ordering_mode');
+  END IF;
+END $$;
+
+-- =============================================================================
+-- v052 — T3: Resolve FreshPoint / Vistar / Reinhart alias conflicts
+-- FreshPoint gets its own row in T6. PFG subsid aliases are split there too.
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v052') THEN
+
+    -- Sysco: remove FreshPoint aliases (it ships its own approved row in T6)
+    UPDATE platform_vendor_registry
+    SET
+      aliases         = ARRAY(
+        SELECT a FROM unnest(aliases) AS a
+        WHERE a NOT IN ('freshpoint','fresh point','freshpoint.com')
+      ),
+      exact_aliases   = ARRAY(
+        SELECT a FROM unnest(exact_aliases) AS a
+        WHERE a NOT IN ('freshpoint','fresh point')
+      ),
+      website_domains = ARRAY(
+        SELECT d FROM unnest(website_domains) AS d
+        WHERE d <> 'freshpoint.com'
+      )
+    WHERE connector_id = 'sysco';
+
+    -- PFS row (connector_id='pfs'): remove Reinhart and Vistar aliases/domains
+    -- Both get standalone rows (reinhart in existing DB-only set, vistar from v2).
+    UPDATE platform_vendor_registry
+    SET
+      exact_aliases   = ARRAY(
+        SELECT a FROM unnest(exact_aliases) AS a
+        WHERE a NOT IN ('reinhart','vistar')
+      ),
+      aliases         = ARRAY(
+        SELECT a FROM unnest(aliases) AS a
+        WHERE a NOT IN ('reinhart foodservice','vistar corporation','vistar','reinhart')
+      ),
+      website_domains = ARRAY(
+        SELECT d FROM unnest(website_domains) AS d
+        WHERE d NOT IN ('reinhartfoodservice.com','vistar.com')
+      )
+    WHERE connector_id = 'pfs';
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v052', 'T3: Remove freshpoint aliases from sysco; remove reinhart/vistar aliases from pfs');
+  END IF;
+END $$;
+
+-- =============================================================================
+-- v053 — T5: Classify and augment 23 matched records from v2 workbook
+-- Sets canonical_name, ordering_mode, service_scope, service_country_codes,
+-- service_region_codes, vendor_role, verification_status, last_verified_at.
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v053') THEN
+
+    -- Sysco
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Sysco Corporation',
+      ordering_mode         = 'integrated',
+      ordering_url          = 'https://shop.sysco.com/auth/login',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE connector_id = 'sysco';
+
+    -- Gordon Food Service
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Gordon Food Service',
+      ordering_mode         = 'integrated',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      service_region_codes  = ARRAY['US-AL','US-FL','US-GA','US-IL','US-IN','US-KY','US-MD','US-MI','US-MO','US-NC','US-NY','US-OH','US-PA','US-SC','US-TN','US-TX','US-WI'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE connector_id = 'gfs';
+
+    -- US Foods
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'US Foods',
+      ordering_mode         = 'integrated',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE connector_id = 'usfoods';
+
+    -- Performance Food Group (parent entity)
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Performance Food Group',
+      ordering_mode         = 'portal_link',
+      ordering_url          = 'https://www.performancefoodservice.com/Your-Operation/CustomerFirst',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE connector_id = 'pfg';
+
+    -- Performance Food Service / PFS (operating brand)
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Performance Foodservice',
+      ordering_mode         = 'portal_link',
+      ordering_url          = 'https://www.performancefoodservice.com/Your-Operation/CustomerFirst',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE connector_id = 'pfs';
+
+    -- Ben E. Keith
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Ben E. Keith Foods',
+      ordering_mode         = 'portal_link',
+      ordering_url          = 'https://www.bekentree.com/',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      service_region_codes  = ARRAY['US-AL','US-AR','US-AZ','US-FL','US-GA','US-KS','US-LA','US-MO','US-MS','US-NM','US-OK','US-SC','US-TN','US-TX'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE connector_id = 'bek';
+
+    -- Sofo Foods (formerly Southern Foods)
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Sofo Foods',
+      ordering_mode         = 'portal_link',
+      ordering_url          = 'https://order.sofofoods.com/pnet/eOrder',
+      service_scope         = 'multi_region',
+      service_country_codes = ARRAY['US'],
+      service_region_codes  = ARRAY['US-OH','US-GA','US-TX'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE connector_id = 'sofo';
+
+    -- Cheney Brothers (null-connector, matched by normalized_name)
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Cheney Brothers, Inc.',
+      ordering_mode         = 'portal_link',
+      ordering_url          = 'https://www.cheneycentral.com/',
+      service_scope         = 'multi_region',
+      service_country_codes = ARRAY['US'],
+      service_region_codes  = ARRAY['US-FL','US-GA','US-NC','US-SC'],
+      vendor_role           = 'broadline_distributor',
+      parent_vendor_id      = (SELECT id FROM platform_vendor_registry WHERE connector_id = 'pfg' LIMIT 1),
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name = 'cheney brothers' AND connector_id IS NULL;
+
+    -- Nicholas & Company
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Nicholas and Company, Inc.',
+      ordering_mode         = 'contact_vendor',
+      service_scope         = 'multi_region',
+      service_country_codes = ARRAY['US'],
+      service_region_codes  = ARRAY['US-UT','US-NV','US-ID','US-WY','US-MT','US-AZ'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%nicholas%' AND normalized_name LIKE '%company%' AND connector_id IS NULL;
+
+    -- Shamrock Foods
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Shamrock Foods Company',
+      ordering_mode         = 'portal_link',
+      ordering_url          = 'https://m.myshamrock.com/',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      service_region_codes  = ARRAY['US-AZ','US-CA','US-CO','US-ID','US-KS','US-MT','US-NE','US-NV','US-NM','US-OR','US-SD','US-TX','US-UT','US-WY'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%shamrock%' AND connector_id IS NULL;
+
+    -- Ace Endico
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Ace Endico Corp.',
+      ordering_mode         = 'contact_vendor',
+      service_scope         = 'multi_region',
+      service_country_codes = ARRAY['US'],
+      service_region_codes  = ARRAY['US-ME','US-NH','US-VT','US-MA','US-RI','US-CT','US-NY','US-NJ','US-PA'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%ace endico%' AND connector_id IS NULL;
+
+    -- Restaurant Depot / Jetro
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Restaurant Depot / Jetro',
+      ordering_mode         = 'contact_vendor',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%restaurant depot%' AND connector_id IS NULL;
+
+    -- C&S Wholesale Grocers
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'C&S Wholesale Grocers',
+      ordering_mode         = 'contact_vendor',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      vendor_role           = 'redistributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%c&s wholesale%' AND connector_id IS NULL;
+
+    -- WebstaurantStore
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'WebstaurantStore',
+      ordering_mode         = 'public_ecommerce',
+      service_scope         = 'online_nationwide',
+      service_country_codes = ARRAY['US'],
+      vendor_role           = 'online_retailer',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%webstaurant%' AND connector_id IS NULL;
+
+    -- Baldor Specialty Foods
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Baldor Specialty Foods',
+      ordering_mode         = 'portal_link',
+      ordering_url          = 'https://www.baldorfood.com/sign-in',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      service_region_codes  = ARRAY['US-NY','US-NJ','US-CT','US-MA','US-RI','US-PA','US-DE','US-MD','US-DC','US-VA'],
+      vendor_role           = 'specialty_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%baldor%' AND connector_id IS NULL;
+
+    -- KeHE Distributors
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'KeHE Distributors',
+      ordering_mode         = 'contact_vendor',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      vendor_role           = 'specialty_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%kehe%' AND connector_id IS NULL;
+
+    -- UNFI
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'UNFI',
+      ordering_mode         = 'contact_vendor',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      vendor_role           = 'specialty_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%unfi%' AND connector_id IS NULL;
+
+    -- The Chefs' Warehouse
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'The Chefs'' Warehouse',
+      ordering_mode         = 'portal_link',
+      ordering_url          = 'https://www.chefswarehouse.com/login/',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      service_region_codes  = ARRAY['US-CA','US-FL','US-GA','US-IL','US-MA','US-MD','US-NV','US-NJ','US-NY','US-OH','US-PA','US-TX','US-WA','US-DC'],
+      vendor_role           = 'specialty_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%chefs%warehouse%' AND connector_id IS NULL;
+
+    -- Gourmet Foods International
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Gourmet Foods International',
+      ordering_mode         = 'portal_link',
+      ordering_url          = 'https://www.gfifoods.com/customer/account/',
+      service_scope         = 'multi_region',
+      service_country_codes = ARRAY['US'],
+      service_region_codes  = ARRAY['US-GA','US-CA','US-FL','US-TX','US-NJ','US-MA','US-IL','US-WA','US-CO'],
+      vendor_role           = 'specialty_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%gourmet foods international%' AND connector_id IS NULL;
+
+    -- Vistar (PFG subsidiary)
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Vistar',
+      ordering_mode         = 'contact_vendor',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      vendor_role           = 'specialty_distributor',
+      parent_vendor_id      = (SELECT id FROM platform_vendor_registry WHERE connector_id = 'pfg' LIMIT 1),
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%vistar%' AND connector_id IS NULL;
+
+    -- Martin Bros. Distributing
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Martin Bros. Distributing Co., Inc.',
+      ordering_mode         = 'contact_vendor',
+      service_scope         = 'multi_region',
+      service_country_codes = ARRAY['US'],
+      service_region_codes  = ARRAY['US-IA','US-IL','US-WI','US-NE','US-MO','US-MN'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'verified',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%martin%bros%' AND connector_id IS NULL;
+
+    -- Dot Foods (flagged: redistribution model unclear)
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Dot Foods',
+      ordering_mode         = 'contact_vendor',
+      service_scope         = 'national',
+      service_country_codes = ARRAY['US'],
+      vendor_role           = 'redistributor',
+      verification_status   = 'needs_review',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%dot foods%' AND connector_id IS NULL;
+
+    -- Honor Foods (flagged)
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'Honor Foods',
+      ordering_mode         = 'contact_vendor',
+      service_scope         = 'regional',
+      service_country_codes = ARRAY['US'],
+      service_region_codes  = ARRAY['US-PA'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'needs_review',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%honor foods%' AND connector_id IS NULL;
+
+    -- AMCON Distributing (flagged)
+    UPDATE platform_vendor_registry SET
+      canonical_name        = 'AMCON Distributing',
+      ordering_mode         = 'contact_vendor',
+      service_scope         = 'multi_region',
+      service_country_codes = ARRAY['US'],
+      vendor_role           = 'broadline_distributor',
+      verification_status   = 'needs_review',
+      last_verified_at      = '2026-07-14'::timestamptz
+    WHERE normalized_name LIKE '%amcon%' AND connector_id IS NULL;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v053', 'T5: Classify and augment 23 matched v2 records with ordering_mode, service_scope, vendor_role');
+  END IF;
+END $$;
+
+-- =============================================================================
+-- v054 — T6: Import 82 v2-only Approved seed records
+-- Columns: normalized_name, aliases, website_domains, connector_id, category,
+--   website, ordering_url, portal_status, status, source,
+--   canonical_name, visibility, verification_status, service_country_codes,
+--   service_region_codes, service_scope, ordering_mode, vendor_role
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v054') THEN
+
+    INSERT INTO platform_vendor_registry
+      (normalized_name, aliases, website_domains, connector_id, category,
+       website, ordering_url, portal_status, status, source,
+       canonical_name, visibility, verification_status,
+       service_country_codes, service_region_codes, service_scope, ordering_mode, vendor_role)
+    VALUES
+  ('butterfield & vallis', ARRAY[]::text[], ARRAY['bv.bm'], NULL, 'Broadline / grocery wholesale', 'https://www.bv.bm', NULL, 'Contact rep', 'approved', 'seed', 'Butterfield & Vallis', 'public', 'verified', ARRAY['BM'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'redistributor'),
+  ('fortali dist de alim ltda', ARRAY[]::text[], ARRAY['fortali.com.br'], NULL, 'Broadline', 'https://www.fortali.com.br', NULL, 'Contact rep', 'approved', 'seed', 'Fortali Dist De Alim LTDA', 'public', 'verified', ARRAY['BR'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'broadline_distributor'),
+  ('amalgamated dairies limited (adl)', ARRAY[]::text[], ARRAY['adlfoods.ca'], NULL, 'Dairy / broadline', 'https://www.adlfoods.ca', NULL, 'Contact rep', 'approved', 'seed', 'Amalgamated Dairies Limited (ADL)', 'public', 'verified', ARRAY['CA'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'specialty_distributor'),
+  ('aof food service', ARRAY[]::text[], ARRAY['aof.ca'], NULL, 'Broadline', 'https://www.aof.ca', NULL, 'Contact rep', 'approved', 'seed', 'AOF Food Service Inc.', 'public', 'verified', ARRAY['CA'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'broadline_distributor'),
+  ('capital foodservice', ARRAY[]::text[], ARRAY['capitalfoodservice.ca'], NULL, 'Broadline', 'https://www.capitalfoodservice.ca', NULL, 'Contact rep', 'approved', 'seed', 'Capital Foodservice', 'public', 'verified', ARRAY['CA'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'broadline_distributor'),
+  ('centennial foodservice', ARRAY[]::text[], ARRAY['centennialfood.com'], NULL, 'Center-of-plate / broadline', 'https://www.centennialfood.com', NULL, 'Contact rep', 'approved', 'seed', 'Centennial Foodservice', 'public', 'verified', ARRAY['CA'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'broadline_distributor'),
+  ('flanagan foodservice', ARRAY[]::text[], ARRAY['flanagan.ca'], NULL, 'Broadline', 'https://www.flanagan.ca', NULL, 'Contact rep', 'approved', 'seed', 'Flanagan Foodservice Inc.', 'public', 'verified', ARRAY['CA'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'broadline_distributor'),
+  ('natures cargo', ARRAY[]::text[], ARRAY['naturescargo.ca'], NULL, 'Natural / specialty distribution', 'https://www.naturescargo.ca', NULL, 'Contact rep', 'approved', 'seed', 'Natures Cargo', 'public', 'verified', ARRAY['CA'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'specialty_distributor'),
+  ('mendez & co.', ARRAY[]::text[], ARRAY['mendezcopr.com'], NULL, 'Broadline / Puerto Rico', 'https://www.mendezcopr.com', NULL, 'Contact rep', 'approved', 'seed', 'Mendez & Co., Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-PR'], 'regional', 'contact_vendor', 'broadline_distributor'),
+  ('amoje industry', ARRAY[]::text[], ARRAY['amojeind.com'], NULL, 'Foodservice / hospitality supply', 'https://www.amojeind.com', NULL, 'Contact rep', 'approved', 'seed', 'Amoje Industry', 'public', 'verified', ARRAY['KR'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'broadline_distributor'),
+  ('cj freshway', ARRAY[]::text[], ARRAY['cjfreshway.com'], NULL, 'Food material distribution / contract foodservice', 'https://www.cjfreshway.com', NULL, 'Contact rep', 'approved', 'seed', 'CJ Freshway', 'public', 'verified', ARRAY['KR'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'broadline_distributor'),
+  ('daesang bestco', ARRAY[]::text[], ARRAY['edaesang.com'], NULL, 'Foodservice distribution', 'https://www.edaesang.com', NULL, 'Contact rep', 'approved', 'seed', 'Daesang BestCo', 'public', 'verified', ARRAY['KR'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'broadline_distributor'),
+  ('foodmerce co.', ARRAY[]::text[], ARRAY['foodmerce.com'], NULL, 'Foodservice distribution', 'https://www.foodmerce.com', NULL, 'Contact rep', 'approved', 'seed', 'FOODMERCE Co., LTD', 'public', 'verified', ARRAY['KR'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'broadline_distributor'),
+  ('gourmet f&b korea', ARRAY[]::text[], ARRAY['gourmet.co.kr'], NULL, 'Specialty food distribution', 'https://www.gourmet.co.kr', NULL, 'Contact rep', 'approved', 'seed', 'Gourmet F&B Korea', 'public', 'verified', ARRAY['KR'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'specialty_distributor'),
+  ('m''s food system', ARRAY[]::text[], ARRAY['maeil.com'], NULL, 'Foodservice distribution', 'https://www.maeil.com', NULL, 'Contact rep', 'approved', 'seed', 'M''s Food System', 'public', 'verified', ARRAY['KR'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'broadline_distributor'),
+  ('pulmuone foodmerce', ARRAY[]::text[], ARRAY['pulstory.pulmuone.com'], NULL, 'Foodservice distribution', 'https://www.pulstory.pulmuone.com', NULL, 'Contact rep', 'approved', 'seed', 'Pulmuone Foodmerce', 'public', 'verified', ARRAY['KR'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'broadline_distributor'),
+  ('samsung welstory', ARRAY[]::text[], ARRAY['samsungwelstory.com'], NULL, 'Food distribution / contract foodservice', 'https://www.samsungwelstory.com', NULL, 'Contact rep', 'approved', 'seed', 'Samsung Welstory', 'public', 'verified', ARRAY['KR'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'broadline_distributor'),
+  ('samyang corp.', ARRAY[]::text[], ARRAY['samyangcorp.com'], NULL, 'Food ingredients / foodservice', 'https://www.samyangcorp.com', NULL, 'Contact rep', 'approved', 'seed', 'Samyang Corp.', 'public', 'verified', ARRAY['KR'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'specialty_distributor'),
+  ('taekyung nongsan', ARRAY[]::text[], ARRAY['itaekyung.com'], NULL, 'Food ingredients / distribution', 'https://www.itaekyung.com', NULL, 'Contact rep', 'approved', 'seed', 'Taekyung Nongsan', 'public', 'verified', ARRAY['KR'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'specialty_distributor'),
+  ('a.f. wendling''s food service', ARRAY[]::text[], ARRAY['afwendling.com'], NULL, 'Broadline', 'https://www.afwendling.com', NULL, 'Contact rep', 'approved', 'seed', 'A.F. Wendling''s Food Service', 'public', 'verified', ARRAY['US'], ARRAY['US-WV', 'US-VA', 'US-PA'], 'multi_region', 'contact_vendor', 'broadline_distributor'),
+  ('avalon foodservice', ARRAY[]::text[], ARRAY['avalonfoods.com'], NULL, 'Broadline', 'https://www.avalonfoods.com', NULL, 'Contact rep', 'approved', 'seed', 'Avalon Foodservice, Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-OH', 'US-PA', 'US-WV'], 'multi_region', 'contact_vendor', 'broadline_distributor'),
+  ('baker''s authority', ARRAY[]::text[], ARRAY['bakersauthority.com'], NULL, 'Bakery ingredients / online', 'https://www.bakersauthority.com', NULL, 'Contact rep', 'approved', 'seed', 'Baker''s Authority', 'public', 'verified', ARRAY['US'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'online_retailer'),
+  ('birite foodservice distributors', ARRAY[]::text[], ARRAY['birite.com'], NULL, 'Broadline', 'https://www.birite.com', NULL, 'Contact rep', 'approved', 'seed', 'BiRite Foodservice Distributors', 'public', 'verified', ARRAY['US'], ARRAY['US-CA'], 'regional', 'contact_vendor', 'broadline_distributor'),
+  ('carolina food service of loris', ARRAY[]::text[], ARRAY['carolinafoodservice.com'], NULL, 'Broadline', 'https://www.carolinafoodservice.com', NULL, 'Contact rep', 'approved', 'seed', 'Carolina Food Service of Loris', 'public', 'verified', ARRAY['US'], ARRAY['US-NC', 'US-SC'], 'multi_region', 'contact_vendor', 'broadline_distributor'),
+  ('cash-wa distributing', ARRAY[]::text[], ARRAY['web.cashwa.com'], NULL, 'Broadline', 'https://www.web.cashwa.com', 'https://portal2.ftnirdc.com/en/cswa', 'Self-serve portal', 'approved', 'seed', 'Cash-Wa Distributing', 'public', 'verified', ARRAY['US'], ARRAY['US-NE', 'US-CO', 'US-WY', 'US-KS', 'US-OK', 'US-MO', 'US-IA', 'US-MN', 'US-SD', 'US-ND'], 'national', 'portal_link', 'broadline_distributor'),
+  ('core-mark', ARRAY[]::text[], ARRAY['core-mark.com'], NULL, 'Convenience distribution / PFG', 'https://www.core-mark.com', NULL, 'Contact rep', 'approved', 'seed', 'Core-Mark', 'public', 'verified', ARRAY['US'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'specialty_distributor'),
+  ('cotati food service', ARRAY[]::text[], ARRAY['cotatifoodservice.com'], NULL, 'Broadline', 'https://www.cotatifoodservice.com', NULL, 'Contact rep', 'approved', 'seed', 'Cotati Food Service', 'public', 'verified', ARRAY['US'], ARRAY['US-CA'], 'regional', 'contact_vendor', 'broadline_distributor'),
+  ('curtze food service', ARRAY[]::text[], ARRAY['curtze.com'], NULL, 'Broadline', 'https://www.curtze.com', NULL, 'Contact rep', 'approved', 'seed', 'Curtze Food Service', 'public', 'verified', ARRAY['US'], ARRAY['US-PA', 'US-NY', 'US-VA', 'US-WV', 'US-OH', 'US-MI', 'US-IN', 'US-KY', 'US-MD'], 'multi_region', 'contact_vendor', 'broadline_distributor'),
+  ('d''artagnan', ARRAY[]::text[], ARRAY['dartagnan.com'], NULL, 'Meat / specialty', 'https://www.dartagnan.com', NULL, 'Contact rep', 'approved', 'seed', 'D''Artagnan', 'public', 'verified', ARRAY['US'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'protein_distributor'),
+  ('dawn food products', ARRAY[]::text[], ARRAY['dawnfoods.com'], NULL, 'Bakery ingredients', 'https://www.dawnfoods.com', NULL, 'Contact rep', 'approved', 'seed', 'Dawn Food Products', 'public', 'verified', ARRAY['US'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'specialty_distributor'),
+  ('dennis food service', ARRAY[]::text[], ARRAY['dennisfoodservice.com'], NULL, 'Broadline', 'https://www.dennisfoodservice.com', NULL, 'Contact rep', 'approved', 'seed', 'Dennis Food Service', 'public', 'verified', ARRAY['US'], ARRAY['US-ME', 'US-NH'], 'multi_region', 'contact_vendor', 'broadline_distributor'),
+  ('diaz wholesale & manufacturing', ARRAY[]::text[], ARRAY['diazfoods.com'], NULL, 'Hispanic / specialty broadline', 'https://www.diazfoods.com', NULL, 'Contact rep', 'approved', 'seed', 'Diaz Wholesale & Manufacturing', 'public', 'verified', ARRAY['US'], ARRAY['US-GA', 'US-VA', 'US-NJ'], 'multi_region', 'contact_vendor', 'specialty_distributor'),
+  ('dicarlo distributors', ARRAY[]::text[], ARRAY['dicarlofood.com'], NULL, 'Italian / broadline', 'https://www.dicarlofood.com', NULL, 'Contact rep', 'approved', 'seed', 'DiCarlo Distributors, Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-MA', 'US-CT', 'US-NY', 'US-NJ', 'US-PA', 'US-DE', 'US-MD', 'US-DC'], 'multi_region', 'contact_vendor', 'broadline_distributor'),
+  ('divine specialties', ARRAY[]::text[], ARRAY['divinespecialties.com'], NULL, 'Bakery, chocolate and specialty ingredients', 'https://www.divinespecialties.com', 'https://www.divinespecialties.com/product-category/shop-online/', 'Public e-commerce', 'approved', 'seed', 'Divine Specialties', 'public', 'verified', ARRAY['US'], ARRAY['US-CA'], 'online_nationwide', 'public_ecommerce', 'specialty_distributor'),
+  ('driscoll foods', ARRAY[]::text[], ARRAY['driscollfoods.com'], NULL, 'Broadline', 'https://www.driscollfoods.com', NULL, 'Contact rep', 'approved', 'seed', 'Driscoll Foods', 'public', 'verified', ARRAY['US'], ARRAY['US-NJ', 'US-NY', 'US-PA', 'US-CT'], 'multi_region', 'contact_vendor', 'broadline_distributor'),
+  ('emaco food services', ARRAY[]::text[], ARRAY['emacofs.com'], NULL, 'Broadline land and marine food distribution', 'https://www.emacofs.com', NULL, 'Contact rep', 'approved', 'seed', 'Emaco Food Services', 'public', 'verified', ARRAY['US'], ARRAY['US-LA'], 'regional', 'contact_vendor', 'broadline_distributor'),
+  ('feeser''s', ARRAY[]::text[], ARRAY['feesers.com'], NULL, 'Broadline', 'https://www.feesers.com', NULL, 'Contact rep', 'approved', 'seed', 'Feeser''s, Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-PA', 'US-NJ', 'US-DE', 'US-MD', 'US-NY', 'US-VA', 'US-WV', 'US-DC'], 'multi_region', 'contact_vendor', 'broadline_distributor'),
+  ('foodist', ARRAY[]::text[], ARRAY['efoodist.com'], NULL, 'Online / specialty', 'https://www.efoodist.com', NULL, 'Contact rep', 'approved', 'seed', 'Foodist', 'public', 'verified', ARRAY['US'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'online_retailer'),
+  ('foodservicedirect', ARRAY[]::text[], ARRAY['foodservicedirect.com'], NULL, 'Online foodservice retailer', 'https://www.foodservicedirect.com', 'https://www.foodservicedirect.com/', 'Public e-commerce', 'approved', 'seed', 'FoodServiceDirect', 'public', 'verified', ARRAY['US'], ARRAY[]::text[], 'online_nationwide', 'public_ecommerce', 'online_retailer'),
+  ('freshpoint', ARRAY[]::text[], ARRAY['freshpoint.com'], NULL, 'Produce / Sysco subsidiary', 'https://www.freshpoint.com', 'https://myfreshpoint.com/', 'Self-serve portal', 'approved', 'seed', 'FreshPoint', 'public', 'verified', ARRAY['US'], ARRAY['US-AZ', 'US-CA', 'US-CO', 'US-FL', 'US-GA', 'US-NC', 'US-SC', 'US-TN', 'US-TX', 'US-WA'], 'national', 'portal_link', 'produce_distributor'),
+  ('ginsberg''s foods', ARRAY[]::text[], ARRAY['ginsbergs.com'], 'food_order_entry', 'Broadline', 'https://www.ginsbergs.com', 'https://ginsbergsorder.com/', 'Self-serve portal', 'approved', 'seed', 'Ginsberg''s Foods', 'public', 'verified', ARRAY['US'], ARRAY['US-NY', 'US-VT', 'US-MA', 'US-CT', 'US-PA'], 'multi_region', 'portal_link', 'broadline_distributor'),
+  ('global market foods', ARRAY['GMF'], ARRAY['globalmarketfoods.com'], NULL, 'International and specialty food distribution', 'https://www.globalmarketfoods.com', 'https://www.globalmarketfoods.com/retailers', 'Self-serve portal', 'approved', 'seed', 'Global Market Foods', 'public', 'needs_review', ARRAY['US'], ARRAY['US-IL', 'US-CA', 'US-NJ', 'US-TX'], 'multi_region', 'portal_link', 'specialty_distributor'),
+  ('gnb wholesale', ARRAY['G&B Wholesale Foods', 'GNB Wholesale Foods'], ARRAY['gnbwholesale.com'], NULL, 'Meat and broadline foodservice', 'https://www.gnbwholesale.com', NULL, 'Contact rep', 'approved', 'seed', 'GnB Wholesale', 'public', 'verified', ARRAY['US'], ARRAY['US-CA'], 'regional', 'contact_vendor', 'protein_distributor'),
+  ('golden egg company', ARRAY[]::text[], ARRAY['goldeneggcompany.com'], NULL, 'Egg, dairy and foodservice distribution', 'https://www.goldeneggcompany.com', 'https://www.goldeneggcompany.com/', 'Public e-commerce', 'approved', 'seed', 'Golden Egg Company', 'public', 'verified', ARRAY['US'], ARRAY['US-CA'], 'online_nationwide', 'public_ecommerce', 'specialty_distributor'),
+  ('harbor foods group', ARRAY[]::text[], ARRAY['harborwholesale.com'], NULL, 'Broadline / convenience', 'https://www.harborwholesale.com', NULL, 'Contact rep', 'approved', 'seed', 'Harbor Foods Group', 'public', 'verified', ARRAY['US'], ARRAY['US-AK', 'US-WA', 'US-ID', 'US-OR', 'US-CA'], 'multi_region', 'contact_vendor', 'specialty_distributor'),
+  ('henry''s foods', ARRAY[]::text[], ARRAY['henrysfoods.com'], NULL, 'Broadline', 'https://www.henrysfoods.com', NULL, 'Contact rep', 'approved', 'seed', 'Henry''s Foods, Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-MN', 'US-ND', 'US-SD', 'US-WI', 'US-IA'], 'multi_region', 'contact_vendor', 'broadline_distributor'),
+  ('incollingo food service', ARRAY[]::text[], ARRAY['incollingofoods.com'], NULL, 'Italian / pizza / broadline foodservice', 'https://www.incollingofoods.com', 'https://www.incollingofoods.com/new-products-page', 'Self-serve portal', 'approved', 'seed', 'Incollingo Food Service', 'public', 'needs_review', ARRAY['US'], ARRAY['US-NJ', 'US-PA', 'US-DE', 'US-MD'], 'multi_region', 'portal_link', 'broadline_distributor'),
+  ('international gourmet foods', ARRAY[]::text[], ARRAY['igf-inc.com'], NULL, 'Specialty foods', 'https://www.igf-inc.com', NULL, 'Contact rep', 'approved', 'seed', 'International Gourmet Foods', 'public', 'verified', ARRAY['US'], ARRAY['US-VA', 'US-MD', 'US-DC', 'US-NC', 'US-TN', 'US-SC', 'US-GA'], 'multi_region', 'contact_vendor', 'specialty_distributor'),
+  ('jake''s finer foods', ARRAY[]::text[], ARRAY['jakesfinerfoods.com'], NULL, 'Broadline / specialty', 'https://www.jakesfinerfoods.com', NULL, 'Contact rep', 'approved', 'seed', 'Jake''s Finer Foods', 'public', 'verified', ARRAY['US'], ARRAY['US-TX', 'US-LA'], 'multi_region', 'contact_vendor', 'specialty_distributor'),
+  ('jordano''s foodservice', ARRAY[]::text[], ARRAY['jordanos.com'], NULL, 'Broadline', 'https://www.jordanos.com', NULL, 'Contact rep', 'approved', 'seed', 'Jordano''s Foodservice, Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-CA'], 'regional', 'contact_vendor', 'broadline_distributor'),
+  ('kansas marine', ARRAY[]::text[], ARRAY['kansasmarine.com'], NULL, 'Cruise-line food and hospitality supply', 'https://www.kansasmarine.com', NULL, 'Contact rep', 'approved', 'seed', 'Kansas Marine, Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-CA', 'US-WA'], 'multi_region', 'contact_vendor', 'broadline_distributor'),
+  ('king kold', ARRAY['King Kold Quality Meats', 'King Kold Meats'], ARRAY['kingkoldinc.com'], NULL, 'Meat and center-of-plate distribution', 'https://www.kingkoldinc.com', 'https://kingkoldinc.com/shop-meat-sides/', 'Public e-commerce', 'approved', 'seed', 'King Kold', 'public', 'verified', ARRAY['US'], ARRAY['US-OH'], 'online_nationwide', 'public_ecommerce', 'protein_distributor'),
+  ('kohl wholesale', ARRAY[]::text[], ARRAY['kohlwholesale.com'], NULL, 'Broadline', 'https://www.kohlwholesale.com', NULL, 'Contact rep', 'approved', 'seed', 'Kohl Wholesale', 'public', 'verified', ARRAY['US'], ARRAY['US-IL', 'US-IA', 'US-MO'], 'multi_region', 'contact_vendor', 'broadline_distributor'),
+  ('kos distribution', ARRAY[]::text[], ARRAY['kosdistribution.com'], NULL, 'Hispanic / Latin American grocery and foodservice distribution', 'https://www.kosdistribution.com', NULL, 'Contact rep', 'approved', 'seed', 'KOS Distribution', 'public', 'verified', ARRAY['US'], ARRAY['US-TN'], 'regional', 'contact_vendor', 'broadline_distributor'),
+  ('kuna foodservice', ARRAY[]::text[], ARRAY['kunafoodservice.com'], NULL, 'Broadline', 'https://www.kunafoodservice.com', NULL, 'Contact rep', 'approved', 'seed', 'Kuna Foodservice', 'public', 'verified', ARRAY['US'], ARRAY['US-MO', 'US-IL', 'US-IA', 'US-WI', 'US-IN', 'US-MI', 'US-KY', 'US-OH', 'US-AR', 'US-MS', 'US-AL'], 'national', 'contact_vendor', 'broadline_distributor'),
+  ('loffredo fresh foods', ARRAY[]::text[], ARRAY['loffredo.com'], NULL, 'Produce / broadline', 'https://www.loffredo.com', NULL, 'Contact rep', 'approved', 'seed', 'Loffredo Fresh Foods', 'public', 'verified', ARRAY['US'], ARRAY['US-IA', 'US-NE', 'US-IL', 'US-MO', 'US-WI'], 'multi_region', 'contact_vendor', 'produce_distributor'),
+  ('maplevale farms', ARRAY[]::text[], ARRAY['maplevalefarms.com'], NULL, 'Broadline', 'https://www.maplevalefarms.com', NULL, 'Contact rep', 'approved', 'seed', 'Maplevale Farms, Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-NY', 'US-PA', 'US-OH'], 'multi_region', 'contact_vendor', 'broadline_distributor'),
+  ('mclane foodservice', ARRAY[]::text[], ARRAY['mclaneco.com'], NULL, 'National chain / convenience', 'https://www.mclaneco.com', NULL, 'Contact rep', 'approved', 'seed', 'McLane Foodservice, Inc.', 'public', 'verified', ARRAY['US'], ARRAY[]::text[], 'unknown', 'contact_vendor', 'specialty_distributor'),
+  ('miller distributing', ARRAY[]::text[], ARRAY[]::text[], NULL, 'Convenience, grocery and foodservice wholesale', NULL, NULL, 'Contact rep', 'approved', 'seed', 'Miller Distributing', 'public', 'verified', ARRAY['US'], ARRAY['US-PA'], 'regional', 'contact_vendor', 'specialty_distributor'),
+  ('north bay wholesale', ARRAY['North Bay Wholefoods'], ARRAY['northbaywholesale.com'], NULL, 'Broadline / pizza and Mexican restaurant supply', 'https://www.northbaywholesale.com', 'https://www.northbaywholesale.com/shop', 'Public e-commerce', 'approved', 'seed', 'North Bay Wholesale', 'public', 'verified', ARRAY['US'], ARRAY['US-CA'], 'online_nationwide', 'public_ecommerce', 'broadline_distributor'),
+  ('northern haserot food service', ARRAY[]::text[], ARRAY['northernhaserot.com'], NULL, 'Broadline', 'https://www.northernhaserot.com', NULL, 'Contact rep', 'approved', 'seed', 'Northern Haserot Food Service', 'public', 'verified', ARRAY['US'], ARRAY['US-OH', 'US-MI'], 'multi_region', 'contact_vendor', 'broadline_distributor'),
+  ('pacific provisions hawaii', ARRAY[]::text[], ARRAY['pacificprovisionshawaii.com'], NULL, 'Broadline / Hawaii', 'https://www.pacificprovisionshawaii.com', NULL, 'Contact rep', 'approved', 'seed', 'Pacific Provisions Hawaii', 'public', 'verified', ARRAY['US'], ARRAY['US-HI'], 'regional', 'contact_vendor', 'broadline_distributor'),
+  ('palmer food services', ARRAY[]::text[], ARRAY['palmerfoods.com'], NULL, 'Broadline / center-of-plate', 'https://www.palmerfoods.com', 'https://palmerfoods.com/order-online/', 'Self-serve portal', 'approved', 'seed', 'Palmer Food Services', 'public', 'verified', ARRAY['US'], ARRAY['US-NY'], 'regional', 'portal_link', 'broadline_distributor'),
+  ('prime source foods', ARRAY[]::text[], ARRAY['primesourcefoods.biz'], NULL, 'Center-of-plate / specialty', 'https://www.primesourcefoods.biz', NULL, 'Contact rep', 'approved', 'seed', 'Prime Source Foods', 'public', 'verified', ARRAY['US'], ARRAY['US-NH', 'US-ME', 'US-MA', 'US-VT', 'US-CT', 'US-RI'], 'multi_region', 'contact_vendor', 'specialty_distributor'),
+  ('quaker valley foods', ARRAY[]::text[], ARRAY['quakervalleyfoods.com'], NULL, 'Meat / specialty broadline', 'https://www.quakervalleyfoods.com', NULL, 'Contact rep', 'approved', 'seed', 'Quaker Valley Foods, Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-PA', 'US-NJ', 'US-NY', 'US-DE', 'US-MD', 'US-DC', 'US-VA'], 'multi_region', 'contact_vendor', 'protein_distributor'),
+  ('ray''s produce', ARRAY[]::text[], ARRAY[]::text[], NULL, 'Produce distribution', NULL, NULL, 'Contact rep', 'approved', 'seed', 'Ray''s Produce, Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-OR', 'US-WA'], 'multi_region', 'contact_vendor', 'produce_distributor'),
+  ('s. abraham & sons', ARRAY[]::text[], ARRAY['sasinc.com'], NULL, 'Convenience / foodservice', 'https://www.sasinc.com', NULL, 'Contact rep', 'approved', 'seed', 'S. Abraham & Sons, Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-MI', 'US-IN', 'US-OH', 'US-IL', 'US-WI', 'US-KY'], 'multi_region', 'contact_vendor', 'specialty_distributor'),
+  ('sanwa food group', ARRAY[]::text[], ARRAY['sanwagrowers.com'], NULL, 'Produce / broadline', 'https://www.sanwagrowers.com', NULL, 'Contact rep', 'approved', 'seed', 'Sanwa Food Group', 'public', 'verified', ARRAY['US'], ARRAY['US-FL'], 'regional', 'contact_vendor', 'produce_distributor'),
+  ('saval foodservice', ARRAY[]::text[], ARRAY['savalfoods.com'], 'cut_and_dry', 'Broadline', 'https://www.savalfoods.com', 'https://savalfoodservice.cutanddry.com/', 'Self-serve portal', 'approved', 'seed', 'Saval Foodservice', 'public', 'verified', ARRAY['US'], ARRAY['US-MD', 'US-VA', 'US-DC', 'US-DE', 'US-PA'], 'multi_region', 'portal_link', 'broadline_distributor'),
+  ('scarmardo foodservice', ARRAY[]::text[], ARRAY['scarmardofoods.com'], NULL, 'Broadline', 'https://www.scarmardofoods.com', NULL, 'Contact rep', 'approved', 'seed', 'Scarmardo Foodservice Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-TX'], 'regional', 'contact_vendor', 'broadline_distributor'),
+  ('sgc foodservice', ARRAY[]::text[], ARRAY['sgcfoodservice.com'], 'powernet_pnet', 'Broadline', 'https://www.sgcfoodservice.com', 'https://pnet.sgcfoodservice.com/', 'Self-serve portal', 'approved', 'seed', 'SGC Foodservice', 'public', 'verified', ARRAY['US'], ARRAY['US-IL', 'US-MO', 'US-KS', 'US-OK', 'US-AR', 'US-TN'], 'multi_region', 'portal_link', 'broadline_distributor'),
+  ('shore foods', ARRAY[]::text[], ARRAY['shorefoodsnj.com'], NULL, 'Broadline foodservice', 'https://www.shorefoodsnj.com', 'https://shorefoodsnj.com/shop/', 'Public e-commerce', 'approved', 'seed', 'Shore Foods', 'public', 'verified', ARRAY['US'], ARRAY['US-NJ'], 'online_nationwide', 'public_ecommerce', 'broadline_distributor'),
+  ('snack attack', ARRAY['Snack Attack Distributing'], ARRAY['snackattackdistributors.com'], NULL, 'Institutional shelf-stable food and commissary supplies', 'https://www.snackattackdistributors.com', NULL, 'Contact rep', 'approved', 'seed', 'Snack Attack, Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-OH'], 'regional', 'contact_vendor', 'broadline_distributor'),
+  ('suisan company', ARRAY[]::text[], ARRAY['suisan.com'], NULL, 'Broadline / Hawaii', 'https://www.suisan.com', NULL, 'Contact rep', 'approved', 'seed', 'Suisan Company, Limited', 'public', 'verified', ARRAY['US'], ARRAY['US-HI'], 'regional', 'contact_vendor', 'broadline_distributor'),
+  ('upper lakes foods', ARRAY[]::text[], ARRAY['upperlakesfoods.com'], NULL, 'Broadline', 'https://www.upperlakesfoods.com', 'https://ulfweb.com/', 'Self-serve portal', 'approved', 'seed', 'Upper Lakes Foods Inc.', 'public', 'verified', ARRAY['US'], ARRAY['US-MN', 'US-WI', 'US-ND', 'US-SD', 'US-IA', 'US-IL', 'US-MI'], 'multi_region', 'portal_link', 'broadline_distributor'),
+  ('van eerden foodservice', ARRAY[]::text[], ARRAY['vaneerden.com'], NULL, 'Broadline', 'https://www.vaneerden.com', 'https://customer.vaneerden.com/', 'Self-serve portal', 'approved', 'seed', 'Van Eerden Foodservice', 'public', 'verified', ARRAY['US'], ARRAY['US-MI', 'US-IN'], 'multi_region', 'portal_link', 'broadline_distributor'),
+  ('warwick poultry', ARRAY[]::text[], ARRAY[]::text[], NULL, 'Poultry / center-of-plate', NULL, NULL, 'Contact rep', 'approved', 'seed', 'Warwick Poultry', 'public', 'verified', ARRAY['US'], ARRAY['US-ME', 'US-NH', 'US-VT', 'US-MA', 'US-RI', 'US-CT'], 'multi_region', 'contact_vendor', 'protein_distributor'),
+  ('web food store', ARRAY['WebFoodStore.com', 'WFS'], ARRAY['webfoodstore.com'], NULL, 'Online foodservice distributor', 'https://www.webfoodstore.com', 'https://webfoodstore.com/', 'Public e-commerce', 'approved', 'seed', 'Web Food Store', 'public', 'verified', ARRAY['US'], ARRAY[]::text[], 'online_nationwide', 'public_ecommerce', 'online_retailer'),
+  ('what chefs want', ARRAY['WCW'], ARRAY['whatchefswant.com'], 'cut_and_dry', 'Produce / specialty broadline', 'https://www.whatchefswant.com', 'https://whatchefswant.cutanddry.com/', 'Self-serve portal', 'approved', 'seed', 'What Chefs Want', 'public', 'verified', ARRAY['US'], ARRAY['US-AL', 'US-CO', 'US-FL', 'US-GA', 'US-IL', 'US-IN', 'US-KY', 'US-MO', 'US-NC', 'US-SC', 'US-OH', 'US-TN'], 'national', 'portal_link', 'produce_distributor'),
+  ('wood fruitticher food service', ARRAY[]::text[], ARRAY['woodfruitticher.com'], 'food_order_entry', 'Broadline', 'https://www.woodfruitticher.com', 'https://woodfruitticher.foodorderentry.com/?FromMobile=1', 'Self-serve portal', 'approved', 'seed', 'Wood Fruitticher Food Service', 'public', 'verified', ARRAY['US'], ARRAY['US-AL', 'US-GA', 'US-FL', 'US-MS', 'US-TN'], 'multi_region', 'portal_link', 'broadline_distributor'),
+  ('y. hata & co.', ARRAY[]::text[], ARRAY['yhata.com'], NULL, 'Broadline / Hawaii', 'https://www.yhata.com', NULL, 'Contact rep', 'approved', 'seed', 'Y. Hata & Co., Ltd.', 'public', 'verified', ARRAY['US'], ARRAY['US-HI'], 'regional', 'contact_vendor', 'broadline_distributor')
+  ('yen bros. food service', ARRAY[]::text[], ARRAY['yenbros.com'], NULL, 'Asian / broadline', 'https://www.yenbros.com', NULL, 'Contact rep', 'approved', 'seed', 'Yen Bros. Food Service', 'public', 'verified', ARRAY['US'], ARRAY['US-WA', 'US-OR'], 'multi_region', 'contact_vendor', 'broadline_distributor')
+    ON CONFLICT (normalized_name, (COALESCE(connector_id, ''))) DO NOTHING;
+
+    -- Set parent_vendor_id for FreshPoint (Sysco subsidiary) and Core-Mark (PFG subsidiary)
+    UPDATE platform_vendor_registry
+    SET parent_vendor_id = (SELECT id FROM platform_vendor_registry WHERE connector_id = 'sysco' LIMIT 1)
+    WHERE normalized_name = 'freshpoint' AND connector_id IS NULL;
+
+    UPDATE platform_vendor_registry
+    SET parent_vendor_id = (SELECT id FROM platform_vendor_registry WHERE connector_id = 'pfg' LIMIT 1)
+    WHERE normalized_name IN ('core-mark','core mark') AND connector_id IS NULL;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v054', 'T6: Import 82 v2-only Approved seed records into platform_vendor_registry');
+  END IF;
+END $$;
+
+-- =============================================================================
+-- v055 — T8: Classify existing DB-only records by vendor_role and ordering_mode
+-- Applies to rows that have vendor_role IS NULL (seeded before T6 classification).
+-- =============================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v055') THEN
+
+    -- Set vendor_role based on category for all unclassified seed rows
+    UPDATE platform_vendor_registry
+    SET vendor_role = CASE
+      WHEN category ILIKE '%produce%' OR category ILIKE '%fruit%' OR category ILIKE '%vegetab%'
+        THEN 'produce_distributor'
+      WHEN category ILIKE '%protein%' OR category ILIKE '%meat%' OR category ILIKE '%poultry%'
+        OR category ILIKE '%seafood%' OR category ILIKE '%beef%' OR category ILIKE '%pork%'
+        THEN 'protein_distributor'
+      WHEN category ILIKE '%beverage%' OR category ILIKE '%wine%' OR category ILIKE '%spirit%'
+        OR category ILIKE '%beer%' OR category ILIKE '%liquor%'
+        THEN 'beverage_distributor'
+      WHEN category ILIKE '%paper%' OR category ILIKE '%packaging%' OR category ILIKE '%sanit%'
+        OR category ILIKE '%janitorial%' OR category ILIKE '%disposable%'
+        THEN 'paper_and_packaging'
+      WHEN category ILIKE '%online%' OR category ILIKE '%e-commerce%' OR category ILIKE '%ecommerce%'
+        THEN 'online_retailer'
+      WHEN category ILIKE '%specialty%' OR category ILIKE '%gourmet%' OR category ILIKE '%natural%'
+        OR category ILIKE '%organic%' OR category ILIKE '%ethnic%' OR category ILIKE '%asian%'
+        OR category ILIKE '%bakery%' OR category ILIKE '%dairy%' OR category ILIKE '%ingredient%'
+        OR category ILIKE '%frozen%' OR category ILIKE '%snack%' OR category ILIKE '%convenience%'
+        THEN 'specialty_distributor'
+      WHEN category ILIKE '%redistrib%' OR category ILIKE '%wholesale%'
+        THEN 'redistributor'
+      ELSE 'broadline_distributor'
+    END
+    WHERE vendor_role IS NULL AND source = 'seed';
+
+    -- Set service_country_codes = ARRAY['US'] for all US seed records missing it
+    UPDATE platform_vendor_registry
+    SET service_country_codes = ARRAY['US']
+    WHERE service_country_codes = '{}'::text[]
+      AND source = 'seed'
+      -- exclude the international rows inserted in T6 (they already have correct country codes)
+      AND id NOT IN (
+        SELECT id FROM platform_vendor_registry
+        WHERE service_country_codes && ARRAY['BM','BR','CA','KR']
+      );
+
+    -- Set ordering_mode for rows that have an ordering_url but still show contact_vendor
+    UPDATE platform_vendor_registry
+    SET ordering_mode = 'portal_link'
+    WHERE ordering_mode = 'contact_vendor'
+      AND ordering_url IS NOT NULL
+      AND ordering_url <> ''
+      AND source = 'seed';
+
+    -- Known public-ecommerce rows (US Foods Chef''Store, WebstaurantStore variants)
+    UPDATE platform_vendor_registry
+    SET ordering_mode = 'public_ecommerce', service_scope = 'online_nationwide'
+    WHERE normalized_name IN ('us foods chefstore','chef store')
+      AND connector_id IS NULL;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v055', 'T8: Classify DB-only records by vendor_role and set ordering_mode, service_country_codes defaults');
+  END IF;
+END $$;

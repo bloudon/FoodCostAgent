@@ -35,7 +35,8 @@ export type ConnectorCapability =
   | 'retrieveInvoices'
   | 'exportOrderTemplate'
   | 'populateCart'
-  | 'submitOrder';
+  | 'submitOrder'
+  | 'openPortal';
 
 export interface CapabilitySpec {
   capability: ConnectorCapability;

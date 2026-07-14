@@ -1,0 +1,354 @@
+1. Do not import the 64 review and 17 reference-only records yet
+
+The current plan imports all 186 researched records into production:
+
+82 new approved
+64 new pending/hidden
+17 new reference-only
+
+That means adding 81 records that provide no immediate customer value.
+
+The simpler launch approach is:
+
+Group	Launch action
+20 matched approved	Update in place
+2 matched reference conflicts	Flag for admin review
+1 matched review concern	Flag for verification
+82 v2-only approved	Import
+64 v2-only review	Keep in workbook/staging file
+17 v2-only reference	Keep in workbook/staging file
+118 database-only records	Preserve; classify gradually
+
+Importing hidden pending records creates an admin-review backlog before any customer has requested those vendors. Import them only when:
+
+A customer submits that vendor
+An administrator deliberately promotes it
+It becomes relevant to an expansion market
+A connector opportunity makes it valuable
+
+That is much more consistent with:
+
+Seed enough to be intelligent, then let customer demand grow the registry.
+
+2. Do not use connector_id to determine company vendor usage
+
+This ranking rule is unsafe:
+
+Vendor already used by this company
+→ customer_supplier_connections.connector_id match
+
+Multiple vendors can share the same connector:
+
+Saval → cut_and_dry
+What Chefs Want → cut_and_dry
+
+A company using Saval does not mean it also uses What Chefs Want.
+
+Either add an explicit nullable relationship:
+
+platform_vendor_registry_id uuid
+  REFERENCES platform_vendor_registry(id)
+  ON DELETE SET NULL
+
+to the appropriate company vendor/connection table, or omit the “already used by this company” ranking boost until that relationship exists.
+
+Never infer vendor identity solely from connector_id.
+
+3. A portal link is not punchout and does not populate a cart
+
+These capabilities overstate what is verified:
+
+populateCart: "punchout"
+
+A portal URL is simply a portal URL. Unless the application passes the order into the vendor cart, it does not populate anything and is not punchout.
+
+Use capability names such as:
+
+{
+  connectorId: "cut_and_dry",
+  capabilities: {
+    openPortal: true,
+    exportOrderFile: "csv",
+    populateCart: false,
+    retrieveCatalog: false,
+    submitOrder: false
+  }
+}
+
+For the others:
+
+{
+  connectorId: "powernet_pnet",
+  capabilities: {
+    openPortal: true,
+    exportOrderFile: false,
+    populateCart: false
+  }
+}
+{
+  connectorId: "food_order_entry",
+  capabilities: {
+    openPortal: true,
+    exportOrderFile: false,
+    populateCart: false
+  }
+}
+
+Capabilities can be upgraded when verified.
+
+4. Completely retire the recurring startup seed
+
+The safer alternative Replit proposed should become the required approach:
+
+Gate the old seed behind a completed migration version and stop running it permanently.
+
+ON CONFLICT DO NOTHING is better than overwriting, but it still leaves old seed logic in the application forever and may recreate records if names or connector IDs change.
+
+Recommended process:
+
+Back up production.
+Run the legacy 141 seed once where it has not already run.
+Record the migration version.
+Disable both startup seed blocks.
+Apply all future vendor changes through explicit migrations or admin workflows.
+
+The application should not continuously synchronize production vendor data from server/index.ts.
+
+5. Require a mutually exclusive machine-generated diff
+
+The narrative report still has overlapping classifications:
+
+Reinhart appears under database-only and duplicate/conflict analysis.
+Vistar appears under matched and duplicate/conflict analysis.
+FreshPoint exists as a Sysco alias but not as a standalone current row.
+Wood Fruitticher appears in the review list followed by a correction saying it belongs in approved.
+
+Those overlaps are understandable in analysis, but the actual import file must assign each row exactly one migration action.
+
+The generated diff should enforce:
+
+Current 141 unique rows
+= UPDATE_IN_PLACE
++ FLAG_EXISTING
++ DATABASE_ONLY_RETAIN
++ OPERATING_BRAND_CONFLICT
+
+And separately:
+
+V2 186 unique rows
+= 23 matched
++ 82 v2-only approved
++ 64 v2-only review
++ 17 v2-only reference
+
+The JSON generator should fail if:
+
+Counts do not reconcile
+A vendor key appears in multiple import buckets
+A website domain produces an unresolved collision
+A proposed parent ID cannot be resolved
+A connector key does not exist
+Recommended implementation scope
+Build now
+Neutralize startup reseeding.
+Add the new schema fields.
+Generate the exact migration diff.
+Resolve FreshPoint, Vistar, Reinhart and Performance Foodservice conflicts.
+Add conservative shared portal definitions.
+Update the 23 existing matched/flagged records.
+Import only the 82 v2-only approved records.
+Add geography-ranked search.
+Preserve all current database-only records until production usage is checked.
+Defer
+Importing the 64 hidden review records
+Importing the 17 new reference-only records
+Permanent migration-review UI
+Full merge workflow
+Usage tracking
+Exact delivery-area validation
+API behavior for Cut+Dry, PowerNet or Food Order Entry
+Bulk international-market activation beyond country-based ranking
+Final instruction for Replit
+Approved Direction with Final Scope Reduction
+
+The pre-implementation analysis is approved with the following required changes.
+
+1. Import only customer-useful v2 additions
+
+For the initial v2 migration:
+
+Update the 20 matched approved records in place
+Flag the 2 matched reference conflicts for review
+Flag AMCON for verification
+Import the 82 v2-only Approved seed records
+
+Do not import the following yet:
+
+64 v2-only Review before seed records
+17 v2-only Reference only records
+
+Keep those 81 records in the v2 workbook or migration source files.
+
+They may be imported later when:
+
+A customer submits or searches for the vendor
+A global administrator approves it
+A new country or market is activated
+A connector opportunity makes it relevant
+
+This avoids creating an artificial pending-review backlog and keeps the production registry focused on customer-useful vendors.
+
+2. Do not infer company vendor usage from connector ID
+
+Do not use:
+
+customer_supplier_connections.connector_id
+
+to determine whether a company uses a specific vendor.
+
+Shared connectors make that inaccurate.
+
+Example:
+
+Saval Foodservice → cut_and_dry
+What Chefs Want → cut_and_dry
+
+Add an explicit nullable registry relationship to the appropriate company-level vendor or connection record:
+
+platform_vendor_registry_id uuid NULL
+  REFERENCES platform_vendor_registry(id)
+  ON DELETE SET NULL
+
+If adding that relationship is outside this migration's scope, omit the “already used by company” ranking boost for now.
+
+3. Correct connector capabilities
+
+A portal link is not punchout and does not populate a cart.
+
+Use conservative capability definitions:
+
+{
+  connectorId: "cut_and_dry",
+  displayName: "Cut+Dry",
+  capabilities: {
+    openPortal: true,
+    exportOrderFile: "csv",
+    populateCart: false,
+    retrieveCatalog: false,
+    submitOrder: false
+  }
+}
+{
+  connectorId: "powernet_pnet",
+  displayName: "PowerNet (PNET)",
+  capabilities: {
+    openPortal: true,
+    exportOrderFile: false,
+    populateCart: false,
+    retrieveCatalog: false,
+    submitOrder: false
+  }
+}
+{
+  connectorId: "food_order_entry",
+  displayName: "Food Order Entry",
+  capabilities: {
+    openPortal: true,
+    exportOrderFile: false,
+    populateCart: false,
+    retrieveCatalog: false,
+    submitOrder: false
+  }
+}
+
+Upgrade capabilities only after the behavior is verified.
+
+Keep:
+
+public_ecommerce
+
+as an ordering_mode, not a connector.
+
+4. Permanently neutralize startup seed behavior
+
+Do not leave the legacy registry seeds running on every deployment.
+
+Required sequence:
+
+Confirm whether the 141-row seed has run in production
+Back up the production database
+Record a completed migration version
+Disable both recurring startup seed blocks
+Apply all future vendor changes through versioned migrations or admin actions
+
+Do not rely solely on ON CONFLICT DO NOTHING as the permanent architecture.
+
+5. Generate a mutually exclusive migration diff
+
+The final JSON and CSV must assign every current and proposed row to exactly one action.
+
+Required action values:
+
+UPDATE_IN_PLACE
+FLAG_EXISTING_REVIEW
+RETAIN_DATABASE_ONLY
+RESOLVE_OPERATING_BRAND_CONFLICT
+IMPORT_APPROVED
+DEFER_REVIEW
+DEFER_REFERENCE
+
+Validation requirements:
+
+Current unique seed rows = 141
+Matched v2 records = 23
+V2-only approved = 82
+V2-only review = 64
+V2-only reference = 17
+Complete v2 total = 186
+
+The migration command must fail before writing if:
+
+A vendor appears in multiple import actions
+Counts do not reconcile
+A domain collision remains unresolved
+A parent vendor cannot be resolved
+A proposed connector key does not exist
+A canonical name or vendor key is duplicated
+6. Geography representation
+
+Transform state abbreviations from the workbook into ISO subdivision codes during import:
+
+FL → US-FL
+GA → US-GA
+ON → CA-ON
+QC → CA-QC
+
+Use explicit service_scope.
+
+An empty region array must never imply national coverage.
+
+7. Implementation order
+Ticket 0 — Disable recurring startup seed behavior
+Ticket 1 — Add classification, geography and parent fields
+Ticket 2 — Generate and validate the exact migration diff
+Ticket 3 — Resolve FreshPoint, Vistar, Reinhart and PFS/PFG conflicts
+Ticket 4 — Add conservative shared portal definitions
+Ticket 5 — Update the 23 matched/flagged existing records
+Ticket 6 — Import the 82 v2-only approved records
+Ticket 7 — Add geography-ranked search
+Ticket 8 — Classify existing database-only records without deleting them
+
+Do not import the 64 review or 17 reference-only v2 additions during this implementation.
+
+Required final response before writes
+
+Return:
+
+The production backup and rollback plan.
+The mutually exclusive migration-diff summary.
+The exact 82 approved import records.
+The resolved actions for FreshPoint, Vistar, Reinhart and Performance Foodservice.
+The final connector capability definitions.
+Confirmation that startup reseeding will be permanently disabled.
+Confirmation that the migration validates counts and duplicates before writing.
+Confirmation that no production write occurs until the production registry has been queried and backed up.
