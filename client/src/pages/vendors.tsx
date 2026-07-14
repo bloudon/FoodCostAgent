@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
   Table,
   TableBody,
@@ -186,10 +186,20 @@ export default function Vendors() {
     },
   });
 
-  const upsertConnector = async (vendorId: string, cid: string) => {
-    if (!cid) return;
+  const upsertConnector = async (vendorId: string, cid: string, vendorName: string, vendorWebsite?: string) => {
     try {
-      await apiRequest("PUT", `/api/supplier-connections/${vendorId}`, { connectorId: cid, isActive: 1 });
+      if (cid) {
+        await apiRequest("PUT", `/api/supplier-connections/${vendorId}`, { connectorId: cid, isActive: 1 });
+        // Suggest this name→connector mapping for the registry (non-blocking)
+        apiRequest("POST", "/api/vendor-registry/suggest", {
+          vendorName,
+          connectorId: cid,
+          websiteDomain: vendorWebsite || undefined,
+        }).catch(() => {});
+      } else {
+        // Connector was cleared — delete the connection row if one exists
+        await apiRequest("DELETE", `/api/supplier-connections/by-vendor/${vendorId}`);
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/supplier-connections"] });
     } catch {
       // non-fatal — vendor was created/updated successfully
@@ -202,7 +212,8 @@ export default function Vendors() {
       return await res.json() as Vendor;
     },
     onSuccess: async (createdVendor: Vendor) => {
-      await upsertConnector(createdVendor.id, connectorId);
+      const formVals = form.getValues();
+      await upsertConnector(createdVendor.id, connectorId, formVals.name, formVals.website);
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       toast({
         title: "Success",
@@ -232,7 +243,10 @@ export default function Vendors() {
       return await apiRequest("PATCH", `/api/vendors/${id}`, data);
     },
     onSuccess: async () => {
-      if (editingVendor) await upsertConnector(editingVendor.id, connectorId);
+      if (editingVendor) {
+        const formVals = form.getValues();
+        await upsertConnector(editingVendor.id, connectorId, formVals.name, formVals.website);
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       toast({
         title: "Success",
@@ -464,15 +478,26 @@ export default function Vendors() {
     });
   }, [filteredVendors, sortField, sortDirection, vendorItems]);
 
-  const detectConnector = (name: string): string => {
-    const n = name.toLowerCase();
-    if (n.includes("sysco")) return "sysco";
-    if (n.includes("gfs") || n.includes("gordon food")) return "gfs";
-    if (n.includes("us foods") || n.includes("usfoods")) return "usfoods";
-    if (n.includes("performance food") || n.includes(" pfs")) return "pfs";
-    if (n.includes("southern food") || n.includes("sofo")) return "sofo";
-    return "";
-  };
+  // Debounced registry detect: when the vendor name or website changes in the dialog,
+  // query the registry API to auto-suggest a connector.
+  const detectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detectConnectorFromRegistry = useCallback((name: string, website: string) => {
+    if (detectTimerRef.current) clearTimeout(detectTimerRef.current);
+    if (!name.trim() && !website.trim()) return;
+    detectTimerRef.current = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams();
+        if (name.trim()) params.set("name", name.trim());
+        if (website.trim()) params.set("website", website.trim());
+        const res = await fetch(`/api/vendor-registry/detect?${params}`, { credentials: "include" });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json?.data?.connectorId) {
+          setConnectorId(json.data.connectorId);
+        }
+      } catch { /* non-fatal */ }
+    }, 400);
+  }, []);
 
   const handleCreateClick = () => {
     setEditingVendor(null);
@@ -499,7 +524,12 @@ export default function Vendors() {
   const handleEditClick = (vendor: Vendor) => {
     setEditingVendor(vendor);
     const existing = supplierConnectionsData?.data?.find(c => c.vendorId === vendor.id);
-    setConnectorId(existing?.connectorId ?? detectConnector(vendor.name));
+    const existingConnectorId = existing?.connectorId ?? "";
+    setConnectorId(existingConnectorId);
+    // If no existing connection, auto-detect from registry
+    if (!existingConnectorId) {
+      detectConnectorFromRegistry(vendor.name, vendor.website ?? "");
+    }
     form.reset({
       name: vendor.name,
       accountNumber: vendor.accountNumber || "",
@@ -844,9 +874,8 @@ export default function Vendors() {
                           data-testid="input-vendor-name"
                           onChange={(e) => {
                             field.onChange(e);
-                            if (!editingVendor) {
-                              const detected = detectConnector(e.target.value);
-                              if (detected) setConnectorId(detected);
+                            if (!connectorId) {
+                              detectConnectorFromRegistry(e.target.value, form.getValues("website") ?? "");
                             }
                           }}
                         />
@@ -909,6 +938,12 @@ export default function Vendors() {
                           {...field}
                           value={field.value || ""}
                           data-testid="input-vendor-website"
+                          onChange={(e) => {
+                            field.onChange(e);
+                            if (!connectorId) {
+                              detectConnectorFromRegistry(form.getValues("name") ?? "", e.target.value);
+                            }
+                          }}
                         />
                       </FormControl>
                       <FormMessage />

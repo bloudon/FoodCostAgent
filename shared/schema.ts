@@ -1707,6 +1707,42 @@ export const insertShelfScanSessionSchema = createInsertSchema(shelfScanSessions
 export type InsertShelfScanSession = z.infer<typeof insertShelfScanSessionSchema>;
 export type ShelfScanSession = typeof shelfScanSessions.$inferSelect;
 
+// ===== Task #396: Platform Vendor Registry =====
+// Global lookup table for known distributor names → connector mappings.
+// Seeded entries are pre-approved; user-submitted entries require global_admin review.
+export const platformVendorRegistry = pgTable("platform_vendor_registry", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** Canonical lower-cased name, e.g. "sysco" */
+  normalizedName: text("normalized_name").notNull(),
+  /** Alternative names/abbreviations that match this entry, e.g. ["sysco corporation", "sysco foods"] */
+  aliases: text("aliases").array().notNull().default(sql`'{}'::text[]`),
+  /** Website domains associated with this distributor, e.g. ["sysco.com"] */
+  websiteDomains: text("website_domains").array().notNull().default(sql`'{}'::text[]`),
+  /** Connector identifier — must match a key in connectorRegistry.ts */
+  connectorId: text("connector_id").notNull(),
+  /** Lifecycle state: approved | pending | rejected */
+  status: text("status").notNull().default("approved"),
+  /** How this entry was created: seed | user_submitted */
+  source: text("source").notNull().default("seed"),
+  /** Company that submitted this entry (null for seeds) */
+  submittedByCompanyId: varchar("submitted_by_company_id"),
+  /** When a global_admin reviewed this entry */
+  reviewedAt: timestamp("reviewed_at"),
+  /** Optional notes from the reviewer */
+  reviewNotes: text("review_notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  normalizedConnectorUniq: uniqueIndex("pvr_normalized_connector_uniq").on(table.normalizedName, table.connectorId),
+  statusIdx: index("pvr_status_idx").on(table.status),
+  connectorIdx: index("pvr_connector_idx").on(table.connectorId),
+}));
+
+export const insertPlatformVendorRegistrySchema = createInsertSchema(platformVendorRegistry).omit({
+  id: true, createdAt: true, reviewedAt: true,
+});
+export type InsertPlatformVendorRegistry = z.infer<typeof insertPlatformVendorRegistrySchema>;
+export type PlatformVendorRegistry = typeof platformVendorRegistry.$inferSelect;
+
 // ===== M2: Customer Supplier Connections =====
 // Links a company's vendor to a connector with capability-transport configuration.
 // When a row exists, capabilityRouter.ts uses it instead of name-based detection.

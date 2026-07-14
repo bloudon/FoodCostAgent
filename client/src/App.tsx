@@ -69,6 +69,7 @@ import ChoosePlan from "@/pages/choose-plan";
 import EnterpriseInquiry from "@/pages/enterprise-inquiry";
 import EnterpriseOnboarding from "@/pages/enterprise-onboarding";
 import AdminBackgrounds from "@/pages/admin-backgrounds";
+import AdminVendorRegistry from "@/pages/admin-vendor-registry";
 import MenuInsights from "@/pages/menu-insights";
 import AdminUsers from "@/pages/admin-users";
 import PrepChart from "@/pages/prep-chart";
@@ -348,6 +349,7 @@ function ProtectedLayoutContent() {
               <Route path="/settings" component={Settings} />
               <Route path="/admin/backgrounds" component={AdminBackgrounds} />
               <Route path="/admin/users" component={AdminUsers} />
+              <Route path="/admin/vendor-registry" component={AdminVendorRegistry} />
               <Route path="/prep-chart" component={PrepChart} />
               <Route path="/prep-chart/items/new" component={PrepItemBuilder} />
               <Route path="/prep-chart/items/:id" component={PrepItemBuilder} />

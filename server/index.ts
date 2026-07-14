@@ -227,6 +227,35 @@ async function runStartupMigrations() {
         END IF;
       END $$
     `);
+    // Task #396: Platform vendor registry — global distributor name→connector lookup table
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS platform_vendor_registry (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        normalized_name text NOT NULL,
+        aliases text[] NOT NULL DEFAULT '{}',
+        website_domains text[] NOT NULL DEFAULT '{}',
+        connector_id text NOT NULL,
+        status text NOT NULL DEFAULT 'approved',
+        source text NOT NULL DEFAULT 'seed',
+        submitted_by_company_id varchar,
+        reviewed_at timestamp,
+        review_notes text,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS pvr_normalized_connector_uniq ON platform_vendor_registry (normalized_name, connector_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS pvr_status_idx ON platform_vendor_registry (status)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS pvr_connector_idx ON platform_vendor_registry (connector_id)`);
+    // Seed known distributor entries (idempotent via ON CONFLICT DO NOTHING)
+    await db.execute(sql`
+      INSERT INTO platform_vendor_registry (normalized_name, aliases, website_domains, connector_id, status, source) VALUES
+        ('sysco', ARRAY['sysco corporation','sysco foods','sysco foodservice','sysco food service'], ARRAY['sysco.com','shop.sysco.com'], 'sysco', 'approved', 'seed'),
+        ('gordon food service', ARRAY['gfs','gordon foodservice','gordon food svc'], ARRAY['gfs.com','gordonfoodservice.com'], 'gfs', 'approved', 'seed'),
+        ('us foods', ARRAY['usfoods','us foodservice','us food service','us foods inc'], ARRAY['usfoods.com','usfood.com'], 'usfoods', 'approved', 'seed'),
+        ('performance food service', ARRAY['pfs','performance foodservice','performance food group','pfg'], ARRAY['pfgc.com','performancefoodservice.com'], 'pfs', 'approved', 'seed'),
+        ('southern foods', ARRAY['sofo','sofo foods','southern food service'], ARRAY['sofofoods.com'], 'sofo', 'approved', 'seed')
+      ON CONFLICT (normalized_name, connector_id) DO NOTHING
+    `);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

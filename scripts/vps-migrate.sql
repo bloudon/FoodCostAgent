@@ -1089,3 +1089,61 @@ DO $$ BEGIN
       VALUES ('v043', 'categories: add categories_company_id_name_unique constraint to match shared/schema.ts');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v044 — Task #396: Platform vendor registry
+-- Global distributor name→connector lookup table with seed data for known
+-- major distributors. User-submitted entries require global_admin review.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v044') THEN
+
+    CREATE TABLE IF NOT EXISTS platform_vendor_registry (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      normalized_name text NOT NULL,
+      aliases text[] NOT NULL DEFAULT '{}',
+      website_domains text[] NOT NULL DEFAULT '{}',
+      connector_id text NOT NULL,
+      status text NOT NULL DEFAULT 'approved',
+      source text NOT NULL DEFAULT 'seed',
+      submitted_by_company_id varchar,
+      reviewed_at timestamp,
+      review_notes text,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS pvr_normalized_connector_uniq
+      ON platform_vendor_registry (normalized_name, connector_id);
+    CREATE INDEX IF NOT EXISTS pvr_status_idx ON platform_vendor_registry (status);
+    CREATE INDEX IF NOT EXISTS pvr_connector_idx ON platform_vendor_registry (connector_id);
+
+    -- Seed known major distributors
+    INSERT INTO platform_vendor_registry
+      (normalized_name, aliases, website_domains, connector_id, status, source)
+    VALUES
+      ('sysco',
+       ARRAY['sysco corporation','sysco foods','sysco foodservice','sysco food service'],
+       ARRAY['sysco.com','shop.sysco.com'],
+       'sysco', 'approved', 'seed'),
+      ('gordon food service',
+       ARRAY['gfs','gordon foodservice','gordon food svc'],
+       ARRAY['gfs.com','gordonfoodservice.com'],
+       'gfs', 'approved', 'seed'),
+      ('us foods',
+       ARRAY['usfoods','us foodservice','us food service','us foods inc'],
+       ARRAY['usfoods.com','usfood.com'],
+       'usfoods', 'approved', 'seed'),
+      ('performance food service',
+       ARRAY['pfs','performance foodservice','performance food group','pfg'],
+       ARRAY['pfgc.com','performancefoodservice.com'],
+       'pfs', 'approved', 'seed'),
+      ('southern foods',
+       ARRAY['sofo','sofo foods','southern food service'],
+       ARRAY['sofofoods.com'],
+       'sofo', 'approved', 'seed')
+    ON CONFLICT (normalized_name, connector_id) DO NOTHING;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v044', 'Task #396: platform_vendor_registry table with seed data for known distributors');
+  END IF;
+END $$;

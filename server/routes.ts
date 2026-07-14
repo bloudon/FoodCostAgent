@@ -28,7 +28,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, max } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections } from "@shared/schema";
 import { getExportRenderer, detectConnectorFromVendorName } from "./integrations/export";
 import { resolveConnectorId } from "./integrations/capabilityRouter";
 import { listConnectorDefinitions } from "./integrations/connectorRegistry";
@@ -11091,6 +11091,187 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ data: listConnectorDefinitions() });
   });
 
+  // ── Platform Vendor Registry (Task #396) ─────────────────────────────────────
+
+  /**
+   * GET /api/vendor-registry/detect?name=&website=
+   * Looks up the approved registry for a connector match by vendor name or website domain.
+   * No auth required — safe to call from the vendor form without company context.
+   */
+  app.get("/api/vendor-registry/detect", async (req, res) => {
+    try {
+      const name = (req.query.name as string | undefined)?.trim().toLowerCase() ?? "";
+      const website = (req.query.website as string | undefined)?.trim().toLowerCase() ?? "";
+
+      if (!name && !website) {
+        return res.json({ data: null });
+      }
+
+      // Extract just the domain portion from URL inputs
+      let domain = website;
+      try {
+        if (website.startsWith("http://") || website.startsWith("https://")) {
+          domain = new URL(website).hostname.replace(/^www\./, "");
+        } else if (website.includes(".")) {
+          domain = website.replace(/^www\./, "").split("/")[0];
+        }
+      } catch { domain = website; }
+
+      // Build query: match by normalized_name, any alias, or any domain — approved only
+      const rows = await db.execute(sql`
+        SELECT id, normalized_name, connector_id, aliases, website_domains
+        FROM platform_vendor_registry
+        WHERE status = 'approved'
+          AND (
+            ${name} = ANY(aliases)
+            OR normalized_name = ${name}
+            OR (${name} != '' AND (
+              normalized_name ILIKE ${'%' + name + '%'}
+              OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE a ILIKE ${'%' + name + '%'})
+            ))
+            OR (${domain} != '' AND ${domain} = ANY(website_domains))
+          )
+        ORDER BY
+          CASE
+            WHEN normalized_name = ${name} THEN 0
+            WHEN ${name} = ANY(aliases) THEN 1
+            WHEN ${domain} != '' AND ${domain} = ANY(website_domains) THEN 2
+            ELSE 3
+          END
+        LIMIT 1
+      `);
+
+      const row = (rows as any).rows?.[0] ?? (Array.isArray(rows) ? rows[0] : null);
+      if (!row) return res.json({ data: null });
+
+      const def = listConnectorDefinitions().find(d => d.connectorId === row.connector_id);
+      res.json({ data: { connectorId: row.connector_id, displayName: def?.displayName ?? row.connector_id } });
+    } catch (error: any) {
+      console.error("GET /api/vendor-registry/detect error:", error);
+      res.json({ data: null });
+    }
+  });
+
+  /**
+   * POST /api/vendor-registry/suggest
+   * Called after a vendor is saved with a connector selection that isn't yet in the
+   * approved registry. Creates a pending row for global_admin review.
+   * Body: { vendorName, connectorId, websiteDomain? }
+   */
+  app.post("/api/vendor-registry/suggest", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const parsed = z.object({
+        vendorName: z.string().min(1).max(200),
+        connectorId: z.string().min(1),
+        websiteDomain: z.string().optional(),
+      }).parse(req.body);
+
+      const normalizedName = parsed.vendorName.trim().toLowerCase();
+      const domains: string[] = parsed.websiteDomain
+        ? [parsed.websiteDomain.replace(/^www\./, "").split("/")[0]]
+        : [];
+
+      // Only create if no approved entry already covers this name+connector
+      const existing = await db.execute(sql`
+        SELECT id FROM platform_vendor_registry
+        WHERE connector_id = ${parsed.connectorId}
+          AND status = 'approved'
+          AND (normalized_name = ${normalizedName} OR ${normalizedName} = ANY(aliases))
+        LIMIT 1
+      `);
+      const existingRow = (existing as any).rows?.[0] ?? (Array.isArray(existing) ? existing[0] : null);
+      if (existingRow) {
+        return res.json({ data: { skipped: true, reason: "already_approved" } });
+      }
+
+      // Insert pending row — idempotent via ON CONFLICT DO NOTHING
+      await db.insert(platformVendorRegistry).values({
+        normalizedName,
+        aliases: [normalizedName],
+        websiteDomains: domains,
+        connectorId: parsed.connectorId,
+        status: "pending",
+        source: "user_submitted",
+        submittedByCompanyId: companyId,
+      }).onConflictDoNothing();
+
+      res.json({ data: { submitted: true } });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  /**
+   * GET /api/admin/vendor-registry — global_admin only
+   * Lists registry entries. Query param: ?status=pending|approved|rejected|all (default: all)
+   */
+  app.get("/api/admin/vendor-registry", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+
+      const status = (req.query.status as string | undefined) ?? "all";
+      const rows = await db.execute(sql`
+        SELECT pvr.*, c.name AS company_name
+        FROM platform_vendor_registry pvr
+        LEFT JOIN companies c ON c.id = pvr.submitted_by_company_id
+        ${status !== "all" ? sql`WHERE pvr.status = ${status}` : sql``}
+        ORDER BY
+          CASE pvr.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
+          pvr.created_at DESC
+      `);
+      const data = (rows as any).rows ?? (Array.isArray(rows) ? rows : []);
+      res.json({ data });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * PATCH /api/admin/vendor-registry/:id/review — global_admin only
+   * Approve or reject a pending entry.
+   * Body: { status: "approved"|"rejected", reviewNotes?: string }
+   */
+  app.patch("/api/admin/vendor-registry/:id/review", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+
+      const { id } = req.params;
+      const parsed = z.object({
+        status: z.enum(["approved", "rejected"]),
+        reviewNotes: z.string().optional(),
+      }).parse(req.body);
+
+      await db.execute(sql`
+        UPDATE platform_vendor_registry
+        SET status = ${parsed.status},
+            review_notes = ${parsed.reviewNotes ?? null},
+            reviewed_at = now()
+        WHERE id = ${id}
+      `);
+      res.json({ data: { ok: true } });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  /**
+   * DELETE /api/admin/vendor-registry/:id — global_admin only
+   * Hard-deletes a registry entry (use for removing erroneous user submissions).
+   */
+  app.delete("/api/admin/vendor-registry/:id", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+      await db.execute(sql`DELETE FROM platform_vendor_registry WHERE id = ${req.params.id}`);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ── Supplier Connections (per-company connector + transport config) ───────────
 
   // GET /api/supplier-connections — list all connections for this company
@@ -11128,6 +11309,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ data: connection });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // DELETE /api/supplier-connections/by-vendor/:vendorId — remove connection by vendorId (unlink)
+  app.delete("/api/supplier-connections/by-vendor/:vendorId", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { vendorId } = req.params;
+      await db
+        .delete(customerSupplierConnections)
+        .where(and(
+          eq(customerSupplierConnections.companyId, companyId),
+          eq(customerSupplierConnections.vendorId, vendorId),
+        ));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
     }
   });
 
