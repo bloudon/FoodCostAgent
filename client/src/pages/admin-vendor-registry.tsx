@@ -112,7 +112,9 @@ const CONNECTOR_LABELS: Record<string, string> = {
   sysco: "Sysco",
   gfs: "Gordon Food Service",
   usfoods: "US Foods",
-  pfs: "Performance Food Service",
+  pfs: "Performance Food Service / Reinhart / Vistar",
+  pfg: "Performance Food Group (Performance Net)",
+  bek: "Ben E. Keith",
   sofo: "Southern Foods",
   generic: "Generic Vendor",
 };

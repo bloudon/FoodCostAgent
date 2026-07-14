@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { SortableTableHead, useTableSort, sortData } from "@/components/sortable-table-head";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin, ScanLine, TriangleAlert, Link2, RefreshCw } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Zap, Upload, Store, MapPin, ScanLine, TriangleAlert, Link2, RefreshCw, Building2 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -104,6 +104,14 @@ export default function Vendors() {
   // Tracks how the connector was last set: "none" = untouched, "auto" = registry detect, "manual" = user explicitly chose
   const connectorSelectionSourceRef = useRef<"auto" | "manual" | "none">("none");
   const [connectorSelectionSource, setConnectorSelectionSource] = useState<"auto" | "manual" | "none">("none");
+
+  // Registry picker state (for the "Start from a known distributor" combobox in the Add Vendor dialog)
+  type RegResult = { id: string; normalizedName: string; website: string | null; connectorId: string | null; connectorDisplayName: string | null; category: string | null };
+  const [regQuery, setRegQuery] = useState("");
+  const [regResults, setRegResults] = useState<RegResult[]>([]);
+  const [regPickerOpen, setRegPickerOpen] = useState(false);
+  const [regLoading, setRegLoading] = useState(false);
+  const regTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { toast } = useToast();
   const { selectedStoreId, stores } = useStoreContext();
@@ -472,6 +480,24 @@ export default function Vendors() {
     });
   }, [filteredVendors, sortField, sortDirection, vendorItems]);
 
+  // Debounced registry search: for the "Start from a known distributor" picker in the Add Vendor dialog
+  const fetchRegResults = useCallback(async (q: string) => {
+    if (!q.trim()) { setRegResults([]); setRegPickerOpen(false); return; }
+    if (regTimerRef.current) clearTimeout(regTimerRef.current);
+    regTimerRef.current = setTimeout(async () => {
+      setRegLoading(true);
+      try {
+        const res = await fetch(`/api/vendor-registry/search?q=${encodeURIComponent(q)}&limit=8`, { credentials: "include" });
+        if (res.ok) {
+          const json = await res.json();
+          setRegResults(json.data ?? []);
+          setRegPickerOpen(true);
+        }
+      } catch { setRegResults([]); }
+      setRegLoading(false);
+    }, 280);
+  }, []);
+
   // Debounced registry detect: when the vendor name or website changes in the dialog,
   // query the registry API to auto-suggest a connector.
   const detectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -504,6 +530,9 @@ export default function Vendors() {
     setConnectorId("");
     connectorSelectionSourceRef.current = "none";
     setConnectorSelectionSource("none");
+    setRegQuery("");
+    setRegResults([]);
+    setRegPickerOpen(false);
     form.reset({ 
       name: "", 
       accountNumber: "", 
@@ -858,8 +887,15 @@ export default function Vendors() {
             clearTimeout(detectTimerRef.current);
             detectTimerRef.current = null;
           }
+          if (regTimerRef.current) {
+            clearTimeout(regTimerRef.current);
+            regTimerRef.current = null;
+          }
           connectorSelectionSourceRef.current = "none";
           setConnectorSelectionSource("none");
+          setRegQuery("");
+          setRegResults([]);
+          setRegPickerOpen(false);
         }
       }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dialog-vendor-form">
@@ -873,6 +909,78 @@ export default function Vendors() {
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+
+              {/* ── Registry Picker (create only) ────────────────── */}
+              {!editingVendor && (
+                <div className="pb-2 border-b space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-1.5">
+                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    Start from a known distributor
+                    <span className="text-muted-foreground font-normal text-xs">(Optional)</span>
+                  </label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    <Input
+                      placeholder="Search Sysco, US Foods, BEK, GFS, PFG…"
+                      value={regQuery}
+                      onChange={(e) => {
+                        setRegQuery(e.target.value);
+                        fetchRegResults(e.target.value);
+                      }}
+                      onFocus={() => { if (regResults.length > 0) setRegPickerOpen(true); }}
+                      onBlur={() => setTimeout(() => setRegPickerOpen(false), 160)}
+                      className="pl-9"
+                      data-testid="input-registry-search"
+                      autoComplete="off"
+                    />
+                    {regPickerOpen && (regLoading || regResults.length > 0) && (
+                      <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-popover border rounded-md shadow-md max-h-60 overflow-y-auto">
+                        {regLoading && regResults.length === 0 && (
+                          <div className="text-sm text-muted-foreground px-3 py-2">Searching…</div>
+                        )}
+                        {regResults.map((r) => {
+                          const titleName = r.normalizedName.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+                          return (
+                            <button
+                              key={r.id}
+                              type="button"
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-start justify-between gap-3"
+                              data-testid={`option-registry-${r.id}`}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                form.setValue("name", titleName, { shouldValidate: true });
+                                if (r.website) form.setValue("website", r.website, { shouldValidate: true });
+                                if (r.connectorId) {
+                                  if (detectTimerRef.current) { clearTimeout(detectTimerRef.current); detectTimerRef.current = null; }
+                                  setConnectorId(r.connectorId);
+                                  connectorSelectionSourceRef.current = "auto";
+                                  setConnectorSelectionSource("auto");
+                                }
+                                setRegQuery(titleName);
+                                setRegPickerOpen(false);
+                              }}
+                            >
+                              <span className="font-medium">{titleName}</span>
+                              <div className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
+                                {r.connectorDisplayName && <span>{r.connectorDisplayName}</span>}
+                                {r.category && <span className="opacity-70">· {r.category}</span>}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  {regQuery.trim() && !regLoading && regResults.length === 0 && (
+                    <p className="text-xs text-muted-foreground">No match found — fill in the details below manually.</p>
+                  )}
+                  {!regQuery && (
+                    <p className="text-xs text-muted-foreground">
+                      Selecting a known distributor pre-fills the name, website, and connector type.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* ── Vendor Info ─────────────────────────────────── */}
               <div className="space-y-4">

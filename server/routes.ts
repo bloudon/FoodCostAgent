@@ -11300,6 +11300,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
+   * GET /api/vendor-registry/search?q=&limit=
+   * Full-text search over approved registry entries. Used by the Add Vendor picker.
+   * Returns up to `limit` (default 8) matches sorted by relevance.
+   */
+  app.get("/api/vendor-registry/search", requireAuth, async (req, res) => {
+    try {
+      const q = (req.query.q as string | undefined)?.trim().toLowerCase() ?? "";
+      const limit = Math.min(parseInt((req.query.limit as string | undefined) ?? "8", 10) || 8, 20);
+      if (!q) return res.json({ data: [] });
+
+      const rows = await db.execute(sql`
+        SELECT id, normalized_name, website, connector_id, category
+        FROM platform_vendor_registry
+        WHERE status = 'approved'
+          AND (
+            normalized_name ILIKE ${"%" + q + "%"}
+            OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE a ILIKE ${"%" + q + "%"})
+            OR EXISTS (SELECT 1 FROM unnest(exact_aliases) ea WHERE ea ILIKE ${"%" + q + "%"})
+          )
+        ORDER BY
+          CASE
+            WHEN normalized_name ILIKE ${q + "%"} THEN 0
+            WHEN normalized_name ILIKE ${"%" + q + "%"} THEN 1
+            ELSE 2
+          END,
+          normalized_name
+        LIMIT ${limit}
+      `);
+
+      const rawRows: any[] = (rows as any).rows ?? (Array.isArray(rows) ? rows : []);
+      const defs = listConnectorDefinitions();
+      const data = rawRows.map((r: any) => {
+        const def = defs.find(d => d.connectorId === r.connector_id);
+        return {
+          id: r.id,
+          normalizedName: r.normalized_name as string,
+          website: (r.website as string | null) ?? null,
+          connectorId: (r.connector_id as string | null) ?? null,
+          connectorDisplayName: def?.displayName ?? (r.connector_id as string | null) ?? null,
+          category: (r.category as string | null) ?? null,
+        };
+      });
+
+      res.json({ data });
+    } catch (error: any) {
+      console.error("GET /api/vendor-registry/search error:", error);
+      res.json({ data: [] });
+    }
+  });
+
+  /**
    * POST /api/vendor-registry/suggest
    * Called after a vendor is saved with a connector selection that isn't yet in the
    * approved registry. Creates a pending row for global_admin review.
