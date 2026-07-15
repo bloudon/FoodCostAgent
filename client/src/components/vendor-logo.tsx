@@ -16,12 +16,17 @@ interface VendorLogoProps {
   className?: string;
 }
 
+const LOGO_SOURCES = [
+  (domain: string) => `https://logo.clearbit.com/${domain}`,
+  (domain: string) => `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
+];
+
 export function VendorLogo({ website, name, size = 32, className = "" }: VendorLogoProps) {
-  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const domain = extractDomain(website);
   const initial = name.charAt(0).toUpperCase();
 
-  if (!domain || failed) {
+  if (!domain || attempt >= LOGO_SOURCES.length) {
     return (
       <div
         className={`shrink-0 rounded-md bg-muted flex items-center justify-center text-muted-foreground font-semibold select-none ${className}`}
@@ -35,11 +40,11 @@ export function VendorLogo({ website, name, size = 32, className = "" }: VendorL
 
   return (
     <img
-      src={`https://logo.clearbit.com/${domain}`}
+      src={LOGO_SOURCES[attempt](domain)}
       alt=""
       className={`shrink-0 rounded-md object-contain bg-white ${className}`}
       style={{ width: size, height: size }}
-      onError={() => setFailed(true)}
+      onError={() => setAttempt((a) => a + 1)}
       aria-hidden="true"
     />
   );
