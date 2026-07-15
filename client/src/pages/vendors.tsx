@@ -488,7 +488,9 @@ export default function Vendors() {
     regTimerRef.current = setTimeout(async () => {
       setRegLoading(true);
       try {
-        const res = await fetch(`/api/vendor-registry/search?q=${encodeURIComponent(q)}&limit=8`, { credentials: "include" });
+        const storeState = stores.find(s => s.id === selectedStoreId)?.state ?? "";
+        const stateParam = storeState ? `&state=${encodeURIComponent(storeState)}` : "";
+        const res = await fetch(`/api/vendor-registry/search?q=${encodeURIComponent(q)}&limit=8${stateParam}`, { credentials: "include" });
         if (res.ok) {
           const json = await res.json();
           setRegResults(json.data ?? []);
@@ -497,7 +499,7 @@ export default function Vendors() {
       } catch { setRegResults([]); }
       setRegLoading(false);
     }, 280);
-  }, []);
+  }, [stores, selectedStoreId]);
 
   // Debounced registry detect: when the vendor name or website changes in the dialog,
   // query the registry API to auto-suggest a connector.
