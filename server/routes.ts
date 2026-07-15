@@ -11300,6 +11300,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
+   * GET /api/vendor-logo?domain=sysco.com
+   * Server-side proxy that fetches a favicon/logo for a vendor domain and streams it back.
+   * Using DuckDuckGo's favicon service (confirmed reachable from this host).
+   * Cached for 7 days so repeat page loads don't hit the upstream service.
+   */
+  app.get("/api/vendor-logo", async (req, res) => {
+    const domain = (req.query.domain as string | undefined)?.trim().toLowerCase();
+    if (!domain || !/^[a-z0-9._-]+\.[a-z]{2,}$/.test(domain)) {
+      return res.status(400).json({ error: "Invalid domain" });
+    }
+    try {
+      const https = await import("https");
+      const logoUrl = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
+      const upstream = await new Promise<import("http").IncomingMessage>((resolve, reject) => {
+        const req2 = https.get(logoUrl, resolve);
+        req2.on("error", reject);
+        req2.setTimeout(5000, () => { req2.destroy(); reject(new Error("timeout")); });
+      });
+      if (upstream.statusCode && upstream.statusCode >= 200 && upstream.statusCode < 300) {
+        res.set("Cache-Control", "public, max-age=604800"); // 7 days
+        res.set("Content-Type", upstream.headers["content-type"] ?? "image/x-icon");
+        upstream.pipe(res);
+      } else {
+        upstream.resume();
+        res.status(404).end();
+      }
+    } catch {
+      res.status(502).end();
+    }
+  });
+
+  /**
    * GET /api/vendor-registry/search?q=&limit=&state=XX
    * Full-text search over approved, public registry entries. Used by the Add Vendor picker.
    * Returns up to `limit` (default 8) matches sorted by:
