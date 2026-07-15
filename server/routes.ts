@@ -7502,6 +7502,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk vendor price comparison — one query for all items on a PO
+  app.get("/api/vendor-prices/bulk", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const idsParam = req.query.inventoryItemIds as string;
+      const currentVendorId = req.query.vendorId as string | undefined;
+
+      if (!idsParam) return res.json({ data: {} });
+      const inventoryItemIds = idsParam.split(",").filter(Boolean).slice(0, 200);
+      if (inventoryItemIds.length === 0) return res.json({ data: {} });
+
+      const allVendorItems = await db
+        .select()
+        .from(vendorItems)
+        .where(inArray(vendorItems.inventoryItemId, inventoryItemIds));
+
+      const allVendors = await storage.getVendors(companyId);
+      const allUnits = await storage.getUnits();
+
+      const result: Record<string, {
+        vendorPrices: { vendorId: string; vendorName: string; vendorSku: string | null; casePrice: number; unitPrice: number; caseSize: number; unitName: string }[];
+        cheaperAvailable: boolean;
+        savingsPerCase: number;
+        bestVendorName: string | null;
+      }> = {};
+
+      for (const itemId of inventoryItemIds) {
+        const itemVis = allVendorItems.filter(vi => vi.inventoryItemId === itemId && vi.lastPrice != null);
+        const vendorPrices = itemVis.map(vi => {
+          const vendor = allVendors.find(v => v.id === vi.vendorId);
+          const unit = allUnits.find(u => u.id === vi.purchaseUnitId);
+          const unitPrice = vi.lastPrice!;
+          const caseSize = vi.caseSize || 1;
+          const casePrice = (vi.lastCasePrice != null && vi.lastCasePrice > 0)
+            ? vi.lastCasePrice
+            : unitPrice * caseSize;
+          return { vendorId: vi.vendorId, vendorName: vendor?.name || "Unknown", vendorSku: vi.vendorSku, casePrice, unitPrice, caseSize, unitName: unit?.name || "" };
+        }).sort((a, b) => a.casePrice - b.casePrice);
+
+        if (vendorPrices.length < 2) {
+          result[itemId] = { vendorPrices, cheaperAvailable: false, savingsPerCase: 0, bestVendorName: null };
+          continue;
+        }
+
+        const currentPrice = currentVendorId ? vendorPrices.find(vp => vp.vendorId === currentVendorId)?.casePrice ?? null : null;
+        const bestPrice = vendorPrices[0].casePrice;
+        const cheaperAvailable = currentPrice !== null && bestPrice < currentPrice - 0.001;
+        result[itemId] = {
+          vendorPrices,
+          cheaperAvailable,
+          savingsPerCase: cheaperAvailable && currentPrice !== null ? currentPrice - bestPrice : 0,
+          bestVendorName: cheaperAvailable ? vendorPrices[0].vendorName : null,
+        };
+      }
+
+      res.json({ data: result });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/inventory-items", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;

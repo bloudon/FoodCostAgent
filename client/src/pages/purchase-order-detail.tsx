@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Save, Package, Search, PackageCheck, TrendingDown, CalendarIcon, Download, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
+import { ArrowLeft, Save, Package, Search, PackageCheck, TrendingDown, CalendarIcon, Download, CheckCircle2, AlertTriangle, Clock, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -129,6 +129,17 @@ type VendorPriceComparison = {
   }[];
 };
 
+type BulkComparisonEntry = {
+  vendorPrices: { vendorId: string; vendorName: string; vendorSku: string | null; casePrice: number; unitPrice: number; caseSize: number; unitName: string }[];
+  cheaperAvailable: boolean;
+  savingsPerCase: number;
+  bestVendorName: string | null;
+};
+
+type BulkComparisonResult = {
+  data: Record<string, BulkComparisonEntry>;
+};
+
 export default function PurchaseOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
@@ -240,6 +251,23 @@ export default function PurchaseOrderDetail() {
     queryKey: [`/api/inventory-items/${compareItemId}/vendor-prices`],
     enabled: !!compareItemId,
   });
+
+  // Bulk price comparison — fires once we know which items are on this PO and which vendor it's for
+  const bulkComparisonIds = !isMiscGrocery && selectedVendor && (vendorItems?.length ?? 0) > 0
+    ? vendorItems!.map(vi => vi.inventoryItemId).join(",")
+    : "";
+  const { data: bulkComparison } = useQuery<BulkComparisonResult>({
+    queryKey: [`/api/vendor-prices/bulk`, bulkComparisonIds, selectedVendor],
+    queryFn: () =>
+      fetch(`/api/vendor-prices/bulk?inventoryItemIds=${encodeURIComponent(bulkComparisonIds)}&vendorId=${encodeURIComponent(selectedVendor)}`, { credentials: "include" })
+        .then(r => r.json()),
+    enabled: bulkComparisonIds.length > 0 && !!selectedVendor,
+    staleTime: 60_000,
+  });
+
+  // Lookup helper: given an inventoryItemId, return its bulk comparison entry
+  const getComparison = (inventoryItemId: string): BulkComparisonEntry | undefined =>
+    bulkComparison?.data?.[inventoryItemId];
 
   // Fetch export history for this PO
   type ExportLog = {
@@ -967,21 +995,29 @@ export default function PurchaseOrderDetail() {
                                   <span className="text-muted-foreground font-normal ml-1">{vendorSku}</span>
                                 )}
                               </button>
-                              {isNew && !isMiscGrocery && (
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-6 w-6"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setCompareItemId(inventoryItemId);
-                                  }}
-                                  data-testid={`button-compare-${inventoryItemId}`}
-                                  title="Compare vendor prices"
-                                >
-                                  <TrendingDown className="h-4 w-4" />
-                                </Button>
-                              )}
+                              {!isMiscGrocery && !isReceived && (() => {
+                                const cmp = getComparison(inventoryItemId);
+                                const hasCheaper = cmp?.cheaperAvailable === true;
+                                return (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6 shrink-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setCompareItemId(inventoryItemId);
+                                    }}
+                                    data-testid={`button-compare-${inventoryItemId}`}
+                                    title={hasCheaper
+                                      ? `Cheaper at ${cmp!.bestVendorName} — save $${cmp!.savingsPerCase.toFixed(2)}/case`
+                                      : "Compare vendor prices"}
+                                  >
+                                    {hasCheaper
+                                      ? <Sparkles className="h-4 w-4 text-amber-500" />
+                                      : <TrendingDown className="h-4 w-4" />}
+                                  </Button>
+                                );
+                              })()}
                             </div>
                           </TableCell>
                           {!isMiscGrocery && (
@@ -1321,6 +1357,29 @@ export default function PurchaseOrderDetail() {
                                     <span className="text-muted-foreground font-normal ml-1">{vendorSku}</span>
                                   )}
                                 </button>
+                                {!isMiscGrocery && !isReceived && (() => {
+                                  const cmp = getComparison(inventoryItemId);
+                                  const hasCheaper = cmp?.cheaperAvailable === true;
+                                  return (
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-6 w-6 shrink-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setCompareItemId(inventoryItemId);
+                                      }}
+                                      data-testid={`button-compare-${inventoryItemId}`}
+                                      title={hasCheaper
+                                        ? `Cheaper at ${cmp!.bestVendorName} — save $${cmp!.savingsPerCase.toFixed(2)}/case`
+                                        : "Compare vendor prices"}
+                                    >
+                                      {hasCheaper
+                                        ? <Sparkles className="h-4 w-4 text-amber-500" />
+                                        : <TrendingDown className="h-4 w-4" />}
+                                    </Button>
+                                  );
+                                })()}
                               </TableCell>
                               {!isMiscGrocery && (
                                 <>
@@ -1676,50 +1735,86 @@ export default function PurchaseOrderDetail() {
           </DialogHeader>
           
           {vendorPriceComparison && vendorPriceComparison.vendorPrices.length > 0 ? (
-            <div className="border rounded-lg">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Vendor</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead className="text-right">Case Size</TableHead>
-                    <TableHead className="text-right">Unit Price</TableHead>
-                    <TableHead className="text-right">Case Price</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {vendorPriceComparison.vendorPrices.map((vp, index) => {
-                    const isLowestPrice = index === 0;
-                    return (
-                      <TableRow 
-                        key={vp.vendorId}
-                        className={isLowestPrice ? "bg-green-50 dark:bg-green-950/20" : ""}
-                        data-testid={`row-vendor-price-${vp.vendorId}`}
-                      >
-                        <TableCell className="font-medium">
-                          {vp.vendorName}
-                          {isLowestPrice && (
-                            <Badge variant="default" className="ml-2">Best Price</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {vp.vendorSku || '-'}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {vp.caseSize}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          ${vp.unitPrice.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono font-semibold">
-                          ${vp.casePrice.toFixed(2)}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+            <>
+              {(() => {
+                const prices = vendorPriceComparison.vendorPrices;
+                const currentVendorRow = prices.find(vp => vp.vendorId === selectedVendor);
+                const bestRow = prices[0];
+                const isBestAlready = bestRow.vendorId === selectedVendor;
+                const savings = currentVendorRow && !isBestAlready
+                  ? currentVendorRow.casePrice - bestRow.casePrice
+                  : 0;
+                if (isBestAlready) {
+                  return (
+                    <div className="flex items-center gap-2 rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-3 py-2 text-sm text-green-800 dark:text-green-300">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      You're already ordering from the best-priced vendor for this item.
+                    </div>
+                  );
+                }
+                if (savings > 0) {
+                  return (
+                    <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+                      <Sparkles className="h-4 w-4 shrink-0" />
+                      <span>
+                        <strong>{bestRow.vendorName}</strong> is <strong>${savings.toFixed(2)}/case cheaper</strong> than your current vendor for this item.
+                      </span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              <div className="border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead>SKU</TableHead>
+                      <TableHead className="text-right">Case Size</TableHead>
+                      <TableHead className="text-right">Unit Price</TableHead>
+                      <TableHead className="text-right">Case Price</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {vendorPriceComparison.vendorPrices.map((vp, index) => {
+                      const isLowestPrice = index === 0;
+                      const isCurrentVendor = vp.vendorId === selectedVendor;
+                      return (
+                        <TableRow 
+                          key={vp.vendorId}
+                          className={isLowestPrice ? "bg-green-50 dark:bg-green-950/20" : ""}
+                          data-testid={`row-vendor-price-${vp.vendorId}`}
+                        >
+                          <TableCell className="font-medium">
+                            <span className={isCurrentVendor ? "underline decoration-dotted" : ""} title={isCurrentVendor ? "Current PO vendor" : undefined}>
+                              {vp.vendorName}
+                            </span>
+                            {isLowestPrice && (
+                              <Badge variant="default" className="ml-2">Best Price</Badge>
+                            )}
+                            {isCurrentVendor && !isLowestPrice && (
+                              <Badge variant="outline" className="ml-2">Current</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {vp.vendorSku || '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            {vp.caseSize}
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            ${vp.unitPrice.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-semibold">
+                            ${vp.casePrice.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           ) : (
             <div className="py-8 text-center text-muted-foreground">
               No vendor pricing available for this item
