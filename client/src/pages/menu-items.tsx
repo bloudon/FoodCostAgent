@@ -64,6 +64,7 @@ interface MenuItem {
   isRecipeItem: number;
   active: number;
   price: number | null;
+  calorieCount: number | null;
   sortOrder: number;
   storeIds: string[];
   recipe?: {
@@ -555,6 +556,7 @@ export default function MenuItemsPage() {
       servingSizeQty: 1,
       servingUnitId: null,
       price: null,
+      calorieCount: null,
     },
   });
 
@@ -574,6 +576,7 @@ export default function MenuItemsPage() {
       servingSizeQty: 1,
       servingUnitId: null,
       price: null,
+      calorieCount: null,
     },
   });
 
@@ -1079,6 +1082,7 @@ export default function MenuItemsPage() {
       active: item.active,
       recipeId: item.recipeId,
       price: item.price,
+      calorieCount: item.calorieCount ?? null,
     });
     setSelectedStoresForEdit(item.storeIds || []);
     setEditDialogOpen(true);
@@ -1113,6 +1117,7 @@ export default function MenuItemsPage() {
       size: selectedSize?.name || data.size || undefined,
       menuItemSizeId: data.menuItemSizeId || undefined,
       price: data.price ?? undefined,
+      calorieCount: data.calorieCount ?? null,
     };
     updateItemMutation.mutate({ id: editingItem.id, data: payload, storeIds: selectedStoresForEdit });
   };
@@ -1537,6 +1542,26 @@ export default function MenuItemsPage() {
                   </div>
                   <FormField
                     control={form.control}
+                    name="calorieCount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Calories (Optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="1"
+                            placeholder="e.g., 560"
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : null)}
+                            data-testid="input-new-item-calories"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
                     name="menuItemSizeId"
                     render={({ field }) => (
                       <FormItem>
@@ -1957,6 +1982,26 @@ export default function MenuItemsPage() {
                       )}
                     />
                   </div>
+                  <FormField
+                    control={editForm.control}
+                    name="calorieCount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Calories (Optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="1"
+                            placeholder="e.g., 560"
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : null)}
+                            data-testid="input-edit-calories"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   {/* Size field - shown for variant children */}
                   {editingItem?.parentMenuItemId && (
                     <FormField
@@ -2514,27 +2559,32 @@ export default function MenuItemsPage() {
                             <TableCell className="font-mono text-sm hidden md:table-cell">{group.parent.pluSku}</TableCell>
                             <TableCell className="text-right">{renderRecipeCost(group.parent)}</TableCell>
                             <TableCell className="text-right font-mono text-sm">
-                              {group.variants.length > 0 ? (
-                                <div className="flex flex-col items-end gap-0.5">
-                                  {group.parent.price != null && (
-                                    <span>{`$${group.parent.price.toFixed(2)}`}</span>
-                                  )}
-                                  <button
-                                    onClick={() => toggleExpanded(group.parent.id)}
-                                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                                    data-testid={`button-size-price-toggle-${group.parent.id}`}
-                                  >
-                                    {group.variants.length} size{group.variants.length !== 1 ? 's' : ''}
-                                    {expandedItems.has(group.parent.id) ? (
-                                      <ChevronDown className="h-3 w-3" />
-                                    ) : (
-                                      <ChevronRight className="h-3 w-3" />
+                              <div className="flex flex-col items-end gap-0.5">
+                                {group.variants.length > 0 ? (
+                                  <>
+                                    {group.parent.price != null && (
+                                      <span>{`$${group.parent.price.toFixed(2)}`}</span>
                                     )}
-                                  </button>
-                                </div>
-                              ) : (
-                                group.parent.price != null ? `$${group.parent.price.toFixed(2)}` : <span className="text-muted-foreground">-</span>
-                              )}
+                                    <button
+                                      onClick={() => toggleExpanded(group.parent.id)}
+                                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                      data-testid={`button-size-price-toggle-${group.parent.id}`}
+                                    >
+                                      {group.variants.length} size{group.variants.length !== 1 ? 's' : ''}
+                                      {expandedItems.has(group.parent.id) ? (
+                                        <ChevronDown className="h-3 w-3" />
+                                      ) : (
+                                        <ChevronRight className="h-3 w-3" />
+                                      )}
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span>{group.parent.price != null ? `$${group.parent.price.toFixed(2)}` : <span className="text-muted-foreground">-</span>}</span>
+                                )}
+                                {group.parent.calorieCount != null && (
+                                  <span className="text-xs text-muted-foreground font-normal" data-testid={`text-calories-${group.parent.id}`}>{group.parent.calorieCount} cal</span>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell className="text-right hidden sm:table-cell">{renderFoodCostPercent(group.parent)}</TableCell>
                             <TableCell>
@@ -2825,11 +2875,12 @@ export default function MenuItemsPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm">
-                            {item.price != null ? (
-                              `$${item.price.toFixed(2)}`
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span>{item.price != null ? `$${item.price.toFixed(2)}` : <span className="text-muted-foreground">-</span>}</span>
+                              {item.calorieCount != null && (
+                                <span className="text-xs text-muted-foreground font-normal" data-testid={`text-calories-flat-${item.id}`}>{item.calorieCount} cal</span>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm" data-testid={`cell-food-cost-percent-${item.id}`}>
                             {recipe && item.price && item.price > 0 ? (

@@ -821,6 +821,7 @@ export const menuItems = pgTable("menu_items", {
   price: real("price"), // Menu item price (nullable until set)
   sortOrder: integer("sort_order").notNull().default(0), // For ordering size variants
   description: text("description"), // Description text extracted from menu scan (e.g. "crispy flatbread, garlic oil, pesto...")
+  calorieCount: integer("calorie_count"), // Optional calorie count per serving (extracted from menu scan or entered manually)
 }, (table) => ({
   uniqueCompanyPlu: unique().on(table.companyId, table.pluSku),
   parentMenuItemIdx: index("menu_items_parent_idx").on(table.parentMenuItemId),

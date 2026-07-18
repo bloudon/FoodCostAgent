@@ -2142,6 +2142,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           category: z.string().default(""),
           size: z.string().default(""),
           price: z.number().nullable().optional(),
+          calorieCount: z.number().nullable().optional(),
           variantGroupKey: z.string().optional().default(""),
         })),
         storeId: z.string().optional(),
@@ -2224,7 +2225,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: string; department: string | null; category: string | null;
           size: string | null; pluSku: string; price: number | null;
           sortOrder: number; parentMenuItemId?: string | null; menuItemSizeId?: string | null;
-          menuDepartmentId?: string | null; description?: string | null;
+          menuDepartmentId?: string | null; description?: string | null; calorieCount?: number | null;
         }): Promise<string> {
           const [row] = await tx.insert(menuItems).values({
             companyId, name: values.name, department: values.department, category: values.category,
@@ -2233,6 +2234,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             price: values.price, sortOrder: values.sortOrder,
             menuDepartmentId: values.menuDepartmentId ?? null,
             description: values.description ?? null,
+            calorieCount: values.calorieCount ?? null,
           }).returning();
           for (const sid of targetStoreIds) {
             await tx.insert(storeMenuItems).values({ companyId, storeId: sid, menuItemId: row.id, active: 1 }).onConflictDoNothing();
@@ -2263,10 +2265,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           if (hasMultipleSizes) {
             const parentPlu = `SCAN-${now}-${pluCounter++}`;
+            const representativeCalories = (representative as any).calorieCount ?? null;
             const parentId = await insertMenuItemRow({
               name: representative.name.trim(), department: representative.department || null,
               category: representative.category || null, size: null, pluSku: parentPlu, price: null, sortOrder: group.sortBase,
               menuDepartmentId, description: representativeDescription || null,
+              calorieCount: representativeCalories,
             });
             topLevelIds.push(parentId);
             if (representativeVariantKey) topLevelVariantKeys.push({ id: parentId, variantGroupKey: representativeVariantKey });
@@ -2281,7 +2285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 category: representative.category || null, size: variant.size || null,
                 pluSku: `SCAN-${now}-${pluCounter++}`, price: variant.price ?? null,
                 sortOrder: group.sortBase + j + 1, parentMenuItemId: parentId, menuItemSizeId,
-                menuDepartmentId,
+                menuDepartmentId, calorieCount: (variant as any).calorieCount ?? null,
               });
               txCreated++;
             }
@@ -2298,6 +2302,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 pluSku: `SCAN-${now}-${pluCounter++}`, price: item.price ?? null,
                 sortOrder: group.sortBase + j, menuItemSizeId,
                 menuDepartmentId, description: itemDescription || null,
+                calorieCount: (item as any).calorieCount ?? null,
               });
               topLevelIds.push(itemId);
               if (itemVariantKey) topLevelVariantKeys.push({ id: itemId, variantGroupKey: itemVariantKey });
@@ -6300,6 +6305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           category: z.string().default(""),
           size: z.string().default(""),
           price: z.number().nullable().optional(),
+          calorieCount: z.number().nullable().optional(),
         })),
         storeId: z.string().optional(),
         approvedVariantGroupKeys: z.array(z.string()).optional(),
@@ -6408,7 +6414,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           size: string | null; pluSku: string; price: number | null;
           sortOrder: number; parentMenuItemId?: string | null;
           menuItemSizeId?: string | null; menuDepartmentId?: string | null;
-          description?: string | null;
+          description?: string | null; calorieCount?: number | null;
         }): Promise<string> {
           const [row] = await tx.insert(menuItems).values({
             companyId,
@@ -6425,6 +6431,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             sortOrder: values.sortOrder,
             menuDepartmentId: values.menuDepartmentId ?? null,
             description: values.description ?? null,
+            calorieCount: values.calorieCount ?? null,
           }).returning();
 
           for (const sid of targetStoreIds) {
@@ -6464,6 +6471,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           if (hasMultipleSizes) {
             const parentPlu = `SCAN-${now}-${pluCounter++}`;
+            const representativeCalories = (representative as any).calorieCount ?? null;
             const parentId = await insertMenuItemRow({
               name: representative.name.trim(),
               department: representative.department || null,
@@ -6474,6 +6482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               sortOrder: group.sortBase,
               menuDepartmentId,
               description: representativeDescription || null,
+              calorieCount: representativeCalories,
             });
             if (representativeDescription) {
               topLevelForSeeding.push({ id: parentId, name: representative.name.trim(), description: representativeDescription, price: null });
@@ -6494,6 +6503,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 parentMenuItemId: parentId,
                 menuItemSizeId,
                 menuDepartmentId,
+                calorieCount: (variant as any).calorieCount ?? null,
               });
               txCreated++;
             }
@@ -6518,6 +6528,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 menuItemSizeId,
                 menuDepartmentId,
                 description: itemDescription || null,
+                calorieCount: (item as any).calorieCount ?? null,
               });
               if (itemDescription) {
                 topLevelForSeeding.push({ id: itemId, name: item.name.trim(), description: itemDescription, price: item.price ?? null });

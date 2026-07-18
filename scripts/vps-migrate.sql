@@ -2217,3 +2217,17 @@ BEGIN
       ON CONFLICT DO NOTHING;
   END IF;
 END $$;
+
+-- =============================================================================
+-- v057 — Task #417: calorie_count on menu_items
+-- Optional calorie count per serving — extracted from menu scan or entered manually.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v057') THEN
+
+    ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS calorie_count integer;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v057', 'Task #417: calorie_count on menu_items (optional, nullable integer)');
+  END IF;
+END $$;

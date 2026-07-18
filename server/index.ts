@@ -254,6 +254,8 @@ async function runStartupMigrations() {
     // Task #402: Track re-submissions on rejected entries
     await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS submission_count int NOT NULL DEFAULT 1`);
     await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS submitted_by_company_ids text[] NOT NULL DEFAULT ARRAY[]::text[]`);
+    // Task #417: calorie_count on menu_items — optional calorie count per serving
+    await db.execute(sql`ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS calorie_count integer`);
     // Task #407: Make connector_id nullable (vendors without a CSV/EDI connector get NULL)
     await db.execute(sql`ALTER TABLE platform_vendor_registry ALTER COLUMN connector_id DROP NOT NULL`);
     // Task #407: Add display metadata columns (category, website, ordering_url, portal_status)
