@@ -35,6 +35,7 @@ export interface ExtractedMenuItem {
   category: string;
   size: string;
   price: number | null;
+  calorieCount?: number | null;
   variantGroupKey?: string;
 }
 
@@ -155,6 +156,7 @@ export function MenuScanStep({
           category: i.category,
           size: i.size,
           price: i.price,
+          calorieCount: i.calorieCount ?? null,
           variantGroupKey: (i.variantGroupKey && !disabledVariantGroups.has(i.variantGroupKey)) ? i.variantGroupKey : "",
         })),
         storeId: storeId || undefined,

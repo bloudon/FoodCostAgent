@@ -41,9 +41,11 @@ interface ExtractedItem {
   category: string;
   size: string;
   price: number | null;
+  calorieCount?: number | null;
+  variantGroupKey?: string;
 }
 
-const EMPTY_ITEM: ExtractedItem = { name: '', description: '', department: '', category: '', size: '', price: null };
+const EMPTY_ITEM: ExtractedItem = { name: '', description: '', department: '', category: '', size: '', price: null, calorieCount: null };
 
 export default function MenuImport() {
   const [, navigate] = useLocation();
