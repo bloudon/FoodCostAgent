@@ -2231,3 +2231,35 @@ DO $$ BEGIN
       VALUES ('v057', 'Task #417: calorie_count on menu_items (optional, nullable integer)');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v058 — Task #419: Back-fill calorie_count and strip calorie annotations from
+--         menu_items.name for rows imported before the menuScanner fix.
+--
+-- Pattern matched (case-insensitive):
+--   optional-space ( digits [digits/spaces/hyphens/en-dashes] optional-space
+--   "cal" [optional letters or dot] ) optional-space
+--
+-- Examples stripped: "(560 cal)", "(570-680 cal)", "(315 calories)", "(160 Cal.)"
+--
+-- Safe to re-run: the WHERE clause only touches rows still containing the
+-- annotation pattern, so subsequent runs are no-ops.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v058') THEN
+
+    UPDATE menu_items
+    SET
+      -- Back-fill calorie_count only when it is still NULL
+      calorie_count = COALESCE(
+        calorie_count,
+        (regexp_match(name, '\((\d+)[\d\s\-–]*\s*[Cc][Aa][Ll][a-zA-Z.]*\)'))[1]::integer
+      ),
+      -- Strip the annotation from the name; trim any leftover whitespace
+      name = trim(regexp_replace(name, '\s*\(\d[\d\s\-–]*\s*cal[a-z.]*\)\s*', '', 'gi'))
+    WHERE name ~* '\(\d[\d\s\-–]*\s*cal[a-z.]*\)';
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v058', 'Task #419: strip calorie annotations from menu_items.name and back-fill calorie_count');
+  END IF;
+END $$;
