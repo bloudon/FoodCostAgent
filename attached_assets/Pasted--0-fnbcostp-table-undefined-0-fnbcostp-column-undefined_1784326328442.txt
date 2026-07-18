@@ -1,0 +1,102 @@
+
+0|fnbcostp |   table: undefined,
+0|fnbcostp |   column: undefined,
+0|fnbcostp |   dataType: undefined,
+0|fnbcostp |   constraint: undefined,
+0|fnbcostp |   file: 'parse_expr.c',
+0|fnbcostp |   line: '2029',
+0|fnbcostp |   routine: 'transformArrayExpr'
+0|fnbcostp | }
+0|fnbcostp | ⚠️ Startup migrations error (non-fatal): error: cannot determine type of empty array
+0|fnbcostp |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+0|fnbcostp |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+0|fnbcostp |     at async runStartupMigrations (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:29861:5)
+0|fnbcostp |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:30025:3 {
+0|fnbcostp |   length: 180,
+0|fnbcostp |   severity: 'ERROR',
+0|fnbcostp |   code: '42P18',
+0|fnbcostp |   detail: undefined,
+0|fnbcostp |   hint: 'Explicitly cast to the desired type, for example ARRAY[]::integer[].',
+0|fnbcostp |   position: '4872',
+0|fnbcostp |   internalPosition: undefined,
+0|fnbcostp |   internalQuery: undefined,
+0|fnbcostp |   where: undefined,
+0|fnbcostp |   schema: undefined,
+0|fnbcostp |   table: undefined,
+0|fnbcostp |   column: undefined,
+0|fnbcostp |   dataType: undefined,
+0|fnbcostp |   constraint: undefined,
+0|fnbcostp |   file: 'parse_expr.c',
+0|fnbcostp |   line: '2029',
+0|fnbcostp |   routine: 'transformArrayExpr'
+0|fnbcostp | }
+0|fnbcostp | ⚠️ Startup migrations error (non-fatal): error: cannot determine type of empty array
+0|fnbcostp |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+0|fnbcostp |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+0|fnbcostp |     at async runStartupMigrations (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:29861:5)
+0|fnbcostp |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:30025:3 {
+0|fnbcostp |   length: 180,
+0|fnbcostp |   severity: 'ERROR',
+0|fnbcostp |   code: '42P18',
+0|fnbcostp |   detail: undefined,
+0|fnbcostp |   hint: 'Explicitly cast to the desired type, for example ARRAY[]::integer[].',
+0|fnbcostp |   position: '4872',
+0|fnbcostp |   internalPosition: undefined,
+0|fnbcostp |   internalQuery: undefined,
+0|fnbcostp |   where: undefined,
+0|fnbcostp |   schema: undefined,
+0|fnbcostp |   table: undefined,
+0|fnbcostp |   column: undefined,
+0|fnbcostp |   dataType: undefined,
+0|fnbcostp |   constraint: undefined,
+0|fnbcostp |   file: 'parse_expr.c',
+0|fnbcostp |   line: '2029',
+0|fnbcostp |   routine: 'transformArrayExpr'
+0|fnbcostp | }
+0|fnbcostp | ⚠️ Startup migrations error (non-fatal): error: cannot determine type of empty array
+0|fnbcostp |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+0|fnbcostp |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+0|fnbcostp |     at async runStartupMigrations (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:29861:5)
+0|fnbcostp |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:30025:3 {
+0|fnbcostp |   length: 180,
+0|fnbcostp |   severity: 'ERROR',
+0|fnbcostp |   code: '42P18',
+0|fnbcostp |   detail: undefined,
+0|fnbcostp |   hint: 'Explicitly cast to the desired type, for example ARRAY[]::integer[].',
+0|fnbcostp |   position: '4872',
+0|fnbcostp |   internalPosition: undefined,
+0|fnbcostp |   internalQuery: undefined,
+0|fnbcostp |   where: undefined,
+0|fnbcostp |   schema: undefined,
+0|fnbcostp |   table: undefined,
+0|fnbcostp |   column: undefined,
+0|fnbcostp |   dataType: undefined,
+0|fnbcostp |   constraint: undefined,
+0|fnbcostp |   file: 'parse_expr.c',
+0|fnbcostp |   line: '2029',
+0|fnbcostp |   routine: 'transformArrayExpr'
+0|fnbcostp | }
+0|fnbcostp | ⚠️ Startup migrations error (non-fatal): error: cannot determine type of empty array
+0|fnbcostp |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+0|fnbcostp |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+0|fnbcostp |     at async runStartupMigrations (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:29861:5)
+0|fnbcostp |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:30025:3 {
+0|fnbcostp |   length: 180,
+0|fnbcostp |   severity: 'ERROR',
+0|fnbcostp |   code: '42P18',
+0|fnbcostp |   detail: undefined,
+0|fnbcostp |   hint: 'Explicitly cast to the desired type, for example ARRAY[]::integer[].',
+0|fnbcostp |   position: '4872',
+0|fnbcostp |   internalPosition: undefined,
+0|fnbcostp |   internalQuery: undefined,
+0|fnbcostp |   where: undefined,
+0|fnbcostp |   schema: undefined,
+0|fnbcostp |   table: undefined,
+0|fnbcostp |   column: undefined,
+0|fnbcostp |   dataType: undefined,
+0|fnbcostp |   constraint: undefined,
+0|fnbcostp |   file: 'parse_expr.c',
+0|fnbcostp |   line: '2029',
+0|fnbcostp |   routine: 'transformArrayExpr'
+0|fnbcostp | }
+

@@ -1,2 +1,3 @@
 - [Drizzle array params](drizzle-array-params.md) — pass string[] to raw sql`` via sql.join, never ANY(${array}) or ::uuid[] cast.
 - [Vendor Registry v2 migration](vendor-registry-v2.md) — seed gating via _migration_log, 10 new columns, 82 v2-only rows, geography search ranking.
+- [pg-driver empty array type](pg-empty-array-type.md) — `'{}'` in INSERT VALUES fails on VPS pg driver; use `ARRAY[]::text[]` instead.
