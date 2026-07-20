@@ -199,6 +199,12 @@ export function MenuScanStep({
       i === idx ? { ...item, calorieCount: value === "" ? null : isNaN(parsed) ? item.calorieCount : parsed } : item
     ));
   };
+  const updatePrice = (idx: number, value: string) => {
+    const parsed = parseFloat(value);
+    setItems(prev => prev.map((item, i) =>
+      i === idx ? { ...item, price: value === "" ? null : isNaN(parsed) ? item.price : parsed } : item
+    ));
+  };
 
   const handleBarAnswer = async (answer: boolean) => {
     setBarAnswer(answer);
@@ -366,7 +372,6 @@ export function MenuScanStep({
                   </div>
                   {indices.map((idx) => {
                     const item = items[idx];
-                    const hasPrice = item.price !== null && item.price > 0;
                     const hasDescription = item.description && item.description.trim().length > 0;
                     return (
                       <div key={idx} className="flex items-start gap-1 px-2 py-1 border-t">
@@ -379,11 +384,17 @@ export function MenuScanStep({
                               className="h-6 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent flex-1 text-xs"
                               data-testid={`input-item-name-${idx}`}
                             />
-                            {hasPrice && (
-                              <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 font-medium whitespace-nowrap">
-                                ${item.price!.toFixed(2)}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-0.5 flex-shrink-0">
+                              <span className="text-xs text-muted-foreground">$</span>
+                              <Input
+                                type="number"
+                                value={item.price ?? ""}
+                                onChange={e => updatePrice(idx, e.target.value)}
+                                placeholder="—"
+                                className="h-6 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent w-14 text-xs font-mono text-emerald-600 dark:text-emerald-400 font-medium placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                                data-testid={`input-item-price-${idx}`}
+                              />
+                            </div>
                           </div>
                           <div className="flex items-center gap-0.5 mt-0.5">
                             <Flame className="w-2.5 h-2.5 text-muted-foreground flex-shrink-0" />
