@@ -11,7 +11,7 @@ import { ObjectUploader } from "@/components/ObjectUploader";
 import {
   Check, Loader2, Trash2, Camera, Sparkles, Plus, ArrowRight,
   Wine, Utensils, BookOpen, ClipboardList, Package, Warehouse, BarChart3,
-  Layers, Flame,
+  Layers, Flame, AlertTriangle,
 } from "lucide-react";
 
 export interface MenuIntelligence {
@@ -70,6 +70,7 @@ export function MenuScanStep({
   );
   const [barSaving, setBarSaving] = useState(false);
   const [disabledVariantGroups, setDisabledVariantGroups] = useState<Set<string>>(new Set());
+  const [showZeroPriceConfirm, setShowZeroPriceConfirm] = useState(false);
 
   const handleUpload = async (objectPath: string) => {
     setUploadedImages([objectPath]);
@@ -189,6 +190,16 @@ export function MenuScanStep({
       toast({ title: "Import failed", description: err.message, variant: "destructive" });
     },
   });
+
+  const zeroPriceItems = items.filter(i => i.name.trim() && i.price === 0);
+
+  const handleImportClick = () => {
+    if (zeroPriceItems.length > 0) {
+      setShowZeroPriceConfirm(true);
+    } else {
+      approveMutation.mutate();
+    }
+  };
 
   const deleteItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx));
   const updateName = (idx: number, name: string) =>
@@ -385,6 +396,11 @@ export function MenuScanStep({
                               data-testid={`input-item-name-${idx}`}
                             />
                             <div className="flex items-center gap-0.5 flex-shrink-0">
+                              {item.price === 0 && (
+                                <span title="Price is $0.00 — food cost % cannot be calculated" data-testid={`icon-zero-price-${idx}`}>
+                                  <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                                </span>
+                              )}
                               <span className="text-xs text-muted-foreground">$</span>
                               <Input
                                 type="number"
@@ -502,9 +518,9 @@ export function MenuScanStep({
               )}
             </div>
           )}
-          {items.length > 0 && (
+          {items.length > 0 && (!showZeroPriceConfirm || zeroPriceItems.length === 0) && (
             <Button
-              onClick={() => approveMutation.mutate()}
+              onClick={handleImportClick}
               disabled={approveMutation.isPending}
               data-testid="button-import-items"
             >
@@ -514,6 +530,44 @@ export function MenuScanStep({
                 <>{`Import ${items.filter(i => i.name.trim()).length} Items`} <ArrowRight className="w-4 h-4 ml-2" /></>
               )}
             </Button>
+          )}
+          {showZeroPriceConfirm && zeroPriceItems.length > 0 && (
+            <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-2" data-testid="section-zero-price-confirm">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                    {zeroPriceItems.length} item{zeroPriceItems.length !== 1 ? "s have" : " has"} a $0.00 price
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                    Food cost % and TFC variance won't calculate for items priced at $0. Fix the prices above or import anyway.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowZeroPriceConfirm(false)}
+                  disabled={approveMutation.isPending}
+                  data-testid="button-fix-zero-prices"
+                >
+                  Fix prices
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => { setShowZeroPriceConfirm(false); approveMutation.mutate(); }}
+                  disabled={approveMutation.isPending}
+                  data-testid="button-confirm-import-zero-price"
+                >
+                  {approveMutation.isPending ? (
+                    <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Importing…</>
+                  ) : (
+                    <>Import anyway</>
+                  )}
+                </Button>
+              </div>
+            </div>
           )}
           <Button variant="ghost" size="sm" onClick={() => { setSubStep("upload"); setAddingPage(false); }} data-testid="button-scan-again">
             Scan a different image
