@@ -216,6 +216,8 @@ export function MenuScanStep({
       i === idx ? { ...item, price: value === "" ? null : isNaN(parsed) ? item.price : parsed } : item
     ));
   };
+  const updateDescription = (idx: number, description: string) =>
+    setItems(prev => prev.map((item, i) => i === idx ? { ...item, description: description || null } : item));
 
   const handleBarAnswer = async (answer: boolean) => {
     setBarAnswer(answer);
@@ -383,7 +385,6 @@ export function MenuScanStep({
                   </div>
                   {indices.map((idx) => {
                     const item = items[idx];
-                    const hasDescription = item.description && item.description.trim().length > 0;
                     return (
                       <div key={idx} className="flex items-start gap-1 px-2 py-1 border-t">
                         <Check className="w-3 h-3 text-emerald-500 flex-shrink-0 mt-1.5" />
@@ -424,11 +425,13 @@ export function MenuScanStep({
                             />
                             <span className="text-[10px] text-muted-foreground">cal</span>
                           </div>
-                          {hasDescription && (
-                            <p className="text-[10px] text-muted-foreground leading-tight line-clamp-2 mt-0.5" data-testid={`text-item-description-${idx}`}>
-                              {item.description}
-                            </p>
-                          )}
+                          <Input
+                            value={item.description ?? ""}
+                            onChange={e => updateDescription(idx, e.target.value)}
+                            placeholder="Add a description…"
+                            className="h-5 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent text-[10px] text-muted-foreground placeholder:text-muted-foreground/40 mt-0.5"
+                            data-testid={`input-item-description-${idx}`}
+                          />
                         </div>
                         <button
                           onClick={() => deleteItem(idx)}
