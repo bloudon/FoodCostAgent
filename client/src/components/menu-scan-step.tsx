@@ -11,7 +11,7 @@ import { ObjectUploader } from "@/components/ObjectUploader";
 import {
   Check, Loader2, Trash2, Camera, Sparkles, Plus, ArrowRight,
   Wine, Utensils, BookOpen, ClipboardList, Package, Warehouse, BarChart3,
-  Layers,
+  Layers, Flame,
 } from "lucide-react";
 
 export interface MenuIntelligence {
@@ -193,6 +193,12 @@ export function MenuScanStep({
   const deleteItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx));
   const updateName = (idx: number, name: string) =>
     setItems(prev => prev.map((item, i) => i === idx ? { ...item, name } : item));
+  const updateCalories = (idx: number, value: string) => {
+    const parsed = parseInt(value, 10);
+    setItems(prev => prev.map((item, i) =>
+      i === idx ? { ...item, calorieCount: value === "" ? null : isNaN(parsed) ? item.calorieCount : parsed } : item
+    ));
+  };
 
   const handleBarAnswer = async (answer: boolean) => {
     setBarAnswer(answer);
@@ -378,6 +384,18 @@ export function MenuScanStep({
                                 ${item.price!.toFixed(2)}
                               </span>
                             )}
+                          </div>
+                          <div className="flex items-center gap-0.5 mt-0.5">
+                            <Flame className="w-2.5 h-2.5 text-muted-foreground flex-shrink-0" />
+                            <Input
+                              type="number"
+                              value={item.calorieCount ?? ""}
+                              onChange={e => updateCalories(idx, e.target.value)}
+                              placeholder="—"
+                              className="h-5 border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent w-14 text-[10px] text-muted-foreground placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                              data-testid={`input-item-calories-${idx}`}
+                            />
+                            <span className="text-[10px] text-muted-foreground">cal</span>
                           </div>
                           {hasDescription && (
                             <p className="text-[10px] text-muted-foreground leading-tight line-clamp-2 mt-0.5" data-testid={`text-item-description-${idx}`}>
