@@ -1,4 +1,7 @@
 import { defineConfig, devices } from 'playwright/test';
+import { statSync } from 'fs';
+import { join } from 'path';
+import { fileURLToPath } from 'url';
 
 /**
  * In the Replit development container, Chromium crashes with SIGSEGV due to
@@ -24,22 +27,23 @@ const isCI = !!process.env.CI;
  * Use Chromium locally when the Firefox binary is not present or when
  * PLAYWRIGHT_BROWSER=chromium is explicitly set.
  */
+function firefoxInstalled(): boolean {
+  // Check both the $HOME cache (standard install location) and the
+  // workspace-local cache (where `npx playwright install` places binaries
+  // when run from inside the workspace directory on Replit).
+  const candidates = [
+    join(process.env.HOME ?? '/home/runner', '.cache/ms-playwright/firefox-1509/firefox/firefox'),
+    join(fileURLToPath(new URL('.', import.meta.url)), '.cache/ms-playwright/firefox-1509/firefox/firefox'),
+  ];
+  for (const p of candidates) {
+    try { statSync(p); return true; } catch { /* keep trying */ }
+  }
+  return false;
+}
+
 const useLocalChromium =
   process.env.PLAYWRIGHT_BROWSER === 'chromium' ||
-  (!isCI &&
-    (() => {
-      try {
-        require('fs').statSync(
-          require('path').join(
-            process.env.HOME ?? '/home/runner',
-            '.cache/ms-playwright/firefox-1509/firefox/firefox',
-          ),
-        );
-        return false; // Firefox exists, use it
-      } catch {
-        return true; // Firefox not found, fall back to Chromium
-      }
-    })());
+  (!isCI && !firefoxInstalled());
 
 export default defineConfig({
   testDir: './tests',
