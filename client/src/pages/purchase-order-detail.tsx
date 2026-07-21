@@ -129,8 +129,24 @@ type VendorPriceComparison = {
   }[];
 };
 
+type BulkVendorPrice = {
+  vendorId: string;
+  vendorName: string;
+  vendorSku: string | null;
+  casePrice: number;
+  unitPrice: number;
+  caseSize: number;
+  unitName: string;
+  priceSource: string | null;
+  pricedAt: string | null;
+  daysSincePriced: number | null;
+  stale: boolean;
+  confirmed: boolean;
+  incompatibleUnit: boolean;
+};
+
 type BulkComparisonEntry = {
-  vendorPrices: { vendorId: string; vendorName: string; vendorSku: string | null; casePrice: number; unitPrice: number; caseSize: number; unitName: string }[];
+  vendorPrices: BulkVendorPrice[];
   cheaperAvailable: boolean;
   savingsPerCase: number;
   bestVendorName: string | null;
@@ -1734,92 +1750,128 @@ export default function PurchaseOrderDetail() {
             </DialogDescription>
           </DialogHeader>
           
-          {vendorPriceComparison && vendorPriceComparison.vendorPrices.length > 0 ? (
-            <>
-              {(() => {
-                const prices = vendorPriceComparison.vendorPrices;
-                const currentVendorRow = prices.find(vp => vp.vendorId === selectedVendor);
-                const bestRow = prices[0];
-                const isBestAlready = bestRow.vendorId === selectedVendor;
-                const savings = currentVendorRow && !isBestAlready
-                  ? currentVendorRow.casePrice - bestRow.casePrice
-                  : 0;
-                if (isBestAlready) {
-                  return (
-                    <div className="flex items-center gap-2 rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-3 py-2 text-sm text-green-800 dark:text-green-300">
-                      <CheckCircle2 className="h-4 w-4 shrink-0" />
-                      You're already ordering from the best-priced vendor for this item.
-                    </div>
-                  );
-                }
-                if (savings > 0) {
-                  return (
-                    <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
-                      <Sparkles className="h-4 w-4 shrink-0" />
-                      <span>
-                        <strong>{bestRow.vendorName}</strong> is <strong>${savings.toFixed(2)}/case cheaper</strong> than your current vendor for this item.
-                      </span>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Vendor</TableHead>
-                      <TableHead>SKU</TableHead>
-                      <TableHead className="text-right">Case Size</TableHead>
-                      <TableHead className="text-right">Unit Price</TableHead>
-                      <TableHead className="text-right">Case Price</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {vendorPriceComparison.vendorPrices.map((vp, index) => {
-                      const isLowestPrice = index === 0;
-                      const isCurrentVendor = vp.vendorId === selectedVendor;
-                      return (
-                        <TableRow 
-                          key={vp.vendorId}
-                          className={isLowestPrice ? "bg-green-50 dark:bg-green-950/20" : ""}
-                          data-testid={`row-vendor-price-${vp.vendorId}`}
-                        >
-                          <TableCell className="font-medium">
-                            <span className={isCurrentVendor ? "underline decoration-dotted" : ""} title={isCurrentVendor ? "Current PO vendor" : undefined}>
-                              {vp.vendorName}
-                            </span>
-                            {isLowestPrice && (
-                              <Badge variant="default" className="ml-2">Best Price</Badge>
-                            )}
-                            {isCurrentVendor && !isLowestPrice && (
-                              <Badge variant="outline" className="ml-2">Current</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {vp.vendorSku || '-'}
-                          </TableCell>
-                          <TableCell className="text-right font-mono">
-                            {vp.caseSize}
-                          </TableCell>
-                          <TableCell className="text-right font-mono">
-                            ${vp.unitPrice.toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-right font-mono font-semibold">
-                            ${vp.casePrice.toFixed(2)}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </>
-          ) : (
-            <div className="py-8 text-center text-muted-foreground">
-              No vendor pricing available for this item
-            </div>
-          )}
+          {(() => {
+            // Prefer bulk comparison data (richer: includes staleness + confirmed).
+            // Fall back to single-item endpoint data if bulk entry is unavailable.
+            const bulkEntry = compareItemId ? bulkComparison?.data?.[compareItemId] : undefined;
+            const prices =
+              (bulkEntry?.vendorPrices && bulkEntry.vendorPrices.length > 0
+                ? bulkEntry.vendorPrices
+                : vendorPriceComparison?.vendorPrices ?? []) as BulkVendorPrice[];
+
+            if (prices.length === 0) {
+              return (
+                <div className="py-8 text-center text-muted-foreground">
+                  No vendor pricing available for this item
+                </div>
+              );
+            }
+
+            const currentVendorRow = prices.find(vp => vp.vendorId === selectedVendor);
+            const bestRow = prices[0];
+            const isBestAlready = bestRow.vendorId === selectedVendor;
+            const savings = currentVendorRow && !isBestAlready
+              ? currentVendorRow.casePrice - bestRow.casePrice
+              : 0;
+
+            return (
+              <>
+                {isBestAlready ? (
+                  <div className="flex items-center gap-2 rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-3 py-2 text-sm text-green-800 dark:text-green-300">
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    You're already ordering from the best-priced vendor for this item.
+                  </div>
+                ) : savings > 0 ? (
+                  <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+                    <Sparkles className="h-4 w-4 shrink-0" />
+                    <span>
+                      <strong>{bestRow.vendorName}</strong> is <strong>${savings.toFixed(2)}/case cheaper</strong> than your current vendor for this item.
+                    </span>
+                  </div>
+                ) : null}
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Vendor</TableHead>
+                        <TableHead>SKU</TableHead>
+                        <TableHead className="text-right">Case Size</TableHead>
+                        <TableHead className="text-right">Unit Price</TableHead>
+                        <TableHead className="text-right">Case Price</TableHead>
+                        <TableHead className="text-right">Price Date</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {prices.map((vp, index) => {
+                        const isLowestPrice = index === 0;
+                        const isCurrentVendor = vp.vendorId === selectedVendor;
+                        const bulkVp = vp as BulkVendorPrice;
+                        const isStale = bulkVp.stale ?? (bulkVp.daysSincePriced != null && bulkVp.daysSincePriced > 90);
+                        const isConfirmed = bulkVp.confirmed ?? false;
+                        return (
+                          <TableRow
+                            key={vp.vendorId}
+                            className={isLowestPrice ? "bg-green-50 dark:bg-green-950/20" : ""}
+                            data-testid={`row-vendor-price-${vp.vendorId}`}
+                          >
+                            <TableCell className="font-medium">
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span className={isCurrentVendor ? "underline decoration-dotted" : ""} title={isCurrentVendor ? "Current PO vendor" : undefined}>
+                                  {vp.vendorName}
+                                </span>
+                                {isLowestPrice && (
+                                  <Badge variant="default" className="ml-1" data-testid={`badge-best-price-${vp.vendorId}`}>Best Price</Badge>
+                                )}
+                                {isCurrentVendor && !isLowestPrice && (
+                                  <Badge variant="outline" className="ml-1">Current</Badge>
+                                )}
+                                {isConfirmed && (
+                                  <Badge variant="outline" className="ml-1 border-green-500 text-green-700 dark:text-green-400" data-testid={`badge-confirmed-${vp.vendorId}`}>
+                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                    Confirmed
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {vp.vendorSku || '-'}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {vp.caseSize}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              ${vp.unitPrice.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono font-semibold">
+                              ${vp.casePrice.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {bulkVp.pricedAt ? (
+                                <div className={`flex items-center justify-end gap-1 text-xs ${isStale ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                                  {isStale && <AlertTriangle className="h-3 w-3 shrink-0" data-testid={`icon-stale-${vp.vendorId}`} />}
+                                  <span title={isStale ? `Price is ${bulkVp.daysSincePriced} days old — may be stale` : undefined}>
+                                    {new Date(bulkVp.pricedAt).toLocaleDateString()}
+                                    {isStale && bulkVp.daysSincePriced != null && (
+                                      <span className="ml-1">({bulkVp.daysSincePriced}d ago)</span>
+                                    )}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-end gap-1 text-xs text-amber-600 dark:text-amber-400" title="No pricing date recorded">
+                                  <AlertTriangle className="h-3 w-3 shrink-0" data-testid={`icon-stale-${vp.vendorId}`} />
+                                  <span>Unknown</span>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

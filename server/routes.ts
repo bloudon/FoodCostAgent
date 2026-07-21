@@ -7646,7 +7646,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           unitName: string;
           priceSource: string | null;
           pricedAt: string | null;
+          daysSincePriced: number | null;
           stale: boolean;
+          confirmed: boolean;
           incompatibleUnit: boolean;
         }[];
         cheaperAvailable: boolean;
@@ -7691,7 +7693,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             unitName: unit?.name || "",
             priceSource: vi.priceSource,
             pricedAt: vi.pricedAt ? vi.pricedAt.toISOString() : null,
+            daysSincePriced: vi.pricedAt
+              ? Math.floor((Date.now() - vi.pricedAt.getTime()) / 86_400_000)
+              : null,
             stale: isPriceStale(vi.pricedAt),
+            confirmed: vi.priceSource === "receipt" || vi.priceSource === "invoice_scan",
             incompatibleUnit: isIncompatibleUnit(vi.packUom ?? "", inventoryUnitName),
           };
         }).sort((a, b) => a.unitPrice - b.unitPrice);
