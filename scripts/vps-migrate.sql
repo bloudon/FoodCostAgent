@@ -2303,6 +2303,15 @@ DO $$ BEGIN
     UPDATE vendor_items
     SET price_source = 'legacy_unknown'
     WHERE price_source IS NULL;
+    -- 4. Semantic repair — re-derive last_price for order_guide_import rows where
+    --    case_size > 0 and the stored unit price drifts from lastCasePrice / caseSize.
+    --    Fixes case↔unit price inconsistency left by pre-M3A import paths.
+    UPDATE vendor_items
+    SET last_price = last_case_price / case_size
+    WHERE price_source = 'order_guide_import'
+      AND last_case_price IS NOT NULL AND last_case_price > 0
+      AND case_size IS NOT NULL AND case_size > 0
+      AND ABS(COALESCE(last_price, 0) - (last_case_price / case_size)) > 0.0001;
 
     INSERT INTO _migration_log (version, description)
       VALUES ('v059', 'M3A: Vendor price integrity — price_source provenance on vendor_items and inventory_item_price_history');

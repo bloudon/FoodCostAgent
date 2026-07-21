@@ -683,18 +683,18 @@ describe("Scenario 6 — Incompatible units", () => {
 
   it("oz-pack in lb-tracked item: 12 × 16 oz = 12 lb (conversion applied)", () => {
     // 12 bags × 16 oz = 192 oz = 12 lb
-    const qty = effectivePackQty(12, 16, "oz", "pound");
+    const { qty } = effectivePackQty(12, 16, "oz", "pound");
     expect(qty).toBeCloseTo(12);
   });
 
   it("lb-pack in lb-tracked item: 6 × 5 lb = 30 lb (no conversion)", () => {
-    const qty = effectivePackQty(6, 5, "lb", "pound");
+    const { qty } = effectivePackQty(6, 5, "lb", "pound");
     expect(qty).toBe(30);
   });
 
   it("each-pack: innerPackSize ignored for count-family items", () => {
     // For 'each' inventory, only outerCount matters
-    const qty = effectivePackQty(24, 6, "ea", "each");
+    const { qty } = effectivePackQty(24, 6, "ea", "each");
     expect(qty).toBe(24); // not 24×6=144
   });
 

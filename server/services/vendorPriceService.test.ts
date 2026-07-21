@@ -102,25 +102,31 @@ describe("derivePrices — priceBasis=unit derives case price", () => {
 
 describe("effectivePackQty", () => {
   it("lb-tracked: 6 bags × 5 lb = 30 lb", () => {
-    expect(effectivePackQty(6, 5, "lb", "pound")).toBe(30);
+    expect(effectivePackQty(6, 5, "lb", "pound").qty).toBe(30);
   });
 
   it("lb-tracked with oz pack: 6 × 16 oz = 6 lb (/ 16)", () => {
-    expect(effectivePackQty(6, 16, "oz", "pound")).toBeCloseTo(6.0);
+    expect(effectivePackQty(6, 16, "oz", "pound").qty).toBeCloseTo(6.0);
   });
 
   it("each-tracked: only outerCount, innerSize ignored", () => {
-    expect(effectivePackQty(24, 6, "ea", "each")).toBe(24);
+    expect(effectivePackQty(24, 6, "ea", "each").qty).toBe(24);
   });
 
   it("oz-tracked: outerCount × innerSize", () => {
-    expect(effectivePackQty(4, 32, "oz", "ounce")).toBe(128);
+    expect(effectivePackQty(4, 32, "oz", "ounce").qty).toBe(128);
   });
 
-  it("zero caseSize guard: returns 1 (via Math.max)", () => {
-    const qty = effectivePackQty(0, 5, "lb", "pound");
-    expect(qty).toBeGreaterThan(0);
-    expect(Number.isFinite(qty)).toBe(true);
+  it("zero caseSize guard: clamps to 1 and flags invalidPackGeometry", () => {
+    const result = effectivePackQty(0, 5, "lb", "pound");
+    expect(result.qty).toBeGreaterThan(0);
+    expect(Number.isFinite(result.qty)).toBe(true);
+    expect(result.invalidPackGeometry).toBe(true);
+  });
+
+  it("valid pack: invalidPackGeometry is false", () => {
+    const result = effectivePackQty(6, 5, "lb", "pound");
+    expect(result.invalidPackGeometry).toBe(false);
   });
 });
 

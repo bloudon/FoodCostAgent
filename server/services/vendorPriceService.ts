@@ -118,6 +118,12 @@ export interface DerivedPrices {
   casePrice: number;
   unitPrice: number;
   incompatibleUnit: boolean;
+  /**
+   * true when caseSize or innerPackSize was ≤ 0 (invalid pack geometry).
+   * Derivation still proceeds with clamped values so callers can warn
+   * operators rather than crashing, but the result should not be trusted.
+   */
+  invalidPackGeometry: boolean;
 }
 
 // ─── Pure Helpers (exported for unit testing) ─────────────────────────────────
@@ -148,14 +154,16 @@ export function isIncompatibleUnit(
 
 /**
  * Compute effective pack quantity (in inventory base units) from pack geometry.
- * Mirrors the logic in deriveUnitPrice but without the import to avoid circular deps.
+ * Returns { qty, invalidPackGeometry } so callers can flag operator-visible
+ * warnings when the raw geometry is invalid (≤ 0) rather than silently coercing.
  */
 export function effectivePackQty(
   caseSize: number,
   innerPackSize: number,
   packUom: string,
   inventoryUnitName: string
-): number {
+): { qty: number; invalidPackGeometry: boolean } {
+  const invalidPackGeometry = caseSize <= 0 || innerPackSize <= 0;
   const safeOuter = Math.max(caseSize, 1);
   const safeInner = Math.max(innerPackSize, 1);
   const invUnit = (inventoryUnitName || "").toLowerCase().trim();
@@ -163,26 +171,28 @@ export function effectivePackQty(
 
   // "each" family: price per individual countable item — divide by outer count only
   if (["each", "ea", "piece", "unit", "count", "ct"].includes(invUnit)) {
-    return safeOuter;
+    return { qty: safeOuter, invalidPackGeometry };
   }
   // "lb" family — handle oz→lb conversion
   if (["pound", "lb", "lbs"].includes(invUnit)) {
     if (["oz", "ounce", "ounces"].includes(pUom)) {
-      return Math.max((safeOuter * safeInner) / 16, 0.0001);
+      return { qty: Math.max((safeOuter * safeInner) / 16, 0.0001), invalidPackGeometry };
     }
-    return safeOuter * safeInner;
+    return { qty: safeOuter * safeInner, invalidPackGeometry };
   }
   // "oz" family
   if (["ounce", "oz", "ounces"].includes(invUnit)) {
-    return safeOuter * safeInner;
+    return { qty: safeOuter * safeInner, invalidPackGeometry };
   }
   // Default: treat innerSize as total units in inventory's native unit
-  return safeOuter * safeInner;
+  return { qty: safeOuter * safeInner, invalidPackGeometry };
 }
 
 /**
  * Derive both casePrice and unitPrice from an explicit basis + pack geometry.
  * Returns incompatibleUnit=true when unit families are known and mismatched.
+ * Returns invalidPackGeometry=true when caseSize/innerPackSize ≤ 0 — the
+ * derivation still proceeds with clamped values so callers can warn operators.
  */
 export function derivePrices(
   priceBasis: "case" | "unit",
@@ -193,16 +203,16 @@ export function derivePrices(
   inventoryUnitName: string = ""
 ): DerivedPrices {
   const incompatibleUnit = isIncompatibleUnit(packUom, inventoryUnitName);
-  const qty = effectivePackQty(caseSize, innerPackSize, packUom, inventoryUnitName);
+  const { qty, invalidPackGeometry } = effectivePackQty(caseSize, innerPackSize, packUom, inventoryUnitName);
 
   if (priceBasis === "case") {
     const casePrice = price;
     const unitPrice = qty > 0 ? casePrice / qty : casePrice;
-    return { casePrice, unitPrice, incompatibleUnit };
+    return { casePrice, unitPrice, incompatibleUnit, invalidPackGeometry };
   } else {
     const unitPrice = price;
     const casePrice = unitPrice * qty;
-    return { casePrice, unitPrice, incompatibleUnit };
+    return { casePrice, unitPrice, incompatibleUnit, invalidPackGeometry };
   }
 }
 

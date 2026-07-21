@@ -8376,17 +8376,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.innerPackSize = 1;
       }
       
-      // If case price or caseSize is changing, recalculate unit price
-      // caseSize is now total units per case (innerPackSize removed)
-      if (updates.lastCasePrice !== undefined || updates.caseSize !== undefined) {
-        const caseSize = updates.caseSize ?? currentItem.caseSize ?? 1;
-        const casePrice = updates.lastCasePrice ?? currentItem.lastCasePrice ?? 0;
-        if (casePrice > 0 && caseSize > 0) {
-          updates.lastPrice = casePrice / caseSize;
-        }
-      }
-      
-      // Separate price fields from structural fields before writing
+      // Separate price fields from structural fields before writing.
+      // The shared service derives both prices from the explicit basis — do NOT
+      // pre-calculate lastPrice here; that would skip the derivation guard.
       const priceChanging = updates.lastCasePrice !== undefined || updates.lastPrice !== undefined;
       const { lastPrice: _lp, lastCasePrice: _lcp, priceSource: _ps, pricedAt: _pa, ...structuralUpdates } = updates;
 
@@ -8395,20 +8387,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Vendor item not found" });
       }
 
-      // M3A: price writes go through shared service (manual = quote source).
-      // Service derives unit price internally from priceBasis="case" + caseSize.
+      // M3A: all price writes go through the shared service (manual = quote source).
+      // Basis selection:
+      //   lastCasePrice submitted (±caseSize)  → priceBasis="case"  [primary UX path]
+      //   lastPrice submitted alone             → priceBasis="unit"  [explicit unit edit]
       if (priceChanging) {
-        const casePrice = updates.lastCasePrice ?? currentItem.lastCasePrice ?? 0;
         const effectiveCaseSize = updates.caseSize ?? currentItem.caseSize ?? 1;
-        await recordVendorPrice({
-          vendorItemId: req.params.id,
-          inventoryItemId: vendorItem.inventoryItemId ?? undefined,
-          priceBasis: "case",
-          price: casePrice,
-          caseSize: effectiveCaseSize,
-          source: "manual",
-          representsActualPurchase: false,
-        });
+        const unitPriceOnly =
+          updates.lastPrice !== undefined && updates.lastCasePrice === undefined;
+
+        if (unitPriceOnly) {
+          // Client submitted a unit price without a case price — honour it explicitly.
+          await recordVendorPrice({
+            vendorItemId: req.params.id,
+            inventoryItemId: vendorItem.inventoryItemId ?? undefined,
+            priceBasis: "unit",
+            price: updates.lastPrice!,
+            caseSize: effectiveCaseSize,
+            source: "manual",
+            representsActualPurchase: false,
+          });
+        } else {
+          const casePrice = updates.lastCasePrice ?? currentItem.lastCasePrice ?? 0;
+          await recordVendorPrice({
+            vendorItemId: req.params.id,
+            inventoryItemId: vendorItem.inventoryItemId ?? undefined,
+            priceBasis: "case",
+            price: casePrice,
+            caseSize: effectiveCaseSize,
+            source: "manual",
+            representsActualPurchase: false,
+          });
+        }
       }
 
       // Sync ONLY structural caseSize back to the linked inventory item.
@@ -11047,19 +11057,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (existingVendorItem) {
               vendorItemId = existingVendorItem.id;
             } else {
-              // Create a vendor item on the fly for this inventory item
-              // M3A: po_create is a quote source — must NOT update inventory_items cost
-              const vendorItem = await storage.createVendorItem({
+              // Create a vendor item on the fly for this inventory item.
+              // M3A: po_create is a quote source — price fields stamped via shared
+              // service AFTER create (no direct lastPrice write on createVendorItem).
+              const newVendorItem = await storage.createVendorItem({
                 vendorId: po.vendorId,
                 inventoryItemId: line.inventoryItemId,
                 purchaseUnitId: line.unitId,
                 caseSize: 1,
-                lastPrice: line.priceEach,
                 active: 1,
-                priceSource: "po_create",
-                pricedAt: new Date(),
               });
-              vendorItemId = vendorItem.id;
+              vendorItemId = newVendorItem.id;
+              if (line.priceEach > 0) {
+                await recordVendorPrice({
+                  vendorItemId: newVendorItem.id,
+                  inventoryItemId: line.inventoryItemId,
+                  priceBasis: "unit",
+                  price: line.priceEach,
+                  caseSize: 1,
+                  source: "po_create",
+                  representsActualPurchase: false,
+                });
+              }
             }
           }
           
@@ -11119,19 +11138,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (existingVendorItem) {
               vendorItemId = existingVendorItem.id;
             } else {
-              // Create a vendor item on the fly for this inventory item
-              // M3A: po_create is a quote source — must NOT update inventory_items cost
-              const vendorItem = await storage.createVendorItem({
+              // Create a vendor item on the fly for this inventory item.
+              // M3A: po_create is a quote source — price fields stamped via shared
+              // service AFTER create (no direct lastPrice write on createVendorItem).
+              const newVendorItem = await storage.createVendorItem({
                 vendorId: po.vendorId,
                 inventoryItemId: line.inventoryItemId,
                 purchaseUnitId: line.unitId,
                 caseSize: 1,
-                lastPrice: line.priceEach,
                 active: 1,
-                priceSource: "po_create",
-                pricedAt: new Date(),
               });
-              vendorItemId = vendorItem.id;
+              vendorItemId = newVendorItem.id;
+              if (line.priceEach > 0) {
+                await recordVendorPrice({
+                  vendorItemId: newVendorItem.id,
+                  inventoryItemId: line.inventoryItemId,
+                  priceBasis: "unit",
+                  price: line.priceEach,
+                  caseSize: 1,
+                  source: "po_create",
+                  representsActualPurchase: false,
+                });
+              }
             }
           }
           

@@ -299,6 +299,20 @@ async function runStartupMigrations() {
         WHERE price_source IS NULL
       `);
 
+      // Step 4: Semantic repair — re-derive lastPrice for order_guide_import rows
+      // where case_size > 0 and the stored unit price is inconsistent with
+      // lastCasePrice / caseSize (i.e. pre-M3A the derivation was wrong or missing).
+      // This corrects case↔unit drift left by legacy import paths.
+      const semanticRepairResult = await db.execute(sql`
+        UPDATE vendor_items
+        SET last_price = last_case_price / case_size
+        WHERE price_source = 'order_guide_import'
+          AND last_case_price IS NOT NULL AND last_case_price > 0
+          AND case_size IS NOT NULL AND case_size > 0
+          AND ABS(COALESCE(last_price, 0) - (last_case_price / case_size)) > 0.0001
+      `);
+      const semanticRepairCount = (semanticRepairResult as any).rowCount ?? 0;
+
       const receiptCount = (receiptResult as any).rowCount ?? 0;
       const ogCount      = (ogResult as any).rowCount ?? 0;
       const luCount      = (luResult as any).rowCount ?? 0;
@@ -324,6 +338,7 @@ async function runStartupMigrations() {
         console.log(
           `[M3A backfill] vendor_items price_source:` +
           ` repaired=${repairedCount} (receipt=${receiptCount}, order_guide_import=${ogCount}),` +
+          ` semantic-repair=${semanticRepairCount},` +
           ` ambiguous=${ambiguousCount},` +
           ` invalid-pack=${invalidPackCount},` +
           ` needs-refresh=${luCount}`
