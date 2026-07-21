@@ -290,6 +290,27 @@ export default function PurchaseOrderDetail() {
   const getComparison = (inventoryItemId: string): BulkComparisonEntry | undefined =>
     bulkComparison?.data?.[inventoryItemId];
 
+  // Compute items whose price from the selected vendor is stale or unconfirmed
+  type StalePriceItem = { inventoryItemId: string; itemName: string; stale: boolean; confirmed: boolean; daysSincePriced: number | null };
+  const itemsWithStalePrices: StalePriceItem[] = (!isMiscGrocery && bulkComparison && vendorItems)
+    ? vendorItems.reduce<StalePriceItem[]>((acc, vi) => {
+        const entry = bulkComparison.data?.[vi.inventoryItemId];
+        if (!entry) return acc;
+        const vp = entry.vendorPrices.find(p => p.vendorId === selectedVendor);
+        if (!vp) return acc;
+        if (vp.stale || !vp.confirmed) {
+          acc.push({
+            inventoryItemId: vi.inventoryItemId,
+            itemName: vi.inventoryItemName,
+            stale: vp.stale,
+            confirmed: vp.confirmed,
+            daysSincePriced: vp.daysSincePriced,
+          });
+        }
+        return acc;
+      }, [])
+    : [];
+
   // Fetch export history for this PO
   type ExportLog = {
     id: string;
@@ -889,6 +910,54 @@ export default function PurchaseOrderDetail() {
                 </span>
               </div>
             </div>
+
+            {/* Stale / unconfirmed price warning banner */}
+            {!isReceived && itemsWithStalePrices.length > 0 && (
+              <div
+                className="rounded-md border border-amber-300/70 bg-amber-50/60 dark:bg-amber-950/20 px-4 py-3 space-y-2"
+                data-testid="banner-stale-prices"
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  {itemsWithStalePrices.length === 1
+                    ? "1 item has an unverified price — review before ordering"
+                    : `${itemsWithStalePrices.length} items have unverified prices — review before ordering`}
+                </div>
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Prices are considered unverified when they are older than 90 days or have not been confirmed by a receipt or invoice scan.
+                  Click an item to update its price.
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {itemsWithStalePrices.map(item => (
+                    <button
+                      key={item.inventoryItemId}
+                      onClick={() => {
+                        if (hasUnsavedChanges) {
+                          if (confirm('You have unsaved changes. Are you sure you want to leave?')) {
+                            setLocation(`/inventory-items/${item.inventoryItemId}`);
+                          }
+                        } else {
+                          setLocation(`/inventory-items/${item.inventoryItemId}`);
+                        }
+                      }}
+                      className="text-xs text-amber-800 dark:text-amber-300 underline decoration-dotted hover:decoration-solid"
+                      data-testid={`link-stale-item-${item.inventoryItemId}`}
+                    >
+                      {item.itemName}
+                      {item.stale && item.daysSincePriced != null && (
+                        <span className="ml-1 no-underline">({item.daysSincePriced}d ago)</span>
+                      )}
+                      {!item.confirmed && !item.stale && (
+                        <span className="ml-1 no-underline">(unconfirmed)</span>
+                      )}
+                      {item.stale && !item.confirmed && (
+                        <span className="ml-1 no-underline">(unconfirmed)</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {displayItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg">
@@ -1700,6 +1769,31 @@ export default function PurchaseOrderDetail() {
                 </div>
               )}
 
+              {/* Stale / unconfirmed price warning inside export modal */}
+              {itemsWithStalePrices.length > 0 && (
+                <div className="rounded-md border border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-1" data-testid="export-warning-stale-prices">
+                  <div className="flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                    {itemsWithStalePrices.length === 1
+                      ? "1 item has an unverified price"
+                      : `${itemsWithStalePrices.length} items have unverified prices`}
+                  </div>
+                  <ul className="list-disc list-inside space-y-0.5 pl-1">
+                    {itemsWithStalePrices.map(item => (
+                      <li key={item.inventoryItemId} className="text-sm text-amber-700 dark:text-amber-400">
+                        {item.itemName}
+                        {item.stale && item.daysSincePriced != null && ` — last updated ${item.daysSincePriced} days ago`}
+                        {!item.confirmed && !item.stale && " — not yet confirmed by receipt or invoice"}
+                        {item.stale && !item.confirmed && " — not yet confirmed by receipt or invoice"}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-amber-600 dark:text-amber-500 pt-0.5">
+                    You can still export, but the order may be placed at outdated prices. Consider updating prices before ordering.
+                  </p>
+                </div>
+              )}
+
               {/* Warnings — non-blocking */}
               {exportInfo.validation.warnings.length > 0 && (
                 <div className="rounded-md border border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-1">
@@ -1715,7 +1809,7 @@ export default function PurchaseOrderDetail() {
                 </div>
               )}
 
-              {exportInfo.validation.canExport && exportInfo.validation.errors.length === 0 && exportInfo.validation.warnings.length === 0 && (
+              {exportInfo.validation.canExport && exportInfo.validation.errors.length === 0 && exportInfo.validation.warnings.length === 0 && itemsWithStalePrices.length === 0 && (
                 <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
                   <CheckCircle2 className="h-4 w-4" />
                   Order is ready to export — no issues found.
