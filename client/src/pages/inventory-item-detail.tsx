@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useStoreContext } from "@/hooks/use-store-context";
-import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X, GripVertical, ChevronDown, ChevronRight, Search, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X, GripVertical, ChevronDown, ChevronRight, Search, AlertTriangle, CheckCircle2, History } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -54,7 +54,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
 import { getSuggestedConversionFactor } from "@/lib/unitConversions";
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import type { SystemPreferences, InventoryItemUnit } from "@shared/schema";
 
 type InventoryItem = {
@@ -147,6 +147,84 @@ function formatPriceSource(source: string | null): { label: string; isLegacy: bo
     case "legacy_unknown": return { label: "Unknown", isLegacy: true };
     default: return { label: source, isLegacy: false };
   }
+}
+
+type PriceHistoryRecord = {
+  id: string;
+  inventoryItemId: string;
+  vendorItemId: string | null;
+  effectiveAt: string;
+  pricePerUnit: number;
+  casePrice: number | null;
+  source: string | null;
+  note: string | null;
+  recordedBy: string | null;
+  createdAt: string;
+};
+
+function VendorPriceHistoryPanel({ inventoryItemId, vendorItemId }: { inventoryItemId: string; vendorItemId: string }) {
+  const { data, isLoading, isError } = useQuery<{ data: PriceHistoryRecord[] }>({
+    queryKey: ["/api/inventory-items", inventoryItemId, "price-history", vendorItemId],
+    queryFn: async () => {
+      const res = await fetch(`/api/inventory-items/${inventoryItemId}/price-history?vendorItemId=${vendorItemId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load price history");
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return <p className="text-xs text-muted-foreground py-2 px-1">Loading history…</p>;
+  }
+  if (isError) {
+    return <p className="text-xs text-destructive py-2 px-1">Failed to load price history.</p>;
+  }
+  const rows = data?.data ?? [];
+  if (rows.length === 0) {
+    return <p className="text-xs text-muted-foreground py-2 px-1">No price history recorded for this vendor.</p>;
+  }
+
+  return (
+    <div className="w-full">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-muted-foreground border-b">
+            <th className="text-left pb-1 pr-4 font-medium">Date</th>
+            <th className="text-right pb-1 pr-4 font-medium">Case Price</th>
+            <th className="text-right pb-1 pr-4 font-medium">Unit Price</th>
+            <th className="text-left pb-1 font-medium">Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const { label, isLegacy } = formatPriceSource(row.source);
+            return (
+              <tr key={row.id} className="border-b last:border-b-0">
+                <td className="py-1 pr-4 text-muted-foreground">
+                  {new Date(row.effectiveAt).toLocaleDateString()}
+                </td>
+                <td className="py-1 pr-4 text-right">
+                  {row.casePrice != null ? `$${row.casePrice.toFixed(2)}` : "—"}
+                </td>
+                <td className="py-1 pr-4 text-right">
+                  ${row.pricePerUnit.toFixed(4)}
+                </td>
+                <td className="py-1">
+                  {isLegacy ? (
+                    <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400" title="Price predates M3A tracking — reliability unknown">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      {label}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">{label}</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 // Format the human-readable "1 [unit] = X [inv unit]" value for display.
@@ -822,6 +900,19 @@ export default function InventoryItemDetail() {
   const [showAddVendorRow, setShowAddVendorRow] = useState(false);
   const [editingVendorItemId, setEditingVendorItemId] = useState<string | null>(null);
   const [showInactiveVendors, setShowInactiveVendors] = useState(false);
+  const [expandedVendorHistoryIds, setExpandedVendorHistoryIds] = useState<Set<string>>(new Set());
+
+  function toggleVendorHistory(vendorItemId: string) {
+    setExpandedVendorHistoryIds(prev => {
+      const next = new Set(prev);
+      if (next.has(vendorItemId)) {
+        next.delete(vendorItemId);
+      } else {
+        next.add(vendorItemId);
+      }
+      return next;
+    });
+  }
   const [purchaseUom, setPurchaseUom] = useState("Case");
   const [showMiddleRow, setShowMiddleRow] = useState(false);
   const [containerDisplaySize, setContainerDisplaySize] = useState<string>("");
@@ -1623,6 +1714,18 @@ export default function InventoryItemDetail() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              onClick={() => toggleVendorHistory(vi.id)}
+                              title="Price history"
+                              data-testid={`button-history-vendor-mobile-${vi.id}`}
+                            >
+                              {expandedVendorHistoryIds.has(vi.id)
+                                ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                : <History className="h-4 w-4 text-muted-foreground" />
+                              }
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               onClick={() => startEditingVendorRow(vi)}
                               disabled={editingVendorItemId !== null || showAddVendorRow}
                               data-testid={`button-edit-vendor-mobile-${vi.id}`}
@@ -1658,6 +1761,18 @@ export default function InventoryItemDetail() {
                             );
                           })()}
                         </p>
+                        {expandedVendorHistoryIds.has(vi.id) && item && (
+                          <div className="mt-3 pt-3 border-t bg-muted/20 rounded-md p-3" data-testid={`vendor-history-mobile-${vi.id}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <History className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Price History</span>
+                            </div>
+                            <VendorPriceHistoryPanel
+                              inventoryItemId={item.id}
+                              vendorItemId={vi.id}
+                            />
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1798,7 +1913,8 @@ export default function InventoryItemDetail() {
                         }
 
                         return (
-                          <TableRow key={vi.id} data-testid={`vendor-item-row-${vi.id}`}>
+                          <React.Fragment key={vi.id}>
+                          <TableRow data-testid={`vendor-item-row-${vi.id}`}>
                             <TableCell className="font-medium">
                               <div className="flex flex-wrap items-center gap-1">
                                 <span>{vi.vendor?.name || "Unknown"}</span>
@@ -1862,6 +1978,18 @@ export default function InventoryItemDetail() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
+                                  onClick={() => toggleVendorHistory(vi.id)}
+                                  title="Price history"
+                                  data-testid={`button-history-vendor-${vi.id}`}
+                                >
+                                  {expandedVendorHistoryIds.has(vi.id)
+                                    ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                    : <History className="h-4 w-4 text-muted-foreground" />
+                                  }
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
                                   onClick={() => startEditingVendorRow(vi)}
                                   disabled={editingVendorItemId !== null || showAddVendorRow}
                                   data-testid={`button-edit-vendor-${vi.id}`}
@@ -1879,6 +2007,21 @@ export default function InventoryItemDetail() {
                               </div>
                             </TableCell>
                           </TableRow>
+                          {expandedVendorHistoryIds.has(vi.id) && item && (
+                            <TableRow data-testid={`vendor-history-row-${vi.id}`}>
+                              <TableCell colSpan={9} className="bg-muted/30 px-6 py-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <History className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Price History</span>
+                                </div>
+                                <VendorPriceHistoryPanel
+                                  inventoryItemId={item.id}
+                                  vendorItemId={vi.id}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          </React.Fragment>
                         );
                       })
                     ) : !showAddVendorRow && (

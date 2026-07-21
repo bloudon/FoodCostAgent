@@ -7592,6 +7592,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Price history for an inventory item, optionally filtered by vendorItemId
+  app.get("/api/inventory-items/:id/price-history", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const inventoryItemId = req.params.id;
+      const vendorItemId = req.query.vendorItemId as string | undefined;
+
+      const item = await storage.getInventoryItem(inventoryItemId);
+      if (!item) return res.status(404).json({ error: "Inventory item not found" });
+      if (item.companyId !== companyId) return res.status(403).json({ error: "Access denied" });
+
+      let history = await storage.getInventoryItemPriceHistory(inventoryItemId);
+      if (vendorItemId) {
+        history = history.filter(h => h.vendorItemId === vendorItemId);
+      }
+
+      // Newest first
+      history.sort((a, b) => new Date(b.effectiveAt).getTime() - new Date(a.effectiveAt).getTime());
+
+      res.json({ data: history });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Bulk vendor price comparison — one query for all items on a PO
   app.get("/api/vendor-prices/bulk", requireAuth, async (req, res) => {
     try {
