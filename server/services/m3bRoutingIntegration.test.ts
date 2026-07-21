@@ -552,6 +552,38 @@ function buildGuardApp(actingCompanyId: string): Express {
   return app;
 }
 
+describe("HTTP integration — guard error propagation (DB failure → next(err))", () => {
+  it("getPurchaseOrder rejection propagates to Express error handler (500)", async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).companyId = COMPANY_A_ID;
+      next();
+    });
+
+    app.post(
+      "/api/purchase-orders/:id/route-lines",
+      createRoutingPOGuard({
+        getPurchaseOrder: async () => { throw new Error("DB connection lost"); },
+        checkPoExists: async () => false,
+      }),
+      (_req, res) => { res.status(200).json({ ok: true }); },
+    );
+
+    // Express 4 error handler — converts next(err) to a 500 JSON response.
+    app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      res.status(500).json({ error: err.message });
+    });
+
+    const res = await request(app)
+      .post("/api/purchase-orders/any-id/route-lines")
+      .send({});
+
+    expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({ error: "DB connection lost" });
+  });
+});
+
 describe("HTTP integration — tenant isolation via createRoutingPOGuard (supertest)", () => {
   afterEach(deleteAllFixtures);
 

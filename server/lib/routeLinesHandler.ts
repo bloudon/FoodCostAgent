@@ -36,22 +36,26 @@ export interface RoutingPOGuardDeps {
  */
 export function createRoutingPOGuard(deps: RoutingPOGuardDeps) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const companyId = (req as any).companyId as string | null;
-    const sourcePoId = req.params.id;
+    try {
+      const companyId = (req as any).companyId as string | null;
+      const sourcePoId = req.params.id;
 
-    const sourcePo = await deps.getPurchaseOrder(sourcePoId, companyId ?? "");
+      const sourcePo = await deps.getPurchaseOrder(sourcePoId, companyId ?? "");
 
-    if (!sourcePo) {
-      const exists = await deps.checkPoExists(sourcePoId);
-      if (exists) {
-        res.status(403).json({ error: "Access denied" });
+      if (!sourcePo) {
+        const exists = await deps.checkPoExists(sourcePoId);
+        if (exists) {
+          res.status(403).json({ error: "Access denied" });
+          return;
+        }
+        res.status(404).json({ error: "Purchase order not found" });
         return;
       }
-      res.status(404).json({ error: "Purchase order not found" });
-      return;
-    }
 
-    (req as any).sourcePo = sourcePo;
-    next();
+      (req as any).sourcePo = sourcePo;
+      next();
+    } catch (err) {
+      next(err);
+    }
   };
 }
