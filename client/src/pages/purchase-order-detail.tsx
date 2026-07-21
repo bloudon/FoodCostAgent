@@ -1906,7 +1906,7 @@ export default function PurchaseOrderDetail() {
                         const isLowestPrice = index === 0;
                         const isCurrentVendor = vp.vendorId === selectedVendor;
                         const bulkVp = vp as BulkVendorPrice;
-                        const isStale = bulkVp.stale ?? (bulkVp.daysSincePriced != null && bulkVp.daysSincePriced > 90);
+                        const isStale = bulkVp.stale ?? (bulkVp.daysSincePriced != null && bulkVp.daysSincePriced > 14);
                         const isConfirmed = bulkVp.confirmed ?? false;
                         return (
                           <TableRow
@@ -1928,7 +1928,7 @@ export default function PurchaseOrderDetail() {
                                 {isConfirmed && (
                                   <Badge variant="outline" className="ml-1 border-green-500 text-green-700 dark:text-green-400" data-testid={`badge-confirmed-${vp.vendorId}`}>
                                     <CheckCircle2 className="h-3 w-3 mr-1" />
-                                    Confirmed
+                                    Paid Price
                                   </Badge>
                                 )}
                               </div>

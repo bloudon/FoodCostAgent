@@ -459,6 +459,7 @@ describe("Scenario 5 — Bulk comparison", () => {
     pricedAt: Date | null;
     stale: boolean;
     incompatibleUnit: boolean;
+    invalidPackGeometry?: boolean;
   }
 
   function rank(rows: VendorPriceRow[]): VendorPriceRow[] {
@@ -467,10 +468,10 @@ describe("Scenario 5 — Bulk comparison", () => {
 
   function eligibleForRecommendation(rows: VendorPriceRow[]): VendorPriceRow[] {
     // Mirrors the production filter in the bulk endpoint (Step 11):
-    // legacy_unknown, stale, AND incompatible-unit rows are excluded from
-    // cheaperAvailable recommendation — they appear in vendorPrices data only.
+    // legacy_unknown, stale, incompatible-unit, AND invalidPackGeometry rows are
+    // excluded from cheaperAvailable recommendation — they appear in vendorPrices data only.
     return rows.filter(
-      r => r.priceSource !== "legacy_unknown" && !r.stale && !r.incompatibleUnit
+      r => r.priceSource !== "legacy_unknown" && !r.stale && !r.incompatibleUnit && !r.invalidPackGeometry
     );
   }
 
@@ -568,8 +569,8 @@ describe("Scenario 5 — Bulk comparison", () => {
 
   // ── stale prices excluded ──────────────────────────────────────────────────
 
-  it("stale price (>90 days) excluded from cheaperAvailable", () => {
-    const staleDate = new Date(Date.now() - 91 * 86400_000);
+  it("stale price (>14 days) excluded from cheaperAvailable", () => {
+    const staleDate = new Date(Date.now() - 15 * 86400_000);
     const rows: VendorPriceRow[] = [
       { vendorId: "current", vendorName: "Active Co", unitPrice: 2.5, casePrice: 50, caseSize: 20, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
       { vendorId: "stale",   vendorName: "Stale Co",  unitPrice: 1.0, casePrice: 20, caseSize: 20, priceSource: "receipt", pricedAt: staleDate, stale: true,  incompatibleUnit: false },
@@ -584,12 +585,21 @@ describe("Scenario 5 — Bulk comparison", () => {
     expect(isPriceStale(new Date())).toBe(false);
   });
 
-  it("price from 91 days ago is stale", () => {
-    expect(isPriceStale(new Date(Date.now() - 91 * 86400_000))).toBe(true);
+  it("price from 15 days ago is stale", () => {
+    expect(isPriceStale(new Date(Date.now() - 15 * 86400_000))).toBe(true);
   });
 
   it("null pricedAt is stale", () => {
     expect(isPriceStale(null)).toBe(true);
+  });
+
+  it("invalidPackGeometry price excluded from cheaperAvailable", () => {
+    const rows: VendorPriceRow[] = [
+      { vendorId: "current", vendorName: "Current Co", unitPrice: 2.0, casePrice: 20, caseSize: 10, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false, invalidPackGeometry: true },
+      { vendorId: "bad",     vendorName: "Bad Geo Co", unitPrice: 1.0, casePrice: 10, caseSize: 0,  priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false, invalidPackGeometry: true },
+    ];
+    const result = cheaperAvailable(rows, "current");
+    expect(result.cheaperAvailable).toBe(false); // bad-geometry row must not trigger switch recommendation
   });
 
   // ── incompatibleUnit flag ─────────────────────────────────────────────────

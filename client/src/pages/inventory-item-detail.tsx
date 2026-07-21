@@ -144,6 +144,7 @@ function formatPriceSource(source: string | null): { label: string; isLegacy: bo
     case "order_guide_import": return { label: "Order Guide", isLegacy: false };
     case "manual": return { label: "Manual", isLegacy: false };
     case "po_create": return { label: "PO", isLegacy: false };
+    case "connector": return { label: "Supplier Sync", isLegacy: false };
     case "legacy_unknown": return { label: "Unknown", isLegacy: true };
     default: return { label: source, isLegacy: false };
   }
@@ -1921,7 +1922,7 @@ export default function InventoryItemDetail() {
                                 {(vi.priceSource === "receipt" || vi.priceSource === "invoice_scan") && (
                                   <Badge variant="outline" className="ml-1 border-green-500 text-green-700 dark:text-green-400" data-testid={`badge-confirmed-${vi.id}`}>
                                     <CheckCircle2 className="h-3 w-3 mr-1" />
-                                    Confirmed
+                                    Paid Price
                                   </Badge>
                                 )}
                               </div>
@@ -1951,7 +1952,8 @@ export default function InventoryItemDetail() {
                                 const daysSince = pricedAt
                                   ? Math.floor((Date.now() - pricedAt.getTime()) / 86_400_000)
                                   : null;
-                                const isStale = pricedAt ? daysSince! > 90 : false;
+                                const isStale = pricedAt ? daysSince! > 14 : false;
+                                const isAging = pricedAt && !isStale && daysSince! > 7;
                                 if (!pricedAt) {
                                   return (
                                     <div className="flex items-center justify-end gap-1 text-xs text-amber-600 dark:text-amber-400" title="No pricing date recorded" data-testid={`icon-stale-${vi.id}`}>
@@ -1961,11 +1963,12 @@ export default function InventoryItemDetail() {
                                   );
                                 }
                                 return (
-                                  <div className={`flex items-center justify-end gap-1 text-xs ${isStale ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                                  <div className={`flex items-center justify-end gap-1 text-xs ${isStale ? "text-amber-600 dark:text-amber-400" : isAging ? "text-yellow-600 dark:text-yellow-400" : "text-muted-foreground"}`}>
                                     {isStale && <AlertTriangle className="h-3 w-3 shrink-0" data-testid={`icon-stale-${vi.id}`} />}
-                                    <span title={isStale ? `Price is ${daysSince} days old — may be stale` : undefined}>
+                                    {isAging && !isStale && <AlertTriangle className="h-3 w-3 shrink-0 opacity-60" data-testid={`icon-aging-${vi.id}`} />}
+                                    <span title={isStale ? `Price is ${daysSince} days old — excluded from recommendations` : isAging ? `Price is ${daysSince} days old — getting stale` : undefined}>
                                       {pricedAt.toLocaleDateString()}
-                                      {isStale && daysSince != null && (
+                                      {(isStale || isAging) && daysSince != null && (
                                         <span className="ml-1">({daysSince}d ago)</span>
                                       )}
                                     </span>

@@ -252,12 +252,27 @@ export function computeWac(
 }
 
 /**
- * Returns true when a price is stale (older than 90 days or missing timestamp).
+ * 3-tier price freshness:
+ *   "current" — priced within the last 7 days
+ *   "aging"   — priced 8–14 days ago (advisory; still eligible for recommendations)
+ *   "stale"   — priced more than 14 days ago, or no timestamp
+ */
+export type PriceFreshness = "current" | "aging" | "stale";
+
+export function getPriceFreshness(pricedAt: Date | null | undefined): PriceFreshness {
+  if (!pricedAt) return "stale";
+  const daysAgo = (Date.now() - pricedAt.getTime()) / 86_400_000;
+  if (daysAgo <= 7) return "current";
+  if (daysAgo <= 14) return "aging";
+  return "stale";
+}
+
+/**
+ * Returns true when a price is stale (older than 14 days or missing timestamp).
+ * Thin wrapper around getPriceFreshness for backward-compatible callsites.
  */
 export function isPriceStale(pricedAt: Date | null | undefined): boolean {
-  if (!pricedAt) return true;
-  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-  return pricedAt < ninetyDaysAgo;
+  return getPriceFreshness(pricedAt) === "stale";
 }
 
 // ─── Internal Write Implementation ────────────────────────────────────────────

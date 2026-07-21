@@ -21,6 +21,7 @@ import {
   guardQuoteAsActual,
   computeWac,
   isPriceStale,
+  getPriceFreshness,
   ACTUAL_PURCHASE_SOURCES,
   QUOTE_SOURCES,
   type VendorPriceSource,
@@ -254,21 +255,37 @@ describe("computeWac — weighted average cost", () => {
 // 6. isPriceStale
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("isPriceStale — 90-day staleness boundary", () => {
+describe("isPriceStale — 14-day staleness boundary", () => {
   it("null pricedAt → stale", () => { expect(isPriceStale(null)).toBe(true); });
   it("undefined pricedAt → stale", () => { expect(isPriceStale(undefined)).toBe(true); });
-  it("91 days ago → stale", () => {
-    expect(isPriceStale(new Date(Date.now() - 91 * 86400_000))).toBe(true);
+  it("15 days ago → stale", () => {
+    expect(isPriceStale(new Date(Date.now() - 15 * 86400_000))).toBe(true);
   });
-  it("89 days ago → not stale", () => {
-    expect(isPriceStale(new Date(Date.now() - 89 * 86400_000))).toBe(false);
+  it("13 days ago → not stale", () => {
+    expect(isPriceStale(new Date(Date.now() - 13 * 86400_000))).toBe(false);
   });
   it("today → not stale", () => {
     expect(isPriceStale(new Date())).toBe(false);
   });
-  it("exactly 90 days ago → not stale (boundary is strict <, not <=)", () => {
-    // isPriceStale uses pricedAt < ninetyDaysAgo — equal is not stale
-    expect(isPriceStale(new Date(Date.now() - 90 * 86400_000))).toBe(false);
+  it("exactly 14 days ago → not stale (boundary is <=14 days)", () => {
+    expect(isPriceStale(new Date(Date.now() - 14 * 86400_000))).toBe(false);
+  });
+});
+
+describe("getPriceFreshness — 3-tier policy", () => {
+  it("null → stale", () => { expect(getPriceFreshness(null)).toBe("stale"); });
+  it("today → current", () => { expect(getPriceFreshness(new Date())).toBe("current"); });
+  it("7 days ago → current", () => {
+    expect(getPriceFreshness(new Date(Date.now() - 7 * 86400_000))).toBe("current");
+  });
+  it("8 days ago → aging", () => {
+    expect(getPriceFreshness(new Date(Date.now() - 8 * 86400_000))).toBe("aging");
+  });
+  it("14 days ago → aging", () => {
+    expect(getPriceFreshness(new Date(Date.now() - 14 * 86400_000))).toBe("aging");
+  });
+  it("15 days ago → stale", () => {
+    expect(getPriceFreshness(new Date(Date.now() - 15 * 86400_000))).toBe("stale");
   });
 });
 

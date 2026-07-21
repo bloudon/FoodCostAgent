@@ -14,7 +14,7 @@ import { parseCSV } from "./services/tfcCsv";
 import { TheoreticalUsageService } from "./services/theoreticalUsage";
 import { parseCompoundPackSize } from "./integrations/csv/CsvOrderGuide";
 import { deriveUnitPrice } from "./services/orderGuideProcessor";
-import { recordVendorPrice, isPriceStale, isIncompatibleUnit } from "./services/vendorPriceService";
+import { recordVendorPrice, isPriceStale, getPriceFreshness, effectivePackQty, isIncompatibleUnit } from "./services/vendorPriceService";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
@@ -28,7 +28,7 @@ import { createSession, requireAuth, optionalAuth, requireTier, verifyPassword, 
 import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
-import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, max } from "drizzle-orm";
+import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, desc, max } from "drizzle-orm";
 import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections } from "@shared/schema";
 import { getExportRenderer, detectConnectorFromVendorName } from "./integrations/export";
 import { resolveConnectorId } from "./integrations/capabilityRouter";
@@ -2584,10 +2584,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // (updates inventory cost and writes history); remaining VIs get false (price stamp only).
           // For inventory items with no linked vendor items, fall back to direct writes.
           const itemUnitName = allUnits.find(u => u.id === existing.unitId)?.name ?? 'pound';
+          // M3A: order by pricedAt DESC so the most recently priced vendor item is selected
+          // first when multiple vendors supply the same inventory item. This is the best
+          // proxy for "current supplier" when no vendor ID is present in the scan payload.
           const linkedVendorItems = await db
-            .select({ id: vendorItems.id, caseSize: vendorItems.caseSize, innerPackSize: vendorItems.innerPackSize, packUom: vendorItems.packUom })
+            .select({ id: vendorItems.id, vendorId: vendorItems.vendorId, caseSize: vendorItems.caseSize, innerPackSize: vendorItems.innerPackSize, packUom: vendorItems.packUom, pricedAt: vendorItems.pricedAt })
             .from(vendorItems)
-            .where(eq(vendorItems.inventoryItemId, line.inventoryItemId));
+            .where(eq(vendorItems.inventoryItemId, line.inventoryItemId))
+            .orderBy(desc(vendorItems.pricedAt));
 
           const hasCasePrice = (line.casePrice ?? 0) > 0;
           const hasLinkedVendorItem = linkedVendorItems.length > 0 && hasCasePrice;
@@ -7562,6 +7566,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             : unitPrice * caseSize;
           
           const pricedAtDate = vi.pricedAt instanceof Date ? vi.pricedAt : vi.pricedAt ? new Date(vi.pricedAt as any) : null;
+          const { invalidPackGeometry } = effectivePackQty(vi.caseSize || 1, vi.innerPackSize ?? 1, vi.packUom ?? "", unit?.name || "");
           return {
             vendorId: vi.vendorId,
             vendorName: vendor?.name || 'Unknown',
@@ -7577,7 +7582,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ? Math.floor((Date.now() - pricedAtDate.getTime()) / 86_400_000)
               : null,
             stale: isPriceStale(pricedAtDate),
+            freshnessStatus: getPriceFreshness(pricedAtDate),
             confirmed: vi.priceSource === "receipt" || vi.priceSource === "invoice_scan",
+            invalidPackGeometry,
           };
         })
         .sort((a, b) => a.casePrice - b.casePrice);
@@ -7681,8 +7688,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           pricedAt: string | null;
           daysSincePriced: number | null;
           stale: boolean;
+          freshnessStatus: string;
           confirmed: boolean;
           incompatibleUnit: boolean;
+          invalidPackGeometry: boolean;
         }[];
         cheaperAvailable: boolean;
         savingsPerCase: number;
@@ -7716,6 +7725,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             vi.lastCasePrice != null && vi.lastCasePrice > 0
               ? vi.lastCasePrice
               : unitPrice * caseSize;
+          const { invalidPackGeometry: ipg } = effectivePackQty(vi.caseSize || 1, vi.innerPackSize ?? 1, vi.packUom ?? "", inventoryUnitName);
           return {
             vendorId: vi.vendorId,
             vendorName: vendorName || "Unknown",
@@ -7730,8 +7740,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ? Math.floor((Date.now() - vi.pricedAt.getTime()) / 86_400_000)
               : null,
             stale: isPriceStale(vi.pricedAt),
+            freshnessStatus: getPriceFreshness(vi.pricedAt),
             confirmed: vi.priceSource === "receipt" || vi.priceSource === "invoice_scan",
             incompatibleUnit: isIncompatibleUnit(vi.packUom ?? "", inventoryUnitName),
+            invalidPackGeometry: ipg,
           };
         }).sort((a, b) => a.unitPrice - b.unitPrice);
 
@@ -7740,11 +7752,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           continue;
         }
 
-        // Recommendation logic excludes legacy_unknown, stale, and incompatible-unit rows.
-        // Incompatible-unit prices are shown in vendorPrices data but cannot be fairly ranked
-        // against compatible-unit rows — exclude them from cheaperAvailable logic.
+        // Recommendation logic excludes legacy_unknown, stale, incompatible-unit, and
+        // invalidPackGeometry rows. These appear in vendorPrices data for transparency
+        // but cannot be fairly ranked — exclude from cheaperAvailable logic.
         const eligiblePrices = vendorPrices.filter(
-          vp => vp.priceSource !== "legacy_unknown" && !vp.stale && !vp.incompatibleUnit
+          vp => vp.priceSource !== "legacy_unknown" && !vp.stale && !vp.incompatibleUnit && !vp.invalidPackGeometry
         );
 
         const currentPrice = currentVendorId
