@@ -703,6 +703,26 @@ export const insertPoExportLogSchema = createInsertSchema(poExportLogs).omit({ i
 export type InsertPoExportLog = z.infer<typeof insertPoExportLogSchema>;
 export type PoExportLog = typeof poExportLogs.$inferSelect;
 
+// PO Routing Audits — captures every vendor routing action and projected-savings snapshot
+export const poRoutingAudits = pgTable("po_routing_audits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  sourcePoId: varchar("source_po_id").notNull(),
+  userId: varchar("user_id"),
+  routedAt: timestamp("routed_at").notNull().defaultNow(),
+  linesRouted: integer("lines_routed").notNull(),
+  projectedSavings: real("projected_savings"),
+  // JSON array of per-line routing decisions with price snapshot
+  decisions: jsonb("decisions").notNull().default(sql`'[]'::jsonb`),
+  // IDs of all resulting draft POs created or updated by this routing action
+  resultingPoIds: text("resulting_po_ids").array().notNull().default(sql`ARRAY[]::text[]`),
+}, (table) => ({
+  companyIdx: index("po_routing_audits_company_idx").on(table.companyId),
+  sourcePoIdx: index("po_routing_audits_source_po_idx").on(table.sourcePoId),
+}));
+
+export type PoRoutingAudit = typeof poRoutingAudits.$inferSelect;
+
 // Receipts
 export const receipts = pgTable("receipts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
