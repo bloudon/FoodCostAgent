@@ -21112,28 +21112,40 @@ Human Handoff:
     /**
      * POST /api/dev/test/receipt-state
      * Seeds the full receipt chain required to exercise PATCH /api/receipts/:id/complete:
-     *   vendor_item → purchase_order → receipt (draft) → receipt_line
+     *   vendor_item(s) → purchase_order → receipt (draft) → receipt_line(s)
      *
-     * Body:
+     * Body (single-line, backwards-compatible):
      *   inventoryItemId — existing inventory item ID (required)
      *   vendorId        — existing vendor ID (required)
      *   purchaseUnitId  — existing unit ID (required)
      *
-     * Returns: { receiptId, vendorItemId, poId }
+     * Body (multi-line):
+     *   lines: [{ inventoryItemId, vendorId, purchaseUnitId }]  — 1–N entries
+     *
+     * Returns (single-line): { receiptId, vendorItemId, poId, inventoryItemId }
+     * Returns (multi-line):  { receiptId, poId, vendorItemId (first), lines: [{ vendorItemId, inventoryItemId }] }
      */
     app.post("/api/dev/test/receipt-state", requireAuth, async (req, res) => {
       try {
         const companyId = (req as any).companyId;
         if (!companyId) return res.status(400).json({ error: "Company context required" });
 
-        const { inventoryItemId, vendorId, purchaseUnitId } = req.body as {
-          inventoryItemId: string;
-          vendorId: string;
-          purchaseUnitId: string;
-        };
+        // Support both single-line (legacy) and multi-line body shapes
+        type LineSpec = { inventoryItemId: string; vendorId: string; purchaseUnitId: string };
+        let lineSpecs: LineSpec[];
+        const isMultiLine = Array.isArray(req.body.lines);
 
-        if (!inventoryItemId || !vendorId || !purchaseUnitId) {
-          return res.status(400).json({ error: "inventoryItemId, vendorId, and purchaseUnitId are required" });
+        if (isMultiLine) {
+          lineSpecs = req.body.lines as LineSpec[];
+          if (!lineSpecs.length) {
+            return res.status(400).json({ error: "lines array must not be empty" });
+          }
+        } else {
+          const { inventoryItemId, vendorId, purchaseUnitId } = req.body as LineSpec;
+          if (!inventoryItemId || !vendorId || !purchaseUnitId) {
+            return res.status(400).json({ error: "inventoryItemId, vendorId, and purchaseUnitId are required" });
+          }
+          lineSpecs = [{ inventoryItemId, vendorId, purchaseUnitId }];
         }
 
         // Find a store for this company
@@ -21143,20 +21155,8 @@ Human Handoff:
         }
         const storeId = stores[0].id;
 
-        // Seed a vendor item linked to the inventory item
-        const vendorSku = `dev-receipt-vi-${Date.now()}`;
-        const vendorItemId = crypto.randomUUID();
-        await db.insert(vendorItems).values({
-          id: vendorItemId,
-          vendorId,
-          inventoryItemId,
-          vendorSku,
-          purchaseUnitId,
-          caseSize: 6,
-          lastPrice: 4.0,
-          lastCasePrice: 24.0,
-          active: 1,
-        });
+        // Use vendorId from the first line spec for the PO
+        const primaryVendorId = lineSpecs[0].vendorId;
 
         // Create a draft purchase order
         const poId = crypto.randomUUID();
@@ -21164,7 +21164,7 @@ Human Handoff:
           id: poId,
           companyId,
           storeId,
-          vendorId,
+          vendorId: primaryVendorId,
           status: "ordered",
           expectedDate: new Date(),
         });
@@ -21180,14 +21180,41 @@ Human Handoff:
           receivedAt: new Date(),
         });
 
-        // Create a receipt line linking receipt → vendor item
-        const lineId = crypto.randomUUID();
-        await db.execute(
-          sql`INSERT INTO receipt_lines (id, receipt_id, vendor_item_id, received_qty, unit_id, price_each)
-              VALUES (${lineId}, ${receiptId}, ${vendorItemId}, 10, ${purchaseUnitId}, 4.0)`
-        );
+        // Seed one vendor_item + receipt_line per spec entry
+        const seededLines: Array<{ vendorItemId: string; inventoryItemId: string }> = [];
+        const ts = Date.now();
+        for (let i = 0; i < lineSpecs.length; i++) {
+          const spec = lineSpecs[i];
+          const vendorSku = `dev-receipt-vi-${ts}-${i}`;
+          const vendorItemId = crypto.randomUUID();
+          await db.insert(vendorItems).values({
+            id: vendorItemId,
+            vendorId: spec.vendorId,
+            inventoryItemId: spec.inventoryItemId,
+            vendorSku,
+            purchaseUnitId: spec.purchaseUnitId,
+            caseSize: 6,
+            lastPrice: 4.0,
+            lastCasePrice: 24.0,
+            active: 1,
+          });
 
-        return res.json({ receiptId, vendorItemId, poId, inventoryItemId });
+          const lineId = crypto.randomUUID();
+          await db.execute(
+            sql`INSERT INTO receipt_lines (id, receipt_id, vendor_item_id, received_qty, unit_id, price_each)
+                VALUES (${lineId}, ${receiptId}, ${vendorItemId}, 10, ${spec.purchaseUnitId}, 4.0)`
+          );
+
+          seededLines.push({ vendorItemId, inventoryItemId: spec.inventoryItemId });
+        }
+
+        const firstVendorItemId = seededLines[0].vendorItemId;
+        const firstInventoryItemId = seededLines[0].inventoryItemId;
+
+        if (isMultiLine) {
+          return res.json({ receiptId, poId, vendorItemId: firstVendorItemId, lines: seededLines });
+        }
+        return res.json({ receiptId, vendorItemId: firstVendorItemId, poId, inventoryItemId: firstInventoryItemId });
       } catch (err: any) {
         console.error("[dev/test/receipt-state POST]", err);
         return res.status(500).json({ error: err.message });
@@ -21197,17 +21224,36 @@ Human Handoff:
     /**
      * DELETE /api/dev/test/receipt-state/:receiptId
      * Cleans up rows seeded by POST /api/dev/test/receipt-state.
-     * Removes receipt lines, receipt, PO, and vendor item.
+     * Removes receipt lines, receipt, PO, and vendor item(s).
+     *
+     * Query params:
+     *   vendorItemId   — single vendor item ID to delete (legacy)
+     *   vendorItemIds  — comma-separated list of vendor item IDs to delete (multi-line)
+     *   poId           — PO ID to delete
      */
     app.delete("/api/dev/test/receipt-state/:receiptId", requireAuth, async (req, res) => {
       try {
         const { receiptId } = req.params;
-        const { vendorItemId, poId } = req.query as { vendorItemId?: string; poId?: string };
+        const { vendorItemId, vendorItemIds, poId } = req.query as {
+          vendorItemId?: string;
+          vendorItemIds?: string;
+          poId?: string;
+        };
 
         await db.execute(sql`DELETE FROM receipt_lines WHERE receipt_id = ${receiptId}`);
         await db.delete(receipts).where(eq(receipts.id, receiptId));
         if (poId) await db.delete(purchaseOrders).where(eq(purchaseOrders.id, poId));
-        if (vendorItemId) await db.delete(vendorItems).where(eq(vendorItems.id, vendorItemId));
+
+        // Support both single and multi-item cleanup
+        const idsToDelete: string[] = [];
+        if (vendorItemIds) {
+          idsToDelete.push(...vendorItemIds.split(",").map((s) => s.trim()).filter(Boolean));
+        } else if (vendorItemId) {
+          idsToDelete.push(vendorItemId);
+        }
+        for (const vid of idsToDelete) {
+          await db.delete(vendorItems).where(eq(vendorItems.id, vid));
+        }
 
         return res.json({ deleted: true, receiptId });
       } catch (err: any) {

@@ -261,6 +261,96 @@ test.describe('price-source labels — receipt complete flow', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Suite: Flow — receipt complete with multiple lines from different vendor items
+// ---------------------------------------------------------------------------
+
+test.describe('price-source labels — receipt complete multi-line flow', () => {
+  /**
+   * Guards against loop bugs in PATCH /api/receipts/:id/complete where only
+   * the first receipt line is processed (early bail-out, wrong vendorItemId, etc.).
+   *
+   * Seeds a single PO + receipt with THREE receipt_lines, each linked to a
+   * distinct vendor_item (same inventoryItemId, different SKUs). After calling
+   * complete, every vendor_item row must have priceSource = 'receipt' and the
+   * inventory item detail page must show "Receipt" + "Confirmed" for all three.
+   */
+  test('receipt complete updates priceSource for all lines, not just the first', async ({ page, request }) => {
+    const loggedIn = await loginViaApi(request);
+    if (!loggedIn) {
+      test.skip(true, 'Could not log in via API — skipping integration test');
+      return;
+    }
+
+    const anchors = await getAnchors(request);
+    if (!anchors) {
+      test.skip(true, 'Dev anchor helper not available or no data in dev DB — skipping');
+      return;
+    }
+
+    // Seed one PO + draft receipt with 3 distinct vendor_items + receipt_lines
+    const seedRes = await request.post(`${BASE_URL}/api/dev/test/receipt-state`, {
+      data: {
+        lines: [
+          { inventoryItemId: anchors.inventoryItemId, vendorId: anchors.vendorId, purchaseUnitId: anchors.purchaseUnitId },
+          { inventoryItemId: anchors.inventoryItemId, vendorId: anchors.vendorId, purchaseUnitId: anchors.purchaseUnitId },
+          { inventoryItemId: anchors.inventoryItemId, vendorId: anchors.vendorId, purchaseUnitId: anchors.purchaseUnitId },
+        ],
+      },
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (seedRes.status() === 404 || seedRes.status() === 401) {
+      test.skip(true, 'Dev receipt-state helper not available — skipping');
+      return;
+    }
+
+    expect(
+      seedRes.status(),
+      `receipt-state multi-line seed must succeed; got ${seedRes.status()}: ${await seedRes.text()}`,
+    ).toBe(200);
+
+    const { receiptId, poId, lines } = await seedRes.json() as {
+      receiptId: string;
+      poId: string;
+      vendorItemId: string;
+      lines: Array<{ vendorItemId: string; inventoryItemId: string }>;
+    };
+
+    const vendorItemIds = lines.map((l) => l.vendorItemId);
+
+    try {
+      // Complete the receipt — the loop must process all 3 lines
+      const completeRes = await request.patch(`${BASE_URL}/api/receipts/${receiptId}/complete`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      expect(
+        completeRes.status(),
+        `receipts/:id/complete must succeed; got ${completeRes.status()}: ${await completeRes.text()}`,
+      ).toBe(200);
+
+      // Navigate to inventory item detail and verify all 3 vendor_item rows
+      await loginViaPage(page);
+      await page.goto(`${BASE_URL}/inventory-items/${anchors.inventoryItemId}`);
+      await page.waitForTimeout(2500);
+
+      for (const vendorItemId of vendorItemIds) {
+        const priceSourceCell = page.getByTestId(`text-price-source-${vendorItemId}`);
+        await expect(priceSourceCell, `vendor item ${vendorItemId} must be visible`).toBeVisible({ timeout: 8000 });
+        await expect(priceSourceCell, `vendor item ${vendorItemId} must show "Receipt"`).toContainText('Receipt');
+
+        const confirmedBadge = page.getByTestId(`badge-confirmed-${vendorItemId}`);
+        await expect(confirmedBadge, `vendor item ${vendorItemId} must show Confirmed badge`).toBeVisible();
+      }
+    } finally {
+      await request.delete(
+        `${BASE_URL}/api/dev/test/receipt-state/${receiptId}?vendorItemIds=${vendorItemIds.join(',')}&poId=${poId}`,
+      );
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Suite: Flow — receipt complete via UI (manager approves in browser)
 // ---------------------------------------------------------------------------
 
