@@ -7727,6 +7727,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               : unitPrice * caseSize;
           const { invalidPackGeometry: ipg } = effectivePackQty(vi.caseSize || 1, vi.innerPackSize ?? 1, vi.packUom ?? "", inventoryUnitName);
           return {
+            vendorItemId: vi.id,
             vendorId: vi.vendorId,
             vendorName: vendorName || "Unknown",
             vendorSku: vi.vendorSku,

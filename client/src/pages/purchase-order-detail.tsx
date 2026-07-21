@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Save, Package, Search, PackageCheck, TrendingDown, CalendarIcon, Download, CheckCircle2, AlertTriangle, Clock, Sparkles } from "lucide-react";
+import { ArrowLeft, Save, Package, Search, PackageCheck, TrendingDown, CalendarIcon, Download, CheckCircle2, AlertTriangle, Clock, Sparkles, Loader2, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -135,6 +135,7 @@ type VendorPriceComparison = {
 };
 
 type BulkVendorPrice = {
+  vendorItemId: string;
   vendorId: string;
   vendorName: string;
   vendorSku: string | null;
@@ -148,6 +149,7 @@ type BulkVendorPrice = {
   stale: boolean;
   confirmed: boolean;
   incompatibleUnit: boolean;
+  invalidPackGeometry: boolean;
 };
 
 type BulkComparisonEntry = {
@@ -174,6 +176,8 @@ export default function PurchaseOrderDetail() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [compareItemId, setCompareItemId] = useState<string | null>(null);
+  const [routeLoadingVendorItemId, setRouteLoadingVendorItemId] = useState<string | null>(null);
+  const [routeSuccess, setRouteSuccess] = useState<{ routedLines: number; affectedPOIds: string[] } | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   
   // Export state
@@ -428,6 +432,30 @@ export default function PurchaseOrderDetail() {
       toast({
         title: "Error",
         description: error.message || "Failed to save purchase order",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const routeLinesMutation = useMutation({
+    mutationFn: async ({ poLineId, targetVendorItemId }: { poLineId: string; targetVendorItemId: string }) => {
+      const res = await apiRequest("POST", `/api/purchase-orders/${id}/route-lines`, {
+        lines: [{ poLineId, targetVendorItemId }],
+      });
+      return res as { data: { routedLines: number; affectedPOIds: string[]; auditIds: string[] } };
+    },
+    onSuccess: (res) => {
+      const { routedLines, affectedPOIds } = res.data;
+      setRouteSuccess({ routedLines, affectedPOIds });
+      setRouteLoadingVendorItemId(null);
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${id}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/vendor-prices/bulk`] });
+    },
+    onError: (error: any) => {
+      setRouteLoadingVendorItemId(null);
+      toast({
+        title: "Routing failed",
+        description: error.message || "Could not route this line — please try again.",
         variant: "destructive",
       });
     },
@@ -1840,8 +1868,14 @@ export default function PurchaseOrderDetail() {
       </Dialog>
 
       {/* Vendor Price Comparison Dialog */}
-      <Dialog open={!!compareItemId} onOpenChange={(open) => !open && setCompareItemId(null)}>
-        <DialogContent className="max-w-2xl">
+      <Dialog open={!!compareItemId} onOpenChange={(open) => {
+        if (!open) {
+          setCompareItemId(null);
+          setRouteSuccess(null);
+          setRouteLoadingVendorItemId(null);
+        }
+      }}>
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Vendor Price Comparison</DialogTitle>
             <DialogDescription>
@@ -1850,6 +1884,56 @@ export default function PurchaseOrderDetail() {
           </DialogHeader>
           
           {(() => {
+            // Success panel — shown after a successful routing action
+            if (routeSuccess) {
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-800 dark:text-green-300">
+                    <CheckCircle2 className="h-5 w-5 shrink-0" />
+                    <span>
+                      {routeSuccess.routedLines === 1
+                        ? "Line successfully routed to the new vendor."
+                        : `${routeSuccess.routedLines} lines successfully routed to the new vendor.`}
+                    </span>
+                  </div>
+                  {routeSuccess.affectedPOIds.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-foreground">Affected purchase order{routeSuccess.affectedPOIds.length > 1 ? "s" : ""}:</p>
+                      <ul className="space-y-1">
+                        {routeSuccess.affectedPOIds.map((poId) => (
+                          <li key={poId}>
+                            <Link
+                              href={`/purchase-orders/${poId}`}
+                              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                              data-testid={`link-affected-po-${poId}`}
+                              onClick={() => {
+                                setCompareItemId(null);
+                                setRouteSuccess(null);
+                              }}
+                            >
+                              <ArrowRight className="h-3 w-3" />
+                              View PO {poId.slice(0, 8)}…
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div className="flex justify-end pt-1">
+                    <Button
+                      onClick={() => {
+                        setCompareItemId(null);
+                        setRouteSuccess(null);
+                      }}
+                      data-testid="button-routing-done"
+                    >
+                      Done
+                    </Button>
+                  </div>
+                </div>
+              );
+            }
+
             // Prefer bulk comparison data (richer: includes staleness + confirmed).
             // Fall back to single-item endpoint data if bulk entry is unavailable.
             const bulkEntry = compareItemId ? bulkComparison?.data?.[compareItemId] : undefined;
@@ -1866,12 +1950,33 @@ export default function PurchaseOrderDetail() {
               );
             }
 
+            // Find the PO line for this item so we can pass poLineId to the routing endpoint
+            const comparePOLine = purchaseOrder?.lines?.find(
+              (l) => l.inventoryItemId === compareItemId
+            );
+            const canRoute =
+              !isNew &&
+              !!comparePOLine &&
+              (purchaseOrder?.status === "pending" || purchaseOrder?.status === "draft");
+
+            // Eligibility: row must have a fresh, compatible, traceable price
+            const isRowEligible = (vp: BulkVendorPrice) =>
+              !vp.incompatibleUnit &&
+              !vp.invalidPackGeometry &&
+              vp.priceSource !== "legacy_unknown" &&
+              !vp.stale;
+
             const currentVendorRow = prices.find(vp => vp.vendorId === selectedVendor);
             const bestRow = prices[0];
             const isBestAlready = bestRow.vendorId === selectedVendor;
             const savings = currentVendorRow && !isBestAlready
               ? currentVendorRow.casePrice - bestRow.casePrice
               : 0;
+
+            // Count eligible alternatives (exclude current vendor — no point routing to same vendor)
+            const eligibleAlternatives = prices.filter(
+              vp => vp.vendorId !== selectedVendor && isRowEligible(vp)
+            );
 
             return (
               <>
@@ -1888,7 +1993,22 @@ export default function PurchaseOrderDetail() {
                     </span>
                   </div>
                 ) : null}
-                <div className="border rounded-lg">
+
+                {canRoute && eligibleAlternatives.length === 0 && (
+                  <div className="flex items-center gap-2 rounded-md bg-muted/60 border px-3 py-2 text-sm text-muted-foreground" data-testid="callout-no-eligible-alternatives">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    No approved vendor alternatives — review product matches.
+                  </div>
+                )}
+
+                {!canRoute && comparePOLine && purchaseOrder?.status && purchaseOrder.status !== "pending" && purchaseOrder.status !== "draft" && (
+                  <div className="flex items-center gap-2 rounded-md bg-muted/60 border px-3 py-2 text-sm text-muted-foreground" data-testid="callout-routing-locked">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    Routing is only available on draft orders.
+                  </div>
+                )}
+
+                <div className="border rounded-lg overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1899,6 +2019,7 @@ export default function PurchaseOrderDetail() {
                         <TableHead className="text-right">Case Price</TableHead>
                         <TableHead>Source</TableHead>
                         <TableHead className="text-right">Price Date</TableHead>
+                        {canRoute && <TableHead className="text-right">Action</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1908,6 +2029,23 @@ export default function PurchaseOrderDetail() {
                         const bulkVp = vp as BulkVendorPrice;
                         const isStale = bulkVp.stale ?? (bulkVp.daysSincePriced != null && bulkVp.daysSincePriced > 14);
                         const isConfirmed = bulkVp.confirmed ?? false;
+                        const eligible = isRowEligible(bulkVp);
+                        const isThisRowLoading = routeLoadingVendorItemId === bulkVp.vendorItemId;
+                        const anyRowLoading = routeLoadingVendorItemId !== null;
+
+                        // Compute ineligibility reason for chip
+                        const ineligibilityReason = !eligible
+                          ? bulkVp.stale
+                            ? "Stale price"
+                            : bulkVp.incompatibleUnit
+                            ? "Unit mismatch"
+                            : bulkVp.invalidPackGeometry
+                            ? "Pack mismatch"
+                            : bulkVp.priceSource === "legacy_unknown"
+                            ? "Unknown source"
+                            : null
+                          : null;
+
                         return (
                           <TableRow
                             key={vp.vendorId}
@@ -1985,6 +2123,41 @@ export default function PurchaseOrderDetail() {
                                 </div>
                               )}
                             </TableCell>
+                            {canRoute && (
+                              <TableCell className="text-right">
+                                {isCurrentVendor ? (
+                                  <span className="text-xs text-muted-foreground">Current</span>
+                                ) : eligible ? (
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    disabled={anyRowLoading}
+                                    data-testid={`button-route-to-${vp.vendorId}`}
+                                    onClick={() => {
+                                      if (!comparePOLine) return;
+                                      setRouteLoadingVendorItemId(bulkVp.vendorItemId);
+                                      routeLinesMutation.mutate({
+                                        poLineId: comparePOLine.id,
+                                        targetVendorItemId: bulkVp.vendorItemId,
+                                      });
+                                    }}
+                                  >
+                                    {isThisRowLoading ? (
+                                      <>
+                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                        Routing…
+                                      </>
+                                    ) : (
+                                      "Route to Vendor"
+                                    )}
+                                  </Button>
+                                ) : (
+                                  <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-ineligible-${vp.vendorId}`}>
+                                    {ineligibilityReason ?? "Ineligible"}
+                                  </Badge>
+                                )}
+                              </TableCell>
+                            )}
                           </TableRow>
                         );
                       })}
