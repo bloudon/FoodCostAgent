@@ -261,6 +261,106 @@ test.describe('price-source labels — receipt complete flow', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Suite: Flow — receipt complete via UI (manager approves in browser)
+// ---------------------------------------------------------------------------
+
+test.describe('price-source labels — receipt complete via UI approval', () => {
+  /**
+   * End-to-end UI path: seeds the full receipt chain, then has Playwright
+   * navigate to the /receiving/:poId page and click "Complete Receiving" —
+   * the same action a manager takes in the browser.
+   *
+   * Guards specifically against a regression where the PATCH
+   * /api/receipts/:id/complete endpoint is wired incorrectly so that
+   * priceSource is never written to vendor_items, causing the label to
+   * stay "Unknown" after UI-driven approval.
+   *
+   * The seeded PO has no purchase_order_lines, so allLinesSaved is
+   * immediately true (0 === 0) and the button is enabled as soon as the
+   * draft receipt is resolved.
+   */
+  test('approving a receipt via the UI writes receipt priceSource and shows "Receipt" label', async ({ page, request }) => {
+    const loggedIn = await loginViaApi(request);
+    if (!loggedIn) {
+      test.skip(true, 'Could not log in via API — skipping integration test');
+      return;
+    }
+
+    const anchors = await getAnchors(request);
+    if (!anchors) {
+      test.skip(true, 'Dev anchor helper not available or no data in dev DB — skipping');
+      return;
+    }
+
+    // Seed the full receipt chain (vendor_item + PO + draft receipt + receipt_line)
+    const seedRes = await request.post(`${BASE_URL}/api/dev/test/receipt-state`, {
+      data: {
+        inventoryItemId: anchors.inventoryItemId,
+        vendorId: anchors.vendorId,
+        purchaseUnitId: anchors.purchaseUnitId,
+      },
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (seedRes.status() === 404 || seedRes.status() === 401) {
+      test.skip(true, 'Dev receipt-state helper not available — skipping');
+      return;
+    }
+
+    expect(
+      seedRes.status(),
+      `receipt-state seed must succeed; got ${seedRes.status()}: ${await seedRes.text()}`,
+    ).toBe(200);
+
+    const { receiptId, vendorItemId, poId } = await seedRes.json() as {
+      receiptId: string;
+      vendorItemId: string;
+      poId: string;
+    };
+
+    try {
+      // Step 1: Log in via the browser UI
+      await loginViaPage(page);
+
+      // Step 2: Navigate to the receiving detail page for this PO
+      await page.goto(`${BASE_URL}/receiving/${poId}`);
+
+      // Step 3: Wait for the "Complete Receiving" button to be visible and enabled.
+      // The seeded PO has no purchase_order_lines so allLinesSaved is immediately
+      // true; draftReceiptId is set once /api/receipts/draft/:poId resolves.
+      const completeBtn = page.getByTestId('button-complete-receiving');
+      await expect(completeBtn).toBeVisible({ timeout: 10000 });
+      await expect(completeBtn).toBeEnabled({ timeout: 10000 });
+
+      // Step 4: Click to approve — this calls PATCH /api/receipts/:id/complete
+      // which must write priceSource = 'receipt' on the vendor_items row.
+      await completeBtn.click();
+
+      // Step 5: The mutation's onSuccess navigates to /orders — wait for it
+      await page.waitForURL((url: URL) => url.pathname === '/orders', { timeout: 15000 });
+
+      // Step 6: Navigate to the inventory item detail page
+      await page.goto(`${BASE_URL}/inventory-items/${anchors.inventoryItemId}`);
+      await page.waitForTimeout(2500);
+
+      // Step 7: The vendor row for our seeded vendor_item must show "Receipt"
+      // and a "Confirmed" badge — confirming priceSource was written correctly.
+      const priceSourceCell = page.getByTestId(`text-price-source-${vendorItemId}`);
+      await expect(priceSourceCell).toBeVisible({ timeout: 8000 });
+      await expect(priceSourceCell).toContainText('Receipt');
+
+      const confirmedBadge = page.getByTestId(`badge-confirmed-${vendorItemId}`);
+      await expect(confirmedBadge).toBeVisible();
+    } finally {
+      // Clean up seeded rows regardless of test outcome
+      await request.delete(
+        `${BASE_URL}/api/dev/test/receipt-state/${receiptId}?vendorItemId=${vendorItemId}&poId=${poId}`,
+      );
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Suite: Display — legacy_unknown warning icon
 // ---------------------------------------------------------------------------
 
