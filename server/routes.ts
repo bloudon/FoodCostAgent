@@ -2580,8 +2580,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .where(eq(inventoryItems.id, line.inventoryItemId));
 
           // Also update lastCasePrice on any existing vendorItems association for this inventory item
+          // M3A: invoice_scan is an actual-purchase source — stamp priceSource accordingly
           if (line.casePrice && line.casePrice > 0) {
-            // Resolve the inventory item's base unit name for unit-aware price derivation
             const itemUnitName = allUnits.find(u => u.id === existing[0].unitId)?.name ?? 'pound';
             const existingVendorItems = await db.select({ id: vendorItems.id, caseSize: vendorItems.caseSize, innerPackSize: vendorItems.innerPackSize, packUom: vendorItems.packUom })
               .from(vendorItems)
@@ -2593,7 +2593,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 line.casePrice, caseSize, innerPackSize, vi.packUom ?? '', itemUnitName
               );
               await db.update(vendorItems)
-                .set({ lastCasePrice: line.casePrice, lastPrice: derivedUnitPrice })
+                .set({
+                  lastCasePrice: line.casePrice,
+                  lastPrice: derivedUnitPrice,
+                  priceSource: "invoice_scan",
+                  pricedAt: new Date(),
+                })
                 .where(eq(vendorItems.id, vi.id));
             }
           }
@@ -4719,9 +4724,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const rawCaseSize = product.caseSize || existingItem.caseSize;
             const rawInnerPack = product.innerPack || 1;
             const mergedCaseSize = rawCaseSize * rawInnerPack;
+            // M3A: legacy CSV uploads are quote sources — tag accordingly
             await storage.updateVendorItem(existingItem.id, {
               lastPrice: product.price || existingItem.lastPrice,
               caseSize: mergedCaseSize,
+              priceSource: "order_guide_import",
+              pricedAt: new Date(),
             });
           }
           // Note: Creating new vendor_items requires inventoryItemId which we don't have from CSV
@@ -7524,46 +7532,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const inventoryItemIds = idsParam.split(",").filter(Boolean).slice(0, 200);
       if (inventoryItemIds.length === 0) return res.json({ data: {} });
 
+      // M3A: join through vendors to enforce tenant isolation — only return
+      // vendor items that belong to this company's vendors.
+      // Also exclude legacy_unknown price rows from cross-shopping recommendations.
       const allVendorItems = await db
-        .select()
+        .select({ vi: vendorItems, vendorName: vendors.name })
         .from(vendorItems)
-        .where(inArray(vendorItems.inventoryItemId, inventoryItemIds));
+        .innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
+        .where(
+          and(
+            inArray(vendorItems.inventoryItemId, inventoryItemIds),
+            eq(vendors.companyId, companyId)
+          )
+        );
 
-      const allVendors = await storage.getVendors(companyId);
       const allUnits = await storage.getUnits();
 
       const result: Record<string, {
-        vendorPrices: { vendorId: string; vendorName: string; vendorSku: string | null; casePrice: number; unitPrice: number; caseSize: number; unitName: string }[];
+        vendorPrices: { vendorId: string; vendorName: string; vendorSku: string | null; casePrice: number; unitPrice: number; caseSize: number; unitName: string; priceSource: string | null }[];
         cheaperAvailable: boolean;
         savingsPerCase: number;
         bestVendorName: string | null;
       }> = {};
 
       for (const itemId of inventoryItemIds) {
-        const itemVis = allVendorItems.filter(vi => vi.inventoryItemId === itemId && vi.lastPrice != null);
-        const vendorPrices = itemVis.map(vi => {
-          const vendor = allVendors.find(v => v.id === vi.vendorId);
+        const itemVis = allVendorItems.filter(
+          ({ vi }) =>
+            vi.inventoryItemId === itemId &&
+            vi.lastPrice != null &&
+            vi.lastPrice > 0 &&
+            // M3A: exclude legacy_unknown from cross-shopping recommendations
+            vi.priceSource !== "legacy_unknown"
+        );
+        // M3A: rank by normalized unit price (not case price) for a fair comparison
+        const vendorPrices = itemVis.map(({ vi, vendorName }) => {
           const unit = allUnits.find(u => u.id === vi.purchaseUnitId);
           const unitPrice = vi.lastPrice!;
           const caseSize = vi.caseSize || 1;
           const casePrice = (vi.lastCasePrice != null && vi.lastCasePrice > 0)
             ? vi.lastCasePrice
             : unitPrice * caseSize;
-          return { vendorId: vi.vendorId, vendorName: vendor?.name || "Unknown", vendorSku: vi.vendorSku, casePrice, unitPrice, caseSize, unitName: unit?.name || "" };
-        }).sort((a, b) => a.casePrice - b.casePrice);
+          return { vendorId: vi.vendorId, vendorName: vendorName || "Unknown", vendorSku: vi.vendorSku, casePrice, unitPrice, caseSize, unitName: unit?.name || "", priceSource: vi.priceSource };
+        }).sort((a, b) => a.unitPrice - b.unitPrice); // rank by unit price for fair comparison
 
         if (vendorPrices.length < 2) {
           result[itemId] = { vendorPrices, cheaperAvailable: false, savingsPerCase: 0, bestVendorName: null };
           continue;
         }
 
-        const currentPrice = currentVendorId ? vendorPrices.find(vp => vp.vendorId === currentVendorId)?.casePrice ?? null : null;
-        const bestPrice = vendorPrices[0].casePrice;
-        const cheaperAvailable = currentPrice !== null && bestPrice < currentPrice - 0.001;
+        const currentPrice = currentVendorId ? vendorPrices.find(vp => vp.vendorId === currentVendorId)?.unitPrice ?? null : null;
+        const bestPrice = vendorPrices[0].unitPrice;
+        const cheaperAvailable = currentPrice !== null && bestPrice < currentPrice - 0.0001;
+        // Express savings per case using the best vendor's caseSize for a meaningful figure
+        const bestVP = vendorPrices[0];
+        const currentVP = currentVendorId ? vendorPrices.find(vp => vp.vendorId === currentVendorId) : null;
+        const savingsPerCase = cheaperAvailable && currentVP
+          ? (currentVP.unitPrice - bestPrice) * bestVP.caseSize
+          : 0;
         result[itemId] = {
           vendorPrices,
           cheaperAvailable,
-          savingsPerCase: cheaperAvailable && currentPrice !== null ? currentPrice - bestPrice : 0,
+          savingsPerCase,
           bestVendorName: cheaperAvailable ? vendorPrices[0].vendorName : null,
         };
       }
@@ -8181,9 +8210,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data.lastPrice = data.lastCasePrice / caseSize;
       }
       
+      // M3A: manual vendor-item creation is a quote source
+      data.priceSource = "manual";
+      data.pricedAt = new Date();
       const vendorItem = await storage.createVendorItem(data);
-      
-      // Sync vendor price and caseSize back to the linked inventory item
+
+      // Sync ONLY structural caseSize back to the linked inventory item.
+      // M3A RULE: manual vendor-item entries are QUOTE sources — must NOT update
+      // inventory_items.pricePerUnit or avgCostPerUnit (only receipts/invoice scans do that).
       if (vendorItem.inventoryItemId) {
         const allUnits = await storage.getUnits();
         const invItem = await storage.getInventoryItem(vendorItem.inventoryItemId);
@@ -8191,9 +8225,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const purchaseUnit = allUnits.find(u => u.id === vendorItem.purchaseUnitId);
           const inventoryUnit = allUnits.find(u => u.id === invItem.unitId);
           const syncUpdates: Record<string, any> = {};
-          if (vendorItem.lastPrice && vendorItem.lastPrice > 0) {
-            syncUpdates.pricePerUnit = vendorItem.lastPrice;
-          }
           if (purchaseUnit && inventoryUnit && purchaseUnit.kind === inventoryUnit.kind && inventoryUnit.toBaseRatio > 0) {
             syncUpdates.caseSize = vendorItem.caseSize * (purchaseUnit.toBaseRatio / inventoryUnit.toBaseRatio);
           }
@@ -8202,7 +8233,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       }
-      
+
       res.status(201).json(vendorItem);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -8238,12 +8269,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      // M3A: stamp quote source on manual price edits
+      if (updates.lastCasePrice !== undefined || updates.lastPrice !== undefined) {
+        updates.priceSource = "manual";
+        updates.pricedAt = new Date();
+      }
+
       const vendorItem = await storage.updateVendorItem(req.params.id, updates);
       if (!vendorItem) {
         return res.status(404).json({ error: "Vendor item not found" });
       }
-      
-      // Sync vendor price and caseSize back to the linked inventory item
+
+      // Sync ONLY structural caseSize back to the linked inventory item.
+      // M3A RULE: manual vendor-item edits are QUOTE sources — must NOT update
+      // inventory_items.pricePerUnit or avgCostPerUnit (only receipts/invoice scans do that).
       if (vendorItem.inventoryItemId) {
         const allUnits = await storage.getUnits();
         const invItem = await storage.getInventoryItem(vendorItem.inventoryItemId);
@@ -8251,9 +8290,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const purchaseUnit = allUnits.find(u => u.id === vendorItem.purchaseUnitId);
           const inventoryUnit = allUnits.find(u => u.id === invItem.unitId);
           const syncUpdates: Record<string, any> = {};
-          if (vendorItem.lastPrice && vendorItem.lastPrice > 0) {
-            syncUpdates.pricePerUnit = vendorItem.lastPrice;
-          }
           if (purchaseUnit && inventoryUnit && purchaseUnit.kind === inventoryUnit.kind && inventoryUnit.toBaseRatio > 0) {
             syncUpdates.caseSize = vendorItem.caseSize * (purchaseUnit.toBaseRatio / inventoryUnit.toBaseRatio);
           }
@@ -8262,7 +8298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       }
-      
+
       res.json(vendorItem);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -10881,6 +10917,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               vendorItemId = existingVendorItem.id;
             } else {
               // Create a vendor item on the fly for this inventory item
+              // M3A: po_create is a quote source — must NOT update inventory_items cost
               const vendorItem = await storage.createVendorItem({
                 vendorId: po.vendorId,
                 inventoryItemId: line.inventoryItemId,
@@ -10888,6 +10925,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 caseSize: 1,
                 lastPrice: line.priceEach,
                 active: 1,
+                priceSource: "po_create",
+                pricedAt: new Date(),
               });
               vendorItemId = vendorItem.id;
             }
@@ -10950,6 +10989,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               vendorItemId = existingVendorItem.id;
             } else {
               // Create a vendor item on the fly for this inventory item
+              // M3A: po_create is a quote source — must NOT update inventory_items cost
               const vendorItem = await storage.createVendorItem({
                 vendorId: po.vendorId,
                 inventoryItemId: line.inventoryItemId,
@@ -10957,6 +10997,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 caseSize: 1,
                 lastPrice: line.priceEach,
                 active: 1,
+                priceSource: "po_create",
+                pricedAt: new Date(),
               });
               vendorItemId = vendorItem.id;
             }
@@ -12198,11 +12240,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 ? (totalCurrentValue + totalReceivedValue) / totalQty 
                 : newPricePerUnit;
               
-              // Track price history if price changed
+              // M3A: tag vendor_items with receipt source
+              await tx
+                .update(vendorItems)
+                .set({
+                  priceSource: "receipt",
+                  pricedAt: new Date(),
+                  priceSourceReferenceId: receipt.id,
+                  updatedAt: new Date(),
+                })
+                .where(eq(vendorItems.id, vi.id));
+
+              // Track price history if price changed — tag source for M3A
               if (newPricePerUnit !== item.pricePerUnit) {
+                const derivedCasePrice = vi.lastCasePrice && vi.lastCasePrice > 0
+                  ? vi.lastCasePrice
+                  : newPricePerUnit * Math.max(vi.caseSize || 1, 1);
                 await tx.insert(inventoryItemPriceHistory).values({
                   inventoryItemId: vi.inventoryItemId,
                   pricePerUnit: newPricePerUnit,
+                  casePrice: derivedCasePrice,
+                  source: "receipt",
                   effectiveAt: new Date(),
                   vendorItemId: vi.id,
                   note: `Price updated via receiving (Last: $${newPricePerUnit.toFixed(4)}, WAC: $${newAvgCostPerUnit.toFixed(4)})`,

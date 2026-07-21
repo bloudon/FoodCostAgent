@@ -390,6 +390,8 @@ export const inventoryItemPriceHistory = pgTable("inventory_item_price_history",
   inventoryItemId: varchar("inventory_item_id").notNull(),
   effectiveAt: timestamp("effective_at").notNull(),
   pricePerUnit: real("price_per_unit").notNull(),
+  casePrice: real("case_price"),        // M3A: case price at time of record
+  source: text("source"),               // M3A: mirrors vendor_items.priceSource
   vendorItemId: varchar("vendor_item_id"),
   note: text("note"),
   recordedBy: varchar("recorded_by"), // userId
@@ -499,6 +501,10 @@ export const vendorItems = pgTable("vendor_items", {
   lastCasePrice: real("last_case_price").notNull().default(0), // entered case price (primary entry field)
   active: integer("active").notNull().default(1),
   updatedAt: timestamp("updated_at").defaultNow(),               // tracks last price/qty update for recency selection
+  // M3A — Vendor price integrity: source provenance tracking
+  priceSource: text("price_source"),                  // "order_guide_import"|"invoice_scan"|"receipt"|"po_create"|"manual"|"legacy_unknown"
+  pricedAt: timestamp("priced_at"),                   // when this price was captured
+  priceSourceReferenceId: text("price_source_reference_id"), // receipt ID, invoice ID, etc.
 });
 
 export const insertVendorItemSchema = createInsertSchema(vendorItems).omit({ id: true });

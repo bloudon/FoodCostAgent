@@ -963,6 +963,8 @@ export class OrderGuideProcessor {
           innerPackSize: innerSize ?? undefined,
           lastPrice: unitPrice > 0 ? unitPrice : (line.price ?? undefined),
           lastCasePrice: isUnitPrice ? undefined : (line.price ?? undefined),
+          priceSource: "order_guide_import",
+          pricedAt: new Date(),
         });
         vendorItemCreated = true;
       }
@@ -1021,6 +1023,9 @@ export class OrderGuideProcessor {
             innerPackSize: line.innerPack ?? undefined,
             // Store the pack UOM so the vendor detail page can reconstruct case price correctly
             packUom: line.uom ?? undefined,
+            // M3A: tag source (quote — does not update inventory_items cost)
+            priceSource: "order_guide_import",
+            pricedAt: new Date(),
           });
           await this.syncVendorDataToInventoryItem(line, inventoryItem);
         }
@@ -1043,6 +1048,9 @@ export class OrderGuideProcessor {
         packUom: line.uom ?? undefined,
         lastPrice: caseUnitPrice,
         lastCasePrice: line.price ?? undefined,
+        // M3A: tag source (quote — does not update inventory_items cost)
+        priceSource: "order_guide_import",
+        pricedAt: new Date(),
       });
 
       // Sync vendor data to linked inventory item
@@ -1056,7 +1064,13 @@ export class OrderGuideProcessor {
   }
 
   /**
-   * Sync vendor data (price, case size, variable weight) to linked inventory item
+   * Sync vendor structural data (case size, variable weight, brand) to the
+   * linked inventory item.
+   *
+   * M3A RULE: order guide imports are QUOTE sources.  We deliberately do NOT
+   * sync pricePerUnit / avgCostPerUnit here — those fields must only change on
+   * an actual-purchase event (receipt or invoice scan).  Case size and metadata
+   * are structural facts from the vendor catalogue and are safe to sync.
    */
   private async syncVendorDataToInventoryItem(
     line: any,
@@ -1064,30 +1078,14 @@ export class OrderGuideProcessor {
   ): Promise<void> {
     try {
       const updates: any = {};
-      
-      // Sync price if vendor has pricing data — use unit-aware divisor
-      // line.price is the CASE price; derive unit price based on the matched item's base unit
-      if (line.price && line.price > 0) {
-        const rawCaseSize = Math.max(line.caseSize ?? 1, 1);
-        const rawInnerPack = Math.max(line.innerPack ?? 1, 1);
-        // Look up the matched inventory item's unit name for correct divisor
-        const allUnits = await this.storage.getUnits();
-        const itemUnit = allUnits.find((u: any) => u.id === inventoryItem.unitId);
-        const itemUnitName = itemUnit?.name ?? 'pound';
-        const { unitPrice, unitLabel, divisor } = deriveUnitPrice(
-          line.price, rawCaseSize, rawInnerPack, line.uom ?? '', itemUnitName
-        );
-        updates.pricePerUnit = unitPrice;
-        console.log(`[OrderGuide] Syncing unit price ${unitPrice.toFixed(4)}/${unitLabel} (case price ${line.price} ÷ ${divisor} ${unitLabel}) to inventory item ${inventoryItem.id}`);
-      }
-      
+
       // Sync merged case size (innerPack folded in) if vendor has case size data
       if (line.caseSize && line.caseSize > 0) {
         const mergedCaseSize = line.caseSize * Math.max(line.innerPack ?? 1, 1);
         updates.caseSize = mergedCaseSize;
         console.log(`[OrderGuide] Syncing case size ${mergedCaseSize} to inventory item ${inventoryItem.id}`);
       }
-      
+
       // Sync brand to manufacturer field if not already set
       if (line.brandName && !inventoryItem.manufacturer) {
         updates.manufacturer = line.brandName;
@@ -1098,7 +1096,7 @@ export class OrderGuideProcessor {
         updates.isVariableWeight = 1;
         console.log(`[OrderGuide] Setting variable weight flag on inventory item ${inventoryItem.id}`);
       }
-      
+
       // Only update if there are changes
       if (Object.keys(updates).length > 0) {
         await this.storage.updateInventoryItem(inventoryItem.id, updates);

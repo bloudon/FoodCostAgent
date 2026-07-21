@@ -256,6 +256,16 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE platform_vendor_registry ADD COLUMN IF NOT EXISTS submitted_by_company_ids text[] NOT NULL DEFAULT ARRAY[]::text[]`);
     // Task #417: calorie_count on menu_items — optional calorie count per serving
     await db.execute(sql`ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS calorie_count integer`);
+    // M3A: Vendor price integrity — provenance tracking on vendor_items
+    await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS price_source text`);
+    await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS priced_at timestamp`);
+    await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS price_source_reference_id text`);
+    // M3A: Source and case price tracking on inventory_item_price_history
+    await db.execute(sql`ALTER TABLE inventory_item_price_history ADD COLUMN IF NOT EXISTS source text`);
+    await db.execute(sql`ALTER TABLE inventory_item_price_history ADD COLUMN IF NOT EXISTS case_price real`);
+    // M3A: Index to speed up source-filtered history lookups
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS iiph_source_idx ON inventory_item_price_history (source)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS vi_price_source_idx ON vendor_items (price_source)`);
     // Task #407: Make connector_id nullable (vendors without a CSV/EDI connector get NULL)
     await db.execute(sql`ALTER TABLE platform_vendor_registry ALTER COLUMN connector_id DROP NOT NULL`);
     // Task #407: Add display metadata columns (category, website, ordering_url, portal_status)

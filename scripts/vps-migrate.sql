@@ -2263,3 +2263,33 @@ DO $$ BEGIN
       VALUES ('v058', 'Task #419: strip calorie annotations from menu_items.name and back-fill calorie_count');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v059 — M3A: Vendor price integrity — provenance tracking
+-- Adds price_source, priced_at, price_source_reference_id to vendor_items;
+-- adds source and case_price to inventory_item_price_history.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v059') THEN
+
+    ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS price_source text;
+    ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS priced_at timestamp;
+    ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS price_source_reference_id text;
+
+    ALTER TABLE inventory_item_price_history ADD COLUMN IF NOT EXISTS source text;
+    ALTER TABLE inventory_item_price_history ADD COLUMN IF NOT EXISTS case_price real;
+
+    CREATE INDEX IF NOT EXISTS iiph_source_idx ON inventory_item_price_history (source);
+    CREATE INDEX IF NOT EXISTS vi_price_source_idx ON vendor_items (price_source);
+
+    -- Back-fill: mark any existing vendor_item rows whose price is zero or null
+    -- as legacy_unknown so they're excluded from cross-shopping recommendations.
+    -- Rows with non-zero prices but no source get "legacy_unknown" as well.
+    UPDATE vendor_items
+    SET price_source = 'legacy_unknown'
+    WHERE price_source IS NULL;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v059', 'M3A: Vendor price integrity — price_source provenance on vendor_items and inventory_item_price_history');
+  END IF;
+END $$;
