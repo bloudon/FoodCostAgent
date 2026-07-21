@@ -12,6 +12,7 @@ import { isBottleOrCanWithFluidOz } from '@shared/orderGuideUtils';
 import { db } from '../db';
 import { sql, eq, inArray, and } from 'drizzle-orm';
 import { vendorItems } from '@shared/schema';
+import { recordVendorPrice } from './vendorPriceService';
 
 /**
  * Regex to detect a count or weight-per-unit hint embedded in a product name, e.g.:
@@ -1015,17 +1016,21 @@ export class OrderGuideProcessor {
         // Vendor item already exists — update pricing and pack info if we have new price data.
         if (line.price != null && line.price > 0) {
           const { unitPrice } = deriveUnitPrice(line.price, outerCnt, innerSz, line.uom ?? '', itemUnitNameForVendor);
+          // Structural update — pack geometry only (no price fields)
           await this.storage.updateVendorItem(existing.id, {
-            lastPrice: unitPrice,
-            lastCasePrice: line.price,
-            // Keep separate pack fields
             caseSize: outerCnt,
             innerPackSize: line.innerPack ?? undefined,
-            // Store the pack UOM so the vendor detail page can reconstruct case price correctly
             packUom: line.uom ?? undefined,
-            // M3A: tag source (quote — does not update inventory_items cost)
-            priceSource: "order_guide_import",
-            pricedAt: new Date(),
+          });
+          // M3A: price write goes through shared service (quote — no inventory cost update)
+          await recordVendorPrice({
+            vendorItemId: existing.id,
+            inventoryItemId: inventoryItem.id,
+            companyId,
+            casePrice: line.price,
+            unitPrice,
+            source: "order_guide_import",
+            representsActualPurchase: false,
           });
           await this.syncVendorDataToInventoryItem(line, inventoryItem);
         }

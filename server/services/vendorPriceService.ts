@@ -1,25 +1,28 @@
 /**
  * M3A — Vendor Price Integrity Service
  *
- * Single source of truth for all vendor price writes.
+ * Single write-gate for all vendor-item price events.
  *
  * RULE:
- *   Quote sources  (order_guide_import, connector, po_create, manual)
- *     → update vendor_items only; never touch inventory_items.pricePerUnit / avgCostPerUnit.
+ *   Quote sources  (order_guide_import, connector, po_create, manual, legacy_unknown)
+ *     → update vendor_items price/source/pricedAt fields only.
+ *     → NEVER touch inventory_items.pricePerUnit or avgCostPerUnit.
  *
  *   Actual-purchase sources  (receipt, invoice_scan)
- *     → update vendor_items AND inventory_items cost fields AND write price history.
+ *     → update vendor_items AND inventory_items cost fields AND write history row.
  *
- * All callers must go through recordVendorPrice() instead of writing directly.
+ * All callers that write lastPrice / lastCasePrice on vendor_items must call
+ * recordVendorPrice() instead of writing those fields directly.
+ *
+ * Pass an optional `txOrDb` to participate in an existing transaction.
  */
 
-import { db } from "../db";
 import { eq, and } from "drizzle-orm";
+import { db } from "../db";
 import {
   vendorItems,
   inventoryItems,
   inventoryItemPriceHistory,
-  type VendorItem,
 } from "@shared/schema";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -31,44 +34,6 @@ export type VendorPriceSource =
   | "po_create"
   | "manual"
   | "legacy_unknown";
-
-export interface RecordVendorPriceParams {
-  vendorItemId: string;
-  inventoryItemId: string;
-  companyId: string;
-
-  /** The entered case price (primary entry field). */
-  casePrice: number;
-  /** The derived unit price (casePrice ÷ effective case quantity in base units). */
-  unitPrice: number;
-
-  source: VendorPriceSource;
-
-  /**
-   * When true this price represents an actual completed purchase (receipt,
-   * invoice scan). The inventory item's last-cost and WAC are updated.
-   * When false (quote) only the vendor_items row is updated.
-   */
-  representsActualPurchase: boolean;
-
-  /**
-   * Reference ID linking this price event to the triggering document
-   * (receipt.id, invoice batch id, etc.).  Optional.
-   */
-  referenceId?: string;
-
-  /** User who triggered the write. Optional — stored in history. */
-  userId?: string;
-
-  /**
-   * For WAC calculation on actual purchases: current on-hand quantity at the
-   * receiving store in base units. Only used when representsActualPurchase=true.
-   * Leave undefined to skip WAC update (uses unitPrice as new last cost only).
-   */
-  currentOnHandQty?: number;
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 /** Sources that represent completed purchase events and may update actual cost. */
 export const ACTUAL_PURCHASE_SOURCES: ReadonlySet<VendorPriceSource> = new Set([
@@ -85,17 +50,124 @@ export const QUOTE_SOURCES: ReadonlySet<VendorPriceSource> = new Set([
   "legacy_unknown",
 ]);
 
-// ─── Main Function ────────────────────────────────────────────────────────────
+export interface RecordVendorPriceParams {
+  vendorItemId: string;
+
+  /**
+   * Required when representsActualPurchase=true so the service can update
+   * inventory cost and write price history.  Optional for quote sources (the
+   * service only writes vendor_items in that case).
+   */
+  inventoryItemId?: string;
+
+  /**
+   * Required when representsActualPurchase=true for the tenant safety check.
+   */
+  companyId?: string;
+
+  /** The case price (primary entry field). */
+  casePrice: number;
+
+  /** The derived unit price (casePrice ÷ effective pack quantity in base units). */
+  unitPrice: number;
+
+  source: VendorPriceSource;
+
+  /**
+   * true  → receipt / invoice scan: update inventory cost + write history.
+   * false → quote: update vendor_items price fields only.
+   */
+  representsActualPurchase: boolean;
+
+  /**
+   * Links this price event to a source document (receipt.id, etc.).
+   */
+  referenceId?: string;
+
+  /** Acting user — stored in history rows. */
+  userId?: string;
+
+  /**
+   * Current company-wide on-hand quantity in base units, used for WAC
+   * numerator when completing a receipt.  Omit for simple last-cost.
+   */
+  currentOnHandQty?: number;
+
+  /** Quantity received (for WAC). Used with currentOnHandQty. */
+  receivedQty?: number;
+}
+
+// ─── Pure helpers (exported for unit testing) ─────────────────────────────────
 
 /**
- * Record a vendor price event.
+ * Runtime guard: quote sources must never claim to represent actual purchases.
+ * Returns the corrected representsActualPurchase value.
+ */
+export function guardQuoteAsActual(
+  source: VendorPriceSource,
+  representsActualPurchase: boolean
+): boolean {
+  if (
+    representsActualPurchase &&
+    (source === "order_guide_import" || source === "connector")
+  ) {
+    console.warn(
+      `[VendorPriceService] ⚠️  Caller passed representsActualPurchase=true with source="${source}". ` +
+        `Quote sources must never update actual inventory cost. Overriding to false.`
+    );
+    return false;
+  }
+  return representsActualPurchase;
+}
+
+/**
+ * Compute weighted average cost.
+ * Pure function — exported for unit testing.
+ */
+export function computeWac(
+  currentOnHandQty: number,
+  currentAvgCost: number,
+  receivedQty: number,
+  receivedUnitPrice: number
+): number {
+  const totalQty = currentOnHandQty + receivedQty;
+  if (totalQty <= 0) return receivedUnitPrice;
+  return (currentOnHandQty * currentAvgCost + receivedQty * receivedUnitPrice) / totalQty;
+}
+
+/**
+ * Returns true when a price is considered stale (older than 90 days or has no
+ * pricedAt timestamp).
+ * Pure function — exported for unit testing.
+ */
+export function isPriceStale(pricedAt: Date | null | undefined): boolean {
+  if (!pricedAt) return true;
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  return pricedAt < ninetyDaysAgo;
+}
+
+// ─── Main Write Function ──────────────────────────────────────────────────────
+
+type DbOrTx = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Record a vendor price event through the single shared write gate.
  *
- * Always stamps vendor_items with priceSource / pricedAt / lastCasePrice /
- * lastPrice.  Only updates inventory_items cost fields and writes price history
- * when representsActualPurchase=true.
+ * Always updates vendor_items.(lastCasePrice, lastPrice, priceSource, pricedAt,
+ * priceSourceReferenceId).
+ *
+ * Additionally, when representsActualPurchase=true:
+ *   - Updates inventory_items.(pricePerUnit, avgCostPerUnit)
+ *   - Inserts inventory_item_price_history if the price changed
+ *
+ * @param params  Price event parameters.
+ * @param txOrDb  Optional Drizzle transaction handle.  Defaults to the module-
+ *                level `db` singleton so the call is self-contained when the
+ *                caller does not need a shared transaction.
  */
 export async function recordVendorPrice(
-  params: RecordVendorPriceParams
+  params: RecordVendorPriceParams,
+  txOrDb: DbOrTx = db
 ): Promise<void> {
   const {
     vendorItemId,
@@ -104,20 +176,25 @@ export async function recordVendorPrice(
     casePrice,
     unitPrice,
     source,
-    representsActualPurchase,
     referenceId,
     userId,
     currentOnHandQty,
+    receivedQty,
   } = params;
+
+  const representsActualPurchase = guardQuoteAsActual(
+    source,
+    params.representsActualPurchase
+  );
 
   const now = new Date();
 
-  // ── 1. Always update vendor_items ──────────────────────────────────────────
-  await db
+  // ── 1. Always stamp vendor_items price provenance ──────────────────────────
+  await (txOrDb as typeof db)
     .update(vendorItems)
     .set({
-      lastCasePrice: casePrice,
-      lastPrice: unitPrice,
+      ...(casePrice > 0 ? { lastCasePrice: casePrice } : {}),
+      ...(unitPrice > 0 ? { lastPrice: unitPrice } : {}),
       priceSource: source,
       pricedAt: now,
       ...(referenceId ? { priceSourceReferenceId: referenceId } : {}),
@@ -125,14 +202,19 @@ export async function recordVendorPrice(
     })
     .where(eq(vendorItems.id, vendorItemId));
 
-  // ── 2. Quote path — stop here ───────────────────────────────────────────────
-  if (!representsActualPurchase) {
+  // ── 2. Quote path — done ───────────────────────────────────────────────────
+  if (!representsActualPurchase) return;
+
+  if (!inventoryItemId || !companyId) {
+    console.warn(
+      `[VendorPriceService] representsActualPurchase=true but inventoryItemId or companyId missing. ` +
+        `Skipping inventory cost update for vendorItemId=${vendorItemId}.`
+    );
     return;
   }
 
-  // ── 3. Actual-purchase path — update inventory item cost ───────────────────
-  // Fetch current item for WAC calculation (tenant-scoped).
-  const [item] = await db
+  // ── 3. Fetch current inventory item ───────────────────────────────────────
+  const [item] = await (txOrDb as typeof db)
     .select({
       pricePerUnit: inventoryItems.pricePerUnit,
       avgCostPerUnit: inventoryItems.avgCostPerUnit,
@@ -146,21 +228,23 @@ export async function recordVendorPrice(
     )
     .limit(1);
 
-  if (!item) return; // Item not found or wrong tenant — abort silently.
+  if (!item) return; // not found or wrong tenant — skip silently
 
-  // WAC = (currentQty × currentAvgCost + receivedQty × newUnitPrice) / totalQty
-  // If no on-hand qty provided, just stamp last cost (no WAC update).
-  let newAvgCost: number;
-  if (currentOnHandQty !== undefined && currentOnHandQty >= 0) {
-    const currentAvg = item.avgCostPerUnit ?? item.pricePerUnit ?? 0;
-    const totalValue = currentOnHandQty * currentAvg + unitPrice;
-    const totalQty = currentOnHandQty + 1; // +1 represents the received unit
-    newAvgCost = totalQty > 0 ? totalValue / totalQty : unitPrice;
-  } else {
-    newAvgCost = item.avgCostPerUnit ?? unitPrice;
-  }
+  // ── 4. Compute WAC ─────────────────────────────────────────────────────────
+  const newAvgCost =
+    currentOnHandQty !== undefined &&
+    receivedQty !== undefined &&
+    receivedQty > 0
+      ? computeWac(
+          currentOnHandQty,
+          item.avgCostPerUnit ?? item.pricePerUnit ?? 0,
+          receivedQty,
+          unitPrice
+        )
+      : (item.avgCostPerUnit ?? unitPrice);
 
-  await db
+  // ── 5. Update inventory item actual cost ───────────────────────────────────
+  await (txOrDb as typeof db)
     .update(inventoryItems)
     .set({
       pricePerUnit: unitPrice,
@@ -174,18 +258,23 @@ export async function recordVendorPrice(
       )
     );
 
-  // ── 4. Write price history ─────────────────────────────────────────────────
+  // ── 6. Write price history when price changes (never for legacy_unknown) ───
   const prevPrice = item.pricePerUnit ?? 0;
-  if (Math.abs(unitPrice - prevPrice) > 0.00001) {
-    await db.insert(inventoryItemPriceHistory).values({
-      inventoryItemId,
-      pricePerUnit: unitPrice,
-      casePrice,
-      source,
-      vendorItemId,
-      effectiveAt: now,
-      recordedBy: userId ?? null,
-      note: `Price updated via ${source} (Last: $${unitPrice.toFixed(4)}, WAC: $${newAvgCost.toFixed(4)})`,
-    });
+  if (
+    source !== "legacy_unknown" &&
+    Math.abs(unitPrice - prevPrice) > 0.000001
+  ) {
+    await (txOrDb as typeof db)
+      .insert(inventoryItemPriceHistory)
+      .values({
+        inventoryItemId,
+        pricePerUnit: unitPrice,
+        casePrice: casePrice > 0 ? casePrice : null,
+        source,
+        vendorItemId,
+        effectiveAt: now,
+        recordedBy: userId ?? null,
+        note: `Price updated via ${source} (Last: $${unitPrice.toFixed(4)}, WAC: $${newAvgCost.toFixed(4)})`,
+      });
   }
 }
