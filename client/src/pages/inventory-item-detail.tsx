@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useStoreContext } from "@/hooks/use-store-context";
-import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X, GripVertical, ChevronDown, ChevronRight, Search } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X, GripVertical, ChevronDown, ChevronRight, Search, AlertTriangle } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -121,6 +121,8 @@ type VendorItem = {
   innerPackSize: number | null;
   lastPrice: number;
   lastCasePrice: number;
+  priceSource: string | null;
+  pricedAt: string | null;
   active: number;
   lastOrderDate: string | null;
   vendor: {
@@ -133,6 +135,19 @@ type VendorItem = {
     name: string;
   } | null;
 };
+
+function formatPriceSource(source: string | null): { label: string; isLegacy: boolean } {
+  if (!source) return { label: "-", isLegacy: false };
+  switch (source) {
+    case "receipt": return { label: "Receipt", isLegacy: false };
+    case "invoice_scan": return { label: "Invoice Scan", isLegacy: false };
+    case "order_guide_import": return { label: "Order Guide", isLegacy: false };
+    case "manual": return { label: "Manual", isLegacy: false };
+    case "po_create": return { label: "PO", isLegacy: false };
+    case "legacy_unknown": return { label: "Unknown", isLegacy: true };
+    default: return { label: source, isLegacy: false };
+  }
+}
 
 // Format the human-readable "1 [unit] = X [inv unit]" value for display.
 // qtyPerInventoryUnit stores how many recipe-units fit in 1 inventory unit,
@@ -1632,6 +1647,16 @@ export default function InventoryItemDetail() {
                         <p className="text-xs mt-0.5">
                           <span>Case: ${vi.lastCasePrice.toFixed(2)}</span>
                           <span className="text-muted-foreground"> · Unit: ${vi.lastPrice.toFixed(4)}</span>
+                          {vi.priceSource && (() => {
+                            const { label, isLegacy } = formatPriceSource(vi.priceSource);
+                            return isLegacy ? (
+                              <span className="ml-1 text-amber-600 dark:text-amber-400" title="Price predates M3A tracking — reliability unknown">
+                                {" · "}<AlertTriangle className="inline h-3 w-3 mr-0.5" />{label}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground"> · {label}</span>
+                            );
+                          })()}
                         </p>
                       </div>
                     );
@@ -1652,6 +1677,7 @@ export default function InventoryItemDetail() {
                       <TableHead>Case Price</TableHead>
                       <TableHead>Units/Case</TableHead>
                       <TableHead>Price</TableHead>
+                      <TableHead>Source</TableHead>
                       <TableHead>Last Order</TableHead>
                       <TableHead className="w-[100px]">Actions</TableHead>
                     </TableRow>
@@ -1779,6 +1805,20 @@ export default function InventoryItemDetail() {
                             <TableCell>${vi.lastCasePrice.toFixed(2)}</TableCell>
                             <TableCell>{vi.caseSize}</TableCell>
                             <TableCell className="text-muted-foreground">${vi.lastPrice.toFixed(4)}</TableCell>
+                            <TableCell data-testid={`text-price-source-${vi.id}`}>
+                              {(() => {
+                                const { label, isLegacy } = formatPriceSource(vi.priceSource);
+                                if (isLegacy) {
+                                  return (
+                                    <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 text-xs" title="Price predates M3A tracking — reliability unknown">
+                                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                                      {label}
+                                    </span>
+                                  );
+                                }
+                                return <span className="text-sm text-muted-foreground">{label}</span>;
+                              })()}
+                            </TableCell>
                             <TableCell className="text-muted-foreground">
                               {vi.lastOrderDate ? new Date(vi.lastOrderDate).toLocaleDateString() : "-"}
                             </TableCell>
@@ -1808,7 +1848,7 @@ export default function InventoryItemDetail() {
                       })
                     ) : !showAddVendorRow && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                           {inactiveVendorItems.length > 0
                             ? "No active vendors. Use toggle above to show inactive vendors."
                             : "No vendors configured for this item"}

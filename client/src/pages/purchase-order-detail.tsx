@@ -1798,6 +1798,7 @@ export default function PurchaseOrderDetail() {
                         <TableHead className="text-right">Case Size</TableHead>
                         <TableHead className="text-right">Unit Price</TableHead>
                         <TableHead className="text-right">Case Price</TableHead>
+                        <TableHead>Source</TableHead>
                         <TableHead className="text-right">Price Date</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1844,6 +1845,28 @@ export default function PurchaseOrderDetail() {
                             </TableCell>
                             <TableCell className="text-right font-mono font-semibold">
                               ${vp.casePrice.toFixed(2)}
+                            </TableCell>
+                            <TableCell data-testid={`text-price-source-${vp.vendorId}`}>
+                              {(() => {
+                                const src = bulkVp.priceSource;
+                                if (!src) return <span className="text-muted-foreground text-sm">-</span>;
+                                if (src === "legacy_unknown") {
+                                  return (
+                                    <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 text-xs" title="Price predates M3A tracking — reliability unknown">
+                                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                                      Unknown
+                                    </span>
+                                  );
+                                }
+                                const labels: Record<string, string> = {
+                                  receipt: "Receipt",
+                                  invoice_scan: "Invoice Scan",
+                                  order_guide_import: "Order Guide",
+                                  manual: "Manual",
+                                  po_create: "PO",
+                                };
+                                return <span className="text-sm text-muted-foreground">{labels[src] ?? src}</span>;
+                              })()}
                             </TableCell>
                             <TableCell className="text-right">
                               {bulkVp.pricedAt ? (
