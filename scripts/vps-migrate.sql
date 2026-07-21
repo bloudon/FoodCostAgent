@@ -2282,9 +2282,24 @@ DO $$ BEGIN
     CREATE INDEX IF NOT EXISTS iiph_source_idx ON inventory_item_price_history (source);
     CREATE INDEX IF NOT EXISTS vi_price_source_idx ON vendor_items (price_source);
 
-    -- Back-fill: mark any existing vendor_item rows whose price is zero or null
-    -- as legacy_unknown so they're excluded from cross-shopping recommendations.
-    -- Rows with non-zero prices but no source get "legacy_unknown" as well.
+    -- Provenance-aware back-fill: classify existing vendor_item rows before
+    -- falling back to legacy_unknown.
+    -- 1. Rows linked to a receipt line with a recorded price → "receipt"
+    UPDATE vendor_items
+    SET price_source = 'receipt'
+    WHERE price_source IS NULL
+      AND EXISTS (
+        SELECT 1 FROM receipt_lines rl
+        WHERE rl.vendor_item_id = vendor_items.id
+          AND rl.price_each > 0
+      );
+    -- 2. Rows with a non-zero lastCasePrice → "order_guide_import"
+    UPDATE vendor_items
+    SET price_source = 'order_guide_import'
+    WHERE price_source IS NULL
+      AND last_case_price IS NOT NULL
+      AND last_case_price > 0;
+    -- 3. All remaining NULL rows → "legacy_unknown"
     UPDATE vendor_items
     SET price_source = 'legacy_unknown'
     WHERE price_source IS NULL;

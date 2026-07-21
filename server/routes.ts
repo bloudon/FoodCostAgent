@@ -14,7 +14,7 @@ import { parseCSV } from "./services/tfcCsv";
 import { TheoreticalUsageService } from "./services/theoreticalUsage";
 import { parseCompoundPackSize } from "./integrations/csv/CsvOrderGuide";
 import { deriveUnitPrice } from "./services/orderGuideProcessor";
-import { recordVendorPrice, isPriceStale } from "./services/vendorPriceService";
+import { recordVendorPrice, isPriceStale, isIncompatibleUnit } from "./services/vendorPriceService";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
@@ -2577,12 +2577,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           const effectiveUnitPrice = resolveApplyLineUnitPrice(line);
 
-          // M3A: invoice_scan is an actual-purchase source — update inventory cost
+          // M3A: invoice_scan is an actual-purchase source.
+          // Update inventory cost ONCE with the authoritative effectiveUnitPrice from the scan.
           await db.update(inventoryItems)
             .set({ pricePerUnit: effectiveUnitPrice, avgCostPerUnit: effectiveUnitPrice, updatedAt: new Date() })
             .where(eq(inventoryItems.id, line.inventoryItemId));
 
-          // Write price history for this actual purchase (invoice_scan)
+          // Write price history ONCE for this inventory item
           if (Math.abs(effectiveUnitPrice - (existing.pricePerUnit ?? 0)) > 0.000001) {
             await db.insert(inventoryItemPriceHistory).values({
               inventoryItemId: line.inventoryItemId,
@@ -2594,27 +2595,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
 
-          // Also update vendor_items via service for any linked vendor associations
+          // Stamp provenance on any linked vendor_items (representsActualPurchase=false so
+          // inventory cost is NOT touched again — it was already set above exactly once).
           if (line.casePrice && line.casePrice > 0) {
             const itemUnitName = allUnits.find(u => u.id === existing.unitId)?.name ?? 'pound';
-            const linkedVendorItems = await db.select({ id: vendorItems.id, caseSize: vendorItems.caseSize, innerPackSize: vendorItems.innerPackSize, packUom: vendorItems.packUom })
+            const linkedVendorItems = await db
+              .select({ id: vendorItems.id, caseSize: vendorItems.caseSize, innerPackSize: vendorItems.innerPackSize, packUom: vendorItems.packUom })
               .from(vendorItems)
               .where(eq(vendorItems.inventoryItemId, line.inventoryItemId));
             for (const vi of linkedVendorItems) {
-              const caseSize = Math.max(vi.caseSize ?? 1, 1);
-              const innerPackSize = Math.max(vi.innerPackSize ?? 1, 1);
-              const { unitPrice: derivedUnitPrice } = deriveUnitPrice(
-                line.casePrice, caseSize, innerPackSize, vi.packUom ?? '', itemUnitName
-              );
-              // M3A: route through shared service (actual purchase — stamps priceSource + pricedAt)
               await recordVendorPrice({
                 vendorItemId: vi.id,
-                inventoryItemId: line.inventoryItemId,
-                companyId,
-                casePrice: line.casePrice,
-                unitPrice: derivedUnitPrice,
+                priceBasis: "case",
+                price: line.casePrice,
+                caseSize: Math.max(vi.caseSize ?? 1, 1),
+                innerPackSize: Math.max(vi.innerPackSize ?? 1, 1),
+                packUom: vi.packUom ?? "",
+                inventoryUnitName: itemUnitName,
                 source: "invoice_scan",
-                representsActualPurchase: true,
+                representsActualPurchase: false, // inventory already updated once above
               });
             }
           }
@@ -4756,15 +4755,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await storage.updateVendorItem(existingItem.id, { caseSize: mergedCaseSize });
 
             if (product.price && product.price > 0) {
-              // M3A: treat CSV price as case price (legacy bug fix — it was stored as lastPrice).
-              // Route through shared service so the quote guard is enforced.
-              const casePriceRaw = product.price;
-              const unitPriceDerived = casePriceRaw / mergedCaseSize;
+              // M3A: treat CSV price as case price. Service derives unit price internally.
               await recordVendorPrice({
                 vendorItemId: existingItem.id,
                 inventoryItemId: existingItem.inventoryItemId ?? undefined,
-                casePrice: casePriceRaw,
-                unitPrice: unitPriceDerived,
+                priceBasis: "case",
+                price: product.price,
+                caseSize: mergedCaseSize,
                 source: "order_guide_import",
                 representsActualPurchase: false,
               });
@@ -7619,17 +7616,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           priceSource: string | null;
           pricedAt: string | null;
           stale: boolean;
+          incompatibleUnit: boolean;
         }[];
         cheaperAvailable: boolean;
         savingsPerCase: number;
         bestVendorName: string | null;
       }> = {};
 
+      // Fetch inventory item unit names for incompatible-unit detection
+      const itemUnitMap = new Map<string, string>();
+      const invItemRows = await db
+        .select({ id: inventoryItems.id, unitId: inventoryItems.unitId })
+        .from(inventoryItems)
+        .where(inArray(inventoryItems.id, inventoryItemIds));
+      for (const row of invItemRows) {
+        const unit = allUnits.find(u => u.id === row.unitId);
+        if (unit) itemUnitMap.set(row.id, unit.name);
+      }
+
       for (const itemId of inventoryItemIds) {
         // All vendor rows for this item (including legacy_unknown — shown in UI)
         const itemVis = allVendorItems.filter(
           ({ vi }) => vi.inventoryItemId === itemId
         );
+        const inventoryUnitName = itemUnitMap.get(itemId) ?? "";
 
         // M3A: rank by normalized unit price for a fair comparison
         const vendorPrices = itemVis.map(({ vi, vendorName }) => {
@@ -7651,6 +7661,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             priceSource: vi.priceSource,
             pricedAt: vi.pricedAt ? vi.pricedAt.toISOString() : null,
             stale: isPriceStale(vi.pricedAt),
+            incompatibleUnit: isIncompatibleUnit(vi.packUom ?? "", inventoryUnitName),
           };
         }).sort((a, b) => a.unitPrice - b.unitPrice);
 
@@ -8370,17 +8381,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Vendor item not found" });
       }
 
-      // M3A: price writes go through shared service (manual = quote source)
+      // M3A: price writes go through shared service (manual = quote source).
+      // Service derives unit price internally from priceBasis="case" + caseSize.
       if (priceChanging) {
         const casePrice = updates.lastCasePrice ?? currentItem.lastCasePrice ?? 0;
         const effectiveCaseSize = updates.caseSize ?? currentItem.caseSize ?? 1;
-        const unitPrice = updates.lastPrice
-          ?? (casePrice > 0 && effectiveCaseSize > 0 ? casePrice / effectiveCaseSize : 0);
         await recordVendorPrice({
           vendorItemId: req.params.id,
           inventoryItemId: vendorItem.inventoryItemId ?? undefined,
-          casePrice,
-          unitPrice,
+          priceBasis: "case",
+          price: casePrice,
+          caseSize: effectiveCaseSize,
           source: "manual",
           representsActualPurchase: false,
         });
@@ -12323,7 +12334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (item) {
               // line.priceEach is already the unit price (per lb, oz, etc), not the case price
               const newPricePerUnit = line.priceEach;
-              
+
               // Get company-wide on-hand quantity across all stores for WAC calculation
               const allStoresForItem = await tx
                 .select()
@@ -12331,62 +12342,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 .where(
                   and(
                     eq(storeInventoryItems.inventoryItemId, vi.inventoryItemId),
-                    eq(storeInventoryItems.companyId, companyId) // Explicit tenant guard
+                    eq(storeInventoryItems.companyId, companyId)
                   )
                 );
-              
               const totalCompanyQty = allStoresForItem.reduce((sum, si) => sum + (si.onHandQty || 0), 0);
-              
-              // Calculate weighted average cost using company-wide quantities
-              const currentAvgCost = item.avgCostPerUnit || item.pricePerUnit;
-              const totalCurrentValue = totalCompanyQty * currentAvgCost;
-              const totalReceivedValue = line.receivedQty * newPricePerUnit;
-              const totalQty = totalCompanyQty + line.receivedQty;
-              const newAvgCostPerUnit = totalQty > 0 
-                ? (totalCurrentValue + totalReceivedValue) / totalQty 
-                : newPricePerUnit;
-              
-              // M3A: tag vendor_items with receipt source
-              await tx
-                .update(vendorItems)
-                .set({
-                  priceSource: "receipt",
-                  pricedAt: new Date(),
-                  priceSourceReferenceId: receipt.id,
-                  updatedAt: new Date(),
-                })
-                .where(eq(vendorItems.id, vi.id));
 
-              // Track price history if price changed — tag source for M3A
-              if (newPricePerUnit !== item.pricePerUnit) {
-                const derivedCasePrice = vi.lastCasePrice && vi.lastCasePrice > 0
-                  ? vi.lastCasePrice
-                  : newPricePerUnit * Math.max(vi.caseSize || 1, 1);
-                await tx.insert(inventoryItemPriceHistory).values({
-                  inventoryItemId: vi.inventoryItemId,
-                  pricePerUnit: newPricePerUnit,
-                  casePrice: derivedCasePrice,
-                  source: "receipt",
-                  effectiveAt: new Date(),
+              // M3A: Route all vendor-item + inventory cost + history writes through the
+              // shared service with the caller's transaction.  The service derives case price
+              // internally (priceBasis="unit"), computes WAC, updates inventory_items, and
+              // writes a history row when the price changes.
+              await recordVendorPrice(
+                {
                   vendorItemId: vi.id,
-                  note: `Price updated via receiving (Last: $${newPricePerUnit.toFixed(4)}, WAC: $${newAvgCostPerUnit.toFixed(4)})`,
-                });
-              }
-              
-              // Update both last cost and weighted average cost with explicit companyId filter
-              await tx
-                .update(inventoryItems)
-                .set({ 
-                  pricePerUnit: newPricePerUnit,
-                  avgCostPerUnit: newAvgCostPerUnit,
-                  updatedAt: new Date()
-                })
-                .where(
-                  and(
-                    eq(inventoryItems.id, vi.inventoryItemId),
-                    eq(inventoryItems.companyId, companyId) // Explicit tenant guard
-                  )
-                );
+                  inventoryItemId: vi.inventoryItemId,
+                  companyId,
+                  priceBasis: "unit",
+                  price: newPricePerUnit,
+                  caseSize: Math.max(vi.caseSize || 1, 1),
+                  source: "receipt",
+                  representsActualPurchase: true,
+                  referenceId: receipt.id,
+                  currentOnHandQty: totalCompanyQty,
+                  receivedQty: line.receivedQty,
+                },
+                tx
+              );
               
               // Update on-hand quantity at the store level with explicit companyId filter
               const [existingStoreItem] = await tx

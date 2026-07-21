@@ -266,6 +266,44 @@ async function runStartupMigrations() {
     // M3A: Index to speed up source-filtered history lookups
     await db.execute(sql`CREATE INDEX IF NOT EXISTS iiph_source_idx ON inventory_item_price_history (source)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS vi_price_source_idx ON vendor_items (price_source)`);
+    // M3A: Provenance-aware legacy backfill — classify existing vendor_item rows by source
+    // before falling back to legacy_unknown.  Log counts for observability.
+    {
+      // Step 1: rows linked to a receipt line with a recorded price → "receipt"
+      const receiptResult = await db.execute(sql`
+        UPDATE vendor_items
+        SET price_source = 'receipt'
+        WHERE price_source IS NULL
+          AND EXISTS (
+            SELECT 1 FROM receipt_lines rl
+            WHERE rl.vendor_item_id = vendor_items.id
+              AND rl.price_each > 0
+          )
+      `);
+      // Step 2: rows with a non-zero lastCasePrice → "order_guide_import"
+      const ogResult = await db.execute(sql`
+        UPDATE vendor_items
+        SET price_source = 'order_guide_import'
+        WHERE price_source IS NULL
+          AND last_case_price IS NOT NULL
+          AND last_case_price > 0
+      `);
+      // Step 3: all remaining NULL rows → "legacy_unknown"
+      const luResult = await db.execute(sql`
+        UPDATE vendor_items
+        SET price_source = 'legacy_unknown'
+        WHERE price_source IS NULL
+      `);
+      const receiptCount = (receiptResult as any).rowCount ?? 0;
+      const ogCount     = (ogResult as any).rowCount ?? 0;
+      const luCount     = (luResult as any).rowCount ?? 0;
+      if (receiptCount + ogCount + luCount > 0) {
+        console.log(
+          `[M3A backfill] vendor_items price_source classified:` +
+          ` receipt=${receiptCount}, order_guide_import=${ogCount}, legacy_unknown=${luCount}`
+        );
+      }
+    }
     // Task #407: Make connector_id nullable (vendors without a CSV/EDI connector get NULL)
     await db.execute(sql`ALTER TABLE platform_vendor_registry ALTER COLUMN connector_id DROP NOT NULL`);
     // Task #407: Add display metadata columns (category, website, ordering_url, portal_status)

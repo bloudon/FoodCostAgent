@@ -3,18 +3,22 @@
  *
  * Single write-gate for all vendor-item price events.
  *
- * RULE:
+ * RULES:
  *   Quote sources  (order_guide_import, connector, po_create, manual, legacy_unknown)
- *     → update vendor_items price/source/pricedAt fields only.
+ *     → stamp vendor_items.(lastCasePrice, lastPrice, priceSource, pricedAt) only.
  *     → NEVER touch inventory_items.pricePerUnit or avgCostPerUnit.
  *
  *   Actual-purchase sources  (receipt, invoice_scan)
- *     → update vendor_items AND inventory_items cost fields AND write history row.
+ *     → stamp vendor_items AND update inventory_items cost AND write history row.
  *
- * All callers that write lastPrice / lastCasePrice on vendor_items must call
- * recordVendorPrice() instead of writing those fields directly.
- *
- * Pass an optional `txOrDb` to participate in an existing transaction.
+ * Contract:
+ *   - Callers supply priceBasis ("case" | "unit") + a single price value.
+ *   - The service derives both lastCasePrice and lastPrice internally using pack
+ *     geometry (caseSize, innerPackSize, packUom, inventoryUnitName).
+ *   - All writes are atomic: the service opens its own transaction when no external
+ *     txOrDb is provided, preventing partial writes.
+ *   - Incompatible-unit rows are flagged (incompatibleUnit=true) rather than
+ *     silently computing wrong unit prices.
  */
 
 import { eq, and } from "drizzle-orm";
@@ -35,13 +39,11 @@ export type VendorPriceSource =
   | "manual"
   | "legacy_unknown";
 
-/** Sources that represent completed purchase events and may update actual cost. */
 export const ACTUAL_PURCHASE_SOURCES: ReadonlySet<VendorPriceSource> = new Set([
   "receipt",
   "invoice_scan",
 ]);
 
-/** Sources that represent quotes / catalogue data — must NOT update actual cost. */
 export const QUOTE_SOURCES: ReadonlySet<VendorPriceSource> = new Set([
   "order_guide_import",
   "connector",
@@ -55,8 +57,7 @@ export interface RecordVendorPriceParams {
 
   /**
    * Required when representsActualPurchase=true so the service can update
-   * inventory cost and write price history.  Optional for quote sources (the
-   * service only writes vendor_items in that case).
+   * inventory cost and write history.  Optional for quote sources.
    */
   inventoryItemId?: string;
 
@@ -65,42 +66,148 @@ export interface RecordVendorPriceParams {
    */
   companyId?: string;
 
-  /** The case price (primary entry field). */
-  casePrice: number;
+  /**
+   * Explicit price basis — which value `price` represents.
+   * The service derives the counterpart price from pack geometry.
+   *   "case" → price is the case price; service divides by pack qty for unit price
+   *   "unit" → price is the unit price; service multiplies by pack qty for case price
+   */
+  priceBasis: "case" | "unit";
 
-  /** The derived unit price (casePrice ÷ effective pack quantity in base units). */
-  unitPrice: number;
+  /** The observed price in the specified basis. Must be ≥ 0. */
+  price: number;
+
+  /**
+   * Pack geometry — used to derive the counterpart price.
+   * Provide values from the vendor_item row so derivation is consistent.
+   */
+  caseSize: number;
+  innerPackSize?: number;
+  packUom?: string;
+  inventoryUnitName?: string;
 
   source: VendorPriceSource;
 
   /**
-   * true  → receipt / invoice scan: update inventory cost + write history.
-   * false → quote: update vendor_items price fields only.
+   * true  → receipt / invoice scan — update inventory cost + write history.
+   * false → quote — stamp vendor_items provenance fields only.
    */
   representsActualPurchase: boolean;
 
   /**
-   * Links this price event to a source document (receipt.id, etc.).
+   * ID of the source document (receipt.id, invoice batch id, etc.).
+   * Stored in priceSourceReferenceId and history note.
    */
   referenceId?: string;
 
-  /** Acting user — stored in history rows. */
+  /** User who triggered the event — stored in history recordedBy. */
   userId?: string;
 
   /**
-   * Current company-wide on-hand quantity in base units, used for WAC
-   * numerator when completing a receipt.  Omit for simple last-cost.
+   * Current company-wide on-hand quantity in inventory base units.
+   * Used for WAC numerator on actual purchases.  Omit for simple last-cost.
    */
   currentOnHandQty?: number;
 
-  /** Quantity received (for WAC). Used with currentOnHandQty. */
+  /** Quantity received (for WAC).  Required together with currentOnHandQty. */
   receivedQty?: number;
 }
 
-// ─── Pure helpers (exported for unit testing) ─────────────────────────────────
+export interface DerivedPrices {
+  casePrice: number;
+  unitPrice: number;
+  incompatibleUnit: boolean;
+}
+
+// ─── Pure Helpers (exported for unit testing) ─────────────────────────────────
 
 /**
- * Runtime guard: quote sources must never claim to represent actual purchases.
+ * Detect whether the packUom and inventoryUnitName are from incompatible
+ * measurement families (e.g. pack in kg but item tracked in gallons).
+ * Returns true when the unit families are known and different.
+ */
+export function isIncompatibleUnit(
+  packUom: string,
+  inventoryUnitName: string
+): boolean {
+  const WEIGHT = new Set(["lb", "lbs", "pound", "pounds", "oz", "ounce", "ounces", "kg", "g", "gram", "grams"]);
+  const VOLUME = new Set(["gal", "gallon", "gallons", "qt", "quart", "l", "liter", "litre", "ml", "fl oz", "floz"]);
+  const COUNT  = new Set(["each", "ea", "pc", "piece", "unit", "ct", "count"]);
+
+  const family = (u: string) => {
+    const s = u.toLowerCase().trim();
+    return WEIGHT.has(s) ? "weight" : VOLUME.has(s) ? "volume" : COUNT.has(s) ? "count" : null;
+  };
+
+  const pFam = family(packUom || "");
+  const iFam = family(inventoryUnitName || "");
+  if (!pFam || !iFam) return false;
+  return pFam !== iFam;
+}
+
+/**
+ * Compute effective pack quantity (in inventory base units) from pack geometry.
+ * Mirrors the logic in deriveUnitPrice but without the import to avoid circular deps.
+ */
+export function effectivePackQty(
+  caseSize: number,
+  innerPackSize: number,
+  packUom: string,
+  inventoryUnitName: string
+): number {
+  const safeOuter = Math.max(caseSize, 1);
+  const safeInner = Math.max(innerPackSize, 1);
+  const invUnit = (inventoryUnitName || "").toLowerCase().trim();
+  const pUom    = (packUom || "").toLowerCase().trim();
+
+  // "each" family: price per individual countable item — divide by outer count only
+  if (["each", "ea", "piece", "unit", "count", "ct"].includes(invUnit)) {
+    return safeOuter;
+  }
+  // "lb" family — handle oz→lb conversion
+  if (["pound", "lb", "lbs"].includes(invUnit)) {
+    if (["oz", "ounce", "ounces"].includes(pUom)) {
+      return Math.max((safeOuter * safeInner) / 16, 0.0001);
+    }
+    return safeOuter * safeInner;
+  }
+  // "oz" family
+  if (["ounce", "oz", "ounces"].includes(invUnit)) {
+    return safeOuter * safeInner;
+  }
+  // Default: treat innerSize as total units in inventory's native unit
+  return safeOuter * safeInner;
+}
+
+/**
+ * Derive both casePrice and unitPrice from an explicit basis + pack geometry.
+ * Returns incompatibleUnit=true when unit families are known and mismatched.
+ */
+export function derivePrices(
+  priceBasis: "case" | "unit",
+  price: number,
+  caseSize: number,
+  innerPackSize: number = 1,
+  packUom: string = "",
+  inventoryUnitName: string = ""
+): DerivedPrices {
+  const incompatibleUnit = isIncompatibleUnit(packUom, inventoryUnitName);
+  const qty = effectivePackQty(caseSize, innerPackSize, packUom, inventoryUnitName);
+
+  if (priceBasis === "case") {
+    const casePrice = price;
+    const unitPrice = qty > 0 ? casePrice / qty : casePrice;
+    return { casePrice, unitPrice, incompatibleUnit };
+  } else {
+    const unitPrice = price;
+    const casePrice = unitPrice * qty;
+    return { casePrice, unitPrice, incompatibleUnit };
+  }
+}
+
+/**
+ * Quote-source guard: prevents order_guide_import / connector sources from
+ * accidentally being passed as representsActualPurchase=true.
  * Returns the corrected representsActualPurchase value.
  */
 export function guardQuoteAsActual(
@@ -121,8 +228,7 @@ export function guardQuoteAsActual(
 }
 
 /**
- * Compute weighted average cost.
- * Pure function — exported for unit testing.
+ * Compute weighted average cost from current holdings + new receipt.
  */
 export function computeWac(
   currentOnHandQty: number,
@@ -136,9 +242,7 @@ export function computeWac(
 }
 
 /**
- * Returns true when a price is considered stale (older than 90 days or has no
- * pricedAt timestamp).
- * Pure function — exported for unit testing.
+ * Returns true when a price is stale (older than 90 days or missing timestamp).
  */
 export function isPriceStale(pricedAt: Date | null | undefined): boolean {
   if (!pricedAt) return true;
@@ -146,35 +250,24 @@ export function isPriceStale(pricedAt: Date | null | undefined): boolean {
   return pricedAt < ninetyDaysAgo;
 }
 
-// ─── Main Write Function ──────────────────────────────────────────────────────
+// ─── Internal Write Implementation ────────────────────────────────────────────
 
 type DbOrTx = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-/**
- * Record a vendor price event through the single shared write gate.
- *
- * Always updates vendor_items.(lastCasePrice, lastPrice, priceSource, pricedAt,
- * priceSourceReferenceId).
- *
- * Additionally, when representsActualPurchase=true:
- *   - Updates inventory_items.(pricePerUnit, avgCostPerUnit)
- *   - Inserts inventory_item_price_history if the price changed
- *
- * @param params  Price event parameters.
- * @param txOrDb  Optional Drizzle transaction handle.  Defaults to the module-
- *                level `db` singleton so the call is self-contained when the
- *                caller does not need a shared transaction.
- */
-export async function recordVendorPrice(
+async function _executeWrite(
   params: RecordVendorPriceParams,
-  txOrDb: DbOrTx = db
+  txOrDb: DbOrTx
 ): Promise<void> {
   const {
     vendorItemId,
     inventoryItemId,
     companyId,
-    casePrice,
-    unitPrice,
+    priceBasis,
+    price,
+    caseSize,
+    innerPackSize = 1,
+    packUom = "",
+    inventoryUnitName = "",
     source,
     referenceId,
     userId,
@@ -187,10 +280,28 @@ export async function recordVendorPrice(
     params.representsActualPurchase
   );
 
+  // Derive both prices from the explicit basis + pack geometry
+  const { casePrice, unitPrice, incompatibleUnit } = derivePrices(
+    priceBasis,
+    price,
+    caseSize,
+    innerPackSize,
+    packUom,
+    inventoryUnitName
+  );
+
+  if (incompatibleUnit) {
+    console.warn(
+      `[VendorPriceService] ⚠️  Incompatible unit: packUom="${packUom}" vs inventoryUnit="${inventoryUnitName}" ` +
+        `for vendorItemId=${vendorItemId}. Price stamped but comparison results may be unreliable.`
+    );
+  }
+
   const now = new Date();
+  const d = txOrDb as typeof db;
 
   // ── 1. Always stamp vendor_items price provenance ──────────────────────────
-  await (txOrDb as typeof db)
+  await d
     .update(vendorItems)
     .set({
       ...(casePrice > 0 ? { lastCasePrice: casePrice } : {}),
@@ -213,8 +324,8 @@ export async function recordVendorPrice(
     return;
   }
 
-  // ── 3. Fetch current inventory item ───────────────────────────────────────
-  const [item] = await (txOrDb as typeof db)
+  // ── 3. Fetch current inventory item for WAC + change detection ─────────────
+  const [item] = await d
     .select({
       pricePerUnit: inventoryItems.pricePerUnit,
       avgCostPerUnit: inventoryItems.avgCostPerUnit,
@@ -228,7 +339,7 @@ export async function recordVendorPrice(
     )
     .limit(1);
 
-  if (!item) return; // not found or wrong tenant — skip silently
+  if (!item) return;
 
   // ── 4. Compute WAC ─────────────────────────────────────────────────────────
   const newAvgCost =
@@ -244,7 +355,7 @@ export async function recordVendorPrice(
       : (item.avgCostPerUnit ?? unitPrice);
 
   // ── 5. Update inventory item actual cost ───────────────────────────────────
-  await (txOrDb as typeof db)
+  await d
     .update(inventoryItems)
     .set({
       pricePerUnit: unitPrice,
@@ -258,23 +369,44 @@ export async function recordVendorPrice(
       )
     );
 
-  // ── 6. Write price history when price changes (never for legacy_unknown) ───
+  // ── 6. Write price history when price changed (skip legacy_unknown) ─────────
   const prevPrice = item.pricePerUnit ?? 0;
-  if (
-    source !== "legacy_unknown" &&
-    Math.abs(unitPrice - prevPrice) > 0.000001
-  ) {
-    await (txOrDb as typeof db)
-      .insert(inventoryItemPriceHistory)
-      .values({
-        inventoryItemId,
-        pricePerUnit: unitPrice,
-        casePrice: casePrice > 0 ? casePrice : null,
-        source,
-        vendorItemId,
-        effectiveAt: now,
-        recordedBy: userId ?? null,
-        note: `Price updated via ${source} (Last: $${unitPrice.toFixed(4)}, WAC: $${newAvgCost.toFixed(4)})`,
-      });
+  if (source !== "legacy_unknown" && Math.abs(unitPrice - prevPrice) > 0.000001) {
+    await d.insert(inventoryItemPriceHistory).values({
+      inventoryItemId,
+      pricePerUnit: unitPrice,
+      casePrice: casePrice > 0 ? casePrice : null,
+      source,
+      vendorItemId,
+      effectiveAt: now,
+      recordedBy: userId ?? null,
+      note: `Price updated via ${source} (Last: $${unitPrice.toFixed(4)}, WAC: $${newAvgCost.toFixed(4)})${incompatibleUnit ? " [incompatible-unit]" : ""}`,
+    });
   }
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * Record a vendor price event through the single shared write gate.
+ *
+ * When no txOrDb is supplied, all writes are executed inside a new atomic
+ * transaction (self-transactional).  Pass an existing Drizzle transaction
+ * handle to participate in the caller's transaction.
+ *
+ * @param params  Price event parameters.
+ * @param txOrDb  Optional Drizzle transaction handle.
+ */
+export async function recordVendorPrice(
+  params: RecordVendorPriceParams,
+  txOrDb?: DbOrTx
+): Promise<void> {
+  if (txOrDb && txOrDb !== db) {
+    // Caller is managing the transaction — use it directly
+    return _executeWrite(params, txOrDb);
+  }
+  // No external transaction — wrap in own atomic transaction
+  return db.transaction(async (tx) => {
+    await _executeWrite(params, tx);
+  });
 }
