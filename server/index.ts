@@ -273,24 +273,35 @@ async function runStartupMigrations() {
     //   invalid-pack  — rows with zero or null caseSize (unit price derivation would be wrong)
     //   needs-refresh — legacy_unknown rows requiring a real price update from an operator
     {
-      // Step 1: rows linked to a receipt line with a recorded price → "receipt"
+      // Step 1: rows with a provable receipt link AND no competing order-guide signal.
+      // Rows that also have last_case_price > 0 are AMBIGUOUS (dual-signal — cannot
+      // safely attribute to receipt alone) and are intentionally left for Step 3 →
+      // legacy_unknown.  This avoids misclassifying untrusted legacy rows as "receipt".
       const receiptResult = await db.execute(sql`
         UPDATE vendor_items
         SET price_source = 'receipt'
         WHERE price_source IS NULL
+          AND (last_case_price IS NULL OR last_case_price = 0)
           AND EXISTS (
             SELECT 1 FROM receipt_lines rl
             WHERE rl.vendor_item_id = vendor_items.id
               AND rl.price_each > 0
           )
       `);
-      // Step 2: rows with a non-zero lastCasePrice → "order_guide_import"
+      // Step 2: rows with a non-zero lastCasePrice AND no receipt link → "order_guide_import"
+      // (ambiguous rows with BOTH signals skip here because last_case_price > 0 but they
+      // also have a receipt link — they're already handled as legacy_unknown in Step 3)
       const ogResult = await db.execute(sql`
         UPDATE vendor_items
         SET price_source = 'order_guide_import'
         WHERE price_source IS NULL
           AND last_case_price IS NOT NULL
           AND last_case_price > 0
+          AND NOT EXISTS (
+            SELECT 1 FROM receipt_lines rl
+            WHERE rl.vendor_item_id = vendor_items.id
+              AND rl.price_each > 0
+          )
       `);
       // Step 3: all remaining NULL rows → "legacy_unknown"
       const luResult = await db.execute(sql`

@@ -2282,36 +2282,68 @@ DO $$ BEGIN
     CREATE INDEX IF NOT EXISTS iiph_source_idx ON inventory_item_price_history (source);
     CREATE INDEX IF NOT EXISTS vi_price_source_idx ON vendor_items (price_source);
 
-    -- Provenance-aware back-fill: classify existing vendor_item rows before
-    -- falling back to legacy_unknown.
-    -- 1. Rows linked to a receipt line with a recorded price → "receipt"
+    -- Provenance-aware back-fill: classify existing vendor_item rows.
+    -- Ambiguous rows (receipt link AND last_case_price > 0) fall through to
+    -- legacy_unknown — never misclassified as a trusted provenance source.
+    -- 1. Unambiguous receipt link (no competing order-guide signal) → "receipt"
     UPDATE vendor_items
     SET price_source = 'receipt'
     WHERE price_source IS NULL
+      AND (last_case_price IS NULL OR last_case_price = 0)
       AND EXISTS (
         SELECT 1 FROM receipt_lines rl
         WHERE rl.vendor_item_id = vendor_items.id
           AND rl.price_each > 0
       );
-    -- 2. Rows with a non-zero lastCasePrice → "order_guide_import"
+    -- 2. Unambiguous order-guide signal (no receipt link) → "order_guide_import"
     UPDATE vendor_items
     SET price_source = 'order_guide_import'
     WHERE price_source IS NULL
       AND last_case_price IS NOT NULL
-      AND last_case_price > 0;
-    -- 3. All remaining NULL rows → "legacy_unknown"
+      AND last_case_price > 0
+      AND NOT EXISTS (
+        SELECT 1 FROM receipt_lines rl
+        WHERE rl.vendor_item_id = vendor_items.id
+          AND rl.price_each > 0
+      );
+    -- 3. All remaining NULL rows (ambiguous or unidentifiable) → "legacy_unknown"
     UPDATE vendor_items
     SET price_source = 'legacy_unknown'
     WHERE price_source IS NULL;
     -- 4. Semantic repair — re-derive last_price for order_guide_import rows where
     --    case_size > 0 and the stored unit price drifts from lastCasePrice / caseSize.
-    --    Fixes case↔unit price inconsistency left by pre-M3A import paths.
+    --    Only touches unambiguously classified rows; legacy_unknown rows are never mutated.
     UPDATE vendor_items
     SET last_price = last_case_price / case_size
     WHERE price_source = 'order_guide_import'
       AND last_case_price IS NOT NULL AND last_case_price > 0
       AND case_size IS NOT NULL AND case_size > 0
       AND ABS(COALESCE(last_price, 0) - (last_case_price / case_size)) > 0.0001;
+    -- 5. Report migration category counts via PostgreSQL NOTICE
+    DO $$
+    DECLARE
+      v_receipt       bigint;
+      v_og            bigint;
+      v_lu            bigint;
+      v_ambiguous     bigint;
+      v_invalid_pack  bigint;
+      v_semantic_rep  bigint;
+    BEGIN
+      SELECT COUNT(*) INTO v_receipt      FROM vendor_items WHERE price_source = 'receipt';
+      SELECT COUNT(*) INTO v_og           FROM vendor_items WHERE price_source = 'order_guide_import';
+      SELECT COUNT(*) INTO v_lu           FROM vendor_items WHERE price_source = 'legacy_unknown';
+      SELECT COUNT(*) INTO v_ambiguous    FROM vendor_items
+        WHERE price_source = 'legacy_unknown'
+          AND last_case_price IS NOT NULL AND last_case_price > 0
+          AND EXISTS (SELECT 1 FROM receipt_lines rl WHERE rl.vendor_item_id = vendor_items.id AND rl.price_each > 0);
+      SELECT COUNT(*) INTO v_invalid_pack FROM vendor_items WHERE case_size IS NULL OR case_size <= 0;
+      SELECT COUNT(*) INTO v_semantic_rep FROM vendor_items
+        WHERE price_source = 'order_guide_import'
+          AND last_case_price IS NOT NULL AND last_case_price > 0
+          AND case_size IS NOT NULL AND case_size > 0;
+      RAISE NOTICE '[M3A backfill] vendor_items price_source: receipt=%, order_guide_import=%, legacy_unknown=% (ambiguous=%, invalid-pack=%, semantic-repaired=%)',
+        v_receipt, v_og, v_lu, v_ambiguous, v_invalid_pack, v_semantic_rep;
+    END $$;
 
     INSERT INTO _migration_log (version, description)
       VALUES ('v059', 'M3A: Vendor price integrity — price_source provenance on vendor_items and inventory_item_price_history');

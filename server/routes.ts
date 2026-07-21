@@ -2578,42 +2578,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const effectiveUnitPrice = resolveApplyLineUnitPrice(line);
 
           // M3A: invoice_scan is an actual-purchase source.
-          // Update inventory cost ONCE with the authoritative effectiveUnitPrice from the scan.
-          await db.update(inventoryItems)
-            .set({ pricePerUnit: effectiveUnitPrice, avgCostPerUnit: effectiveUnitPrice, updatedAt: new Date() })
-            .where(eq(inventoryItems.id, line.inventoryItemId));
+          // Route through the shared service (recordVendorPrice) when a linked vendor item
+          // exists so inventory cost + history + vendor provenance are all written by the
+          // single write gate.  The FIRST linked vendor item carries representsActualPurchase=true
+          // (updates inventory cost and writes history); remaining VIs get false (price stamp only).
+          // For inventory items with no linked vendor items, fall back to direct writes.
+          const itemUnitName = allUnits.find(u => u.id === existing.unitId)?.name ?? 'pound';
+          const linkedVendorItems = await db
+            .select({ id: vendorItems.id, caseSize: vendorItems.caseSize, innerPackSize: vendorItems.innerPackSize, packUom: vendorItems.packUom })
+            .from(vendorItems)
+            .where(eq(vendorItems.inventoryItemId, line.inventoryItemId));
 
-          // Write price history ONCE for this inventory item
-          if (Math.abs(effectiveUnitPrice - (existing.pricePerUnit ?? 0)) > 0.000001) {
-            await db.insert(inventoryItemPriceHistory).values({
+          const hasCasePrice = (line.casePrice ?? 0) > 0;
+          const hasLinkedVendorItem = linkedVendorItems.length > 0 && hasCasePrice;
+
+          if (hasLinkedVendorItem) {
+            // Route the primary actual-purchase write through the shared service.
+            // The first VI call (representsActualPurchase=true) updates inventory cost
+            // and writes price history (with vendorItemId populated).
+            const [primaryVi, ...restVis] = linkedVendorItems;
+            await recordVendorPrice({
+              vendorItemId: primaryVi.id,
               inventoryItemId: line.inventoryItemId,
-              pricePerUnit: effectiveUnitPrice,
-              casePrice: line.casePrice ?? null,
+              companyId,
+              priceBasis: "case",
+              price: line.casePrice!,
+              caseSize: Math.max(primaryVi.caseSize ?? 1, 1),
+              innerPackSize: Math.max(primaryVi.innerPackSize ?? 1, 1),
+              packUom: primaryVi.packUom ?? "",
+              inventoryUnitName: itemUnitName,
               source: "invoice_scan",
-              effectiveAt: new Date(),
-              note: `Price updated via invoice scan ($${effectiveUnitPrice.toFixed(4)})`,
+              representsActualPurchase: true,
+              userId: userId ?? undefined,
             });
-          }
-
-          // Stamp provenance on any linked vendor_items (representsActualPurchase=false so
-          // inventory cost is NOT touched again — it was already set above exactly once).
-          if (line.casePrice && line.casePrice > 0) {
-            const itemUnitName = allUnits.find(u => u.id === existing.unitId)?.name ?? 'pound';
-            const linkedVendorItems = await db
-              .select({ id: vendorItems.id, caseSize: vendorItems.caseSize, innerPackSize: vendorItems.innerPackSize, packUom: vendorItems.packUom })
-              .from(vendorItems)
-              .where(eq(vendorItems.inventoryItemId, line.inventoryItemId));
-            for (const vi of linkedVendorItems) {
+            // Remaining vendor items: stamp provenance only (inventory already updated).
+            for (const vi of restVis) {
               await recordVendorPrice({
                 vendorItemId: vi.id,
                 priceBasis: "case",
-                price: line.casePrice,
+                price: line.casePrice!,
                 caseSize: Math.max(vi.caseSize ?? 1, 1),
                 innerPackSize: Math.max(vi.innerPackSize ?? 1, 1),
                 packUom: vi.packUom ?? "",
                 inventoryUnitName: itemUnitName,
                 source: "invoice_scan",
-                representsActualPurchase: false, // inventory already updated once above
+                representsActualPurchase: false,
+              });
+            }
+          } else {
+            // No linked vendor item (or no case price) — write inventory cost + history directly.
+            // History row includes vendorItemId: null (consistent with service schema).
+            await db.update(inventoryItems)
+              .set({ pricePerUnit: effectiveUnitPrice, avgCostPerUnit: effectiveUnitPrice, updatedAt: new Date() })
+              .where(eq(inventoryItems.id, line.inventoryItemId));
+
+            if (Math.abs(effectiveUnitPrice - (existing.pricePerUnit ?? 0)) > 0.000001) {
+              await db.insert(inventoryItemPriceHistory).values({
+                inventoryItemId: line.inventoryItemId,
+                pricePerUnit: effectiveUnitPrice,
+                casePrice: line.casePrice ?? null,
+                source: "invoice_scan",
+                vendorItemId: null,
+                effectiveAt: new Date(),
+                recordedBy: userId ?? null,
+                note: `Price updated via invoice scan ($${effectiveUnitPrice.toFixed(4)})`,
               });
             }
           }
