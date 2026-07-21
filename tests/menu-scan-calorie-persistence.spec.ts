@@ -279,6 +279,142 @@ test.describe('Menu scan calorie entry — UI path (primary)', () => {
 // Suite 2 — API contract (supporting coverage)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Suite 3 — menu-items page import path (/api/menu-import/:id/approve)
+// ---------------------------------------------------------------------------
+/**
+ * Mirrors Suite 2 but exercises the second independent approve code path used
+ * by the menu management page (/api/menu-import/:sessionId/approve).  This
+ * endpoint returns { menuItemsCreated, skipped, recipesSeeded } — it does NOT
+ * return created item IDs — so items are located by name after the fact.
+ */
+test.describe('Menu-items page import — calorie persistence (/api/menu-import)', () => {
+  let seededSessionIds: string[] = [];
+  let seededMenuItemIds: string[] = [];
+
+  test.beforeEach(async ({ request }) => {
+    seededSessionIds = [];
+    seededMenuItemIds = [];
+    await loginCookieApi(request);
+  });
+
+  test.afterEach(async ({ request }) => {
+    for (const sessionId of seededSessionIds) {
+      await deleteMenuImportSession(request, sessionId, seededMenuItemIds);
+    }
+    seededSessionIds = [];
+    seededMenuItemIds = [];
+  });
+
+  async function approveViaMenuImport(
+    request: APIRequestContext,
+    sessionId: string,
+    items: object[],
+    storeId?: string | null,
+  ): Promise<{ menuItemsCreated: number }> {
+    const res = await request.post(
+      `${BASE_URL}/api/menu-import/${sessionId}/approve`,
+      {
+        data: { items, ...(storeId ? { storeId } : {}) },
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
+    expect(res.status(), `menu-import approve should return 200, got ${res.status()}: ${await res.text()}`).toBe(200);
+    return res.json();
+  }
+
+  async function fetchMenuItemByName(
+    request: APIRequestContext,
+    name: string,
+  ): Promise<{ id: string; name: string; calorieCount: number | null } | null> {
+    const res = await request.get(`${BASE_URL}/api/menu-items`);
+    expect(res.status()).toBe(200);
+    const items = await res.json() as Array<{ id: string; name: string; calorieCount: number | null }>;
+    return items.find(i => i.name === name) ?? null;
+  }
+
+  test('explicit calorieCount is persisted via the menu-import path', async ({ request }) => {
+    const { sessionId, storeId } = await seedPendingSession(request);
+    seededSessionIds.push(sessionId);
+
+    const itemName = uniqueName('Grilled Salmon Import');
+    const body = await approveViaMenuImport(request, sessionId, [
+      { name: itemName, department: 'Entrees', price: 24.99, calorieCount: 480 },
+    ], storeId);
+
+    expect(body.menuItemsCreated).toBe(1);
+    const saved = await fetchMenuItemByName(request, itemName);
+    expect(saved, `Menu item "${itemName}" should exist in the database`).not.toBeNull();
+    seededMenuItemIds.push(saved!.id);
+    expect(saved!.calorieCount, 'calorieCount should be 480').toBe(480);
+  });
+
+  test('calorieCount null is stored as null via the menu-import path', async ({ request }) => {
+    const { sessionId, storeId } = await seedPendingSession(request);
+    seededSessionIds.push(sessionId);
+
+    const itemName = uniqueName('Caesar Salad Import');
+    await approveViaMenuImport(request, sessionId, [
+      { name: itemName, department: 'Salads', price: 13.50, calorieCount: null },
+    ], storeId);
+
+    const saved = await fetchMenuItemByName(request, itemName);
+    expect(saved, `Menu item "${itemName}" should exist in the database`).not.toBeNull();
+    seededMenuItemIds.push(saved!.id);
+    expect(saved!.calorieCount, 'calorieCount should be null').toBeNull();
+  });
+
+  test('each item in a batch retains its own calorieCount via the menu-import path', async ({ request }) => {
+    const { sessionId, storeId } = await seedPendingSession(request);
+    seededSessionIds.push(sessionId);
+
+    const burgerName = uniqueName('Burger Import');
+    const friesName  = uniqueName('Fries Import');
+    const sodaName   = uniqueName('Soda Import');
+
+    const body = await approveViaMenuImport(request, sessionId, [
+      { name: burgerName, department: 'Mains',  price: 14.99, calorieCount: 750 },
+      { name: friesName,  department: 'Sides',  price:  4.99, calorieCount: 320 },
+      { name: sodaName,   department: 'Drinks', price:  2.99, calorieCount: null },
+    ], storeId);
+
+    expect(body.menuItemsCreated).toBe(3);
+
+    const [burger, fries, soda] = await Promise.all([
+      fetchMenuItemByName(request, burgerName),
+      fetchMenuItemByName(request, friesName),
+      fetchMenuItemByName(request, sodaName),
+    ]);
+
+    expect(burger).not.toBeNull();
+    expect(fries).not.toBeNull();
+    expect(soda).not.toBeNull();
+
+    seededMenuItemIds.push(burger!.id, fries!.id, soda!.id);
+
+    expect(burger!.calorieCount, 'Burger should have 750 calories').toBe(750);
+    expect(fries!.calorieCount,  'Fries should have 320 calories').toBe(320);
+    expect(soda!.calorieCount,   'Soda should have null calories').toBeNull();
+  });
+
+  test('calorieCount of 0 is stored as 0 via the menu-import path', async ({ request }) => {
+    const { sessionId, storeId } = await seedPendingSession(request);
+    seededSessionIds.push(sessionId);
+
+    const itemName = uniqueName('Plain Water Import');
+    await approveViaMenuImport(request, sessionId, [
+      { name: itemName, department: 'Drinks', price: 0, calorieCount: 0 },
+    ], storeId);
+
+    const saved = await fetchMenuItemByName(request, itemName);
+    expect(saved, `Menu item "${itemName}" should exist in the database`).not.toBeNull();
+    seededMenuItemIds.push(saved!.id);
+    expect(saved!.calorieCount, 'calorieCount should be 0, not null').toBe(0);
+  });
+});
+
+
+
 test.describe('Menu scan calorie persistence — API contract', () => {
   let seededSessionIds: string[] = [];
   let seededMenuItemIds: string[] = [];
