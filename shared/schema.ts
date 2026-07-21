@@ -724,6 +724,8 @@ export const poRoutingAudit = pgTable("po_routing_audit", {
   companyIdx: index("po_routing_audit_company_idx").on(table.companyId),
   sourcePoIdx: index("po_routing_audit_source_po_idx").on(table.sourcePoId),
   sourcePOLineIdx: index("po_routing_audit_source_po_line_idx").on(table.sourcePOLineId),
+  // Unique constraint guarantees idempotency at the DB level: one audit row per (line, target vendor item)
+  uniqLineVi: uniqueIndex("uq_routing_audit_line_vi").on(table.sourcePOLineId, table.vendorItemId),
 }));
 
 export type PoRoutingAuditRecord = typeof poRoutingAudit.$inferSelect;

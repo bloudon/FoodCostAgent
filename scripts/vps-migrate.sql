@@ -2380,6 +2380,8 @@ DO $$ BEGIN
     CREATE INDEX IF NOT EXISTS po_routing_audit_company_idx        ON po_routing_audit (company_id);
     CREATE INDEX IF NOT EXISTS po_routing_audit_source_po_idx      ON po_routing_audit (source_po_id);
     CREATE INDEX IF NOT EXISTS po_routing_audit_source_po_line_idx ON po_routing_audit (source_po_line_id);
+    -- Unique constraint: DB-level idempotency guard — one audit row per (source line, target vendor item)
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_routing_audit_line_vi ON po_routing_audit (source_po_line_id, vendor_item_id);
 
     INSERT INTO _migration_log (version, description)
       VALUES ('v060', 'M3B: po_routing_audit table — per-line vendor routing audit trail');

@@ -11669,121 +11669,152 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // All lines already routed — return idempotent result
-      if (validLines.length === 0 && alreadyRouted.length > 0) {
-        return res.json({
-          data: {
-            routedLines: 0,
-            affectedPOIds: [...new Set(alreadyRouted.map(r => r.destinationPoId))],
-            auditIds: alreadyRouted.map(r => r.auditId),
-            alreadyRouted,
-          },
-        });
-      }
-
       // ── 6. Execute routing transaction ────────────────────────────────────
-      // Maps targetVendorId → resulting draft PO id
+      // Maps targetVendorId → resulting draft PO id (covers both new + idempotent paths)
       const resultingPoMap = new Map<string, string>();
       const auditIds: string[] = [];
 
-      await withTransaction(async (tx) => {
-        for (const vl of validLines) {
-          const targetVendorId = vl.targetViRow.vi.vendorId;
+      // Seed resultingPoMap with destination POs already known from pre-transaction idempotency check
+      for (const ar of alreadyRouted) {
+        auditIds.push(ar.auditId);
+        // We don't have vendorId here — that's fine; we only track the PO ID for the response
+      }
 
-          // Find or create a draft PO for (companyId, storeId, targetVendorId)
-          let targetPoId = resultingPoMap.get(targetVendorId);
-          if (!targetPoId) {
-            const [existingPo] = await tx
-              .select({ id: purchaseOrders.id })
-              .from(purchaseOrders)
+      if (validLines.length > 0) {
+        await withTransaction(async (tx) => {
+          for (const vl of validLines) {
+            const targetVendorId = vl.targetViRow.vi.vendorId;
+
+            // ── DB-level idempotency: lock the source line for this transaction ──
+            // If a concurrent request already routed this line, it would have deleted it.
+            // Locking here serializes concurrent calls on the same line.
+            const lockedRows = await tx.execute(
+              sql`SELECT id FROM po_lines WHERE id = ${vl.poLineId} FOR UPDATE`
+            );
+
+            if ((lockedRows.rows as { id: string }[]).length === 0) {
+              // Source line was already deleted by a concurrent routing call.
+              // Look up the audit record it wrote and treat as already-routed.
+              const [existingAudit] = await tx
+                .select({ id: poRoutingAudit.id, destinationPoId: poRoutingAudit.destinationPoId })
+                .from(poRoutingAudit)
+                .where(
+                  and(
+                    eq(poRoutingAudit.sourcePOLineId, vl.poLineId),
+                    eq(poRoutingAudit.vendorItemId, vl.targetViRow.vi.id)
+                  )
+                )
+                .limit(1);
+              if (existingAudit) {
+                auditIds.push(existingAudit.id);
+                if (!resultingPoMap.has(targetVendorId)) {
+                  resultingPoMap.set(targetVendorId, existingAudit.destinationPoId);
+                }
+              }
+              continue;
+            }
+
+            // Line is confirmed present and locked — proceed with routing
+            // Find or create a draft PO for (companyId, storeId, targetVendorId)
+            let targetPoId = resultingPoMap.get(targetVendorId);
+            if (!targetPoId) {
+              const [existingPo] = await tx
+                .select({ id: purchaseOrders.id })
+                .from(purchaseOrders)
+                .where(
+                  and(
+                    eq(purchaseOrders.companyId, companyId),
+                    eq(purchaseOrders.storeId, sourcePo.storeId),
+                    eq(purchaseOrders.vendorId, targetVendorId),
+                    eq(purchaseOrders.status, "pending")
+                  )
+                )
+                .limit(1);
+
+              if (existingPo) {
+                targetPoId = existingPo.id;
+              } else {
+                const [newPo] = await tx
+                  .insert(purchaseOrders)
+                  .values({
+                    companyId,
+                    storeId: sourcePo.storeId,
+                    vendorId: targetVendorId,
+                    status: "pending",
+                    expectedDate: sourcePo.expectedDate,
+                    notes: sourcePo.notes ? `Routed from PO — ${sourcePo.notes}` : "Routed from PO",
+                  })
+                  .returning({ id: purchaseOrders.id });
+                targetPoId = newPo.id;
+              }
+              resultingPoMap.set(targetVendorId, targetPoId);
+            }
+
+            // Merge or insert destination line
+            const [existingTargetLine] = await tx
+              .select()
+              .from(poLines)
               .where(
                 and(
-                  eq(purchaseOrders.companyId, companyId),
-                  eq(purchaseOrders.storeId, sourcePo.storeId),
-                  eq(purchaseOrders.vendorId, targetVendorId),
-                  eq(purchaseOrders.status, "pending")
+                  eq(poLines.purchaseOrderId, targetPoId),
+                  eq(poLines.vendorItemId, vl.targetViRow.vi.id)
                 )
               )
               .limit(1);
 
-            if (existingPo) {
-              targetPoId = existingPo.id;
-            } else {
-              const [newPo] = await tx
-                .insert(purchaseOrders)
-                .values({
-                  companyId,
-                  storeId: sourcePo.storeId,
-                  vendorId: targetVendorId,
-                  status: "pending",
-                  expectedDate: sourcePo.expectedDate,
-                  notes: sourcePo.notes ? `Routed from PO — ${sourcePo.notes}` : "Routed from PO",
+            if (existingTargetLine) {
+              await tx
+                .update(poLines)
+                .set({
+                  orderedQty: (existingTargetLine.orderedQty ?? 0) + vl.line.orderedQty,
+                  caseQuantity: ((existingTargetLine.caseQuantity ?? 0) + (vl.line.caseQuantity ?? 0)) || null,
                 })
-                .returning({ id: purchaseOrders.id });
-              targetPoId = newPo.id;
+                .where(eq(poLines.id, existingTargetLine.id));
+            } else {
+              await tx.insert(poLines).values({
+                purchaseOrderId: targetPoId,
+                vendorItemId: vl.targetViRow.vi.id,
+                orderedQty: vl.line.orderedQty,
+                caseQuantity: vl.line.caseQuantity,
+                unitId: vl.toUnitId,
+                priceEach: vl.toUnitPrice,
+              });
             }
-            resultingPoMap.set(targetVendorId, targetPoId);
-          }
 
-          // Merge or insert destination line
-          const [existingTargetLine] = await tx
-            .select()
-            .from(poLines)
-            .where(
-              and(
-                eq(poLines.purchaseOrderId, targetPoId),
-                eq(poLines.vendorItemId, vl.targetViRow.vi.id)
-              )
-            )
-            .limit(1);
+            // Delete source line
+            await tx.delete(poLines).where(eq(poLines.id, vl.poLineId));
 
-          if (existingTargetLine) {
-            await tx
-              .update(poLines)
-              .set({
-                orderedQty: (existingTargetLine.orderedQty ?? 0) + vl.line.orderedQty,
-                caseQuantity: ((existingTargetLine.caseQuantity ?? 0) + (vl.line.caseQuantity ?? 0)) || null,
+            // Write per-line audit row — ON CONFLICT DO NOTHING is the final DB-level
+            // safety net enforced by uq_routing_audit_line_vi (source_po_line_id, vendor_item_id)
+            const [auditRow] = await tx
+              .insert(poRoutingAudit)
+              .values({
+                companyId,
+                sourcePoId,
+                sourcePOLineId: vl.poLineId,
+                destinationPoId: targetPoId,
+                vendorItemId: vl.targetViRow.vi.id,
+                inventoryItemId: vl.inventoryItemId,
+                userId,
+                fromUnitPrice: vl.fromUnitPrice,
+                toUnitPrice: vl.toUnitPrice,
+                fromCasePrice: vl.fromCasePrice,
+                toCasePrice: vl.toCasePrice,
+                orderedQty: vl.line.orderedQty,
+                projectedSavingsPerCase: vl.projectedSavingsPerCase,
               })
-              .where(eq(poLines.id, existingTargetLine.id));
-          } else {
-            await tx.insert(poLines).values({
-              purchaseOrderId: targetPoId,
-              vendorItemId: vl.targetViRow.vi.id,
-              orderedQty: vl.line.orderedQty,
-              caseQuantity: vl.line.caseQuantity,
-              unitId: vl.toUnitId,
-              priceEach: vl.toUnitPrice,
-            });
+              .onConflictDoNothing()
+              .returning({ id: poRoutingAudit.id });
+            auditIds.push(auditRow?.id ?? '');
           }
-
-          // Delete source line
-          await tx.delete(poLines).where(eq(poLines.id, vl.poLineId));
-
-          // Write per-line audit row (inside same transaction)
-          const [auditRow] = await tx
-            .insert(poRoutingAudit)
-            .values({
-              companyId,
-              sourcePoId,
-              sourcePOLineId: vl.poLineId,
-              destinationPoId: targetPoId,
-              vendorItemId: vl.targetViRow.vi.id,
-              inventoryItemId: vl.inventoryItemId,
-              userId,
-              fromUnitPrice: vl.fromUnitPrice,
-              toUnitPrice: vl.toUnitPrice,
-              fromCasePrice: vl.fromCasePrice,
-              toCasePrice: vl.toCasePrice,
-              orderedQty: vl.line.orderedQty,
-              projectedSavingsPerCase: vl.projectedSavingsPerCase,
-            })
-            .returning({ id: poRoutingAudit.id });
-          auditIds.push(auditRow.id);
-        }
-      });
+        });
+      }
 
       // ── 7. Response ───────────────────────────────────────────────────────
-      const affectedPOIds = [...new Set(resultingPoMap.values())];
+      // Union destination POs from both newly routed and pre-transaction already-routed lines
+      const freshPOIds = [...new Set(resultingPoMap.values())];
+      const priorPOIds = alreadyRouted.map(r => r.destinationPoId);
+      const affectedPOIds = [...new Set([...freshPOIds, ...priorPOIds])];
 
       return res.json({
         data: {

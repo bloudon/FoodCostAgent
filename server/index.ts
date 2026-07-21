@@ -738,9 +738,10 @@ async function runStartupMigrations() {
     `);
     // Idempotent backfill: add inventory_item_id column if migrated from earlier startup
     await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS inventory_item_id varchar NOT NULL DEFAULT ''`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS po_routing_audit_company_idx      ON po_routing_audit (company_id)`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS po_routing_audit_source_po_idx    ON po_routing_audit (source_po_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS po_routing_audit_company_idx        ON po_routing_audit (company_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS po_routing_audit_source_po_idx      ON po_routing_audit (source_po_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS po_routing_audit_source_po_line_idx ON po_routing_audit (source_po_line_id)`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS uq_routing_audit_line_vi     ON po_routing_audit (source_po_line_id, vendor_item_id)`);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);
