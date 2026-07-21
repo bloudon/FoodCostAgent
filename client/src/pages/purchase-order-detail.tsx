@@ -126,6 +126,11 @@ type VendorPriceComparison = {
     caseSize: number;
     unitName: string;
     lastUpdated: string;
+    priceSource: string | null;
+    pricedAt: string | null;
+    daysSincePriced: number | null;
+    stale: boolean;
+    confirmed: boolean;
   }[];
 };
 

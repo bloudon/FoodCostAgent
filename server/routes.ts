@@ -7561,6 +7561,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ? vi.lastCasePrice
             : unitPrice * caseSize;
           
+          const pricedAtDate = vi.pricedAt instanceof Date ? vi.pricedAt : vi.pricedAt ? new Date(vi.pricedAt as any) : null;
           return {
             vendorId: vi.vendorId,
             vendorName: vendor?.name || 'Unknown',
@@ -7570,6 +7571,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             caseSize: caseSize,
             unitName: unit?.name || '',
             lastUpdated: vi.updatedAt,
+            priceSource: vi.priceSource,
+            pricedAt: pricedAtDate ? pricedAtDate.toISOString() : null,
+            daysSincePriced: pricedAtDate
+              ? Math.floor((Date.now() - pricedAtDate.getTime()) / 86_400_000)
+              : null,
+            stale: isPriceStale(pricedAtDate),
+            confirmed: vi.priceSource === "receipt" || vi.priceSource === "invoice_scan",
           };
         })
         .sort((a, b) => a.casePrice - b.casePrice);

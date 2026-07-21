@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useStoreContext } from "@/hooks/use-store-context";
-import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X, GripVertical, ChevronDown, ChevronRight, Search, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X, GripVertical, ChevronDown, ChevronRight, Search, AlertTriangle, CheckCircle2 } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -1678,7 +1678,7 @@ export default function InventoryItemDetail() {
                       <TableHead>Units/Case</TableHead>
                       <TableHead>Price</TableHead>
                       <TableHead>Source</TableHead>
-                      <TableHead>Last Order</TableHead>
+                      <TableHead className="text-right">Price Date</TableHead>
                       <TableHead className="w-[100px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1757,8 +1757,8 @@ export default function InventoryItemDetail() {
                                   return caseSize > 0 ? (casePrice / caseSize).toFixed(4) : "0.0000";
                                 })()}{unit ? ` / ${formatUnitName(unit.name)}` : ''}
                               </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                {vi.lastOrderDate ? new Date(vi.lastOrderDate).toLocaleDateString() : "-"}
+                              <TableCell className="text-right text-xs text-muted-foreground">
+                                {vi.pricedAt ? new Date(vi.pricedAt).toLocaleDateString() : "-"}
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-1">
@@ -1799,7 +1799,17 @@ export default function InventoryItemDetail() {
 
                         return (
                           <TableRow key={vi.id} data-testid={`vendor-item-row-${vi.id}`}>
-                            <TableCell className="font-medium">{vi.vendor?.name || "Unknown"}</TableCell>
+                            <TableCell className="font-medium">
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span>{vi.vendor?.name || "Unknown"}</span>
+                                {(vi.priceSource === "receipt" || vi.priceSource === "invoice_scan") && (
+                                  <Badge variant="outline" className="ml-1 border-green-500 text-green-700 dark:text-green-400" data-testid={`badge-confirmed-${vi.id}`}>
+                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                    Confirmed
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
                             <TableCell className="text-muted-foreground">{vi.vendorSku || "-"}</TableCell>
                             <TableCell>{formatUnitName(vi.unit?.name)}</TableCell>
                             <TableCell>${vi.lastCasePrice.toFixed(2)}</TableCell>
@@ -1819,8 +1829,33 @@ export default function InventoryItemDetail() {
                                 return <span className="text-sm text-muted-foreground">{label}</span>;
                               })()}
                             </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {vi.lastOrderDate ? new Date(vi.lastOrderDate).toLocaleDateString() : "-"}
+                            <TableCell className="text-right">
+                              {(() => {
+                                const pricedAt = vi.pricedAt ? new Date(vi.pricedAt) : null;
+                                const daysSince = pricedAt
+                                  ? Math.floor((Date.now() - pricedAt.getTime()) / 86_400_000)
+                                  : null;
+                                const isStale = pricedAt ? daysSince! > 90 : false;
+                                if (!pricedAt) {
+                                  return (
+                                    <div className="flex items-center justify-end gap-1 text-xs text-amber-600 dark:text-amber-400" title="No pricing date recorded" data-testid={`icon-stale-${vi.id}`}>
+                                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                                      <span>Unknown</span>
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <div className={`flex items-center justify-end gap-1 text-xs ${isStale ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                                    {isStale && <AlertTriangle className="h-3 w-3 shrink-0" data-testid={`icon-stale-${vi.id}`} />}
+                                    <span title={isStale ? `Price is ${daysSince} days old — may be stale` : undefined}>
+                                      {pricedAt.toLocaleDateString()}
+                                      {isStale && daysSince != null && (
+                                        <span className="ml-1">({daysSince}d ago)</span>
+                                      )}
+                                    </span>
+                                  </div>
+                                );
+                              })()}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">
