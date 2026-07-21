@@ -2366,6 +2366,7 @@ DO $$ BEGIN
       source_po_line_id          varchar   NOT NULL,
       destination_po_id          varchar   NOT NULL,
       vendor_item_id             varchar   NOT NULL,
+      inventory_item_id          varchar   NOT NULL,
       user_id                    varchar,
       routed_at                  timestamp NOT NULL DEFAULT now(),
       from_unit_price            real      NOT NULL,

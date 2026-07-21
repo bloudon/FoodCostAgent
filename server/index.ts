@@ -719,22 +719,25 @@ async function runStartupMigrations() {
     // M3B: PO routing audit table (one row per routed line)
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS po_routing_audit (
-        id                       varchar   PRIMARY KEY DEFAULT gen_random_uuid(),
-        company_id               varchar   NOT NULL,
-        source_po_id             varchar   NOT NULL,
-        source_po_line_id        varchar   NOT NULL,
-        destination_po_id        varchar   NOT NULL,
-        vendor_item_id           varchar   NOT NULL,
-        user_id                  varchar,
-        routed_at                timestamp NOT NULL DEFAULT now(),
-        from_unit_price          real      NOT NULL,
-        to_unit_price            real      NOT NULL,
-        from_case_price          real,
-        to_case_price            real,
-        ordered_qty              real      NOT NULL,
+        id                         varchar   PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id                 varchar   NOT NULL,
+        source_po_id               varchar   NOT NULL,
+        source_po_line_id          varchar   NOT NULL,
+        destination_po_id          varchar   NOT NULL,
+        vendor_item_id             varchar   NOT NULL,
+        inventory_item_id          varchar   NOT NULL,
+        user_id                    varchar,
+        routed_at                  timestamp NOT NULL DEFAULT now(),
+        from_unit_price            real      NOT NULL,
+        to_unit_price              real      NOT NULL,
+        from_case_price            real,
+        to_case_price              real,
+        ordered_qty                real      NOT NULL,
         projected_savings_per_case real
       )
     `);
+    // Idempotent backfill: add inventory_item_id column if migrated from earlier startup
+    await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS inventory_item_id varchar NOT NULL DEFAULT ''`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS po_routing_audit_company_idx      ON po_routing_audit (company_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS po_routing_audit_source_po_idx    ON po_routing_audit (source_po_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS po_routing_audit_source_po_line_idx ON po_routing_audit (source_po_line_id)`);

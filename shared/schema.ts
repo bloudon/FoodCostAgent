@@ -711,6 +711,7 @@ export const poRoutingAudit = pgTable("po_routing_audit", {
   sourcePOLineId: varchar("source_po_line_id").notNull(),
   destinationPoId: varchar("destination_po_id").notNull(),
   vendorItemId: varchar("vendor_item_id").notNull(),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
   userId: varchar("user_id"),
   routedAt: timestamp("routed_at").notNull().defaultNow(),
   fromUnitPrice: real("from_unit_price").notNull(),

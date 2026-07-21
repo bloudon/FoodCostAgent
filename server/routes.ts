@@ -11463,12 +11463,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ]);
       const sourceLinesById = new Map(sourceLines.map(l => [l.id, l]));
 
-      // Source vendor items (to find inventoryItemId for each line)
+      // Dedup: reject if the same (poLineId, targetVendorItemId) appears more than once in one call
+      const seenPairs = new Set<string>();
+      for (const lr of lineRequests) {
+        const key = `${lr.poLineId}:${lr.targetVendorItemId}`;
+        if (seenPairs.has(key)) {
+          return res.status(400).json({
+            error: `Duplicate routing entry in request: poLineId=${lr.poLineId}, targetVendorItemId=${lr.targetVendorItemId}`,
+          });
+        }
+        seenPairs.add(key);
+      }
+
+      // Source vendor items (to find inventoryItemId + current lastPrice snapshot for each line)
       const sourceViIds = [...new Set(sourceLines.map(l => l.vendorItemId))];
       const sourceVendorItemRows = sourceViIds.length > 0
         ? await db.select({
             id: vendorItems.id,
             inventoryItemId: vendorItems.inventoryItemId,
+            lastPrice: vendorItems.lastPrice,
             lastCasePrice: vendorItems.lastCasePrice,
             caseSize: vendorItems.caseSize,
           })
@@ -11626,7 +11639,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? targetVi.lastCasePrice
           : toUnitPrice * toCaseSize;
         const fromCaseSize = sourceVi?.caseSize || 1;
-        const fromUnitPrice = line.priceEach;
+        // Use current vendorItems.lastPrice as source snapshot (not stale PO line price)
+        const fromUnitPrice = sourceVi?.lastPrice ?? line.priceEach;
         const fromCasePrice = sourceVi?.lastCasePrice != null && sourceVi.lastCasePrice > 0
           ? sourceVi.lastCasePrice
           : fromUnitPrice * fromCaseSize;
@@ -11754,6 +11768,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               sourcePOLineId: vl.poLineId,
               destinationPoId: targetPoId,
               vendorItemId: vl.targetViRow.vi.id,
+              inventoryItemId: vl.inventoryItemId,
               userId,
               fromUnitPrice: vl.fromUnitPrice,
               toUnitPrice: vl.toUnitPrice,
