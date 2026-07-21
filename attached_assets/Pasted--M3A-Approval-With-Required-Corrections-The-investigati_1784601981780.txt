@@ -1,0 +1,358 @@
+# M3A Approval With Required Corrections
+
+The investigation supports moving forward with M3A before PO routing or supplier-format validation.
+
+Please incorporate the following corrections into the implementation plan.
+
+## 1. Reconfirm Every Price-Write Path
+
+The current list does not mention some previously identified paths, including the newer order-guide processor and invoice-scan apply workflow.
+
+Before implementation, run a repository-wide audit for all inserts and updates involving:
+
+```text
+vendor_items.lastPrice
+vendor_items.lastCasePrice
+inventory_items.pricePerUnit
+inventory_items.avgCostPerUnit
+inventory_item_price_history
+```
+
+Include:
+
+* Legacy CSV order-guide route
+* Newer order-guide processor
+* Invoice scan apply
+* Receipt and PO receiving
+* Manual vendor-item create
+* Manual vendor-item edit
+* Connector ingestion, if any seam exists
+* Bulk imports
+* Onboarding imports
+* Seed and test fixtures
+* Any direct SQL or migration updates
+
+The deliverable should identify for each path:
+
+* Whether the source value is a case price or unit price
+* Whether pack quantities are known
+* Whether the event represents a quote or an actual purchase
+* Whether inventory actual cost is updated
+* Whether price history is written
+
+Do not call the audit complete until every direct write is either removed or routed through the shared service.
+
+---
+
+## 2. Shared Vendor Price Service
+
+Create one shared service and make the price basis explicit.
+
+Do not accept an ambiguous generic `price` field.
+
+Suggested input model:
+
+```typescript
+type VendorPriceInput =
+  | {
+      priceBasis: "case";
+      casePrice: number;
+      caseSize: number;
+      innerPackSize?: number;
+    }
+  | {
+      priceBasis: "unit";
+      unitPrice: number;
+      caseSize: number;
+      innerPackSize?: number;
+    };
+
+type VendorPriceSource =
+  | "order_guide_import"
+  | "invoice_scan"
+  | "receipt"
+  | "manual"
+  | "connector"
+  | "seed"
+  | "legacy_unknown";
+
+interface UpdateVendorItemPriceInput {
+  vendorItemId: string;
+  price: VendorPriceInput;
+  source: VendorPriceSource;
+  sourceReferenceId?: string;
+  observedAt: Date;
+  actingUserId?: string;
+  representsActualPurchase: boolean;
+}
+```
+
+The service should:
+
+1. Validate the input price and pack quantities.
+2. Derive case and normalized unit prices where mathematically possible.
+3. Store `lastCasePrice`.
+4. Store normalized `lastPrice`.
+5. Store `priceSource`.
+6. Store `pricedAt`.
+7. Write vendor-specific price history when the price changes.
+8. Update actual inventory cost only when the event represents an actual purchase.
+9. Run the related writes transactionally.
+
+Use the application’s existing decimal/numeric conventions rather than introducing unrounded JavaScript floating-point calculations.
+
+---
+
+## 3. Quote Versus Actual Cost Rules
+
+Classify sources as follows.
+
+### Quote or Offer Sources
+
+These update `vendor_items` but do not automatically change actual inventory cost:
+
+* Order-guide import
+* Supplier catalog import
+* Browser or API connector price retrieval
+* Manual vendor quote
+* Supplier price-list update
+
+### Actual Purchase Sources
+
+These may update both the vendor item and actual inventory cost:
+
+* Applied receipt
+* Applied invoice
+* Approved opening inventory cost
+* Explicit administrative actual-cost adjustment
+
+A normal manual edit to a vendor quote must not overwrite:
+
+```text
+inventory_items.pricePerUnit
+inventory_items.avgCostPerUnit
+```
+
+If administrators need to correct actual cost manually, provide or preserve a separate explicit action rather than making every vendor-item edit an actual-cost event.
+
+---
+
+## 4. Backfill Must Be Provenance-Aware
+
+Do not use this as a universal safe-backfill rule:
+
+```text
+lastCasePrice = 0
+AND lastPrice > 0
+AND caseSize > 0
+```
+
+Those rows may contain either:
+
+* A case price incorrectly stored in `lastPrice` by the old CSV route, or
+* A correctly calculated unit price written by receiving.
+
+Those require opposite calculations.
+
+Use these rules instead:
+
+### Safe Automatic Corrections
+
+Automatically repair only records where the original source can be proven from related data, such as:
+
+* A linked order-guide import row with the original case price
+* A linked receipt line with unit and quantity information
+* A price-history or audit record that proves the value’s meaning
+* A known seed fixture
+* A valid `lastCasePrice` from which the unit price can be recalculated
+
+### Ambiguous Legacy Records
+
+For records whose origin cannot be proven:
+
+* Set `priceSource = "legacy_unknown"`
+* Leave the stored values unchanged
+* Do not use them for automatic best-price recommendations
+* Display them as unknown/stale until refreshed
+* Allow the next valid import, receipt or manual review to repair them naturally
+
+Produce a migration report containing:
+
+* Safely repaired rows
+* Ambiguous rows
+* Invalid pack records
+* Rows requiring manual refresh
+
+Do not guess historical prices.
+
+---
+
+## 5. Schema Changes
+
+Add to `vendor_items`:
+
+```text
+priceSource
+pricedAt
+priceSourceReferenceId — recommended if inexpensive
+```
+
+Add at minimum to `inventory_item_price_history`:
+
+```text
+source
+```
+
+Please also assess adding:
+
+```text
+casePrice
+```
+
+to history.
+
+A unit-price-only historical record cannot fully explain a supplier case-price change or pack-size change. This should not become a large redesign, but storing the observed case price is preferable if it is a small migration.
+
+Historical comparison does not need to be added to the UI during M3A.
+
+---
+
+## 6. Bulk Endpoint Authorization and Scope
+
+The bulk comparison endpoint currently returns vendor-item records without filtering to active vendors for the requesting company/store.
+
+Treat this as more than a comparison enhancement.
+
+Verify that:
+
+1. Every requested inventory item belongs to the authenticated company.
+2. Every returned vendor belongs to or is assigned to that company.
+3. Store-specific comparison respects location/vendor assignment.
+4. Inactive vendors and vendor items are excluded.
+5. A user cannot submit arbitrary inventory item IDs to expose another company’s vendor pricing.
+
+Add authorization and tenant-isolation tests before the VPS deployment.
+
+Even if current inventory item IDs already limit the practical exposure, the endpoint should enforce company ownership explicitly.
+
+---
+
+## 7. Comparison Corrections
+
+Extend the existing bulk endpoint rather than replacing it.
+
+The comparison should:
+
+* Use normalized unit price as the primary ranking value
+* Display case price separately
+* Return pack information
+* Return source and `pricedAt`
+* Return freshness state
+* Exclude invalid zero-price rows
+* Exclude inactive or unauthorized vendors
+* Flag incompatible units
+* Avoid recommending `legacy_unknown` prices
+* Avoid recommending stale prices
+* Preserve the current PO vendor as the baseline
+
+Do not fall back to raw case-price ranking.
+
+---
+
+## 8. Tests Required
+
+Add targeted tests for:
+
+### Price Conversion
+
+* Case price to normalized unit price
+* Unit price to case price
+* Compound packs
+* Inner packs
+* Weight-based items
+* Each-based items
+* Zero and invalid quantities
+* Pack-size changes
+
+### Source Behavior
+
+* Order-guide quote does not update actual inventory cost
+* Connector quote does not update actual inventory cost
+* Receipt updates vendor price and actual cost
+* Invoice updates vendor price and actual cost
+* Manual quote edit does not update actual cost
+* Explicit actual-cost adjustment does update actual cost
+
+### Legacy Data
+
+* CSV-bug record is repaired only when its source is proven
+* Receipt-derived record is repaired using unit-price semantics
+* Ambiguous record remains unchanged and becomes `legacy_unknown`
+
+### Comparison
+
+* Lower case price but higher normalized unit price does not rank first
+* Stale price is not automatically recommended
+* Incompatible units are not compared
+* Inactive vendors are excluded
+* Cross-company item IDs are rejected
+
+---
+
+## 9. VPS Deployment Checkpoint
+
+Complete and deploy the following before M3B:
+
+* Exhaustive write-path audit
+* Shared price-update service
+* Legacy CSV route correction
+* Receipt-path correction
+* Quote-versus-actual-cost separation
+* `priceSource` and `pricedAt` migration
+* Provenance-aware legacy handling
+* Bulk-endpoint authorization filtering
+* Normalized-price comparison correction
+* Unit and authorization tests
+
+After deployment:
+
+* Confirm migrations ran successfully
+* Review the legacy-data migration report
+* Smoke-test order-guide imports
+* Smoke-test receipt application
+* Smoke-test manual vendor-item updates
+* Verify recipe and inventory costing were not unintentionally changed
+* Verify the existing comparison dialog still loads
+* Verify no company can retrieve another company’s vendor pricing
+
+Hold transactional PO routing until this foundation is stable.
+
+---
+
+## M3B and M3C Notes
+
+The proposed M3B approach remains appropriate:
+
+* Extend the existing comparison dialog
+* Add operator selection
+* Route selected lines transactionally
+* Create vendor-specific draft POs
+* Preserve an explicit routing audit
+
+For the eventual routing audit, prefer a dedicated event model over appending unstructured PO notes. One routing action may involve multiple lines and multiple destination POs.
+
+For M3C, current supplier-specific renderers are not yet supplier-specific in practice; they wrap the generic renderer and remain unvalidated.
+
+Until a file has been accepted by the supplier portal, distinguish:
+
+```text
+Generic export available
+```
+
+from:
+
+```text
+Supplier upload format verified
+```
+
+Do not present an unverified generic file as a completed Sysco, GFS, US Foods, PFS, PFG or SoFo integration.
