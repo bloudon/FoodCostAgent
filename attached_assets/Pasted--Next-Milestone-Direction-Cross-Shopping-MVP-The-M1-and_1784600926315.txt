@@ -1,0 +1,128 @@
+# Next Milestone Direction — Cross-Shopping MVP
+
+The M1 and M2 foundation appears sufficient. We do not want another broad connector-framework build before validating the actual purchasing workflow.
+
+Please review the following proposed next sequence and identify what can be reused from the current code.
+
+## Architectural Rule
+
+`retrievePrices` and other connector capabilities populate or refresh validated `vendor_items` data.
+
+The cross-shopping engine reads persisted vendor-item pricing.
+
+The comparison request should not directly log into or retrieve prices from supplier systems. Price retrieval and comparison remain separate operations.
+
+## M3A — Price Integrity and Freshness
+
+Before adding broader cross-shopping UI:
+
+1. Identify every code path that writes vendor-item pricing.
+2. Route those paths through one shared vendor-price update service.
+3. Fix the legacy CSV route that writes `lastPrice` without `lastCasePrice`.
+4. Confirm normalized unit-price calculations include all applicable case, inner-pack, weight and unit conversions.
+5. Add a price-specific timestamp and source.
+6. Prevent vendor quote updates from overwriting actual inventory cost unless the source is an applied receipt, invoice or authorized cost adjustment.
+7. Compare alternatives by normalized unit price rather than raw case price.
+8. Flag incompatible units rather than estimating silently.
+9. Backfill legacy records only where the result is mathematically safe.
+
+Please report whether the existing price-history table can support vendor-specific price history or whether its current structure is tied only to the inventory item.
+
+## M3B — PO-Based Cross-Shopping
+
+Use the existing draft PO as the first actionable comparison surface.
+
+Add a **Review Savings** workflow that:
+
+1. Uses the PO vendor as the current-price baseline.
+2. Searches all active `vendor_items` mapped to the same FnB inventory item.
+3. Limits alternatives to vendors active for the selected company/store.
+4. Returns case price, normalized unit price, pack, brand, SKU, source, freshness and quantity-adjusted savings.
+5. Shows stale or unknown prices but does not preselect them.
+6. Requires the operator to select every proposed move.
+7. Does not automatically treat the cheapest case as the cheapest equivalent product.
+
+When confirmed, route selected lines transactionally:
+
+* Keep unselected lines on the original draft PO.
+* Remove selected lines from the original draft.
+* Find or create a compatible draft PO for each destination vendor.
+* Add or merge quantities into destination POs.
+* Preserve destination vendor-item SKUs.
+* Record the user, timestamp and projected savings.
+* Return links to all resulting POs.
+* Leave every resulting PO in draft status.
+
+Suggested endpoint:
+
+```http
+POST /api/purchase-orders/:id/route-lines
+```
+
+## M3C — Supplier Upload Exports
+
+Treat supplier-formatted CSV/Excel files as the intended MVP submission method.
+
+Please inventory which export renderers currently exist and distinguish:
+
+* Registry capability declaration
+* Renderer implementation
+* Successful file generation
+* Actual supplier-portal validation
+
+Do not assume a supplier's downloadable order-guide format is also its order-upload format.
+
+For each supported supplier, document:
+
+* Required file type
+* Required headers
+* SKU rules
+* Quantity rules
+* Case versus each handling
+* Account/location identifiers
+* Portal upload URL
+* Known validation behavior
+* Test status
+
+Generating an export should create an audit event but must not mark the PO as submitted.
+
+## Connector Review
+
+Please also confirm:
+
+1. Whether PFS and PFG require distinct technical connectors or should share one connector with separate vendor aliases.
+2. Whether Cut+Dry, PNet and Food Order Entry correctly support multiple external vendors under one customer connection.
+3. Which declared capabilities currently have working implementations.
+4. Whether the existing bulk price endpoint already performs part of the cross-vendor comparison and can be extended instead of replaced.
+5. Which existing comparison UI and modal components can be reused.
+6. Which portions can be completed without schema changes.
+7. Which schema changes are unavoidable.
+8. What should be completed before the next VPS deployment checkpoint.
+
+## Deferred From This Milestone
+
+Do not include:
+
+* Browser-extension development
+* Supplier credential storage
+* Scheduled portal scraping
+* Cart population
+* Direct order submission
+* Rebate optimization
+* Contract bidding
+* Delivery-minimum optimization
+* Automated vendor selection
+* AI product-equivalence discovery
+
+The first beta should validate:
+
+```text
+Current persisted prices
+→ trustworthy comparison
+→ user-reviewed routing
+→ vendor-specific draft POs
+→ supplier CSV/Excel exports
+→ manual portal submission
+```
+
+Please push back on any part that duplicates existing functionality or expands the MVP unnecessarily.
