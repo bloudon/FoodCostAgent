@@ -16,6 +16,7 @@ import { parseCompoundPackSize } from "./integrations/csv/CsvOrderGuide";
 import { deriveUnitPrice } from "./services/orderGuideProcessor";
 import { recordVendorPrice, isPriceStale, getPriceFreshness, effectivePackQty, isIncompatibleUnit } from "./services/vendorPriceService";
 import { checkInventoryItemMatch, checkTargetViEligibility, computeProjectedSavingsPerCase, mergeOrderedQty, routingIdempotencyKey, shouldMergeIntoExistingLine } from "./services/routingService";
+import { createRoutingPOGuard } from "./lib/routeLinesHandler";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
@@ -11424,24 +11425,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   //   - One po_routing_audit row written per routed line
   //   - All resulting POs remain in "pending" draft status
   //
-  app.post("/api/purchase-orders/:id/route-lines", requireAuth, async (req, res) => {
+  app.post("/api/purchase-orders/:id/route-lines", requireAuth, createRoutingPOGuard({
+    getPurchaseOrder: (id, companyId) => storage.getPurchaseOrder(id, companyId),
+    checkPoExists: async (id) => {
+      const [anyPo] = await db
+        .select({ id: purchaseOrders.id })
+        .from(purchaseOrders)
+        .where(eq(purchaseOrders.id, id))
+        .limit(1);
+      return !!anyPo;
+    },
+  }), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const userId = (req as any).userId;
       const sourcePoId = req.params.id;
 
-      // ── 1. Validate source PO — explicit 403 for cross-company access ──────
-      const sourcePo = await storage.getPurchaseOrder(sourcePoId, companyId);
-      if (!sourcePo) {
-        // Check whether the PO exists for a different company → 403
-        const [anyPo] = await db
-          .select({ id: purchaseOrders.id })
-          .from(purchaseOrders)
-          .where(eq(purchaseOrders.id, sourcePoId))
-          .limit(1);
-        if (anyPo) return res.status(403).json({ error: "Access denied" });
-        return res.status(404).json({ error: "Purchase order not found" });
-      }
+      // ── 1. Source PO — validated and attached to req.sourcePo by the
+      //        createRoutingPOGuard middleware (403/404 already handled there).
+      const sourcePo = (req as any).sourcePo as typeof purchaseOrders.$inferSelect;
+
       if (sourcePo.status === "received") {
         return res.status(400).json({ error: "Cannot route lines from a received purchase order" });
       }

@@ -21,6 +21,8 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { eq, and, inArray } from "drizzle-orm";
+import express, { type Express } from "express";
+import request from "supertest";
 import { db } from "../db";
 import {
   companies,
@@ -34,6 +36,7 @@ import {
 } from "@shared/schema";
 import { storage } from "../storage";
 import { routingIdempotencyKey, isAlreadyRouted, computeProjectedSavingsPerCase } from "./routingService";
+import { createRoutingPOGuard } from "../lib/routeLinesHandler";
 
 // ─── Fixture constants ────────────────────────────────────────────────────────
 
@@ -500,5 +503,91 @@ describe("DB integration — savings snapshot persisted in audit row", () => {
       .where(eq(poRoutingAudit.id, AUDIT_ROW_ID));
 
     expect(row.projectedSavingsPerCase).toBeCloseTo(0.0, 4);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. HTTP-level tenant isolation — supertest against createRoutingPOGuard
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// These tests mount createRoutingPOGuard (the exact middleware used by the real
+// POST /api/purchase-orders/:id/route-lines handler in routes.ts) on a minimal
+// Express app, simulating auth by stamping companyId — the same pattern used by
+// server/lib/invoiceScanHandler.test.ts.
+//
+// If the guard logic is removed or broken in routeLinesHandler.ts (which routes.ts
+// delegates to), these tests will fail.
+
+function buildGuardApp(actingCompanyId: string): Express {
+  const app = express();
+  app.use(express.json());
+
+  // Simulate requireAuth — stamps companyId on the request (same pattern as
+  // invoiceScanHandler.test.ts).
+  app.use((req, _res, next) => {
+    (req as any).companyId = actingCompanyId;
+    (req as any).user = { id: "test-user", role: "company_admin" };
+    next();
+  });
+
+  // Mount the actual guard factory that routes.ts uses, wired to real storage/db.
+  app.post(
+    "/api/purchase-orders/:id/route-lines",
+    createRoutingPOGuard({
+      getPurchaseOrder: (id, companyId) => storage.getPurchaseOrder(id, companyId),
+      checkPoExists: async (id) => {
+        const [anyPo] = await db
+          .select({ id: purchaseOrders.id })
+          .from(purchaseOrders)
+          .where(eq(purchaseOrders.id, id))
+          .limit(1);
+        return !!anyPo;
+      },
+    }),
+    (_req, res) => {
+      res.status(200).json({ ok: true });
+    },
+  );
+
+  return app;
+}
+
+describe("HTTP integration — tenant isolation via createRoutingPOGuard (supertest)", () => {
+  afterEach(deleteAllFixtures);
+
+  it("POST /api/purchase-orders/:id/route-lines as company B returns 403 for company A PO", async () => {
+    await insertBaseFixtures();
+
+    // Company B attempts to route lines from Company A's PO.
+    const res = await request(buildGuardApp(COMPANY_B_ID))
+      .post(`/api/purchase-orders/${PO_A_ID}/route-lines`)
+      .send({ lines: [{ poLineId: PO_LINE_ID, targetVendorItemId: VI_B_ID }] });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ error: "Access denied" });
+  });
+
+  it("POST /api/purchase-orders/:id/route-lines as company A returns 200 (guard passes)", async () => {
+    await insertBaseFixtures();
+
+    // Company A accesses its own PO — guard should pass and call next().
+    const res = await request(buildGuardApp(COMPANY_A_ID))
+      .post(`/api/purchase-orders/${PO_A_ID}/route-lines`)
+      .send({ lines: [{ poLineId: PO_LINE_ID, targetVendorItemId: VI_B_ID }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true });
+  });
+
+  it("POST /api/purchase-orders/:id/route-lines with unknown PO ID returns 404", async () => {
+    await insertBaseFixtures();
+
+    const unknownPoId = `${PREFIX}po-nonexistent`;
+    const res = await request(buildGuardApp(COMPANY_A_ID))
+      .post(`/api/purchase-orders/${unknownPoId}/route-lines`)
+      .send({ lines: [] });
+
+    expect(res.status).toBe(404);
+    expect(res.body).toMatchObject({ error: "Purchase order not found" });
   });
 });
