@@ -206,18 +206,17 @@ export function derivePrices(
 }
 
 /**
- * Quote-source guard: prevents order_guide_import / connector sources from
- * accidentally being passed as representsActualPurchase=true.
+ * Quote-source guard: prevents any quote source from accidentally being passed
+ * as representsActualPurchase=true and opening the inventory-cost write branch.
+ *
+ * All sources in QUOTE_SOURCES are blocked regardless of the caller's flag.
  * Returns the corrected representsActualPurchase value.
  */
 export function guardQuoteAsActual(
   source: VendorPriceSource,
   representsActualPurchase: boolean
 ): boolean {
-  if (
-    representsActualPurchase &&
-    (source === "order_guide_import" || source === "connector")
-  ) {
+  if (representsActualPurchase && QUOTE_SOURCES.has(source)) {
     console.warn(
       `[VendorPriceService] ⚠️  Caller passed representsActualPurchase=true with source="${source}". ` +
         `Quote sources must never update actual inventory cost. Overriding to false.`
