@@ -15,6 +15,7 @@ import { TheoreticalUsageService } from "./services/theoreticalUsage";
 import { parseCompoundPackSize } from "./integrations/csv/CsvOrderGuide";
 import { deriveUnitPrice } from "./services/orderGuideProcessor";
 import { recordVendorPrice, isPriceStale, getPriceFreshness, effectivePackQty, isIncompatibleUnit } from "./services/vendorPriceService";
+import { checkInventoryItemMatch, checkTargetViEligibility, computeProjectedSavingsPerCase, mergeOrderedQty, routingIdempotencyKey, shouldMergeIntoExistingLine } from "./services/routingService";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
@@ -11546,7 +11547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           )
         : [];
       const alreadyRoutedLookup = new Map(
-        existingAudits.map(a => [`${a.sourcePOLineId}:${a.vendorItemId}`, a])
+        existingAudits.map(a => [routingIdempotencyKey(a.sourcePOLineId, a.vendorItemId), a])
       );
 
       // ── 4. Validate each line — collect ALL failures before rejecting ──────
@@ -11570,7 +11571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       for (const lr of lineRequests) {
         // Idempotency: already routed with same target?
-        const idemKey = `${lr.poLineId}:${lr.targetVendorItemId}`;
+        const idemKey = routingIdempotencyKey(lr.poLineId, lr.targetVendorItemId);
         const priorAudit = alreadyRoutedLookup.get(idemKey);
         if (priorAudit) {
           alreadyRouted.push({
@@ -11596,57 +11597,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           continue;
         }
 
-        // Strict same-inventoryItemId check
+        // Strict same-inventoryItemId check — delegated to routingService
         const sourceVi = sourceViMap.get(line.vendorItemId);
-        const sourceInventoryItemId = sourceVi?.inventoryItemId;
-        if (!sourceInventoryItemId) {
-          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Source vendor item has no linked inventory item" });
+        const invMatchResult = checkInventoryItemMatch(sourceVi?.inventoryItemId, targetViRow.vi.inventoryItemId);
+        if (!invMatchResult.eligible) {
+          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: invMatchResult.reason });
           continue;
         }
-        if (targetViRow.vi.inventoryItemId !== sourceInventoryItemId) {
-          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor item maps to a different product — same inventory item required" });
-          continue;
-        }
+        const sourceInventoryItemId = sourceVi!.inventoryItemId!;
 
         const targetVi = targetViRow.vi;
         const inventoryUnitName = invItemUnitMap.get(sourceInventoryItemId) ?? "";
 
-        // Eligibility revalidation (mirrors bulk comparison filter)
-        if (!targetVi.active) {
-          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor item is inactive" });
-          continue;
-        }
-        if (!targetVi.lastPrice || targetVi.lastPrice <= 0) {
-          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor item has no valid price" });
-          continue;
-        }
-        if (targetVi.priceSource === "legacy_unknown") {
-          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor price is unverified — update the price before routing" });
-          continue;
-        }
-        if (getPriceFreshness(targetVi.pricedAt) === "stale") {
-          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor price is stale (older than 14 days)" });
-          continue;
-        }
-        if (isIncompatibleUnit(targetVi.packUom ?? "", inventoryUnitName)) {
-          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor pack unit is incompatible with this item's inventory unit" });
-          continue;
-        }
-        // Pass raw caseSize (no || 1 coercion) so that caseSize=0/null correctly
-        // triggers invalidPackGeometry; the || 1 fallback is only for price math below.
-        const { invalidPackGeometry } = effectivePackQty(
-          targetVi.caseSize ?? 0,
-          targetVi.innerPackSize ?? 1,
-          targetVi.packUom ?? "",
-          inventoryUnitName
-        );
-        if (invalidPackGeometry) {
-          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor item has invalid pack geometry" });
+        // Eligibility gauntlet — delegated to routingService (mirrors bulk comparison filter)
+        const eligResult = checkTargetViEligibility(targetVi, inventoryUnitName);
+        if (!eligResult.eligible) {
+          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: eligResult.reason });
           continue;
         }
 
         const toCaseSize = targetVi.caseSize || 1;
-        const toUnitPrice = targetVi.lastPrice;
+        const toUnitPrice = targetVi.lastPrice!;
         const toCasePrice = targetVi.lastCasePrice != null && targetVi.lastCasePrice > 0
           ? targetVi.lastCasePrice
           : toUnitPrice * toCaseSize;
@@ -11656,7 +11627,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const fromCasePrice = sourceVi?.lastCasePrice != null && sourceVi.lastCasePrice > 0
           ? sourceVi.lastCasePrice
           : fromUnitPrice * fromCaseSize;
-        const projectedSavingsPerCase = (fromUnitPrice - toUnitPrice) * toCaseSize;
+        const projectedSavingsPerCase = computeProjectedSavingsPerCase(fromUnitPrice, toUnitPrice, toCaseSize);
 
         validLines.push({
           poLineId: lr.poLineId,
@@ -11783,14 +11754,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               )
               .limit(1);
 
-            if (existingTargetLine) {
+            if (shouldMergeIntoExistingLine(existingTargetLine ? [existingTargetLine] : [], vl.targetViRow.vi.id)) {
               await tx
                 .update(poLines)
                 .set({
-                  orderedQty: (existingTargetLine.orderedQty ?? 0) + vl.line.orderedQty,
-                  caseQuantity: ((existingTargetLine.caseQuantity ?? 0) + (vl.line.caseQuantity ?? 0)) || null,
+                  orderedQty: mergeOrderedQty(existingTargetLine!.orderedQty ?? 0, vl.line.orderedQty),
+                  caseQuantity: ((existingTargetLine!.caseQuantity ?? 0) + (vl.line.caseQuantity ?? 0)) || null,
                 })
-                .where(eq(poLines.id, existingTargetLine.id));
+                .where(eq(poLines.id, existingTargetLine!.id));
             } else {
               await tx.insert(poLines).values({
                 purchaseOrderId: targetPoId,
