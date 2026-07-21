@@ -178,6 +178,7 @@ export default function PurchaseOrderDetail() {
   const [compareItemId, setCompareItemId] = useState<string | null>(null);
   const [routeLoadingVendorItemId, setRouteLoadingVendorItemId] = useState<string | null>(null);
   const [routeSuccess, setRouteSuccess] = useState<{ routedLines: number; affectedPOIds: string[] } | null>(null);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   
   // Export state
@@ -442,22 +443,27 @@ export default function PurchaseOrderDetail() {
       const res = await apiRequest("POST", `/api/purchase-orders/${id}/route-lines`, {
         lines: [{ poLineId, targetVendorItemId }],
       });
-      return res as { data: { routedLines: number; affectedPOIds: string[]; auditIds: string[] } };
+      const json = await res.json() as { data: { routedLines: number; affectedPOIds: string[]; auditIds: string[] } };
+      return json;
     },
-    onSuccess: (res) => {
-      const { routedLines, affectedPOIds } = res.data;
+    onSuccess: (json) => {
+      const { routedLines, affectedPOIds } = json.data;
       setRouteSuccess({ routedLines, affectedPOIds });
-      setRouteLoadingVendorItemId(null);
+      setRouteError(null);
       queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${id}`] });
       queryClient.invalidateQueries({ queryKey: [`/api/vendor-prices/bulk`] });
     },
     onError: (error: any) => {
-      setRouteLoadingVendorItemId(null);
+      const msg = error.message || "Could not route this line — please try again.";
+      setRouteError(msg);
       toast({
         title: "Routing failed",
-        description: error.message || "Could not route this line — please try again.",
+        description: msg,
         variant: "destructive",
       });
+    },
+    onSettled: () => {
+      setRouteLoadingVendorItemId(null);
     },
   });
 
@@ -1872,6 +1878,7 @@ export default function PurchaseOrderDetail() {
         if (!open) {
           setCompareItemId(null);
           setRouteSuccess(null);
+          setRouteError(null);
           setRouteLoadingVendorItemId(null);
         }
       }}>
@@ -2005,6 +2012,13 @@ export default function PurchaseOrderDetail() {
                   <div className="flex items-center gap-2 rounded-md bg-muted/60 border px-3 py-2 text-sm text-muted-foreground" data-testid="callout-routing-locked">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     Routing is only available on draft orders.
+                  </div>
+                )}
+
+                {routeError && (
+                  <div className="flex items-start gap-2 rounded-md bg-destructive/5 border border-destructive/40 px-3 py-2 text-sm text-destructive" data-testid="callout-routing-error">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{routeError}</span>
                   </div>
                 )}
 
