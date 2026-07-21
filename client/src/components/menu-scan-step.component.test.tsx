@@ -150,6 +150,10 @@ function setupMockMutation(): UseMutationResult {
  * Returns the mutation result stub so callers can inspect `.mutate` calls.
  */
 async function renderAndAdvanceToReview(onComplete = vi.fn()): Promise<UseMutationResult> {
+  // Drain any stale once-mocks left by previous tests (clearAllMocks does not
+  // clear mockResolvedValueOnce queues, so they can bleed across describe blocks).
+  mockApiRequest.mockReset();
+
   const mutationResult = setupMockMutation();
 
   // First call: POST /api/onboarding/menu-scan → scan succeeds
@@ -334,7 +338,7 @@ describe("MenuScanStep — calorie value survives the approve mutation payload",
         typeof call[1] === "string" &&
         (call[1] as string).includes("/approve")
     );
-    return approveCall ? (approveCall[2] as { items: Array<{ name: string; calorieCount: number | null }> }) : null;
+    return approveCall ? (approveCall[2] as { items: Array<{ name: string; calorieCount: number | null; description: string | null }> }) : null;
   }
 
   it("includes the typed calorie value in the approve request body", async () => {
@@ -359,5 +363,157 @@ describe("MenuScanStep — calorie value survives the approve mutation payload",
     const item1 = payload!.items.find(i => i.name === "Cheese Pizza");
     expect(item1).toBeDefined();
     expect(item1!.calorieCount, "AI-extracted calorie count should remain unchanged").toBe(680);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite: description input rendering
+// ---------------------------------------------------------------------------
+
+describe("MenuScanStep — description input rendering", () => {
+  it("renders a description input for each item in the review list", async () => {
+    await renderAndAdvanceToReview();
+    expect(screen.getByTestId("input-item-description-0")).toBeInTheDocument();
+    expect(screen.getByTestId("input-item-description-1")).toBeInTheDocument();
+  });
+
+  it("pre-fills the description input with the AI-extracted value", async () => {
+    await renderAndAdvanceToReview();
+    const input0 = screen.getByTestId("input-item-description-0") as HTMLInputElement;
+    const input1 = screen.getByTestId("input-item-description-1") as HTMLInputElement;
+    expect(input0.value).toBe("Herb-marinated");
+    expect(input1.value).toBe("Classic");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite: updateDescription logic
+// ---------------------------------------------------------------------------
+
+describe("MenuScanStep — updateDescription state updates", () => {
+  it("updates the description input value when the user types a new description", async () => {
+    await renderAndAdvanceToReview();
+    const input = screen.getByTestId("input-item-description-0") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Flame-grilled with herb butter" } });
+    expect(input.value).toBe("Flame-grilled with herb butter");
+  });
+
+  it("clears the description when the user empties the field", async () => {
+    await renderAndAdvanceToReview();
+    const input = screen.getByTestId("input-item-description-1") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "" } });
+    expect(input.value).toBe("");
+  });
+
+  it("accepts any string including special characters", async () => {
+    await renderAndAdvanceToReview();
+    const input = screen.getByTestId("input-item-description-0") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Gluten-free & dairy-free — 100% plant-based" } });
+    expect(input.value).toBe("Gluten-free & dairy-free — 100% plant-based");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite: description value survives the approve mutation payload
+// ---------------------------------------------------------------------------
+
+describe("MenuScanStep — description value survives the approve mutation payload", () => {
+  /**
+   * Variant of setupAndCaptureApprovePayload that also types into the
+   * description field for item 0 before triggering the import.
+   */
+  async function setupAndCaptureDescriptionPayload(descriptionToType: string | null) {
+    mockApiRequest.mockReset();
+
+    let capturedMutationFn: (() => Promise<unknown>) | undefined;
+
+    mockUseMutation.mockImplementation((opts: UseMutationOpts<unknown>) => {
+      capturedMutationFn = opts.mutationFn;
+      return {
+        mutate: vi.fn().mockImplementation(async () => {
+          if (capturedMutationFn) {
+            try { await capturedMutationFn(); } catch { /* ignore */ }
+          }
+        }),
+        isPending: false,
+      };
+    });
+
+    mockApiRequest.mockResolvedValueOnce({
+      ok: true,
+      json: async () => SCAN_RESPONSE,
+    });
+    mockApiRequest.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+    mockApiRequest.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ menuItemsCreated: 2, menuItemIds: ["id1", "id2"], recipesSeeded: 0, variantGroupsLinked: 0 }),
+    });
+
+    render(React.createElement(MenuScanStep, { onComplete: vi.fn() }));
+
+    fireEvent.click(screen.getByTestId("button-upload-menu"));
+    await waitFor(() => expect(screen.getByTestId("card-step-bar-question")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("button-skip-bar-question"));
+    await waitFor(() => expect(screen.getByTestId("card-step-menu-review")).toBeInTheDocument());
+
+    if (descriptionToType !== null) {
+      fireEvent.change(screen.getByTestId("input-item-description-0"), {
+        target: { value: descriptionToType },
+      });
+    }
+
+    fireEvent.click(screen.getByTestId("button-import-items"));
+
+    await waitFor(() => {
+      expect(mockApiRequest).toHaveBeenCalledWith(
+        "POST",
+        expect.stringContaining("/approve"),
+        expect.any(Object),
+      );
+    });
+
+    const approveCall = mockApiRequest.mock.calls.find(
+      (call: unknown[]) =>
+        call[0] === "POST" &&
+        typeof call[1] === "string" &&
+        (call[1] as string).includes("/approve")
+    );
+    return approveCall
+      ? (approveCall[2] as { items: Array<{ name: string; description: string | null; calorieCount: number | null }> })
+      : null;
+  }
+
+  it("includes the typed description in the approve request body", async () => {
+    const payload = await setupAndCaptureDescriptionPayload("Flame-grilled with herb butter");
+    expect(payload, "Approve payload should be captured").not.toBeNull();
+    const item0 = payload!.items.find(i => i.name === "Grilled Chicken");
+    expect(item0, "Grilled Chicken should be in the payload").toBeDefined();
+    expect(item0!.description, "description should be the typed value").toBe("Flame-grilled with herb butter");
+  });
+
+  it("sends description as null when the user clears the description field", async () => {
+    const payload = await setupAndCaptureDescriptionPayload("");
+    expect(payload).not.toBeNull();
+    const item0 = payload!.items.find(i => i.name === "Grilled Chicken");
+    expect(item0).toBeDefined();
+    // updateDescription sets description to null for empty string
+    expect(item0!.description).toBeNull();
+  });
+
+  it("preserves the AI-extracted description for items the user did not change", async () => {
+    const payload = await setupAndCaptureDescriptionPayload("New description for Chicken");
+    expect(payload).not.toBeNull();
+    const item1 = payload!.items.find(i => i.name === "Cheese Pizza");
+    expect(item1).toBeDefined();
+    expect(item1!.description, "AI-extracted description should remain unchanged").toBe("Classic");
+  });
+
+  it("preserves the original AI description when no edit is made", async () => {
+    // null means: do not fire a change event — leave the field as-is
+    const payload = await setupAndCaptureDescriptionPayload(null);
+    expect(payload).not.toBeNull();
+    const item0 = payload!.items.find(i => i.name === "Grilled Chicken");
+    expect(item0).toBeDefined();
+    expect(item0!.description, "Original AI description should be sent unchanged").toBe("Herb-marinated");
   });
 });
