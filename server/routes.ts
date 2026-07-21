@@ -11464,8 +11464,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sourceLinesById = new Map(sourceLines.map(l => [l.id, l]));
 
       // Dedup: reject if the same (poLineId, targetVendorItemId) appears more than once in one call
+      // Each poLineId must appear at most once: routing deletes the source line,
+      // so routing the same line to two different targets in one call is invalid.
+      const seenLineIds = new Set<string>();
       const seenPairs = new Set<string>();
       for (const lr of lineRequests) {
+        if (seenLineIds.has(lr.poLineId)) {
+          return res.status(400).json({
+            error: `poLineId ${lr.poLineId} appears more than once — a line can only be routed to one target per call`,
+          });
+        }
+        seenLineIds.add(lr.poLineId);
         const key = `${lr.poLineId}:${lr.targetVendorItemId}`;
         if (seenPairs.has(key)) {
           return res.status(400).json({
@@ -11622,8 +11631,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor pack unit is incompatible with this item's inventory unit" });
           continue;
         }
+        // Pass raw caseSize (no || 1 coercion) so that caseSize=0/null correctly
+        // triggers invalidPackGeometry; the || 1 fallback is only for price math below.
         const { invalidPackGeometry } = effectivePackQty(
-          targetVi.caseSize || 1,
+          targetVi.caseSize ?? 0,
           targetVi.innerPackSize ?? 1,
           targetVi.packUom ?? "",
           inventoryUnitName
@@ -11673,11 +11684,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Maps targetVendorId → resulting draft PO id (covers both new + idempotent paths)
       const resultingPoMap = new Map<string, string>();
       const auditIds: string[] = [];
+      const concurrencyMisses: { poLineId: string; targetVendorItemId: string; reason: string }[] = [];
 
-      // Seed resultingPoMap with destination POs already known from pre-transaction idempotency check
+      // Seed auditIds with already-routed lines from the pre-transaction idempotency check
       for (const ar of alreadyRouted) {
         auditIds.push(ar.auditId);
-        // We don't have vendorId here — that's fine; we only track the PO ID for the response
       }
 
       if (validLines.length > 0) {
@@ -11710,6 +11721,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 if (!resultingPoMap.has(targetVendorId)) {
                   resultingPoMap.set(targetVendorId, existingAudit.destinationPoId);
                 }
+              } else {
+                // Line was deleted but no matching audit found — this indicates
+                // the line may have been routed to a different target by a concurrent
+                // call. Record as a structured concurrency miss so the caller can retry.
+                concurrencyMisses.push({
+                  poLineId: vl.poLineId,
+                  targetVendorItemId: vl.targetViRow.vi.id,
+                  reason: "Line no longer exists in source PO — possibly routed to a different target by a concurrent request; retry to confirm",
+                });
               }
               continue;
             }
@@ -11816,12 +11836,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const priorPOIds = alreadyRouted.map(r => r.destinationPoId);
       const affectedPOIds = [...new Set([...freshPOIds, ...priorPOIds])];
 
+      // routedLines = number of lines successfully routed in THIS call (not pre-existing)
+      const freshlyRoutedCount = auditIds.length - alreadyRouted.length;
+
       return res.json({
         data: {
-          routedLines: validLines.length,
+          routedLines: Math.max(0, freshlyRoutedCount),
           affectedPOIds,
           auditIds,
           ...(alreadyRouted.length > 0 ? { alreadyRouted } : {}),
+          ...(concurrencyMisses.length > 0 ? { concurrencyMisses } : {}),
         },
       });
     } catch (error: any) {
