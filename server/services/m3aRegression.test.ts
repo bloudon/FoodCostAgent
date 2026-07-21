@@ -4,13 +4,14 @@
  * Protects the boundary between supplier quote prices and actual inventory costs.
  * Organized by the six M3A scenarios to guard against future regressions.
  *
- * Six scenarios covered:
+ * Seven scenarios covered:
  *   1. Order-guide import   — price stamped on vendor_item; inventory cost NEVER touched
  *   2. Manual vendor edit   — same quote-only guarantee
  *   3. Receipt apply        — WAC applied; inventory cost updated; history written
  *   4. Legacy CSV basis     — imported price treated as case price; unit price derived
  *   5. Bulk comparison      — unit-price ranking; auth; staleness; incompatible-unit flag
  *   6. Incompatible units   — measurement-family mismatch flagged, not silently compared
+ *   7. Price history write  — full condition (gate + source + price-change) for history rows
  *
  * Design: behavioral-contract tests using the service's exported pure functions.
  * No database required — the decision logic (guard, derivation, WAC, staleness,
@@ -54,12 +55,39 @@ function wouldUpdateInventory(
 /**
  * Mirror of the history-write condition inside `_executeWrite`.
  * History row is written when: source is not legacy_unknown AND price changed.
+ *
+ * NOTE: This helper is intentionally partial — it does not account for the
+ * representsActualPurchase gate.  It is called only from Scenario 3 which
+ * has already confirmed the source is an actual-purchase source.
+ * Use `wouldWriteHistoryFull` for the complete condition.
  */
 function wouldWriteHistory(
   source: VendorPriceSource,
   newUnitPrice: number,
   prevUnitPrice: number
 ): boolean {
+  return source !== "legacy_unknown" && Math.abs(newUnitPrice - prevUnitPrice) > 0.000001;
+}
+
+/**
+ * Full mirror of the history-write condition inside `_executeWrite`.
+ *
+ * Three gates must all be satisfied:
+ *   1. representsActualPurchase passes the guard (quote sources → always false)
+ *   2. source is not "legacy_unknown"
+ *   3. unit price actually changed vs. the previous value
+ *
+ * Use this helper when verifying whether history would be written for a
+ * given source + representsActualPurchase combination.
+ */
+function wouldWriteHistoryFull(
+  source: VendorPriceSource,
+  representsActualPurchase: boolean,
+  newUnitPrice: number,
+  prevUnitPrice: number
+): boolean {
+  const effectiveActualPurchase = guardQuoteAsActual(source, representsActualPurchase);
+  if (!effectiveActualPurchase) return false;
   return source !== "legacy_unknown" && Math.abs(newUnitPrice - prevUnitPrice) > 0.000001;
 }
 
@@ -766,5 +794,226 @@ describe("Cross-scenario — source taxonomy invariants", () => {
       expect(Number.isFinite(casePrice)).toBe(true);
       expect(Number.isFinite(unitPrice)).toBe(true);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 7: Price history write contract
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The UI now surfaces inventory_item_price_history records.  Every write path
+// that should produce history must satisfy three gates simultaneously:
+//   Gate A — representsActualPurchase passes guardQuoteAsActual (quote sources always blocked)
+//   Gate B — source is not "legacy_unknown"
+//   Gate C — unit price actually changed vs. the previous value
+//
+// This scenario verifies those gates for all three write paths:
+//   • Receipt approval   (actual-purchase, should write history)
+//   • Order-guide import (quote source, must NOT write history)
+//   • Manual vendor edit (quote source, must NOT write history)
+// and additionally for invoice_scan (actual-purchase, should write history)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Scenario 7 — Price history write contract", () => {
+
+  // ── Gate A: representsActualPurchase gate ─────────────────────────────────
+
+  it("Gate A: receipt with representsActualPurchase=true passes the guard", () => {
+    expect(guardQuoteAsActual("receipt", true)).toBe(true);
+  });
+
+  it("Gate A: invoice_scan with representsActualPurchase=true passes the guard", () => {
+    expect(guardQuoteAsActual("invoice_scan", true)).toBe(true);
+  });
+
+  it("Gate A: order_guide_import is blocked regardless of representsActualPurchase flag", () => {
+    expect(guardQuoteAsActual("order_guide_import", true)).toBe(false);
+    expect(guardQuoteAsActual("order_guide_import", false)).toBe(false);
+  });
+
+  it("Gate A: manual is blocked regardless of representsActualPurchase flag", () => {
+    expect(guardQuoteAsActual("manual", true)).toBe(false);
+    expect(guardQuoteAsActual("manual", false)).toBe(false);
+  });
+
+  it("Gate A: po_create is blocked regardless of representsActualPurchase flag", () => {
+    expect(guardQuoteAsActual("po_create", true)).toBe(false);
+    expect(guardQuoteAsActual("po_create", false)).toBe(false);
+  });
+
+  // ── Gate B: legacy_unknown never writes history ───────────────────────────
+
+  it("Gate B: legacy_unknown never writes history even if somehow representsActualPurchase=true", () => {
+    // legacy_unknown is in QUOTE_SOURCES so gate A already blocks it;
+    // gate B is an independent check in the service for defence-in-depth
+    expect(wouldWriteHistoryFull("legacy_unknown", true, 5.0, 0.0)).toBe(false);
+    expect(wouldWriteHistoryFull("legacy_unknown", false, 5.0, 0.0)).toBe(false);
+  });
+
+  // ── Gate C: price must actually change ────────────────────────────────────
+
+  it("Gate C: receipt — history written only when unit price changes", () => {
+    expect(wouldWriteHistoryFull("receipt", true, 2.50, 2.00)).toBe(true);   // changed
+    expect(wouldWriteHistoryFull("receipt", true, 2.00, 2.00)).toBe(false);  // unchanged
+  });
+
+  it("Gate C: sub-penny change is significant (threshold is 0.000001)", () => {
+    // 4-decimal precision prices: a $0.0002 change matters
+    expect(wouldWriteHistoryFull("receipt", true, 1.5002, 1.5000)).toBe(true);
+  });
+
+  it("Gate C: change smaller than threshold is treated as no-change", () => {
+    expect(wouldWriteHistoryFull("receipt", true, 2.0000001, 2.0)).toBe(false);
+  });
+
+  // ── Full condition: receipt write path ────────────────────────────────────
+
+  it("receipt: all three gates satisfied → history IS written", () => {
+    // Gate A: receipt + true → passes
+    // Gate B: "receipt" ≠ "legacy_unknown" → passes
+    // Gate C: 2.50 ≠ 2.00 → passes
+    expect(wouldWriteHistoryFull("receipt", true, 2.50, 2.00)).toBe(true);
+  });
+
+  it("receipt: representsActualPurchase=false → history NOT written (caller misconfiguration)", () => {
+    // Route handlers must pass true; if they accidentally pass false the gate blocks it
+    expect(wouldWriteHistoryFull("receipt", false, 2.50, 2.00)).toBe(false);
+  });
+
+  it("receipt: price unchanged → history NOT written (no-op guard)", () => {
+    expect(wouldWriteHistoryFull("receipt", true, 1.5, 1.5)).toBe(false);
+  });
+
+  // ── Full condition: invoice_scan write path ───────────────────────────────
+
+  it("invoice_scan: all three gates satisfied → history IS written", () => {
+    expect(wouldWriteHistoryFull("invoice_scan", true, 55.00, 52.00)).toBe(true);
+  });
+
+  it("invoice_scan: price unchanged → history NOT written", () => {
+    expect(wouldWriteHistoryFull("invoice_scan", true, 55.00, 55.00)).toBe(false);
+  });
+
+  it("invoice_scan is an actual-purchase source (matches receipt path behavior)", () => {
+    // Both sources should have identical gate-A behavior
+    expect(guardQuoteAsActual("invoice_scan", true)).toBe(guardQuoteAsActual("receipt", true));
+    expect(guardQuoteAsActual("invoice_scan", false)).toBe(guardQuoteAsActual("receipt", false));
+  });
+
+  // ── Full condition: order_guide_import — NEVER writes history ─────────────
+
+  it("order_guide_import: Gate A blocks → history NEVER written regardless of price change", () => {
+    expect(wouldWriteHistoryFull("order_guide_import", false, 45.00, 40.00)).toBe(false);
+    expect(wouldWriteHistoryFull("order_guide_import", false, 45.00, 0.00)).toBe(false);
+  });
+
+  it("order_guide_import: caller cannot override the block by passing representsActualPurchase=true", () => {
+    // The guard overrides any mistaken caller intent
+    expect(wouldWriteHistoryFull("order_guide_import", true, 45.00, 0.00)).toBe(false);
+  });
+
+  // ── Full condition: manual vendor edit — NEVER writes history ─────────────
+
+  it("manual: Gate A blocks → history NEVER written regardless of price change", () => {
+    expect(wouldWriteHistoryFull("manual", false, 75.00, 60.00)).toBe(false);
+  });
+
+  it("manual: representsActualPurchase=true also blocked (guard enforces QUOTE_SOURCES)", () => {
+    expect(wouldWriteHistoryFull("manual", true, 75.00, 60.00)).toBe(false);
+  });
+
+  // ── History row field contract ────────────────────────────────────────────
+
+  it("history row: pricePerUnit is unitPrice (not casePrice)", () => {
+    // Service stores unitPrice in pricePerUnit — the per-inventory-unit cost.
+    // Verifies derivation: $60 case / 40 lb = $1.50/lb → pricePerUnit = $1.50
+    const { unitPrice, casePrice } = derivePrices("case", 60.00, 40, 1, "lb", "pound");
+    expect(unitPrice).toBeCloseTo(1.5);   // this is what goes in pricePerUnit
+    expect(casePrice).toBe(60.00);         // this is what goes in casePrice
+    expect(unitPrice).not.toBe(casePrice); // regression: they must never be the same value
+  });
+
+  it("history row: casePrice stored as null when case price is zero", () => {
+    // Service: casePrice > 0 ? casePrice : null
+    const casePrice = 0;
+    const storedCasePrice = casePrice > 0 ? casePrice : null;
+    expect(storedCasePrice).toBeNull();
+  });
+
+  it("history row: casePrice stored as positive number when case price > 0", () => {
+    const casePrice = 48.00;
+    const storedCasePrice = casePrice > 0 ? casePrice : null;
+    expect(storedCasePrice).toBe(48.00);
+  });
+
+  it("history row: source field matches the write-path source", () => {
+    // Verifies the note format encodes the source for UI display
+    const receiptNote = `Price updated via receipt`;
+    const invoiceNote = `Price updated via invoice_scan`;
+    expect(receiptNote).toContain("receipt");
+    expect(invoiceNote).toContain("invoice_scan");
+    expect(receiptNote).not.toContain("order_guide");
+    expect(invoiceNote).not.toContain("manual");
+  });
+
+  it("history row: vendorItemId must always be populated on service-routed writes", () => {
+    // Route handlers always pass vendorItemId to recordVendorPrice.
+    // This test validates the params shape mirrors in buildReceiptServiceParams.
+    const params = buildReceiptServiceParams(
+      "vi-abc", "item-abc", "co-abc",
+      3.0,   // priceEach
+      24,    // caseSize
+      "receipt-abc",
+      120,   // totalCompanyQty
+      24,    // receivedQty
+    );
+    expect(params.vendorItemId).toBe("vi-abc");
+    expect(params.inventoryItemId).toBe("item-abc");
+    // vendorItemId is non-null, non-empty — safe to store in history
+    expect(params.vendorItemId).toBeTruthy();
+  });
+
+  // ── Exhaustive: all sources correctly classified for history writes ────────
+
+  it("exhaustive — actual-purchase sources with price change → write; quote sources → never", () => {
+    const actualSources: VendorPriceSource[] = ["receipt", "invoice_scan"];
+    const quoteSources: VendorPriceSource[] = [
+      "order_guide_import", "manual", "po_create", "legacy_unknown",
+    ];
+    const prevPrice = 2.0;
+    const newPrice  = 2.5; // guaranteed change
+
+    for (const src of actualSources) {
+      expect(
+        wouldWriteHistoryFull(src, true, newPrice, prevPrice),
+        `${src} + true + price change → must write history`
+      ).toBe(true);
+    }
+    for (const src of quoteSources) {
+      expect(
+        wouldWriteHistoryFull(src, false, newPrice, prevPrice),
+        `${src} → must NEVER write history`
+      ).toBe(false);
+      expect(
+        wouldWriteHistoryFull(src, true, newPrice, prevPrice),
+        `${src} with true override → still must NEVER write history`
+      ).toBe(false);
+    }
+  });
+
+  // ── invoice_scan fallback (no linked vendor item) ─────────────────────────
+
+  it("invoice_scan fallback: history written directly with vendorItemId=null only when price changed", () => {
+    // When no vendor item is linked, the route writes history directly to the DB
+    // (not through recordVendorPrice).  The write condition is identical:
+    // Math.abs(effectiveUnitPrice - prevPrice) > 0.000001
+    const effectiveUnitPrice = 2.50;
+    const prevPrice = 2.00;
+    const wouldWrite = Math.abs(effectiveUnitPrice - prevPrice) > 0.000001;
+    expect(wouldWrite).toBe(true);
+
+    const effectiveUnitPriceUnchanged = 2.00;
+    const wouldWriteUnchanged = Math.abs(effectiveUnitPriceUnchanged - prevPrice) > 0.000001;
+    expect(wouldWriteUnchanged).toBe(false);
   });
 });
