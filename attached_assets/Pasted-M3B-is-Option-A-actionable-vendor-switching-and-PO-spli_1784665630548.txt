@@ -1,0 +1,74 @@
+M3B is **Option A: actionable vendor switching and PO splitting**.
+
+The milestone should complete this workflow:
+
+```text
+Persisted vendor prices
+→ Review Savings
+→ operator selects alternatives
+→ route whole PO lines
+→ create or update vendor-specific draft POs
+→ export each PO in its supported supplier format
+→ user uploads and submits through the supplier portal
+```
+
+### Include in M3B
+
+* Add an actionable routing control to the existing comparison dialog.
+* Route whole lines only; do not support partial-line quantity splitting yet.
+* Revalidate all routing eligibility on the server at confirmation time.
+* Move selected lines transactionally into compatible vendor-specific draft POs.
+* Merge destination lines only when the destination `vendorItemId` matches.
+* Preserve destination supplier SKUs.
+* Capture a routing audit and projected-savings snapshot.
+* Add idempotency protection against double-clicks and request retries.
+* Return links to all resulting draft POs.
+* Keep all resulting POs in draft status.
+* Reuse the existing export and manual-submission-confirmation workflow.
+
+Use language such as **Route to Vendor** or **Add to Vendor PO**, rather than a generic “Switch,” because the action creates or updates a separate PO.
+
+### Product Matching Boundary
+
+For the M3B MVP, an alternative is eligible only when its vendor item is already mapped to the same FnB inventory item and has a valid comparable pack/unit setup.
+
+Do not add autonomous fuzzy or AI product equivalence inside the routing action.
+
+Unresolved products may display:
+
+> No approved vendor alternatives — review product matches.
+
+### Defer Electronic Submission
+
+Do not include direct EDI, API or PunchOut submission in M3B.
+
+The existing supplier-file export and manual portal-upload workflow is the intended MVP order-execution method. Direct submission requires live credentials, supplier test access, acknowledgments, retry behavior and connector-specific failure handling. Treat it as a later connector milestone.
+
+Declared adapter capabilities must not be treated as production implementations where the current methods are stubs.
+
+### Defer Par-Driven Auto-PO
+
+Do not include par-driven automatic PO generation in M3B.
+
+First validate that users trust and use:
+
+* normalized price comparison,
+* product mappings,
+* routing recommendations,
+* resulting vendor POs,
+* and supplier exports.
+
+Par-driven draft generation can follow once those workflows are proven.
+
+### Submission Tracking
+
+The existing export logs and manual “submitted” confirmation may remain in scope as the final handoff. Do not mark an order submitted simply because an export was generated.
+
+Please structure M3B as:
+
+1. Transactional routing endpoint and audit
+2. Actionable comparison UI
+3. Resulting-PO review and export handoff
+4. Regression and tenant-isolation tests
+
+Option B and Option D should be separate later milestones. Do not combine them into Option C.
