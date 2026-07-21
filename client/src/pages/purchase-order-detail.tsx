@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Save, Package, Search, PackageCheck, TrendingDown, CalendarIcon, Download, CheckCircle2, AlertTriangle, Clock, Sparkles, Loader2, ArrowRight } from "lucide-react";
+import { ArrowLeft, Save, Package, Search, PackageCheck, TrendingDown, CalendarIcon, Download, CheckCircle2, AlertTriangle, Clock, Sparkles, Loader2, ArrowRight, History, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -163,6 +163,22 @@ type BulkComparisonResult = {
   data: Record<string, BulkComparisonEntry>;
 };
 
+type RoutingAuditRow = {
+  id: string;
+  sourcePoId: string;
+  destinationPoId: string;
+  sourcePOLineId: string;
+  inventoryItemId: string;
+  inventoryItemName: string | null;
+  routedAt: string;
+  orderedQty: number;
+  fromCasePrice: number | null;
+  toCasePrice: number | null;
+  projectedSavingsPerCase: number | null;
+  operatorName: string;
+  direction: "inbound" | "outbound";
+};
+
 export default function PurchaseOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
@@ -182,6 +198,7 @@ export default function PurchaseOrderDetail() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   
   // Export state
+  const [showRoutingHistory, setShowRoutingHistory] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [isLoadingExportInfo, setIsLoadingExportInfo] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -331,6 +348,12 @@ export default function PurchaseOrderDetail() {
     queryKey: [`/api/purchase-orders/${id}/export-logs`],
     enabled: !isNew,
     select: (data: any) => (data?.data || []) as ExportLog[],
+  });
+
+  const { data: routingAudit } = useQuery({
+    queryKey: [`/api/purchase-orders/${id}/routing-audit`],
+    enabled: !isNew,
+    select: (data: any) => (data?.data || []) as RoutingAuditRow[],
   });
 
   const confirmExportMutation = useMutation({
@@ -1765,6 +1788,96 @@ export default function PurchaseOrderDetail() {
             </div>
           </div>
         )}
+
+        {/* Routing History Section */}
+        {!isNew && routingAudit && routingAudit.length > 0 && (
+          <div className="mt-6">
+            <button
+              type="button"
+              className="flex items-center gap-2 text-lg font-semibold mb-3 hover-elevate rounded-md px-1 py-0.5"
+              onClick={() => setShowRoutingHistory((v) => !v)}
+              data-testid="button-toggle-routing-history"
+            >
+              {showRoutingHistory ? (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              )}
+              <History className="h-4 w-4 text-muted-foreground" />
+              Routing History
+              <Badge variant="secondary" className="ml-1 text-xs">{routingAudit.length}</Badge>
+            </button>
+            {showRoutingHistory && (
+              <div className="border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Item</TableHead>
+                      <TableHead>Direction</TableHead>
+                      <TableHead>Related PO</TableHead>
+                      <TableHead className="text-right">From Case</TableHead>
+                      <TableHead className="text-right">To Case</TableHead>
+                      <TableHead className="text-right">Savings / case</TableHead>
+                      <TableHead>Operator</TableHead>
+                      <TableHead>Routed At</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {routingAudit.map((row) => {
+                      const relatedPoId = row.direction === "outbound" ? row.destinationPoId : row.sourcePoId;
+                      return (
+                        <TableRow key={row.id} data-testid={`row-routing-audit-${row.id}`}>
+                          <TableCell className="font-medium">
+                            {row.inventoryItemName ?? "—"}
+                          </TableCell>
+                          <TableCell>
+                            {row.direction === "outbound" ? (
+                              <Badge variant="secondary" className="text-xs">Sent out</Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs">Received</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Link href={`/purchase-orders/${relatedPoId}`}>
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="h-auto p-0 font-mono text-sm"
+                                data-testid={`link-related-po-${row.id}`}
+                              >
+                                #{relatedPoId.slice(0, 8)}
+                              </Button>
+                            </Link>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {row.fromCasePrice != null ? `$${row.fromCasePrice.toFixed(2)}` : "—"}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {row.toCasePrice != null ? `$${row.toCasePrice.toFixed(2)}` : "—"}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {row.projectedSavingsPerCase != null ? (
+                              <span className={row.projectedSavingsPerCase > 0 ? "text-green-600 dark:text-green-400" : ""}>
+                                {row.projectedSavingsPerCase > 0 ? "+" : ""}${row.projectedSavingsPerCase.toFixed(2)}
+                              </span>
+                            ) : "—"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {row.operatorName}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                            {new Date(row.routedAt).toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        )}
+
         </div>
       </div>
 

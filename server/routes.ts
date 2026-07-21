@@ -28,7 +28,7 @@ import { createSession, requireAuth, optionalAuth, requireTier, verifyPassword, 
 import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
-import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, desc, max } from "drizzle-orm";
+import { eq, and, or, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, desc, max } from "drizzle-orm";
 import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, poLines, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections, poRoutingAudit } from "@shared/schema";
 import { getExportRenderer, detectConnectorFromVendorName } from "./integrations/export";
 import { resolveConnectorId } from "./integrations/capabilityRouter";
@@ -11874,6 +11874,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .orderBy(desc(poRoutingAudit.routedAt));
 
       return res.json({ data: audits });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Enriched routing audit — inbound + outbound rows with item/operator names
+  app.get("/api/purchase-orders/:id/routing-audit", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const po = await storage.getPurchaseOrder(req.params.id, companyId);
+      if (!po) return res.status(404).json({ error: "Purchase order not found" });
+
+      const poId = req.params.id;
+
+      const auditRows = await db
+        .select({
+          id: poRoutingAudit.id,
+          sourcePoId: poRoutingAudit.sourcePoId,
+          sourcePOLineId: poRoutingAudit.sourcePOLineId,
+          destinationPoId: poRoutingAudit.destinationPoId,
+          inventoryItemId: poRoutingAudit.inventoryItemId,
+          routedAt: poRoutingAudit.routedAt,
+          fromUnitPrice: poRoutingAudit.fromUnitPrice,
+          toUnitPrice: poRoutingAudit.toUnitPrice,
+          fromCasePrice: poRoutingAudit.fromCasePrice,
+          toCasePrice: poRoutingAudit.toCasePrice,
+          projectedSavingsPerCase: poRoutingAudit.projectedSavingsPerCase,
+          orderedQty: poRoutingAudit.orderedQty,
+          userId: poRoutingAudit.userId,
+          inventoryItemName: inventoryItems.name,
+          userFirstName: users.firstName,
+          userLastName: users.lastName,
+          userEmail: users.email,
+        })
+        .from(poRoutingAudit)
+        .leftJoin(inventoryItems, eq(poRoutingAudit.inventoryItemId, inventoryItems.id))
+        .leftJoin(users, eq(poRoutingAudit.userId, users.id))
+        .where(
+          and(
+            or(
+              eq(poRoutingAudit.sourcePoId, poId),
+              eq(poRoutingAudit.destinationPoId, poId)
+            ),
+            eq(poRoutingAudit.companyId, companyId)
+          )
+        )
+        .orderBy(desc(poRoutingAudit.routedAt));
+
+      const enriched = auditRows.map((row) => ({
+        ...row,
+        direction: row.sourcePoId === poId ? "outbound" : "inbound",
+        operatorName: row.userFirstName
+          ? `${row.userFirstName}${row.userLastName ? ` ${row.userLastName}` : ""}`
+          : (row.userEmail ?? "Unknown"),
+      }));
+
+      return res.json({ data: enriched });
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
     }
