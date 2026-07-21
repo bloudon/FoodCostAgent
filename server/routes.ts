@@ -12426,6 +12426,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Access denied" });
       }
       
+      if (receipt.status === "completed") {
+        return res.status(200).json({ message: "Receipt already completed" });
+      }
+
       if (receipt.status !== "draft") {
         return res.status(400).json({ error: "Receipt is not in draft status" });
       }

@@ -116,6 +116,7 @@ export default function ReceivingDetail() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [draftReceiptId, setDraftReceiptId] = useState<string | null>(null);
   const [receiveByUnit, setReceiveByUnit] = useState<boolean>(false);
+  const [isCompletingReceiving, setIsCompletingReceiving] = useState(false);
   
   // Track received quantities for each PO line (in units, not cases)
   const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
@@ -480,6 +481,7 @@ export default function ReceivingDetail() {
   };
 
   const handleCompleteReceiving = () => {
+    if (isCompletingReceiving || completeReceivingMutation.isPending) return;
     if (!draftReceiptId) {
       toast({
         title: "Error",
@@ -489,7 +491,10 @@ export default function ReceivingDetail() {
       return;
     }
 
-    completeReceivingMutation.mutate(draftReceiptId);
+    setIsCompletingReceiving(true);
+    completeReceivingMutation.mutate(draftReceiptId, {
+      onSettled: () => setIsCompletingReceiving(false),
+    });
   };
 
   const handleOpenItemEdit = (inventoryItemId: string) => {
@@ -927,11 +932,11 @@ export default function ReceivingDetail() {
                   </Button>
                   <Button
                     onClick={handleCompleteReceiving}
-                    disabled={completeReceivingMutation.isPending || !draftReceiptId || !allLinesSaved}
+                    disabled={isCompletingReceiving || completeReceivingMutation.isPending || !draftReceiptId || !allLinesSaved}
                     data-testid="button-complete-receiving"
                   >
                     <PackageCheck className="h-4 w-4 mr-2" />
-                    {completeReceivingMutation.isPending ? "Receiving..." : "Complete Receiving"}
+                    {isCompletingReceiving || completeReceivingMutation.isPending ? "Receiving..." : "Complete Receiving"}
                   </Button>
                 </>
               )}
