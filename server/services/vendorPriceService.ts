@@ -33,6 +33,7 @@ import {
 
 export type VendorPriceSource =
   | "order_guide_import"
+  | "connector"
   | "invoice_scan"
   | "receipt"
   | "po_create"

@@ -267,7 +267,11 @@ async function runStartupMigrations() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS iiph_source_idx ON inventory_item_price_history (source)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS vi_price_source_idx ON vendor_items (price_source)`);
     // M3A: Provenance-aware legacy backfill — classify existing vendor_item rows by source
-    // before falling back to legacy_unknown.  Log counts for observability.
+    // before falling back to legacy_unknown.  Emits four migration report categories:
+    //   repaired      — rows where source could be confidently determined (receipt or order_guide_import)
+    //   ambiguous     — receipt rows that ALSO had a non-zero lastCasePrice (dual-signal, uncertain)
+    //   invalid-pack  — rows with zero or null caseSize (unit price derivation would be wrong)
+    //   needs-refresh — legacy_unknown rows requiring a real price update from an operator
     {
       // Step 1: rows linked to a receipt line with a recorded price → "receipt"
       const receiptResult = await db.execute(sql`
@@ -294,13 +298,35 @@ async function runStartupMigrations() {
         SET price_source = 'legacy_unknown'
         WHERE price_source IS NULL
       `);
+
       const receiptCount = (receiptResult as any).rowCount ?? 0;
-      const ogCount     = (ogResult as any).rowCount ?? 0;
-      const luCount     = (luResult as any).rowCount ?? 0;
-      if (receiptCount + ogCount + luCount > 0) {
+      const ogCount      = (ogResult as any).rowCount ?? 0;
+      const luCount      = (luResult as any).rowCount ?? 0;
+      const repairedCount = receiptCount + ogCount;
+
+      if (repairedCount + luCount > 0) {
+        // Ambiguous: receipt-tagged rows that also have a non-zero lastCasePrice
+        // (both receipt and order-guide signals present — provenance is uncertain)
+        const ambiguousResult = await db.execute(sql`
+          SELECT COUNT(*) AS cnt FROM vendor_items
+          WHERE price_source = 'receipt'
+            AND last_case_price IS NOT NULL AND last_case_price > 0
+        `);
+        const ambiguousCount = Number((ambiguousResult as any).rows?.[0]?.cnt ?? 0);
+
+        // Invalid-pack: rows where caseSize is zero or NULL (unit-price derivation is wrong)
+        const invalidPackResult = await db.execute(sql`
+          SELECT COUNT(*) AS cnt FROM vendor_items
+          WHERE case_size IS NULL OR case_size <= 0
+        `);
+        const invalidPackCount = Number((invalidPackResult as any).rows?.[0]?.cnt ?? 0);
+
         console.log(
-          `[M3A backfill] vendor_items price_source classified:` +
-          ` receipt=${receiptCount}, order_guide_import=${ogCount}, legacy_unknown=${luCount}`
+          `[M3A backfill] vendor_items price_source:` +
+          ` repaired=${repairedCount} (receipt=${receiptCount}, order_guide_import=${ogCount}),` +
+          ` ambiguous=${ambiguousCount},` +
+          ` invalid-pack=${invalidPackCount},` +
+          ` needs-refresh=${luCount}`
         );
       }
     }

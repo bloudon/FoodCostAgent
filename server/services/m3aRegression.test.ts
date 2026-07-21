@@ -438,7 +438,12 @@ describe("Scenario 5 — Bulk comparison", () => {
   }
 
   function eligibleForRecommendation(rows: VendorPriceRow[]): VendorPriceRow[] {
-    return rows.filter(r => r.priceSource !== "legacy_unknown" && !r.stale);
+    // Mirrors the production filter in the bulk endpoint (Step 11):
+    // legacy_unknown, stale, AND incompatible-unit rows are excluded from
+    // cheaperAvailable recommendation — they appear in vendorPrices data only.
+    return rows.filter(
+      r => r.priceSource !== "legacy_unknown" && !r.stale && !r.incompatibleUnit
+    );
   }
 
   function cheaperAvailable(
@@ -570,14 +575,19 @@ describe("Scenario 5 — Bulk comparison", () => {
     expect(rank(rows)[0].incompatibleUnit).toBe(true); // flagged row shown first by unit price
   });
 
-  it("incompatibleUnit does not itself exclude a row from recommendation", () => {
-    // M3A shows the flag; filtering on it is a UI/UX decision, not a hard exclusion
+  it("incompatibleUnit=true row is excluded from cheaperAvailable recommendation", () => {
+    // Incompatible-unit prices cannot be fairly ranked against compatible-unit rows.
+    // They appear in vendorPrices data but are removed from eligiblePrices.
     const rows: VendorPriceRow[] = [
-      { vendorId: "A", vendorName: "A", unitPrice: 1.0, casePrice: 10, caseSize: 10, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: true },
-      { vendorId: "B", vendorName: "B", unitPrice: 2.0, casePrice: 20, caseSize: 10, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
+      { vendorId: "A", vendorName: "Kg Vendor", unitPrice: 1.0, casePrice: 10, caseSize: 10, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: true },
+      { vendorId: "B", vendorName: "Lb Vendor",  unitPrice: 2.0, casePrice: 20, caseSize: 10, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
     ];
-    // Eligible excludes only legacy_unknown and stale, not incompatibleUnit
-    expect(eligibleForRecommendation(rows)).toHaveLength(2);
+    const eligible = eligibleForRecommendation(rows);
+    // Kg vendor excluded despite lower unit price (incompatible unit family)
+    expect(eligible).toHaveLength(1);
+    expect(eligible[0].vendorId).toBe("B");
+    // No cheaperAvailable — only one eligible vendor
+    expect(cheaperAvailable(rows, "B").cheaperAvailable).toBe(false);
   });
 
   // ── zero-price rows excluded upstream ─────────────────────────────────────

@@ -952,9 +952,11 @@ export class OrderGuideProcessor {
       // Create vendor item (only if a vendor is assigned).
       // Store caseSize and innerPackSize separately so vendor-detail can display
       // the full pack breakdown and still calculate case price correctly.
+      // M3A: price fields are NOT written on create — recordVendorPrice stamps them
+      // after creation so all price provenance goes through the shared write gate.
       let vendorItemCreated = false;
       if (vendorId) {
-        await this.storage.createVendorItem({
+        const newVi = await this.storage.createVendorItem({
           vendorId,
           inventoryItemId: inventoryItem.id,
           vendorSku: line.vendorSku,
@@ -962,11 +964,22 @@ export class OrderGuideProcessor {
           purchaseUnitId: unitId,
           caseSize: outerCount ?? 1,
           innerPackSize: innerSize ?? undefined,
-          lastPrice: unitPrice > 0 ? unitPrice : (line.price ?? undefined),
-          lastCasePrice: isUnitPrice ? undefined : (line.price ?? undefined),
-          priceSource: "order_guide_import",
-          pricedAt: new Date(),
         });
+        if (line.price != null && line.price > 0) {
+          await recordVendorPrice({
+            vendorItemId: newVi.id,
+            inventoryItemId: inventoryItem.id,
+            companyId,
+            priceBasis: isUnitPrice ? "unit" : "case",
+            price: line.price,
+            caseSize: outerCount ?? 1,
+            innerPackSize: innerSize ?? undefined,
+            packUom: line.uom ?? "",
+            inventoryUnitName: newItemUnitName,
+            source: "order_guide_import",
+            representsActualPurchase: false,
+          });
+        }
         vendorItemCreated = true;
       }
 
@@ -1041,11 +1054,10 @@ export class OrderGuideProcessor {
         return false;
       }
 
-      // No existing vendor item — create one with separate caseSize + innerPackSize.
-      const caseUnitPrice = line.price != null && line.price > 0
-        ? deriveUnitPrice(line.price, outerCnt, innerSz, line.uom ?? '', itemUnitNameForVendor).unitPrice
-        : (line.price ?? undefined);
-      await this.storage.createVendorItem({
+      // No existing vendor item — create one without price fields.
+      // M3A: price provenance must go through the shared write gate (recordVendorPrice)
+      // so priceBasis, derivation, and source tagging are consistent everywhere.
+      const newVi = await this.storage.createVendorItem({
         vendorId,
         inventoryItemId: line.matchedInventoryItemId,
         vendorSku: line.vendorSku,
@@ -1055,12 +1067,22 @@ export class OrderGuideProcessor {
         innerPackSize: line.innerPack ?? undefined,
         // Store the pack UOM so the vendor detail page can reconstruct case price correctly
         packUom: line.uom ?? undefined,
-        lastPrice: caseUnitPrice,
-        lastCasePrice: line.price ?? undefined,
-        // M3A: tag source (quote — does not update inventory_items cost)
-        priceSource: "order_guide_import",
-        pricedAt: new Date(),
       });
+      if (line.price != null && line.price > 0) {
+        await recordVendorPrice({
+          vendorItemId: newVi.id,
+          inventoryItemId: inventoryItem.id,
+          companyId,
+          priceBasis: "case",
+          price: line.price,
+          caseSize: outerCnt,
+          innerPackSize: innerSz,
+          packUom: line.uom ?? "",
+          inventoryUnitName: itemUnitNameForVendor,
+          source: "order_guide_import",
+          representsActualPurchase: false,
+        });
+      }
 
       // Sync vendor data to linked inventory item
       await this.syncVendorDataToInventoryItem(line, inventoryItem);

@@ -7588,8 +7588,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // M3A: join through vendors to enforce tenant isolation — only return
       // vendor items that belong to this company's vendors.
-      // Exclude zero-price rows; legacy_unknown rows are returned in data but
-      // excluded from cheaperAvailable recommendation logic (Step 11).
+      // Exclude inactive vendors, inactive vendor items, and zero-price rows.
+      // legacy_unknown rows are returned in data but excluded from
+      // cheaperAvailable recommendation logic (Step 11).
       const allVendorItems = await db
         .select({ vi: vendorItems, vendorName: vendors.name })
         .from(vendorItems)
@@ -7598,6 +7599,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           and(
             inArray(vendorItems.inventoryItemId, inventoryItemIds),
             eq(vendors.companyId, companyId),
+            eq(vendors.active, 1),
+            eq(vendorItems.active, 1),
             gt(vendorItems.lastPrice, 0)
           )
         );
@@ -7670,9 +7673,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           continue;
         }
 
-        // Recommendation logic excludes legacy_unknown and stale prices
+        // Recommendation logic excludes legacy_unknown, stale, and incompatible-unit rows.
+        // Incompatible-unit prices are shown in vendorPrices data but cannot be fairly ranked
+        // against compatible-unit rows — exclude them from cheaperAvailable logic.
         const eligiblePrices = vendorPrices.filter(
-          vp => vp.priceSource !== "legacy_unknown" && !vp.stale
+          vp => vp.priceSource !== "legacy_unknown" && !vp.stale && !vp.incompatibleUnit
         );
 
         const currentPrice = currentVendorId
@@ -8307,16 +8312,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       data.innerPackSize = 1;
       
-      // Derive unit price from case price (caseSize is now total units per case)
+      // M3A: price fields are NOT written on create — recordVendorPrice stamps them
+      // after creation so all price provenance goes through the shared write gate.
+      const enteredCasePrice = data.lastCasePrice;
       const caseSize = data.caseSize || 1;
-      if (data.lastCasePrice && data.lastCasePrice > 0 && caseSize > 0) {
-        data.lastPrice = data.lastCasePrice / caseSize;
+      const { lastPrice: _lp, lastCasePrice: _lcp, priceSource: _ps, pricedAt: _pa, ...createData } = data;
+      const vendorItem = await storage.createVendorItem(createData);
+
+      // M3A: stamp price through shared service (manual = quote source, no inventory cost update).
+      if (enteredCasePrice && enteredCasePrice > 0) {
+        await recordVendorPrice({
+          vendorItemId: vendorItem.id,
+          inventoryItemId: vendorItem.inventoryItemId ?? undefined,
+          priceBasis: "case",
+          price: enteredCasePrice,
+          caseSize,
+          source: "manual",
+          representsActualPurchase: false,
+        });
       }
-      
-      // M3A: manual vendor-item creation is a quote source
-      data.priceSource = "manual";
-      data.pricedAt = new Date();
-      const vendorItem = await storage.createVendorItem(data);
 
       // Sync ONLY structural caseSize back to the linked inventory item.
       // M3A RULE: manual vendor-item entries are QUOTE sources — must NOT update
