@@ -703,25 +703,29 @@ export const insertPoExportLogSchema = createInsertSchema(poExportLogs).omit({ i
 export type InsertPoExportLog = z.infer<typeof insertPoExportLogSchema>;
 export type PoExportLog = typeof poExportLogs.$inferSelect;
 
-// PO Routing Audits — captures every vendor routing action and projected-savings snapshot
-export const poRoutingAudits = pgTable("po_routing_audits", {
+// PO Routing Audit — one row per routed line, captures price snapshot + savings projection
+export const poRoutingAudit = pgTable("po_routing_audit", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   sourcePoId: varchar("source_po_id").notNull(),
+  sourcePOLineId: varchar("source_po_line_id").notNull(),
+  destinationPoId: varchar("destination_po_id").notNull(),
+  vendorItemId: varchar("vendor_item_id").notNull(),
   userId: varchar("user_id"),
   routedAt: timestamp("routed_at").notNull().defaultNow(),
-  linesRouted: integer("lines_routed").notNull(),
-  projectedSavings: real("projected_savings"),
-  // JSON array of per-line routing decisions with price snapshot
-  decisions: jsonb("decisions").notNull().default(sql`'[]'::jsonb`),
-  // IDs of all resulting draft POs created or updated by this routing action
-  resultingPoIds: text("resulting_po_ids").array().notNull().default(sql`ARRAY[]::text[]`),
+  fromUnitPrice: real("from_unit_price").notNull(),
+  toUnitPrice: real("to_unit_price").notNull(),
+  fromCasePrice: real("from_case_price"),
+  toCasePrice: real("to_case_price"),
+  orderedQty: real("ordered_qty").notNull(),
+  projectedSavingsPerCase: real("projected_savings_per_case"),
 }, (table) => ({
-  companyIdx: index("po_routing_audits_company_idx").on(table.companyId),
-  sourcePoIdx: index("po_routing_audits_source_po_idx").on(table.sourcePoId),
+  companyIdx: index("po_routing_audit_company_idx").on(table.companyId),
+  sourcePoIdx: index("po_routing_audit_source_po_idx").on(table.sourcePoId),
+  sourcePOLineIdx: index("po_routing_audit_source_po_line_idx").on(table.sourcePOLineId),
 }));
 
-export type PoRoutingAudit = typeof poRoutingAudits.$inferSelect;
+export type PoRoutingAuditRecord = typeof poRoutingAudit.$inferSelect;
 
 // Receipts
 export const receipts = pgTable("receipts", {

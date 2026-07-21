@@ -2352,29 +2352,35 @@ END $$;
 
 
 -- =============================================================================
--- v060 — M3B: PO routing audit table
--- Captures every vendor routing action: per-line decisions, projected savings,
--- and links to all resulting draft POs.
+-- v060 — M3B: PO routing audit table (one row per routed line)
+-- Captures per-line routing decisions: source/destination PO, vendor item,
+-- price snapshot, ordered qty, and projected savings per case.
 -- =============================================================================
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v060') THEN
 
-    CREATE TABLE IF NOT EXISTS po_routing_audits (
-      id                varchar      PRIMARY KEY DEFAULT gen_random_uuid(),
-      company_id        varchar      NOT NULL,
-      source_po_id      varchar      NOT NULL,
-      user_id           varchar,
-      routed_at         timestamp    NOT NULL DEFAULT now(),
-      lines_routed      integer      NOT NULL,
-      projected_savings real,
-      decisions         jsonb        NOT NULL DEFAULT '[]'::jsonb,
-      resulting_po_ids  text[]       NOT NULL DEFAULT ARRAY[]::text[]
+    CREATE TABLE IF NOT EXISTS po_routing_audit (
+      id                         varchar   PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id                 varchar   NOT NULL,
+      source_po_id               varchar   NOT NULL,
+      source_po_line_id          varchar   NOT NULL,
+      destination_po_id          varchar   NOT NULL,
+      vendor_item_id             varchar   NOT NULL,
+      user_id                    varchar,
+      routed_at                  timestamp NOT NULL DEFAULT now(),
+      from_unit_price            real      NOT NULL,
+      to_unit_price              real      NOT NULL,
+      from_case_price            real,
+      to_case_price              real,
+      ordered_qty                real      NOT NULL,
+      projected_savings_per_case real
     );
 
-    CREATE INDEX IF NOT EXISTS po_routing_audits_company_idx   ON po_routing_audits (company_id);
-    CREATE INDEX IF NOT EXISTS po_routing_audits_source_po_idx ON po_routing_audits (source_po_id);
+    CREATE INDEX IF NOT EXISTS po_routing_audit_company_idx        ON po_routing_audit (company_id);
+    CREATE INDEX IF NOT EXISTS po_routing_audit_source_po_idx      ON po_routing_audit (source_po_id);
+    CREATE INDEX IF NOT EXISTS po_routing_audit_source_po_line_idx ON po_routing_audit (source_po_line_id);
 
     INSERT INTO _migration_log (version, description)
-      VALUES ('v060', 'M3B: po_routing_audits table — vendor routing action audit trail');
+      VALUES ('v060', 'M3B: po_routing_audit table — per-line vendor routing audit trail');
   END IF;
 END $$;

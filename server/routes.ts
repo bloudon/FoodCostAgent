@@ -29,7 +29,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, desc, max } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, poLines, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections, poRoutingAudits } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, poLines, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections, poRoutingAudit } from "@shared/schema";
 import { getExportRenderer, detectConnectorFromVendorName } from "./integrations/export";
 import { resolveConnectorId } from "./integrations/capabilityRouter";
 import { listConnectorDefinitions } from "./integrations/connectorRegistry";
@@ -11409,160 +11409,205 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── M3B: Route PO Lines to Alternative Vendors ───────────────────────────────
   //
-  // POST /api/purchase-orders/:id/route
+  // POST /api/purchase-orders/:id/route-lines
   //
   // Moves selected lines from the source PO into vendor-specific draft POs.
   // Rules:
+  //   - Caller specifies targetVendorItemId explicitly; server verifies same inventoryItemId
   //   - Whole-line routing only (no partial quantities)
-  //   - Server-side eligibility revalidated at execution time
-  //   - Lines are merged into existing draft POs when vendorItemId matches
-  //   - Source PO lines are removed after routing
-  //   - Routing audit row captures decisions + projected-savings snapshot
+  //   - All ineligibility reasons collected before rejecting (structured 422)
+  //   - Idempotency: duplicate calls return prior audit result, not an error
+  //   - Lines merged into existing draft POs when vendorItemId matches
+  //   - Source PO lines deleted atomically within same transaction
+  //   - One po_routing_audit row written per routed line
   //   - All resulting POs remain in "pending" draft status
   //
-  app.post("/api/purchase-orders/:id/route", requireAuth, async (req, res) => {
+  app.post("/api/purchase-orders/:id/route-lines", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const userId = (req as any).userId;
       const sourcePoId = req.params.id;
 
-      // ── 1. Validate source PO ownership ───────────────────────────────────
+      // ── 1. Validate source PO — explicit 403 for cross-company access ──────
       const sourcePo = await storage.getPurchaseOrder(sourcePoId, companyId);
       if (!sourcePo) {
+        // Check whether the PO exists for a different company → 403
+        const [anyPo] = await db
+          .select({ id: purchaseOrders.id })
+          .from(purchaseOrders)
+          .where(eq(purchaseOrders.id, sourcePoId))
+          .limit(1);
+        if (anyPo) return res.status(403).json({ error: "Access denied" });
         return res.status(404).json({ error: "Purchase order not found" });
       }
       if (sourcePo.status === "received") {
         return res.status(400).json({ error: "Cannot route lines from a received purchase order" });
       }
 
-      // ── 2. Parse and validate request body ────────────────────────────────
-      const decisionsSchema = z.array(z.object({
-        lineId: z.string().min(1),
-        targetVendorId: z.string().min(1),
-      })).min(1, "At least one routing decision is required");
+      // ── 2. Parse request body ─────────────────────────────────────────────
+      const linesSchema = z.array(z.object({
+        poLineId: z.string().min(1),
+        targetVendorItemId: z.string().min(1),
+      })).min(1, "At least one line is required");
 
-      const parseResult = decisionsSchema.safeParse(req.body.decisions);
+      const parseResult = linesSchema.safeParse(req.body.lines);
       if (!parseResult.success) {
-        return res.status(400).json({ error: parseResult.error.errors[0]?.message ?? "Invalid decisions" });
+        return res.status(400).json({ error: parseResult.error.errors[0]?.message ?? "Invalid lines" });
       }
-      const decisions = parseResult.data;
+      const lineRequests = parseResult.data;
 
-      // ── 3. Load source PO lines ────────────────────────────────────────────
-      const sourceLines = await storage.getPOLines(sourcePoId);
+      // ── 3. Load all data needed for validation ────────────────────────────
+      const [sourceLines, allUnits] = await Promise.all([
+        storage.getPOLines(sourcePoId),
+        storage.getUnits(),
+      ]);
       const sourceLinesById = new Map(sourceLines.map(l => [l.id, l]));
 
-      // ── 4. Load all vendor data for server-side eligibility revalidation ──
-      const allUnits = await storage.getUnits();
+      // Source vendor items (to find inventoryItemId for each line)
+      const sourceViIds = [...new Set(sourceLines.map(l => l.vendorItemId))];
+      const sourceVendorItemRows = sourceViIds.length > 0
+        ? await db.select({
+            id: vendorItems.id,
+            inventoryItemId: vendorItems.inventoryItemId,
+            lastCasePrice: vendorItems.lastCasePrice,
+            caseSize: vendorItems.caseSize,
+          })
+          .from(vendorItems)
+          .where(inArray(vendorItems.id, sourceViIds))
+        : [];
+      const sourceViMap = new Map(sourceVendorItemRows.map(vi => [vi.id, vi]));
 
-      // Collect all inventoryItemIds for the selected lines
-      const selectedLineIds = new Set(decisions.map(d => d.lineId));
-      const selectedLines = decisions.map(d => {
-        const line = sourceLinesById.get(d.lineId);
-        if (!line) throw new Error(`Line ${d.lineId} not found in source PO`);
-        return { decision: d, line };
-      });
-
-      // Load all vendor items for all target vendors in one go (tenant-safe via vendor join)
-      const targetVendorIds = [...new Set(decisions.map(d => d.targetVendorId))];
-      const [sourceVendorRows] = await Promise.all([
-        db.select({ vi: vendorItems, vendorName: vendors.name })
+      // Target vendor items — company-scoped via vendor join
+      const targetViIds = [...new Set(lineRequests.map(r => r.targetVendorItemId))];
+      const targetVendorItemRows = targetViIds.length > 0
+        ? await db
+          .select({ vi: vendorItems, vendorName: vendors.name })
           .from(vendorItems)
           .innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
           .where(
             and(
-              inArray(vendorItems.vendorId, targetVendorIds),
+              inArray(vendorItems.id, targetViIds),
               eq(vendors.companyId, companyId),
               eq(vendors.active, 1),
-              eq(vendorItems.active, 1)
             )
-          ),
-      ]);
+          )
+        : [];
+      const targetViMap = new Map(targetVendorItemRows.map(r => [r.vi.id, r]));
 
-      // Load inventory item unit names for incompatible-unit check
-      const inventoryItemIds = [...new Set(
-        selectedLines
-          .map(({ line }) => {
-            const sourceVi = sourceLines.find(l => l.id === line.id);
-            return sourceVi?.vendorItemId;
-          })
-          .filter(Boolean)
+      // Inventory item units for incompatible-unit check
+      const allInvItemIds = [...new Set(
+        sourceVendorItemRows.map(vi => vi.inventoryItemId).filter((id): id is string => id != null)
       )];
-
-      // Fetch vendorItemId → inventoryItemId mapping from source vendor items
-      const sourceVendorItems = await db.select({ id: vendorItems.id, inventoryItemId: vendorItems.inventoryItemId })
-        .from(vendorItems)
-        .where(inArray(vendorItems.id, sourceLines.map(l => l.vendorItemId)));
-      const viToInventoryItem = new Map(sourceVendorItems.map(vi => [vi.id, vi.inventoryItemId]));
-
-      // Fetch inventory item units
-      const allInvItemIds = [...new Set(viToInventoryItem.values().filter(Boolean) as string[])];
-      const invItemUnitRows = await db.select({ id: inventoryItems.id, unitId: inventoryItems.unitId })
-        .from(inventoryItems)
-        .where(and(inArray(inventoryItems.id, allInvItemIds), eq(inventoryItems.companyId, companyId)));
+      const invItemUnitRows = allInvItemIds.length > 0
+        ? await db
+          .select({ id: inventoryItems.id, unitId: inventoryItems.unitId })
+          .from(inventoryItems)
+          .where(and(inArray(inventoryItems.id, allInvItemIds), eq(inventoryItems.companyId, companyId)))
+        : [];
       const invItemUnitMap = new Map<string, string>();
       for (const row of invItemUnitRows) {
         const unit = allUnits.find(u => u.id === row.unitId);
         if (unit) invItemUnitMap.set(row.id, unit.name);
       }
 
-      // ── 5. Validate eligibility for each decision ──────────────────────────
-      type ValidatedDecision = {
-        lineId: string;
+      // Idempotency check — lines already successfully routed
+      const existingAudits = lineRequests.length > 0
+        ? await db
+          .select()
+          .from(poRoutingAudit)
+          .where(
+            and(
+              inArray(poRoutingAudit.sourcePOLineId, lineRequests.map(r => r.poLineId)),
+              eq(poRoutingAudit.companyId, companyId)
+            )
+          )
+        : [];
+      const alreadyRoutedLookup = new Map(
+        existingAudits.map(a => [`${a.sourcePOLineId}:${a.vendorItemId}`, a])
+      );
+
+      // ── 4. Validate each line — collect ALL failures before rejecting ──────
+      type ValidLine = {
+        poLineId: string;
         line: typeof sourceLines[0];
-        targetVendorId: string;
-        targetVi: typeof sourceVendorRows[0]["vi"];
+        targetViRow: typeof targetVendorItemRows[0];
         inventoryItemId: string;
         fromUnitPrice: number;
+        fromCasePrice: number;
         toUnitPrice: number;
         toCasePrice: number;
         toCaseSize: number;
         toUnitId: string;
-        savingsPerUnit: number;
+        projectedSavingsPerCase: number;
       };
 
-      const validatedDecisions: ValidatedDecision[] = [];
+      const validLines: ValidLine[] = [];
+      const alreadyRouted: { poLineId: string; targetVendorItemId: string; destinationPoId: string; auditId: string }[] = [];
+      const ineligibleLines: { poLineId: string; targetVendorItemId: string; reason: string }[] = [];
 
-      for (const { decision, line } of selectedLines) {
-        const inventoryItemId = viToInventoryItem.get(line.vendorItemId);
-        if (!inventoryItemId) {
-          return res.status(400).json({
-            error: `Line ${decision.lineId}: source vendor item has no linked inventory item`,
+      for (const lr of lineRequests) {
+        // Idempotency: already routed with same target?
+        const idemKey = `${lr.poLineId}:${lr.targetVendorItemId}`;
+        const priorAudit = alreadyRoutedLookup.get(idemKey);
+        if (priorAudit) {
+          alreadyRouted.push({
+            poLineId: lr.poLineId,
+            targetVendorItemId: lr.targetVendorItemId,
+            destinationPoId: priorAudit.destinationPoId,
+            auditId: priorAudit.id,
           });
+          continue;
         }
 
-        // Find the target vendor item for this inventory item + target vendor
-        const targetViRow = sourceVendorRows.find(
-          r => r.vi.vendorId === decision.targetVendorId && r.vi.inventoryItemId === inventoryItemId
-        );
+        // Line must be in source PO
+        const line = sourceLinesById.get(lr.poLineId);
+        if (!line) {
+          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Line not found in source PO" });
+          continue;
+        }
+
+        // Target vendor item must belong to this company
+        const targetViRow = targetViMap.get(lr.targetVendorItemId);
         if (!targetViRow) {
-          return res.status(400).json({
-            error: `No approved vendor item found for this product at the selected vendor`,
-          });
+          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor item not found or does not belong to your company" });
+          continue;
+        }
+
+        // Strict same-inventoryItemId check
+        const sourceVi = sourceViMap.get(line.vendorItemId);
+        const sourceInventoryItemId = sourceVi?.inventoryItemId;
+        if (!sourceInventoryItemId) {
+          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Source vendor item has no linked inventory item" });
+          continue;
+        }
+        if (targetViRow.vi.inventoryItemId !== sourceInventoryItemId) {
+          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor item maps to a different product — same inventory item required" });
+          continue;
         }
 
         const targetVi = targetViRow.vi;
-        const inventoryUnitName = invItemUnitMap.get(inventoryItemId) ?? "";
+        const inventoryUnitName = invItemUnitMap.get(sourceInventoryItemId) ?? "";
 
-        // Eligibility rules (mirror bulk comparison filter)
+        // Eligibility revalidation (mirrors bulk comparison filter)
+        if (!targetVi.active) {
+          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor item is inactive" });
+          continue;
+        }
         if (!targetVi.lastPrice || targetVi.lastPrice <= 0) {
-          return res.status(400).json({
-            error: `Target vendor item has no valid price — update the price before routing`,
-          });
+          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor item has no valid price" });
+          continue;
         }
         if (targetVi.priceSource === "legacy_unknown") {
-          return res.status(400).json({
-            error: `Target vendor price is unverified (legacy) — update the price before routing`,
-          });
+          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor price is unverified — update the price before routing" });
+          continue;
         }
         if (getPriceFreshness(targetVi.pricedAt) === "stale") {
-          return res.status(400).json({
-            error: `Target vendor price is stale (older than 14 days) — update before routing`,
-          });
+          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor price is stale (older than 14 days)" });
+          continue;
         }
         if (isIncompatibleUnit(targetVi.packUom ?? "", inventoryUnitName)) {
-          return res.status(400).json({
-            error: `Target vendor pack unit is incompatible with this item's inventory unit`,
-          });
+          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor pack unit is incompatible with this item's inventory unit" });
+          continue;
         }
         const { invalidPackGeometry } = effectivePackQty(
           targetVi.caseSize || 1,
@@ -11571,9 +11616,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           inventoryUnitName
         );
         if (invalidPackGeometry) {
-          return res.status(400).json({
-            error: `Target vendor item has invalid pack geometry — fix caseSize before routing`,
-          });
+          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: "Target vendor item has invalid pack geometry" });
+          continue;
         }
 
         const toCaseSize = targetVi.caseSize || 1;
@@ -11581,33 +11625,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const toCasePrice = targetVi.lastCasePrice != null && targetVi.lastCasePrice > 0
           ? targetVi.lastCasePrice
           : toUnitPrice * toCaseSize;
+        const fromCaseSize = sourceVi?.caseSize || 1;
+        const fromUnitPrice = line.priceEach;
+        const fromCasePrice = sourceVi?.lastCasePrice != null && sourceVi.lastCasePrice > 0
+          ? sourceVi.lastCasePrice
+          : fromUnitPrice * fromCaseSize;
+        const projectedSavingsPerCase = (fromUnitPrice - toUnitPrice) * toCaseSize;
 
-        validatedDecisions.push({
-          lineId: decision.lineId,
+        validLines.push({
+          poLineId: lr.poLineId,
           line,
-          targetVendorId: decision.targetVendorId,
-          targetVi,
-          inventoryItemId,
-          fromUnitPrice: line.priceEach,
+          targetViRow,
+          inventoryItemId: sourceInventoryItemId,
+          fromUnitPrice,
+          fromCasePrice,
           toUnitPrice,
           toCasePrice,
           toCaseSize,
           toUnitId: targetVi.purchaseUnitId || line.unitId,
-          savingsPerUnit: line.priceEach - toUnitPrice,
+          projectedSavingsPerCase,
         });
       }
 
-      // ── 6. Execute routing transactionally ────────────────────────────────
+      // ── 5. Reject if any lines are ineligible (structured 422) ────────────
+      if (ineligibleLines.length > 0) {
+        return res.status(422).json({
+          error: "One or more lines cannot be routed",
+          ineligibleLines,
+        });
+      }
+
+      // All lines already routed — return idempotent result
+      if (validLines.length === 0 && alreadyRouted.length > 0) {
+        return res.json({
+          data: {
+            routedLines: 0,
+            affectedPOIds: [...new Set(alreadyRouted.map(r => r.destinationPoId))],
+            auditIds: alreadyRouted.map(r => r.auditId),
+            alreadyRouted,
+          },
+        });
+      }
+
+      // ── 6. Execute routing transaction ────────────────────────────────────
       // Maps targetVendorId → resulting draft PO id
       const resultingPoMap = new Map<string, string>();
-      const auditDecisions: object[] = [];
+      const auditIds: string[] = [];
 
       await withTransaction(async (tx) => {
-        for (const vd of validatedDecisions) {
+        for (const vl of validLines) {
+          const targetVendorId = vl.targetViRow.vi.vendorId;
+
           // Find or create a draft PO for (companyId, storeId, targetVendorId)
-          let targetPoId = resultingPoMap.get(vd.targetVendorId);
+          let targetPoId = resultingPoMap.get(targetVendorId);
           if (!targetPoId) {
-            // Look for an existing pending PO for this vendor + store
             const [existingPo] = await tx
               .select({ id: purchaseOrders.id })
               .from(purchaseOrders)
@@ -11615,7 +11686,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 and(
                   eq(purchaseOrders.companyId, companyId),
                   eq(purchaseOrders.storeId, sourcePo.storeId),
-                  eq(purchaseOrders.vendorId, vd.targetVendorId),
+                  eq(purchaseOrders.vendorId, targetVendorId),
                   eq(purchaseOrders.status, "pending")
                 )
               )
@@ -11624,13 +11695,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (existingPo) {
               targetPoId = existingPo.id;
             } else {
-              // Create a new draft PO
               const [newPo] = await tx
                 .insert(purchaseOrders)
                 .values({
                   companyId,
                   storeId: sourcePo.storeId,
-                  vendorId: vd.targetVendorId,
+                  vendorId: targetVendorId,
                   status: "pending",
                   expectedDate: sourcePo.expectedDate,
                   notes: sourcePo.notes ? `Routed from PO — ${sourcePo.notes}` : "Routed from PO",
@@ -11638,110 +11708,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 .returning({ id: purchaseOrders.id });
               targetPoId = newPo.id;
             }
-            resultingPoMap.set(vd.targetVendorId, targetPoId);
+            resultingPoMap.set(targetVendorId, targetPoId);
           }
 
-          // Check if a matching line already exists in target PO (same vendorItemId → merge)
+          // Merge or insert destination line
           const [existingTargetLine] = await tx
             .select()
             .from(poLines)
             .where(
               and(
                 eq(poLines.purchaseOrderId, targetPoId),
-                eq(poLines.vendorItemId, vd.targetVi.id)
+                eq(poLines.vendorItemId, vl.targetViRow.vi.id)
               )
             )
             .limit(1);
 
           if (existingTargetLine) {
-            // Merge: add quantities
             await tx
               .update(poLines)
               .set({
-                orderedQty: (existingTargetLine.orderedQty ?? 0) + vd.line.orderedQty,
-                caseQuantity: ((existingTargetLine.caseQuantity ?? 0) + (vd.line.caseQuantity ?? 0)) || null,
+                orderedQty: (existingTargetLine.orderedQty ?? 0) + vl.line.orderedQty,
+                caseQuantity: ((existingTargetLine.caseQuantity ?? 0) + (vl.line.caseQuantity ?? 0)) || null,
               })
               .where(eq(poLines.id, existingTargetLine.id));
           } else {
-            // Insert new line into target PO using target vendor's SKU + current price
             await tx.insert(poLines).values({
               purchaseOrderId: targetPoId,
-              vendorItemId: vd.targetVi.id,
-              orderedQty: vd.line.orderedQty,
-              caseQuantity: vd.line.caseQuantity,
-              unitId: vd.toUnitId,
-              priceEach: vd.toUnitPrice,
+              vendorItemId: vl.targetViRow.vi.id,
+              orderedQty: vl.line.orderedQty,
+              caseQuantity: vl.line.caseQuantity,
+              unitId: vl.toUnitId,
+              priceEach: vl.toUnitPrice,
             });
           }
 
-          // Remove the line from the source PO
-          await tx.delete(poLines).where(eq(poLines.id, vd.lineId));
+          // Delete source line
+          await tx.delete(poLines).where(eq(poLines.id, vl.poLineId));
 
-          auditDecisions.push({
-            lineId: vd.lineId,
-            inventoryItemId: vd.inventoryItemId,
-            fromVendorId: sourcePo.vendorId,
-            toVendorId: vd.targetVendorId,
-            targetVendorItemId: vd.targetVi.id,
-            fromUnitPrice: vd.fromUnitPrice,
-            toUnitPrice: vd.toUnitPrice,
-            toCasePrice: vd.toCasePrice,
-            orderedQty: vd.line.orderedQty,
-            savingsPerUnit: vd.savingsPerUnit,
-            mergedIntoExisting: !!existingTargetLine,
-            targetPoId,
-          });
+          // Write per-line audit row (inside same transaction)
+          const [auditRow] = await tx
+            .insert(poRoutingAudit)
+            .values({
+              companyId,
+              sourcePoId,
+              sourcePOLineId: vl.poLineId,
+              destinationPoId: targetPoId,
+              vendorItemId: vl.targetViRow.vi.id,
+              userId,
+              fromUnitPrice: vl.fromUnitPrice,
+              toUnitPrice: vl.toUnitPrice,
+              fromCasePrice: vl.fromCasePrice,
+              toCasePrice: vl.toCasePrice,
+              orderedQty: vl.line.orderedQty,
+              projectedSavingsPerCase: vl.projectedSavingsPerCase,
+            })
+            .returning({ id: poRoutingAudit.id });
+          auditIds.push(auditRow.id);
         }
-
-        // Write routing audit row inside the same transaction
-        const resultingPoIds = [...resultingPoMap.values()];
-        const projectedSavings = validatedDecisions.reduce((sum, vd) => {
-          return sum + (vd.savingsPerUnit * vd.line.orderedQty);
-        }, 0);
-
-        await tx.insert(poRoutingAudits).values({
-          companyId,
-          sourcePoId,
-          userId,
-          linesRouted: validatedDecisions.length,
-          projectedSavings,
-          decisions: auditDecisions,
-          resultingPoIds,
-        });
       });
 
-      // ── 7. Build response ──────────────────────────────────────────────────
-      const resultingPoIds = [...resultingPoMap.values()];
-      const projectedSavings = validatedDecisions.reduce((sum, vd) => {
-        return sum + (vd.savingsPerUnit * vd.line.orderedQty);
-      }, 0);
-
-      // Enrich resulting POs with vendor names for the UI
-      const resultingVendorRows = await db
-        .select({ id: vendors.id, name: vendors.name })
-        .from(vendors)
-        .where(inArray(vendors.id, targetVendorIds));
-      const vendorNameMap = new Map(resultingVendorRows.map(v => [v.id, v.name]));
-
-      const resultingPos = resultingPoIds.map(poId => {
-        const vendorId = [...resultingPoMap.entries()].find(([, id]) => id === poId)?.[0] ?? "";
-        return { id: poId, vendorId, vendorName: vendorNameMap.get(vendorId) ?? "Unknown" };
-      });
+      // ── 7. Response ───────────────────────────────────────────────────────
+      const affectedPOIds = [...new Set(resultingPoMap.values())];
 
       return res.json({
         data: {
-          linesRouted: validatedDecisions.length,
-          projectedSavings,
-          resultingPos,
+          routedLines: validLines.length,
+          affectedPOIds,
+          auditIds,
+          ...(alreadyRouted.length > 0 ? { alreadyRouted } : {}),
         },
       });
     } catch (error: any) {
-      console.error("[PO Route]", error);
+      console.error("[PO Route Lines]", error);
       return res.status(500).json({ error: error.message || "Routing failed" });
     }
   });
 
-  // ── List routing audit history for a PO ──────────────────────────────────────
+  // ── GET routing audit history for a source PO ────────────────────────────────
   app.get("/api/purchase-orders/:id/routing-audits", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
@@ -11750,14 +11793,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const audits = await db
         .select()
-        .from(poRoutingAudits)
+        .from(poRoutingAudit)
         .where(
           and(
-            eq(poRoutingAudits.sourcePoId, req.params.id),
-            eq(poRoutingAudits.companyId, companyId)
+            eq(poRoutingAudit.sourcePoId, req.params.id),
+            eq(poRoutingAudit.companyId, companyId)
           )
         )
-        .orderBy(desc(poRoutingAudits.routedAt));
+        .orderBy(desc(poRoutingAudit.routedAt));
 
       return res.json({ data: audits });
     } catch (err: any) {
