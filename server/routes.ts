@@ -21054,6 +21054,7 @@ Human Handoff:
           caseSize = 10,
           lastPrice,
           lastCasePrice = 0,
+          priceSource = null,
         } = req.body as {
           vendorId: string;
           purchaseUnitId: string;
@@ -21062,6 +21063,7 @@ Human Handoff:
           caseSize?: number;
           lastPrice: number;
           lastCasePrice?: number;
+          priceSource?: string | null;
         };
 
         if (!vendorId || !purchaseUnitId || !inventoryItemId || !vendorSku || lastPrice == null) {
@@ -21071,7 +21073,7 @@ Human Handoff:
         const vendorItemId = crypto.randomUUID();
         await db
           .insert(vendorItems)
-          .values({ id: vendorItemId, vendorId, inventoryItemId, vendorSku, purchaseUnitId, caseSize, lastPrice, lastCasePrice, active: 1 });
+          .values({ id: vendorItemId, vendorId, inventoryItemId, vendorSku, purchaseUnitId, caseSize, lastPrice, lastCasePrice, priceSource, active: 1 });
 
         return res.json({ vendorItemId });
       } catch (err: any) {
@@ -21091,6 +21093,113 @@ Human Handoff:
         return res.json({ deleted: true, vendorItemId });
       } catch (err: any) {
         console.error("[dev/test/vendor-price-state DELETE]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    /**
+     * POST /api/dev/test/receipt-state
+     * Seeds the full receipt chain required to exercise PATCH /api/receipts/:id/complete:
+     *   vendor_item → purchase_order → receipt (draft) → receipt_line
+     *
+     * Body:
+     *   inventoryItemId — existing inventory item ID (required)
+     *   vendorId        — existing vendor ID (required)
+     *   purchaseUnitId  — existing unit ID (required)
+     *
+     * Returns: { receiptId, vendorItemId, poId }
+     */
+    app.post("/api/dev/test/receipt-state", requireAuth, async (req, res) => {
+      try {
+        const companyId = (req as any).companyId;
+        if (!companyId) return res.status(400).json({ error: "Company context required" });
+
+        const { inventoryItemId, vendorId, purchaseUnitId } = req.body as {
+          inventoryItemId: string;
+          vendorId: string;
+          purchaseUnitId: string;
+        };
+
+        if (!inventoryItemId || !vendorId || !purchaseUnitId) {
+          return res.status(400).json({ error: "inventoryItemId, vendorId, and purchaseUnitId are required" });
+        }
+
+        // Find a store for this company
+        const stores = await storage.getCompanyStores(companyId);
+        if (!stores.length) {
+          return res.status(404).json({ error: "No stores found for this company" });
+        }
+        const storeId = stores[0].id;
+
+        // Seed a vendor item linked to the inventory item
+        const vendorSku = `dev-receipt-vi-${Date.now()}`;
+        const vendorItemId = crypto.randomUUID();
+        await db.insert(vendorItems).values({
+          id: vendorItemId,
+          vendorId,
+          inventoryItemId,
+          vendorSku,
+          purchaseUnitId,
+          caseSize: 6,
+          lastPrice: 4.0,
+          lastCasePrice: 24.0,
+          active: 1,
+        });
+
+        // Create a draft purchase order
+        const poId = crypto.randomUUID();
+        await db.insert(purchaseOrders).values({
+          id: poId,
+          companyId,
+          storeId,
+          vendorId,
+          status: "ordered",
+          expectedDate: new Date(),
+        });
+
+        // Create a draft receipt linked to the PO
+        const receiptId = crypto.randomUUID();
+        await db.insert(receipts).values({
+          id: receiptId,
+          companyId,
+          storeId,
+          purchaseOrderId: poId,
+          status: "draft",
+          receivedAt: new Date(),
+        });
+
+        // Create a receipt line linking receipt → vendor item
+        const lineId = crypto.randomUUID();
+        await db.execute(
+          sql`INSERT INTO receipt_lines (id, receipt_id, vendor_item_id, received_qty, unit_id, price_each)
+              VALUES (${lineId}, ${receiptId}, ${vendorItemId}, 10, ${purchaseUnitId}, 4.0)`
+        );
+
+        return res.json({ receiptId, vendorItemId, poId, inventoryItemId });
+      } catch (err: any) {
+        console.error("[dev/test/receipt-state POST]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    /**
+     * DELETE /api/dev/test/receipt-state/:receiptId
+     * Cleans up rows seeded by POST /api/dev/test/receipt-state.
+     * Removes receipt lines, receipt, PO, and vendor item.
+     */
+    app.delete("/api/dev/test/receipt-state/:receiptId", requireAuth, async (req, res) => {
+      try {
+        const { receiptId } = req.params;
+        const { vendorItemId, poId } = req.query as { vendorItemId?: string; poId?: string };
+
+        await db.execute(sql`DELETE FROM receipt_lines WHERE receipt_id = ${receiptId}`);
+        await db.delete(receipts).where(eq(receipts.id, receiptId));
+        if (poId) await db.delete(purchaseOrders).where(eq(purchaseOrders.id, poId));
+        if (vendorItemId) await db.delete(vendorItems).where(eq(vendorItems.id, vendorItemId));
+
+        return res.json({ deleted: true, receiptId });
+      } catch (err: any) {
+        console.error("[dev/test/receipt-state DELETE]", err);
         return res.status(500).json({ error: err.message });
       }
     });
