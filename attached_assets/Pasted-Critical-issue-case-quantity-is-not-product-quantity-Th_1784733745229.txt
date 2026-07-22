@@ -1,0 +1,283 @@
+Critical issue: case quantity is not product quantity
+
+The current savings formula is described as:
+
+(sourceUnitPrice − targetUnitPrice) × targetCaseSize
+
+That appears to calculate savings for one target case, not the whole PO line. It also does not address what happens when the source and target case packs differ.
+
+Example:
+
+Source: 4 cases × 30 lb = 120 lb
+Target: 4 cases × 20 lb = 80 lb
+
+Moving the numeric quantity of 4 unchanged would under-order by 40 pounds.
+
+The opposite case could create unwanted over-ordering.
+
+Safest MVP rule
+
+Only allow automatic routing when:
+
+source effective pack quantity
+=
+target effective pack quantity
+
+and the base units are compatible.
+
+Effective pack quantity must include:
+
+caseSize × innerPackSize
+
+where applicable.
+
+Different-pack alternatives can still appear in the dialog, but should show:
+
+Different pack size — manual quantity review required.
+
+Do not automatically route them during the initial M3B release.
+
+Future different-pack calculation
+
+When different-pack routing is added, preserve total base-unit demand:
+
+required units =
+source order quantity × source effective pack quantity
+
+target case quantity =
+round up(required units ÷ target effective pack quantity)
+
+Then calculate:
+
+projected savings =
+source extended line cost − target extended line cost
+
+The UI would also need to disclose any overage caused by rounding to full cases.
+
+Confirm the savings baseline
+
+Projected savings should compare against the price actually present on the source PO line—not necessarily the latest current value on the source vendor_item.
+
+The proper comparison is generally:
+
+Source quantity × source PO line case price
+versus
+Target quantity × target current case price
+
+The PO line represents what the manager is currently about to buy.
+
+If the source PO line has no reliable price, the system can fall back to the vendor-item price, but that should make the savings estimate less reliable.
+
+At minimum, verify:
+
+Quantity is included in the savings total.
+Full effective pack geometry is used.
+The source baseline comes from the PO line where possible.
+The audit distinguishes savings per case from total projected line savings.
+
+This should be checked before anything else.
+
+Follow-up priority
+P0 — Complete before VPS deployment or beta use
+#474 Concurrent routing race safety
+
+Two simultaneous requests must not both route the same source line.
+
+Use database-level protections such as:
+
+Transactional row locks
+A unique constraint on the original routed line
+Atomic deletion or status transition
+Idempotency record created inside the same transaction
+
+Application-level checks alone are insufficient.
+
+#477 Concurrent destination quantity safety
+
+Two users may route products into the same destination PO at nearly the same time.
+
+Quantity merging must use:
+
+Row locking,
+Atomic increments,
+or an upsert backed by an appropriate unique constraint.
+
+The system must never use:
+
+read quantity
+→ add quantity in application
+→ write result
+
+without locking, because one update can overwrite another.
+
+#476 Destination PO compatibility
+
+“Existing pending PO for that vendor” is too broad.
+
+A destination PO should be compatible by at least:
+
+Company
++ location
++ vendor
++ pending/draft status
++ required delivery or order date
++ purchasing cycle, if available
+
+Also exclude a PO that:
+
+Has been submitted
+Has been received
+Has been canceled
+Has already been exported for upload, unless the user explicitly chooses it
+Belongs to another location
+Represents an old or unrelated order cycle
+
+When multiple compatible pending POs exist, do not silently choose the first database result. Either:
+
+Create a new draft PO, or
+Ask the operator which PO should receive the lines.
+
+For MVP, creating a new destination PO when the match is ambiguous is safer.
+
+Verify target-vendor authorization
+
+The recap explicitly mentions validation of source PO company ownership, but also confirm server-side validation that:
+
+Target vendor belongs to the company
+Target vendor is available to the selected location
+Target vendor item belongs to that vendor
+Target vendor item is active
+Inventory item belongs to the company
+The user has purchasing authority for the location
+
+“Same inventory item” alone is not sufficient authorization.
+
+Idempotency semantics
+
+The current behavior for repeating the same request is good.
+
+Also test:
+
+First request:
+Original line → Vendor A
+
+Second request:
+Same original line → Vendor B
+
+That should return a clear conflict or the original routing result. It must not silently treat two materially different requests as equivalent.
+
+The idempotency identity should include enough information to distinguish a retry from a new contradictory instruction.
+
+P1 — Complete before broader user testing
+#472 Display unreliable-savings warning
+
+This is necessary.
+
+The backend already records savingsReliable = 0, but invisible reliability data does not protect the user.
+
+Show something like:
+
+Estimated savings may be inaccurate because the current vendor price is more than 14 days old.
+
+Keep Paid Price and freshness separate:
+
+Paid Price
+Stale — 23 days old
+#473 No source-price history
+
+Define the behavior precisely.
+
+Recommended:
+
+Source PO line has a valid price, but no price history: allow routing; mark savings as unverified.
+Source vendor item has a price but no pricedAt: allow with explicit warning; do not present the savings as reliable.
+No usable source price exists: allow a manual vendor move only if desired, but do not show projected savings.
+Target price missing or stale: block savings-based routing under current M3B rules.
+
+Do not manufacture a zero-dollar source baseline.
+
+#475 Empty source PO
+
+Do not silently delete or cancel the source PO when all lines are routed.
+
+Keep it as a draft and show:
+
+All items from this purchase order were routed to other vendor POs.
+
+Include links to the destination POs and preserve the routing history.
+
+A later cleanup action can allow the user to cancel or delete the empty draft.
+
+Audit snapshot completeness
+
+Confirm each routing audit stores enough information to reconstruct the decision:
+
+Source and target vendor-item IDs
+Source and target vendor names
+Source and target SKUs
+Source and target case prices
+Source and target normalized unit prices
+Source and target pack geometry
+Price source and price date for both
+Original quantity
+Resulting destination quantity
+Projected savings
+Reliability flag
+Source and destination PO IDs
+Source and destination line IDs
+Operator ID and snapshotted name
+Timestamp
+
+A single savings number is not enough to explain the decision later.
+
+P2 — Maintenance and cleanup
+#478 Timing-sensitive boundary test
+
+Fix this soon because flaky tests erode trust in the full 765-test suite.
+
+Use a fixed clock or injected time rather than calling the live system clock on both sides of the 14-day boundary.
+
+#470 Historical operator-name backfill
+
+Low priority unless meaningful routing records already exist.
+
+Since there are no real production customers, it may be better to:
+
+Backfill where the user still exists
+Leave genuinely unresolvable historical rows alone
+Avoid spending much engineering time on synthetic or development history
+One product-language caveat
+
+The success message should say:
+
+Projected product-price savings
+
+rather than simply:
+
+Savings
+
+M3B still does not account for:
+
+Vendor minimums
+Delivery fees
+Fuel charges
+Rebates
+Delivery schedules
+Availability
+Product yield differences
+
+The resulting PO screen should show vendor subtotals and remind the operator to confirm those conditions before uploading the order.
+
+Recommended closeout order
+Correct and test quantity, pack and savings calculations.
+Complete #474 and #477 concurrency protections.
+Complete #476 destination-PO compatibility.
+Verify target vendor/company/location authorization.
+Add #472 UI reliability warning.
+Define and implement #473.
+Add #475 empty-state handling.
+Fix #478.
+Treat #470 as optional cleanup.
+Deploy and smoke-test M3B on the VPS.
+
+The largest risk is not the routing UI. It is moving the same number of cases between products whose cases contain different quantities. Resolve that explicitly, and the remaining follow-ups are manageable hardening work.
