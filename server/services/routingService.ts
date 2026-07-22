@@ -194,21 +194,60 @@ export function computeProjectedSavingsPerCase(
 }
 
 /**
- * Determine whether the projected savings figure is reliable.
+ * Build the list of reasons why the projected savings figure may be unreliable.
+ * An empty array means the figure is fully trustworthy.
  *
- * The savings formula uses the source vendor item's lastPrice as the "from"
- * price.  If that price is stale (older than 14 days), the savings figure
- * may be a phantom — showing large apparent savings that no longer exist
- * because the source vendor's price has changed since the last update.
+ * Reason codes (matches the savingsReliabilityReasons DB column values):
+ *   "source_price_stale"    — source pricedAt is older than 14 days or null.
+ *                             Savings may be a phantom if the vendor's price has
+ *                             since changed.
+ *   "source_price_fallback" — line.priceEach was null/zero so sourceVi.lastPrice
+ *                             was used as the baseline instead of the PO line price.
+ *   "missing_price_history" — no price data exists at all (fromUnitPrice ≤ 0).
+ *   "unknown_price_source"  — priceSource is "legacy_unknown" or absent; provenance
+ *                             of the price is uncertain.
  *
- * Returns true  → both sides of the comparison are fresh; savings figure is trustworthy.
- * Returns false → source price is stale; savings figure should be treated as unreliable.
- *
- * The target VI is already gated by checkTargetViEligibility (stale target VI
- * is ineligible for routing entirely), so only the source side needs the check here.
+ * @param sourcePricedAt    When the source VI price was last recorded.
+ * @param sourcePriceSource How the source VI price was obtained.
+ * @param usingFallbackPrice True when line.priceEach was unavailable and
+ *                           sourceVi.lastPrice was used as the baseline instead.
+ * @param fromUnitPrice     The resolved source unit price (after baseline selection).
  */
-export function isSavingsReliable(sourcePricedAt: Date | null | undefined): boolean {
-  return !isPriceStale(sourcePricedAt);
+export function buildSavingsReliabilityReasons(
+  sourcePricedAt: Date | null | undefined,
+  sourcePriceSource: string | null | undefined,
+  usingFallbackPrice: boolean,
+  fromUnitPrice: number,
+): string[] {
+  const reasons: string[] = [];
+  if (isPriceStale(sourcePricedAt)) {
+    reasons.push("source_price_stale");
+  }
+  if (usingFallbackPrice) {
+    reasons.push("source_price_fallback");
+  }
+  if (!fromUnitPrice || fromUnitPrice <= 0) {
+    reasons.push("missing_price_history");
+  }
+  if (!sourcePriceSource || sourcePriceSource === "legacy_unknown") {
+    reasons.push("unknown_price_source");
+  }
+  return reasons;
+}
+
+/**
+ * Compute the total projected savings for the entire routed quantity.
+ *
+ *   projectedLineSavings = projectedSavingsPerCase × orderedQty
+ *
+ * This gives managers the aggregate dollar impact of the routing decision,
+ * not just the per-case rate.
+ */
+export function computeProjectedLineSavings(
+  savingsPerCase: number,
+  orderedQty: number,
+): number {
+  return savingsPerCase * orderedQty;
 }
 
 /**

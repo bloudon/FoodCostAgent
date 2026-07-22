@@ -744,6 +744,8 @@ async function runStartupMigrations() {
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS uq_routing_audit_line_vi     ON po_routing_audit (source_po_line_id, vendor_item_id)`);
     await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS operator_name varchar`);
     await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS savings_reliable integer`);
+    await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS projected_line_savings real`);
+    await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS savings_reliability_reasons text`);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

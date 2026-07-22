@@ -722,6 +722,8 @@ export const poRoutingAudit = pgTable("po_routing_audit", {
   orderedQty: real("ordered_qty").notNull(),
   projectedSavingsPerCase: real("projected_savings_per_case"),
   savingsReliable: integer("savings_reliable"),
+  projectedLineSavings: real("projected_line_savings"),
+  savingsReliabilityReasons: text("savings_reliability_reasons"),
 }, (table) => ({
   companyIdx: index("po_routing_audit_company_idx").on(table.companyId),
   sourcePoIdx: index("po_routing_audit_source_po_idx").on(table.sourcePoId),

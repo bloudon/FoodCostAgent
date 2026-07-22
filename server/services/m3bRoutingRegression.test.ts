@@ -25,11 +25,12 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { eq, and } from "drizzle-orm";
 import {
+  buildSavingsReliabilityReasons,
   checkInventoryItemMatch,
   checkPackSizeCompatibility,
   checkTargetViEligibility,
+  computeProjectedLineSavings,
   computeProjectedSavingsPerCase,
-  isSavingsReliable,
   mergeOrderedQty,
   routingIdempotencyKey,
   isAlreadyRouted,
@@ -503,57 +504,173 @@ describe("Stale-threshold regression guard — 14-day boundary", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Section 9: Savings reliability — source price staleness flagging
+// Section 9: Savings reliability — buildSavingsReliabilityReasons reason codes
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("Savings reliability — source price staleness", () => {
-  it("savingsReliable=true when source price is fresh (1 day old)", () => {
-    expect(isSavingsReliable(daysAgoDate(1))).toBe(true);
+describe("buildSavingsReliabilityReasons — empty array when fully reliable", () => {
+  it("returns [] when source is fresh, known, PO line price used, and price > 0", () => {
+    const reasons = buildSavingsReliabilityReasons(
+      daysAgoDate(1),   // fresh
+      "receipt",        // known source
+      false,            // PO line price used (not fallback)
+      3.00,             // valid price
+    );
+    expect(reasons).toHaveLength(0);
   });
 
-  it("savingsReliable=true when source price is exactly 14 days old (aging — still reliable)", () => {
-    expect(isSavingsReliable(daysAgoDate(14))).toBe(true);
+  it("returns [] when priced exactly 14 days ago (aging — still reliable)", () => {
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(14), "manual", false, 2.50);
+    expect(reasons).toHaveLength(0);
+  });
+});
+
+describe("buildSavingsReliabilityReasons — source_price_stale", () => {
+  it("adds 'source_price_stale' when pricedAt is 15 days ago (beyond threshold)", () => {
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(15), "receipt", false, 3.00);
+    expect(reasons).toContain("source_price_stale");
   });
 
-  it("savingsReliable=true when source price is 13 days old", () => {
-    expect(isSavingsReliable(daysAgoDate(13))).toBe(true);
+  it("adds 'source_price_stale' when pricedAt is null", () => {
+    const reasons = buildSavingsReliabilityReasons(null, "receipt", false, 3.00);
+    expect(reasons).toContain("source_price_stale");
   });
 
-  it("savingsReliable=false when source price is 15 days old (stale)", () => {
-    expect(isSavingsReliable(daysAgoDate(15))).toBe(false);
+  it("adds 'source_price_stale' when pricedAt is undefined", () => {
+    const reasons = buildSavingsReliabilityReasons(undefined, "receipt", false, 3.00);
+    expect(reasons).toContain("source_price_stale");
   });
 
-  it("savingsReliable=false when source price is null (no timestamp = stale)", () => {
-    expect(isSavingsReliable(null)).toBe(false);
+  it("does NOT add 'source_price_stale' for a 13-day-old price", () => {
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(13), "receipt", false, 3.00);
+    expect(reasons).not.toContain("source_price_stale");
+  });
+});
+
+describe("buildSavingsReliabilityReasons — source_price_fallback", () => {
+  it("adds 'source_price_fallback' when usingFallbackPrice=true", () => {
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(1), "receipt", true, 2.00);
+    expect(reasons).toContain("source_price_fallback");
   });
 
-  it("savingsReliable=false when source price is undefined", () => {
-    expect(isSavingsReliable(undefined)).toBe(false);
+  it("does NOT add 'source_price_fallback' when PO line price was used", () => {
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(1), "receipt", false, 2.00);
+    expect(reasons).not.toContain("source_price_fallback");
+  });
+});
+
+describe("buildSavingsReliabilityReasons — missing_price_history", () => {
+  it("adds 'missing_price_history' when fromUnitPrice is 0", () => {
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(1), "receipt", true, 0);
+    expect(reasons).toContain("missing_price_history");
   });
 
-  it("savingsReliable=false when source price is 90 days old (well beyond threshold)", () => {
-    expect(isSavingsReliable(daysAgoDate(90))).toBe(false);
+  it("adds 'missing_price_history' when fromUnitPrice is negative", () => {
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(1), "receipt", true, -1);
+    expect(reasons).toContain("missing_price_history");
   });
 
-  it("threshold boundary: 14 days is reliable, 15 days is not", () => {
-    expect(isSavingsReliable(daysAgoDate(14))).toBe(true);
-    expect(isSavingsReliable(daysAgoDate(15))).toBe(false);
+  it("does NOT add 'missing_price_history' when price is valid and positive", () => {
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(1), "receipt", false, 0.01);
+    expect(reasons).not.toContain("missing_price_history");
+  });
+});
+
+describe("buildSavingsReliabilityReasons — unknown_price_source", () => {
+  it("adds 'unknown_price_source' when priceSource is 'legacy_unknown'", () => {
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(1), "legacy_unknown", false, 3.00);
+    expect(reasons).toContain("unknown_price_source");
   });
 
-  it("reliable savings can still be negative (target is more expensive — not a phantom)", () => {
-    // Savings reliability is about price freshness, not sign of savings value.
+  it("adds 'unknown_price_source' when priceSource is null", () => {
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(1), null, false, 3.00);
+    expect(reasons).toContain("unknown_price_source");
+  });
+
+  it("adds 'unknown_price_source' when priceSource is undefined", () => {
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(1), undefined, false, 3.00);
+    expect(reasons).toContain("unknown_price_source");
+  });
+
+  it("does NOT add 'unknown_price_source' for 'receipt' source", () => {
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(1), "receipt", false, 3.00);
+    expect(reasons).not.toContain("unknown_price_source");
+  });
+
+  it("does NOT add 'unknown_price_source' for 'order_guide_import' source", () => {
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(1), "order_guide_import", false, 3.00);
+    expect(reasons).not.toContain("unknown_price_source");
+  });
+});
+
+describe("buildSavingsReliabilityReasons — multiple reasons can combine", () => {
+  it("stale + fallback + missing_history when no price data and stale timestamp", () => {
+    const reasons = buildSavingsReliabilityReasons(
+      daysAgoDate(30), // stale
+      "receipt",
+      true,            // fallback used
+      0,               // no price found
+    );
+    expect(reasons).toContain("source_price_stale");
+    expect(reasons).toContain("source_price_fallback");
+    expect(reasons).toContain("missing_price_history");
+  });
+
+  it("all four reasons present in worst-case scenario", () => {
+    const reasons = buildSavingsReliabilityReasons(
+      null,             // stale (null timestamp)
+      "legacy_unknown", // unknown source
+      true,             // fallback used
+      0,                // no price
+    );
+    expect(reasons).toContain("source_price_stale");
+    expect(reasons).toContain("source_price_fallback");
+    expect(reasons).toContain("missing_price_history");
+    expect(reasons).toContain("unknown_price_source");
+    expect(reasons).toHaveLength(4);
+  });
+
+  it("reliable savings can still be negative (target more expensive — not phantom)", () => {
+    // Reliability is about price freshness/provenance, not sign of savings.
     // A reliable negative savings correctly tells the operator the target costs more.
-    const freshPricedAt = daysAgoDate(3);
-    expect(isSavingsReliable(freshPricedAt)).toBe(true);
-    const savings = computeProjectedSavingsPerCase(2.0, 3.0, 40); // target is more expensive
+    const reasons = buildSavingsReliabilityReasons(daysAgoDate(3), "receipt", false, 2.00);
+    expect(reasons).toHaveLength(0); // reliable
+    const savings = computeProjectedSavingsPerCase(2.0, 3.0, 40); // target more expensive
     expect(savings).toBeCloseTo(-40.0);
   });
+});
 
-  it("stale source price means savings figure is unreliable even if mathematically large", () => {
-    // If source price was $5/unit 30 days ago but is now $2/unit, the $3/unit
-    // apparent saving vs a $4/unit target is a phantom — target is actually more expensive.
-    const stalePricedAt = daysAgoDate(30);
-    expect(isSavingsReliable(stalePricedAt)).toBe(false);
+// ─────────────────────────────────────────────────────────────────────────────
+// Section 9b: computeProjectedLineSavings — aggregate savings for routed qty
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("computeProjectedLineSavings — total savings across ordered quantity", () => {
+  it("multiplies savings-per-case by orderedQty", () => {
+    // $40/case savings × 3 cases ordered = $120 total
+    expect(computeProjectedLineSavings(40, 3)).toBeCloseTo(120.0);
+  });
+
+  it("negative savings-per-case produce negative line savings (target more expensive)", () => {
+    expect(computeProjectedLineSavings(-40, 3)).toBeCloseTo(-120.0);
+  });
+
+  it("zero savings-per-case produces zero line savings", () => {
+    expect(computeProjectedLineSavings(0, 10)).toBeCloseTo(0.0);
+  });
+
+  it("orderedQty=1 returns savings-per-case unchanged", () => {
+    expect(computeProjectedLineSavings(25.50, 1)).toBeCloseTo(25.50);
+  });
+
+  it("fractional quantities produce precise results", () => {
+    // $10/case × 2.5 cases = $25
+    expect(computeProjectedLineSavings(10, 2.5)).toBeCloseTo(25.0);
+  });
+
+  it("scales linearly with orderedQty", () => {
+    const perCase = 15.00;
+    expect(computeProjectedLineSavings(perCase, 1)).toBeCloseTo(15.0);
+    expect(computeProjectedLineSavings(perCase, 5)).toBeCloseTo(75.0);
+    expect(computeProjectedLineSavings(perCase, 10)).toBeCloseTo(150.0);
   });
 });
 

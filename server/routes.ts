@@ -15,7 +15,7 @@ import { TheoreticalUsageService } from "./services/theoreticalUsage";
 import { parseCompoundPackSize } from "./integrations/csv/CsvOrderGuide";
 import { deriveUnitPrice } from "./services/orderGuideProcessor";
 import { recordVendorPrice, isPriceStale, getPriceFreshness, effectivePackQty, isIncompatibleUnit } from "./services/vendorPriceService";
-import { checkInventoryItemMatch, checkPackSizeCompatibility, checkTargetViEligibility, computeProjectedSavingsPerCase, isSavingsReliable, mergeOrderedQty, routingIdempotencyKey, shouldMergeIntoExistingLine } from "./services/routingService";
+import { buildSavingsReliabilityReasons, checkInventoryItemMatch, checkPackSizeCompatibility, checkTargetViEligibility, computeProjectedLineSavings, computeProjectedSavingsPerCase, mergeOrderedQty, routingIdempotencyKey, shouldMergeIntoExistingLine } from "./services/routingService";
 import { createRoutingPOGuard } from "./lib/routeLinesHandler";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
@@ -11501,6 +11501,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             innerPackSize: vendorItems.innerPackSize,
             packUom: vendorItems.packUom,
             pricedAt: vendorItems.pricedAt,
+            priceSource: vendorItems.priceSource,
           })
           .from(vendorItems)
           .where(inArray(vendorItems.id, sourceViIds))
@@ -11641,13 +11642,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? targetVi.lastCasePrice
           : toUnitPrice * toCaseSize;
         const fromCaseSize = sourceVi?.caseSize || 1;
-        // Use current vendorItems.lastPrice as source snapshot (not stale PO line price)
-        const fromUnitPrice = sourceVi?.lastPrice ?? line.priceEach;
+        // Use the PO line price (what was entered when the order was created) as the source baseline.
+        // Fall back to sourceVi.lastPrice only when line.priceEach is null/zero.
+        const usingFallbackPrice = !line.priceEach || line.priceEach <= 0;
+        const fromUnitPrice = usingFallbackPrice
+          ? (sourceVi?.lastPrice ?? 0)
+          : line.priceEach;
         const fromCasePrice = sourceVi?.lastCasePrice != null && sourceVi.lastCasePrice > 0
           ? sourceVi.lastCasePrice
           : fromUnitPrice * fromCaseSize;
         const projectedSavingsPerCase = computeProjectedSavingsPerCase(fromUnitPrice, toUnitPrice, toCaseSize);
-        const savingsReliable = isSavingsReliable(sourceVi?.pricedAt);
+        const projectedLineSavings = computeProjectedLineSavings(projectedSavingsPerCase, line.orderedQty);
+        const savingsReliabilityReasons = buildSavingsReliabilityReasons(
+          sourceVi?.pricedAt,
+          sourceVi?.priceSource,
+          usingFallbackPrice,
+          fromUnitPrice,
+        );
+        const savingsReliable = savingsReliabilityReasons.length === 0;
 
         validLines.push({
           poLineId: lr.poLineId,
@@ -11661,7 +11673,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           toCaseSize,
           toUnitId: targetVi.purchaseUnitId || line.unitId,
           projectedSavingsPerCase,
+          projectedLineSavings,
           savingsReliable,
+          savingsReliabilityReasons,
         });
       }
 
@@ -11821,6 +11835,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 orderedQty: vl.line.orderedQty,
                 projectedSavingsPerCase: vl.projectedSavingsPerCase,
                 savingsReliable: vl.savingsReliable ? 1 : 0,
+                projectedLineSavings: vl.projectedLineSavings,
+                savingsReliabilityReasons: JSON.stringify(vl.savingsReliabilityReasons),
               })
               .onConflictDoNothing()
               .returning({ id: poRoutingAudit.id });

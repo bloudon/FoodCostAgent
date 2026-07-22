@@ -2402,3 +2402,18 @@ END $$;
 -- Prevents incorrect/missing names when users are renamed or deleted.
 -- =============================================================================
 ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS operator_name varchar;
+
+-- =============================================================================
+-- v062 — Task #481: projected_line_savings and savings_reliability_reasons on po_routing_audit
+-- projected_line_savings = projectedSavingsPerCase × orderedQty (aggregate impact per routed line)
+-- savings_reliability_reasons = JSON text array of reason codes explaining unreliable savings
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v062') THEN
+    ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS projected_line_savings real;
+    ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS savings_reliability_reasons text;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v062', 'Task #481: projected_line_savings and savings_reliability_reasons on po_routing_audit');
+  END IF;
+END $$;
