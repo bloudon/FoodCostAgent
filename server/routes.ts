@@ -11781,6 +11781,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // Write per-line audit row — ON CONFLICT DO NOTHING is the final DB-level
             // safety net enforced by uq_routing_audit_line_vi (source_po_line_id, vendor_item_id)
+            const reqUser = (req as any).user;
+            const snapshotOperatorName = reqUser
+              ? [reqUser.firstName, reqUser.lastName].filter(Boolean).join(" ") || reqUser.email || reqUser.name || null
+              : null;
             const [auditRow] = await tx
               .insert(poRoutingAudit)
               .values({
@@ -11791,6 +11795,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 vendorItemId: vl.targetViRow.vi.id,
                 inventoryItemId: vl.inventoryItemId,
                 userId,
+                operatorName: snapshotOperatorName,
                 fromUnitPrice: vl.fromUnitPrice,
                 toUnitPrice: vl.toUnitPrice,
                 fromCasePrice: vl.fromCasePrice,
@@ -11877,6 +11882,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           projectedSavingsPerCase: poRoutingAudit.projectedSavingsPerCase,
           orderedQty: poRoutingAudit.orderedQty,
           userId: poRoutingAudit.userId,
+          operatorName: poRoutingAudit.operatorName,
           inventoryItemName: inventoryItems.name,
           userFirstName: users.firstName,
           userLastName: users.lastName,
@@ -11896,13 +11902,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         )
         .orderBy(desc(poRoutingAudit.routedAt));
 
-      const enriched = auditRows.map((row) => ({
-        ...row,
-        direction: row.sourcePoId === poId ? "outbound" : "inbound",
-        operatorName: row.userFirstName
+      const enriched = auditRows.map((row) => {
+        // Prefer the snapshotted name stored at routing time. Fall back to the
+        // live join result for rows created before this column existed, and use
+        // "Deleted user" when the user row is gone entirely.
+        const liveOperatorName = row.userFirstName
           ? `${row.userFirstName}${row.userLastName ? ` ${row.userLastName}` : ""}`
-          : (row.userEmail ?? "Unknown"),
-      }));
+          : (row.userEmail ?? null);
+        return {
+          ...row,
+          direction: row.sourcePoId === poId ? "outbound" : "inbound",
+          operatorName: row.operatorName ?? liveOperatorName ?? (row.userId ? "Deleted user" : "Unknown"),
+        };
+      });
 
       return res.json({ data: enriched });
     } catch (err: any) {

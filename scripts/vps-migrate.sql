@@ -2387,3 +2387,9 @@ DO $$ BEGIN
       VALUES ('v060', 'M3B: po_routing_audit table — per-line vendor routing audit trail');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v061 — po_routing_audit: snapshot operator_name at routing time
+-- Prevents incorrect/missing names when users are renamed or deleted.
+-- =============================================================================
+ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS operator_name varchar;
