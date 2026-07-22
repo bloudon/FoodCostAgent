@@ -21809,6 +21809,181 @@ Human Handoff:
         return res.status(500).json({ error: err.message });
       }
     });
+
+    /**
+     * POST /api/dev/test/po-route-fixture
+     * Seeds the complete state needed to exercise POST /api/purchase-orders/:id/route-lines:
+     *   - one test inventory item
+     *   - vendorItemA (source vendor, casePrice=$50, fresh receipt price)
+     *   - vendorItemB (target vendor, casePrice=$35, fresh receipt price, same unit → eligible)
+     *   - a pending purchase order for vendorA at the company's first store
+     *   - one PO line for vendorItemA (caseQty=5, priceEach=$50)
+     *
+     * Returns:
+     *   { inventoryItemId, vendorItemAId, vendorItemBId, vendorAId, vendorBId, poId, poLineId, storeId, unitId }
+     */
+    app.post("/api/dev/test/po-route-fixture", requireAuth, async (req, res) => {
+      try {
+        const companyId = (req as any).companyId;
+        if (!companyId) return res.status(400).json({ error: "Company context required" });
+
+        const vendorList = await db.query.vendors.findMany({
+          where: (t, { eq, and, notLike }) => and(
+            eq(t.companyId, companyId),
+            notLike(t.name, "%Misc Grocery%"),
+          ),
+          columns: { id: true, name: true },
+          limit: 2,
+        });
+        if (vendorList.length < 2) {
+          return res.status(422).json({ error: "Need at least 2 non-Misc-Grocery vendors for this company" });
+        }
+        const [vendorA, vendorB] = vendorList;
+
+        const store = await db.query.companyStores.findFirst({
+          where: (t, { eq }) => eq(t.companyId, companyId),
+          columns: { id: true },
+        });
+        if (!store) return res.status(422).json({ error: "No store found for company" });
+
+        const unit = await db.query.units.findFirst({
+          where: (t, { or, like }) => or(like(t.name, "%pound%"), like(t.abbreviation, "lb%")),
+          columns: { id: true },
+        }) ?? await db.query.units.findFirst({ columns: { id: true } });
+        if (!unit) return res.status(422).json({ error: "No unit found" });
+
+        const inventoryItemId = crypto.randomUUID();
+        await db.insert(inventoryItems).values({
+          id: inventoryItemId,
+          companyId,
+          name: `E2E Route Test Item ${Date.now()}`,
+          unitId: unit.id,
+          caseSize: 1,
+          active: 1,
+          pricePerUnit: 0,
+          avgCostPerUnit: 0,
+          yieldPercent: 100,
+          isPowerItem: 0,
+          isVariableWeight: 0,
+        });
+
+        await db.insert(storeInventoryItems).values({
+          id: crypto.randomUUID(),
+          companyId,
+          storeId: store.id,
+          inventoryItemId,
+          active: 1,
+        }).onConflictDoNothing();
+
+        const vendorItemAId = crypto.randomUUID();
+        await db.insert(vendorItems).values({
+          id: vendorItemAId,
+          vendorId: vendorA.id,
+          inventoryItemId,
+          purchaseUnitId: unit.id,
+          caseSize: 1,
+          lastPrice: 50,
+          lastCasePrice: 50,
+          priceSource: "receipt",
+          pricedAt: new Date(),
+          active: 1,
+        });
+
+        const vendorItemBId = crypto.randomUUID();
+        await db.insert(vendorItems).values({
+          id: vendorItemBId,
+          vendorId: vendorB.id,
+          inventoryItemId,
+          purchaseUnitId: unit.id,
+          caseSize: 1,
+          lastPrice: 35,
+          lastCasePrice: 35,
+          priceSource: "receipt",
+          pricedAt: new Date(),
+          active: 1,
+        });
+
+        const poId = crypto.randomUUID();
+        await db.insert(purchaseOrders).values({
+          id: poId,
+          companyId,
+          storeId: store.id,
+          vendorId: vendorA.id,
+          status: "pending",
+        });
+
+        const poLineId = crypto.randomUUID();
+        await db.insert(poLines).values({
+          id: poLineId,
+          purchaseOrderId: poId,
+          vendorItemId: vendorItemAId,
+          orderedQty: 5,
+          caseQuantity: 5,
+          unitId: unit.id,
+          priceEach: 50,
+        });
+
+        return res.json({
+          inventoryItemId,
+          vendorItemAId,
+          vendorItemBId,
+          vendorAId: vendorA.id,
+          vendorBId: vendorB.id,
+          poId,
+          poLineId,
+          storeId: store.id,
+          unitId: unit.id,
+        });
+      } catch (err: any) {
+        console.error("[dev/test/po-route-fixture POST]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    /**
+     * DELETE /api/dev/test/po-route-fixture/:poId
+     * Tears down all rows created by POST /api/dev/test/po-route-fixture.
+     * Query params: inventoryItemId (required) — used to locate vendor items and the item itself.
+     */
+    app.delete("/api/dev/test/po-route-fixture/:poId", requireAuth, async (req, res) => {
+      try {
+        const { poId } = req.params;
+        const { inventoryItemId } = req.query as { inventoryItemId?: string };
+        if (!inventoryItemId) {
+          return res.status(400).json({ error: "inventoryItemId query param required" });
+        }
+
+        const auditRows = await db.query.poRoutingAudit.findMany({
+          where: (t, { eq }) => eq(t.sourcePoId, poId),
+          columns: { destinationPoId: true },
+        });
+        await db.delete(poRoutingAudit).where(eq(poRoutingAudit.sourcePoId, poId));
+
+        const destPoIds = [...new Set(auditRows.map((r) => r.destinationPoId))];
+        for (const destPoId of destPoIds) {
+          await db.delete(poLines).where(eq(poLines.purchaseOrderId, destPoId));
+          await db.delete(purchaseOrders).where(eq(purchaseOrders.id, destPoId));
+        }
+
+        await db.delete(poLines).where(eq(poLines.purchaseOrderId, poId));
+        await db.delete(purchaseOrders).where(eq(purchaseOrders.id, poId));
+
+        const viRows = await db.query.vendorItems.findMany({
+          where: (t, { eq }) => eq(t.inventoryItemId, inventoryItemId),
+          columns: { id: true },
+        });
+        if (viRows.length > 0) {
+          await db.delete(vendorItems).where(inArray(vendorItems.id, viRows.map((v) => v.id)));
+        }
+        await db.delete(storeInventoryItems).where(eq(storeInventoryItems.inventoryItemId, inventoryItemId));
+        await db.delete(inventoryItems).where(eq(inventoryItems.id, inventoryItemId));
+
+        return res.json({ deleted: true, poId, inventoryItemId });
+      } catch (err: any) {
+        console.error("[dev/test/po-route-fixture DELETE]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
   }
 
   const httpServer = createServer(app);
