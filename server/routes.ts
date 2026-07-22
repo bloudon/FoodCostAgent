@@ -21844,6 +21844,13 @@ Human Handoff:
         const companyId = (req as any).companyId;
         if (!companyId) return res.status(400).json({ error: "Company context required" });
 
+        // Optional: seed the target vendor item (vendorB) with a pricedAt that is
+        // this many days in the past — used by stale-price rejection tests.
+        const staleDaysForTarget: number | undefined =
+          typeof req.body?.staleDaysForTarget === "number" && req.body.staleDaysForTarget > 0
+            ? req.body.staleDaysForTarget
+            : undefined;
+
         const vendorList = await db.query.vendors.findMany({
           where: (t, { eq, and, notLike }) => and(
             eq(t.companyId, companyId),
@@ -21906,6 +21913,12 @@ Human Handoff:
           active: 1,
         });
 
+        // pricedAt for the target vendor item: stale if staleDaysForTarget is set,
+        // otherwise fresh (now).
+        const targetPricedAt = staleDaysForTarget != null
+          ? new Date(Date.now() - staleDaysForTarget * 86_400_000)
+          : new Date();
+
         const vendorItemBId = crypto.randomUUID();
         await db.insert(vendorItems).values({
           id: vendorItemBId,
@@ -21916,7 +21929,7 @@ Human Handoff:
           lastPrice: 35,
           lastCasePrice: 35,
           priceSource: "receipt",
-          pricedAt: new Date(),
+          pricedAt: targetPricedAt,
           active: 1,
         });
 
