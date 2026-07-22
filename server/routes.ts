@@ -22014,6 +22014,62 @@ Human Handoff:
         return res.status(500).json({ error: err.message });
       }
     });
+
+    /**
+     * POST /api/dev/test/ephemeral-user
+     * Creates a temporary company_admin user for the authenticated user's company.
+     * Used by integration tests that need to act as a specific user and then delete
+     * that user to verify name-snapshotting behaviour.
+     *
+     * Returns:
+     *   { userId, email, password, firstName, lastName }
+     */
+    app.post("/api/dev/test/ephemeral-user", requireAuth, async (req, res) => {
+      try {
+        const companyId = (req as any).companyId;
+        if (!companyId) return res.status(400).json({ error: "Company context required" });
+
+        const firstName = "EphemeralTest";
+        const lastName  = `User${Date.now()}`;
+        const email     = `ephemeral-test-${Date.now()}@fnb-test-only.invalid`;
+        const password  = "TestPassword123!";
+        const passwordHash = await hashPassword(password);
+        const userId = crypto.randomUUID();
+
+        await db.insert(users).values({
+          id: userId,
+          email,
+          passwordHash,
+          role: "company_admin",
+          companyId,
+          firstName,
+          lastName,
+          active: 1,
+        });
+
+        return res.json({ userId, email, password, firstName, lastName });
+      } catch (err: any) {
+        console.error("[dev/test/ephemeral-user POST]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    /**
+     * DELETE /api/dev/test/ephemeral-user/:userId
+     * Hard-deletes the ephemeral user created by the POST above.
+     * Also revokes any sessions belonging to that user.
+     */
+    app.delete("/api/dev/test/ephemeral-user/:userId", requireAuth, async (req, res) => {
+      try {
+        const { userId } = req.params;
+        await db.delete(authSessions).where(eq(authSessions.userId, userId));
+        await db.delete(users).where(eq(users.id, userId));
+        return res.json({ deleted: true, userId });
+      } catch (err: any) {
+        console.error("[dev/test/ephemeral-user DELETE]", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
   }
 
   const httpServer = createServer(app);
