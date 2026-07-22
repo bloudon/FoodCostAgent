@@ -15,7 +15,7 @@ import { TheoreticalUsageService } from "./services/theoreticalUsage";
 import { parseCompoundPackSize } from "./integrations/csv/CsvOrderGuide";
 import { deriveUnitPrice } from "./services/orderGuideProcessor";
 import { recordVendorPrice, isPriceStale, getPriceFreshness, effectivePackQty, isIncompatibleUnit } from "./services/vendorPriceService";
-import { checkInventoryItemMatch, checkTargetViEligibility, computeProjectedSavingsPerCase, isSavingsReliable, mergeOrderedQty, routingIdempotencyKey, shouldMergeIntoExistingLine } from "./services/routingService";
+import { checkInventoryItemMatch, checkPackSizeCompatibility, checkTargetViEligibility, computeProjectedSavingsPerCase, isSavingsReliable, mergeOrderedQty, routingIdempotencyKey, shouldMergeIntoExistingLine } from "./services/routingService";
 import { createRoutingPOGuard } from "./lib/routeLinesHandler";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
@@ -11498,6 +11498,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             lastPrice: vendorItems.lastPrice,
             lastCasePrice: vendorItems.lastCasePrice,
             caseSize: vendorItems.caseSize,
+            innerPackSize: vendorItems.innerPackSize,
+            packUom: vendorItems.packUom,
             pricedAt: vendorItems.pricedAt,
           })
           .from(vendorItems)
@@ -11613,6 +11615,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const targetVi = targetViRow.vi;
         const inventoryUnitName = invItemUnitMap.get(sourceInventoryItemId) ?? "";
+
+        // Pack size compatibility — block routing when effective pack quantities differ.
+        // Routing transfers raw case qty directly; mismatched packs would silently mis-order.
+        const packResult = checkPackSizeCompatibility(
+          { caseSize: sourceVi!.caseSize, innerPackSize: sourceVi!.innerPackSize, packUom: sourceVi!.packUom },
+          targetVi,
+          inventoryUnitName,
+        );
+        if (!packResult.eligible) {
+          ineligibleLines.push({ poLineId: lr.poLineId, targetVendorItemId: lr.targetVendorItemId, reason: packResult.reason });
+          continue;
+        }
 
         // Eligibility gauntlet — delegated to routingService (mirrors bulk comparison filter)
         const eligResult = checkTargetViEligibility(targetVi, inventoryUnitName);

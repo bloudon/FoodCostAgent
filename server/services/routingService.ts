@@ -6,6 +6,10 @@
  *
  * Rules mirrored exactly from the route endpoint (Task #460):
  *   - Same inventoryItemId required on source and target vendor items
+ *   - Source and target effective pack quantities must be equal (Task #480):
+ *     effectivePack = caseSize × innerPackSize (in inventory base unit).
+ *     Mismatched packs would silently mis-order; routing is blocked until
+ *     quantity conversion is implemented.
  *   - Target VI must be active, have a valid price, non-legacy source,
  *     fresh price (≤14 days), compatible unit, and valid pack geometry
  *   - Projected savings = (fromUnitPrice - toUnitPrice) × toCaseSize
@@ -28,18 +32,25 @@ export type EligibilityResult =
   | { eligible: false; reason: string };
 
 /**
+ * Pack geometry fields needed for the pack-size compatibility check.
+ * Both source and target vendor items provide these.
+ */
+export interface PackGeometry {
+  caseSize: number | null;
+  innerPackSize: number | null;
+  packUom: string | null;
+}
+
+/**
  * Minimal snapshot of a vendor_item row needed for eligibility evaluation.
  * Matches the columns loaded from DB in the route endpoint.
  */
-export interface TargetViSnapshot {
+export interface TargetViSnapshot extends PackGeometry {
   inventoryItemId: string | null;
   active: number | null;
   lastPrice: number | null;
   priceSource: string | null;
   pricedAt: Date | null;
-  packUom: string | null;
-  caseSize: number | null;
-  innerPackSize: number | null;
 }
 
 // ─── Pure Decision Functions ──────────────────────────────────────────────────
@@ -48,6 +59,8 @@ export interface TargetViSnapshot {
  * Verify that the target vendor item maps to the same inventory item as the
  * source PO line.  Called separately so unmapped-product rejection can be
  * tested independently from the VI eligibility gauntlet.
+ *
+ * Must be called before checkPackSizeCompatibility and checkTargetViEligibility.
  */
 export function checkInventoryItemMatch(
   sourceInventoryItemId: string | null | undefined,
@@ -60,6 +73,52 @@ export function checkInventoryItemMatch(
     return {
       eligible: false,
       reason: "Target vendor item maps to a different product — same inventory item required",
+    };
+  }
+  return { eligible: true };
+}
+
+/**
+ * Block routing when the source and target vendor items have different effective
+ * pack quantities.  Routing transfers the raw case quantity directly, so a
+ * mismatch silently mis-orders product until quantity conversion is implemented.
+ *
+ * Effective pack quantity = effectivePackQty(caseSize, innerPackSize, packUom, inventoryUnit).
+ * Comparison uses a 0.001 absolute tolerance to handle floating-point rounding.
+ *
+ * Edge cases:
+ *   - If source pack geometry is invalid (caseSize ≤ 0) the check is skipped
+ *     (returns eligible: true) — the operator should fix the source item first.
+ *   - If target pack geometry is invalid it is caught downstream by
+ *     checkTargetViEligibility; this function skips the comparison in that case.
+ */
+export function checkPackSizeCompatibility(
+  source: PackGeometry,
+  target: PackGeometry,
+  inventoryUnitName: string,
+): EligibilityResult {
+  const { qty: sourceQty, invalidPackGeometry: sourceInvalid } = effectivePackQty(
+    source.caseSize ?? 0,
+    source.innerPackSize ?? 1,
+    source.packUom ?? "",
+    inventoryUnitName,
+  );
+  if (sourceInvalid) {
+    return { eligible: true };
+  }
+  const { qty: targetQty, invalidPackGeometry: targetInvalid } = effectivePackQty(
+    target.caseSize ?? 0,
+    target.innerPackSize ?? 1,
+    target.packUom ?? "",
+    inventoryUnitName,
+  );
+  if (targetInvalid) {
+    return { eligible: true };
+  }
+  if (Math.abs(sourceQty - targetQty) > 0.001) {
+    return {
+      eligible: false,
+      reason: "Different pack size — manual quantity review required",
     };
   }
   return { eligible: true };

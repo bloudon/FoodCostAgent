@@ -26,6 +26,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { eq, and } from "drizzle-orm";
 import {
   checkInventoryItemMatch,
+  checkPackSizeCompatibility,
   checkTargetViEligibility,
   computeProjectedSavingsPerCase,
   isSavingsReliable,
@@ -33,6 +34,7 @@ import {
   routingIdempotencyKey,
   isAlreadyRouted,
   shouldMergeIntoExistingLine,
+  type PackGeometry,
   type TargetViSnapshot,
 } from "./routingService";
 import { isPriceStale, getPriceFreshness } from "./vendorPriceService";
@@ -552,6 +554,111 @@ describe("Savings reliability — source price staleness", () => {
     // apparent saving vs a $4/unit target is a phantom — target is actually more expensive.
     const stalePricedAt = daysAgoDate(30);
     expect(isSavingsReliable(stalePricedAt)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section 10: Pack size compatibility — Task #480
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Pack size compatibility — equal packs pass", () => {
+  it("passes when source and target have identical caseSize and innerPackSize (lb family)", () => {
+    const source: PackGeometry = { caseSize: 40, innerPackSize: 1, packUom: "lb" };
+    const target: PackGeometry = { caseSize: 40, innerPackSize: 1, packUom: "lb" };
+    expect(checkPackSizeCompatibility(source, target, "pound").eligible).toBe(true);
+  });
+
+  it("passes when source caseSize×innerPackSize equals target (equivalent pack geometry)", () => {
+    // 40×1 lb == 20×2 lb — same total 40 lbs per case
+    const source: PackGeometry = { caseSize: 40, innerPackSize: 1, packUom: "lb" };
+    const target: PackGeometry = { caseSize: 20, innerPackSize: 2, packUom: "lb" };
+    expect(checkPackSizeCompatibility(source, target, "pound").eligible).toBe(true);
+  });
+
+  it("passes for count-unit items with identical pack (each family)", () => {
+    const source: PackGeometry = { caseSize: 24, innerPackSize: 1, packUom: "ea" };
+    const target: PackGeometry = { caseSize: 24, innerPackSize: 1, packUom: "ea" };
+    expect(checkPackSizeCompatibility(source, target, "each").eligible).toBe(true);
+  });
+
+  it("passes when innerPackSize is null on both sides (treated as 1 each)", () => {
+    const source: PackGeometry = { caseSize: 30, innerPackSize: null, packUom: "lb" };
+    const target: PackGeometry = { caseSize: 30, innerPackSize: null, packUom: "lb" };
+    expect(checkPackSizeCompatibility(source, target, "pound").eligible).toBe(true);
+  });
+});
+
+describe("Pack size compatibility — different packs blocked", () => {
+  it("blocks when source caseSize differs from target (40 lb vs 30 lb case)", () => {
+    const source: PackGeometry = { caseSize: 40, innerPackSize: 1, packUom: "lb" };
+    const target: PackGeometry = { caseSize: 30, innerPackSize: 1, packUom: "lb" };
+    const result = checkPackSizeCompatibility(source, target, "pound");
+    expect(result.eligible).toBe(false);
+    if (!result.eligible) {
+      expect(result.reason).toMatch(/Different pack size/i);
+      expect(result.reason).toMatch(/manual quantity review/i);
+    }
+  });
+
+  it("blocks when innerPackSize differs (same caseSize but different total)", () => {
+    // 20 cases × 3 inner = 60 units vs 20 cases × 2 inner = 40 units
+    const source: PackGeometry = { caseSize: 20, innerPackSize: 3, packUom: "lb" };
+    const target: PackGeometry = { caseSize: 20, innerPackSize: 2, packUom: "lb" };
+    const result = checkPackSizeCompatibility(source, target, "pound");
+    expect(result.eligible).toBe(false);
+    if (!result.eligible) {
+      expect(result.reason).toMatch(/Different pack size/i);
+    }
+  });
+
+  it("blocks when source is 40 lb and target is 50 lb (count items differ)", () => {
+    const source: PackGeometry = { caseSize: 40, innerPackSize: 1, packUom: "ea" };
+    const target: PackGeometry = { caseSize: 50, innerPackSize: 1, packUom: "ea" };
+    const result = checkPackSizeCompatibility(source, target, "each");
+    expect(result.eligible).toBe(false);
+  });
+});
+
+describe("Pack size compatibility — edge cases", () => {
+  it("skips check (passes) when source caseSize is 0 (invalid source geometry)", () => {
+    // Invalid source geometry means we cannot compute a meaningful comparison.
+    // The source item's validity is a separate concern — routing is not blocked here.
+    const source: PackGeometry = { caseSize: 0, innerPackSize: 1, packUom: "lb" };
+    const target: PackGeometry = { caseSize: 40, innerPackSize: 1, packUom: "lb" };
+    expect(checkPackSizeCompatibility(source, target, "pound").eligible).toBe(true);
+  });
+
+  it("skips check (passes) when source caseSize is null (treated as invalid)", () => {
+    const source: PackGeometry = { caseSize: null, innerPackSize: 1, packUom: "lb" };
+    const target: PackGeometry = { caseSize: 40, innerPackSize: 1, packUom: "lb" };
+    expect(checkPackSizeCompatibility(source, target, "pound").eligible).toBe(true);
+  });
+
+  it("skips check (passes) when target caseSize is 0 (target invalid geometry — caught downstream)", () => {
+    // checkTargetViEligibility will catch this; checkPackSizeCompatibility defers.
+    const source: PackGeometry = { caseSize: 40, innerPackSize: 1, packUom: "lb" };
+    const target: PackGeometry = { caseSize: 0, innerPackSize: 1, packUom: "lb" };
+    expect(checkPackSizeCompatibility(source, target, "pound").eligible).toBe(true);
+  });
+
+  it("skips check (passes) when target innerPackSize is 0 (target invalid geometry)", () => {
+    const source: PackGeometry = { caseSize: 40, innerPackSize: 1, packUom: "lb" };
+    const target: PackGeometry = { caseSize: 40, innerPackSize: 0, packUom: "lb" };
+    expect(checkPackSizeCompatibility(source, target, "pound").eligible).toBe(true);
+  });
+
+  it("passes for oz→lb family: 640 oz case (40 lb) matches 40 lb source", () => {
+    // effectivePackQty normalises oz→lb: (640 × 1) / 16 = 40 lb
+    const source: PackGeometry = { caseSize: 40, innerPackSize: 1, packUom: "lb" };
+    const target: PackGeometry = { caseSize: 640, innerPackSize: 1, packUom: "oz" };
+    expect(checkPackSizeCompatibility(source, target, "pound").eligible).toBe(true);
+  });
+
+  it("blocks for oz→lb mismatch: 320 oz (20 lb) vs 40 lb source", () => {
+    const source: PackGeometry = { caseSize: 40, innerPackSize: 1, packUom: "lb" };
+    const target: PackGeometry = { caseSize: 320, innerPackSize: 1, packUom: "oz" };
+    const result = checkPackSizeCompatibility(source, target, "pound");
+    expect(result.eligible).toBe(false);
   });
 });
 
