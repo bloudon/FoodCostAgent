@@ -2417,3 +2417,26 @@ DO $$ BEGIN
       VALUES ('v062', 'Task #481: projected_line_savings and savings_reliability_reasons on po_routing_audit');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v063 — Task #482: Complete routing audit snapshot — pack geometry, price dates,
+-- source/target vendor item context, and destination line ID.
+-- All ten columns are nullable so existing audit rows remain valid.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v063') THEN
+    ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS source_vendor_item_id varchar;
+    ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS source_case_size real;
+    ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS source_inner_pack_size real;
+    ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS source_priced_at timestamp;
+    ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS source_price_source text;
+    ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS target_case_size real;
+    ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS target_inner_pack_size real;
+    ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS target_priced_at timestamp;
+    ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS target_price_source text;
+    ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS destination_po_line_id varchar;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v063', 'Task #482: routing audit snapshot — pack geometry, price dates, source/target VI IDs, dest line ID');
+  END IF;
+END $$;

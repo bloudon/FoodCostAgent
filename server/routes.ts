@@ -11570,7 +11570,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         toCaseSize: number;
         toUnitId: string;
         projectedSavingsPerCase: number;
+        projectedLineSavings: number;
         savingsReliable: boolean;
+        savingsReliabilityReasons: string[];
+        sourceVendorItemId: string | null | undefined;
+        sourceCaseSize: number | null | undefined;
+        sourceInnerPackSize: number | null | undefined;
+        sourcePricedAt: Date | null | undefined;
+        sourcePriceSource: string | null | undefined;
+        targetCaseSize: number | null | undefined;
+        targetInnerPackSize: number | null | undefined;
+        targetPricedAt: Date | null | undefined;
+        targetPriceSource: string | null | undefined;
       };
 
       const validLines: ValidLine[] = [];
@@ -11676,6 +11687,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           projectedLineSavings,
           savingsReliable,
           savingsReliabilityReasons,
+          sourceVendorItemId: line.vendorItemId,
+          sourceCaseSize: sourceVi?.caseSize ?? null,
+          sourceInnerPackSize: sourceVi?.innerPackSize ?? null,
+          sourcePricedAt: sourceVi?.pricedAt ?? null,
+          sourcePriceSource: sourceVi?.priceSource ?? null,
+          targetCaseSize: targetVi.caseSize ?? null,
+          targetInnerPackSize: targetVi.innerPackSize ?? null,
+          targetPricedAt: targetVi.pricedAt ?? null,
+          targetPriceSource: targetVi.priceSource ?? null,
         });
       }
 
@@ -11789,7 +11809,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               )
               .limit(1);
 
+            let destinationPoLineId: string;
             if (shouldMergeIntoExistingLine(existingTargetLine ? [existingTargetLine] : [], vl.targetViRow.vi.id)) {
+              destinationPoLineId = existingTargetLine!.id;
               await tx
                 .update(poLines)
                 .set({
@@ -11798,14 +11820,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 })
                 .where(eq(poLines.id, existingTargetLine!.id));
             } else {
-              await tx.insert(poLines).values({
+              const [newDestLine] = await tx.insert(poLines).values({
                 purchaseOrderId: targetPoId,
                 vendorItemId: vl.targetViRow.vi.id,
                 orderedQty: vl.line.orderedQty,
                 caseQuantity: vl.line.caseQuantity,
                 unitId: vl.toUnitId,
                 priceEach: vl.toUnitPrice,
-              });
+              }).returning({ id: poLines.id });
+              destinationPoLineId = newDestLine.id;
             }
 
             // Delete source line
@@ -11837,6 +11860,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 savingsReliable: vl.savingsReliable ? 1 : 0,
                 projectedLineSavings: vl.projectedLineSavings,
                 savingsReliabilityReasons: JSON.stringify(vl.savingsReliabilityReasons),
+                sourceVendorItemId: vl.sourceVendorItemId,
+                sourceCaseSize: vl.sourceCaseSize,
+                sourceInnerPackSize: vl.sourceInnerPackSize,
+                sourcePricedAt: vl.sourcePricedAt,
+                sourcePriceSource: vl.sourcePriceSource,
+                targetCaseSize: vl.targetCaseSize,
+                targetInnerPackSize: vl.targetInnerPackSize,
+                targetPricedAt: vl.targetPricedAt,
+                targetPriceSource: vl.targetPriceSource,
+                destinationPoLineId,
               })
               .onConflictDoNothing()
               .returning({ id: poRoutingAudit.id });

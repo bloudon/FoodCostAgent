@@ -746,6 +746,16 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS savings_reliable integer`);
     await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS projected_line_savings real`);
     await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS savings_reliability_reasons text`);
+    await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS source_vendor_item_id varchar`);
+    await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS source_case_size real`);
+    await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS source_inner_pack_size real`);
+    await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS source_priced_at timestamp`);
+    await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS source_price_source text`);
+    await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS target_case_size real`);
+    await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS target_inner_pack_size real`);
+    await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS target_priced_at timestamp`);
+    await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS target_price_source text`);
+    await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS destination_po_line_id varchar`);
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);
