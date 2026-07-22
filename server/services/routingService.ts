@@ -16,6 +16,7 @@
 
 import {
   getPriceFreshness,
+  isPriceStale,
   isIncompatibleUnit,
   effectivePackQty,
 } from "./vendorPriceService";
@@ -131,6 +132,24 @@ export function computeProjectedSavingsPerCase(
   toCaseSize: number,
 ): number {
   return (fromUnitPrice - toUnitPrice) * toCaseSize;
+}
+
+/**
+ * Determine whether the projected savings figure is reliable.
+ *
+ * The savings formula uses the source vendor item's lastPrice as the "from"
+ * price.  If that price is stale (older than 14 days), the savings figure
+ * may be a phantom — showing large apparent savings that no longer exist
+ * because the source vendor's price has changed since the last update.
+ *
+ * Returns true  → both sides of the comparison are fresh; savings figure is trustworthy.
+ * Returns false → source price is stale; savings figure should be treated as unreliable.
+ *
+ * The target VI is already gated by checkTargetViEligibility (stale target VI
+ * is ineligible for routing entirely), so only the source side needs the check here.
+ */
+export function isSavingsReliable(sourcePricedAt: Date | null | undefined): boolean {
+  return !isPriceStale(sourcePricedAt);
 }
 
 /**

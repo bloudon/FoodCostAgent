@@ -28,6 +28,7 @@ import {
   checkInventoryItemMatch,
   checkTargetViEligibility,
   computeProjectedSavingsPerCase,
+  isSavingsReliable,
   mergeOrderedQty,
   routingIdempotencyKey,
   isAlreadyRouted,
@@ -496,6 +497,61 @@ describe("Stale-threshold regression guard — 14-day boundary", () => {
     // Verify the boundary is at 14, not 90
     expect(getPriceFreshness(daysAgoDate(14))).not.toBe("stale");
     expect(getPriceFreshness(daysAgoDate(90))).toBe("stale");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section 9: Savings reliability — source price staleness flagging
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Savings reliability — source price staleness", () => {
+  it("savingsReliable=true when source price is fresh (1 day old)", () => {
+    expect(isSavingsReliable(daysAgoDate(1))).toBe(true);
+  });
+
+  it("savingsReliable=true when source price is exactly 14 days old (aging — still reliable)", () => {
+    expect(isSavingsReliable(daysAgoDate(14))).toBe(true);
+  });
+
+  it("savingsReliable=true when source price is 13 days old", () => {
+    expect(isSavingsReliable(daysAgoDate(13))).toBe(true);
+  });
+
+  it("savingsReliable=false when source price is 15 days old (stale)", () => {
+    expect(isSavingsReliable(daysAgoDate(15))).toBe(false);
+  });
+
+  it("savingsReliable=false when source price is null (no timestamp = stale)", () => {
+    expect(isSavingsReliable(null)).toBe(false);
+  });
+
+  it("savingsReliable=false when source price is undefined", () => {
+    expect(isSavingsReliable(undefined)).toBe(false);
+  });
+
+  it("savingsReliable=false when source price is 90 days old (well beyond threshold)", () => {
+    expect(isSavingsReliable(daysAgoDate(90))).toBe(false);
+  });
+
+  it("threshold boundary: 14 days is reliable, 15 days is not", () => {
+    expect(isSavingsReliable(daysAgoDate(14))).toBe(true);
+    expect(isSavingsReliable(daysAgoDate(15))).toBe(false);
+  });
+
+  it("reliable savings can still be negative (target is more expensive — not a phantom)", () => {
+    // Savings reliability is about price freshness, not sign of savings value.
+    // A reliable negative savings correctly tells the operator the target costs more.
+    const freshPricedAt = daysAgoDate(3);
+    expect(isSavingsReliable(freshPricedAt)).toBe(true);
+    const savings = computeProjectedSavingsPerCase(2.0, 3.0, 40); // target is more expensive
+    expect(savings).toBeCloseTo(-40.0);
+  });
+
+  it("stale source price means savings figure is unreliable even if mathematically large", () => {
+    // If source price was $5/unit 30 days ago but is now $2/unit, the $3/unit
+    // apparent saving vs a $4/unit target is a phantom — target is actually more expensive.
+    const stalePricedAt = daysAgoDate(30);
+    expect(isSavingsReliable(stalePricedAt)).toBe(false);
   });
 });
 

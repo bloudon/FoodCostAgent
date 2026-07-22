@@ -15,7 +15,7 @@ import { TheoreticalUsageService } from "./services/theoreticalUsage";
 import { parseCompoundPackSize } from "./integrations/csv/CsvOrderGuide";
 import { deriveUnitPrice } from "./services/orderGuideProcessor";
 import { recordVendorPrice, isPriceStale, getPriceFreshness, effectivePackQty, isIncompatibleUnit } from "./services/vendorPriceService";
-import { checkInventoryItemMatch, checkTargetViEligibility, computeProjectedSavingsPerCase, mergeOrderedQty, routingIdempotencyKey, shouldMergeIntoExistingLine } from "./services/routingService";
+import { checkInventoryItemMatch, checkTargetViEligibility, computeProjectedSavingsPerCase, isSavingsReliable, mergeOrderedQty, routingIdempotencyKey, shouldMergeIntoExistingLine } from "./services/routingService";
 import { createRoutingPOGuard } from "./lib/routeLinesHandler";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
@@ -11498,6 +11498,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             lastPrice: vendorItems.lastPrice,
             lastCasePrice: vendorItems.lastCasePrice,
             caseSize: vendorItems.caseSize,
+            pricedAt: vendorItems.pricedAt,
           })
           .from(vendorItems)
           .where(inArray(vendorItems.id, sourceViIds))
@@ -11566,6 +11567,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         toCaseSize: number;
         toUnitId: string;
         projectedSavingsPerCase: number;
+        savingsReliable: boolean;
       };
 
       const validLines: ValidLine[] = [];
@@ -11631,6 +11633,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? sourceVi.lastCasePrice
           : fromUnitPrice * fromCaseSize;
         const projectedSavingsPerCase = computeProjectedSavingsPerCase(fromUnitPrice, toUnitPrice, toCaseSize);
+        const savingsReliable = isSavingsReliable(sourceVi?.pricedAt);
 
         validLines.push({
           poLineId: lr.poLineId,
@@ -11644,6 +11647,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           toCaseSize,
           toUnitId: targetVi.purchaseUnitId || line.unitId,
           projectedSavingsPerCase,
+          savingsReliable,
         });
       }
 
@@ -11802,6 +11806,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 toCasePrice: vl.toCasePrice,
                 orderedQty: vl.line.orderedQty,
                 projectedSavingsPerCase: vl.projectedSavingsPerCase,
+                savingsReliable: vl.savingsReliable ? 1 : 0,
               })
               .onConflictDoNothing()
               .returning({ id: poRoutingAudit.id });

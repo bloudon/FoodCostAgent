@@ -2388,6 +2388,15 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v061') THEN
+    ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS savings_reliable integer;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v061', 'M3B: po_routing_audit.savings_reliable — flag stale source price so phantom savings are visible');
+  END IF;
+END $$;
+
 -- =============================================================================
 -- v061 — po_routing_audit: snapshot operator_name at routing time
 -- Prevents incorrect/missing names when users are renamed or deleted.
