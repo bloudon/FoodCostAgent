@@ -261,7 +261,7 @@ export type PriceFreshness = "current" | "aging" | "stale";
 
 export function getPriceFreshness(pricedAt: Date | null | undefined): PriceFreshness {
   if (!pricedAt) return "stale";
-  const daysAgo = (Date.now() - pricedAt.getTime()) / 86_400_000;
+  const daysAgo = Math.floor((Date.now() - pricedAt.getTime()) / 86_400_000);
   if (daysAgo <= 7) return "current";
   if (daysAgo <= 14) return "aging";
   return "stale";
