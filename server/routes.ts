@@ -11906,6 +11906,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/purchase-orders/:id/routing-audits", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
+      const currentUser = (req as any).user;
+
+      if (currentUser?.role !== "company_admin" && currentUser?.role !== "store_manager") {
+        return res.status(403).json({ error: "Insufficient permissions" });
+      }
+
       const po = await storage.getPurchaseOrder(req.params.id, companyId);
       if (!po) return res.status(404).json({ error: "Purchase order not found" });
 
@@ -11930,6 +11936,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/purchase-orders/:id/routing-audit", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
+      const currentUser = (req as any).user;
+
+      // Only company admins and store managers may view routing audit history
+      if (currentUser?.role !== "company_admin" && currentUser?.role !== "store_manager") {
+        return res.status(403).json({ error: "Insufficient permissions" });
+      }
+
       const po = await storage.getPurchaseOrder(req.params.id, companyId);
       if (!po) return res.status(404).json({ error: "Purchase order not found" });
 
@@ -11948,6 +11961,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           fromCasePrice: poRoutingAudit.fromCasePrice,
           toCasePrice: poRoutingAudit.toCasePrice,
           projectedSavingsPerCase: poRoutingAudit.projectedSavingsPerCase,
+          projectedLineSavings: poRoutingAudit.projectedLineSavings,
+          savingsReliabilityReasons: poRoutingAudit.savingsReliabilityReasons,
+          savingsReliable: poRoutingAudit.savingsReliable,
           orderedQty: poRoutingAudit.orderedQty,
           userId: poRoutingAudit.userId,
           operatorName: poRoutingAudit.operatorName,
@@ -11955,6 +11971,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           userFirstName: users.firstName,
           userLastName: users.lastName,
           userEmail: users.email,
+          sourceVendorName: sql<string | null>`(
+            SELECT v.name FROM purchase_orders po
+            INNER JOIN vendors v ON v.id = po.vendor_id
+            WHERE po.id = ${poRoutingAudit.sourcePoId}
+            LIMIT 1
+          )`,
+          destVendorName: sql<string | null>`(
+            SELECT v.name FROM purchase_orders po
+            INNER JOIN vendors v ON v.id = po.vendor_id
+            WHERE po.id = ${poRoutingAudit.destinationPoId}
+            LIMIT 1
+          )`,
         })
         .from(poRoutingAudit)
         .leftJoin(inventoryItems, eq(poRoutingAudit.inventoryItemId, inventoryItems.id))

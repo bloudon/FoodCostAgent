@@ -175,6 +175,11 @@ type RoutingAuditRow = {
   fromCasePrice: number | null;
   toCasePrice: number | null;
   projectedSavingsPerCase: number | null;
+  projectedLineSavings: number | null;
+  savingsReliabilityReasons: string | null;
+  savingsReliable: number | null;
+  sourceVendorName: string | null;
+  destVendorName: string | null;
   operatorName: string;
   direction: "inbound" | "outbound";
 };
@@ -1808,16 +1813,19 @@ export default function PurchaseOrderDetail() {
               <Badge variant="secondary" className="ml-1 text-xs">{routingAudit.length}</Badge>
             </button>
             {showRoutingHistory && (
-              <div className="border rounded-lg">
+              <div className="border rounded-lg overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Item</TableHead>
+                      <TableHead>From Vendor</TableHead>
+                      <TableHead>To Vendor</TableHead>
                       <TableHead>Direction</TableHead>
                       <TableHead>Related PO</TableHead>
                       <TableHead className="text-right">From Case</TableHead>
                       <TableHead className="text-right">To Case</TableHead>
                       <TableHead className="text-right">Savings / case</TableHead>
+                      <TableHead className="text-right">Total Savings</TableHead>
                       <TableHead>Operator</TableHead>
                       <TableHead>Routed At</TableHead>
                     </TableRow>
@@ -1825,10 +1833,19 @@ export default function PurchaseOrderDetail() {
                   <TableBody>
                     {routingAudit.map((row) => {
                       const relatedPoId = row.direction === "outbound" ? row.destinationPoId : row.sourcePoId;
+                      const reliabilityReasons = row.savingsReliabilityReasons
+                        ? row.savingsReliabilityReasons.split("|").map(r => r.trim()).filter(Boolean)
+                        : [];
                       return (
                         <TableRow key={row.id} data-testid={`row-routing-audit-${row.id}`}>
                           <TableCell className="font-medium">
                             {row.inventoryItemName ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {row.sourceVendorName ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {row.destVendorName ?? "—"}
                           </TableCell>
                           <TableCell>
                             {row.direction === "outbound" ? (
@@ -1857,9 +1874,44 @@ export default function PurchaseOrderDetail() {
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm">
                             {row.projectedSavingsPerCase != null ? (
-                              <span className={row.projectedSavingsPerCase > 0 ? "text-green-600 dark:text-green-400" : ""}>
+                              <span className={row.projectedSavingsPerCase > 0 ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}>
                                 {row.projectedSavingsPerCase > 0 ? "+" : ""}${row.projectedSavingsPerCase.toFixed(2)}
                               </span>
+                            ) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {row.projectedLineSavings != null ? (
+                              <HoverCard>
+                                <HoverCardTrigger asChild>
+                                  <span
+                                    className={cn(
+                                      "cursor-default",
+                                      row.projectedLineSavings > 0
+                                        ? "text-green-600 dark:text-green-400"
+                                        : "text-muted-foreground",
+                                      row.savingsReliable === 0 && "underline decoration-dashed decoration-muted-foreground/50"
+                                    )}
+                                    data-testid={`text-line-savings-${row.id}`}
+                                  >
+                                    {row.projectedLineSavings > 0 ? "+" : ""}${row.projectedLineSavings.toFixed(2)}
+                                    {row.savingsReliable === 0 && " *"}
+                                  </span>
+                                </HoverCardTrigger>
+                                {(reliabilityReasons.length > 0 || row.savingsReliable === 0) && (
+                                  <HoverCardContent className="w-72 text-sm" side="left">
+                                    <p className="font-medium mb-1">
+                                      {row.savingsReliable === 0 ? "Estimate may be unreliable" : "Savings estimate"}
+                                    </p>
+                                    {reliabilityReasons.length > 0 && (
+                                      <ul className="list-disc list-inside space-y-0.5 text-muted-foreground">
+                                        {reliabilityReasons.map((reason, i) => (
+                                          <li key={i}>{reason}</li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                  </HoverCardContent>
+                                )}
+                              </HoverCard>
                             ) : "—"}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
