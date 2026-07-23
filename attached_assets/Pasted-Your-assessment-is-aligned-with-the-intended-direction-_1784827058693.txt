@@ -1,0 +1,80 @@
+Your assessment is aligned with the intended direction. Please proceed with a phased prototype rather than building all six landing pages immediately.
+
+## Decisions
+
+### Mobile navigation
+
+Use:
+
+Home | Count | Order | Prep | More
+
+Analyze will live under More on mobile. Important manager metrics and alerts should also surface on Home. Keep the bottom navigation stable rather than changing tab positions by role.
+
+Desktop will retain Analyze as a direct rail item.
+
+### First prototype
+
+Prototype the Count section first.
+
+The Count landing page should include:
+
+- Start Inventory Count as the dominant action
+- Resume active count
+- Scan Shelf
+- Log Waste
+- View On Hand
+- Count-related alerts
+- Recent inventory sessions
+- Secondary navigation:
+  Overview | Items | Counts | Shelf Scan | Waste | On Hand
+
+Build it against existing data and routes rather than as a static mockup where practical.
+
+### Prep
+
+Prep is not intended as a collection of new stub features. Audit and map the existing Prep Chart, Prep Items, Production Log, and Stations routes.
+
+“Prep Today” is the landing-page action or heading that leads into the existing prep workflow.
+
+Move On Hand into Count.
+
+Hide any incomplete route rather than displaying a placeholder.
+
+### Permissions
+
+Implement navigation visibility through permissions, with these default role profiles:
+
+- Floor staff: Home, Count, Prep, More
+- Receiving staff: Home, Count, Order, Prep, More
+- Store manager: Home, Count, Order, Prep, Analyze, More
+- Company admin: all sections
+- Global admin: all sections plus platform administration under More
+
+Receiving-only users should not gain access to vendor administration, routing, or purchasing controls simply because Order is visible.
+
+### Vendor pricing
+
+Use the user-facing action label “Update Vendor Prices,” not “Price Sync.”
+
+The action should resolve through connector capabilities:
+
+- Browser extension → launch the guided extension sync
+- CSV/Excel → launch order-guide upload
+- Other supported transport → launch its appropriate workflow
+
+The Cut+Dry extension is one implementation behind the unified action.
+
+### Categories
+
+Audit all category screens and routes. Choose one canonical route under More, redirect duplicates, and update internal links.
+
+## Build phases
+
+1. Flat rail and navigation configuration
+2. Functional Count landing-page prototype
+3. Review and approve the section pattern
+4. Replicate for the remaining sections
+5. Consolidate duplicate routes
+6. Scope global search separately
+
+Keep existing working routes intact during the first phase and preserve a rollback path until the new shell is validated.

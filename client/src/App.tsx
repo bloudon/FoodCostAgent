@@ -73,6 +73,7 @@ import AdminVendorRegistry from "@/pages/admin-vendor-registry";
 import MenuInsights from "@/pages/menu-insights";
 import ExtensionPilot from "@/pages/extension-pilot";
 import AdminUsers from "@/pages/admin-users";
+import CountLanding from "@/pages/count-landing";
 import PrepChart from "@/pages/prep-chart";
 import PrepChartItems from "@/pages/prep-chart-items";
 import PrepItemBuilder from "@/pages/prep-item-builder";
@@ -320,6 +321,7 @@ function ProtectedLayoutContent() {
               <Route path="/inventory-sessions" component={InventorySessions} />
               <Route path="/new-count" component={NewCountSession} />
               <Route path="/inventory-count" component={InventoryCount} />
+              <Route path="/count" component={CountLanding} />
               <Route path="/count/:id/mobile" component={CountSessionMobile} />
               <Route path="/count/:id" component={CountSession} />
               <Route path="/item-count/:id" component={ItemCount} />

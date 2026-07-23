@@ -1,50 +1,25 @@
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard,
-  UtensilsCrossed,
-  ChefHat,
-  Warehouse,
   ClipboardList,
-  Trash2,
   ShoppingCart,
-  Users,
-  ArrowLeftRight,
-  Upload,
+  ChefHat,
   BarChart3,
+  MoreHorizontal,
   Store,
-  MapPin,
-  Tag,
-  Settings,
-  Key,
   LogOut,
-  Ruler,
-  ChevronRight,
-  Layers,
-  Thermometer,
-  ScanLine,
 } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   Select,
   SelectContent,
@@ -60,84 +35,111 @@ import { useAppLanguage } from "@/lib/language-context";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import { useCompany } from "@/hooks/use-company";
 import { useStoreContext } from "@/hooks/use-store-context";
-import { useTier } from "@/hooks/use-tier";
-import { type Feature } from "@shared/tier-config";
 
-interface NavItem {
-  title: string;
-  url: string;
-  icon: React.ComponentType<{ className?: string }>;
-  requiresMultipleStores?: boolean;
-  requiredFeature?: Feature;
+// ---------------------------------------------------------------------------
+// Section routing helpers
+// ---------------------------------------------------------------------------
+
+function getActiveSection(loc: string): string {
+  if (loc === "/") return "home";
+
+  if (
+    loc === "/count" ||
+    loc.startsWith("/count/") ||
+    loc.startsWith("/inventory-items") ||
+    loc.startsWith("/inventory-sessions") ||
+    loc.startsWith("/new-count") ||
+    loc.startsWith("/item-count") ||
+    loc.startsWith("/shelf-scans") ||
+    loc === "/waste" ||
+    loc.startsWith("/waste/") ||
+    loc.startsWith("/prep-chart/on-hand")
+  ) return "count";
+
+  if (
+    loc.startsWith("/orders") ||
+    loc.startsWith("/purchase-orders") ||
+    loc.startsWith("/vendors") ||
+    loc.startsWith("/receiving") ||
+    loc.startsWith("/transfer-orders") ||
+    loc.startsWith("/order-guide")
+  ) return "order";
+
+  if (loc.startsWith("/prep-chart") && !loc.startsWith("/prep-chart/on-hand")) return "prep";
+
+  if (
+    loc.startsWith("/variance") ||
+    loc.startsWith("/tfc") ||
+    loc.startsWith("/menu-insights")
+  ) return "analyze";
+
+  return "more";
 }
 
-interface NavSection {
-  title: string;
+// ---------------------------------------------------------------------------
+// Rail definition
+// ---------------------------------------------------------------------------
+
+interface RailItem {
+  id: string;
+  label: string;
   icon: React.ComponentType<{ className?: string }>;
-  items: NavItem[];
+  href: string;
+  /** Roles that may see this item. Undefined = visible to all. */
+  roles?: string[];
+  testId: string;
 }
 
-const mainNavSections: NavSection[] = [
+const RAIL: RailItem[] = [
   {
-    title: "Menu",
-    icon: UtensilsCrossed,
-    items: [
-      { title: "Menu Items", url: "/menu-items", icon: UtensilsCrossed, requiredFeature: "recipe_costing" },
-      { title: "Recipes", url: "/recipes", icon: ChefHat, requiredFeature: "recipe_costing" },
-    ],
+    id: "home",
+    label: "Home",
+    icon: LayoutDashboard,
+    href: "/",
+    testId: "nav-home",
   },
   {
-    title: "Inventory",
-    icon: Warehouse,
-    items: [
-      { title: "Inventory Items", url: "/inventory-items", icon: Warehouse },
-      { title: "Categories", url: "/categories", icon: Tag },
-      { title: "Inventory Sessions", url: "/inventory-sessions", icon: ClipboardList, requiredFeature: "power_inventory" },
-      { title: "Shelf Scans", url: "/shelf-scans", icon: ScanLine },
-      { title: "Waste Entry", url: "/waste", icon: Trash2 },
-    ],
+    id: "count",
+    label: "Count",
+    icon: ClipboardList,
+    href: "/count",
+    testId: "nav-count",
   },
   {
-    title: "Purchasing",
+    id: "order",
+    label: "Order",
     icon: ShoppingCart,
-    items: [
-      { title: "Orders", url: "/orders", icon: ShoppingCart },
-      { title: "Vendors", url: "/vendors", icon: Users },
-      { title: "Transfer Orders", url: "/transfer-orders", icon: ArrowLeftRight, requiresMultipleStores: true, requiredFeature: "transfer_orders" },
-    ],
+    href: "/orders",
+    roles: ["store_manager", "company_admin", "global_admin"],
+    testId: "nav-order",
   },
   {
-    title: "Reports",
+    id: "prep",
+    label: "Prep",
+    icon: ChefHat,
+    href: "/prep-chart",
+    testId: "nav-prep",
+  },
+  {
+    id: "analyze",
+    label: "Analyze",
     icon: BarChart3,
-    items: [
-      { title: "Sales Import", url: "/tfc/sales-import", icon: Upload, requiredFeature: "pos_import" },
-      { title: "Variance Report", url: "/tfc/variance", icon: BarChart3, requiredFeature: "tfc_variance" },
-    ],
+    href: "/tfc/variance",
+    roles: ["store_manager", "company_admin", "global_admin"],
+    testId: "nav-analyze",
   },
   {
-    title: "Kitchen",
-    icon: Thermometer,
-    items: [
-      { title: "Prep Chart", url: "/prep-chart", icon: ClipboardList, requiredFeature: "prep_chart" },
-      { title: "Prep Items", url: "/prep-chart/items", icon: Layers, requiredFeature: "prep_chart" },
-      { title: "On Hand", url: "/prep-chart/on-hand", icon: Thermometer, requiredFeature: "prep_chart" },
-      { title: "Production Log", url: "/prep-chart/production", icon: ChefHat, requiredFeature: "prep_chart" },
-      { title: "Stations", url: "/prep-chart/stations", icon: Store, requiredFeature: "prep_chart" },
-    ],
+    id: "more",
+    label: "More",
+    icon: MoreHorizontal,
+    href: "/settings",
+    testId: "nav-more",
   },
 ];
 
-const locationItems = [
-  { title: "Store Locations", url: "/stores", icon: Store },
-  { title: "Storage Locations", url: "/storage-locations", icon: MapPin },
-];
-
-const settingsItems = [
-  { title: "Categories", url: "/categories", icon: Tag },
-  { title: "Unit Conversions", url: "/unit-conversions", icon: Ruler },
-  { title: "API Credentials", url: "/api-credentials", icon: Key },
-  { title: "System", url: "/settings", icon: Settings },
-];
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export function AppSidebar() {
   const [location] = useLocation();
@@ -146,100 +148,49 @@ export function AppSidebar() {
   const { company } = useCompany();
   const { selectedStoreId, setSelectedStoreId, stores } = useStoreContext();
   const { data: accessibleStores, isLoading: storesLoading } = useAccessibleStores();
-  const { hasFeature } = useTier();
-  const { state, isMobile, setOpenMobile } = useSidebar();
+  const { isMobile, setOpenMobile } = useSidebar();
   const { theme } = useTheme();
-  const logoImage = theme === "dark" ? "/website-logo-dark.png" : "/website-logo.png";
 
-  const isStoreUser = user?.role === "store_user";
-  const isGlobalAdmin = user?.role === "global_admin";
-  const hasMultipleStores = storesLoading ? true : (accessibleStores?.length ?? 0) >= 2;
+  const logoImage = theme === "dark" ? "/website-logo-dark.png" : "/website-logo.png";
+  const role = user?.role ?? "store_user";
+  const isGlobalAdmin = role === "global_admin";
 
   const closeMobile = () => {
     if (isMobile) setOpenMobile(false);
   };
 
-  const getVisibleSections = (): NavSection[] => {
-    if (isGlobalAdmin && !company) return [];
-    if (isStoreUser) {
-      return mainNavSections
-        .map((section) => ({
-          ...section,
-          items: section.items.filter(
-            (item) =>
-              (item.title === "Inventory Sessions" || item.title === "Orders") &&
-              (!item.requiredFeature || hasFeature(item.requiredFeature))
-          ),
-        }))
-        .filter((section) => section.items.length > 0);
-    }
-    return mainNavSections
-      .map((section) => ({
-        ...section,
-        items: section.items.filter(
-          (item) =>
-            (!item.requiresMultipleStores || hasMultipleStores) &&
-            (!item.requiredFeature || hasFeature(item.requiredFeature))
-        ),
-      }))
-      .filter((section) => section.items.length > 0);
-  };
+  const activeSection = getActiveSection(location);
 
-  const visibleSections = getVisibleSections();
-  const showSettings = !isStoreUser && (!isGlobalAdmin || !!company);
-
-  const navTitle = (title: string): string => {
-    const map: Record<string, string> = {
-      "Dashboard": t.nav.dashboard,
-      "Navigation": t.nav.navigation,
-      "Settings": t.nav.settings,
-      "Locations": t.nav.locations,
-      "Menu": t.nav.menuSection,
-      "Menu Items": t.nav.menuItems,
-      "Recipes": t.nav.recipes,
-      "Inventory": t.nav.inventorySection,
-      "Inventory Items": t.nav.inventoryItems,
-      "Categories": t.nav.categories,
-      "Inventory Sessions": t.nav.inventorySessions,
-      "Shelf Scans": t.nav.shelfScans,
-      "Waste Entry": t.nav.wasteEntry,
-      "Purchasing": t.nav.purchasingSection,
-      "Orders": t.nav.orders,
-      "Vendors": t.nav.vendors,
-      "Transfer Orders": t.nav.transferOrders,
-      "Reports": t.nav.reportsSection,
-      "Sales Import": t.nav.salesImport,
-      "Variance Report": t.nav.varianceReport,
-      "Kitchen": t.nav.kitchenSection,
-      "Prep Chart": t.nav.prepChart,
-      "Prep Items": t.nav.prepItems,
-      "On Hand": t.nav.onHand,
-      "Production Log": t.nav.productionLog,
-      "Stations": t.nav.stations,
-      "Store Locations": t.nav.storeLocations,
-      "Storage Locations": t.nav.storageLocations,
-      "Unit Conversions": t.nav.unitConversions,
-      "API Credentials": t.nav.apiCredentials,
-      "System": t.nav.system,
-    };
-    return map[title] ?? title;
-  };
+  // Filter visible rail items by role.
+  // Global admin without a company selected shows a minimal rail — the
+  // ProtectedLayout redirect to /companies handles the primary flow.
+  const visibleItems = RAIL.filter((item) => {
+    if (isGlobalAdmin && !company && item.id !== "home" && item.id !== "more") return false;
+    if (item.roles && !item.roles.includes(role)) return false;
+    return true;
+  });
 
   const userInitials =
     user?.firstName && user?.lastName
       ? `${user.firstName[0]}${user.lastName[0]}`.toUpperCase()
-      : user?.email?.[0]?.toUpperCase() || "U";
+      : user?.email?.[0]?.toUpperCase() ?? "U";
 
   const userName =
     user?.firstName && user?.lastName
       ? `${user.firstName} ${user.lastName}`
-      : user?.email || "User";
+      : user?.email ?? "User";
 
   return (
     <Sidebar collapsible="icon">
+      {/* ── Header: logo + store selector ── */}
       <SidebarHeader className="border-b pb-3">
         <div className="flex items-center justify-center px-3 pt-2">
-          <Link href="/" onClick={closeMobile} data-testid="link-dashboard-logo" className="flex w-full items-center justify-center group-data-[collapsible=icon]:justify-center">
+          <Link
+            href="/"
+            onClick={closeMobile}
+            data-testid="link-dashboard-logo"
+            className="flex w-full items-center justify-center group-data-[collapsible=icon]:justify-center"
+          >
             <img
               src={logoImage}
               alt="FNB Cost Pro"
@@ -295,176 +246,30 @@ export function AppSidebar() {
         )}
       </SidebarHeader>
 
+      {/* ── Content: flat rail ── */}
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={location === "/"}
-                  tooltip={t.nav.dashboard}
-                  data-testid={isMobile ? "link-dashboard-mobile" : "link-dashboard"}
-                >
-                  <Link href="/" onClick={closeMobile}>
-                    <LayoutDashboard />
-                    <span>{t.nav.dashboard}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {visibleSections.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel>{t.nav.navigation}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {visibleSections.map((section) => (
-                  <Collapsible
-                    key={section.title}
-                    asChild
-                    defaultOpen={true}
-                    className="group/collapsible"
-                  >
-                    <SidebarMenuItem>
-                      <CollapsibleTrigger asChild>
-                        <SidebarMenuButton
-                          tooltip={navTitle(section.title)}
-                          data-testid={`nav-section-${section.title.toLowerCase()}`}
-                        >
-                          <section.icon className="h-4 w-4" />
-                          <span>{navTitle(section.title)}</span>
-                          <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                        </SidebarMenuButton>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <SidebarMenuSub>
-                          {section.items.map((item) => {
-                            const slug = item.title.toLowerCase().replace(/\s+/g, "-");
-                            return (
-                              <SidebarMenuSubItem key={item.url}>
-                                <SidebarMenuSubButton
-                                  asChild
-                                  isActive={
-                                    location === item.url ||
-                                    location.startsWith(item.url + "/")
-                                  }
-                                  data-testid={isMobile ? `link-${slug}-mobile` : `link-${slug}`}
-                                >
-                                  <Link href={item.url} onClick={closeMobile}>
-                                    <item.icon className="h-3.5 w-3.5" />
-                                    <span>{navTitle(item.title)}</span>
-                                  </Link>
-                                </SidebarMenuSubButton>
-                              </SidebarMenuSubItem>
-                            );
-                          })}
-                        </SidebarMenuSub>
-                      </CollapsibleContent>
-                    </SidebarMenuItem>
-                  </Collapsible>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {showSettings && (
-          <SidebarGroup className="mt-auto">
-            <SidebarGroupLabel>{t.nav.settings}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <Collapsible
-                  asChild
-                  defaultOpen={true}
-                  className="group/collapsible"
-                >
-                  <SidebarMenuItem>
-                    <CollapsibleTrigger asChild>
-                      <SidebarMenuButton
-                        tooltip={t.nav.settings}
-                        data-testid="button-settings-menu"
-                      >
-                        <Settings className="h-4 w-4" />
-                        <span>{t.nav.settings}</span>
-                        <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                      </SidebarMenuButton>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <SidebarMenuSub>
-                        {/* Locations sub-group */}
-                        <SidebarMenuSubItem>
-                          <Collapsible
-                            defaultOpen={true}
-                            className="group/loc-collapsible w-full"
-                          >
-                            <CollapsibleTrigger asChild>
-                              <SidebarMenuSubButton
-                                data-testid="menu-settings-locations"
-                                className="w-full"
-                              >
-                                <MapPin className="h-3.5 w-3.5" />
-                                <span>{t.nav.locations}</span>
-                                <ChevronRight className="ml-auto h-3 w-3 transition-transform duration-200 group-data-[state=open]/loc-collapsible:rotate-90" />
-                              </SidebarMenuSubButton>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent>
-                              <SidebarMenuSub>
-                                {locationItems.map((item) => {
-                                  const slug = item.title.toLowerCase().replace(/\s+/g, "-");
-                                  return (
-                                    <SidebarMenuSubItem key={item.url}>
-                                      <SidebarMenuSubButton
-                                        asChild
-                                        isActive={location === item.url}
-                                        data-testid={`link-${slug}`}
-                                      >
-                                        <Link href={item.url} onClick={closeMobile}>
-                                          <item.icon className="h-3.5 w-3.5" />
-                                          <span>{navTitle(item.title)}</span>
-                                        </Link>
-                                      </SidebarMenuSubButton>
-                                    </SidebarMenuSubItem>
-                                  );
-                                })}
-                              </SidebarMenuSub>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        </SidebarMenuSubItem>
-
-                        {/* Other settings items */}
-                        {settingsItems.map((item) => {
-                          const slug = item.title.toLowerCase().replace(/\s+/g, "-");
-                          return (
-                            <SidebarMenuSubItem key={item.url}>
-                              <SidebarMenuSubButton
-                                asChild
-                                isActive={location === item.url}
-                                data-testid={`link-${slug}`}
-                              >
-                                <Link href={item.url} onClick={closeMobile}>
-                                  <item.icon className="h-3.5 w-3.5" />
-                                  <span>{item.title}</span>
-                                </Link>
-                              </SidebarMenuSubButton>
-                            </SidebarMenuSubItem>
-                          );
-                        })}
-                      </SidebarMenuSub>
-                    </CollapsibleContent>
-                  </SidebarMenuItem>
-                </Collapsible>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
+        <SidebarMenu className="gap-0.5 px-2 py-2">
+          {visibleItems.map((item) => (
+            <SidebarMenuItem key={item.id}>
+              <SidebarMenuButton
+                asChild
+                isActive={activeSection === item.id}
+                tooltip={item.label}
+                data-testid={isMobile ? `${item.testId}-mobile` : item.testId}
+                className="gap-3"
+              >
+                <Link href={item.href} onClick={closeMobile}>
+                  <item.icon className="h-4 w-4 shrink-0" />
+                  <span className="font-medium">{item.label}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
       </SidebarContent>
 
+      {/* ── Footer: user + controls ── */}
       <SidebarFooter className="border-t p-2 space-y-1">
-        {/* User info row — hidden when collapsed */}
         <div className="flex items-center gap-2 px-1 py-1 group-data-[collapsible=icon]:hidden">
           <div className="h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold shrink-0">
             {userInitials}
@@ -475,9 +280,7 @@ export function AppSidebar() {
           </div>
         </div>
 
-        {/* Action row */}
         <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center">
-          {/* Collapsed: show avatar */}
           <div className="hidden group-data-[collapsible=icon]:flex h-7 w-7 rounded-full bg-primary text-primary-foreground items-center justify-center text-xs font-semibold mb-1">
             {userInitials}
           </div>
@@ -485,7 +288,6 @@ export function AppSidebar() {
           <div className="flex-1 group-data-[collapsible=icon]:hidden" />
 
           <ThemeToggle />
-
           <LanguageToggle />
 
           <button
