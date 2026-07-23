@@ -20100,6 +20100,18 @@ Human Handoff:
         }
         const contextHint = contextParts.length > 0 ? contextParts.join(" ") : undefined;
 
+        // Extract userId and storeId early — validate store ownership BEFORE running
+        // the AI scan so cross-company requests are rejected without burning API credits.
+        const userId = (req as any).user?.id ?? null;
+        const storeId = (req.body?.storeId as string) || null;
+
+        // Enforce store-assignment when storeId is supplied
+        if (storeId && userId) {
+          if (!(await mobileUserCanAccessStore(userId, storeId))) {
+            return res.status(403).json({ error: "Not assigned to this store" });
+          }
+        }
+
         function detectMime(buf: Buffer): string | null {
           if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
           if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
@@ -20122,17 +20134,6 @@ Human Handoff:
 
         const frameResults = await Promise.all(scanPromises);
         const merged = mergeShelfScanResults(frameResults);
-
-        // Persist the scan session — required for audit trail
-        const userId = (req as any).user?.id ?? null;
-        const storeId = (req.body?.storeId as string) || null;
-
-        // Enforce store-assignment when storeId is supplied
-        if (storeId && userId) {
-          if (!(await mobileUserCanAccessStore(userId, storeId))) {
-            return res.status(403).json({ error: "Not assigned to this store" });
-          }
-        }
 
         // Optional session linking: validate that sessionId belongs to this company
         // and that the caller is assigned to the session's store
