@@ -9897,8 +9897,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     const user = (req as any).user;
     
-    // CRITICAL: Validate that the requested store exists and user has access
-    const store = await storage.getCompanyStore(storeId);
+    // CRITICAL: Validate that the requested store exists and user has access.
+    // Pass companyId for non-global-admin users so the storage layer enforces
+    // company isolation as a defense-in-depth measure (prevents data leakage
+    // even if the application-level check above is ever bypassed).
+    const store = await storage.getCompanyStore(
+      storeId,
+      user.role !== "global_admin" ? user.companyId : undefined
+    );
     
     if (!store) {
       return res.status(404).json({ error: "Store not found" });
