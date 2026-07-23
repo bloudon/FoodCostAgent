@@ -112,6 +112,19 @@ export default function Dashboard() {
 
   // Get the most recent variance summary (first in list)
   const recentVariance = varianceSummaries.length > 0 ? varianceSummaries[0] : null;
+
+  // Fetch the top variance item for the most recent period
+  const { data: topVarianceItem = null } = useQuery<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    varianceCost: number;
+    variancePercent: number;
+    currentCountId: string;
+    previousCountId: string;
+  } | null>({
+    queryKey: [`/api/tfc/variance/top-item?storeId=${selectedStoreId}`],
+    enabled: !!selectedStoreId,
+  });
   
   // Combine purchase orders and transfer orders, then get last 3 for quicklink display
   const recentOrders = [
@@ -948,6 +961,49 @@ export default function Dashboard() {
           );
         })}
       </div>
+
+      {/* Top Variance Item — biggest single driver from most recent TFC period */}
+      {topVarianceItem && (
+        <div className="mb-6" data-testid="card-top-variance-item">
+          <Link
+            href={`/tfc/variance?previousCountId=${topVarianceItem.previousCountId}&currentCountId=${topVarianceItem.currentCountId}&highlight=${topVarianceItem.inventoryItemId}`}
+            data-testid="link-top-variance-item"
+          >
+            <Card className="hover-elevate cursor-pointer bg-gradient-to-r from-red-50/50 to-slate-50/50 dark:from-red-950/20 dark:to-slate-950/20 border-red-200 dark:border-red-800">
+              <CardContent className="flex items-center gap-4 p-4">
+                <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-red-500/10 shrink-0">
+                  <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">
+                    Biggest Variance Driver
+                  </p>
+                  <p className="text-sm font-medium truncate" data-testid="text-top-variance-item-name">
+                    {topVarianceItem.inventoryItemName}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Most recent period &middot; over-used vs. theoretical
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="text-right">
+                    <p
+                      className="text-sm font-semibold text-red-600 dark:text-red-400"
+                      data-testid="text-top-variance-item-cost"
+                    >
+                      +${topVarianceItem.varianceCost.toFixed(2)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      +{topVarianceItem.variancePercent.toFixed(1)}%
+                    </p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+      )}
 
       {/* Quicklinks Section */}
       <div className="grid gap-6 md:grid-cols-2 mb-8">
