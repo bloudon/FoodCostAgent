@@ -1,42 +1,34 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Package, DollarSign, ClipboardList, ArrowRight, PackageCheck, Truck, TrendingUp, UtensilsCrossed, AlertCircle, Calendar, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, PartyPopper, ShoppingCart, Copy, Check } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DollarSign,
+  TrendingUp,
+  ShoppingCart,
+  ClipboardList,
+  ArrowRight,
+  Clock,
+  Package,
+  AlertTriangle,
+  Calendar,
+  PackageCheck,
+  FileText,
+  Receipt,
+  X,
+  PartyPopper,
+  Copy,
+  Check,
+} from "lucide-react";
 import { SetupMilestoneTracker } from "@/components/setup-milestone-tracker";
 import { useStoreContext } from "@/hooks/use-store-context";
 import { useAuth } from "@/lib/auth-context";
 import { parseCountDate } from "@/lib/utils";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { format, subDays, startOfDay, endOfDay } from "date-fns";
-
-const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline", className: string }> = {
-  "pending": { 
-    variant: "secondary",
-    className: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-yellow-500/20"
-  },
-  "ordered": { 
-    variant: "secondary",
-    className: "bg-blue-500/10 text-blue-700 border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20"
-  },
-  "in_transit": { 
-    variant: "secondary",
-    className: "bg-purple-500/10 text-purple-700 border-purple-500/20 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20"
-  },
-  "received": { 
-    variant: "secondary",
-    className: "bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20"
-  },
-  "completed": { 
-    variant: "secondary",
-    className: "bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20"
-  },
-};
+import { format, differenceInDays } from "date-fns";
 
 export default function Dashboard() {
   const { selectedStoreId, selectedStore, stores, isLoading: storesLoading } = useStoreContext();
@@ -48,6 +40,7 @@ export default function Dashboard() {
   const [welcomeDismissed, setWelcomeDismissed] = useState(
     () => sessionStorage.getItem("fnb_welcomed") === "true"
   );
+  const [reorderCopied, setReorderCopied] = useState(false);
 
   const dismissWelcome = () => {
     sessionStorage.setItem("fnb_welcomed", "true");
@@ -55,65 +48,18 @@ export default function Dashboard() {
     window.history.replaceState({}, "", "/");
   };
 
-  // State for pagination in each alert box - MUST be at top before conditional returns
-  const [orderIndex, setOrderIndex] = useState(0);
-  const [inventoryIndex, setInventoryIndex] = useState(0);
-  const [reorderCopied, setReorderCopied] = useState(false);
-  
-  // State for waste chart date range (7, 14, 30 days)
-  const [wasteDaysRange, setWasteDaysRange] = useState<7 | 14 | 30>(7);
+  // ── Data fetching ──────────────────────────────────────────────────────────
 
-  // Reset pagination when store changes - MUST be before any conditional returns
-  useEffect(() => {
-    setOrderIndex(0);
-    setInventoryIndex(0);
-  }, [selectedStoreId]);
-
-  // Fetch data filtered by selected store using proper query parameters
-  // Note: queryKey is joined with "/" so we use query string in the first element
-  const { data: inventoryItems, isLoading: itemsLoading } = useQuery<any[]>({
-    queryKey: [`/api/inventory-items?store_id=${selectedStoreId}`],
-    enabled: !!selectedStoreId,
-  });
-
-  // Use server-side filtering for inventory counts by storeId
   const { data: inventoryCounts, isLoading: countsLoading } = useQuery<any[]>({
     queryKey: [`/api/inventory-counts?storeId=${selectedStoreId}`],
     enabled: !!selectedStoreId,
   });
 
-  const { data: storageLocations } = useQuery<any[]>({
-    queryKey: ["/api/storage-locations"],
-  });
-
-  // Purchase Orders - fetch all and filter client-side
-  const { data: allPurchaseOrders = [] } = useQuery<any[]>({
-    queryKey: ["/api/purchase-orders"],
-  });
-
-  // Filter purchase orders by selected store client-side (copy array to avoid mutation)
-  const storePurchaseOrdersAll = [...allPurchaseOrders].filter(po => po.storeId === selectedStoreId);
-
-  // Transfer Orders - fetch all
-  const { data: allTransferOrders = [] } = useQuery<any[]>({
-    queryKey: ["/api/transfer-orders"],
-  });
-
-  // Filter transfer orders by selected store (either from or to this store)
-  const storeTransferOrders = [...allTransferOrders].filter(
-    to => to.fromStoreId === selectedStoreId || to.toStoreId === selectedStoreId
-  );
-
-  // Fetch variance summaries for the selected store
-  const { data: varianceSummaries = [], isLoading: varianceSummariesLoading } = useQuery<any[]>({
+  const { data: varianceSummaries = [] } = useQuery<any[]>({
     queryKey: [`/api/tfc/variance/summaries?storeId=${selectedStoreId}`],
     enabled: !!selectedStoreId,
   });
 
-  // Get the most recent variance summary (first in list)
-  const recentVariance = varianceSummaries.length > 0 ? varianceSummaries[0] : null;
-
-  // Fetch the top variance item for the most recent period
   const { data: topVarianceItem = null } = useQuery<{
     inventoryItemId: string;
     inventoryItemName: string;
@@ -125,47 +71,28 @@ export default function Dashboard() {
     queryKey: [`/api/tfc/variance/top-item?storeId=${selectedStoreId}`],
     enabled: !!selectedStoreId,
   });
-  
-  // Combine purchase orders and transfer orders, then get last 3 for quicklink display
-  const recentOrders = [
-    ...storePurchaseOrdersAll.map(po => ({ ...po, type: 'purchase' as const })),
-    ...storeTransferOrders.map(to => ({ ...to, type: 'transfer' as const }))
-  ]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 3);
 
-  // Fetch all receipts to calculate actual received values
+  const { data: allPurchaseOrders = [] } = useQuery<any[]>({
+    queryKey: ["/api/purchase-orders"],
+  });
+
+  const { data: allTransferOrders = [] } = useQuery<any[]>({
+    queryKey: ["/api/transfer-orders"],
+  });
+
   const { data: allReceipts = [] } = useQuery<any[]>({
     queryKey: ["/api/receipts"],
   });
 
-  // Create a map of purchase order ID to receipt lines for quick lookup
-  const receiptsByPO = new Map<string, any[]>();
-  allReceipts.forEach((receipt: any) => {
-    if (receipt.status === "completed") {
-      const existing = receiptsByPO.get(receipt.purchaseOrderId) || [];
-      receiptsByPO.set(receipt.purchaseOrderId, [...existing, receipt]);
-    }
-  });
-
-  // Fetch menu items filtered by selected store
-  const { data: allMenuItems = [], isLoading: menuItemsLoading } = useQuery<any[]>({
-    queryKey: [`/api/menu-items?storeId=${selectedStoreId}`],
-    enabled: !!selectedStoreId,
-  });
-
-  // Fetch pending order deadlines
-  const { data: orderDeadlines = [], isLoading: deadlinesLoading } = useQuery<any[]>({
+  const { data: orderDeadlines = [] } = useQuery<any[]>({
     queryKey: [`/api/purchase-orders/deadlines?storeId=${selectedStoreId}`],
     enabled: !!selectedStoreId,
   });
 
-  // Fetch recipes with missing ingredients for the alert card
   const { data: recipesWithMissing = [] } = useQuery<Array<{ id: string; name: string; missingComponentNames: string[] }>>({
     queryKey: ["/api/recipes/missing-ingredients"],
   });
 
-  // Fetch reorder list — items below par level for the selected store
   const { data: reorderData } = useQuery<{
     items: Array<{
       id: string;
@@ -189,245 +116,206 @@ export default function Dashboard() {
     enabled: !!selectedStoreId && selectedStoreId !== "all",
   });
 
-  // Fetch estimated on-hand inventory for critical items detection
-  const { data: estimatedOnHand = [], isLoading: estimatedLoading } = useQuery<Array<{
-    inventoryItemId: string;
-    lastCountQty: number;
-    lastCountDate: string | null;
-    receivedQty: number;
-    wasteQty: number;
-    theoreticalUsageQty: number;
-    transferredOutQty: number;
-    estimatedOnHand: number;
-  }>>({
-    queryKey: ["/api/inventory-items/estimated-on-hand", selectedStoreId],
-    queryFn: async () => {
-      if (!selectedStoreId || selectedStoreId === "all") {
-        return [];
-      }
-      const response = await fetch(`/api/inventory-items/estimated-on-hand?storeId=${selectedStoreId}`);
-      if (!response.ok) throw new Error("Failed to fetch estimated on-hand data");
-      return response.json();
-    },
-    enabled: !!selectedStoreId && selectedStoreId !== "all",
-  });
+  // ── Derived values ─────────────────────────────────────────────────────────
 
-  // Identify critical inventory items (estimated on-hand below reorder level)
-  const criticalItems = useMemo(() => {
-    if (!estimatedOnHand || !inventoryItems) return [];
-    
-    const criticalList: Array<{
-      id: string;
-      name: string;
-      estimatedOnHand: number;
-      reorderLevel: number;
-      unitAbbreviation: string;
-      deficit: number;
-    }> = [];
+  const storePurchaseOrders = useMemo(
+    () => [...allPurchaseOrders].filter((po) => po.storeId === selectedStoreId),
+    [allPurchaseOrders, selectedStoreId]
+  );
 
-    estimatedOnHand.forEach(est => {
-      const item = inventoryItems.find((inv: any) => inv.id === est.inventoryItemId);
-      if (item && item.reorderLevel && est.estimatedOnHand < item.reorderLevel) {
-        criticalList.push({
-          id: item.id,
-          name: item.name,
-          estimatedOnHand: est.estimatedOnHand,
-          reorderLevel: item.reorderLevel,
-          unitAbbreviation: item.unit?.abbreviation || item.unit?.name || '',
-          deficit: item.reorderLevel - est.estimatedOnHand,
-        });
-      }
-    });
+  const recentVariance = varianceSummaries.length > 0 ? varianceSummaries[0] : null;
 
-    // Sort by deficit (most critical first)
-    return criticalList.sort((a, b) => b.deficit - a.deficit);
-  }, [estimatedOnHand, inventoryItems]);
-  
-  // Get most recent count for this store (already filtered server-side, copy to avoid cache mutation)
-  const mostRecentCount = inventoryCounts && inventoryCounts.length > 0
-    ? [...inventoryCounts].sort((a, b) => 
-        new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime()
-      )[0]
-    : undefined;
+  const mostRecentCount = useMemo(() => {
+    if (!inventoryCounts || inventoryCounts.length === 0) return undefined;
+    return [...inventoryCounts].sort(
+      (a, b) => new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime()
+    )[0];
+  }, [inventoryCounts]);
 
-  const { data: recentCountLines } = useQuery<any[]>({
+  const { data: recentCountLines, isLoading: countLinesLoading } = useQuery<any[]>({
     queryKey: ["/api/inventory-count-lines", mostRecentCount?.id],
     enabled: !!mostRecentCount,
   });
 
-  // Calculate total $ value of recent inventory count
-  const recentCountValue = recentCountLines?.reduce((sum, line) => {
-    // Each line has qty and unitCost (snapshot at time of count)
-    if (line.qty && line.unitCost !== undefined) {
-      return sum + (line.qty * line.unitCost);
-    }
-    return sum;
-  }, 0) || 0;
+  const recentCountValue = useMemo(
+    () =>
+      recentCountLines?.reduce((sum, line) => {
+        if (line.qty && line.unitCost !== undefined) return sum + line.qty * line.unitCost;
+        return sum;
+      }, 0) ?? 0,
+    [recentCountLines]
+  );
 
-  // Fetch all count lines for all counts at this store to calculate average inventory value
-  const { data: allCountLinesForStore } = useQuery<any[]>({
-    queryKey: [`/api/inventory-count-lines?storeId=${selectedStoreId}`],
-    enabled: !!selectedStoreId && !!inventoryCounts && inventoryCounts.length > 0,
-  });
+  // Open Orders: active POs (exclude received/cancelled/completed)
+  const CLOSED_STATUSES = new Set(["received", "cancelled", "completed"]);
+  const openOrders = useMemo(
+    () => storePurchaseOrders.filter((po) => !CLOSED_STATUSES.has(po.status)),
+    [storePurchaseOrders]
+  );
+  const openOrdersValue = useMemo(
+    () => openOrders.reduce((sum, po) => sum + (po.totalAmount || 0), 0),
+    [openOrders]
+  );
 
-  // Calculate average inventory value across all counts
-  const averageInventoryValue = useMemo(() => {
-    if (!inventoryCounts || inventoryCounts.length === 0 || !allCountLinesForStore) {
-      return 0;
-    }
+  // Days since last count
+  const daysSinceLastCount = useMemo(() => {
+    if (!mostRecentCount) return null;
+    const countDate = parseCountDate(mostRecentCount.countDate);
+    return differenceInDays(new Date(), countDate);
+  }, [mostRecentCount]);
 
-    // Group lines by count ID
-    const countValues = new Map<string, number>();
-    
-    allCountLinesForStore.forEach(line => {
-      const currentValue = countValues.get(line.inventoryCountId) || 0;
-      if (line.qty && line.unitCost !== undefined) {
-        countValues.set(line.inventoryCountId, currentValue + (line.qty * line.unitCost));
-      }
+  // ── Needs Attention rows ──────────────────────────────────────────────────
+
+  const needsAttentionRows = useMemo(() => {
+    const rows: Array<{
+      key: string;
+      icon: React.ReactNode;
+      label: string;
+      href: string;
+    }> = [];
+
+    // 1. Order deadlines due within 48 h
+    const urgentDeadlines = orderDeadlines.filter((d: any) => {
+      if (!d.orderDeadline) return false;
+      const hoursUntil = (new Date(d.orderDeadline).getTime() - Date.now()) / 36e5;
+      return hoursUntil >= 0 && hoursUntil <= 48;
     });
-
-    // Calculate average
-    const values = Array.from(countValues.values());
-    if (values.length === 0) return 0;
-    
-    const sum = values.reduce((acc, val) => acc + val, 0);
-    return sum / values.length;
-  }, [inventoryCounts, allCountLinesForStore]);
-
-  // Calculate waste date range based on selected range
-  const wasteStartDate = useMemo(() => {
-    const today = new Date();
-    return format(startOfDay(subDays(today, wasteDaysRange - 1)), 'yyyy-MM-dd');
-  }, [wasteDaysRange]);
-  
-  const wasteEndDate = useMemo(() => {
-    return format(endOfDay(new Date()), 'yyyy-MM-dd');
-  }, []);
-
-  // Fetch waste logs for the selected store and date range
-  const { data: wasteLogs = [], isLoading: wasteLoading } = useQuery<any[]>({
-    queryKey: [`/api/waste?storeId=${selectedStoreId}&startDate=${wasteStartDate}&endDate=${wasteEndDate}`],
-    enabled: !!selectedStoreId && selectedStoreId !== "all",
-  });
-
-  // Process waste data for chart - group by date and type
-  const wasteChartData = useMemo(() => {
-    const today = new Date();
-    const dateMap = new Map<string, { date: string; displayDate: string; inventory: number; product: number }>();
-    
-    // Initialize all days in range with zero values
-    for (let i = wasteDaysRange - 1; i >= 0; i--) {
-      const date = subDays(today, i);
-      const dateKey = format(date, 'yyyy-MM-dd');
-      const displayDate = format(date, 'MMM d');
-      dateMap.set(dateKey, { date: dateKey, displayDate, inventory: 0, product: 0 });
+    if (urgentDeadlines.length > 0) {
+      urgentDeadlines.slice(0, 2).forEach((d: any) => {
+        rows.push({
+          key: `deadline-${d.id}`,
+          icon: <Clock className="h-4 w-4 text-amber-500 dark:text-amber-400 shrink-0" />,
+          label: `${d.vendorName || "Order"} due ${format(new Date(d.orderDeadline), "MMM d")}`,
+          href: `/purchase-orders/${d.id}`,
+        });
+      });
     }
-    
-    // Aggregate waste values by date and type
-    wasteLogs.forEach((log: any) => {
-      const logDate = format(new Date(log.wastedAt), 'yyyy-MM-dd');
-      const existing = dateMap.get(logDate);
-      if (existing) {
-        if (log.wasteType === 'inventory') {
-          existing.inventory += log.totalValue || 0;
-        } else if (log.wasteType === 'menu_item') {
-          existing.product += log.totalValue || 0;
-        }
-      }
-    });
-    
-    // Convert to array and sort by date
-    return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-  }, [wasteLogs, wasteDaysRange]);
 
-  // Calculate total waste for the period
-  const totalWaste = useMemo(() => {
-    return wasteChartData.reduce((sum, day) => sum + day.inventory + day.product, 0);
-  }, [wasteChartData]);
-
-  // Helper function to get actual received value for a purchase order from completed receipts
-  const getActualReceivedValue = (purchaseOrderId: string): number | null => {
-    const completedReceipts = receiptsByPO.get(purchaseOrderId);
-    
-    if (!completedReceipts || completedReceipts.length === 0) {
-      return null; // No completed receipts, show expected value
+    // 2. Below-par items (single summary row)
+    const belowParCount = reorderData?.items?.length ?? 0;
+    if (belowParCount > 0) {
+      rows.push({
+        key: "below-par",
+        icon: <Package className="h-4 w-4 text-orange-500 dark:text-orange-400 shrink-0" />,
+        label: `${belowParCount} item${belowParCount !== 1 ? "s" : ""} below par level`,
+        href: "/inventory-items/par-levels",
+      });
     }
-    
-    // Sum up the totalAmount from all completed receipts for this PO
-    const total = completedReceipts.reduce((sum: number, receipt: any) => {
-      return sum + (receipt.totalAmount || 0);
-    }, 0);
-    
-    return total;
+
+    // 3. Missing recipe ingredients (single summary row)
+    if (recipesWithMissing.length > 0) {
+      rows.push({
+        key: "missing-ingredients",
+        icon: <AlertTriangle className="h-4 w-4 text-yellow-500 dark:text-yellow-400 shrink-0" />,
+        label: `${recipesWithMissing.length} recipe${recipesWithMissing.length !== 1 ? "s" : ""} missing ingredients`,
+        href: "/recipes",
+      });
+    }
+
+    // 4. Overdue count (> 14 days since last applied count)
+    if (daysSinceLastCount !== null && daysSinceLastCount > 14) {
+      rows.push({
+        key: "overdue-count",
+        icon: <Calendar className="h-4 w-4 text-blue-500 dark:text-blue-400 shrink-0" />,
+        label: `Last count was ${daysSinceLastCount} days ago`,
+        href: "/inventory-sessions",
+      });
+    } else if (daysSinceLastCount === null) {
+      rows.push({
+        key: "no-count",
+        icon: <Calendar className="h-4 w-4 text-blue-500 dark:text-blue-400 shrink-0" />,
+        label: "No inventory counts yet",
+        href: "/inventory-sessions",
+      });
+    }
+
+    return rows.slice(0, 5);
+  }, [orderDeadlines, reorderData, recipesWithMissing, daysSinceLastCount]);
+
+  // ── Recent Activity events ─────────────────────────────────────────────────
+
+  const recentActivityEvents = useMemo(() => {
+    const storePOIds = new Set(storePurchaseOrders.map((po) => po.id));
+
+    const countEvents = (inventoryCounts ?? []).map((c: any) => ({
+      key: `count-${c.id}`,
+      icon: <ClipboardList className="h-3.5 w-3.5 text-muted-foreground shrink-0" />,
+      label: "Count applied",
+      detail: parseCountDate(c.countDate).toLocaleDateString(),
+      timestamp: new Date(c.countedAt).getTime(),
+      href: `/count/${c.id}`,
+    }));
+
+    const receiptEvents = allReceipts
+      .filter((r: any) => r.status === "completed" && storePOIds.has(r.purchaseOrderId))
+      .map((r: any) => ({
+        key: `receipt-${r.id}`,
+        icon: <Receipt className="h-3.5 w-3.5 text-muted-foreground shrink-0" />,
+        label: "Invoice received",
+        detail: r.vendorName || "",
+        timestamp: new Date(r.createdAt || r.receivedAt).getTime(),
+        href: `/receiving/${r.purchaseOrderId}`,
+      }));
+
+    const orderEvents = storePurchaseOrders.map((po: any) => ({
+      key: `order-${po.id}`,
+      icon: <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />,
+      label: "Order created",
+      detail: po.vendorName || "",
+      timestamp: new Date(po.createdAt).getTime(),
+      href: `/purchase-orders/${po.id}`,
+    }));
+
+    return [...countEvents, ...receiptEvents, ...orderEvents]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 5);
+  }, [inventoryCounts, allReceipts, storePurchaseOrders]);
+
+  // ── Upcoming orders (from deadlines, sorted by deadline asc) ──────────────
+
+  const upcomingOrders = useMemo(
+    () =>
+      [...orderDeadlines]
+        .filter((d: any) => d.orderDeadline && new Date(d.orderDeadline) >= new Date())
+        .sort((a: any, b: any) => new Date(a.orderDeadline).getTime() - new Date(b.orderDeadline).getTime())
+        .slice(0, 3),
+    [orderDeadlines]
+  );
+
+  // ── Copy reorder list ─────────────────────────────────────────────────────
+
+  const copyReorderList = () => {
+    const items = reorderData?.items ?? [];
+    const lines = items.map(
+      (i) => `${i.vendorName ?? "No Vendor"} — ${i.name} — ${i.qtyToOrder.toFixed(1)} ${i.unitAbbreviation}`
+    );
+    navigator.clipboard
+      .writeText(lines.join("\n"))
+      .then(() => {
+        setReorderCopied(true);
+        setTimeout(() => setReorderCopied(false), 2000);
+      })
+      .catch(() => {
+        toast({ title: "Copy failed", description: "Could not access clipboard.", variant: "destructive" });
+      });
   };
 
-  // Stats filtered by selected store
-  const totalItems = inventoryItems?.filter(i => i.active === 1).length || 0;
-  const totalCounts = inventoryCounts?.length || 0;
-  const totalMenuItems = allMenuItems?.filter(m => m.active === 1).length || 0;
+  // ── Loading / empty states ─────────────────────────────────────────────────
 
-  const stats = [
-    {
-      title: "Active Items",
-      value: itemsLoading ? "..." : totalItems.toString(),
-      icon: Package,
-      description: "Inventory items at this store",
-      link: "/inventory-items",
-    },
-    {
-      title: "Recent Variance",
-      value: varianceSummariesLoading 
-        ? "..." 
-        : recentVariance 
-          ? `$${Math.abs(recentVariance.totalVarianceCost).toFixed(2)}`
-          : "No data",
-      icon: TrendingUp,
-      description: recentVariance 
-        ? `${new Date(recentVariance.inventoryDate).toLocaleDateString()}`
-        : "Complete inventory counts to view",
-      link: recentVariance 
-        ? `/tfc/variance?countId=${recentVariance.currentCountId}` 
-        : "/tfc/variance",
-      variant: recentVariance?.totalVarianceCost 
-        ? recentVariance.totalVarianceCost > 0 
-          ? "negative" 
-          : "positive"
-        : undefined,
-    },
-    {
-      title: "Inventory Counts",
-      value: countsLoading ? "..." : totalCounts.toString(),
-      icon: ClipboardList,
-      description: "Count sessions for this store",
-      link: "/inventory-sessions",
-    },
-    {
-      title: "Menu Items",
-      value: menuItemsLoading ? "..." : totalMenuItems.toString(),
-      icon: UtensilsCrossed,
-      description: "Active menu items at this store",
-      link: "/menu-items",
-    },
-  ];
-
-  // Loading state while store context initializes
   if (storesLoading) {
     return (
-      <div className="p-4 sm:p-8">
-        <Skeleton className="h-12 w-64 mb-4 sm:mb-8" />
-        <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-32" />
-          ))}
+      <div className="p-4 sm:p-6">
+        <Skeleton className="h-10 w-48 mb-6" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-28" />)}
         </div>
       </div>
     );
   }
 
-  // Empty state for users with no accessible stores - show milestone tracker so they can create first store
   if (stores.length === 0 || !selectedStoreId) {
     return (
-      <div className="p-4 sm:p-8">
+      <div className="p-4 sm:p-6">
         <SetupMilestoneTracker />
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
@@ -443,34 +331,28 @@ export default function Dashboard() {
     );
   }
 
-  // Full dashboard for admins and managers
-  // Calculate whether to show split layout or full width
-  const hasOrderDeadlines = orderDeadlines.length > 0;
-  const hasCriticalItems = criticalItems.length > 0;
-  const showBothSections = hasOrderDeadlines && hasCriticalItems;
-  
+  const today = format(new Date(), "EEEE, MMMM d");
+  const inventoryValueLoading = countsLoading || (!!mostRecentCount && countLinesLoading);
+
   return (
-    <div className="p-4 sm:p-8">
-      {/* Welcome banner — shown once after completing the onboarding wizard */}
+    <div className="p-4 sm:p-6">
+
+      {/* Welcome banner */}
       {isWelcome && !welcomeDismissed && (
         <Card className="mb-6 border-accent/30 bg-gradient-to-r from-accent/5 to-transparent" data-testid="welcome-banner">
           <CardContent className="pt-4 pb-4">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3 min-w-0">
-                <PartyPopper className="h-5 w-5 text-accent-foreground shrink-0 mt-0.5" style={{ color: "#f2690d" }} />
+                <PartyPopper className="h-5 w-5 shrink-0 mt-0.5" style={{ color: "#f2690d" }} />
                 <div className="min-w-0">
                   <p className="font-semibold text-base mb-1">
                     Welcome to FNB Cost Pro{user?.firstName ? `, ${user.firstName}` : ""}!
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    You've set up {stores.length} location{stores.length !== 1 ? "s" : ""} — great start. Your dashboard is your command center for tracking food costs, inventory, and recipes. Follow the Getting Started guide below to finish configuring your account.
+                    You've set up {stores.length} location{stores.length !== 1 ? "s" : ""} — great start.
+                    Follow the Getting Started guide below to finish configuring your account.
                   </p>
-                  <Button
-                    size="sm"
-                    className="mt-3"
-                    onClick={dismissWelcome}
-                    data-testid="button-welcome-got-it"
-                  >
+                  <Button size="sm" className="mt-3" onClick={dismissWelcome} data-testid="button-welcome-got-it">
                     Got it, let's go
                     <ArrowRight className="h-3 w-3 ml-1" />
                   </Button>
@@ -490,808 +372,395 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       )}
+
       <SetupMilestoneTracker />
-      {/* Alerts Section: Dynamic Layout - Split or Full Width */}
-      <div className={`grid grid-cols-1 gap-4 mb-6 ${showBothSections ? 'lg:grid-cols-2' : ''}`}>
-        {/* Order Deadlines Card - Only show if has data */}
-        {hasOrderDeadlines && (
-          <Card 
-          className={
-            orderDeadlines.length > 0
-              ? "bg-gradient-to-r from-blue-50/50 to-slate-50/50 dark:from-blue-950/20 dark:to-slate-950/20 border-blue-200 dark:border-blue-800"
-              : "bg-gradient-to-r from-slate-50/50 to-slate-50/50 dark:from-slate-950/20 dark:to-slate-950/20"
-          } 
-          data-testid="card-alerts-orders"
-        >
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <AlertCircle className={`h-5 w-5 ${orderDeadlines.length > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}`} />
-                <CardTitle className="text-base">
-                  Order Deadlines ({orderDeadlines.length})
-                </CardTitle>
-              </div>
-              
-              {/* Pagination Controls */}
-              {orderDeadlines.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground" data-testid="text-order-page">
-                    {orderIndex + 1} of {orderDeadlines.length}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setOrderIndex(Math.max(0, orderIndex - 1))}
-                      disabled={orderIndex === 0}
-                      aria-label="Previous order"
-                      data-testid="button-order-prev"
-                      className="h-8 w-8"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setOrderIndex(Math.min(orderDeadlines.length - 1, orderIndex + 1))}
-                      disabled={orderIndex === orderDeadlines.length - 1}
-                      aria-label="Next order"
-                      data-testid="button-order-next"
-                      className="h-8 w-8"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardHeader>
 
-          <CardContent className="pb-4">
-            {orderDeadlines.length > 0 ? (
-              (() => {
-                const deadline = orderDeadlines[orderIndex];
-                const isPastDue = deadline.isPastDue;
-                const isUrgent = deadline.isUrgent;
-                
-                return (
-                  <div className="min-h-[120px]">
-                    <Link href={`/purchase-orders/${deadline.purchaseOrderId}`}>
-                      <div 
-                        className={`flex items-center justify-between gap-4 p-4 rounded-lg border hover-elevate cursor-pointer ${
-                          isPastDue 
-                            ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800" 
-                            : isUrgent 
-                              ? "bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800"
-                              : "bg-background border-border"
-                        }`}
-                        data-testid={`deadline-${deadline.purchaseOrderId}`}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="font-medium truncate">{deadline.vendorName}</span>
-                            {deadline.internalOrderId && (
-                              <span className="text-xs text-muted-foreground">#{deadline.internalOrderId}</span>
-                            )}
-                          </div>
-                          <div className="flex flex-col gap-1 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                              <Clock className="h-4 w-4" />
-                              <span>Deadline: {new Date(deadline.orderDeadline).toLocaleDateString()}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Calendar className="h-4 w-4" />
-                              <span>Delivery: {new Date(deadline.nextDeliveryDate).toLocaleDateString()}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge 
-                            variant={isPastDue ? "destructive" : isUrgent ? "secondary" : "outline"}
-                            className={
-                              isPastDue 
-                                ? "bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"
-                                : isUrgent 
-                                  ? "bg-blue-500/10 text-blue-700 border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20"
-                                  : ""
-                            }
-                          >
-                            {isPastDue 
-                              ? "Past Due" 
-                              : deadline.daysUntilDeadline === 0 
-                                ? "Due Today" 
-                                : deadline.daysUntilDeadline === 1 
-                                  ? "Due Tomorrow"
-                                  : `${deadline.daysUntilDeadline} days`
-                            }
-                          </Badge>
-                        </div>
-                      </div>
-                    </Link>
-                  </div>
-                );
-              })()
-            ) : (
-              <div className="min-h-[120px] flex items-center justify-center">
-                <p className="text-sm text-muted-foreground text-center">
-                  No pending orders with upcoming deadlines
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        )}
-
-        {/* Inventory Alerts Card - Only show if has data */}
-        {hasCriticalItems && (
-          <Card 
-          className={
-            criticalItems.length > 0
-              ? "bg-gradient-to-r from-red-50/50 to-slate-50/50 dark:from-red-950/20 dark:to-slate-950/20 border-red-200 dark:border-red-800"
-              : "bg-gradient-to-r from-slate-50/50 to-slate-50/50 dark:from-slate-950/20 dark:to-slate-950/20"
-          } 
-          data-testid="card-alerts-inventory"
-        >
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className={`h-5 w-5 ${criticalItems.length > 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`} />
-                <CardTitle className="text-base">
-                  Inventory Alerts ({criticalItems.length})
-                </CardTitle>
-              </div>
-              
-              {/* Pagination Controls */}
-              {criticalItems.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground" data-testid="text-inventory-page">
-                    {inventoryIndex + 1} of {criticalItems.length}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setInventoryIndex(Math.max(0, inventoryIndex - 1))}
-                      disabled={inventoryIndex === 0}
-                      aria-label="Previous inventory item"
-                      data-testid="button-inventory-prev"
-                      className="h-8 w-8"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setInventoryIndex(Math.min(criticalItems.length - 1, inventoryIndex + 1))}
-                      disabled={inventoryIndex === criticalItems.length - 1}
-                      aria-label="Next inventory item"
-                      data-testid="button-inventory-next"
-                      className="h-8 w-8"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardHeader>
-
-          <CardContent className="pb-4">
-            {criticalItems.length > 0 ? (
-              (() => {
-                const item = criticalItems[inventoryIndex];
-                const percentOfReorder = (item.estimatedOnHand / item.reorderLevel) * 100;
-                const isCritical = percentOfReorder < 50;
-                
-                return (
-                  <div className="min-h-[120px]">
-                    <Link href={`/inventory-items/${item.id}`}>
-                      <div 
-                        className={`flex items-center justify-between gap-4 p-4 rounded-lg border hover-elevate cursor-pointer ${
-                          isCritical 
-                            ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800" 
-                            : "bg-slate-50 dark:bg-slate-950/30 border-slate-300 dark:border-slate-800"
-                        }`}
-                        data-testid={`critical-item-${item.id}`}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="font-medium truncate">{item.name}</span>
-                          </div>
-                          <div className="flex flex-col gap-1 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                              <Package className="h-4 w-4" />
-                              <span>On Hand: {item.estimatedOnHand.toFixed(1)} {item.unitAbbreviation}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span>Reorder Level: {item.reorderLevel.toFixed(1)} {item.unitAbbreviation}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge 
-                            variant={isCritical ? "destructive" : "secondary"}
-                            className={
-                              isCritical 
-                                ? "bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"
-                                : "bg-slate-500/10 text-slate-700 border-slate-500/20 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20"
-                            }
-                          >
-                            {isCritical ? "Critical" : "Low"} ({percentOfReorder.toFixed(0)}%)
-                          </Badge>
-                        </div>
-                      </div>
-                    </Link>
-                  </div>
-                );
-              })()
-            ) : (
-              <div className="min-h-[120px] flex items-center justify-center">
-                <p className="text-sm text-muted-foreground text-center">
-                  All inventory levels are healthy
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        )}
-
-        {/* Missing Ingredients Card - Only show if has data */}
-        {recipesWithMissing.length > 0 && (
-          <Card
-            className="bg-gradient-to-r from-yellow-50/50 to-slate-50/50 dark:from-yellow-950/20 dark:to-slate-950/20 border-yellow-200 dark:border-yellow-800"
-            data-testid="card-missing-ingredients"
-          >
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                <CardTitle className="text-base">
-                  Missing Recipe Ingredients ({recipesWithMissing.length})
-                </CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="pb-4">
-              <div className="space-y-2">
-                {recipesWithMissing.slice(0, 3).map((r) => (
-                  <Link key={r.id} href={`/recipes/${r.id}`}>
-                    <div
-                      className="flex items-start gap-3 p-3 rounded-md border bg-yellow-50 dark:bg-yellow-950/30 border-yellow-300 dark:border-yellow-800 hover-elevate cursor-pointer"
-                      data-testid={`missing-recipe-${r.id}`}
-                    >
-                      <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{r.name}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                          {r.missingComponentNames.length === 1
-                            ? `Missing: ${r.missingComponentNames[0]}`
-                            : `${r.missingComponentNames.length} missing ingredients`}
-                        </p>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-                    </div>
-                  </Link>
-                ))}
-                {recipesWithMissing.length > 3 && (
-                  <Link href="/recipes">
-                    <p className="text-xs text-muted-foreground text-center pt-1 hover:text-foreground transition-colors" data-testid="link-view-all-missing">
-                      +{recipesWithMissing.length - 3} more recipes affected
-                    </p>
-                  </Link>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* What to Order card — shown when par levels are set and items are below par */}
-      {reorderData?.hasParLevels && (
-        <div className="mb-6" data-testid="card-what-to-order">
-          {(() => {
-            const items = reorderData.items ?? [];
-            // Group by vendor
-            const grouped = new Map<string, typeof items>();
-            for (const item of items) {
-              const key = item.vendorName ?? "No Vendor";
-              if (!grouped.has(key)) grouped.set(key, []);
-              grouped.get(key)!.push(item);
-            }
-            const vendorGroups = Array.from(grouped.entries());
-
-            const copyList = () => {
-              const lines = items.map(
-                (i) => `${i.vendorName ?? "No Vendor"} — ${i.name} — ${i.qtyToOrder.toFixed(1)} ${i.unitAbbreviation}`
-              );
-              navigator.clipboard.writeText(lines.join("\n")).then(() => {
-                setReorderCopied(true);
-                setTimeout(() => setReorderCopied(false), 2000);
-              }).catch(() => {
-                toast({ title: "Copy failed", description: "Could not access clipboard. Please copy manually.", variant: "destructive" });
-              });
-            };
-
-            return (
-              <Card
-                className={
-                  items.length > 0
-                    ? "bg-gradient-to-r from-orange-50/50 to-slate-50/50 dark:from-orange-950/20 dark:to-slate-950/20 border-orange-200 dark:border-orange-800"
-                    : ""
-                }
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div className="flex items-center gap-3">
-                      <ShoppingCart className={`h-5 w-5 ${items.length > 0 ? "text-[#f2690d]" : "text-muted-foreground"}`} />
-                      <CardTitle className="text-base">
-                        What to Order {items.length > 0 && `(${items.length})`}
-                      </CardTitle>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {items.length > 0 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={copyList}
-                          data-testid="button-copy-reorder-list"
-                        >
-                          {reorderCopied ? (
-                            <>
-                              <Check className="h-3.5 w-3.5 mr-1 text-green-600" />
-                              Copied
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="h-3.5 w-3.5 mr-1" />
-                              Copy List
-                            </>
-                          )}
-                        </Button>
-                      )}
-                      <Link href="/inventory-items/par-levels">
-                        <Button variant="ghost" size="sm" data-testid="button-manage-par-levels">
-                          <ArrowRight className="h-4 w-4" />
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pb-4">
-                  {items.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-4 text-center gap-2">
-                      <p className="text-sm text-muted-foreground">
-                        All items with par levels are at or above par. Great job!
-                      </p>
-                      <Link href="/inventory-items/par-levels">
-                        <Button size="sm" variant="outline" data-testid="button-edit-par-levels">
-                          Edit Par Levels
-                        </Button>
-                      </Link>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {vendorGroups.map(([vendorName, vendorItems]) => (
-                        <div key={vendorName} data-testid={`reorder-vendor-${vendorName}`}>
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-                            {vendorName}
-                          </p>
-                          <div className="space-y-1">
-                            {vendorItems.map((item) => (
-                              <Link key={item.id} href={`/inventory-items/${item.id}`}>
-                                <div
-                                  className="flex items-center justify-between gap-3 px-3 py-2 rounded-md border bg-background hover-elevate cursor-pointer"
-                                  data-testid={`reorder-item-${item.id}`}
-                                >
-                                  <span className="text-sm font-medium truncate">
-                                    {item.name.charAt(0).toUpperCase() + item.name.slice(1)}
-                                  </span>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    <span className="text-xs text-muted-foreground font-mono">
-                                      on hand: {item.onHand.toFixed(1)}
-                                    </span>
-                                    <Badge
-                                      variant="secondary"
-                                      className="bg-orange-500/10 text-orange-700 border-orange-500/20 dark:text-orange-400 font-mono text-xs"
-                                    >
-                                      order {item.qtyToOrder.toFixed(1)} {item.unitAbbreviation}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              </Link>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })()}
+      {/* ── Page header ─────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight" data-testid="heading-home">Home</h1>
+          <p className="text-sm text-muted-foreground mt-0.5" data-testid="text-store-date">
+            {selectedStore?.name} &middot; {today}
+          </p>
         </div>
-      )}
-
-      {/* Stats Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-        {stats.map((stat) => {
-          const cardContent = (
-            <Card 
-              data-testid={`card-stat-${stat.title.toLowerCase().replace(/\s+/g, "-")}`}
-              className={stat.link ? "cursor-pointer hover-elevate" : ""}
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/inventory-sessions">
+            <Button
+              style={{ backgroundColor: "#f2690d", borderColor: "#f2690d", color: "#fff" }}
+              data-testid="button-start-count"
             >
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  {stat.title}
-                </CardTitle>
-                <stat.icon className={`h-4 w-4 ${
-                  stat.variant === "positive" 
-                    ? "text-green-600 dark:text-green-400" 
-                    : stat.variant === "negative"
-                      ? "text-red-600 dark:text-red-400"
-                      : "text-muted-foreground"
-                }`} />
-              </CardHeader>
-              <CardContent>
-                <div 
-                  className={`text-2xl font-bold font-mono ${
-                    stat.variant === "positive" 
-                      ? "text-green-600 dark:text-green-400" 
-                      : stat.variant === "negative"
-                        ? "text-red-600 dark:text-red-400"
-                        : ""
-                  }`}
-                  data-testid={`text-stat-value-${stat.title.toLowerCase().replace(/\s+/g, "-")}`}
-                >
-                  {stat.value}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {stat.description}
-                </p>
-              </CardContent>
-            </Card>
-          );
-
-          return stat.link ? (
-            <Link key={stat.title} href={stat.link}>
-              {cardContent}
-            </Link>
-          ) : (
-            <div key={stat.title}>
-              {cardContent}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Top Variance Item — biggest single driver from most recent TFC period */}
-      {topVarianceItem && (
-        <div className="mb-6" data-testid="card-top-variance-item">
-          <Link
-            href={`/tfc/variance?previousCountId=${topVarianceItem.previousCountId}&currentCountId=${topVarianceItem.currentCountId}&highlight=${topVarianceItem.inventoryItemId}`}
-            data-testid="link-top-variance-item"
-          >
-            <Card className="hover-elevate cursor-pointer bg-gradient-to-r from-red-50/50 to-slate-50/50 dark:from-red-950/20 dark:to-slate-950/20 border-red-200 dark:border-red-800">
-              <CardContent className="flex items-center gap-4 p-4">
-                <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-red-500/10 shrink-0">
-                  <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">
-                    Biggest Variance Driver
-                  </p>
-                  <p className="text-sm font-medium truncate" data-testid="text-top-variance-item-name">
-                    {topVarianceItem.inventoryItemName}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Most recent period &middot; over-used vs. theoretical
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="text-right">
-                    <p
-                      className="text-sm font-semibold text-red-600 dark:text-red-400"
-                      data-testid="text-top-variance-item-cost"
-                    >
-                      +${topVarianceItem.varianceCost.toFixed(2)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      +{topVarianceItem.variancePercent.toFixed(1)}%
-                    </p>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-              </CardContent>
-            </Card>
+              <ClipboardList className="h-4 w-4 mr-1.5" />
+              Start Count
+            </Button>
+          </Link>
+          <Link href="/order">
+            <Button variant="outline" data-testid="button-new-order">
+              <ShoppingCart className="h-4 w-4 mr-1.5" />
+              New Order
+            </Button>
+          </Link>
+          <Link href="/receiving">
+            <Button variant="outline" data-testid="button-receive-order">
+              <PackageCheck className="h-4 w-4 mr-1.5" />
+              Receive Order
+            </Button>
           </Link>
         </div>
-      )}
-
-      {/* Quicklinks Section */}
-      <div className="grid gap-6 md:grid-cols-2 mb-8">
-        {/* Recent Inventory */}
-        <Card data-testid="card-recent-inventory">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-3">
-                <ClipboardList className="h-5 w-5 text-muted-foreground" />
-                <CardTitle>Inventory Value</CardTitle>
-              </div>
-              <Link href="/inventory-sessions">
-                <Button variant="ghost" size="sm" data-testid="button-view-counts">
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {countsLoading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-4 w-3/4" />
-              </div>
-            ) : mostRecentCount ? (
-              <div className="space-y-4">
-                {/* Single clickable line for recent count */}
-                <Link href={`/count/${mostRecentCount.id}`}>
-                  <div className="cursor-pointer hover-elevate rounded-md p-3 border" data-testid="link-recent-count">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex-1">
-                        <p className="text-sm text-muted-foreground mb-1">
-                          {parseCountDate(mostRecentCount.countDate).toLocaleDateString()} • {recentCountLines?.length || 0} items
-                        </p>
-                        <p className="text-2xl font-semibold font-mono" data-testid="text-recent-count-value">
-                          ${recentCountValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </p>
-                      </div>
-                      <ArrowRight className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                  </div>
-                </Link>
-
-                {/* Average inventory value comparison */}
-                {inventoryCounts && inventoryCounts.length > 1 && (
-                  <div className="pt-2 border-t">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Average Value</p>
-                        <p className="text-sm text-muted-foreground">
-                          Across {inventoryCounts.length} counts
-                        </p>
-                      </div>
-                      <p className="text-lg font-semibold font-mono" data-testid="text-average-inventory-value">
-                        ${averageInventoryValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </p>
-                    </div>
-                    {averageInventoryValue > 0 && (
-                      <div className="mt-2">
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs text-muted-foreground">vs Average:</p>
-                          <Badge 
-                            variant="secondary"
-                            className={
-                              recentCountValue > averageInventoryValue
-                                ? "bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400"
-                                : recentCountValue < averageInventoryValue
-                                  ? "bg-red-500/10 text-red-700 border-red-500/20 dark:bg-red-500/10 dark:text-red-400"
-                                  : ""
-                            }
-                            data-testid="badge-inventory-comparison"
-                          >
-                            {recentCountValue > averageInventoryValue ? "+" : ""}
-                            ${(recentCountValue - averageInventoryValue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </Badge>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-6">
-                <p className="text-sm text-muted-foreground mb-3">No counts for this store yet</p>
-                <Link href="/inventory-sessions">
-                  <Button size="sm" data-testid="button-first-count">
-                    Start Count
-                  </Button>
-                </Link>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Recent Orders */}
-        <Card data-testid="card-recent-orders">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-3">
-                <PackageCheck className="h-5 w-5 text-muted-foreground" />
-                <CardTitle>Recent Orders</CardTitle>
-              </div>
-              <Link href="/orders">
-                <Button variant="ghost" size="sm" data-testid="button-view-orders">
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {recentOrders.length > 0 ? (
-              <div className="space-y-2">
-                {recentOrders.map((order: any) => {
-                  const isTransfer = order.type === 'transfer';
-                  const orderLink = isTransfer 
-                    ? `/transfer-orders/${order.id}`
-                    : order.status === "pending" 
-                      ? `/purchase-orders/${order.id}` 
-                      : `/receiving/${order.id}`;
-                  
-                  return (
-                    <Link 
-                      key={order.id} 
-                      href={orderLink}
-                    >
-                      <div 
-                        className="flex items-center justify-between border-b last:border-0 pb-2 last:pb-0 cursor-pointer hover-elevate rounded p-2"
-                        data-testid={`row-order-${order.id}`}
-                      >
-                        <div className="flex-1">
-                          <p className="font-medium text-sm" data-testid={`text-order-date-${order.id}`}>
-                            {new Date(order.createdAt).toLocaleDateString()}
-                          </p>
-                          <p className="text-xs text-muted-foreground" data-testid={`text-order-vendor-${order.id}`}>
-                            {isTransfer 
-                              ? `${order.fromStoreName} → ${order.toStoreName}` 
-                              : order.vendorName}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {isTransfer ? 'Transfer' : 'Purchase'} #{order.id.slice(0, 8)}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <Badge 
-                            variant={statusConfig[order.status]?.variant || "secondary"}
-                            className={statusConfig[order.status]?.className || ""}
-                            data-testid={`badge-order-status-${order.id}`}
-                          >
-                            {order.status.replace('_', ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                          </Badge>
-                          {!isTransfer && (() => {
-                            const actualValue = getActualReceivedValue(order.id);
-                            const displayValue = actualValue !== null ? actualValue : (order.totalAmount || 0);
-                            return (
-                              <p className="font-medium text-sm font-mono" data-testid={`text-order-total-${order.id}`}>
-                                ${displayValue.toFixed(2)}
-                              </p>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-center py-6">
-                <p className="text-sm text-muted-foreground mb-3">No orders for this store yet</p>
-                <Link href="/orders">
-                  <Button size="sm" data-testid="button-first-order">
-                    View Orders
-                  </Button>
-                </Link>
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
-      {/* Waste Chart Widget */}
-      <div className="mb-8">
-        <Card data-testid="card-waste-chart">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-3">
-                <Trash2 className="h-5 w-5 text-muted-foreground" />
-                <CardTitle>Waste Tracking</CardTitle>
-                <span className="text-sm text-muted-foreground font-mono" data-testid="text-waste-total">
-                  ${totalWaste.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      {/* ── KPI row ─────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+
+        {/* Inventory Value */}
+        <Link href="/inventory-sessions">
+          <Card className="cursor-pointer hover-elevate" data-testid="card-kpi-inventory-value">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Inventory Value
                 </span>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1 border rounded-md p-1">
-                  {([7, 14, 30] as const).map((days) => (
-                    <Button
-                      key={days}
-                      variant={wasteDaysRange === days ? "secondary" : "ghost"}
-                      size="sm"
-                      onClick={() => setWasteDaysRange(days)}
-                      className="h-7 px-2 text-xs"
-                      data-testid={`button-waste-${days}d`}
-                    >
-                      {days}d
-                    </Button>
+              {inventoryValueLoading ? (
+                <Skeleton className="h-7 w-24 mb-1" />
+              ) : mostRecentCount ? (
+                <>
+                  <p className="text-2xl font-bold font-mono" data-testid="text-kpi-inventory-value">
+                    ${recentCountValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    as of {parseCountDate(mostRecentCount.countDate).toLocaleDateString()}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-2xl font-bold text-muted-foreground" data-testid="text-kpi-inventory-value">—</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">No counts yet</p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
+
+        {/* Last Variance */}
+        <Link href={recentVariance ? `/tfc/variance?countId=${recentVariance.currentCountId}` : "/tfc/variance"}>
+          <Card className="cursor-pointer hover-elevate" data-testid="card-kpi-last-variance">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Last Variance
+                </span>
+                <TrendingUp className={`h-4 w-4 ${
+                  recentVariance?.totalVarianceCost > 0
+                    ? "text-red-500 dark:text-red-400"
+                    : recentVariance?.totalVarianceCost < 0
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-muted-foreground"
+                }`} />
+              </div>
+              {recentVariance ? (
+                <>
+                  <p
+                    className={`text-2xl font-bold font-mono ${
+                      recentVariance.totalVarianceCost > 0
+                        ? "text-red-600 dark:text-red-400"
+                        : recentVariance.totalVarianceCost < 0
+                          ? "text-green-600 dark:text-green-400"
+                          : ""
+                    }`}
+                    data-testid="text-kpi-last-variance"
+                  >
+                    {recentVariance.totalVarianceCost >= 0 ? "+" : ""}${Math.abs(recentVariance.totalVarianceCost).toFixed(2)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {recentVariance.variancePercent != null
+                      ? `${recentVariance.variancePercent >= 0 ? "+" : ""}${recentVariance.variancePercent.toFixed(1)}% · `
+                      : ""}
+                    {new Date(recentVariance.inventoryDate).toLocaleDateString()}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-2xl font-bold text-muted-foreground" data-testid="text-kpi-last-variance">—</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">No variance data</p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
+
+        {/* Open Orders */}
+        <Link href="/orders">
+          <Card className="cursor-pointer hover-elevate" data-testid="card-kpi-open-orders">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Open Orders
+                </span>
+                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <p className="text-2xl font-bold font-mono" data-testid="text-kpi-open-orders">
+                {openOrders.length}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {openOrders.length > 0 && openOrdersValue > 0
+                  ? `$${openOrdersValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} pending`
+                  : "Active purchase orders"}
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        {/* Last Count */}
+        <Link href="/inventory-sessions">
+          <Card className="cursor-pointer hover-elevate" data-testid="card-kpi-last-count">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Last Count
+                </span>
+                <ClipboardList className="h-4 w-4 text-muted-foreground" />
+              </div>
+              {countsLoading ? (
+                <Skeleton className="h-7 w-24 mb-1" />
+              ) : mostRecentCount ? (
+                <>
+                  <p className="text-lg font-bold" data-testid="text-kpi-last-count">
+                    {parseCountDate(mostRecentCount.countDate).toLocaleDateString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {daysSinceLastCount === 0
+                      ? "Today"
+                      : daysSinceLastCount === 1
+                        ? "Yesterday"
+                        : `${daysSinceLastCount} days ago`}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-2xl font-bold text-muted-foreground" data-testid="text-kpi-last-count">—</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">No counts yet</p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
+      </div>
+
+      {/* ── Main two-column area ─────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-6">
+
+        {/* Left column: Needs Attention */}
+        <div>
+          {needsAttentionRows.length > 0 ? (
+            <Card data-testid="card-needs-attention">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <CardTitle className="text-base">Needs Attention</CardTitle>
+                  <Badge variant="secondary" data-testid="badge-needs-attention-count">
+                    {needsAttentionRows.length}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pb-3">
+                <div className="space-y-1" data-testid="list-needs-attention">
+                  {needsAttentionRows.map((row) => (
+                    <Link key={row.key} href={row.href}>
+                      <div
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-md hover-elevate cursor-pointer border border-transparent hover:border-border"
+                        data-testid={`row-attention-${row.key}`}
+                      >
+                        {row.icon}
+                        <span className="text-sm flex-1 min-w-0 truncate">{row.label}</span>
+                        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      </div>
+                    </Link>
                   ))}
                 </div>
-                <Link href="/waste">
-                  <Button variant="ghost" size="sm" data-testid="button-view-waste">
+              </CardContent>
+            </Card>
+          ) : (
+            <Card data-testid="card-needs-attention-empty">
+              <CardContent className="flex flex-col items-center justify-center py-10 text-center gap-2">
+                <div className="h-8 w-8 rounded-full bg-green-500/10 flex items-center justify-center mb-1">
+                  <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                </div>
+                <p className="text-sm font-medium">All clear</p>
+                <p className="text-xs text-muted-foreground">No urgent items need your attention right now.</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Right column: stacked cards */}
+        <div className="space-y-4">
+
+          {/* Recent Activity */}
+          <Card data-testid="card-recent-activity">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Recent Activity</CardTitle>
+            </CardHeader>
+            <CardContent className="pb-3">
+              {recentActivityEvents.length > 0 ? (
+                <div className="space-y-0.5" data-testid="list-recent-activity">
+                  {recentActivityEvents.map((event) => (
+                    <Link key={event.key} href={event.href}>
+                      <div
+                        className="flex items-center gap-3 px-2 py-2 rounded-md hover-elevate cursor-pointer"
+                        data-testid={`row-activity-${event.key}`}
+                      >
+                        {event.icon}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{event.label}</p>
+                          {event.detail && (
+                            <p className="text-xs text-muted-foreground truncate">{event.detail}</p>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                          {formatRelativeTime(event.timestamp)}
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">No recent activity</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Upcoming Orders */}
+          <Card data-testid="card-upcoming-orders">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <CardTitle className="text-base">Upcoming Orders</CardTitle>
+                <Link href="/orders">
+                  <Button variant="ghost" size="icon" data-testid="button-view-all-orders">
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {wasteLoading ? (
-              <div className="h-[200px] flex items-center justify-center">
-                <Skeleton className="h-full w-full" />
-              </div>
-            ) : wasteChartData.every(d => d.inventory === 0 && d.product === 0) ? (
-              <div className="h-[200px] flex items-center justify-center">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground mb-3">No waste recorded in the last {wasteDaysRange} days</p>
-                  <Link href="/waste">
-                    <Button size="sm" data-testid="button-log-waste">
-                      Log Waste
-                    </Button>
-                  </Link>
+            </CardHeader>
+            <CardContent className="pb-3">
+              {upcomingOrders.length > 0 ? (
+                <div className="space-y-0.5" data-testid="list-upcoming-orders">
+                  {upcomingOrders.map((d: any) => (
+                    <Link key={d.id} href={`/purchase-orders/${d.id}`}>
+                      <div
+                        className="flex items-center gap-3 px-2 py-2 rounded-md hover-elevate cursor-pointer"
+                        data-testid={`row-upcoming-${d.id}`}
+                      >
+                        <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{d.vendorName || "Order"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Order by {format(new Date(d.orderDeadline), "MMM d")}
+                            {d.deliveryDate ? ` · Delivery ${format(new Date(d.deliveryDate), "MMM d")}` : ""}
+                          </p>
+                        </div>
+                        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      </div>
+                    </Link>
+                  ))}
                 </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">No upcoming deadlines</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Cost Watch */}
+          <Card data-testid="card-cost-watch">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Cost Watch</CardTitle>
+            </CardHeader>
+            <CardContent className="pb-3">
+              <div className="space-y-1">
+                {/* Top variance item */}
+                {topVarianceItem && (
+                  <Link
+                    href={`/tfc/variance?previousCountId=${topVarianceItem.previousCountId}&currentCountId=${topVarianceItem.currentCountId}&highlight=${topVarianceItem.inventoryItemId}`}
+                    data-testid="link-top-variance-item"
+                  >
+                    <div
+                      className="flex items-center gap-3 px-2 py-2.5 rounded-md hover-elevate cursor-pointer"
+                      data-testid="row-top-variance-item"
+                    >
+                      <AlertTriangle className="h-3.5 w-3.5 text-red-500 dark:text-red-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground mb-0.5">Biggest variance driver</p>
+                        <p className="text-sm font-medium truncate" data-testid="text-top-item-name">
+                          {topVarianceItem.inventoryItemName}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-semibold text-red-600 dark:text-red-400" data-testid="text-top-item-cost">
+                          +${topVarianceItem.varianceCost.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          +{topVarianceItem.variancePercent.toFixed(1)}%
+                        </p>
+                      </div>
+                    </div>
+                  </Link>
+                )}
+
+                {/* Below-par summary */}
+                {(reorderData?.items?.length ?? 0) > 0 && (
+                  <div
+                    className="flex items-center gap-3 px-2 py-2.5 rounded-md border"
+                    data-testid="row-below-par-summary"
+                  >
+                    <Package className="h-3.5 w-3.5 text-orange-500 dark:text-orange-400 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">
+                        {reorderData!.items.length} item{reorderData!.items.length !== 1 ? "s" : ""} to order
+                      </p>
+                      <p className="text-xs text-muted-foreground">Below par level</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={copyReorderList}
+                        data-testid="button-copy-reorder-list"
+                        title="Copy reorder list"
+                      >
+                        {reorderCopied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                      </Button>
+                      <Link href="/inventory-items/par-levels">
+                        <Button variant="ghost" size="icon" data-testid="button-view-par-levels">
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                )}
+
+                {!topVarianceItem && (reorderData?.items?.length ?? 0) === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No cost alerts at this time
+                  </p>
+                )}
               </div>
-            ) : (
-              <div className="h-[200px]" data-testid="chart-waste">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={wasteChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
-                    <XAxis 
-                      dataKey="displayDate" 
-                      className="text-xs"
-                      tick={{ fill: 'currentColor', fontSize: 11 }}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <YAxis 
-                      className="text-xs"
-                      tick={{ fill: 'currentColor', fontSize: 11 }}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(value) => `$${value}`}
-                      width={50}
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(var(--background))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '6px',
-                        fontSize: '12px'
-                      }}
-                      formatter={(value: number, name: string) => [
-                        `$${value.toFixed(2)}`, 
-                        name === 'inventory' ? 'Inventory' : 'Product'
-                      ]}
-                      labelFormatter={(label) => label}
-                    />
-                    <Legend 
-                      wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
-                      formatter={(value) => value === 'inventory' ? 'Inventory' : 'Product'}
-                    />
-                    <Bar 
-                      dataKey="inventory" 
-                      stackId="waste"
-                      fill="hsl(var(--chart-1))" 
-                      radius={[0, 0, 0, 0]}
-                      name="inventory"
-                    />
-                    <Bar 
-                      dataKey="product" 
-                      stackId="waste"
-                      fill="hsl(var(--chart-2))" 
-                      radius={[4, 4, 0, 0]}
-                      name="product"
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function formatRelativeTime(timestamp: number): string {
+  const diffMs = Date.now() - timestamp;
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 60) return diffMins <= 1 ? "just now" : `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return "yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return new Date(timestamp).toLocaleDateString();
 }
