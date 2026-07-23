@@ -1,4 +1,4 @@
-import { test, expect, Page } from 'playwright/test';
+import { test, expect, Page } from './test-helpers';
 
 const BASE_URL = 'http://localhost:5000';
 const TEST_EMAIL = 'admin@brians.pizza';

@@ -21,7 +21,7 @@
  *   Email: admin@brians.pizza  /  Password: test123
  */
 
-import { test, expect, Page, APIRequestContext } from 'playwright/test';
+import { test, expect, Page, APIRequestContext } from './test-helpers';
 
 const BASE_URL      = 'http://localhost:5000';
 const TEST_EMAIL    = 'admin@brians.pizza';

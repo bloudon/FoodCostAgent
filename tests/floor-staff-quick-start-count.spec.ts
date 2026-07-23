@@ -14,7 +14,7 @@
  * Route: /dashboard/mobile
  */
 
-import { test, expect, Page } from 'playwright/test';
+import { test, expect, Page } from './test-helpers';
 
 const BASE_URL = 'http://localhost:5000';
 
