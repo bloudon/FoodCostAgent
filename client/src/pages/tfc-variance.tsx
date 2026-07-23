@@ -123,9 +123,11 @@ function TfcVarianceContent() {
   const [selectedVendorName, setSelectedVendorName] = useState<string>("");
   const [selectedExpectedDate, setSelectedExpectedDate] = useState<string>("");
 
-  // Read countId from URL parameter
+  // Read URL parameters
   const urlParams = new URLSearchParams(window.location.search);
   const urlCountId = urlParams.get('countId');
+  const urlCurrentCountId = urlParams.get('currentCountId');
+  const urlHighlightItemId = urlParams.get('highlight');
 
   // Fetch variance summaries for the selected store
   const { data: summaries = [], isLoading: isLoadingSummaries } = useQuery<VarianceSummary[]>({
@@ -141,9 +143,10 @@ function TfcVarianceContent() {
   // Auto-select summary based on URL parameter or default to most recent
   useEffect(() => {
     if (summaries.length > 0 && !selectedSummary) {
-      // If URL has countId, try to find and select that specific summary
-      if (urlCountId) {
-        const matchingSummary = summaries.find(s => s.currentCountId === urlCountId);
+      // Support both ?countId= (legacy) and ?currentCountId= (deep-link from top item card)
+      const targetCountId = urlCurrentCountId || urlCountId;
+      if (targetCountId) {
+        const matchingSummary = summaries.find(s => s.currentCountId === targetCountId);
         if (matchingSummary) {
           setSelectedSummary(matchingSummary);
           return;
@@ -152,7 +155,7 @@ function TfcVarianceContent() {
       // Default to most recent (first in list)
       setSelectedSummary(summaries[0]);
     }
-  }, [summaries, selectedSummary, urlCountId]);
+  }, [summaries, selectedSummary, urlCountId, urlCurrentCountId]);
 
   // Get currentCountId and previousCountId from selected summary
   const currentCountId = selectedSummary?.currentCountId || "";
@@ -166,6 +169,18 @@ function TfcVarianceContent() {
     enabled: !!previousCountId && !!currentCountId && !!selectedStoreId && !!companyId,
     retry: false,
   });
+
+  // Scroll highlighted item into view once variance data loads
+  useEffect(() => {
+    if (!urlHighlightItemId || !varianceData) return;
+    const el = document.querySelector(
+      `[data-testid="row-variance-item-${urlHighlightItemId}"]`
+    );
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlHighlightItemId, varianceData]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -623,7 +638,15 @@ function TfcVarianceContent() {
                     ) : (
                       <>
                         {sortedVarianceItems.map((item) => (
-                            <TableRow key={item.inventoryItemId} data-testid={`row-variance-item-${item.inventoryItemId}`}>
+                            <TableRow
+                              key={item.inventoryItemId}
+                              data-testid={`row-variance-item-${item.inventoryItemId}`}
+                              className={
+                                urlHighlightItemId === item.inventoryItemId
+                                  ? "bg-amber-50 dark:bg-amber-900/20 ring-1 ring-inset ring-amber-400/60"
+                                  : ""
+                              }
+                            >
                               <TableCell className="font-medium">
                                 {item.inventoryItemName}
                                 <span className="text-xs text-muted-foreground ml-2">

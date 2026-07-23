@@ -6,6 +6,7 @@ import {
   TrendingUp,
   ChevronRight,
   Activity,
+  AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,15 @@ interface VarianceSummary {
   totalVarianceCost: number;
   totalVariancePercent: number;
   daySpan: number;
+}
+
+interface TopVarianceItem {
+  inventoryItemId: string;
+  inventoryItemName: string;
+  varianceCost: number;
+  variancePercent: number;
+  currentCountId: string;
+  previousCountId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +181,11 @@ export default function AnalyzeLanding() {
     enabled: showTfc && !!selectedStoreId,
   });
 
+  const { data: topItem = null } = useQuery<TopVarianceItem | null>({
+    queryKey: [`/api/tfc/variance/top-item?storeId=${selectedStoreId}`],
+    enabled: showTfc && !!selectedStoreId,
+  });
+
   const recentSummaries = summaries
     .slice()
     .sort((a, b) => new Date(b.inventoryDate).getTime() - new Date(a.inventoryDate).getTime())
@@ -311,6 +326,47 @@ export default function AnalyzeLanding() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Top variance item — biggest single driver from most recent period */}
+        {showTfc && topItem && (
+          <div data-testid="top-variance-item-section">
+            <h2 className="text-sm font-semibold mb-3">Biggest Variance Driver</h2>
+            <Link
+              href={`/tfc/variance?previousCountId=${topItem.previousCountId}&currentCountId=${topItem.currentCountId}&highlight=${topItem.inventoryItemId}`}
+              data-testid="link-top-variance-item"
+            >
+              <Card className="hover-elevate cursor-pointer">
+                <CardContent className="flex items-center gap-4 p-4">
+                  <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-red-500/10 shrink-0">
+                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate" data-testid="text-top-item-name">
+                      {topItem.inventoryItemName}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Most recent period &middot; over-used vs. theoretical
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <p
+                        className="text-sm font-semibold text-red-600 dark:text-red-400"
+                        data-testid="text-top-item-cost"
+                      >
+                        +${topItem.varianceCost.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        +{topItem.variancePercent.toFixed(1)}%
+                      </p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
           </div>
         )}
       </div>

@@ -17215,6 +17215,142 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
+  // Get the single highest-variance item from the most recent period (for Analyze landing)
+  app.get("/api/tfc/variance/top-item", requireAuth, requireTier("pro"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { storeId } = req.query;
+
+      if (!companyId || !storeId) {
+        return res.status(400).json({ message: "Missing required parameter: storeId" });
+      }
+
+      const store = await storage.getCompanyStore(storeId as string, companyId);
+      if (!store) {
+        return res.status(403).json({ message: "Store not found or access denied" });
+      }
+
+      // Get the two most recent applied counts
+      const allCounts = await db.query.inventoryCounts.findMany({
+        where: and(
+          eq(inventoryCounts.companyId, companyId),
+          eq(inventoryCounts.storeId, storeId as string),
+          eq(inventoryCounts.applied, 1)
+        ),
+      });
+
+      const sortedCounts = allCounts.sort(
+        (a, b) => new Date(b.countDate).getTime() - new Date(a.countDate).getTime()
+      );
+
+      if (sortedCounts.length < 2) {
+        return res.json(null);
+      }
+
+      const currentCount = sortedCounts[0];
+      const previousCount = sortedCounts[1];
+
+      // Get theoretical usage runs for this period
+      const theoreticalUsageMap = new Map<string, { qty: number; cost: number }>();
+      const theoreticalRuns = await db
+        .select()
+        .from(theoreticalUsageRuns)
+        .where(
+          and(
+            eq(theoreticalUsageRuns.companyId, companyId),
+            eq(theoreticalUsageRuns.storeId, storeId as string),
+            gte(theoreticalUsageRuns.salesDate, previousCount.countDate),
+            lte(theoreticalUsageRuns.salesDate, currentCount.countDate)
+          )
+        );
+
+      if (theoreticalRuns.length > 0) {
+        const runIds = theoreticalRuns.map(r => r.id);
+        const theoreticalLines = await db
+          .select()
+          .from(theoreticalUsageLines)
+          .where(inArray(theoreticalUsageLines.runId, runIds));
+
+        for (const line of theoreticalLines) {
+          const existing = theoreticalUsageMap.get(line.inventoryItemId);
+          if (existing) {
+            existing.qty += line.requiredQtyBaseUnit;
+            existing.cost += line.costAtSale;
+          } else {
+            theoreticalUsageMap.set(line.inventoryItemId, {
+              qty: line.requiredQtyBaseUnit,
+              cost: line.costAtSale,
+            });
+          }
+        }
+      }
+
+      // Get actual usage
+      const actualUsageData = await storage.getItemUsageBetweenCounts(
+        storeId as string,
+        previousCount.id,
+        currentCount.id
+      );
+
+      const allItemIds = new Set([
+        ...actualUsageData.map(a => a.inventoryItemId),
+        ...Array.from(theoreticalUsageMap.keys()),
+      ]);
+
+      // Fetch inventory item names for items only in theoretical map
+      const additionalItemIds = Array.from(allItemIds).filter(
+        id => !actualUsageData.find(a => a.inventoryItemId === id)
+      );
+      const inventoryItemsMap = new Map<string, any>();
+      if (additionalItemIds.length > 0) {
+        const additionalItems = await Promise.all(
+          additionalItemIds.map(id => storage.getInventoryItem(id))
+        );
+        additionalItems.forEach(item => {
+          if (item) inventoryItemsMap.set(item.id, item);
+        });
+      }
+
+      let topItem: {
+        inventoryItemId: string;
+        inventoryItemName: string;
+        varianceCost: number;
+        variancePercent: number;
+        currentCountId: string;
+        previousCountId: string;
+      } | null = null;
+
+      for (const itemId of allItemIds) {
+        const actualData = actualUsageData.find(a => a.inventoryItemId === itemId);
+        const theoreticalData = theoreticalUsageMap.get(itemId);
+        const item = inventoryItemsMap.get(itemId);
+
+        const actualUsage = actualData?.usage || 0;
+        const theoreticalUsage = theoreticalData?.qty || 0;
+        const pricePerUnit = actualData?.pricePerUnit || 0;
+        const varianceUnits = actualUsage - theoreticalUsage;
+        const varianceCost = varianceUnits * pricePerUnit;
+        const variancePercent = theoreticalUsage > 0 ? (varianceUnits / theoreticalUsage) * 100 : 0;
+
+        if (varianceCost > 0 && (!topItem || varianceCost > topItem.varianceCost)) {
+          topItem = {
+            inventoryItemId: itemId,
+            inventoryItemName: actualData?.inventoryItemName || item?.name || 'Unknown',
+            varianceCost,
+            variancePercent,
+            currentCountId: currentCount.id,
+            previousCountId: previousCount.id,
+          };
+        }
+      }
+
+      res.json(topItem);
+    } catch (error: any) {
+      console.error('Get top variance item error:', error);
+      res.status(500).json({ message: "Failed to fetch top variance item", error: error.message });
+    }
+  });
+
   // Get variance report between two inventory counts
   app.get("/api/tfc/variance", requireAuth, requireTier("pro"), async (req, res) => {
     try {
