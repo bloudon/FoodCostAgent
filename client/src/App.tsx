@@ -74,6 +74,10 @@ import MenuInsights from "@/pages/menu-insights";
 import ExtensionPilot from "@/pages/extension-pilot";
 import AdminUsers from "@/pages/admin-users";
 import CountLanding from "@/pages/count-landing";
+import OrderLanding from "@/pages/order-landing";
+import PrepLanding from "@/pages/prep-landing";
+import AnalyzeLanding from "@/pages/analyze-landing";
+import MoreLanding from "@/pages/more-landing";
 import PrepChart from "@/pages/prep-chart";
 import PrepChartItems from "@/pages/prep-chart-items";
 import PrepItemBuilder from "@/pages/prep-item-builder";
@@ -335,6 +339,7 @@ function ProtectedLayoutContent() {
               <Route path="/order-guides/:id/review" component={OrderGuideReview} />
               <Route path="/inventory-import" component={InventoryImport} />
               <Route path="/recipe-import" component={RecipeImport} />
+              <Route path="/order" component={OrderLanding} />
               <Route path="/orders" component={Orders} />
               <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
               <Route path="/purchase-orders" component={PurchaseOrders} />
@@ -353,6 +358,9 @@ function ProtectedLayoutContent() {
               <Route path="/admin/backgrounds" component={AdminBackgrounds} />
               <Route path="/admin/users" component={AdminUsers} />
               <Route path="/admin/vendor-registry" component={AdminVendorRegistry} />
+              <Route path="/prep" component={PrepLanding} />
+              <Route path="/analyze" component={AnalyzeLanding} />
+              <Route path="/more" component={MoreLanding} />
               <Route path="/prep-chart" component={PrepChart} />
               <Route path="/prep-chart/items/new" component={PrepItemBuilder} />
               <Route path="/prep-chart/items/:id" component={PrepItemBuilder} />

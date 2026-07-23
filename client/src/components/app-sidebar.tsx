@@ -57,6 +57,7 @@ function getActiveSection(loc: string): string {
   ) return "count";
 
   if (
+    loc === "/order" ||
     loc.startsWith("/orders") ||
     loc.startsWith("/purchase-orders") ||
     loc.startsWith("/vendors") ||
@@ -65,9 +66,13 @@ function getActiveSection(loc: string): string {
     loc.startsWith("/order-guide")
   ) return "order";
 
-  if (loc.startsWith("/prep-chart") && !loc.startsWith("/prep-chart/on-hand")) return "prep";
+  if (
+    loc === "/prep" ||
+    (loc.startsWith("/prep-chart") && !loc.startsWith("/prep-chart/on-hand"))
+  ) return "prep";
 
   if (
+    loc === "/analyze" ||
     loc.startsWith("/variance") ||
     loc.startsWith("/tfc") ||
     loc.startsWith("/menu-insights")
@@ -109,7 +114,7 @@ const RAIL: RailItem[] = [
     id: "order",
     label: "Order",
     icon: ShoppingCart,
-    href: "/orders",
+    href: "/order",
     roles: ["store_manager", "company_admin", "global_admin"],
     testId: "nav-order",
   },
@@ -117,14 +122,14 @@ const RAIL: RailItem[] = [
     id: "prep",
     label: "Prep",
     icon: ChefHat,
-    href: "/prep-chart",
+    href: "/prep",
     testId: "nav-prep",
   },
   {
     id: "analyze",
     label: "Analyze",
     icon: BarChart3,
-    href: "/tfc/variance",
+    href: "/analyze",
     roles: ["store_manager", "company_admin", "global_admin"],
     testId: "nav-analyze",
   },
@@ -132,7 +137,7 @@ const RAIL: RailItem[] = [
     id: "more",
     label: "More",
     icon: MoreHorizontal,
-    href: "/settings",
+    href: "/more",
     testId: "nav-more",
   },
 ];
