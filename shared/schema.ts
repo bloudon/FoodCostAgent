@@ -1931,6 +1931,8 @@ export const extensionSyncJobs = pgTable("extension_sync_jobs", {
   /** JSON array of { event, occurredAt, detail? } — appended by server on each event. */
   events: jsonb("events").notNull().default(sql`'[]'::jsonb`),
   errorMessage: text("error_message"),
+  /** Set to "PARTIAL_CAPTURE" when capturedRowCount < visibleRowCount. */
+  captureWarning: text("capture_warning"),
   /** Order guide record created for this sync (set on COMPLETE). */
   orderGuideId: varchar("order_guide_id"),
   itemCount: integer("item_count"),
@@ -1968,6 +1970,16 @@ export const extensionIngestionBatches = pgTable("extension_ingestion_batches", 
   itemsReview: integer("items_review").notNull().default(0),
   itemsRejected: integer("items_rejected").notNull().default(0),
   processingErrors: integer("processing_errors").notNull().default(0),
+  // Capture completeness — filled by content script, stored for audit
+  paginatedPages: integer("paginated_pages"),
+  /** Total rows the supplier portal claims to have (if exposed in the UI). */
+  expectedRowCount: integer("expected_row_count"),
+  /** Rows the content script actually found across all pages. */
+  visibleRowCount: integer("visible_row_count"),
+  /** Rows successfully parsed and included in the payload. */
+  capturedRowCount: integer("captured_row_count"),
+  /** "PARTIAL_CAPTURE" when capturedRowCount < visibleRowCount. */
+  captureWarning: text("capture_warning"),
   status: text("status").notNull().default("processing"), // processing | complete | failed
   processedAt: timestamp("processed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

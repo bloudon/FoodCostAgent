@@ -71,6 +71,7 @@ import EnterpriseOnboarding from "@/pages/enterprise-onboarding";
 import AdminBackgrounds from "@/pages/admin-backgrounds";
 import AdminVendorRegistry from "@/pages/admin-vendor-registry";
 import MenuInsights from "@/pages/menu-insights";
+import ExtensionPilot from "@/pages/extension-pilot";
 import AdminUsers from "@/pages/admin-users";
 import PrepChart from "@/pages/prep-chart";
 import PrepChartItems from "@/pages/prep-chart-items";
@@ -360,6 +361,9 @@ function ProtectedLayoutContent() {
               <Route path="/shelf-scans" component={ShelfScans} />
               <Route path="/dashboard/mobile" component={DashboardMobile} />
               <Route path="/menu-insights" component={MenuInsights} />
+              {import.meta.env.DEV && (
+                <Route path="/extension-pilot" component={ExtensionPilot} />
+              )}
               <Route component={NotFound} />
             </Switch>
           </main>

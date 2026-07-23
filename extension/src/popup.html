@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FnB Price Sync</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      width: 320px;
+      min-height: 200px;
+      padding: 0;
+    }
+
+    .header {
+      background: #1e293b;
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-title { font-weight: 700; font-size: 15px; }
+    .header-sub   { font-size: 11px; color: #64748b; margin-top: 1px; }
+
+    .body { padding: 16px; }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px; font-weight: 600;
+      padding: 2px 8px; border-radius: 999px;
+    }
+    .badge-paired    { background: #15803d; color: #dcfce7; }
+    .badge-unpaired  { background: #7f1d1d; color: #fecaca; }
+    .badge-active    { background: #1d4ed8; color: #dbeafe; }
+
+    label  { font-size: 12px; color: #94a3b8; display: block; margin-bottom: 4px; margin-top: 12px; }
+    input  {
+      width: 100%; padding: 8px 10px;
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 6px; color: #f8fafc; font-size: 14px; letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    input:focus { outline: 2px solid #f2690d; border-color: transparent; }
+
+    button {
+      margin-top: 10px; width: 100%; padding: 9px 0;
+      border: none; border-radius: 6px; cursor: pointer;
+      font-weight: 600; font-size: 14px;
+    }
+    .btn-primary   { background: #f2690d; color: #fff; }
+    .btn-primary:hover { background: #ea580c; }
+    .btn-secondary { background: #334155; color: #e2e8f0; }
+    .btn-secondary:hover { background: #475569; }
+    button:disabled { opacity: 0.5; cursor: default; }
+
+    .status-block {
+      background: #1e293b; border-radius: 8px;
+      padding: 12px 14px; margin-bottom: 12px;
+    }
+    .status-row { display: flex; align-items: center; justify-content: space-between; }
+    .status-label { font-size: 12px; color: #64748b; }
+    .status-val   { font-size: 13px; font-weight: 600; }
+
+    .job-detail { margin-top: 8px; font-size: 12px; color: #94a3b8; line-height: 1.5; }
+
+    .msg-error   { color: #f87171; font-size: 12px; margin-top: 8px; }
+    .msg-success { color: #4ade80; font-size: 12px; margin-top: 8px; }
+
+    #view-unpaired, #view-paired { display: none; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="header-title">FnB Cost Pro</div>
+      <div class="header-sub">Price Sync Extension</div>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- Unpaired view -->
+    <div id="view-unpaired">
+      <p style="font-size:13px;color:#94a3b8;margin-bottom:4px">
+        Enter the pairing code from FnB to connect this extension.
+      </p>
+      <label for="code-input">Pairing Code</label>
+      <input id="code-input" type="text" maxlength="12" placeholder="ABCD1234" autocomplete="off" />
+      <button id="btn-pair" class="btn-primary">Connect to FnB</button>
+      <div id="pair-msg" class="msg-error" style="display:none"></div>
+    </div>
+
+    <!-- Paired view -->
+    <div id="view-paired">
+      <div class="status-block">
+        <div class="status-row">
+          <span class="status-label">Status</span>
+          <span id="paired-badge" class="badge badge-paired">Connected</span>
+        </div>
+        <div id="job-detail" class="job-detail" style="display:none"></div>
+      </div>
+      <button id="btn-disconnect" class="btn-secondary">Disconnect</button>
+      <div id="disconnect-msg" class="msg-success" style="display:none">Disconnected.</div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -5,12 +5,13 @@
  *   1. Idempotency check (syncJobId + batchId)
  *   2. Verify captured supplier matches sync job expectation
  *   3. Match items by (vendorId, vendorSku) — scoped to the FnB vendor
- *   4. Derive prices via existing pack parser + recordVendorPrice()
- *   5. Ambiguous/multi-UOM or unmatched → orderGuideLines with needs_review
- *   6. Record diagnostics on extension_ingestion_batches
+ *   4. Derive prices via recordVendorPrice() — missing/zero prices are NEVER written
+ *   5. Ambiguous/multi-UOM items → orderGuideLines needs_review
+ *   6. Unmatched items → orderGuideLines needs_review
+ *   7. Detect partial capture (capturedRowCount < visibleRowCount)
+ *   8. Record diagnostics on extension_ingestion_batches
  */
 
-import crypto from "crypto";
 import { db } from "../../db";
 import { eq, and, sql } from "drizzle-orm";
 import {
@@ -25,74 +26,78 @@ import { recordVendorPrice } from "../../services/vendorPriceService";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CapturedItem {
-  /** Supplier's own SKU for this product */
-  supplierSku: string;
+  supplierSku:    string;
   rawDescription: string;
-  /** Raw pack-size string from portal, e.g. "6/5 LB" or "25 LB" */
-  rawPackSize: string | null;
-  /** Raw case price as string from portal — null when not shown */
-  rawCasePrice: string | null;
-  /** Raw unit price as string from portal — null when not shown */
-  rawUnitPrice: string | null;
-  /** ISO 4217 currency code, default "USD" */
-  currency: string;
-  /**
-   * ISO date when the supplier stated this price is effective.
-   * null when the portal does not display a price-effective date.
-   */
+  rawPackSize:    string | null;
+  rawCasePrice:   string | null;
+  rawUnitPrice:   string | null;
+  currency:       string;
+  /** ISO date string only when the portal explicitly shows a price-effective date. */
   priceEffective: string | null;
-  /** sourceItemId from portal when available */
-  sourceItemId: string | null;
+  sourceItemId:   string | null;
+}
+
+export interface CaptureCompleteness {
+  paginatedPages?:   number;
+  /** Stated total from portal UI — null when not exposed. */
+  expectedRowCount?: number | null;
+  visibleRowCount:   number;
+  capturedRowCount:  number;
 }
 
 export interface IngestBatchInput {
-  syncJobId: string;
-  /** Caller-supplied idempotency key — unique per job */
-  batchId: string;
-  companyId: string;
-  connectorId: string;
-  extensionVersion?: string;
-  parserVersion?: string;
-  capturedAt: string; // ISO datetime
-  sourceUrl?: string;
-  capturedExternalSupplierId?: string;
-  capturedExternalSupplierName?: string;
-  capturedExternalLocationId?: string;
-  capturedExternalOrderGuideId?: string;
-  items: CapturedItem[];
+  syncJobId:    string;
+  batchId:      string;
+  companyId:    string;
+  connectorId:  string;
+  extensionVersion:  string;
+  parserVersion:     string;
+  capturedAt:   string;
+  sourceUrl?:   string;
+  capturedExternalSupplierId?:    string;
+  capturedExternalSupplierName?:  string;
+  capturedExternalLocationId?:    string;
+  capturedExternalOrderGuideId?:  string;
+  captureCompleteness?: CaptureCompleteness;
+  items:        CapturedItem[];
 }
 
 export interface IngestBatchResult {
-  batchDbId: string;
-  orderGuideId: string;
-  itemsSeen: number;
-  itemsMatched: number;
-  itemsUpdated: number;
-  itemsReview: number;
-  itemsRejected: number;
+  batchDbId:        string;
+  orderGuideId:     string;
+  itemsSeen:        number;
+  itemsMatched:     number;
+  itemsUpdated:     number;
+  itemsReview:      number;
+  itemsRejected:    number;
   processingErrors: number;
+  captureWarning:   string | null;
   alreadyProcessed: boolean;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Pure Helpers ─────────────────────────────────────────────────────────────
 
+/**
+ * Parse a raw price string into a positive number.
+ * Returns null for missing, zero, or unparseable values.
+ * Missing prices NEVER become zero-dollar updates.
+ */
 function parsePrice(raw: string | null): number | null {
   if (!raw) return null;
   const n = parseFloat(raw.replace(/[^0-9.]/g, ""));
-  return isNaN(n) || n <= 0 ? null : n;
+  return isFinite(n) && n > 0 ? n : null;
 }
 
 /**
- * Very light UOM ambiguity check.
- * Returns true when the rawPackSize string contains multiple distinct UOM tokens
- * that could be interpreted differently (e.g. "6/5 LB / EA" or "CS/EA").
- * False means the capture is unambiguous enough to price at case level.
+ * Detect UOM ambiguity: two or more distinct measurement-family tokens
+ * in the pack string (e.g. "6/5 LB / EA", "CS/EA") signal multiple
+ * ordering options — send to review rather than silently picking one.
  */
 function isAmbiguousUom(rawPackSize: string | null): boolean {
   if (!rawPackSize) return false;
-  const cleaned = rawPackSize.toUpperCase();
-  const uomTokens = ["LB", "OZ", "KG", "GAL", "QT", "L", "ML", "EA", "CT", "CS"];
-  const found = uomTokens.filter((u) => new RegExp(`\\b${u}\\b`).test(cleaned));
+  const s      = rawPackSize.toUpperCase();
+  const tokens = ["LB", "OZ", "KG", "GAL", "QT", "L ", "ML", "EA", "CT", "CS"];
+  const found  = tokens.filter((u) => new RegExp(`\\b${u.trim()}\\b`).test(s));
   return found.length > 2;
 }
 
@@ -103,33 +108,34 @@ export async function ingestExtensionBatch(
 ): Promise<IngestBatchResult> {
   const capturedAt = new Date(input.capturedAt);
 
-  // ── 1. Idempotency — check for existing batch with same (syncJobId, batchId) ──
+  // ── 1. Idempotency ────────────────────────────────────────────────────────
   const [existing] = await db
     .select()
     .from(extensionIngestionBatches)
     .where(
       and(
         eq(extensionIngestionBatches.syncJobId, input.syncJobId),
-        eq(extensionIngestionBatches.batchId, input.batchId)
+        eq(extensionIngestionBatches.batchId,   input.batchId)
       )
     )
     .limit(1);
 
   if (existing && existing.status !== "processing") {
     return {
-      batchDbId: existing.id,
-      orderGuideId: "",
-      itemsSeen: existing.itemsSeen,
-      itemsMatched: existing.itemsMatched,
-      itemsUpdated: existing.itemsUpdated,
-      itemsReview: existing.itemsReview,
-      itemsRejected: existing.itemsRejected,
+      batchDbId:        existing.id,
+      orderGuideId:     "",
+      itemsSeen:        existing.itemsSeen,
+      itemsMatched:     existing.itemsMatched,
+      itemsUpdated:     existing.itemsUpdated,
+      itemsReview:      existing.itemsReview,
+      itemsRejected:    existing.itemsRejected,
       processingErrors: existing.processingErrors,
+      captureWarning:   existing.captureWarning,
       alreadyProcessed: true,
     };
   }
 
-  // ── 2. Load sync job for context ────────────────────────────────────────────
+  // ── 2. Load sync job ─────────────────────────────────────────────────────
   const [job] = await db
     .select()
     .from(extensionSyncJobs)
@@ -138,70 +144,87 @@ export async function ingestExtensionBatch(
 
   if (!job) throw new Error(`Sync job not found: ${input.syncJobId}`);
 
-  // ── 3. Verify captured supplier matches the sync job expectation ─────────────
+  // ── 3. Verify captured supplier matches job expectation ──────────────────
   if (
     job.externalSupplierId &&
     input.capturedExternalSupplierId &&
     job.externalSupplierId !== input.capturedExternalSupplierId
   ) {
     throw new Error(
-      `Supplier mismatch: job expects ${job.externalSupplierId}, got ${input.capturedExternalSupplierId}`
+      `Supplier mismatch: job expects ${job.externalSupplierId}, captured ${input.capturedExternalSupplierId}`
     );
   }
 
-  // ── 4. Create (or reuse) the batch diagnostics row ──────────────────────────
+  // Verify location when both sides specify it
+  if (
+    job.externalLocationId &&
+    input.capturedExternalLocationId &&
+    job.externalLocationId !== input.capturedExternalLocationId
+  ) {
+    throw new Error(
+      `Location mismatch: job expects ${job.externalLocationId}, captured ${input.capturedExternalLocationId}`
+    );
+  }
+
+  // ── 4. Detect partial capture ────────────────────────────────────────────
+  const cc = input.captureCompleteness;
+  const captureWarning =
+    cc && cc.capturedRowCount < cc.visibleRowCount ? "PARTIAL_CAPTURE" : null;
+
+  // ── 5. Create / reuse batch diagnostics row ──────────────────────────────
   let batchRow = existing;
   if (!batchRow) {
     const [inserted] = await db
       .insert(extensionIngestionBatches)
       .values({
-        syncJobId: input.syncJobId,
-        batchId: input.batchId,
-        companyId: input.companyId,
-        connectorId: input.connectorId,
-        extensionVersion: input.extensionVersion ?? null,
-        parserVersion: input.parserVersion ?? null,
+        syncJobId:                    input.syncJobId,
+        batchId:                      input.batchId,
+        companyId:                    input.companyId,
+        connectorId:                  input.connectorId,
+        extensionVersion:             input.extensionVersion,
+        parserVersion:                input.parserVersion,
         capturedAt,
-        sourceUrl: input.sourceUrl ?? null,
-        capturedExternalSupplierId: input.capturedExternalSupplierId ?? null,
+        sourceUrl:                    input.sourceUrl                    ?? null,
+        capturedExternalSupplierId:   input.capturedExternalSupplierId   ?? null,
         capturedExternalSupplierName: input.capturedExternalSupplierName ?? null,
-        capturedExternalLocationId: input.capturedExternalLocationId ?? null,
+        capturedExternalLocationId:   input.capturedExternalLocationId   ?? null,
         capturedExternalOrderGuideId: input.capturedExternalOrderGuideId ?? null,
-        itemsSeen: input.items.length,
-        status: "processing",
+        itemsSeen:        input.items.length,
+        paginatedPages:   cc?.paginatedPages   ?? null,
+        expectedRowCount: cc?.expectedRowCount ?? null,
+        visibleRowCount:  cc?.visibleRowCount  ?? null,
+        capturedRowCount: cc?.capturedRowCount ?? null,
+        captureWarning,
+        status:           "processing",
       })
       .returning();
     batchRow = inserted;
   }
 
-  // ── 5. Create an order guide record for this capture ────────────────────────
-  const vendorKey = input.connectorId;
+  // ── 6. Create order guide record for this capture ────────────────────────
   const [guide] = await db
     .insert(orderGuides)
     .values({
-      companyId: input.companyId,
-      vendorId: job.vendorId ?? null,
-      vendorKey,
-      source: "browser_extension",
-      rowCount: input.items.length,
-      status: "approved",
-      approvedAt: new Date(),
-      transport: "browser_extension",
-      syncJobId: input.syncJobId,
+      companyId:                    input.companyId,
+      vendorId:                     job.vendorId ?? null,
+      vendorKey:                    input.connectorId,
+      source:                       "browser_extension",
+      rowCount:                     input.items.length,
+      status:                       "approved",
+      approvedAt:                   new Date(),
+      transport:                    "browser_extension",
+      syncJobId:                    input.syncJobId,
       customerSupplierConnectionId: job.customerSupplierConnectionId ?? null,
-      externalSupplierId: input.capturedExternalSupplierId ?? null,
-      externalSupplierName: input.capturedExternalSupplierName ?? null,
-      externalLocationId: input.capturedExternalLocationId ?? null,
-      externalOrderGuideId: input.capturedExternalOrderGuideId ?? null,
+      externalSupplierId:           input.capturedExternalSupplierId   ?? null,
+      externalSupplierName:         input.capturedExternalSupplierName ?? null,
+      externalLocationId:           input.capturedExternalLocationId   ?? null,
+      externalOrderGuideId:         input.capturedExternalOrderGuideId ?? null,
     })
     .returning();
 
-  // ── 6. Load all vendor items for this vendor (scoped to the FnB vendor) ─────
+  // ── 7. Load vendor items scoped to this FnB vendor ───────────────────────
   const allVendorItems = job.vendorId
-    ? await db
-        .select()
-        .from(vendorItems)
-        .where(eq(vendorItems.vendorId, job.vendorId))
+    ? await db.select().from(vendorItems).where(eq(vendorItems.vendorId, job.vendorId))
     : [];
 
   const skuMap = new Map<string, typeof allVendorItems[number]>();
@@ -209,88 +232,80 @@ export async function ingestExtensionBatch(
     if (vi.vendorSku) skuMap.set(vi.vendorSku.trim().toLowerCase(), vi);
   }
 
-  // ── 7. Process each captured item ────────────────────────────────────────────
-  let matched = 0;
-  let updated = 0;
-  let review = 0;
-  let rejected = 0;
-  let errors = 0;
+  // ── 8. Process items ─────────────────────────────────────────────────────
+  let matched = 0, updated = 0, review = 0, rejected = 0, errors = 0;
 
   for (const item of input.items) {
     try {
       const casePrice = parsePrice(item.rawCasePrice);
       const unitPrice = parsePrice(item.rawUnitPrice);
 
-      // No usable price at all → reject
+      // No usable price — reject. Never write a zero-dollar update.
       if (casePrice === null && unitPrice === null) {
         rejected++;
         await db.insert(orderGuideLines).values({
           orderGuideId: guide.id,
-          vendorSku: item.supplierSku,
-          productName: item.rawDescription,
-          packSize: item.rawPackSize ?? "",
-          price: null,
-          matchStatus: "user_rejected",
+          vendorSku:    item.supplierSku,
+          productName:  item.rawDescription,
+          packSize:     item.rawPackSize ?? "",
+          price:        null,
+          matchStatus:  "user_rejected",
         });
         continue;
       }
 
-      // Ambiguous UOM → send to review regardless of match
+      // Ambiguous UOM → review regardless of match status
       if (isAmbiguousUom(item.rawPackSize)) {
         review++;
         await db.insert(orderGuideLines).values({
           orderGuideId: guide.id,
-          vendorSku: item.supplierSku,
-          productName: item.rawDescription,
-          packSize: item.rawPackSize ?? "",
-          price: casePrice ?? unitPrice ?? null,
-          priceSource: casePrice !== null ? "case" : "unit",
-          matchStatus: "needs_review",
+          vendorSku:    item.supplierSku,
+          productName:  item.rawDescription,
+          packSize:     item.rawPackSize ?? "",
+          price:        casePrice ?? unitPrice,
+          priceSource:  casePrice !== null ? "case" : "unit",
+          matchStatus:  "needs_review",
         });
         continue;
       }
 
-      // SKU match
       const vi = skuMap.get(item.supplierSku.trim().toLowerCase());
 
       if (!vi) {
-        // Unmatched → review
         review++;
         await db.insert(orderGuideLines).values({
           orderGuideId: guide.id,
-          vendorSku: item.supplierSku,
-          productName: item.rawDescription,
-          packSize: item.rawPackSize ?? "",
-          price: casePrice ?? unitPrice ?? null,
-          priceSource: casePrice !== null ? "case" : "unit",
-          matchStatus: "needs_review",
+          vendorSku:    item.supplierSku,
+          productName:  item.rawDescription,
+          packSize:     item.rawPackSize ?? "",
+          price:        casePrice ?? unitPrice,
+          priceSource:  casePrice !== null ? "case" : "unit",
+          matchStatus:  "needs_review",
         });
         continue;
       }
 
       matched++;
 
-      // Determine price basis
       const hasCasePrice = casePrice !== null;
-      const price = hasCasePrice ? casePrice! : unitPrice!;
+      const price        = hasCasePrice ? casePrice! : unitPrice!;
       const priceBasis: "case" | "unit" = hasCasePrice ? "case" : "unit";
 
-      // Record price through shared write gate
       await recordVendorPrice({
-        vendorItemId: vi.id,
+        vendorItemId:    vi.id,
         inventoryItemId: vi.inventoryItemId,
-        companyId: input.companyId,
+        companyId:       input.companyId,
         priceBasis,
         price,
-        caseSize: vi.caseSize ?? 1,
-        innerPackSize: vi.innerPackSize ?? undefined,
-        packUom: vi.packUom ?? undefined,
-        source: "connector",
+        caseSize:        vi.caseSize    ?? 1,
+        innerPackSize:   vi.innerPackSize ?? undefined,
+        packUom:         vi.packUom      ?? undefined,
+        source:          "connector",
         representsActualPurchase: false,
-        referenceId: input.syncJobId,
+        referenceId:     input.syncJobId,
       });
 
-      // Also stamp priceTransport on the vendor_item
+      // Stamp priceTransport on the vendor_item for provenance display
       await db
         .update(vendorItems)
         .set({ priceTransport: "browser_extension" } as any)
@@ -298,53 +313,53 @@ export async function ingestExtensionBatch(
 
       updated++;
 
-      // Write a matched order guide line for the review record
       await db.insert(orderGuideLines).values({
-        orderGuideId: guide.id,
-        vendorSku: item.supplierSku,
-        productName: item.rawDescription,
-        packSize: item.rawPackSize ?? "",
+        orderGuideId:          guide.id,
+        vendorSku:             item.supplierSku,
+        productName:           item.rawDescription,
+        packSize:              item.rawPackSize ?? "",
         price,
-        priceSource: priceBasis,
-        matchStatus: "auto_matched",
+        priceSource:           priceBasis,
+        matchStatus:           "auto_matched",
         matchedInventoryItemId: vi.inventoryItemId,
-        matchConfidence: 100,
+        matchConfidence:       100,
       });
     } catch (err) {
       errors++;
-      console.error(`[ExtensionIngest] Error processing SKU ${item.supplierSku}:`, err);
+      console.error(`[ExtensionIngest] SKU ${item.supplierSku}:`, err);
     }
   }
 
-  // ── 8. Finalise diagnostics row ──────────────────────────────────────────────
+  // ── 9. Finalise batch diagnostics ────────────────────────────────────────
   await db
     .update(extensionIngestionBatches)
     .set({
-      itemsMatched: matched,
-      itemsUpdated: updated,
-      itemsReview: review,
-      itemsRejected: rejected,
+      itemsMatched:     matched,
+      itemsUpdated:     updated,
+      itemsReview:      review,
+      itemsRejected:    rejected,
       processingErrors: errors,
-      status: "complete",
-      processedAt: new Date(),
+      captureWarning,
+      status:           "complete",
+      processedAt:      new Date(),
     })
     .where(eq(extensionIngestionBatches.id, batchRow.id));
 
-  // ── 9. Update order guide row count to actuals ───────────────────────────────
   await db
     .update(orderGuides)
     .set({ rowCount: input.items.length })
     .where(eq(orderGuides.id, guide.id));
 
   return {
-    batchDbId: batchRow.id,
-    orderGuideId: guide.id,
-    itemsSeen: input.items.length,
-    itemsMatched: matched,
-    itemsUpdated: updated,
-    itemsReview: review,
-    itemsRejected: rejected,
+    batchDbId:        batchRow.id,
+    orderGuideId:     guide.id,
+    itemsSeen:        input.items.length,
+    itemsMatched:     matched,
+    itemsUpdated:     updated,
+    itemsReview:      review,
+    itemsRejected:    rejected,
     processingErrors: errors,
+    captureWarning,
     alreadyProcessed: false,
   };
 }

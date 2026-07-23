@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "FnB Cost Pro — Price Sync",
+  "version": "0.1.0",
+  "description": "Captures supplier catalog prices from Cut+Dry and syncs them to FnB Cost Pro. Read-only. Never modifies carts or orders.",
+
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+
+  "host_permissions": [
+    "https://*.cutanddry.com/*",
+    "https://app.fnbcostpro.com/*",
+    "http://localhost:5000/*"
+  ],
+
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "FnB Price Sync",
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://*.cutanddry.com/*"],
+      "js":      ["src/content-cutanddry.js"],
+      "run_at":  "document_idle"
+    }
+  ],
+
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

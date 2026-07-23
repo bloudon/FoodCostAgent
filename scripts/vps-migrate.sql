@@ -2542,3 +2542,20 @@ DO $$ BEGIN
       VALUES ('v064', 'Extension Pilot: pairing codes, tokens, sync jobs, ingestion batches; vendor_items/order_guides columns');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v065 — Extension Pilot: capture completeness fields + captureWarning.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v065') THEN
+    ALTER TABLE extension_sync_jobs ADD COLUMN IF NOT EXISTS capture_warning text;
+    ALTER TABLE extension_ingestion_batches ADD COLUMN IF NOT EXISTS paginated_pages integer;
+    ALTER TABLE extension_ingestion_batches ADD COLUMN IF NOT EXISTS expected_row_count integer;
+    ALTER TABLE extension_ingestion_batches ADD COLUMN IF NOT EXISTS visible_row_count integer;
+    ALTER TABLE extension_ingestion_batches ADD COLUMN IF NOT EXISTS captured_row_count integer;
+    ALTER TABLE extension_ingestion_batches ADD COLUMN IF NOT EXISTS capture_warning text;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v065', 'Extension Pilot: capture completeness + captureWarning fields');
+  END IF;
+END $$;

@@ -1,0 +1,30 @@
+The extension pilot may proceed. The server foundation and proposed phase sequence look appropriate.
+
+Before Phase 1 implementation, please incorporate these corrections:
+
+1. The Cut+Dry content script must send captured data to the extension service worker. Only the service worker should make authenticated calls to the FnB API.
+
+2. Store the extension token in `chrome.storage.local`, but restrict access to trusted extension contexts so the Cut+Dry content script cannot read it.
+
+3. The pilot deliverable is an extracted folder loaded through Chrome Developer Mode using **Load unpacked**, not a directly installable zip. Include installation, update and troubleshooting instructions.
+
+4. Generate a persistent random `installationId` on first extension startup. Do not rely solely on Chrome’s extension package ID.
+
+5. Prove capture completeness. Account for pagination, lazy loading, virtualized rows, portal filters and multiple ordering units. Record expected, visible and captured row counts where possible. Do not mark a sync complete when only the currently rendered DOM rows were captured.
+
+6. Recheck the pairing-status route. Pairing occurs before a sync job exists, so the web app should poll by a non-secret `pairingId`, not `jobId`. The extension claims using the short-lived secret pairing code.
+
+7. Persist captured batches locally before attempting upload. Manifest V3 service workers may stop when idle, so retries must survive worker restarts. Continue using server-side idempotency by `syncJobId + batchId`.
+
+Add these pilot validations:
+
+* Wrong supplier or location blocks capture.
+* Partial order-guide capture is detected.
+* Multiple or ambiguous UOM prices go to review.
+* Missing prices never become zero-dollar updates.
+* Content scripts cannot access the bearer token.
+* Revoked and cross-company tokens are rejected.
+* Every batch records extension version and parser version.
+* The extension never modifies carts, order quantities or order-submission state.
+
+A minimal internal web harness may be built during Phase 1 for pairing and job creation; the polished management UI remains Phase 2.

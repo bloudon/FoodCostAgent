@@ -852,6 +852,14 @@ async function runStartupMigrations() {
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS ext_ingest_sync_job_idx ON extension_ingestion_batches (sync_job_id)`);
 
+    // v065 — Extension Pilot: capture completeness fields + captureWarning
+    await db.execute(sql`ALTER TABLE extension_sync_jobs ADD COLUMN IF NOT EXISTS capture_warning text`);
+    await db.execute(sql`ALTER TABLE extension_ingestion_batches ADD COLUMN IF NOT EXISTS paginated_pages integer`);
+    await db.execute(sql`ALTER TABLE extension_ingestion_batches ADD COLUMN IF NOT EXISTS expected_row_count integer`);
+    await db.execute(sql`ALTER TABLE extension_ingestion_batches ADD COLUMN IF NOT EXISTS visible_row_count integer`);
+    await db.execute(sql`ALTER TABLE extension_ingestion_batches ADD COLUMN IF NOT EXISTS captured_row_count integer`);
+    await db.execute(sql`ALTER TABLE extension_ingestion_batches ADD COLUMN IF NOT EXISTS capture_warning text`);
+
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);
