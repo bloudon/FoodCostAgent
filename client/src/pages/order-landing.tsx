@@ -31,6 +31,7 @@ interface PurchaseOrder {
   expectedDate: string | null;
   lineCount: number;
   totalAmount: number;
+  storeId: string | null;
 }
 
 interface Vendor {
@@ -193,7 +194,7 @@ function statusLabel(status: string): string {
 export default function OrderLanding() {
   const [location] = useLocation();
   const { user } = useAuth();
-  const { stores } = useStoreContext();
+  const { stores, selectedStoreId } = useStoreContext();
   const { hasFeature } = useTier();
 
   const role = user?.role ?? "store_user";
@@ -203,8 +204,13 @@ export default function OrderLanding() {
   const showReceiving = isManager;
   const showTransfers = hasMultipleStores && hasFeature("transfer_orders");
 
+  const isAllStores = !selectedStoreId || selectedStoreId === "all";
+  const ordersUrl = isAllStores
+    ? "/api/purchase-orders"
+    : `/api/purchase-orders?storeId=${selectedStoreId}`;
+
   const { data: orders = [], isLoading } = useQuery<PurchaseOrder[]>({
-    queryKey: ["/api/purchase-orders"],
+    queryKey: [ordersUrl],
   });
 
   const { data: vendors = [] } = useQuery<Vendor[]>({
@@ -263,6 +269,10 @@ export default function OrderLanding() {
                     {topPending.lineCount} item{topPending.lineCount !== 1 ? "s" : ""}
                     {pendingOrders.length > 1 &&
                       ` · ${pendingOrders.length} open orders`}
+                    {isAllStores && topPending.storeId && (() => {
+                      const name = stores.find((s) => s.id === topPending.storeId)?.name;
+                      return name ? <>&nbsp;·&nbsp;{name}</> : null;
+                    })()}
                   </p>
                 </div>
               </div>
@@ -345,7 +355,9 @@ export default function OrderLanding() {
         {/* Recent purchase orders */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold">Recent Orders</h2>
+            <h2 className="text-sm font-semibold">
+              {isAllStores ? "Recent Orders" : "Recent Orders — This Store"}
+            </h2>
             <Link
               href="/purchase-orders"
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -373,37 +385,53 @@ export default function OrderLanding() {
             </div>
           ) : (
             <div className="space-y-1">
-              {recentOrders.map((order) => (
-                <Link
-                  key={order.id}
-                  href={`/purchase-orders/${order.id}`}
-                  data-testid={`order-row-${order.id}`}
-                >
-                  <div className="flex items-center justify-between px-3 py-2.5 rounded-md hover-elevate">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <Package className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{order.vendorName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {order.createdAt
-                            ? format(new Date(order.createdAt), "MMM d, yyyy")
-                            : "—"}
-                          {" · "}
-                          {order.lineCount} item{order.lineCount !== 1 ? "s" : ""}
-                          {" · "}${order.totalAmount.toFixed(2)}
-                        </p>
+              {recentOrders.map((order) => {
+                const storeName = isAllStores && order.storeId
+                  ? stores.find((s) => s.id === order.storeId)?.name
+                  : undefined;
+                return (
+                  <Link
+                    key={order.id}
+                    href={`/purchase-orders/${order.id}`}
+                    data-testid={`order-row-${order.id}`}
+                  >
+                    <div className="flex items-center justify-between px-3 py-2.5 rounded-md hover-elevate">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Package className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <p className="text-sm font-medium truncate">{order.vendorName}</p>
+                            {storeName && (
+                              <Badge
+                                variant="secondary"
+                                className="text-xs shrink-0 font-normal"
+                                data-testid={`badge-order-store-${order.id}`}
+                              >
+                                {storeName}
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {order.createdAt
+                              ? format(new Date(order.createdAt), "MMM d, yyyy")
+                              : "—"}
+                            {" · "}
+                            {order.lineCount} item{order.lineCount !== 1 ? "s" : ""}
+                            {" · "}${order.totalAmount.toFixed(2)}
+                          </p>
+                        </div>
                       </div>
+                      <Badge
+                        variant="secondary"
+                        className={cn("text-xs shrink-0 ml-2", STATUS_COLORS[order.status] ?? "")}
+                        data-testid={`badge-order-status-${order.id}`}
+                      >
+                        {statusLabel(order.status)}
+                      </Badge>
                     </div>
-                    <Badge
-                      variant="secondary"
-                      className={cn("text-xs shrink-0 ml-2", STATUS_COLORS[order.status] ?? "")}
-                      data-testid={`badge-order-status-${order.id}`}
-                    >
-                      {statusLabel(order.status)}
-                    </Badge>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                );
+              })}
             </div>
           )}
         </div>
