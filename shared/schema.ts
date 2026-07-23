@@ -502,9 +502,11 @@ export const vendorItems = pgTable("vendor_items", {
   active: integer("active").notNull().default(1),
   updatedAt: timestamp("updated_at").defaultNow(),               // tracks last price/qty update for recency selection
   // M3A — Vendor price integrity: source provenance tracking
-  priceSource: text("price_source"),                  // "order_guide_import"|"invoice_scan"|"receipt"|"po_create"|"manual"|"legacy_unknown"
+  priceSource: text("price_source"),                  // "order_guide_import"|"invoice_scan"|"receipt"|"po_create"|"manual"|"legacy_unknown"|"connector"
   pricedAt: timestamp("priced_at"),                   // when this price was captured
   priceSourceReferenceId: text("price_source_reference_id"), // receipt ID, invoice ID, etc.
+  // Extension pilot: how the price arrived (e.g. "browser_extension")
+  priceTransport: text("price_transport"),
 });
 
 export const insertVendorItemSchema = createInsertSchema(vendorItems).omit({ id: true });
@@ -1262,6 +1264,14 @@ export const orderGuides = pgTable("order_guides", {
   approvedAt: timestamp("approved_at"),
   approvedBy: varchar("approved_by"), // User ID who approved
   detectedVendorName: text("detected_vendor_name"), // AI-extracted vendor name from image scans (for pre-filling "Add Vendor" dialog)
+  // Extension pilot: multi-vendor portal identity (e.g. Cut+Dry hosts multiple distributors)
+  transport: text("transport"),                                   // "browser_extension" | null
+  syncJobId: varchar("sync_job_id"),                             // links to extension_sync_jobs
+  customerSupplierConnectionId: varchar("customer_supplier_connection_id"), // which CSC triggered this
+  externalSupplierId: text("external_supplier_id"),              // supplier ID within the portal platform
+  externalSupplierName: text("external_supplier_name"),          // human-readable name on portal
+  externalLocationId: text("external_location_id"),              // delivery location when available
+  externalOrderGuideId: text("external_order_guide_id"),         // specific order guide captured
 }, (table) => ({
   companyIdx: index("order_guides_company_idx").on(table.companyId),
   vendorIdx: index("order_guides_vendor_idx").on(table.vendorId),
@@ -1846,3 +1856,123 @@ export const insertCustomerSupplierConnectionSchema = createInsertSchema(custome
 });
 export type InsertCustomerSupplierConnection = z.infer<typeof insertCustomerSupplierConnectionSchema>;
 export type CustomerSupplierConnection = typeof customerSupplierConnections.$inferSelect;
+
+// ===== Extension Pilot: Browser-Extension Price Sync =====
+
+/**
+ * Short-lived, single-use pairing codes.
+ * The raw code is never stored — only its SHA-256 hex digest.
+ * A web-session user generates one; the extension claims it once to obtain an extensionToken.
+ */
+export const extensionPairingCodes = pgTable("extension_pairing_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  connectorId: text("connector_id").notNull(),
+  /** SHA-256 hex of the raw code shown to the user — never store the raw code. */
+  codeHash: text("code_hash").notNull().unique(),
+  /** Stable identifier for the extension installation — bound at claim time. */
+  installationId: text("installation_id"),
+  expiresAt: timestamp("expires_at").notNull(),
+  claimedAt: timestamp("claimed_at"),
+  /** Extension token created when this code was claimed. */
+  tokenId: varchar("token_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type ExtensionPairingCode = typeof extensionPairingCodes.$inferSelect;
+
+/**
+ * Scoped, revocable bearer tokens issued to an extension installation.
+ * Scope is a JSON object: { companyId, connectorId, vendorId, storeId, userId, permissions[] }
+ */
+export const extensionTokens = pgTable("extension_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  connectorId: text("connector_id").notNull(),
+  installationId: text("installation_id").notNull(),
+  /** 64-char hex bearer token — store plain (it's opaque, not a password). */
+  token: text("token").notNull().unique(),
+  scope: jsonb("scope").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  tokenIdx: index("ext_tokens_token_idx").on(table.token),
+  companyIdx: index("ext_tokens_company_idx").on(table.companyId),
+}));
+export type ExtensionToken = typeof extensionTokens.$inferSelect;
+
+/**
+ * One row per user-initiated price sync session.
+ * The server owns all status transitions; the extension sends named events.
+ *
+ * Status state machine:
+ *   PENDING → PORTAL_OPEN → CAPTURING → SUBMITTING → COMPLETE
+ *                                                   → FAILED
+ *                                                   → AUTH_REQUIRED
+ *   (any non-terminal) → EXPIRED  (via server-side cron sweep)
+ */
+export const extensionSyncJobs = pgTable("extension_sync_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  connectorId: text("connector_id").notNull(),
+  tokenId: varchar("token_id"),
+  vendorId: varchar("vendor_id"),
+  storeId: varchar("store_id"),
+  customerSupplierConnectionId: varchar("customer_supplier_connection_id"),
+  /** Expected external supplier — extension must verify before capture. */
+  externalSupplierId: text("external_supplier_id"),
+  externalSupplierName: text("external_supplier_name"),
+  externalLocationId: text("external_location_id"),
+  externalOrderGuideId: text("external_order_guide_id"),
+  status: text("status").notNull().default("PENDING"),
+  /** JSON array of { event, occurredAt, detail? } — appended by server on each event. */
+  events: jsonb("events").notNull().default(sql`'[]'::jsonb`),
+  errorMessage: text("error_message"),
+  /** Order guide record created for this sync (set on COMPLETE). */
+  orderGuideId: varchar("order_guide_id"),
+  itemCount: integer("item_count"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => ({
+  companyIdx: index("ext_sync_jobs_company_idx").on(table.companyId),
+  statusIdx: index("ext_sync_jobs_status_idx").on(table.status),
+}));
+export type ExtensionSyncJob = typeof extensionSyncJobs.$inferSelect;
+
+/**
+ * Per-batch ingestion record — idempotency key is (syncJobId, batchId).
+ * Also holds per-batch diagnostics required by the pilot spec.
+ */
+export const extensionIngestionBatches = pgTable("extension_ingestion_batches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  syncJobId: varchar("sync_job_id").notNull(),
+  /** Caller-supplied idempotency key — unique per sync job. */
+  batchId: text("batch_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  connectorId: text("connector_id").notNull(),
+  extensionVersion: text("extension_version"),
+  parserVersion: text("parser_version"),
+  capturedAt: timestamp("captured_at"),
+  sourceUrl: text("source_url"),
+  capturedExternalSupplierId: text("captured_external_supplier_id"),
+  capturedExternalSupplierName: text("captured_external_supplier_name"),
+  capturedExternalLocationId: text("captured_external_location_id"),
+  capturedExternalOrderGuideId: text("captured_external_order_guide_id"),
+  itemsSeen: integer("items_seen").notNull().default(0),
+  itemsMatched: integer("items_matched").notNull().default(0),
+  itemsUpdated: integer("items_updated").notNull().default(0),
+  itemsReview: integer("items_review").notNull().default(0),
+  itemsRejected: integer("items_rejected").notNull().default(0),
+  processingErrors: integer("processing_errors").notNull().default(0),
+  status: text("status").notNull().default("processing"), // processing | complete | failed
+  processedAt: timestamp("processed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  syncJobIdx: index("ext_ingest_sync_job_idx").on(table.syncJobId),
+  idempotencyKey: uniqueIndex("ext_ingest_idempotency").on(table.syncJobId, table.batchId),
+}));
+export type ExtensionIngestionBatch = typeof extensionIngestionBatches.$inferSelect;

@@ -2440,3 +2440,105 @@ DO $$ BEGIN
       VALUES ('v063', 'Task #482: routing audit snapshot — pack geometry, price dates, source/target VI IDs, dest line ID');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v064 — Extension Pilot: browser-extension price sync infrastructure.
+-- New tables: extension_pairing_codes, extension_tokens, extension_sync_jobs,
+-- extension_ingestion_batches.  New columns on vendor_items and order_guides.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v064') THEN
+    ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS price_transport text;
+    ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS transport text;
+    ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS sync_job_id varchar;
+    ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS customer_supplier_connection_id varchar;
+    ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS external_supplier_id text;
+    ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS external_supplier_name text;
+    ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS external_location_id text;
+    ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS external_order_guide_id text;
+
+    CREATE TABLE IF NOT EXISTS extension_pairing_codes (
+      id              varchar   PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id      varchar   NOT NULL,
+      user_id         varchar   NOT NULL,
+      connector_id    text      NOT NULL,
+      code_hash       text      NOT NULL UNIQUE,
+      installation_id text,
+      expires_at      timestamp NOT NULL,
+      claimed_at      timestamp,
+      token_id        varchar,
+      created_at      timestamp NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ext_pairing_company_idx ON extension_pairing_codes (company_id);
+
+    CREATE TABLE IF NOT EXISTS extension_tokens (
+      id              varchar   PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id      varchar   NOT NULL,
+      user_id         varchar   NOT NULL,
+      connector_id    text      NOT NULL,
+      installation_id text      NOT NULL,
+      token           text      NOT NULL UNIQUE,
+      scope           jsonb     NOT NULL,
+      expires_at      timestamp NOT NULL,
+      revoked_at      timestamp,
+      created_at      timestamp NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ext_tokens_token_idx   ON extension_tokens (token);
+    CREATE INDEX IF NOT EXISTS ext_tokens_company_idx ON extension_tokens (company_id);
+
+    CREATE TABLE IF NOT EXISTS extension_sync_jobs (
+      id                              varchar   PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id                      varchar   NOT NULL,
+      user_id                         varchar   NOT NULL,
+      connector_id                    text      NOT NULL,
+      token_id                        varchar,
+      vendor_id                       varchar,
+      store_id                        varchar,
+      customer_supplier_connection_id varchar,
+      external_supplier_id            text,
+      external_supplier_name          text,
+      external_location_id            text,
+      external_order_guide_id         text,
+      status                          text      NOT NULL DEFAULT 'PENDING',
+      events                          jsonb     NOT NULL DEFAULT '[]'::jsonb,
+      error_message                   text,
+      order_guide_id                  varchar,
+      item_count                      integer,
+      created_at                      timestamp NOT NULL DEFAULT now(),
+      updated_at                      timestamp NOT NULL DEFAULT now(),
+      completed_at                    timestamp
+    );
+    CREATE INDEX IF NOT EXISTS ext_sync_jobs_company_idx ON extension_sync_jobs (company_id);
+    CREATE INDEX IF NOT EXISTS ext_sync_jobs_status_idx  ON extension_sync_jobs (status);
+
+    CREATE TABLE IF NOT EXISTS extension_ingestion_batches (
+      id                               varchar   PRIMARY KEY DEFAULT gen_random_uuid(),
+      sync_job_id                      varchar   NOT NULL,
+      batch_id                         text      NOT NULL,
+      company_id                       varchar   NOT NULL,
+      connector_id                     text      NOT NULL,
+      extension_version                text,
+      parser_version                   text,
+      captured_at                      timestamp,
+      source_url                       text,
+      captured_external_supplier_id    text,
+      captured_external_supplier_name  text,
+      captured_external_location_id    text,
+      captured_external_order_guide_id text,
+      items_seen                       integer   NOT NULL DEFAULT 0,
+      items_matched                    integer   NOT NULL DEFAULT 0,
+      items_updated                    integer   NOT NULL DEFAULT 0,
+      items_review                     integer   NOT NULL DEFAULT 0,
+      items_rejected                   integer   NOT NULL DEFAULT 0,
+      processing_errors                integer   NOT NULL DEFAULT 0,
+      status                           text      NOT NULL DEFAULT 'processing',
+      processed_at                     timestamp,
+      created_at                       timestamp NOT NULL DEFAULT now(),
+      UNIQUE (sync_job_id, batch_id)
+    );
+    CREATE INDEX IF NOT EXISTS ext_ingest_sync_job_idx ON extension_ingestion_batches (sync_job_id);
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v064', 'Extension Pilot: pairing codes, tokens, sync jobs, ingestion batches; vendor_items/order_guides columns');
+  END IF;
+END $$;

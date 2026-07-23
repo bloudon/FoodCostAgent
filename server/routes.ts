@@ -23,6 +23,8 @@ import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache"
 import { getEffectiveUnitCost, type CostingMethodCarrier } from "./lib/costing";
 import { convertToInventoryUnits, autoSeedRecipeUnitsForItem } from "./lib/recipeUnits";
 import { resolvePriceSource, resolveScannedItemUnitPrice, resolveApplyLineUnitPrice } from "./lib/invoiceScanUtils";
+import { Router } from "express";
+import { registerExtensionRoutes } from "./integrations/extension/extensionRoutes";
 import { createReviewStepHandler, createGetMilestonesHandler } from "./lib/milestonesHandler";
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
@@ -155,6 +157,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/health', (_req, res) => {
     res.status(200).json({ status: 'ok', version: APP_VERSION, timestamp: new Date().toISOString() });
   });
+
+  // Extension Pilot — browser-extension price sync routes
+  const extensionRouter = Router();
+  registerExtensionRoutes(extensionRouter);
+  app.use('/api/extension', extensionRouter);
 
   // GET /api/changelog — parses CHANGELOG.md and returns structured version entries
   app.get('/api/changelog', (_req, res) => {

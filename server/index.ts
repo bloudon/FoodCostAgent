@@ -756,6 +756,102 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS target_priced_at timestamp`);
     await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS target_price_source text`);
     await db.execute(sql`ALTER TABLE po_routing_audit ADD COLUMN IF NOT EXISTS destination_po_line_id varchar`);
+
+    // v064 — Extension Pilot: browser-extension price sync infrastructure
+    await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS price_transport text`);
+    await db.execute(sql`ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS transport text`);
+    await db.execute(sql`ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS sync_job_id varchar`);
+    await db.execute(sql`ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS customer_supplier_connection_id varchar`);
+    await db.execute(sql`ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS external_supplier_id text`);
+    await db.execute(sql`ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS external_supplier_name text`);
+    await db.execute(sql`ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS external_location_id text`);
+    await db.execute(sql`ALTER TABLE order_guides ADD COLUMN IF NOT EXISTS external_order_guide_id text`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS extension_pairing_codes (
+        id              varchar   PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id      varchar   NOT NULL,
+        user_id         varchar   NOT NULL,
+        connector_id    text      NOT NULL,
+        code_hash       text      NOT NULL UNIQUE,
+        installation_id text,
+        expires_at      timestamp NOT NULL,
+        claimed_at      timestamp,
+        token_id        varchar,
+        created_at      timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS ext_pairing_company_idx ON extension_pairing_codes (company_id)`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS extension_tokens (
+        id              varchar   PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id      varchar   NOT NULL,
+        user_id         varchar   NOT NULL,
+        connector_id    text      NOT NULL,
+        installation_id text      NOT NULL,
+        token           text      NOT NULL UNIQUE,
+        scope           jsonb     NOT NULL,
+        expires_at      timestamp NOT NULL,
+        revoked_at      timestamp,
+        created_at      timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS ext_tokens_token_idx   ON extension_tokens (token)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS ext_tokens_company_idx ON extension_tokens (company_id)`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS extension_sync_jobs (
+        id                              varchar   PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id                      varchar   NOT NULL,
+        user_id                         varchar   NOT NULL,
+        connector_id                    text      NOT NULL,
+        token_id                        varchar,
+        vendor_id                       varchar,
+        store_id                        varchar,
+        customer_supplier_connection_id varchar,
+        external_supplier_id            text,
+        external_supplier_name          text,
+        external_location_id            text,
+        external_order_guide_id         text,
+        status                          text      NOT NULL DEFAULT 'PENDING',
+        events                          jsonb     NOT NULL DEFAULT '[]'::jsonb,
+        error_message                   text,
+        order_guide_id                  varchar,
+        item_count                      integer,
+        created_at                      timestamp NOT NULL DEFAULT now(),
+        updated_at                      timestamp NOT NULL DEFAULT now(),
+        completed_at                    timestamp
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS ext_sync_jobs_company_idx ON extension_sync_jobs (company_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS ext_sync_jobs_status_idx  ON extension_sync_jobs (status)`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS extension_ingestion_batches (
+        id                               varchar   PRIMARY KEY DEFAULT gen_random_uuid(),
+        sync_job_id                      varchar   NOT NULL,
+        batch_id                         text      NOT NULL,
+        company_id                       varchar   NOT NULL,
+        connector_id                     text      NOT NULL,
+        extension_version                text,
+        parser_version                   text,
+        captured_at                      timestamp,
+        source_url                       text,
+        captured_external_supplier_id    text,
+        captured_external_supplier_name  text,
+        captured_external_location_id    text,
+        captured_external_order_guide_id text,
+        items_seen                       integer   NOT NULL DEFAULT 0,
+        items_matched                    integer   NOT NULL DEFAULT 0,
+        items_updated                    integer   NOT NULL DEFAULT 0,
+        items_review                     integer   NOT NULL DEFAULT 0,
+        items_rejected                   integer   NOT NULL DEFAULT 0,
+        processing_errors                integer   NOT NULL DEFAULT 0,
+        status                           text      NOT NULL DEFAULT 'processing',
+        processed_at                     timestamp,
+        created_at                       timestamp NOT NULL DEFAULT now(),
+        UNIQUE (sync_job_id, batch_id)
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS ext_ingest_sync_job_idx ON extension_ingestion_batches (sync_job_id)`);
+
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);
