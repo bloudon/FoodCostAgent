@@ -35,6 +35,7 @@ import { useAppLanguage } from "@/lib/language-context";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import { useCompany } from "@/hooks/use-company";
 import { useStoreContext } from "@/hooks/use-store-context";
+import { useTier } from "@/hooks/use-tier";
 
 // ---------------------------------------------------------------------------
 // Section routing helpers
@@ -155,6 +156,7 @@ export function AppSidebar() {
   const { data: accessibleStores, isLoading: storesLoading } = useAccessibleStores();
   const { isMobile, setOpenMobile } = useSidebar();
   const { theme } = useTheme();
+  const { hasFeature } = useTier();
 
   const logoImage = theme === "dark" ? "/website-logo-dark.png" : "/website-logo.png";
   const role = user?.role ?? "store_user";
@@ -166,12 +168,14 @@ export function AppSidebar() {
 
   const activeSection = getActiveSection(location);
 
-  // Filter visible rail items by role.
+  // Filter visible rail items by role and feature availability.
   // Global admin without a company selected shows a minimal rail — the
   // ProtectedLayout redirect to /companies handles the primary flow.
   const visibleItems = RAIL.filter((item) => {
     if (isGlobalAdmin && !company && item.id !== "home" && item.id !== "more") return false;
     if (item.roles && !item.roles.includes(role)) return false;
+    // Hide Prep rail item when the prep_chart feature is not available on this plan
+    if (item.id === "prep" && !hasFeature("prep_chart")) return false;
     return true;
   });
 

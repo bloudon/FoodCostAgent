@@ -7,10 +7,12 @@ import {
   LayoutGrid,
   Plus,
   ChevronRight,
-  Utensils,
+  Settings2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { TierGate } from "@/components/tier-gate";
+import { useTier } from "@/hooks/use-tier";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -132,15 +134,18 @@ function ActionCard({
 }
 
 // ---------------------------------------------------------------------------
-// Main page
+// Main page (inner — rendered only when feature is available)
 // ---------------------------------------------------------------------------
 
-export default function PrepLanding() {
+function PrepLandingContent() {
   const [location] = useLocation();
 
   const { data: prepItems = [], isLoading } = useQuery<PrepItem[]>({
     queryKey: ["/api/prep-items"],
   });
+
+  // Switch dominant action based on whether prep items have been configured
+  const hasItems = !isLoading && prepItems.length > 0;
 
   const recentItems = prepItems.slice(0, 6);
 
@@ -159,18 +164,31 @@ export default function PrepLanding() {
 
         {/* Primary action grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Prep Today — prominent */}
+          {/* Dominant action: "Set Up Prep Items" (zero-state) vs "Prep Today" (configured) */}
           <div className="sm:col-span-2 lg:col-span-1">
-            <ActionCard
-              href="/prep-chart"
-              icon={ChefHat}
-              iconBg="bg-accent-button/10"
-              iconClass="text-accent-button"
-              title="Prep Today"
-              description="View today's prep list and target quantities"
-              prominent
-              testId="action-prep-today"
-            />
+            {hasItems ? (
+              <ActionCard
+                href="/prep-chart"
+                icon={ChefHat}
+                iconBg="bg-accent-button/10"
+                iconClass="text-accent-button"
+                title="Prep Today"
+                description="View today's prep list and target quantities"
+                prominent
+                testId="action-prep-today"
+              />
+            ) : (
+              <ActionCard
+                href="/prep-chart/items"
+                icon={Settings2}
+                iconBg="bg-accent-button/10"
+                iconClass="text-accent-button"
+                title="Set Up Prep Items"
+                description="Add the recipes and batches your team prepares regularly."
+                prominent
+                testId="action-setup-prep-items"
+              />
+            )}
           </div>
 
           {/* Prep Items */}
@@ -210,61 +228,89 @@ export default function PrepLanding() {
           </div>
         </div>
 
-        {/* Prep items list */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold">Prep Items</h2>
-            <Link
-              href="/prep-chart/items"
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              data-testid="link-view-all-prep-items"
-            >
-              View all
-            </Link>
-          </div>
+        {/* Prep items list — only when items exist */}
+        {(isLoading || hasItems) && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold">Prep Items</h2>
+              <Link
+                href="/prep-chart/items"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="link-view-all-prep-items"
+              >
+                View all
+              </Link>
+            </div>
 
-          {isLoading ? (
-            <div className="space-y-2">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-14 rounded-md bg-muted animate-pulse" />
-              ))}
-            </div>
-          ) : recentItems.length === 0 ? (
-            <div
-              className="flex flex-col items-center justify-center py-10 text-center gap-2"
-              data-testid="prep-empty-state"
-            >
-              <Utensils className="h-8 w-8 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">
-                No prep items yet. Add your first prep item above.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {recentItems.map((item) => (
-                <Link
-                  key={item.id}
-                  href={`/prep-chart/items/${item.id}`}
-                  data-testid={`prep-item-row-${item.id}`}
-                >
-                  <div className="flex items-center justify-between px-3 py-2.5 rounded-md hover-elevate">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <ChefHat className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <p className="text-sm font-medium truncate">{item.name}</p>
+            {isLoading ? (
+              <div className="space-y-2">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-14 rounded-md bg-muted animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {recentItems.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/prep-chart/items/${item.id}`}
+                    data-testid={`prep-item-row-${item.id}`}
+                  >
+                    <div className="flex items-center justify-between px-3 py-2.5 rounded-md hover-elevate">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <ChefHat className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <p className="text-sm font-medium truncate">{item.name}</p>
+                      </div>
+                      {item.targetQty != null && (
+                        <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                          Target: {item.targetQty}
+                          {item.unitName ? ` ${item.unitName}` : ""}
+                        </span>
+                      )}
                     </div>
-                    {item.targetQty != null && (
-                      <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                        Target: {item.targetQty}
-                        {item.unitName ? ` ${item.unitName}` : ""}
-                      </span>
-                    )}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Zero-state helper text — only when items not yet configured */}
+        {!isLoading && !hasItems && (
+          <div
+            className="flex flex-col items-center justify-center py-8 text-center gap-2"
+            data-testid="prep-empty-state"
+          >
+            <Plus className="h-8 w-8 text-muted-foreground/40" />
+            <p className="text-sm font-medium text-muted-foreground">
+              No prep items configured yet.
+            </p>
+            <p className="text-xs text-muted-foreground max-w-xs">
+              Add the recipes and batches your team prepares regularly to unlock the prep chart.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Exported page — gated by prep_chart feature tier
+// ---------------------------------------------------------------------------
+
+export default function PrepLanding() {
+  const { hasFeature } = useTier();
+
+  if (!hasFeature("prep_chart")) {
+    return (
+      <div className="flex flex-col h-full">
+        <TierGate feature="prep_chart">
+          <PrepLandingContent />
+        </TierGate>
+      </div>
+    );
+  }
+
+  return <PrepLandingContent />;
 }
