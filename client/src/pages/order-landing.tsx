@@ -16,6 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { useTier } from "@/hooks/use-tier";
+import { useAuth } from "@/lib/auth-context";
+import { useStoreContext } from "@/hooks/use-store-context";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,15 +33,23 @@ interface PurchaseOrder {
   totalAmount: number;
 }
 
+interface Vendor {
+  id: string;
+  name: string;
+  active: number;
+}
+
 // ---------------------------------------------------------------------------
 // Secondary tabs
 // ---------------------------------------------------------------------------
 
 function SecondaryTabs({
   activeHref,
+  showReceiving,
   showTransfers,
 }: {
   activeHref: string;
+  showReceiving: boolean;
   showTransfers: boolean;
 }) {
   const tabs = [
@@ -47,9 +57,18 @@ function SecondaryTabs({
     { label: "Build Order", href: "/orders" },
     { label: "Purchase Orders", href: "/purchase-orders" },
     { label: "Vendors", href: "/vendors" },
+    ...(showReceiving ? [{ label: "Receiving", href: "/purchase-orders" }] : []),
     { label: "Update Vendor Prices", href: "/order-guide-scan" },
     ...(showTransfers ? [{ label: "Transfers", href: "/transfer-orders" }] : []),
   ];
+
+  // De-duplicate hrefs that appear more than once (Receiving + Purchase Orders share the same path)
+  const seen = new Set<string>();
+  const dedupedTabs = tabs.filter((t) => {
+    if (seen.has(t.href + t.label)) return false;
+    seen.add(t.href + t.label);
+    return true;
+  });
 
   return (
     <div
@@ -57,14 +76,14 @@ function SecondaryTabs({
       data-testid="order-secondary-tabs"
     >
       <div className="flex overflow-x-auto px-4 md:px-6">
-        {tabs.map((tab) => {
+        {dedupedTabs.map((tab) => {
           const isActive =
             tab.href === "/order"
               ? activeHref === "/order"
               : activeHref.startsWith(tab.href);
           return (
             <Link
-              key={tab.href}
+              key={tab.label}
               href={tab.href}
               className={cn(
                 "flex-shrink-0 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
@@ -84,7 +103,7 @@ function SecondaryTabs({
 }
 
 // ---------------------------------------------------------------------------
-// Action card (shared with count-landing pattern)
+// Action card
 // ---------------------------------------------------------------------------
 
 function ActionCard({
@@ -154,7 +173,18 @@ const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
   ordered: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
   received: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  exported: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
 };
+
+function statusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    pending: "Pending",
+    ordered: "Ordered",
+    received: "Received",
+    exported: "Exported",
+  };
+  return labels[status] ?? status.charAt(0).toUpperCase() + status.slice(1);
+}
 
 // ---------------------------------------------------------------------------
 // Main page
@@ -162,24 +192,45 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function OrderLanding() {
   const [location] = useLocation();
+  const { user } = useAuth();
+  const { stores } = useStoreContext();
   const { hasFeature } = useTier();
-  const showTransfers = hasFeature("transfer_orders");
+
+  const role = user?.role ?? "store_user";
+  const isManager =
+    role === "store_manager" || role === "company_admin" || role === "global_admin";
+  const hasMultipleStores = stores.length > 1;
+  const showReceiving = isManager;
+  const showTransfers = hasMultipleStores && hasFeature("transfer_orders");
 
   const { data: orders = [], isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ["/api/purchase-orders"],
   });
 
-  const pendingOrders = orders.filter((o) => o.status === "pending" || o.status === "ordered");
+  const { data: vendors = [] } = useQuery<Vendor[]>({
+    queryKey: ["/api/vendors"],
+  });
+
+  const activeVendorCount = vendors.filter((v) => v.active === 1).length;
+
+  // Most-recent pending PO for the banner
+  const pendingOrders = orders
+    .filter((o) => o.status === "pending" || o.status === "ordered")
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const topPending = pendingOrders[0] ?? null;
+
   const recentOrders = orders
     .slice()
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 6);
-
-  const topPending = pendingOrders[0] ?? null;
+    .slice(0, 5);
 
   return (
     <div className="flex flex-col h-full">
-      <SecondaryTabs activeHref={location} showTransfers={showTransfers} />
+      <SecondaryTabs
+        activeHref={location}
+        showReceiving={showReceiving}
+        showTransfers={showTransfers}
+      />
 
       <div className="flex-1 overflow-auto p-4 md:p-6 space-y-6">
         {/* Page heading */}
@@ -187,10 +238,13 @@ export default function OrderLanding() {
           <h1 className="text-2xl font-semibold tracking-tight">Order</h1>
           <p className="text-sm text-muted-foreground">
             Build orders, receive deliveries, and manage vendor prices.
+            {activeVendorCount > 0 && (
+              <> &nbsp;·&nbsp; <Link href="/vendors" className="hover:underline">{activeVendorCount} active vendor{activeVendorCount !== 1 ? "s" : ""}</Link></>
+            )}
           </p>
         </div>
 
-        {/* Pending order banner */}
+        {/* Pending order banner — links directly to the pending PO */}
         {topPending && (
           <Card
             className="border-primary/20 bg-primary/5"
@@ -204,7 +258,8 @@ export default function OrderLanding() {
                 <div>
                   <p className="text-sm font-medium">{topPending.vendorName}</p>
                   <p className="text-xs text-muted-foreground">
-                    {topPending.status === "ordered" ? "Order placed" : "Draft order"}&nbsp;·&nbsp;
+                    {topPending.status === "ordered" ? "Order placed" : "Draft order"}
+                    &nbsp;·&nbsp;
                     {topPending.lineCount} item{topPending.lineCount !== 1 ? "s" : ""}
                     {pendingOrders.length > 1 &&
                       ` · ${pendingOrders.length} open orders`}
@@ -212,7 +267,7 @@ export default function OrderLanding() {
                 </div>
               </div>
               <Button asChild size="sm" data-testid="button-view-pending-order">
-                <Link href="/orders">View Orders</Link>
+                <Link href={`/purchase-orders/${topPending.id}`}>View Order</Link>
               </Button>
             </CardContent>
           </Card>
@@ -270,7 +325,7 @@ export default function OrderLanding() {
             />
           </div>
 
-          {/* Transfer Orders — only shown when feature is enabled */}
+          {/* Transfer Orders — only shown when multi-store + feature enabled */}
           {showTransfers && (
             <div className="sm:col-span-2 lg:col-span-3">
               <ActionCard
@@ -335,20 +390,17 @@ export default function OrderLanding() {
                             : "—"}
                           {" · "}
                           {order.lineCount} item{order.lineCount !== 1 ? "s" : ""}
-                          {" · "}$
-                          {order.totalAmount.toFixed(2)}
+                          {" · "}${order.totalAmount.toFixed(2)}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0 ml-2">
-                      <Badge
-                        variant="secondary"
-                        className={cn("text-xs", STATUS_COLORS[order.status] ?? "")}
-                        data-testid={`badge-order-status-${order.id}`}
-                      >
-                        {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                      </Badge>
-                    </div>
+                    <Badge
+                      variant="secondary"
+                      className={cn("text-xs shrink-0 ml-2", STATUS_COLORS[order.status] ?? "")}
+                      data-testid={`badge-order-status-${order.id}`}
+                    >
+                      {statusLabel(order.status)}
+                    </Badge>
                   </div>
                 </Link>
               ))}
