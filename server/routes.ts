@@ -20212,7 +20212,16 @@ Human Handoff:
       try {
         const companyId = (req as any).companyId;
         if (!companyId) return res.status(403).json({ error: "Company context required" });
-        const userId = (req as any).user?.id;
+
+        // Validate store ownership BEFORE running the AI scan so cross-company
+        // requests are rejected without burning API credits.
+        const userId = (req as any).user?.id ?? null;
+        const storeId = (req.body?.storeId as string) || null;
+        if (storeId && userId) {
+          if (!(await mobileUserCanAccessStore(userId, storeId))) {
+            return res.status(403).json({ error: "Not assigned to this store" });
+          }
+        }
 
         const files: Express.Multer.File[] = (req.files as Express.Multer.File[]) ?? [];
         if (files.length === 0) {
