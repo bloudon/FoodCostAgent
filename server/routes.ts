@@ -7204,8 +7204,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     // Security check BEFORE cache lookup
     if (storeId) {
-      const store = await storage.getCompanyStore(storeId);
-      if (!store || store.companyId !== companyId) {
+      const store = await storage.getCompanyStore(storeId, companyId);
+      if (!store) {
         return res.status(403).json({ error: "Access denied to this store" });
       }
     }
@@ -7325,9 +7325,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!companyId) return res.status(400).json({ error: "Company context required" });
       if (!storeId) return res.status(400).json({ error: "storeId is required" });
 
-      const store = await storage.getCompanyStore(storeId);
-      if (!store) return res.status(404).json({ error: "Store not found" });
-      if (store.companyId !== companyId) return res.status(403).json({ error: "Access denied" });
+      const store = await storage.getCompanyStore(storeId, companyId);
+      if (!store) return res.status(403).json({ error: "Access denied" });
 
       // Get all active inventory items for the company that have a par level set
       const itemsWithPar = await db
@@ -7427,12 +7426,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Validate store ownership
-      const store = await storage.getCompanyStore(storeId);
+      const store = await storage.getCompanyStore(storeId, companyId);
       if (!store) {
-        return res.status(404).json({ error: "Store not found" });
-      }
-      
-      if (store.companyId !== companyId) {
         return res.status(403).json({ error: "Access denied to this store" });
       }
       
@@ -7459,12 +7454,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Validate store ownership
-      const store = await storage.getCompanyStore(storeId);
+      const store = await storage.getCompanyStore(storeId, companyId);
       if (!store) {
-        return res.status(404).json({ error: "Store not found" });
-      }
-      
-      if (store.companyId !== companyId) {
         return res.status(403).json({ error: "Access denied to this store" });
       }
       
@@ -7509,8 +7500,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     // Validate store ownership if storeId provided
     if (storeId) {
-      const store = await storage.getCompanyStore(storeId);
-      if (!store || store.companyId !== companyId) {
+      const store = await storage.getCompanyStore(storeId, companyId);
+      if (!store) {
         return res.status(403).json({ error: "Access denied to this store" });
       }
     }
@@ -10632,8 +10623,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Verify store belongs to company
-      const store = await storage.getCompanyStore(storeId);
-      if (!store || store.companyId !== companyId) {
+      const store = await storage.getCompanyStore(storeId, companyId);
+      if (!store) {
         return res.status(404).json({ error: "Store not found" });
       }
 
@@ -10853,12 +10844,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const companyId = (req as any).companyId;
       
       // Get store to verify it exists and belongs to the company
-      const store = await storage.getCompanyStore(storeId);
+      const store = await storage.getCompanyStore(storeId, companyId);
       if (!store) {
-        return res.status(404).json({ error: "Store not found" });
-      }
-      
-      if (store.companyId !== companyId) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -21020,8 +21007,8 @@ Human Handoff:
       if (!storeId) return res.status(400).json({ error: "storeId is required" });
 
       // Validate store belongs to this company
-      const store = await storage.getCompanyStore(storeId);
-      if (!store || store.companyId !== companyId) {
+      const store = await storage.getCompanyStore(storeId, companyId);
+      if (!store) {
         return res.status(404).json({ error: "Store not found" });
       }
 
