@@ -7,6 +7,9 @@ import {
   ChevronRight,
   Activity,
   AlertTriangle,
+  Package,
+  ArrowUpRight,
+  ArrowDownRight,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +38,15 @@ interface TopVarianceItem {
   variancePercent: number;
   currentCountId: string;
   previousCountId: string;
+}
+
+interface RecentCountSummary {
+  countId: string;
+  countDate: string;
+  totalItems: number;
+  totalValue: number;
+  previousValue: number | null;
+  valueDelta: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -163,6 +175,117 @@ function varianceBadgeClass(pct: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// Recent count summary widget (non-TFC stores)
+// ---------------------------------------------------------------------------
+
+function RecentCountWidget({ summary, isLoading }: { summary: RecentCountSummary | null | undefined; isLoading: boolean }) {
+  if (isLoading) {
+    return (
+      <div>
+        <h2 className="text-sm font-semibold mb-3">Last Inventory Count</h2>
+        <div className="h-24 rounded-md bg-muted animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!summary) {
+    return (
+      <div>
+        <h2 className="text-sm font-semibold mb-3">Last Inventory Count</h2>
+        <div
+          className="flex flex-col items-center justify-center py-8 text-center gap-2"
+          data-testid="recent-count-empty-state"
+        >
+          <Package className="h-8 w-8 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">
+            No completed counts yet. Apply your first inventory count to see a summary here.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const deltaPositive = summary.valueDelta !== null && summary.valueDelta > 0;
+  const deltaZero = summary.valueDelta === null || summary.valueDelta === 0;
+
+  return (
+    <div data-testid="recent-count-summary-section">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold">Last Inventory Count</h2>
+        <Link
+          href="/variance"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          data-testid="link-view-variance-report"
+        >
+          View report
+        </Link>
+      </div>
+
+      <Link href="/inventory-sessions" data-testid="link-recent-count-detail">
+        <Card className="hover-elevate cursor-pointer">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-green-500/10 shrink-0">
+                  <Package className="h-4 w-4 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium" data-testid="text-recent-count-date">
+                    {format(new Date(summary.countDate), "MMM d, yyyy")}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {summary.totalItems} {summary.totalItems === 1 ? "item" : "items"} counted
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground mb-0.5">On-hand value</p>
+                  <p
+                    className="text-sm font-semibold"
+                    data-testid="text-recent-count-value"
+                  >
+                    ${summary.totalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+
+                {!deltaZero && (
+                  <div className="text-right">
+                    <p className="text-xs text-muted-foreground mb-0.5">vs. prior count</p>
+                    <div className="flex items-center gap-1 justify-end">
+                      {deltaPositive ? (
+                        <ArrowUpRight className="h-3.5 w-3.5 text-red-500 dark:text-red-400 shrink-0" />
+                      ) : (
+                        <ArrowDownRight className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                      )}
+                      <p
+                        className={cn(
+                          "text-sm font-semibold",
+                          deltaPositive
+                            ? "text-red-600 dark:text-red-400"
+                            : "text-green-600 dark:text-green-400"
+                        )}
+                        data-testid="text-recent-count-delta"
+                      >
+                        {deltaPositive ? "+" : ""}
+                        ${Math.abs(summary.valueDelta!).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -184,6 +307,12 @@ export default function AnalyzeLanding() {
   const { data: topItem = null } = useQuery<TopVarianceItem | null>({
     queryKey: [`/api/tfc/variance/top-item?storeId=${selectedStoreId}`],
     enabled: showTfc && !!selectedStoreId,
+  });
+
+  // For non-TFC stores: fetch lightweight inventory count summary
+  const { data: recentCountSummary, isLoading: recentCountLoading } = useQuery<RecentCountSummary | null>({
+    queryKey: [`/api/inventory-counts/recent-summary?storeId=${selectedStoreId}`],
+    enabled: !showTfc && !!selectedStoreId,
   });
 
   const recentSummaries = summaries
@@ -260,6 +389,14 @@ export default function AnalyzeLanding() {
             />
           </div>
         </div>
+
+        {/* Recent count summary — shown for non-TFC stores when a store is selected */}
+        {!showTfc && selectedStoreId && (
+          <RecentCountWidget
+            summary={recentCountSummary}
+            isLoading={recentCountLoading}
+          />
+        )}
 
         {/* Recent TFC periods — only when feature enabled */}
         {showTfc && (

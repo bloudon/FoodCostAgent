@@ -9794,6 +9794,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(enrichedCounts);
   });
 
+  // Lightweight summary of the most recent applied count — no tier gate, used on Analyze landing for all tiers
+  app.get("/api/inventory-counts/recent-summary", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string | undefined;
+      if (!companyId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      const { storeId } = req.query;
+      if (!storeId) {
+        return res.status(400).json({ error: "Missing required parameter: storeId" });
+      }
+
+      // Verify store belongs to company (multi-tenant isolation)
+      const store = await storage.getCompanyStore(storeId as string, companyId);
+      if (!store) {
+        return res.status(403).json({ error: "Store not found or access denied" });
+      }
+
+      // Get all applied counts for this store, sorted newest first
+      const allCounts = await db.query.inventoryCounts.findMany({
+        where: and(
+          eq(inventoryCounts.companyId, companyId),
+          eq(inventoryCounts.storeId, storeId as string),
+          eq(inventoryCounts.applied, 1)
+        ),
+      });
+
+      if (allCounts.length === 0) {
+        return res.json(null);
+      }
+
+      const sorted = allCounts.sort(
+        (a, b) => new Date(b.countDate).getTime() - new Date(a.countDate).getTime()
+      );
+
+      const currentCount = sorted[0];
+      const previousCount = sorted[1] ?? null;
+
+      // Aggregate current count lines
+      const currentLines = await db.query.inventoryCountLines.findMany({
+        where: eq(inventoryCountLines.inventoryCountId, currentCount.id),
+      });
+
+      const totalItems = new Set(currentLines.map(l => l.inventoryItemId)).size;
+      const totalValue = currentLines.reduce((sum, l) => sum + l.qty * (l.unitCost ?? 0), 0);
+
+      // Previous count value (for delta)
+      let previousValue: number | null = null;
+      if (previousCount) {
+        const previousLines = await db.query.inventoryCountLines.findMany({
+          where: eq(inventoryCountLines.inventoryCountId, previousCount.id),
+        });
+        previousValue = previousLines.reduce((sum, l) => sum + l.qty * (l.unitCost ?? 0), 0);
+      }
+
+      return res.json({
+        countId: currentCount.id,
+        countDate: currentCount.countDate,
+        totalItems,
+        totalValue,
+        previousValue,
+        valueDelta: previousValue !== null ? totalValue - previousValue : null,
+      });
+    } catch (error: any) {
+      console.error("recent-summary error:", error);
+      return res.status(500).json({ error: "Failed to fetch recent count summary" });
+    }
+  });
+
   app.get("/api/inventory-counts/:id", requireAuth, async (req, res) => {
     const companyId = (req as any).companyId as string | undefined;
     if (!companyId) {
