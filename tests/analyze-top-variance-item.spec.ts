@@ -129,13 +129,6 @@ test.describe('Missing storeId returns 400', () => {
 // =============================================================================
 // 3. Cross-company isolation — Company A cannot see Company B's variance data
 // =============================================================================
-//
-// Note: the store lookup (getCompanyStore) returns a store by id only, so the
-// companyId guard in the endpoint does not produce a 403 when querying a
-// foreign store. Instead, the data-layer isolation kicks in: inventory_counts
-// are filtered by both companyId AND storeId, so zero counts are found and
-// the endpoint returns 200 + null. This is safe — null means "no card shown"
-// — but the test asserts null, not 403, to match the actual contract.
 
 test.describe('Cross-company isolation', () => {
   let tokenA: string;
@@ -148,27 +141,20 @@ test.describe('Cross-company isolation', () => {
     ]);
   });
 
-  test('Company A session querying Company B store returns null (no data leakage)', async ({ request }) => {
+  test('Company A session querying Company B store returns 403', async ({ request }) => {
     const res = await request.get(
       `${BASE_URL}/api/tfc/variance/top-item?storeId=${COMPANY_B_STORE_ID}`,
       { headers: authHeader(tokenA) },
     );
-    // Data isolation: Company A's inventory counts are scoped to Company A's
-    // companyId, so the query over Company B's storeId finds no counts and
-    // returns null — never Company B's variance data.
-    expect(res.status()).toBe(200);
-    const body = await res.json();
-    expect(body).toBeNull();
+    expect(res.status()).toBe(403);
   });
 
-  test('Company B session querying Company A store returns null (no data leakage)', async ({ request }) => {
+  test('Company B session querying Company A store returns 403', async ({ request }) => {
     const res = await request.get(
       `${BASE_URL}/api/tfc/variance/top-item?storeId=${STORE_B_ID}`,
       { headers: authHeader(tokenB) },
     );
-    expect(res.status()).toBe(200);
-    const body = await res.json();
-    expect(body).toBeNull();
+    expect(res.status()).toBe(403);
   });
 });
 

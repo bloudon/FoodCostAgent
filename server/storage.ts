@@ -438,7 +438,7 @@ export interface IStorage {
 
   // Company Stores
   getCompanyStores(companyId: string): Promise<CompanyStore[]>;
-  getCompanyStore(id: string): Promise<CompanyStore | undefined>;
+  getCompanyStore(id: string, companyId?: string): Promise<CompanyStore | undefined>;
   createCompanyStore(store: InsertCompanyStore): Promise<CompanyStore>;
   updateCompanyStore(id: string, store: Partial<CompanyStore>): Promise<CompanyStore | undefined>;
   deleteCompanyStore(id: string): Promise<void>;
@@ -3534,8 +3534,11 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(companyStores).where(eq(companyStores.companyId, companyId));
   }
 
-  async getCompanyStore(id: string): Promise<CompanyStore | undefined> {
-    const [store] = await db.select().from(companyStores).where(eq(companyStores.id, id));
+  async getCompanyStore(id: string, companyId?: string): Promise<CompanyStore | undefined> {
+    const conditions = companyId
+      ? and(eq(companyStores.id, id), eq(companyStores.companyId, companyId))
+      : eq(companyStores.id, id);
+    const [store] = await db.select().from(companyStores).where(conditions);
     return store || undefined;
   }
 
