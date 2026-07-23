@@ -182,11 +182,12 @@ export default function Dashboard() {
     });
     if (urgentDeadlines.length > 0) {
       urgentDeadlines.slice(0, 2).forEach((d: any) => {
+        const poId = d.purchaseOrderId ?? d.id;
         rows.push({
-          key: `deadline-${d.id}`,
+          key: `deadline-${poId}`,
           icon: <Clock className="h-4 w-4 text-amber-500 dark:text-amber-400 shrink-0" />,
           label: `${d.vendorName || "Order"} due ${format(new Date(d.orderDeadline), "MMM d")}`,
-          href: `/purchase-orders/${d.id}`,
+          href: `/purchase-orders/${poId}`,
         });
       });
     }
@@ -393,7 +394,7 @@ export default function Dashboard() {
               Start Count
             </Button>
           </Link>
-          <Link href="/order">
+          <Link href="/orders">
             <Button variant="outline" data-testid="button-new-order">
               <ShoppingCart className="h-4 w-4 mr-1.5" />
               New Order
@@ -577,19 +578,17 @@ export default function Dashboard() {
                     </Link>
                   ))}
                 </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card data-testid="card-needs-attention-empty">
-              <CardContent className="flex flex-col items-center justify-center py-10 text-center gap-2">
-                <div className="h-8 w-8 rounded-full bg-green-500/10 flex items-center justify-center mb-1">
-                  <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                <div className="mt-2 pt-2 border-t">
+                  <Link href="/orders">
+                    <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" data-testid="button-needs-attention-view-all">
+                      View All
+                      <ArrowRight className="h-3 w-3 ml-1" />
+                    </Button>
+                  </Link>
                 </div>
-                <p className="text-sm font-medium">All clear</p>
-                <p className="text-xs text-muted-foreground">No urgent items need your attention right now.</p>
               </CardContent>
             </Card>
-          )}
+          ) : null}
         </div>
 
         {/* Right column: stacked cards */}
@@ -645,10 +644,10 @@ export default function Dashboard() {
               {upcomingOrders.length > 0 ? (
                 <div className="space-y-0.5" data-testid="list-upcoming-orders">
                   {upcomingOrders.map((d: any) => (
-                    <Link key={d.id} href={`/purchase-orders/${d.id}`}>
+                    <Link key={d.purchaseOrderId ?? d.id} href={`/purchase-orders/${d.purchaseOrderId ?? d.id}`}>
                       <div
                         className="flex items-center gap-3 px-2 py-2 rounded-md hover-elevate cursor-pointer"
-                        data-testid={`row-upcoming-${d.id}`}
+                        data-testid={`row-upcoming-${d.purchaseOrderId ?? d.id}`}
                       >
                         <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         <div className="flex-1 min-w-0">
