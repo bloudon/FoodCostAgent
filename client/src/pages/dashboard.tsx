@@ -561,10 +561,12 @@ export default function Dashboard() {
       </div>
 
       {/* ── Main two-column area ─────────────────────────────────────────── */}
+      {/* Desktop: left=exception cards (NA, CW), right=flow cards (RA, UO)  */}
+      {/* Mobile: NA → CW → UO → RA (controlled via order-*)                 */}
       <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-6">
 
-        {/* Left column: Needs Attention */}
-        <div>
+        {/* Needs Attention — left col / row 1 — mobile order 1 */}
+        <div className="order-1 lg:col-start-1 lg:row-start-1">
           {needsAttentionRows.length > 0 ? (
             <Card data-testid="card-needs-attention">
               <CardHeader className="pb-3">
@@ -603,160 +605,157 @@ export default function Dashboard() {
           ) : null}
         </div>
 
-        {/* Right column: stacked cards */}
-        <div className="space-y-4">
-
-          {/* Recent Activity */}
-          <Card data-testid="card-recent-activity">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Recent Activity</CardTitle>
-            </CardHeader>
-            <CardContent className="pb-3">
-              {recentActivityEvents.length > 0 ? (
-                <div className="space-y-0.5" data-testid="list-recent-activity">
-                  {recentActivityEvents.map((event) => (
-                    <Link key={event.key} href={event.href}>
-                      <div
-                        className="flex items-center gap-3 px-2 py-2 rounded-md hover-elevate cursor-pointer"
-                        data-testid={`row-activity-${event.key}`}
-                      >
-                        {event.icon}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{event.label}</p>
-                          {event.detail && (
-                            <p className="text-xs text-muted-foreground truncate">{event.detail}</p>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground shrink-0 tabular-nums">
-                          {formatRelativeTime(event.timestamp)}
-                        </p>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">No recent activity</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Upcoming Orders */}
-          <Card data-testid="card-upcoming-orders">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <CardTitle className="text-base">Upcoming Orders</CardTitle>
-                <Link href="/orders">
-                  <Button variant="ghost" size="icon" data-testid="button-view-all-orders">
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
-            </CardHeader>
-            <CardContent className="pb-3">
-              {upcomingOrders.length > 0 ? (
-                <div className="space-y-0.5" data-testid="list-upcoming-orders">
-                  {upcomingOrders.map((d: any) => (
-                    <Link key={d.purchaseOrderId ?? d.id} href={`/purchase-orders/${d.purchaseOrderId ?? d.id}`}>
-                      <div
-                        className="flex items-center gap-3 px-2 py-2 rounded-md hover-elevate cursor-pointer"
-                        data-testid={`row-upcoming-${d.purchaseOrderId ?? d.id}`}
-                      >
-                        <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{d.vendorName || "Order"}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Order by {format(new Date(d.orderDeadline), "MMM d")}
-                            {d.deliveryDate ? ` · Delivery ${format(new Date(d.deliveryDate), "MMM d")}` : ""}
-                          </p>
-                        </div>
-                        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">No upcoming deadlines</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Cost Watch */}
-          <Card data-testid="card-cost-watch">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Cost Watch</CardTitle>
-            </CardHeader>
-            <CardContent className="pb-3">
-              <div className="space-y-1">
-                {/* Top variance item */}
-                {topVarianceItem && (
-                  <Link
-                    href={`/tfc/variance?previousCountId=${topVarianceItem.previousCountId}&currentCountId=${topVarianceItem.currentCountId}&highlight=${topVarianceItem.inventoryItemId}`}
-                    data-testid="link-top-variance-item"
-                  >
-                    <div
-                      className="flex items-center gap-3 px-2 py-2.5 rounded-md hover-elevate cursor-pointer"
-                      data-testid="row-top-variance-item"
-                    >
-                      <AlertTriangle className="h-3.5 w-3.5 text-red-500 dark:text-red-400 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-muted-foreground mb-0.5">Biggest variance driver</p>
-                        <p className="text-sm font-medium truncate" data-testid="text-top-item-name">
-                          {topVarianceItem.inventoryItemName}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-semibold text-red-600 dark:text-red-400" data-testid="text-top-item-cost">
-                          +${topVarianceItem.varianceCost.toFixed(2)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          +{topVarianceItem.variancePercent.toFixed(1)}%
-                        </p>
-                      </div>
-                    </div>
-                  </Link>
-                )}
-
-                {/* Below-par summary */}
-                {(reorderData?.items?.length ?? 0) > 0 && (
+        {/* Cost Watch — left col / row 2 — mobile order 2 */}
+        <Card data-testid="card-cost-watch" className="order-2 lg:col-start-1 lg:row-start-2">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Cost Watch</CardTitle>
+          </CardHeader>
+          <CardContent className="pb-3">
+            <div className="space-y-1">
+              {/* Top variance item */}
+              {topVarianceItem && (
+                <Link
+                  href={`/tfc/variance?previousCountId=${topVarianceItem.previousCountId}&currentCountId=${topVarianceItem.currentCountId}&highlight=${topVarianceItem.inventoryItemId}`}
+                  data-testid="link-top-variance-item"
+                >
                   <div
-                    className="flex items-center gap-3 px-2 py-2.5 rounded-md border"
-                    data-testid="row-below-par-summary"
+                    className="flex items-center gap-3 px-2 py-2.5 rounded-md hover-elevate cursor-pointer"
+                    data-testid="row-top-variance-item"
                   >
-                    <Package className="h-3.5 w-3.5 text-orange-500 dark:text-orange-400 shrink-0" />
+                    <AlertTriangle className="h-3.5 w-3.5 text-red-500 dark:text-red-400 shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">
-                        {reorderData!.items.length} item{reorderData!.items.length !== 1 ? "s" : ""} to order
+                      <p className="text-xs text-muted-foreground mb-0.5">Biggest variance driver</p>
+                      <p className="text-sm font-medium truncate" data-testid="text-top-item-name">
+                        {topVarianceItem.inventoryItemName}
                       </p>
-                      <p className="text-xs text-muted-foreground">Below par level</p>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={copyReorderList}
-                        data-testid="button-copy-reorder-list"
-                        title="Copy reorder list"
-                      >
-                        {reorderCopied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
-                      </Button>
-                      <Link href="/inventory-items/par-levels">
-                        <Button variant="ghost" size="icon" data-testid="button-view-par-levels">
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </Button>
-                      </Link>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-semibold text-red-600 dark:text-red-400" data-testid="text-top-item-cost">
+                        +${topVarianceItem.varianceCost.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        +{topVarianceItem.variancePercent.toFixed(1)}%
+                      </p>
                     </div>
                   </div>
-                )}
+                </Link>
+              )}
 
-                {!topVarianceItem && (reorderData?.items?.length ?? 0) === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No cost alerts at this time
-                  </p>
-                )}
+              {/* Below-par summary */}
+              {(reorderData?.items?.length ?? 0) > 0 && (
+                <div
+                  className="flex items-center gap-3 px-2 py-2.5 rounded-md border"
+                  data-testid="row-below-par-summary"
+                >
+                  <Package className="h-3.5 w-3.5 text-orange-500 dark:text-orange-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">
+                      {reorderData!.items.length} item{reorderData!.items.length !== 1 ? "s" : ""} to order
+                    </p>
+                    <p className="text-xs text-muted-foreground">Below par level</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={copyReorderList}
+                      data-testid="button-copy-reorder-list"
+                      title="Copy reorder list"
+                    >
+                      {reorderCopied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Link href="/inventory-items/par-levels">
+                      <Button variant="ghost" size="icon" data-testid="button-view-par-levels">
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              {!topVarianceItem && (reorderData?.items?.length ?? 0) === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No cost alerts at this time
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Upcoming Orders — right col / row 2 — mobile order 3 */}
+        <Card data-testid="card-upcoming-orders" className="order-3 lg:col-start-2 lg:row-start-2">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <CardTitle className="text-base">Upcoming Orders</CardTitle>
+              <Link href="/orders">
+                <Button variant="ghost" size="icon" data-testid="button-view-all-orders">
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent className="pb-3">
+            {upcomingOrders.length > 0 ? (
+              <div className="space-y-0.5" data-testid="list-upcoming-orders">
+                {upcomingOrders.map((d: any) => (
+                  <Link key={d.purchaseOrderId ?? d.id} href={`/purchase-orders/${d.purchaseOrderId ?? d.id}`}>
+                    <div
+                      className="flex items-center gap-3 px-2 py-2 rounded-md hover-elevate cursor-pointer"
+                      data-testid={`row-upcoming-${d.purchaseOrderId ?? d.id}`}
+                    >
+                      <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{d.vendorName || "Order"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Order by {format(new Date(d.orderDeadline), "MMM d")}
+                          {d.deliveryDate ? ` · Delivery ${format(new Date(d.deliveryDate), "MMM d")}` : ""}
+                        </p>
+                      </div>
+                      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    </div>
+                  </Link>
+                ))}
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">No upcoming deadlines</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recent Activity — right col / row 1 — mobile order 4 */}
+        <Card data-testid="card-recent-activity" className="order-4 lg:col-start-2 lg:row-start-1">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Recent Activity</CardTitle>
+          </CardHeader>
+          <CardContent className="pb-3">
+            {recentActivityEvents.length > 0 ? (
+              <div className="space-y-0.5" data-testid="list-recent-activity">
+                {recentActivityEvents.map((event) => (
+                  <Link key={event.key} href={event.href}>
+                    <div
+                      className="flex items-center gap-3 px-2 py-2 rounded-md hover-elevate cursor-pointer"
+                      data-testid={`row-activity-${event.key}`}
+                    >
+                      {event.icon}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{event.label}</p>
+                        {event.detail && (
+                          <p className="text-xs text-muted-foreground truncate">{event.detail}</p>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                        {formatRelativeTime(event.timestamp)}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">No recent activity</p>
+            )}
+          </CardContent>
+        </Card>
+
       </div>
     </div>
   );
