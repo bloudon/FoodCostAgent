@@ -173,7 +173,7 @@ test.describe('Repair Pack Sizes UI — items updated (updated > 0)', () => {
     await btn.click();
 
     // Toast should appear confirming the count
-    const toast = page.locator('[role="status"]').filter({ hasText: 'Updated 2 vendor items' });
+    const toast = page.locator('[role="status"]').filter({ hasText: 'Updated 2 vendor items' }).first();
     await expect(toast).toBeVisible({ timeout: 8000 });
   });
 
@@ -243,7 +243,7 @@ test.describe('Repair Pack Sizes UI — already up to date (updated = 0)', () =>
     await expect(btn).toBeVisible({ timeout: 10000 });
     await btn.click();
 
-    const toast = page.locator('[role="status"]').filter({ hasText: /already up to date/i });
+    const toast = page.locator('[role="status"]').filter({ hasText: /already up to date/i }).first();
     await expect(toast).toBeVisible({ timeout: 8000 });
   });
 

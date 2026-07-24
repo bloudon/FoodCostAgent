@@ -41,6 +41,9 @@ const COMPANY_A_ID   = "ad95ecda-74a9-49d7-833b-6d7d2f48efd1";
 const COMPANY_B_ID   = "bn-company-0001";
 const STORE_A_ID     = "ci-store-brians-001";
 const STORE_B_ID     = "ci-store-nook-001";
+// Additional stores required by analyze-top-variance and cross-company-isolation specs
+const STORE_C_ID     = "2765a568-d72f-46ab-b2f1-5b4f7fc31f5b";
+const STORE_D_ID     = "2c9272ed-8ccc-45f7-ab81-45504a87b7cb";
 const COUNT_A_ID     = "5f72014d-2b56-43ad-bc07-1dbf679336c5";
 const COUNT_B_ID     = "dfc5aa03-0055-4b2e-ab88-fb4a11750b12";
 const ORDER_GUIDE_ID = "3d91e5f0-71c6-457a-88cb-17353ae49e00";
@@ -62,10 +65,15 @@ async function run() {
       legalName: "Brian's Pizza LLC",
       contactEmail: "brian@brianspizza.com",
       status: "active",
+      subscriptionTier: "pro",
     });
     console.log("  ✅ Company A (Brian's Pizza) created");
   } else {
-    console.log("  ⏭  Company A already exists");
+    await db
+      .update(companies)
+      .set({ subscriptionTier: "pro" })
+      .where(eq(companies.id, COMPANY_A_ID));
+    console.log("  ⏭  Company A exists — subscriptionTier ensured pro");
   }
 
   // ── 2. Company B — The Breakfast Nook ────────────────────────────────────
@@ -80,10 +88,15 @@ async function run() {
       name: "The Breakfast Nook",
       contactEmail: "hello@breakfastnook.com",
       status: "active",
+      subscriptionTier: "pro",
     });
     console.log("  ✅ Company B (The Breakfast Nook) created");
   } else {
-    console.log("  ⏭  Company B already exists");
+    await db
+      .update(companies)
+      .set({ subscriptionTier: "pro" })
+      .where(eq(companies.id, COMPANY_B_ID));
+    console.log("  ⏭  Company B exists — subscriptionTier ensured pro");
   }
 
   // ── 3. Store A ────────────────────────────────────────────────────────────
@@ -176,6 +189,60 @@ async function run() {
     console.log("  ✅ User–store A assignment created");
   } else {
     console.log("  ⏭  User–store A assignment already exists");
+  }
+
+  // ── 6b. Additional Company A stores for analyze-top-variance + cross-company-isolation specs ──
+  const existingStoreC = await db
+    .select()
+    .from(companyStores)
+    .where(eq(companyStores.id, STORE_C_ID));
+
+  if (existingStoreC.length === 0) {
+    await db.insert(companyStores).values({
+      id: STORE_C_ID,
+      companyId: COMPANY_A_ID,
+      code: "CI003",
+      name: "Brian's Pizza – Store C",
+      status: "active",
+    });
+    console.log("  ✅ Store C created");
+  } else {
+    console.log("  ⏭  Store C already exists");
+  }
+
+  const existingStoreD = await db
+    .select()
+    .from(companyStores)
+    .where(eq(companyStores.id, STORE_D_ID));
+
+  if (existingStoreD.length === 0) {
+    await db.insert(companyStores).values({
+      id: STORE_D_ID,
+      companyId: COMPANY_A_ID,
+      code: "CI004",
+      name: "Brian's Pizza – Store D",
+      status: "active",
+    });
+    console.log("  ✅ Store D created");
+  } else {
+    console.log("  ⏭  Store D already exists");
+  }
+
+  // ── 6c. Assign admin@brians.pizza to Stores C and D ───────────────────────
+  const alreadyAssignedToC = existingAssignment.some((a) => a.storeId === STORE_C_ID);
+  if (!alreadyAssignedToC) {
+    await db.insert(userStores).values({ userId: testUser.id, storeId: STORE_C_ID });
+    console.log("  ✅ User–store C assignment created");
+  } else {
+    console.log("  ⏭  User–store C assignment already exists");
+  }
+
+  const alreadyAssignedToD = existingAssignment.some((a) => a.storeId === STORE_D_ID);
+  if (!alreadyAssignedToD) {
+    await db.insert(userStores).values({ userId: testUser.id, storeId: STORE_D_ID });
+    console.log("  ✅ User–store D assignment created");
+  } else {
+    console.log("  ⏭  User–store D assignment already exists");
   }
 
   // ── 7. Vendor (needed by order-guide-scan spec) ───────────────────────────
@@ -319,6 +386,20 @@ async function run() {
       .set({ passwordHash: bPasswordHash, active: 1 })
       .where(eq(users.email, "ci-staff@breakfastnook.com"));
     console.log("  ⏭  Company B user exists — password reset");
+  }
+
+  // ── 10b. Assign ci-staff@breakfastnook.com to Store B (ci-store-nook-001) ─
+  const bUserAssignments = await db
+    .select()
+    .from(userStores)
+    .where(eq(userStores.userId, bUserId));
+
+  const bAlreadyAssignedToB = bUserAssignments.some((a) => a.storeId === STORE_B_ID);
+  if (!bAlreadyAssignedToB) {
+    await db.insert(userStores).values({ userId: bUserId, storeId: STORE_B_ID });
+    console.log("  ✅ Company B user–store B assignment created");
+  } else {
+    console.log("  ⏭  Company B user–store B assignment already exists");
   }
 
   // ── 11. Inventory count for Company B ────────────────────────────────────

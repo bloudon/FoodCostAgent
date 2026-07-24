@@ -170,7 +170,7 @@ test.describe('Menu item edit form — calorie persistence', () => {
     const { menuItemIds } = await approveSession(
       request,
       sessionId,
-      [{ name: itemName, department: 'Mains', price: 11.99, calorieCount: 350 }],
+      [{ name: itemName, pluSku: `CI-CAL-${Date.now()}`, department: 'Mains', price: 11.99, calorieCount: 350 }],
       storeId,
     );
     expect(menuItemIds.length, 'One menu item should be created').toBe(1);
@@ -231,7 +231,7 @@ test.describe('Menu item edit form — calorie persistence', () => {
     const { menuItemIds } = await approveSession(
       request,
       sessionId,
-      [{ name: itemName, department: 'Salads', price: 9.99, calorieCount: 500 }],
+      [{ name: itemName, pluSku: `CI-CAL-${Date.now()}`, department: 'Salads', price: 9.99, calorieCount: 500 }],
       storeId,
     );
     expect(menuItemIds.length).toBe(1);

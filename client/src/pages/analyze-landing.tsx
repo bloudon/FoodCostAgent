@@ -467,7 +467,7 @@ export default function AnalyzeLanding() {
         )}
 
         {/* Top variance item — biggest single driver from most recent period */}
-        {showTfc && topItem && (
+        {showTfc && topItem && topItem.varianceCost > 0 && (
           <div data-testid="top-variance-item-section">
             <h2 className="text-sm font-semibold mb-3">Biggest Variance Driver</h2>
             <Link

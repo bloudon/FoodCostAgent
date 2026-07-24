@@ -21,7 +21,7 @@ test.describe('Order Guide Scan — multi-page invoice scan flow', () => {
   test('navigates to /order-guide-scan and shows Step 1 configuration UI', async ({ page }) => {
     await page.goto(`${BASE_URL}/order-guide-scan`);
 
-    await expect(page.getByText('Scan Invoice / Receipt')).toBeVisible();
+    await expect(page.getByText('Import Order Guide')).toBeVisible();
     await expect(page.getByTestId('select-vendor')).toBeVisible();
     await expect(page.getByTestId('button-upload-invoice')).toBeVisible();
     await expect(page.getByText('Configure')).toBeVisible();

@@ -191,7 +191,7 @@ test.describe('Onboarding invoice scan — wizard Step 3', () => {
     await expect(actionSelectors).toHaveCount(3);
   });
 
-  test('review table — default actions: zero-price → skip, case-only → create', async ({ page }) => {
+  test('review table — default actions: zero-price → create, case-only → create', async ({ page }) => {
     await mockInvoiceScanFlow(page, [
       {
         name: 'Bacon Case Only',
@@ -242,8 +242,8 @@ test.describe('Onboarding invoice scan — wizard Step 3', () => {
     const selector0 = page.getByTestId('select-action-0');
     await expect(selector0).toHaveValue('create');
 
-    // zero-price item → should default to 'skip'
+    // zero-price item → defaults to 'create' (no match, so create is the safe default)
     const selector1 = page.getByTestId('select-action-1');
-    await expect(selector1).toHaveValue('skip');
+    await expect(selector1).toHaveValue('create');
   });
 });
