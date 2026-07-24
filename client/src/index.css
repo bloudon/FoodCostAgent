@@ -372,4 +372,11 @@
       display: contents;
     }
   }
+
+  /* Disable sidebar width transition for users who prefer reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    [data-slot="sidebar-container"] {
+      transition: none !important;
+    }
+  }
 }

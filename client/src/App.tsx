@@ -211,9 +211,10 @@ function AppTopBar() {
   const companyName = user?.companyName;
   return (
     <div className="sticky top-0 z-50 flex h-12 items-center border-b px-4 bg-background gap-3">
-      <SidebarTrigger
-        data-testid={isMobile ? "button-mobile-menu" : "button-main-menu"}
-      />
+      {/* Hamburger: mobile sheet trigger only. Desktop uses the hover rail. */}
+      {isMobile && (
+        <SidebarTrigger data-testid="button-mobile-menu" />
+      )}
       <img src="/website-logo.png" alt="FNB Cost Pro" className="h-7 w-auto md:hidden" />
       {companyName && (
         <span
@@ -298,7 +299,14 @@ function ProtectedLayoutContent() {
   return (
     <div className="flex flex-col h-screen">
       {isGlobalAdmin && <GlobalAdminHeader />}
-      <SidebarProvider className="flex-1 min-h-0">
+      <SidebarProvider
+        className="flex-1 min-h-0"
+        defaultOpen={false}
+        style={{
+          "--sidebar-width": "230px",
+          "--sidebar-width-icon": "72px",
+        } as React.CSSProperties}
+      >
         <AppSidebar />
         <SidebarInset>
           <AppTopBar />
