@@ -20395,8 +20395,8 @@ Human Handoff:
       const isAdmin = role === "company_admin" || role === "global_admin";
       const primaryStoreId = stores[0]?.id;
 
-      // Fetch active sessions + recent applied sessions + recent scans concurrently
-      const [rawActiveCounts, rawRecentSessions, rawScans] = await Promise.all([
+      // Fetch active sessions + recent applied sessions + recent scans + PO data concurrently
+      const [rawActiveCounts, rawRecentSessions, rawScans, allPurchaseOrders, allVendors] = await Promise.all([
         isAdmin
           ? storage.getActiveInventoryCounts(companyId)
           : storage.getActiveInventoryCounts(companyId, primaryStoreId),
@@ -20406,7 +20406,55 @@ Human Handoff:
           5,
         ),
         userId ? storage.getRecentShelfScanSessions(userId, companyId, 8) : Promise.resolve([]),
+        storage.getPurchaseOrders(companyId),
+        storage.getVendors(companyId),
       ]);
+
+      // Compute overdue orders (admins/managers only — they can act on POs)
+      const overdueOrders: { id: string; vendorName: string; orderDeadline: string }[] = [];
+      if (isAdmin || role === "store_manager") {
+        const assignedStoreIds = new Set(stores.map(s => s.id));
+        const pendingOrders = allPurchaseOrders.filter(
+          (po: any) =>
+            po.status === "pending" &&
+            // Admins see all stores; managers are scoped to their assigned stores
+            (isAdmin || !po.storeId || assignedStoreIds.has(po.storeId))
+        );
+        if (pendingOrders.length > 0) {
+          const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+          const getNextDelivery = (deliveryDays: string[] | null): Date | null => {
+            if (!deliveryDays || deliveryDays.length === 0) return null;
+            const indices = deliveryDays.map(d => dayNames.indexOf(d.toLowerCase()));
+            const search = new Date();
+            search.setHours(0, 0, 0, 0);
+            for (let i = 0; i < 14; i++) {
+              if (indices.includes(search.getDay())) return new Date(search);
+              search.setDate(search.getDate() + 1);
+            }
+            return null;
+          };
+
+          for (const po of pendingOrders) {
+            const vendor = allVendors.find((v: any) => v.id === po.vendorId);
+            if (!vendor) continue;
+            const nextDelivery = getNextDelivery(vendor.deliveryDays);
+            if (!nextDelivery) continue;
+            const leadDays = vendor.leadDaysAhead || 0;
+            const deadline = new Date(nextDelivery);
+            deadline.setDate(deadline.getDate() - leadDays);
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            const daysUntilDeadline = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysUntilDeadline < 0) {
+              overdueOrders.push({
+                id: po.id,
+                vendorName: vendor.name,
+                orderDeadline: deadline.toISOString().split("T")[0],
+              });
+            }
+          }
+        }
+      }
 
       const activeCountIds = rawActiveCounts.map(ic => ic.id);
       const progressData = await storage.getInventoryCountProgressBatch(activeCountIds);
@@ -20463,6 +20511,7 @@ Human Handoff:
         activeSessions,
         recentSessions,
         recentScans,
+        overdueOrders,
       });
     } catch (error: any) {
       console.error("[GET /api/mobile/dashboard]", error);

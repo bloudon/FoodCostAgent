@@ -73,6 +73,11 @@ interface MobileDashboardData {
     sessionId: string | null;
     sessionName: string | null;
   }[];
+  overdueOrders: {
+    id: string;
+    vendorName: string;
+    orderDeadline: string;
+  }[];
 }
 
 function roleLabel(role: string): string {
@@ -457,6 +462,45 @@ export default function DashboardMobile() {
           <Plus className="w-5 h-5 mr-2" />
           Start New Count
         </Button>
+
+        {/* Overdue Order Alerts — admins and managers only */}
+        {(isAdmin || isManager) && data.overdueOrders && data.overdueOrders.length > 0 && (
+          <section data-testid="section-overdue-orders">
+            <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-2">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+              Overdue Orders
+              <Badge
+                className="ml-1 text-xs bg-red-500 text-white border-transparent"
+                data-testid="badge-overdue-count"
+              >
+                {data.overdueOrders.length}
+              </Badge>
+            </h2>
+            <Card className="border-red-200 dark:border-red-900">
+              <CardContent className="px-4 py-0 divide-y divide-red-100 dark:divide-red-900/50">
+                {data.overdueOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="flex items-center gap-3 py-3"
+                    data-testid={`row-overdue-order-${order.id}`}
+                  >
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                      <AlertTriangle className="w-4 h-4 text-red-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate text-red-700 dark:text-red-400">
+                        {order.vendorName}
+                      </p>
+                      <p className="text-xs text-red-500 dark:text-red-500">
+                        Deadline passed {format(new Date(order.orderDeadline), "MMM d")}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </section>
+        )}
 
         {/* Active Sessions */}
         {data.activeSessions.length > 0 && (
