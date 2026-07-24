@@ -55,10 +55,9 @@ function SecondaryTabs({
 }) {
   const tabs = [
     { label: "Overview", href: "/order" },
-    { label: "Build Order", href: "/orders" },
-    { label: "Purchase Orders", href: "/purchase-orders" },
+    { label: "Orders", href: "/orders" },
     { label: "Vendors", href: "/vendors" },
-    ...(showReceiving ? [{ label: "Receiving", href: "/purchase-orders" }] : []),
+    ...(showReceiving ? [{ label: "Receiving", href: "/orders" }] : []),
     { label: "Update Vendor Prices", href: "/order-guide-scan" },
     ...(showTransfers ? [{ label: "Transfers", href: "/transfer-orders" }] : []),
   ];
@@ -301,7 +300,7 @@ export default function OrderLanding() {
 
           {/* Receive Delivery */}
           <ActionCard
-            href="/purchase-orders"
+            href="/orders"
             icon={PackageCheck}
             iconBg="bg-green-500/10"
             iconClass="text-green-600 dark:text-green-400"
@@ -359,7 +358,7 @@ export default function OrderLanding() {
               {isAllStores ? "Recent Orders" : "Recent Orders — This Store"}
             </h2>
             <Link
-              href="/purchase-orders"
+              href="/orders"
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               data-testid="link-view-all-orders"
             >

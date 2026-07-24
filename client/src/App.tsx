@@ -325,7 +325,7 @@ function ProtectedLayoutContent() {
               <Route path="/menu-import"><Redirect to="/menu-scan" /></Route>
               <Route path="/inventory-sessions" component={InventorySessions} />
               <Route path="/new-count" component={NewCountSession} />
-              <Route path="/inventory-count" component={InventoryCount} />
+              <Route path="/inventory-count"><Redirect to="/count" /></Route>
               <Route path="/count" component={CountLanding} />
               <Route path="/count/:id/mobile" component={CountSessionMobile} />
               <Route path="/count/:id" component={CountSession} />
@@ -343,7 +343,7 @@ function ProtectedLayoutContent() {
               <Route path="/order" component={OrderLanding} />
               <Route path="/orders" component={Orders} />
               <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
-              <Route path="/purchase-orders" component={PurchaseOrders} />
+              <Route path="/purchase-orders"><Redirect to="/orders" /></Route>
               <Route path="/receiving/:poId" component={ReceivingDetail} />
               <Route path="/transfer-orders/:id" component={TransferOrderDetail} />
               <Route path="/transfer-orders" component={TransferOrders} />

@@ -276,7 +276,7 @@ export default function WasteEntry() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl md:text-3xl font-semibold">Waste Entry</h1>
+            <h1 className="text-2xl md:text-3xl font-semibold">Waste</h1>
             <p className="text-muted-foreground">Log and track waste items</p>
           </div>
         </div>

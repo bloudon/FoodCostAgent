@@ -49,6 +49,7 @@ function getActiveSection(loc: string): string {
     loc.startsWith("/count/") ||
     loc.startsWith("/inventory-items") ||
     loc.startsWith("/inventory-sessions") ||
+    loc.startsWith("/inventory-count") ||
     loc.startsWith("/new-count") ||
     loc.startsWith("/item-count") ||
     loc.startsWith("/shelf-scans") ||

@@ -512,7 +512,7 @@ export default function InventorySessions() {
           <div className="flex-1 min-w-0">
             {!isEmbedded && (
               <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight truncate" data-testid="text-sessions-title">
-                Inventory Sessions
+                Counts
               </h1>
             )}
             {isEmbedded && (
