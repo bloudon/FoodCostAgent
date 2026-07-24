@@ -479,9 +479,10 @@ export default function DashboardMobile() {
             <Card className="border-red-200 dark:border-red-900">
               <CardContent className="px-4 py-0 divide-y divide-red-100 dark:divide-red-900/50">
                 {data.overdueOrders.map((order) => (
-                  <div
+                  <button
                     key={order.id}
-                    className="flex items-center gap-3 py-3"
+                    className="w-full text-left flex items-center gap-3 py-3 hover-elevate active-elevate-2"
+                    onClick={() => setLocation(`/purchase-orders/${order.id}?embedded=true`)}
                     data-testid={`row-overdue-order-${order.id}`}
                   >
                     <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
@@ -495,7 +496,8 @@ export default function DashboardMobile() {
                         Deadline passed {format(new Date(order.orderDeadline), "MMM d")}
                       </p>
                     </div>
-                  </div>
+                    <ChevronRight className="w-4 h-4 text-red-400 flex-shrink-0" />
+                  </button>
                 ))}
               </CardContent>
             </Card>

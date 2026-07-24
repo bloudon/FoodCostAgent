@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
+import { useEmbedded } from "@/hooks/use-embedded";
 import { ArrowLeft, Save, Package, Search, PackageCheck, TrendingDown, CalendarIcon, Download, CheckCircle2, AlertTriangle, Clock, Sparkles, Loader2, ArrowRight, History, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -189,6 +190,7 @@ export default function PurchaseOrderDetail() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const isNew = id === "new";
+  const isEmbedded = useEmbedded();
 
   const [selectedVendor, setSelectedVendor] = useState<string>("");
   const [selectedStore, setSelectedStore] = useState<string>("");
@@ -715,7 +717,7 @@ export default function PurchaseOrderDetail() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setLocation("/orders")}
+                onClick={() => setLocation(isEmbedded ? "/dashboard/mobile" : "/orders")}
                 data-testid="button-back"
               >
                 <ArrowLeft className="h-5 w-5" />

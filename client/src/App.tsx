@@ -288,6 +288,7 @@ function ProtectedLayoutContent() {
           <Route path="/count/:id/mobile" component={CountSessionMobile} />
           <Route path="/count/:id" component={CountSession} />
           <Route path="/item-count/:id" component={ItemCount} />
+          <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
           <Route component={NotFound} />
         </Switch>
       </main>
