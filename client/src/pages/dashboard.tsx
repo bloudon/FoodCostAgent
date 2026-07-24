@@ -174,6 +174,18 @@ export default function Dashboard() {
       href: string;
     }> = [];
 
+    // 0. Overdue order deadlines (past due, status still pending)
+    const overdueDeadlines = orderDeadlines.filter((d: any) => d.isPastDue);
+    overdueDeadlines.slice(0, 3).forEach((d: any) => {
+      const poId = d.purchaseOrderId ?? d.id;
+      rows.push({
+        key: `overdue-${poId}`,
+        icon: <Clock className="h-4 w-4 text-red-500 dark:text-red-400 shrink-0" />,
+        label: `Overdue: ${d.vendorName || "Order"} — deadline ${format(new Date(d.orderDeadline), "MMM d")}`,
+        href: `/purchase-orders/${poId}`,
+      });
+    });
+
     // 1. Order deadlines due within 48 h
     const urgentDeadlines = orderDeadlines.filter((d: any) => {
       if (!d.orderDeadline) return false;
