@@ -252,6 +252,17 @@ export function computeWac(
 }
 
 /**
+ * Cross-shopping price freshness thresholds (M3 purchasing rules).
+ *
+ * These govern whether a vendor price is eligible for cross-shop recommendations.
+ * They are SEPARATE from PRICE_MAINTENANCE_ALERT_DAYS (90 days) in the dashboard
+ * stale-vendor-prices endpoint, which is a routine maintenance warning.
+ * Do NOT consolidate these two thresholds.
+ */
+export const CROSS_SHOP_PRICE_CURRENT_DAYS = 7;   // 0–7 days → "current"
+export const CROSS_SHOP_PRICE_STALE_DAYS   = 14;  // >14 days → "stale" (excluded from recommendations)
+
+/**
  * 3-tier price freshness:
  *   "current" — priced within the last 7 days
  *   "aging"   — priced 8–14 days ago (advisory; still eligible for recommendations)
@@ -262,8 +273,8 @@ export type PriceFreshness = "current" | "aging" | "stale";
 export function getPriceFreshness(pricedAt: Date | null | undefined): PriceFreshness {
   if (!pricedAt) return "stale";
   const daysAgo = Math.floor((Date.now() - pricedAt.getTime()) / 86_400_000);
-  if (daysAgo <= 7) return "current";
-  if (daysAgo <= 14) return "aging";
+  if (daysAgo <= CROSS_SHOP_PRICE_CURRENT_DAYS) return "current";
+  if (daysAgo <= CROSS_SHOP_PRICE_STALE_DAYS) return "aging";
   return "stale";
 }
 

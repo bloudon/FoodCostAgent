@@ -7412,14 +7412,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/dashboard/stale-vendor-prices — count of vendor items with pricedAt older than threshold (default 90 days)
+  // GET /api/dashboard/stale-vendor-prices — count of vendor items with pricedAt older than threshold
+  // NOTE: This threshold (90 days) is a *maintenance* alert — items with no price refresh in 90+ days.
+  // It is intentionally different from CROSS_SHOP_PRICE_STALE_DAYS (14 days) in vendorPriceService.ts,
+  // which controls cross-shopping eligibility. Do not consolidate these two thresholds.
   app.get("/api/dashboard/stale-vendor-prices", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       if (!companyId) return res.status(400).json({ error: "Company context required" });
 
-      const STALE_DAYS = 90;
-      const cutoff = new Date(Date.now() - STALE_DAYS * 86_400_000);
+      const PRICE_MAINTENANCE_ALERT_DAYS = 90;
+      const cutoff = new Date(Date.now() - PRICE_MAINTENANCE_ALERT_DAYS * 86_400_000);
 
       // Count distinct vendor items (active, belonging to company's vendors) whose price is stale
       const staleRows = await db
@@ -7434,7 +7437,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ));
 
       const staleCount = staleRows[0]?.count ?? 0;
-      return res.json({ staleCount, thresholdDays: STALE_DAYS });
+      return res.json({ staleCount, thresholdDays: PRICE_MAINTENANCE_ALERT_DAYS });
     } catch (err: any) {
       console.error("GET /api/dashboard/stale-vendor-prices error:", err);
       return res.status(500).json({ error: "Failed to fetch stale vendor price count" });
