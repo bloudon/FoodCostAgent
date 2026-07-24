@@ -2,6 +2,29 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.11.0] — 2026-07-24
+
+### Dashboard & Alerts
+
+- **Operating console layout** — home dashboard rebuilt as a two-column console: left column surfaces exceptions (overdue orders, cost warnings), right column shows flow (recent activity, upcoming orders).
+- **Overdue purchase order alerts** — any PO past its expected delivery date now surfaces automatically on the web dashboard so nothing slips through unnoticed.
+- **Stale vendor price warnings** — flags items with no price refresh in 90+ days, helping catch pricing drift before it hits food cost. Distinct from the 14-day cross-shopping eligibility threshold (M3 purchasing rules).
+- **Mobile overdue PO alerts** — same overdue-order alerts extended to the Expo mobile app, with tap-through to full order detail.
+
+### Navigation & Routing
+
+- **Route consolidation** — `/purchase-orders` (list) redirects to the canonical `/orders` page; `/inventory-count` redirects to `/count` landing hub. Legacy paths still resolve cleanly without breaking browser Back.
+- **Terminology** — count sessions list heading updated to "Counts"; waste log heading updated to "Waste".
+- **Order landing tabs** — consolidated duplicate "Build Order" and "Purchase Orders" tabs into a single "Orders" tab.
+- **Centralized route config** — new `client/src/lib/route-config.ts` defines every canonical route with section, label, role requirements, and legacy redirect mappings as a single source of truth.
+
+### Price Threshold Clarity
+
+- **`PRICE_MAINTENANCE_ALERT_DAYS = 90`** — dashboard cleanup warning constant, named explicitly to prevent consolidation with cross-shopping rules.
+- **`CROSS_SHOP_PRICE_STALE_DAYS = 14`** — M3 purchasing eligibility threshold, now a named export in `vendorPriceService.ts` alongside `CROSS_SHOP_PRICE_CURRENT_DAYS = 7`.
+
+---
+
 ## [1.10.0] — 2026-07-10
 
 ### Procurement Connector Framework — PFS & SOFO
