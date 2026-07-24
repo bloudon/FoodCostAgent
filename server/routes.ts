@@ -7412,6 +7412,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/dashboard/stale-vendor-prices — count of vendor items with pricedAt older than threshold (default 90 days)
+  app.get("/api/dashboard/stale-vendor-prices", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(400).json({ error: "Company context required" });
+
+      const STALE_DAYS = 90;
+      const cutoff = new Date(Date.now() - STALE_DAYS * 86_400_000);
+
+      // Count distinct vendor items (active, belonging to company's vendors) whose price is stale
+      const staleRows = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(vendorItems)
+        .innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
+        .where(and(
+          eq(vendors.companyId, companyId),
+          eq(vendorItems.active, 1),
+          sql`(${vendorItems.pricedAt} IS NULL OR ${vendorItems.pricedAt} < ${cutoff})`,
+          sql`${vendorItems.lastCasePrice} > 0`,
+        ));
+
+      const staleCount = staleRows[0]?.count ?? 0;
+      return res.json({ staleCount, thresholdDays: STALE_DAYS });
+    } catch (err: any) {
+      console.error("GET /api/dashboard/stale-vendor-prices error:", err);
+      return res.status(500).json({ error: "Failed to fetch stale vendor price count" });
+    }
+  });
+
   app.get("/api/inventory-items/estimated-on-hand", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;

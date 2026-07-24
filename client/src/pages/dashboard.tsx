@@ -116,6 +116,10 @@ export default function Dashboard() {
     enabled: !!selectedStoreId && selectedStoreId !== "all",
   });
 
+  const { data: stalePriceData } = useQuery<{ staleCount: number; thresholdDays: number }>({
+    queryKey: ["/api/dashboard/stale-vendor-prices"],
+  });
+
   // ── Derived values ─────────────────────────────────────────────────────────
 
   const storePurchaseOrders = useMemo(
@@ -225,7 +229,18 @@ export default function Dashboard() {
       });
     }
 
-    // 4. Overdue count (> 14 days since last applied count)
+    // 4. Stale vendor prices (> 90 days without a price update)
+    const staleVendorCount = stalePriceData?.staleCount ?? 0;
+    if (staleVendorCount > 0) {
+      rows.push({
+        key: "stale-vendor-prices",
+        icon: <AlertTriangle className="h-4 w-4 text-yellow-500 dark:text-yellow-400 shrink-0" />,
+        label: `${staleVendorCount} vendor price${staleVendorCount !== 1 ? "s" : ""} may be outdated`,
+        href: "/vendors",
+      });
+    }
+
+    // 5. Overdue count (> 14 days since last applied count)
     if (daysSinceLastCount !== null && daysSinceLastCount > 14) {
       rows.push({
         key: "overdue-count",
@@ -243,7 +258,7 @@ export default function Dashboard() {
     }
 
     return rows.slice(0, 5);
-  }, [orderDeadlines, reorderData, recipesWithMissing, daysSinceLastCount]);
+  }, [orderDeadlines, reorderData, recipesWithMissing, daysSinceLastCount, stalePriceData]);
 
   // ── Recent Activity events ─────────────────────────────────────────────────
 
