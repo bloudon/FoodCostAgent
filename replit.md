@@ -102,6 +102,7 @@ See **`STANDARDS.md`** for the full ratified standards. Key rules for quick refe
 - **Recipe Name Capitalization**: Recipe names display with first letter capitalized in all UI presentations; original DB values are preserved.
 - **User Accountability Tracking**: Receipts, transfers, waste logs, and count applies track the acting user. Dates show "Action by Username" tooltip on hover.
 - **Case Price Entry**: Vendor items use case price as primary entry field. Unit price auto-calculates: `unitPrice = casePrice ÷ (caseSize × innerPackSize)`. `lastCasePrice` stores case price; `lastPrice` stores derived unit price. Unit prices display with 4 decimal precision.
+- **Versioning**: Track semver in `package.json`. Propose a bump at the end of each meaningful release and wait for user agreement before applying. Patch (`x.x.N`) for fixes/cleanup; Minor (`x.N.0`) for new features; Major (`N.0.0`) for breaking changes.
 
 ---
 
