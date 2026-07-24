@@ -1,0 +1,102 @@
+# Navigation UI Refinement — Hover-Expanding Application Rail
+
+Replace the permanent text sidebar with a compact desktop application rail that temporarily expands to reveal labels.
+
+## Collapsed state
+
+Width: approximately 68–76px.
+
+Show:
+
+- FnB logo mark
+- Store selector icon
+- Home
+- Count
+- Order
+- Prep
+- Analyze
+- More
+- User avatar and account controls
+
+Use icons, accessible labels, and tooltips.
+
+## Temporary expanded state
+
+Expand to approximately 220–240px when:
+
+- The user hovers over the rail
+- Any rail item receives keyboard focus
+- The user activates an explicit expand control
+
+Reveal:
+
+- Full FnB logo
+- Selected store name
+- Navigation labels
+- User name/email
+- Pin/unpin control
+
+Expansion reveals labels only. Do not restore nested menus, child disclosures, or chevrons.
+
+## Layout behavior
+
+- Temporary hover expansion should overlay the content rather than pushing the entire application horizontally.
+- A pinned expanded state may adjust the content margin persistently.
+- Use an opening delay of approximately 150–250ms.
+- Use a short collapse delay of approximately 250–400ms.
+- Clicking outside or pressing Escape closes an unpinned rail.
+- Persist the pinned preference locally.
+
+## Active state
+
+Use:
+
+- Brand-green accent indicator
+- Subtle tinted background
+- Brighter active icon
+- Semibold active label when expanded
+
+Do not use oversized filled navigation buttons.
+
+## Store selector
+
+Collapsed:
+- Show a store/location icon.
+
+Expanded:
+- Show the current store name and dropdown indicator.
+
+Reuse the existing store-selection behavior and preserve All Stores support.
+
+## Platform Administration
+
+Keep platform-admin tools grouped under More or the user/admin menu. Do not return them to the persistent header or primary rail.
+
+## Accessibility
+
+- Minimum 44px targets
+- `aria-label` on all compact controls
+- Tooltips on hover and keyboard focus
+- Full keyboard navigation
+- Visible focus treatment
+- Escape closes temporary expansion
+- Active state does not rely solely on color
+
+## Responsive behavior
+
+Desktop:
+- Compact hover-expanding rail
+- Optional pinned expanded state
+
+Mobile:
+- Preserve the existing bottom navigation
+- Do not use hover expansion
+
+## Out of Scope
+
+- Nested sidebar navigation
+- New routes
+- Global search
+- Home dashboard redesign
+- Landing-page changes
+- Permission changes
