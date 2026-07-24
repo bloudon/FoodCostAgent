@@ -133,6 +133,13 @@ const addMenuItemFormSchema = insertMenuItemSchema
 
 type AddMenuItemForm = z.infer<typeof addMenuItemFormSchema>;
 
+// Edit schema — PLU/SKU is optional because imported items may not have one
+const editMenuItemFormSchema = addMenuItemFormSchema.extend({
+  pluSku: z.string().optional().default(""),
+});
+
+type EditMenuItemForm = z.infer<typeof editMenuItemFormSchema>;
+
 // Form schema for adding a size variant
 const addVariantFormSchema = z.object({
   size: z.string().min(1, "Size is required"),
@@ -560,8 +567,8 @@ export default function MenuItemsPage() {
     },
   });
 
-  const editForm = useForm<AddMenuItemForm>({
-    resolver: zodResolver(addMenuItemFormSchema),
+  const editForm = useForm<EditMenuItemForm>({
+    resolver: zodResolver(editMenuItemFormSchema),
     defaultValues: {
       name: "",
       menuDepartmentId: null,
@@ -1088,7 +1095,7 @@ export default function MenuItemsPage() {
     setEditDialogOpen(true);
   };
 
-  const handleUpdateMenuItem = (data: AddMenuItemForm) => {
+  const handleUpdateMenuItem = (data: EditMenuItemForm) => {
     if (!editingItem) return;
     
     if (selectedStoresForEdit.length === 0) {
@@ -1105,7 +1112,7 @@ export default function MenuItemsPage() {
     
     // When assigning a managed department, also update the legacy text field for display
     const selectedDept = menuDepts?.find(d => d.id === data.menuDepartmentId);
-    const payload: Partial<AddMenuItemForm> = {
+    const payload: Partial<EditMenuItemForm> = {
       name: data.name,
       pluSku: data.pluSku,
       isRecipeItem: data.isRecipeItem,
