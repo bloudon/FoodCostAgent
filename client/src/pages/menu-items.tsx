@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Upload, Package, Search, Filter, Plus, MoreVertical, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Layers, BookOpen, PlusCircle, ExternalLink, Camera, GripVertical, Settings2, Trash2, Pencil, Check, X } from "lucide-react";
+import { Upload, Package, Search, Filter, Plus, MoreVertical, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Layers, BookOpen, PlusCircle, ExternalLink, Camera, GripVertical, Settings2, Trash2, Pencil, Check, X, AlertTriangle } from "lucide-react";
 import { useStoreContext } from "@/hooks/use-store-context";
 import { useTier } from "@/hooks/use-tier";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -1966,6 +1966,12 @@ export default function MenuItemsPage() {
                             <Input {...field} data-testid="input-edit-plu" />
                           </FormControl>
                           <FormMessage />
+                          {!field.value && (
+                            <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1" data-testid="warning-no-plu-edit">
+                              <AlertTriangle className="h-3 w-3 shrink-0" />
+                              No PLU/SKU — sales data won't link
+                            </p>
+                          )}
                         </FormItem>
                       )}
                     />
@@ -2563,7 +2569,19 @@ export default function MenuItemsPage() {
                                 </div>
                               </div>
                             </TableCell>
-                            <TableCell className="font-mono text-sm hidden md:table-cell">{group.parent.pluSku}</TableCell>
+                            <TableCell className="font-mono text-sm hidden md:table-cell">
+                              {group.parent.pluSku ? group.parent.pluSku : (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 text-xs cursor-default" data-testid={`badge-no-plu-${group.parent.id}`}>
+                                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                                      No PLU/SKU
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Sales data won't link without a PLU/SKU</TooltipContent>
+                                </Tooltip>
+                              )}
+                            </TableCell>
                             <TableCell className="text-right">{renderRecipeCost(group.parent)}</TableCell>
                             <TableCell className="text-right font-mono text-sm">
                               <div className="flex flex-col items-end gap-0.5">
@@ -2867,7 +2885,19 @@ export default function MenuItemsPage() {
                           <TableCell>{item.department || "-"}</TableCell>
                           <TableCell>{item.category || "-"}</TableCell>
                           <TableCell>{item.size || "-"}</TableCell>
-                          <TableCell className="font-mono text-sm">{item.pluSku}</TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {item.pluSku ? item.pluSku : (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 text-xs cursor-default" data-testid={`badge-no-plu-${item.id}`}>
+                                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                                    No PLU/SKU
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>Sales data won't link without a PLU/SKU</TooltipContent>
+                              </Tooltip>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right font-mono text-sm">
                             {recipe ? (
                               <Link 
