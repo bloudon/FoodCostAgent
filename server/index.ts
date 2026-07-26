@@ -934,6 +934,25 @@ async function runStartupMigrations() {
     log(`🔄 QuickBooks token refresh job scheduled (every ${QB_REFRESH_INTERVAL_MS / 1000 / 60} minutes ±${QB_JITTER_MS / 1000 / 60}min)`);
   }
 
+  // POS nightly incremental sync — runs at 4 AM UTC (after most restaurants close)
+  const POS_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+  const { runAllIncrementalSyncs } = await import("./services/posSyncJobs");
+  const schedulePosSync = () => {
+    const now = new Date();
+    const nextRun = new Date(now);
+    nextRun.setUTCHours(4, 0, 0, 0); // 4:00 AM UTC
+    if (nextRun <= now) nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+    const msUntilFirst = nextRun.getTime() - now.getTime();
+    setTimeout(() => {
+      runAllIncrementalSyncs().catch((e: any) => console.error("❌ POS nightly sync error:", e));
+      setInterval(() => {
+        runAllIncrementalSyncs().catch((e: any) => console.error("❌ POS nightly sync error:", e));
+      }, POS_SYNC_INTERVAL_MS);
+    }, msUntilFirst);
+    log(`🔄 POS nightly sync scheduled (first run at ${nextRun.toISOString()})`);
+  };
+  schedulePosSync();
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";

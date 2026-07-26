@@ -59,6 +59,8 @@ import Stores from "@/pages/stores";
 import Users from "@/pages/users";
 import WasteEntry from "@/pages/waste-entry";
 import TfcSalesImport from "@/pages/tfc-sales-import";
+import PosLocationMapping from "@/pages/pos-location-mapping";
+import PosItemMapping from "@/pages/pos-item-mapping";
 import TfcVariance from "@/pages/tfc-variance";
 import Login from "@/pages/login";
 import PendingApproval from "@/pages/pending-approval";
@@ -407,6 +409,8 @@ function ProtectedLayoutContent() {
               <Route path="/transfer-orders" component={TransferOrders} />
               <Route path="/variance" component={VarianceReport} />
               <Route path="/waste" component={WasteEntry} />
+              <Route path="/pos/location-mapping/:connectionId" component={PosLocationMapping} />
+              <Route path="/pos/item-mapping/:connectionId" component={PosItemMapping} />
               <Route path="/tfc/sales-import" component={TfcSalesImport} />
               <Route path="/tfc/variance" component={TfcVariance} />
               <Route path="/storage-locations" component={StorageLocations} />

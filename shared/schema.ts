@@ -1988,3 +1988,86 @@ export const extensionIngestionBatches = pgTable("extension_ingestion_batches", 
   idempotencyKey: uniqueIndex("ext_ingest_idempotency").on(table.syncJobId, table.batchId),
 }));
 export type ExtensionIngestionBatch = typeof extensionIngestionBatches.$inferSelect;
+
+// ============ POS CONNECTOR FOUNDATION ============
+
+// POS Connections — one OAuth connection per company (Square, Clover, etc.)
+export const posConnections = pgTable("pos_connections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  provider: text("provider").notNull(), // "square"
+  merchantId: text("merchant_id").notNull(), // Square merchant ID
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token"), // nullable (Square uses long-lived tokens)
+  tokenExpiresAt: timestamp("token_expires_at"),
+  syncCursor: jsonb("sync_cursor"), // {[locationId]: cursor} per location
+  lastSyncedAt: timestamp("last_synced_at"),
+  status: text("status").notNull().default("active"), // active | disconnected | error
+  connectedByUserId: varchar("connected_by_user_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  companyProviderIdx: index("pos_connections_company_provider_idx").on(table.companyId, table.provider),
+}));
+
+export const insertPosConnectionSchema = createInsertSchema(posConnections).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPosConnection = z.infer<typeof insertPosConnectionSchema>;
+export type PosConnection = typeof posConnections.$inferSelect;
+
+// POS Location Mappings — Square location → FnB store
+export const posLocationMappings = pgTable("pos_location_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  connectionId: varchar("connection_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  externalLocationId: text("external_location_id").notNull(),
+  externalLocationName: text("external_location_name").notNull(),
+  storeId: varchar("store_id"), // nullable until mapped
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  uniqueConnLocation: unique().on(table.connectionId, table.externalLocationId),
+}));
+
+export const insertPosLocationMappingSchema = createInsertSchema(posLocationMappings).omit({ id: true, createdAt: true });
+export type InsertPosLocationMapping = z.infer<typeof insertPosLocationMappingSchema>;
+export type PosLocationMapping = typeof posLocationMappings.$inferSelect;
+
+// POS Item Mappings — Square catalog variation → FnB menu item
+export const posItemMappings = pgTable("pos_item_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  connectionId: varchar("connection_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  externalItemId: text("external_item_id").notNull(), // Square ITEM catalog object ID
+  externalVariationId: text("external_variation_id").notNull(), // Square ITEM_VARIATION ID
+  externalItemName: text("external_item_name").notNull(),
+  externalVariationName: text("external_variation_name").notNull(),
+  menuItemId: varchar("menu_item_id"), // nullable until mapped
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  uniqueConnVariation: unique().on(table.connectionId, table.externalVariationId),
+}));
+
+export const insertPosItemMappingSchema = createInsertSchema(posItemMappings).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPosItemMapping = z.infer<typeof insertPosItemMappingSchema>;
+export type PosItemMapping = typeof posItemMappings.$inferSelect;
+
+// POS Sync Jobs — tracks each sync run
+export const posSyncJobs = pgTable("pos_sync_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  connectionId: varchar("connection_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  jobType: text("job_type").notNull(), // backfill | incremental | manual
+  status: text("status").notNull().default("pending"), // pending | running | completed | failed
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  daysBackfilled: integer("days_backfilled"),
+  rowsIngested: integer("rows_ingested").notNull().default(0),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  connectionIdx: index("pos_sync_jobs_connection_idx").on(table.connectionId),
+}));
+
+export const insertPosSyncJobSchema = createInsertSchema(posSyncJobs).omit({ id: true, createdAt: true });
+export type InsertPosSyncJob = z.infer<typeof insertPosSyncJobSchema>;
+export type PosSyncJob = typeof posSyncJobs.$inferSelect;

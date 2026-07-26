@@ -72,6 +72,10 @@ import {
   prepChartLines, type PrepChartLine, type InsertPrepChartLine,
   shelfScanSessions, type ShelfScanSession, type InsertShelfScanSession,
   customerSupplierConnections, type CustomerSupplierConnection, type InsertCustomerSupplierConnection,
+  posConnections, type PosConnection, type InsertPosConnection,
+  posLocationMappings, type PosLocationMapping, type InsertPosLocationMapping,
+  posItemMappings, type PosItemMapping, type InsertPosItemMapping,
+  posSyncJobs, type PosSyncJob, type InsertPosSyncJob,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -635,6 +639,27 @@ export interface IStorage {
   getActiveInventoryCounts(companyId: string, storeId?: string): Promise<InventoryCount[]>;
   getRecentAppliedInventoryCounts(companyId: string, storeIds?: string[], limit?: number): Promise<{ id: string; name: string | null; storeId: string | null; countDate: Date; lineCount: number }[]>;
   getInventoryCountProgressBatch(countIds: string[]): Promise<{ countId: string; totalItems: number; countedItems: number }[]>;
+
+  // POS Connections
+  getPosConnections(companyId: string): Promise<PosConnection[]>;
+  getPosConnectionById(id: string): Promise<PosConnection | undefined>;
+  createPosConnection(data: InsertPosConnection): Promise<PosConnection>;
+  updatePosConnection(id: string, companyId: string, updates: Partial<PosConnection>): Promise<PosConnection | undefined>;
+  deletePosConnection(id: string, companyId: string): Promise<void>;
+  getAllActivePosConnections(): Promise<PosConnection[]>;
+
+  // POS Location Mappings
+  getPosLocationMappings(connectionId: string): Promise<PosLocationMapping[]>;
+  upsertPosLocationMappings(connectionId: string, companyId: string, mappings: Array<{ externalLocationId: string; externalLocationName: string; storeId: string | null }>): Promise<PosLocationMapping[]>;
+
+  // POS Item Mappings
+  getPosItemMappings(connectionId: string): Promise<PosItemMapping[]>;
+  upsertPosItemMappings(connectionId: string, companyId: string, mappings: Array<{ externalItemId: string; externalVariationId: string; externalItemName: string; externalVariationName: string; menuItemId: string | null }>): Promise<PosItemMapping[]>;
+
+  // POS Sync Jobs
+  createPosSyncJob(data: InsertPosSyncJob): Promise<PosSyncJob>;
+  updatePosSyncJob(id: string, updates: Partial<PosSyncJob>): Promise<PosSyncJob | undefined>;
+  getPosSyncJobs(connectionId: string, limit?: number): Promise<PosSyncJob[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4750,6 +4775,155 @@ export class DatabaseStorage implements IStorage {
         eq(customerSupplierConnections.id, id),
         eq(customerSupplierConnections.companyId, companyId),
       ));
+  }
+
+  // ===== POS Connections =====
+
+  async getPosConnections(companyId: string): Promise<PosConnection[]> {
+    return db
+      .select()
+      .from(posConnections)
+      .where(and(eq(posConnections.companyId, companyId), eq(posConnections.status, "active")))
+      .orderBy(desc(posConnections.createdAt));
+  }
+
+  async getPosConnectionById(id: string): Promise<PosConnection | undefined> {
+    const [row] = await db.select().from(posConnections).where(eq(posConnections.id, id)).limit(1);
+    return row;
+  }
+
+  async createPosConnection(data: InsertPosConnection): Promise<PosConnection> {
+    const [row] = await db.insert(posConnections).values(data).returning();
+    return row;
+  }
+
+  async updatePosConnection(id: string, companyId: string, updates: Partial<PosConnection>): Promise<PosConnection | undefined> {
+    const [row] = await db
+      .update(posConnections)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(posConnections.id, id), eq(posConnections.companyId, companyId)))
+      .returning();
+    return row;
+  }
+
+  async deletePosConnection(id: string, companyId: string): Promise<void> {
+    await db
+      .update(posConnections)
+      .set({ status: "disconnected", updatedAt: new Date() })
+      .where(and(eq(posConnections.id, id), eq(posConnections.companyId, companyId)));
+  }
+
+  async getAllActivePosConnections(): Promise<PosConnection[]> {
+    return db.select().from(posConnections).where(eq(posConnections.status, "active"));
+  }
+
+  // ===== POS Location Mappings =====
+
+  async getPosLocationMappings(connectionId: string): Promise<PosLocationMapping[]> {
+    return db
+      .select()
+      .from(posLocationMappings)
+      .where(eq(posLocationMappings.connectionId, connectionId))
+      .orderBy(asc(posLocationMappings.externalLocationName));
+  }
+
+  async upsertPosLocationMappings(
+    connectionId: string,
+    companyId: string,
+    mappings: Array<{ externalLocationId: string; externalLocationName: string; storeId: string | null }>,
+  ): Promise<PosLocationMapping[]> {
+    const results: PosLocationMapping[] = [];
+    for (const m of mappings) {
+      const existing = await db
+        .select()
+        .from(posLocationMappings)
+        .where(and(
+          eq(posLocationMappings.connectionId, connectionId),
+          eq(posLocationMappings.externalLocationId, m.externalLocationId),
+        ))
+        .limit(1);
+
+      if (existing.length > 0) {
+        const [updated] = await db
+          .update(posLocationMappings)
+          .set({ storeId: m.storeId, externalLocationName: m.externalLocationName })
+          .where(eq(posLocationMappings.id, existing[0].id))
+          .returning();
+        results.push(updated);
+      } else {
+        const [created] = await db
+          .insert(posLocationMappings)
+          .values({ connectionId, companyId, ...m })
+          .returning();
+        results.push(created);
+      }
+    }
+    return results;
+  }
+
+  // ===== POS Item Mappings =====
+
+  async getPosItemMappings(connectionId: string): Promise<PosItemMapping[]> {
+    return db
+      .select()
+      .from(posItemMappings)
+      .where(eq(posItemMappings.connectionId, connectionId))
+      .orderBy(asc(posItemMappings.externalItemName), asc(posItemMappings.externalVariationName));
+  }
+
+  async upsertPosItemMappings(
+    connectionId: string,
+    companyId: string,
+    mappings: Array<{ externalItemId: string; externalVariationId: string; externalItemName: string; externalVariationName: string; menuItemId: string | null }>,
+  ): Promise<PosItemMapping[]> {
+    const results: PosItemMapping[] = [];
+    for (const m of mappings) {
+      const existing = await db
+        .select()
+        .from(posItemMappings)
+        .where(and(
+          eq(posItemMappings.connectionId, connectionId),
+          eq(posItemMappings.externalVariationId, m.externalVariationId),
+        ))
+        .limit(1);
+
+      if (existing.length > 0) {
+        const [updated] = await db
+          .update(posItemMappings)
+          .set({ ...m, updatedAt: new Date() })
+          .where(eq(posItemMappings.id, existing[0].id))
+          .returning();
+        results.push(updated);
+      } else {
+        const [created] = await db
+          .insert(posItemMappings)
+          .values({ connectionId, companyId, ...m })
+          .returning();
+        results.push(created);
+      }
+    }
+    return results;
+  }
+
+  // ===== POS Sync Jobs =====
+
+  async createPosSyncJob(data: InsertPosSyncJob): Promise<PosSyncJob> {
+    const [row] = await db.insert(posSyncJobs).values(data).returning();
+    return row;
+  }
+
+  async updatePosSyncJob(id: string, updates: Partial<PosSyncJob>): Promise<PosSyncJob | undefined> {
+    const [row] = await db.update(posSyncJobs).set(updates).where(eq(posSyncJobs.id, id)).returning();
+    return row;
+  }
+
+  async getPosSyncJobs(connectionId: string, limit = 10): Promise<PosSyncJob[]> {
+    return db
+      .select()
+      .from(posSyncJobs)
+      .where(eq(posSyncJobs.connectionId, connectionId))
+      .orderBy(desc(posSyncJobs.createdAt))
+      .limit(limit);
   }
 }
 

@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useLocation as useWouterLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatPhoneNumber, isValidPhone } from "@/lib/phone";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw, Wrench, AlertTriangle, Pencil, Lock } from "lucide-react";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw, Wrench, AlertTriangle, Pencil, Lock, Zap } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -20,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Company, CompanyStore, SystemPreferences, VendorCredentials, Vendor, QuickBooksVendorMapping } from "@shared/schema";
+import type { Company, CompanyStore, SystemPreferences, VendorCredentials, Vendor, QuickBooksVendorMapping, PosConnection, PosSyncJob } from "@shared/schema";
 import {
   Table,
   TableBody,
@@ -1468,79 +1469,7 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="connections" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>POS System Integration</CardTitle>
-              <CardDescription>
-                Configure your point-of-sale system connection for real-time sales data
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handlePrefsSave} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="pos-system">POS System</Label>
-                  <Select name="pos-system" defaultValue={systemPrefs?.posSystem || "none"}>
-                    <SelectTrigger id="pos-system" data-testid="select-pos-system">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None (Manual Entry)</SelectItem>
-                      <SelectItem value="square">Square</SelectItem>
-                      <SelectItem value="toast">Toast</SelectItem>
-                      <SelectItem value="clover">Clover</SelectItem>
-                      <SelectItem value="custom">Custom API</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="pos-api-key">API Key</Label>
-                  <Input
-                    id="pos-api-key"
-                    name="pos-api-key"
-                    type="password"
-                    placeholder="Enter API key"
-                    defaultValue={systemPrefs?.posApiKey || ""}
-                    data-testid="input-pos-api-key"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="pos-webhook">Webhook URL</Label>
-                  <Input
-                    id="pos-webhook"
-                    placeholder="wss://your-app.com/ws/pos"
-                    defaultValue={systemPrefs?.posWebhookUrl || ""}
-                    data-testid="input-pos-webhook"
-                    readOnly
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Configure this URL in your POS system to receive real-time sales data
-                  </p>
-                </div>
-
-                <Separator />
-                
-                <div className="flex justify-end gap-2">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    data-testid="button-test-connection"
-                  >
-                    Test Connection
-                  </Button>
-                  <Button 
-                    type="submit" 
-                    data-testid="button-save-pos"
-                    disabled={updatePrefsMutation.isPending}
-                  >
-                    {updatePrefsMutation.isPending ? "Saving..." : "Save POS Settings"}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-
+          <SquarePosCard selectedCompanyId={selectedCompanyId} />
         </TabsContent>
 
         <TabsContent value="preferences" className="space-y-6">
@@ -1957,6 +1886,199 @@ function MaintenanceTab() {
             </div>
           )}
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Square POS Card ───────────────────────────────────────────────────────────
+
+function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null }) {
+  const { toast } = useToast();
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const { data: connections = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/pos/connections"],
+    enabled: !!selectedCompanyId,
+    retry: false,
+  });
+
+  const { data: syncJobs = [] } = useQuery<any[]>({
+    queryKey: expandedId ? [`/api/pos/connections/${expandedId}/sync-jobs`] : [],
+    enabled: !!expandedId,
+    retry: false,
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/pos/connections/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pos/connections"] });
+      toast({ title: "Disconnected", description: "Square connection removed." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const syncNow = async (id: string, type: "incremental" | "backfill" = "incremental") => {
+    setSyncingId(id);
+    try {
+      await apiRequest("POST", `/api/pos/connections/${id}/sync`, { type });
+      toast({ title: "Sync started", description: "Sales data is being imported in the background." });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/pos/connections"] });
+        if (expandedId === id) {
+          queryClient.invalidateQueries({ queryKey: [`/api/pos/connections/${id}/sync-jobs`] });
+        }
+      }, 3000);
+    } catch (err: any) {
+      toast({ title: "Sync failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
+  const jobStatusBadge = (status: string) => {
+    if (status === "completed") return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400">Done</Badge>;
+    if (status === "failed") return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400">Failed</Badge>;
+    if (status === "running") return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400">Running</Badge>;
+    return <Badge variant="outline">{status}</Badge>;
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5 text-yellow-500" />
+              Square POS
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Connect Square to automatically import daily sales and calculate theoretical usage.
+            </CardDescription>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => { window.location.href = "/api/pos/connect/square"; }}
+            data-testid="button-square-connect"
+          >
+            <LinkIcon className="h-4 w-4 mr-2" />
+            Connect Square
+          </Button>
+        </div>
+      </CardHeader>
+
+      <CardContent>
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading connections...
+          </div>
+        ) : connections.length === 0 ? (
+          <div className="border border-dashed rounded-lg py-10 text-center text-muted-foreground">
+            <Zap className="h-8 w-8 mx-auto mb-2 opacity-30" />
+            <p className="text-sm">No Square connections yet.</p>
+            <p className="text-xs mt-1">Click "Connect Square" to start the OAuth flow.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {connections.map((conn: any) => (
+              <div key={conn.id} className="border rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                    <div>
+                      <p className="font-medium text-sm">Square · {conn.merchantId}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {conn.lastSyncedAt
+                          ? `Last synced ${new Date(conn.lastSyncedAt).toLocaleString()}`
+                          : "Never synced"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => syncNow(conn.id)}
+                      disabled={syncingId === conn.id}
+                      data-testid={`button-square-sync-${conn.id}`}
+                    >
+                      {syncingId === conn.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      ) : (
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                      )}
+                      Sync Now
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setExpandedId(expandedId === conn.id ? null : conn.id)}
+                    >
+                      {expandedId === conn.id ? "Hide" : "Details"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => disconnectMutation.mutate(conn.id)}
+                      disabled={disconnectMutation.isPending}
+                      data-testid={`button-square-disconnect-${conn.id}`}
+                    >
+                      Disconnect
+                    </Button>
+                  </div>
+                </div>
+
+                {expandedId === conn.id && (
+                  <div className="border-t pt-3 space-y-3">
+                    <div className="flex gap-2 flex-wrap">
+                      <Button size="sm" variant="outline" asChild>
+                        <a href={`/pos/location-mapping/${conn.id}`}>Edit Location Mapping</a>
+                      </Button>
+                      <Button size="sm" variant="outline" asChild>
+                        <a href={`/pos/item-mapping/${conn.id}`}>Edit Item Mapping</a>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => syncNow(conn.id, "backfill")}
+                        disabled={syncingId === conn.id}
+                      >
+                        Backfill 30 Days
+                      </Button>
+                    </div>
+
+                    {syncJobs.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Recent Syncs</p>
+                        {syncJobs.slice(0, 5).map((job: any) => (
+                          <div key={job.id} className="flex items-center justify-between text-xs py-1.5 border-b last:border-0">
+                            <div className="flex items-center gap-2">
+                              {jobStatusBadge(job.status)}
+                              <span className="capitalize">{job.jobType}</span>
+                              {job.rowsIngested > 0 && (
+                                <span className="text-muted-foreground">· {job.rowsIngested} rows</span>
+                              )}
+                            </div>
+                            <span className="text-muted-foreground">
+                              {new Date(job.createdAt).toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

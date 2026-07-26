@@ -25,6 +25,7 @@ import { convertToInventoryUnits, autoSeedRecipeUnitsForItem } from "./lib/recip
 import { resolvePriceSource, resolveScannedItemUnitPrice, resolveApplyLineUnitPrice } from "./lib/invoiceScanUtils";
 import { Router } from "express";
 import { registerExtensionRoutes } from "./integrations/extension/extensionRoutes";
+import { registerPosRoutes } from "./routes/posRoutes";
 import { createReviewStepHandler, createGetMilestonesHandler } from "./lib/milestonesHandler";
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
@@ -161,6 +162,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Extension Pilot — browser-extension price sync routes
   const extensionRouter = Router();
   registerExtensionRoutes(extensionRouter);
+  registerPosRoutes(app);
   app.use('/api/extension', extensionRouter);
 
   // GET /api/changelog — parses CHANGELOG.md and returns structured version entries
