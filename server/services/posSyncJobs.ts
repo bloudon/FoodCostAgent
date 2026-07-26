@@ -8,6 +8,13 @@ import { storage } from "../storage";
 import { squarePosConnector, SquareTokenRevokedError } from "../integrations/pos/square";
 import { ingestSalesBatch } from "./posIngestion";
 
+/** Strip any token-shaped strings from error messages before persisting to DB. */
+function sanitizeErrorMessage(msg: string): string {
+  // Square access tokens are long alphanumeric strings starting with "EAAAl" or similar.
+  // Conservatively redact any word of 40+ characters that looks like a bearer token.
+  return msg.replace(/\b[A-Za-z0-9+/=_-]{40,}\b/g, "[REDACTED]");
+}
+
 function todayMinus(days: number): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - days);
@@ -75,14 +82,15 @@ export async function runBackfill(
     return { rowsIngested: totalRows };
   } catch (err: any) {
     console.error("[POS Backfill] Error:", err.message);
+    const safeMsg = sanitizeErrorMessage(err.message);
     await storage.updatePosSyncJob(job.id, {
       status: "failed",
       completedAt: new Date(),
-      errorMessage: err.message,
+      errorMessage: safeMsg,
       rowsIngested: totalRows,
       rowsSkipped: totalSkipped,
     });
-    return { rowsIngested: totalRows, error: err.message };
+    return { rowsIngested: totalRows, error: safeMsg };
   }
 }
 
@@ -180,14 +188,15 @@ export async function runIncrementalSync(
       await storage.updatePosConnection(connectionId, connection.companyId, { status: "disconnected" });
     }
 
+    const safeMsg2 = sanitizeErrorMessage(err.message);
     await storage.updatePosSyncJob(job.id, {
       status: "failed",
       completedAt: new Date(),
-      errorMessage: err.message,
+      errorMessage: safeMsg2,
       rowsIngested: totalRows,
       rowsSkipped: totalSkipped,
     });
-    return { rowsIngested: totalRows, error: err.message };
+    return { rowsIngested: totalRows, error: safeMsg2 };
   }
 }
 

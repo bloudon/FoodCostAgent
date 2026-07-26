@@ -1,6 +1,7 @@
 import { eq, and, or, gt, gte, lte, ne, isNull, isNotNull, inArray, sql, desc, asc, ilike } from "drizzle-orm";
 import { db } from "./db";
 import { cache, CacheKeys } from "./cache";
+import { encryptToken, decryptToken, currentTokenKeyVersion } from "./utils/tokenCrypto";
 import {
   users, type User, type InsertUser,
   authSessions, type AuthSession, type InsertAuthSession,
@@ -660,6 +661,48 @@ export interface IStorage {
   createPosSyncJob(data: InsertPosSyncJob): Promise<PosSyncJob>;
   updatePosSyncJob(id: string, updates: Partial<PosSyncJob>): Promise<PosSyncJob | undefined>;
   getPosSyncJobs(connectionId: string, limit?: number): Promise<PosSyncJob[]>;
+}
+
+// ── POS token encryption helpers (module-level, used by DatabaseStorage) ──────
+
+/** Encrypt tokens in a new PosConnection payload before INSERT. */
+function encryptPosConnectionTokens<T extends { accessToken: string; refreshToken?: string | null }>(
+  data: T,
+): T & { tokenKeyVersion: number } {
+  return {
+    ...data,
+    accessToken: encryptToken(data.accessToken),
+    refreshToken: data.refreshToken ? encryptToken(data.refreshToken) : data.refreshToken,
+    tokenKeyVersion: currentTokenKeyVersion(),
+  };
+}
+
+/** Decrypt tokens in a PosConnection row after SELECT. */
+function decryptPosConnectionTokens(row: PosConnection): PosConnection {
+  return {
+    ...row,
+    accessToken: decryptToken(row.accessToken),
+    refreshToken: row.refreshToken ? decryptToken(row.refreshToken) : row.refreshToken,
+  };
+}
+
+/**
+ * Encrypt token fields in a partial UPDATE payload.
+ * Only encrypts fields that are present in the update object.
+ */
+function encryptPosConnectionTokenUpdates(
+  updates: Partial<PosConnection>,
+): Partial<PosConnection> {
+  const result: Partial<PosConnection> = { ...updates };
+  if (updates.accessToken !== undefined) {
+    result.accessToken = encryptToken(updates.accessToken);
+    result.tokenKeyVersion = currentTokenKeyVersion();
+  }
+  if (updates.refreshToken !== undefined && updates.refreshToken !== null) {
+    result.refreshToken = encryptToken(updates.refreshToken);
+    result.tokenKeyVersion = currentTokenKeyVersion();
+  }
+  return result;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4780,30 +4823,31 @@ export class DatabaseStorage implements IStorage {
   // ===== POS Connections =====
 
   async getPosConnections(companyId: string): Promise<PosConnection[]> {
-    return db
+    const rows = await db
       .select()
       .from(posConnections)
       .where(and(eq(posConnections.companyId, companyId), ne(posConnections.status, "deleted")))
       .orderBy(desc(posConnections.createdAt));
+    return rows.map(decryptPosConnectionTokens);
   }
 
   async getPosConnectionById(id: string): Promise<PosConnection | undefined> {
     const [row] = await db.select().from(posConnections).where(eq(posConnections.id, id)).limit(1);
-    return row;
+    return row ? decryptPosConnectionTokens(row) : undefined;
   }
 
   async createPosConnection(data: InsertPosConnection): Promise<PosConnection> {
-    const [row] = await db.insert(posConnections).values(data).returning();
-    return row;
+    const [row] = await db.insert(posConnections).values(encryptPosConnectionTokens(data)).returning();
+    return decryptPosConnectionTokens(row);
   }
 
   async updatePosConnection(id: string, companyId: string, updates: Partial<PosConnection>): Promise<PosConnection | undefined> {
     const [row] = await db
       .update(posConnections)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...encryptPosConnectionTokenUpdates(updates), updatedAt: new Date() })
       .where(and(eq(posConnections.id, id), eq(posConnections.companyId, companyId)))
       .returning();
-    return row;
+    return row ? decryptPosConnectionTokens(row) : undefined;
   }
 
   async deletePosConnection(id: string, companyId: string): Promise<void> {
@@ -4814,7 +4858,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllActivePosConnections(): Promise<PosConnection[]> {
-    return db.select().from(posConnections).where(eq(posConnections.status, "active"));
+    const rows = await db.select().from(posConnections).where(eq(posConnections.status, "active"));
+    return rows.map(decryptPosConnectionTokens);
   }
 
   // ===== POS Location Mappings =====

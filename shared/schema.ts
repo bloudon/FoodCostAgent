@@ -2000,6 +2000,8 @@ export const posConnections = pgTable("pos_connections", {
   accessToken: text("access_token").notNull(),
   refreshToken: text("refresh_token"), // nullable (Square uses long-lived tokens)
   tokenExpiresAt: timestamp("token_expires_at"),
+  /** 0 = plain-text (not yet encrypted), 1 = AES-256-GCM v1 (POS_TOKEN_ENCRYPTION_KEY) */
+  tokenKeyVersion: integer("token_key_version").notNull().default(0),
   syncCursor: jsonb("sync_cursor"), // {[locationId]: cursor} per location
   lastSyncedAt: timestamp("last_synced_at"),
   status: text("status").notNull().default("active"), // active | disconnected | error

@@ -923,6 +923,35 @@ async function runStartupMigrations() {
       )
     `);
     await db.execute(sql`ALTER TABLE pos_sync_jobs ADD COLUMN IF NOT EXISTS rows_skipped integer NOT NULL DEFAULT 0`);
+    // Task #540: token_key_version — 0=plain-text, 1=AES-256-GCM encrypted
+    await db.execute(sql`ALTER TABLE pos_connections ADD COLUMN IF NOT EXISTS token_key_version integer NOT NULL DEFAULT 0`);
+
+    // Task #540: Re-encrypt any existing plain-text tokens when the key is available
+    if (process.env.POS_TOKEN_ENCRYPTION_KEY) {
+      const { encryptToken, isEncryptedToken } = await import("./utils/tokenCrypto");
+      const plainRows = await db.execute(sql`
+        SELECT id, access_token, refresh_token FROM pos_connections WHERE token_key_version = 0
+      `);
+      const rows = (plainRows as any).rows ?? [];
+      if (rows.length > 0) {
+        console.log(`[POS] Re-encrypting ${rows.length} plain-text token row(s)…`);
+        for (const row of rows) {
+          const encAccess = isEncryptedToken(row.access_token) ? row.access_token : encryptToken(row.access_token);
+          const encRefresh = row.refresh_token
+            ? (isEncryptedToken(row.refresh_token) ? row.refresh_token : encryptToken(row.refresh_token))
+            : null;
+          await db.execute(sql`
+            UPDATE pos_connections
+            SET access_token = ${encAccess},
+                refresh_token = ${encRefresh},
+                token_key_version = 1,
+                updated_at = now()
+            WHERE id = ${row.id}
+          `);
+        }
+        console.log(`[POS] Re-encryption complete for ${rows.length} row(s).`);
+      }
+    }
 
     console.log('✅ Startup migrations applied');
   } catch (err) {
