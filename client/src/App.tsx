@@ -1,5 +1,10 @@
 import { Switch, Route, useLocation, Redirect } from "wouter";
 import { useEffect, useState } from "react";
+import { LogOut } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { LanguageToggle } from "@/components/language-toggle";
+import { useAppLanguage } from "@/lib/language-context";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -207,8 +212,20 @@ function ProtectedLayout() {
 /** Renders the top bar inside SidebarInset so useSidebar() is in scope. */
 function AppTopBar() {
   const { isMobile } = useSidebar();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const { t } = useAppLanguage();
   const companyName = user?.companyName;
+
+  const userInitials =
+    user?.firstName && user?.lastName
+      ? `${user.firstName[0]}${user.lastName[0]}`.toUpperCase()
+      : user?.email?.[0]?.toUpperCase() ?? "U";
+
+  const userName =
+    user?.firstName && user?.lastName
+      ? `${user.firstName} ${user.lastName}`
+      : user?.email ?? "User";
+
   return (
     <div className="sticky top-0 z-50 flex h-12 items-center border-b px-4 bg-background gap-3">
       {/* Hamburger: mobile sheet trigger only. Desktop uses the hover rail. */}
@@ -224,6 +241,39 @@ function AppTopBar() {
           {companyName}
         </span>
       )}
+
+      {/* Right-side user controls — stable position, no sidebar dependency */}
+      <div className="ml-auto flex items-center gap-1">
+        <ThemeToggle />
+        <LanguageToggle />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className="h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold cursor-default select-none"
+              aria-label={userName}
+            >
+              {userInitials}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p className="font-semibold">{userName}</p>
+            <p className="text-xs text-muted-foreground">{user?.email}</p>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={logout}
+              data-testid={isMobile ? "button-logout-mobile" : "button-logout"}
+              className="inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover-elevate active-elevate-2 transition-colors"
+              aria-label={t.auth.logout}
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t.auth.logout}</TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   );
 }

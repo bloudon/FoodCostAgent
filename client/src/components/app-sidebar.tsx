@@ -8,7 +8,6 @@ import {
   BarChart3,
   MoreHorizontal,
   Store,
-  LogOut,
   Pin,
   PinOff,
 } from "lucide-react";
@@ -34,11 +33,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { LanguageToggle } from "@/components/language-toggle";
 import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/lib/auth-context";
-import { useAppLanguage } from "@/lib/language-context";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import { useCompany } from "@/hooks/use-company";
 import { useStoreContext } from "@/hooks/use-store-context";
@@ -127,8 +123,7 @@ const RAIL: RailItem[] = [
 
 export function AppSidebar() {
   const [location] = useLocation();
-  const { user, logout } = useAuth();
-  const { t } = useAppLanguage();
+  const { user } = useAuth();
   const { company } = useCompany();
   const { selectedStoreId, setSelectedStoreId, stores } = useStoreContext();
   useAccessibleStores(); // keeps store list warm in React Query cache
@@ -230,16 +225,6 @@ export function AppSidebar() {
     if (item.id === "prep" && !hasFeature("prep_chart")) return false;
     return true;
   });
-
-  const userInitials =
-    user?.firstName && user?.lastName
-      ? `${user.firstName[0]}${user.lastName[0]}`.toUpperCase()
-      : user?.email?.[0]?.toUpperCase() ?? "U";
-
-  const userName =
-    user?.firstName && user?.lastName
-      ? `${user.firstName} ${user.lastName}`
-      : user?.email ?? "User";
 
   const currentStoreName = stores.find((s) => s.id === selectedStoreId)?.name ?? "Select store";
 
@@ -360,70 +345,28 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarContent>
 
-      {/* ── Footer: user + controls ──────────────────────────────────────── */}
-      <SidebarFooter className="border-t p-2 space-y-1">
-        {isExpanded && (
-          <div className="flex items-center gap-2 px-1 py-1">
-            <div className="h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold shrink-0">
-              {userInitials}
-            </div>
-            <div className="flex-1 min-w-0 text-left text-sm leading-tight">
-              <p className="truncate font-semibold">{userName}</p>
-              <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
-            </div>
-          </div>
-        )}
-
-        <div className={cn(
-          "flex items-center gap-1",
-          !isExpanded && "flex-col items-center"
-        )}>
-          {!isExpanded && (
+      {/* ── Footer: pin control only (user/theme/logout live in the top bar) ── */}
+      {!isMobile && (
+        <SidebarFooter className="border-t p-2">
+          <div className="flex justify-center">
             <Tooltip>
               <TooltipTrigger asChild>
-                <div
-                  className="h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold mb-1 cursor-default"
-                  aria-label={userName}
+                <button
+                  onClick={togglePin}
+                  className="inline-flex items-center justify-center rounded-md h-9 w-9 text-muted-foreground hover-elevate active-elevate-2 transition-colors"
+                  data-testid="button-sidebar-pin"
+                  aria-label={isPinned ? "Unpin sidebar" : "Pin sidebar"}
                 >
-                  {userInitials}
-                </div>
+                  {isPinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+                </button>
               </TooltipTrigger>
-              <TooltipContent side="right">{userName}</TooltipContent>
+              <TooltipContent side="right">
+                {isPinned ? "Unpin sidebar" : "Pin sidebar"}
+              </TooltipContent>
             </Tooltip>
-          )}
-
-          {isExpanded && <div className="flex-1" />}
-
-          <ThemeToggle />
-          <LanguageToggle />
-
-          {/* Pin/unpin — desktop only, visible while expanded */}
-          {!isMobile && isExpanded && (
-            <button
-              onClick={togglePin}
-              className="inline-flex items-center justify-center rounded-md h-9 w-9 text-muted-foreground hover-elevate active-elevate-2 transition-colors"
-              title={isPinned ? "Unpin sidebar" : "Pin sidebar"}
-              data-testid="button-sidebar-pin"
-              aria-label={isPinned ? "Unpin sidebar" : "Pin sidebar"}
-            >
-              {isPinned
-                ? <PinOff className="h-4 w-4" />
-                : <Pin className="h-4 w-4" />
-              }
-            </button>
-          )}
-
-          <button
-            onClick={logout}
-            data-testid={isMobile ? "button-logout-mobile" : "button-logout"}
-            className="inline-flex items-center justify-center rounded-md h-9 w-9 text-muted-foreground hover-elevate active-elevate-2 transition-colors"
-            title={t.auth.logout}
-            aria-label={t.auth.logout}
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
-        </div>
-      </SidebarFooter>
+          </div>
+        </SidebarFooter>
+      )}
     </Sidebar>
   );
 }
