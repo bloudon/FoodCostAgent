@@ -1899,6 +1899,53 @@ function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null
   const { toast } = useToast();
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [location] = useWouterLocation();
+
+  // Show toasts for OAuth redirect outcomes (pos_reconnected, pos_error)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const reconnected = params.get("pos_reconnected");
+    const posError = params.get("pos_error");
+    if (reconnected === "1") {
+      toast({ title: "Square reconnected", description: "Your connection is active again. You can run a sync now." });
+      params.delete("pos_reconnected");
+      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+    } else if (posError === "merchant_mismatch") {
+      toast({
+        title: "Different Square account",
+        description: "The account that authorized is not the same merchant as this connection. Existing connection unchanged.",
+        variant: "destructive",
+      });
+      params.delete("pos_error");
+      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+    } else if (posError === "state_replayed") {
+      toast({
+        title: "Link already used",
+        description: "This reconnect link was already used or expired. Start a fresh reconnect from the connection banner.",
+        variant: "destructive",
+      });
+      params.delete("pos_error");
+      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+    } else if (posError === "state_expired") {
+      toast({
+        title: "Reconnect link expired",
+        description: "The reconnect session expired (60 min limit). Please try again.",
+        variant: "destructive",
+      });
+      params.delete("pos_error");
+      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+    } else if (posError === "access_denied") {
+      toast({
+        title: "Square access denied",
+        description: "You cancelled the Square authorization. No changes were made.",
+        variant: "destructive",
+      });
+      params.delete("pos_error");
+      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
 
   const { data: connections = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/pos/connections"],
@@ -1993,8 +2040,21 @@ function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null
                 {conn.status === "disconnected" && (
                   <Alert variant="destructive" className="py-2.5">
                     <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      <span className="font-medium">Connection disconnected.</span> Square revoked access — your nightly sync is paused. Reconnect above to resume importing sales.
+                    <AlertDescription className="flex items-center justify-between gap-3 flex-wrap">
+                      <span>
+                        <span className="font-medium">Connection disconnected.</span>{" "}
+                        Square revoked access — your nightly sync is paused.
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 border-destructive/40 hover:bg-destructive/10"
+                        onClick={() => { window.location.href = `/api/pos/connect/square/reconnect/${conn.id}`; }}
+                        data-testid={`button-square-reconnect-${conn.id}`}
+                      >
+                        <LinkIcon className="h-3 w-3 mr-1.5" />
+                        Reconnect Square
+                      </Button>
                     </AlertDescription>
                   </Alert>
                 )}

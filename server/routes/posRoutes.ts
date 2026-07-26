@@ -10,7 +10,7 @@ import { squarePosConnector, buildSquareAuthUrl } from "../integrations/pos/squa
 import { runBackfill, runIncrementalSync } from "../services/posSyncJobs";
 
 // ── HMAC-signed state helpers (mirrors QB OAuth pattern) ─────────────────────
-function createSignedState(data: any): string {
+export function createSignedState(data: any): string {
   const payload = Buffer.from(JSON.stringify(data)).toString("base64");
   const sig = crypto
     .createHmac("sha256", process.env.SESSION_SECRET || "fallback-secret")
@@ -19,14 +19,43 @@ function createSignedState(data: any): string {
   return `${payload}.${sig}`;
 }
 
-function verifySignedState(signedState: string): any {
-  const [payload, sig] = signedState.split(".");
+export function verifySignedState(signedState: string): any {
+  const dotIdx = signedState.lastIndexOf(".");
+  if (dotIdx === -1) throw new Error("Invalid state format");
+  const payload = signedState.slice(0, dotIdx);
+  const sig = signedState.slice(dotIdx + 1);
   const expected = crypto
     .createHmac("sha256", process.env.SESSION_SECRET || "fallback-secret")
     .update(payload)
     .digest("hex");
-  if (sig !== expected) throw new Error("Invalid state signature");
+  if (!crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex")))
+    throw new Error("Invalid state signature");
   return JSON.parse(Buffer.from(payload, "base64").toString("utf-8"));
+}
+
+// ── Single-use nonce registry (in-memory; expires after 90 min) ───────────────
+// Prevents OAuth state replay attacks on the reconnect flow.
+const consumedNonces = new Map<string, number>(); // nonce → consumedAt ms
+const NONCE_TTL_MS = 90 * 60 * 1000;
+
+function registerNonce(nonce: string): void {
+  // Prune expired entries opportunistically
+  const now = Date.now();
+  consumedNonces.forEach((t, k) => {
+    if (now - t > NONCE_TTL_MS) consumedNonces.delete(k);
+  });
+  consumedNonces.set(nonce, now);
+}
+
+function isNonceConsumed(nonce: string): boolean {
+  const t = consumedNonces.get(nonce);
+  if (!t) return false;
+  if (Date.now() - t > NONCE_TTL_MS) { consumedNonces.delete(nonce); return false; }
+  return true;
+}
+
+function generateNonce(): string {
+  return crypto.randomBytes(16).toString("hex");
 }
 
 export function registerPosRoutes(app: Express): void {
@@ -65,7 +94,45 @@ export function registerPosRoutes(app: Express): void {
     }
   });
 
-  /** Square OAuth callback */
+  /** Initiate Square OAuth for reconnecting an existing disconnected connection */
+  app.get("/api/pos/connect/square/reconnect/:connectionId", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(400).json({ error: "No company selected" });
+      if (!process.env.SQUARE_APP_ID) {
+        return res.status(503).json({ error: "Square integration is not configured on this server" });
+      }
+
+      const connection = await storage.getPosConnectionById(req.params.connectionId);
+      if (!connection || connection.companyId !== companyId) {
+        return res.status(404).json({ error: "Connection not found" });
+      }
+
+      const reqUser = (req as any).user;
+      const nonce = generateNonce();
+      const stateData = {
+        companyId,
+        userId: reqUser?.id,
+        connectionId: connection.id,
+        nonce,
+        timestamp: Date.now(),
+      };
+      const state = createSignedState(stateData);
+
+      const replitDomain = process.env.REPLIT_DEV_DOMAIN;
+      const redirectUri = replitDomain
+        ? `https://${replitDomain}/api/pos/oauth/square/callback`
+        : `http://localhost:5000/api/pos/oauth/square/callback`;
+
+      const authUrl = buildSquareAuthUrl(state, redirectUri);
+      res.redirect(authUrl);
+    } catch (error: any) {
+      console.error("[POS] Square reconnect error:", error.message);
+      res.redirect("/settings?tab=connections&pos_error=reconnect_failed");
+    }
+  });
+
+  /** Square OAuth callback — handles both new connections and reconnects */
   app.get("/api/pos/oauth/square/callback", async (req, res) => {
     try {
       const { code, state, error: oauthError } = req.query;
@@ -90,12 +157,48 @@ export function registerPosRoutes(app: Express): void {
         return res.redirect("/settings?tab=connections&pos_error=state_expired");
       }
 
-      const { companyId, userId } = stateData;
+      const { companyId, userId, connectionId, nonce } = stateData;
 
-      // Exchange code for tokens
+      // ── Reconnect path ─────────────────────────────────────────────────────
+      if (connectionId) {
+        // Enforce single-use: reject replayed state tokens
+        if (nonce && isNonceConsumed(nonce)) {
+          return res.redirect("/settings?tab=connections&pos_error=state_replayed");
+        }
+        if (nonce) registerNonce(nonce);
+
+        const existing = await storage.getPosConnectionById(connectionId);
+        if (!existing || existing.companyId !== companyId) {
+          return res.redirect("/settings?tab=connections&pos_error=connection_not_found");
+        }
+
+        // Exchange code for new tokens
+        const tokens = await squarePosConnector.exchangeCode(code);
+
+        // Verify the same merchant is reconnecting — reject mismatches silently
+        if (tokens.merchantId !== existing.merchantId) {
+          console.warn(
+            `[POS] Reconnect merchant mismatch: expected ${existing.merchantId}, got ${tokens.merchantId}`,
+          );
+          return res.redirect("/settings?tab=connections&pos_error=merchant_mismatch");
+        }
+
+        // Restore the existing connection with fresh tokens; preserve all mappings
+        await storage.updatePosConnection(connectionId, companyId, {
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken ?? existing.refreshToken,
+          tokenExpiresAt: tokens.tokenExpiresAt,
+          status: "active",
+          updatedAt: new Date(),
+        });
+
+        console.info(`[POS] Connection ${connectionId} reconnected for merchant ${tokens.merchantId}`);
+        return res.redirect("/settings?tab=connections&pos_reconnected=1");
+      }
+
+      // ── New connection path ────────────────────────────────────────────────
       const tokens = await squarePosConnector.exchangeCode(code);
 
-      // Create connection record
       const connection = await storage.createPosConnection({
         companyId,
         provider: "square",
@@ -117,7 +220,7 @@ export function registerPosRoutes(app: Express): void {
             locations.map((loc) => ({
               externalLocationId: loc.externalId,
               externalLocationName: loc.name,
-              storeId: null, // user maps in the next step
+              storeId: null,
             })),
           );
         }
@@ -125,7 +228,6 @@ export function registerPosRoutes(app: Express): void {
         console.warn("[POS] Failed to prefetch locations:", locErr.message);
       }
 
-      // Redirect to the location mapping wizard
       res.redirect(`/pos/location-mapping/${connection.id}?connected=1`);
     } catch (error: any) {
       console.error("[POS] Square callback error:", error.message);
