@@ -402,10 +402,13 @@ async function runStartupMigrations() {
         ALTER TABLE platform_vendor_registry DROP CONSTRAINT IF EXISTS pvr_service_scope_check;
         ALTER TABLE platform_vendor_registry DROP CONSTRAINT IF EXISTS pvr_vendor_role_check;
         ALTER TABLE platform_vendor_registry DROP CONSTRAINT IF EXISTS pvr_ordering_mode_check;
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pvr_ordering_mode_mvp_check') THEN
-          ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_ordering_mode_mvp_check
-            CHECK (ordering_mode IN ('connector','portal_link','public_ecommerce','contact_vendor'));
-        END IF;
+        ALTER TABLE platform_vendor_registry DROP CONSTRAINT IF EXISTS pvr_ordering_mode_mvp_check;
+        -- Remap legacy 'integrated' value to 'connector' before enforcing the new constraint
+        UPDATE platform_vendor_registry SET ordering_mode = 'connector' WHERE ordering_mode = 'integrated';
+        -- Remap legacy 'file_export' value (no direct equivalent) to 'contact_vendor'
+        UPDATE platform_vendor_registry SET ordering_mode = 'contact_vendor' WHERE ordering_mode = 'file_export';
+        ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_ordering_mode_mvp_check
+          CHECK (ordering_mode IN ('connector','portal_link','public_ecommerce','contact_vendor'));
       END $$
     `);
 
