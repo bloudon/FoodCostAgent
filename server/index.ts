@@ -863,6 +863,67 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE extension_ingestion_batches ADD COLUMN IF NOT EXISTS captured_row_count integer`);
     await db.execute(sql`ALTER TABLE extension_ingestion_batches ADD COLUMN IF NOT EXISTS capture_warning text`);
 
+    // POS connector tables (created on db:push; ensure they exist for ALTER TABLE below)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS pos_connections (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id varchar NOT NULL,
+        provider text NOT NULL,
+        merchant_id text NOT NULL,
+        access_token text NOT NULL,
+        refresh_token text,
+        token_expires_at timestamp,
+        sync_cursor jsonb,
+        last_synced_at timestamp,
+        status text NOT NULL DEFAULT 'active',
+        connected_by_user_id varchar NOT NULL,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS pos_location_mappings (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        connection_id varchar NOT NULL,
+        company_id varchar NOT NULL,
+        external_location_id text NOT NULL,
+        external_location_name text NOT NULL,
+        store_id varchar,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS pos_item_mappings (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        connection_id varchar NOT NULL,
+        company_id varchar NOT NULL,
+        external_item_id text NOT NULL,
+        external_variation_id text NOT NULL,
+        external_item_name text NOT NULL,
+        external_variation_name text NOT NULL,
+        menu_item_id varchar,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS pos_sync_jobs (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        connection_id varchar NOT NULL,
+        company_id varchar NOT NULL,
+        job_type text NOT NULL,
+        status text NOT NULL DEFAULT 'pending',
+        started_at timestamp,
+        completed_at timestamp,
+        days_backfilled integer,
+        rows_ingested integer NOT NULL DEFAULT 0,
+        rows_skipped integer NOT NULL DEFAULT 0,
+        error_message text,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`ALTER TABLE pos_sync_jobs ADD COLUMN IF NOT EXISTS rows_skipped integer NOT NULL DEFAULT 0`);
+
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

@@ -18,12 +18,13 @@ export interface IngestBatchOptions {
  * Idempotent: duplicate lines are skipped via the unique constraint on
  * (company_id, store_id, menu_item_id, sales_date, daypart_id, source_batch_id).
  *
- * Returns the number of menu-item sales rows actually written.
+ * Returns { rowsIngested, rowsSkipped } where rowsSkipped counts positive-quantity
+ * lines that had no posItemMapping so callers can surface a warning to users.
  */
 export async function ingestSalesBatch(
   batch: PosSalesBatch,
   opts: IngestBatchOptions,
-): Promise<number> {
+): Promise<{ rowsIngested: number; rowsSkipped: number }> {
   const { companyId, connectionId, connectedByUserId } = opts;
 
   // 1. Find the store mapped to this location
@@ -35,7 +36,7 @@ export async function ingestSalesBatch(
     console.warn(
       `[POS Ingest] No store mapped for location ${batch.locationId} on connection ${connectionId} — skipping`,
     );
-    return 0;
+    return { rowsIngested: 0, rowsSkipped: 0 };
   }
   const storeId = locationMapping.storeId;
 
@@ -56,11 +57,13 @@ export async function ingestSalesBatch(
     status: "processing",
   });
 
-  // 4. Group lines by (variationId) and sum quantities + revenue
+  // 4. Group lines by (variationId) and sum quantities + revenue; count unmapped lines
   const aggregated = new Map<
     string,
     { menuItemId: string; qtySold: number; netSales: number }
   >();
+
+  let rowsSkipped = 0;
 
   for (const line of batch.lines) {
     if (line.quantity <= 0) continue;
@@ -70,7 +73,10 @@ export async function ingestSalesBatch(
       ? byVariation.get(line.externalVariationId)
       : undefined;
 
-    if (!mapping?.menuItemId) continue; // unmapped item — skip
+    if (!mapping?.menuItemId) {
+      rowsSkipped++; // unmapped item — count it and skip
+      continue;
+    }
 
     const key = mapping.menuItemId;
     if (!aggregated.has(key)) {
@@ -84,7 +90,7 @@ export async function ingestSalesBatch(
 
   if (aggregated.size === 0) {
     await storage.updateSalesUploadBatchStatus(batchRecord.id, companyId, "completed", new Date(), 0);
-    return 0;
+    return { rowsIngested: 0, rowsSkipped };
   }
 
   // 5. Write daily_menu_item_sales rows
@@ -135,5 +141,5 @@ export async function ingestSalesBatch(
     await storage.updateSalesUploadBatchStatus(batchRecord.id, companyId, "failed");
   }
 
-  return salesRecords.length;
+  return { rowsIngested: salesRecords.length, rowsSkipped };
 }

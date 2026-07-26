@@ -2062,6 +2062,7 @@ export const posSyncJobs = pgTable("pos_sync_jobs", {
   completedAt: timestamp("completed_at"),
   daysBackfilled: integer("days_backfilled"),
   rowsIngested: integer("rows_ingested").notNull().default(0),
+  rowsSkipped: integer("rows_skipped").notNull().default(0),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({

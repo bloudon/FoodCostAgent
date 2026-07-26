@@ -33,6 +33,7 @@ export async function runBackfill(
   });
 
   let totalRows = 0;
+  let totalSkipped = 0;
 
   try {
     const locationMappings = await storage.getPosLocationMappings(connectionId);
@@ -50,12 +51,13 @@ export async function runBackfill(
       );
 
       for (const batch of batches) {
-        const rows = await ingestSalesBatch(batch, {
+        const result = await ingestSalesBatch(batch, {
           companyId: connection.companyId,
           connectionId,
           connectedByUserId: connection.connectedByUserId,
         });
-        totalRows += rows;
+        totalRows += result.rowsIngested;
+        totalSkipped += result.rowsSkipped;
       }
     }
 
@@ -63,6 +65,7 @@ export async function runBackfill(
       status: "completed",
       completedAt: new Date(),
       rowsIngested: totalRows,
+      rowsSkipped: totalSkipped,
     });
 
     await storage.updatePosConnection(connectionId, connection.companyId, {
@@ -77,6 +80,7 @@ export async function runBackfill(
       completedAt: new Date(),
       errorMessage: err.message,
       rowsIngested: totalRows,
+      rowsSkipped: totalSkipped,
     });
     return { rowsIngested: totalRows, error: err.message };
   }
@@ -99,6 +103,7 @@ export async function runIncrementalSync(
   });
 
   let totalRows = 0;
+  let totalSkipped = 0;
 
   try {
     const locationMappings = await storage.getPosLocationMappings(connectionId);
@@ -117,12 +122,13 @@ export async function runIncrementalSync(
       );
 
       for (const batch of batches) {
-        const rows = await ingestSalesBatch(batch, {
+        const result = await ingestSalesBatch(batch, {
           companyId: connection.companyId,
           connectionId,
           connectedByUserId: connection.connectedByUserId,
         });
-        totalRows += rows;
+        totalRows += result.rowsIngested;
+        totalSkipped += result.rowsSkipped;
       }
     }
 
@@ -130,6 +136,7 @@ export async function runIncrementalSync(
       status: "completed",
       completedAt: new Date(),
       rowsIngested: totalRows,
+      rowsSkipped: totalSkipped,
     });
 
     await storage.updatePosConnection(connectionId, connection.companyId, {
@@ -144,6 +151,7 @@ export async function runIncrementalSync(
       completedAt: new Date(),
       errorMessage: err.message,
       rowsIngested: totalRows,
+      rowsSkipped: totalSkipped,
     });
     return { rowsIngested: totalRows, error: err.message };
   }

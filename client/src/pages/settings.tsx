@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw, Wrench, AlertTriangle, Pencil, Lock, Zap } from "lucide-react";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw, Wrench, AlertTriangle, Pencil, Lock, Zap, TriangleAlert } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -2064,6 +2065,21 @@ function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null
                               <span className="capitalize">{job.jobType}</span>
                               {job.rowsIngested > 0 && (
                                 <span className="text-muted-foreground">· {job.rowsIngested} rows</span>
+                              )}
+                              {job.rowsSkipped > 0 && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="flex items-center gap-0.5 text-amber-600 dark:text-amber-400 cursor-default">
+                                        <TriangleAlert className="h-3 w-3" />
+                                        {job.rowsSkipped} skipped
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-[220px] text-center">
+                                      {job.rowsSkipped} item{job.rowsSkipped === 1 ? "" : "s"} had no menu item mapping — edit item mapping to capture them
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                               )}
                             </div>
                             <span className="text-muted-foreground">
