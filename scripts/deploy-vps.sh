@@ -58,7 +58,8 @@ command -v npm   >/dev/null 2>&1 || fail "npm not found."
 echo "  DATABASE_URL ✓  psql ✓  pm2 ✓  npm ✓"
 
 if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-  warn "Uncommitted changes detected on the VPS. Proceeding anyway."
+  warn "Uncommitted changes detected on the VPS — stashing before pull."
+  git stash push -m "deploy-script auto-stash $(date '+%Y%m%d-%H%M%S')"
 fi
 
 step "Pulling latest code (git pull)"
