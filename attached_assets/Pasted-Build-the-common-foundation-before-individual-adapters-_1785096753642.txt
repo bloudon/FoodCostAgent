@@ -1,0 +1,86 @@
+Build the common foundation before individual adapters
+
+Do not make every POS integration write directly into the current sales-import tables.
+
+Create a common connector contract:
+
+interface PosConnector {
+  providerId: string;
+
+  authorize(connection: PosConnection): Promise<void>;
+  listLocations(connection: PosConnection): Promise<PosLocation[]>;
+  retrieveCatalog(connection: PosConnection): Promise<PosCatalog>;
+  retrieveSales(
+    connection: PosConnection,
+    cursor: PosSyncCursor
+  ): Promise<PosSalesBatch>;
+
+  refreshCredentials?(connection: PosConnection): Promise<void>;
+}
+
+Normalize sales into fields such as:
+
+interface PosSalesLine {
+  provider: string;
+  externalLocationId: string;
+  externalOrderId: string;
+  externalLineId: string;
+
+  businessDate: string;
+  closedAt: string;
+  updatedAt?: string;
+
+  externalMenuItemId: string;
+  externalVariationId?: string;
+  externalModifierIds?: string[];
+
+  itemName: string;
+  quantity: number;
+
+  grossSales: number;
+  discounts: number;
+  netSales: number;
+
+  voidedQuantity?: number;
+  refundedQuantity?: number;
+
+  diningOption?: string;
+  revenueCenter?: string;
+  daypart?: string;
+
+  rawPayloadReference: string;
+}
+MVP sync behavior
+
+FnB does not need real-time transaction streaming for food-cost calculations.
+
+A practical initial workflow is:
+
+Import menu/catalog
+Map POS IDs to FnB menu items
+Backfill 30–90 days
+Sync nightly after business close
+Allow Sync Now
+Re-fetch recently changed business dates to catch refunds and reopened checks
+Preserve raw payloads for troubleshooting
+Make ingestion idempotent by provider + location + order + line
+
+Keep manual sales-file import as a permanent fallback.
+
+Product-manager recommendation
+
+The next milestone should be:
+
+POS Connector Foundation + Square Pilot
+
+That proves:
+
+OAuth connection
+Store/location mapping
+Menu-item mapping
+Historical sales backfill
+Incremental sync
+Refund/void handling
+TFC and prep consumption from automated sales
+
+Then Clover should reuse almost the entire foundation.
