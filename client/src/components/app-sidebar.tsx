@@ -215,7 +215,8 @@ export function AppSidebar() {
     : undefined;
 
   // ── Derived values ─────────────────────────────────────────────────────────
-  const logoImage = theme === "dark" ? "/website-logo-dark.png" : "/website-logo.png";
+  const logoFull = theme === "dark" ? "/website-logo-dark.png" : "/website-logo.png";
+  const logoIcon = "/android-chrome-192x192.png";
   const role = user?.role ?? "store_user";
   const isGlobalAdmin = role === "global_admin";
 
@@ -264,16 +265,16 @@ export function AppSidebar() {
           >
             {isExpanded ? (
               <img
-                src={logoImage}
+                src={logoFull}
                 alt="FNB Cost Pro"
                 className="w-full max-h-12 object-contain"
                 data-testid="logo"
               />
             ) : (
               <img
-                src={logoImage}
+                src={logoIcon}
                 alt="FNB Cost Pro"
-                className="h-7 w-auto object-contain"
+                className="h-10 w-10 object-contain"
                 data-testid="logo-collapsed"
               />
             )}
@@ -342,7 +343,7 @@ export function AppSidebar() {
                   className="gap-3"
                 >
                   <Link href={item.href} onClick={closeMobile}>
-                    <item.icon className="h-4 w-4 shrink-0" />
+                    <item.icon className="h-8 w-8 shrink-0" />
                     {isExpanded && (
                       <span className={cn("font-medium", active && "font-semibold")}>
                         {item.label}
