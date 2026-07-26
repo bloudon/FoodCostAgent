@@ -266,15 +266,6 @@ export function AppSidebar() {
           </Link>
         </div>
 
-        {company && isMobile && (
-          <div
-            className="font-semibold text-sm px-1 pb-0.5 truncate"
-            data-testid="text-company-name-mobile"
-          >
-            {company.name}
-          </div>
-        )}
-
         {company && stores.length > 0 && (
           isExpanded ? (
             <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
