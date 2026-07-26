@@ -4783,7 +4783,7 @@ export class DatabaseStorage implements IStorage {
     return db
       .select()
       .from(posConnections)
-      .where(and(eq(posConnections.companyId, companyId), eq(posConnections.status, "active")))
+      .where(and(eq(posConnections.companyId, companyId), ne(posConnections.status, "deleted")))
       .orderBy(desc(posConnections.createdAt));
   }
 

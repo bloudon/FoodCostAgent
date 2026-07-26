@@ -3,12 +3,13 @@ import { useLocation as useWouterLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatPhoneNumber, isValidPhone } from "@/lib/phone";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw, Wrench, AlertTriangle, Pencil, Lock, Zap, TriangleAlert } from "lucide-react";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw, Wrench, AlertTriangle, Pencil, Lock, Zap, TriangleAlert, AlertCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -1989,9 +1990,21 @@ function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null
           <div className="space-y-4">
             {connections.map((conn: any) => (
               <div key={conn.id} className="border rounded-lg p-4 space-y-3">
+                {conn.status === "disconnected" && (
+                  <Alert variant="destructive" className="py-2.5">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      <span className="font-medium">Connection disconnected.</span> Square revoked access — your nightly sync is paused. Reconnect above to resume importing sales.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                    {conn.status === "disconnected" ? (
+                      <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                    )}
                     <div>
                       <p className="font-medium text-sm">Square · {conn.merchantId}</p>
                       <p className="text-xs text-muted-foreground">
@@ -2006,7 +2019,7 @@ function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null
                       size="sm"
                       variant="outline"
                       onClick={() => syncNow(conn.id)}
-                      disabled={syncingId === conn.id}
+                      disabled={syncingId === conn.id || conn.status === "disconnected"}
                       data-testid={`button-square-sync-${conn.id}`}
                     >
                       {syncingId === conn.id ? (

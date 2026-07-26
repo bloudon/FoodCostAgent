@@ -5,7 +5,7 @@
  * runAllIncrementalSyncs — called by the nightly scheduler
  */
 import { storage } from "../storage";
-import { squarePosConnector } from "../integrations/pos/square";
+import { squarePosConnector, SquareTokenRevokedError } from "../integrations/pos/square";
 import { ingestSalesBatch } from "./posIngestion";
 
 function todayMinus(days: number): string {
@@ -89,9 +89,36 @@ export async function runBackfill(
 export async function runIncrementalSync(
   connectionId: string,
 ): Promise<{ rowsIngested: number; error?: string }> {
-  const connection = await storage.getPosConnectionById(connectionId);
+  let connection = await storage.getPosConnectionById(connectionId);
   if (!connection || connection.status !== "active") {
     return { rowsIngested: 0, error: "Connection not found or inactive" };
+  }
+
+  // Refresh the access token if it is expiring within 24 hours (or already expired).
+  if (connection.refreshToken && connection.tokenExpiresAt) {
+    const msUntilExpiry = new Date(connection.tokenExpiresAt).getTime() - Date.now();
+    if (msUntilExpiry < 24 * 60 * 60 * 1000) {
+      try {
+        const refreshed = await squarePosConnector.refreshCredentials!(
+          connection.accessToken,
+          connection.refreshToken,
+        );
+        await storage.updatePosConnection(connectionId, connection.companyId, {
+          accessToken: refreshed.accessToken,
+          tokenExpiresAt: refreshed.tokenExpiresAt,
+        });
+        connection = { ...connection, accessToken: refreshed.accessToken };
+        console.log(`[POS Incremental] Token refreshed for connection ${connectionId}`);
+      } catch (refreshErr: any) {
+        if (refreshErr instanceof SquareTokenRevokedError) {
+          console.warn(`[POS Incremental] Token revoked for connection ${connectionId} — marking disconnected`);
+          await storage.updatePosConnection(connectionId, connection.companyId, { status: "disconnected" });
+          return { rowsIngested: 0, error: "Square token revoked — connection marked as disconnected" };
+        }
+        // Non-auth refresh failures: log and continue with existing token.
+        console.warn(`[POS Incremental] Token refresh failed (non-auth): ${refreshErr.message}`);
+      }
+    }
   }
 
   const job = await storage.createPosSyncJob({
@@ -146,6 +173,13 @@ export async function runIncrementalSync(
     return { rowsIngested: totalRows };
   } catch (err: any) {
     console.error("[POS Incremental] Error:", err.message);
+
+    // If Square revoked the token mid-sync, mark the connection as disconnected.
+    if (err instanceof SquareTokenRevokedError) {
+      console.warn(`[POS Incremental] Token revoked during sync for connection ${connectionId} — marking disconnected`);
+      await storage.updatePosConnection(connectionId, connection.companyId, { status: "disconnected" });
+    }
+
     await storage.updatePosSyncJob(job.id, {
       status: "failed",
       completedAt: new Date(),

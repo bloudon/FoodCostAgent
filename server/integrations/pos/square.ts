@@ -18,6 +18,15 @@ function authUrl(): string {
     : "https://connect.squareupsandbox.com/oauth2/authorize";
 }
 
+/** Thrown when Square returns 401 (token revoked / expired). */
+export class SquareTokenRevokedError extends Error {
+  readonly code = "SQUARE_TOKEN_REVOKED";
+  constructor(body: string) {
+    super(`Square API 401: ${body}`);
+    this.name = "SquareTokenRevokedError";
+  }
+}
+
 async function squareFetch(
   path: string,
   accessToken: string,
@@ -35,6 +44,7 @@ async function squareFetch(
   });
   if (!res.ok) {
     const body = await res.text();
+    if (res.status === 401) throw new SquareTokenRevokedError(body);
     throw new Error(`Square API ${res.status}: ${body}`);
   }
   return res.json();
@@ -271,6 +281,7 @@ export const squarePosConnector: PosConnector = {
 
     if (!res.ok) {
       const body = await res.text();
+      if (res.status === 401) throw new SquareTokenRevokedError(body);
       throw new Error(`Square token refresh failed: ${body}`);
     }
 
