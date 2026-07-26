@@ -51,7 +51,7 @@ import { cn } from "@/lib/utils";
 
 const OPEN_DELAY_MS = 200;
 const CLOSE_DELAY_MS = 300;
-const EXPANDED_WIDTH = "230px";
+const EXPANDED_WIDTH = "180px";
 
 // ---------------------------------------------------------------------------
 // Section routing helpers
