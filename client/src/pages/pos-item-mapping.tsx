@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, Search, CheckCircle2, AlertCircle, TriangleAlert } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 
@@ -25,6 +25,7 @@ interface MenuItem {
   id: string;
   name: string;
   pluSku: string;
+  recipeId: string | null;
 }
 
 export default function PosItemMapping() {
@@ -128,8 +129,21 @@ export default function PosItemMapping() {
           {filtered.map((v) => {
             const currentMenuItemId = getMenuItemId(v);
             const mapped = !!currentMenuItemId;
+            const selectedMenuItem = currentMenuItemId
+              ? menuItems.find((mi) => mi.id === currentMenuItemId)
+              : undefined;
+            const noRecipeWarning = v.isModifier && mapped && selectedMenuItem && !selectedMenuItem.recipeId;
             return (
-              <Card key={v.externalVariationId} className={mapped ? "border-green-200 dark:border-green-900" : ""}>
+              <Card
+                key={v.externalVariationId}
+                className={
+                  noRecipeWarning
+                    ? "border-amber-300 dark:border-amber-700"
+                    : mapped
+                      ? "border-green-200 dark:border-green-900"
+                      : ""
+                }
+              >
                 <CardContent className="flex items-center gap-3 py-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
@@ -141,6 +155,12 @@ export default function PosItemMapping() {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">{v.externalVariationName}</p>
+                    {noRecipeWarning && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1">
+                        <TriangleAlert className="h-3 w-3 shrink-0" />
+                        Mapped item has no recipe — food cost will show as $0
+                      </p>
+                    )}
                   </div>
                   <div className="w-60 shrink-0">
                     <Select
@@ -165,7 +185,9 @@ export default function PosItemMapping() {
                       </SelectContent>
                     </Select>
                   </div>
-                  {mapped ? (
+                  {noRecipeWarning ? (
+                    <TriangleAlert className="h-4 w-4 text-amber-500 shrink-0" />
+                  ) : mapped ? (
                     <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
                   ) : (
                     <AlertCircle className="h-4 w-4 text-muted-foreground/40 shrink-0" />
