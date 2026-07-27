@@ -102,10 +102,18 @@ export async function runIncrementalSync(
     return { rowsIngested: 0, error: "Connection not found or inactive" };
   }
 
-  // Refresh the access token if it is expiring within 24 hours (or already expired).
-  if (connection.refreshToken && connection.tokenExpiresAt) {
-    const msUntilExpiry = new Date(connection.tokenExpiresAt).getTime() - Date.now();
-    if (msUntilExpiry < 24 * 60 * 60 * 1000) {
+  // Refresh the access token if:
+  //   (a) it was never refreshed or last refreshed > 7 days ago (Square recommended cadence), OR
+  //   (b) it expires within 24 hours (safety net)
+  if (connection.refreshToken) {
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const refreshedAt = connection.tokenRefreshedAt ? new Date(connection.tokenRefreshedAt).getTime() : 0;
+    const needsRefreshByAge = Date.now() - refreshedAt > SEVEN_DAYS_MS;
+    const needsRefreshByExpiry = connection.tokenExpiresAt
+      ? new Date(connection.tokenExpiresAt).getTime() - Date.now() < 24 * 60 * 60 * 1000
+      : false;
+
+    if (needsRefreshByAge || needsRefreshByExpiry) {
       try {
         const refreshed = await squarePosConnector.refreshCredentials!(
           connection.accessToken,
@@ -114,9 +122,13 @@ export async function runIncrementalSync(
         await storage.updatePosConnection(connectionId, connection.companyId, {
           accessToken: refreshed.accessToken,
           tokenExpiresAt: refreshed.tokenExpiresAt,
+          tokenRefreshedAt: new Date(),
         });
         connection = { ...connection, accessToken: refreshed.accessToken };
-        console.log(`[POS Incremental] Token refreshed for connection ${connectionId}`);
+        console.log(
+          `[POS Incremental] Token refreshed for connection ${connectionId}` +
+          ` (reason: ${needsRefreshByAge ? "7-day cadence" : "expiry <24h"})`,
+        );
       } catch (refreshErr: any) {
         if (refreshErr instanceof SquareTokenRevokedError) {
           console.warn(`[POS Incremental] Token revoked for connection ${connectionId} — marking disconnected`);
@@ -198,6 +210,54 @@ export async function runIncrementalSync(
     });
     return { rowsIngested: totalRows, error: safeMsg2 };
   }
+}
+
+/**
+ * Proactively refresh Square OAuth tokens for all active connections where
+ * the token has not been refreshed in the past 7 days.  Called by the
+ * daily scheduler independently of the nightly sync job.
+ */
+export async function refreshAllPosTokens(): Promise<{ success: number; failed: number }> {
+  const connections = await storage.getAllActivePosConnections();
+  let success = 0;
+  let failed = 0;
+
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+  for (const conn of connections) {
+    if (!conn.refreshToken) continue;
+
+    const refreshedAt = conn.tokenRefreshedAt ? new Date(conn.tokenRefreshedAt).getTime() : 0;
+    if (Date.now() - refreshedAt <= SEVEN_DAYS_MS) continue; // recently refreshed — skip
+
+    try {
+      const refreshed = await squarePosConnector.refreshCredentials!(
+        conn.accessToken,
+        conn.refreshToken,
+      );
+      await storage.updatePosConnection(conn.id, conn.companyId, {
+        accessToken: refreshed.accessToken,
+        tokenExpiresAt: refreshed.tokenExpiresAt,
+        tokenRefreshedAt: new Date(),
+      });
+      success++;
+      console.log(`[POS Token Refresh] Connection ${conn.id} refreshed (merchant ${conn.merchantId})`);
+    } catch (err: any) {
+      failed++;
+      if (err instanceof SquareTokenRevokedError) {
+        await storage.updatePosConnection(conn.id, conn.companyId, { status: "disconnected" });
+        console.warn(
+          `[POS Token Refresh] Token revoked for connection ${conn.id} — marked disconnected`,
+        );
+      } else {
+        console.error(
+          `[POS Token Refresh] Failed for connection ${conn.id}: ${sanitizeErrorMessage(err.message)}`,
+        );
+      }
+    }
+  }
+
+  return { success, failed };
 }
 
 /** Called nightly — runs incremental sync for all active connections */

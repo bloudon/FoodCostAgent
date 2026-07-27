@@ -925,6 +925,8 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE pos_sync_jobs ADD COLUMN IF NOT EXISTS rows_skipped integer NOT NULL DEFAULT 0`);
     // Task #540: token_key_version — 0=plain-text, 1=AES-256-GCM encrypted
     await db.execute(sql`ALTER TABLE pos_connections ADD COLUMN IF NOT EXISTS token_key_version integer NOT NULL DEFAULT 0`);
+    // Task #541: token_refreshed_at — tracks last proactive token refresh for 7-day cadence
+    await db.execute(sql`ALTER TABLE pos_connections ADD COLUMN IF NOT EXISTS token_refreshed_at timestamp`);
 
     // Task #540: Re-encrypt any existing plain-text tokens when the key is available
     if (process.env.POS_TOKEN_ENCRYPTION_KEY) {
@@ -1026,7 +1028,34 @@ async function runStartupMigrations() {
 
   // POS nightly incremental sync — runs at 4 AM UTC (after most restaurants close)
   const POS_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
-  const { runAllIncrementalSyncs } = await import("./services/posSyncJobs");
+  const { runAllIncrementalSyncs, refreshAllPosTokens } = await import("./services/posSyncJobs");
+
+  // POS token refresh job — runs daily to stay inside Square's 7-day renewal window.
+  // Runs independently of the nightly sync so disconnected accounts still get refreshed.
+  const POS_TOKEN_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+  const POS_TOKEN_REFRESH_JITTER_MS = 30 * 60 * 1000; // ±30 minutes
+
+  const refreshPosTokensJob = async () => {
+    try {
+      const results = await refreshAllPosTokens();
+      if (results.success > 0 || results.failed > 0) {
+        log(`🔄 POS token refresh: ${results.success} success, ${results.failed} failed`);
+      }
+    } catch (error) {
+      console.error("❌ POS token refresh job error:", error);
+    }
+  };
+
+  // Delay 5 minutes after startup, then run every 24h with ±30min jitter
+  setTimeout(refreshPosTokensJob, 5 * 60 * 1000);
+  setInterval(() => {
+    const jitter = Math.random() * POS_TOKEN_REFRESH_JITTER_MS * 2 - POS_TOKEN_REFRESH_JITTER_MS;
+    setTimeout(refreshPosTokensJob, Math.max(0, jitter));
+  }, POS_TOKEN_REFRESH_INTERVAL_MS);
+  log(
+    `🔄 POS token refresh job scheduled (every ${POS_TOKEN_REFRESH_INTERVAL_MS / 1000 / 60 / 60}h ` +
+    `±${POS_TOKEN_REFRESH_JITTER_MS / 1000 / 60}min, first run in 5min)`,
+  );
   const schedulePosSync = () => {
     const now = new Date();
     const nextRun = new Date(now);
