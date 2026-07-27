@@ -1899,6 +1899,7 @@ function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null
   const { toast } = useToast();
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [pollingId, setPollingId] = useState<string | null>(null);
   const [location] = useWouterLocation();
 
   // Show toasts for OAuth redirect outcomes (pos_reconnected, pos_error)
@@ -1959,6 +1960,36 @@ function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null
     retry: false,
   });
 
+  // Poll sync jobs for the connection being monitored to detect running → done transitions
+  const { data: polledJobs = [] } = useQuery<any[]>({
+    queryKey: pollingId ? [`/api/pos/connections/${pollingId}/sync-jobs`] : [],
+    enabled: !!pollingId,
+    retry: false,
+    refetchInterval: (query) => {
+      const data = query.state.data as any[] | undefined;
+      return data?.[0]?.status === "running" ? 3000 : false;
+    },
+  });
+
+  // Derived: is a job actively running for this connection?
+  const isJobRunning = (connId: string): boolean => {
+    if (connId !== pollingId) return false;
+    return polledJobs[0]?.status === "running";
+  };
+
+  // When polling detects the job has finished, clear the syncing indicator
+  useEffect(() => {
+    if (!pollingId) return;
+    if (polledJobs.length > 0 && polledJobs[0].status !== "running") {
+      setSyncingId(null);
+      setPollingId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/pos/connections"] });
+      if (expandedId === pollingId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/pos/connections/${pollingId}/sync-jobs`] });
+      }
+    }
+  }, [polledJobs, pollingId, expandedId]);
+
   const disconnectMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/pos/connections/${id}`);
@@ -1976,17 +2007,22 @@ function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null
     setSyncingId(id);
     try {
       await apiRequest("POST", `/api/pos/connections/${id}/sync`, { type });
+      // Start polling so the button stays disabled until the job finishes
+      setPollingId(id);
       toast({ title: "Sync started", description: "Sales data is being imported in the background." });
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/pos/connections"] });
-        if (expandedId === id) {
-          queryClient.invalidateQueries({ queryKey: [`/api/pos/connections/${id}/sync-jobs`] });
-        }
-      }, 3000);
     } catch (err: any) {
-      toast({ title: "Sync failed", description: err.message, variant: "destructive" });
-    } finally {
-      setSyncingId(null);
+      const is409 = err.message?.startsWith("409:");
+      if (is409) {
+        // Another sync is already running — start polling so the button shows "Sync in progress…"
+        setPollingId(id);
+        toast({
+          title: "Sync already in progress",
+          description: "A sync job is already running for this connection.",
+        });
+      } else {
+        toast({ title: "Sync failed", description: err.message, variant: "destructive" });
+        setSyncingId(null);
+      }
     }
   };
 
@@ -2079,15 +2115,20 @@ function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null
                       size="sm"
                       variant="outline"
                       onClick={() => syncNow(conn.id)}
-                      disabled={syncingId === conn.id || conn.status === "disconnected"}
+                      disabled={syncingId === conn.id || isJobRunning(conn.id) || conn.status === "disconnected"}
                       data-testid={`button-square-sync-${conn.id}`}
                     >
-                      {syncingId === conn.id ? (
-                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      {(syncingId === conn.id || isJobRunning(conn.id)) ? (
+                        <>
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                          Sync in progress…
+                        </>
                       ) : (
-                        <RefreshCw className="h-3 w-3 mr-1" />
+                        <>
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                          Sync Now
+                        </>
                       )}
-                      Sync Now
                     </Button>
                     <Button
                       size="sm"
@@ -2122,8 +2163,11 @@ function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null
                         size="sm"
                         variant="outline"
                         onClick={() => syncNow(conn.id, "backfill")}
-                        disabled={syncingId === conn.id}
+                        disabled={syncingId === conn.id || isJobRunning(conn.id)}
                       >
+                        {(syncingId === conn.id || isJobRunning(conn.id)) ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        ) : null}
                         Backfill 30 Days
                       </Button>
                     </div>

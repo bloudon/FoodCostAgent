@@ -661,6 +661,8 @@ export interface IStorage {
   createPosSyncJob(data: InsertPosSyncJob): Promise<PosSyncJob>;
   updatePosSyncJob(id: string, updates: Partial<PosSyncJob>): Promise<PosSyncJob | undefined>;
   getPosSyncJobs(connectionId: string, limit?: number): Promise<PosSyncJob[]>;
+  /** Returns the currently-running sync job for a connection, if one exists. */
+  getRunningPosSyncJob(connectionId: string): Promise<PosSyncJob | undefined>;
 }
 
 // ── POS token encryption helpers (module-level, used by DatabaseStorage) ──────
@@ -4969,6 +4971,18 @@ export class DatabaseStorage implements IStorage {
       .where(eq(posSyncJobs.connectionId, connectionId))
       .orderBy(desc(posSyncJobs.createdAt))
       .limit(limit);
+  }
+
+  async getRunningPosSyncJob(connectionId: string): Promise<PosSyncJob | undefined> {
+    const [row] = await db
+      .select()
+      .from(posSyncJobs)
+      .where(and(
+        eq(posSyncJobs.connectionId, connectionId),
+        eq(posSyncJobs.status, "running"),
+      ))
+      .limit(1);
+    return row;
   }
 }
 

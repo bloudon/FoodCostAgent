@@ -381,9 +381,29 @@ export function registerPosRoutes(app: Express): void {
         return res.status(404).json({ error: "Connection not found" });
       }
 
+      // Pre-flight concurrency check — return 409 immediately instead of starting a background job
+      const running = await storage.getRunningPosSyncJob(req.params.id);
+      if (running) {
+        const age = Date.now() - new Date(running.startedAt!).getTime();
+        if (age < 30 * 60 * 1000) {
+          return res.status(409).json({
+            error: "A sync is already in progress for this connection",
+            alreadyRunning: true,
+            jobId: running.id,
+            startedAt: running.startedAt,
+          });
+        }
+        // Stale lock — release it so the new sync can start
+        await storage.updatePosSyncJob(running.id, {
+          status: "failed",
+          completedAt: new Date(),
+          errorMessage: "Job timed out — stale lock auto-released after 30 min",
+        });
+      }
+
       const { type = "incremental", days = 30 } = req.body;
 
-      // Run sync in background, return immediately
+      // Start sync in background, return immediately
       res.json({ ok: true, message: `${type} sync started` });
 
       if (type === "backfill") {
