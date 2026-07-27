@@ -51,7 +51,7 @@ vi.mock("./posIngestion", () => ({
 
 // ── Imports (resolved after mocks are hoisted) ────────────────────────────────
 
-import { runIncrementalSync, runBackfill, refreshAllPosTokens, runAllIncrementalSyncs } from "./posSyncJobs";
+import { runIncrementalSync, runBackfill, refreshAllPosTokens, runAllIncrementalSyncs, runTimezoneAwareIncrementalSyncs } from "./posSyncJobs";
 import { storage } from "../storage";
 import { squarePosConnector, SquareTokenRevokedError } from "../integrations/pos/square";
 import { ingestSalesBatch } from "./posIngestion";
@@ -775,6 +775,175 @@ describe("runAllIncrementalSyncs — revocation on one connection does not affec
     // conn-b must never receive status === "disconnected"
     const connBDisconnects = allUpdateCalls.filter(
       ([id, payload]) => id === "sched-conn-b" && payload?.status === "disconnected",
+    );
+    expect(connBDisconnects).toHaveLength(0);
+  });
+});
+
+// ── Tests: runTimezoneAwareIncrementalSyncs — revocation isolation ─────────────
+
+/**
+ * Fixtures for the timezone-aware scheduler isolation tests.
+ * Both connections have no refresh token so the proactive-refresh block is
+ * bypassed and we can focus on mid-sync revocation behaviour.
+ * Both connections will be placed in the 4 AM window via getLocalHour injection.
+ */
+const TZ_CONN_A = {
+  id: "tz-conn-a",
+  companyId: "co-tz-a",
+  status: "active",
+  accessToken: "access-token-tz-a",
+  refreshToken: null,
+  connectedByUserId: "user-tz",
+  merchantId: "merchant-tz-a",
+  tokenRefreshedAt: new Date(),
+  tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+};
+
+const TZ_CONN_B = {
+  id: "tz-conn-b",
+  companyId: "co-tz-b",
+  status: "active",
+  accessToken: "access-token-tz-b",
+  refreshToken: null,
+  connectedByUserId: "user-tz",
+  merchantId: "merchant-tz-b",
+  tokenRefreshedAt: new Date(),
+  tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+};
+
+const JOB_TZ_A = { id: "job-tz-a", status: "running" };
+const JOB_TZ_B = { id: "job-tz-b", status: "running" };
+
+const LOC_TZ_EAST = {
+  externalLocationId: "loc-tz-east",
+  storeId: "store-tz-east",
+  externalTimezone: "America/New_York",
+};
+
+const LOC_TZ_WEST = {
+  externalLocationId: "loc-tz-west",
+  storeId: "store-tz-west",
+  externalTimezone: "America/Los_Angeles",
+};
+
+describe("runTimezoneAwareIncrementalSyncs — revocation on one connection does not affect the next", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStorage.updatePosSyncJob.mockResolvedValue(undefined);
+    mockStorage.updatePosConnection.mockResolvedValue(undefined);
+  });
+
+  it("connection B completes its sync and ingests rows even when connection A is revoked in the 4 AM window", async () => {
+    // Both connections are eligible (same UTC offset injected → both at local 4 AM)
+    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_A, TZ_CONN_B]);
+
+    // Window-check pass: getPosLocationMappings called once per connection
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([LOC_TZ_EAST])   // conn-a window check → in window
+      .mockResolvedValueOnce([LOC_TZ_WEST])   // conn-b window check → in window
+      // Sync pass: getPosLocationMappings called again inside runIncrementalSync
+      .mockResolvedValueOnce([LOC_TZ_EAST])   // conn-a sync
+      .mockResolvedValueOnce([LOC_TZ_WEST]);  // conn-b sync
+
+    // --- conn-a (revoked) ---
+    mockStorage.getPosConnectionById.mockResolvedValueOnce(TZ_CONN_A);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValueOnce({ acquired: true, job: JOB_TZ_A });
+    mockSquare.retrieveSales.mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"));
+
+    // --- conn-b (healthy) ---
+    mockStorage.getPosConnectionById.mockResolvedValueOnce(TZ_CONN_B);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValueOnce({ acquired: true, job: JOB_TZ_B });
+    mockSquare.retrieveSales.mockResolvedValueOnce([
+      { locationId: "loc-tz-west", businessDate: "2026-07-27", lines: [{}] },
+    ]);
+    mockIngest.mockResolvedValueOnce({ rowsIngested: 7, rowsSkipped: 0, adhocItems: [] });
+
+    // Inject: both timezones return local hour 4 so both are eligible
+    await runTimezoneAwareIncrementalSyncs({
+      getLocalHour: () => 4,
+      utcHour: 9,
+    });
+
+    // ── Connection A assertions ────────────────────────────────────────────────
+
+    // conn-a must be marked disconnected
+    const connADisconnect = findCallWithShape(
+      mockStorage.updatePosConnection,
+      (args) => args[0] === "tz-conn-a" && args[2]?.status === "disconnected",
+    );
+    expect(connADisconnect).toBeDefined();
+
+    // conn-a's job must be marked failed
+    const jobAFailed = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[0] === JOB_TZ_A.id && args[1]?.status === "failed",
+    );
+    expect(jobAFailed).toBeDefined();
+
+    // ── Connection B assertions ────────────────────────────────────────────────
+
+    // conn-b must NOT be marked disconnected
+    const connBDisconnect = findCallWithShape(
+      mockStorage.updatePosConnection,
+      (args) => args[0] === "tz-conn-b" && args[2]?.status === "disconnected",
+    );
+    expect(connBDisconnect).toBeUndefined();
+
+    // conn-b's job must be marked completed
+    const jobBCompleted = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[0] === JOB_TZ_B.id && args[1]?.status === "completed",
+    );
+    expect(jobBCompleted).toBeDefined();
+    expect(jobBCompleted![1].rowsIngested).toBe(7);
+
+    // Ingestion ran exactly once — for conn-b only
+    expect(mockIngest).toHaveBeenCalledTimes(1);
+
+    // Both connections were attempted — revocation did not abort the loop
+    expect(mockStorage.getPosConnectionById).toHaveBeenCalledTimes(2);
+  });
+
+  it("connection A is marked disconnected and connection B status is unchanged after the timezone-aware scheduler run", async () => {
+    // Variant: verify correct connection IDs and no cross-contamination.
+    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_A, TZ_CONN_B]);
+
+    // Window-check pass
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([LOC_TZ_EAST])   // conn-a window check
+      .mockResolvedValueOnce([LOC_TZ_WEST])   // conn-b window check
+      // Sync pass
+      .mockResolvedValueOnce([LOC_TZ_EAST])   // conn-a sync — revoked immediately
+      .mockResolvedValueOnce([]);             // conn-b sync — no locations → completes trivially
+
+    // conn-a: revoked immediately on retrieveSales
+    mockStorage.getPosConnectionById.mockResolvedValueOnce(TZ_CONN_A);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValueOnce({ acquired: true, job: JOB_TZ_A });
+    mockSquare.retrieveSales.mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"));
+
+    // conn-b: healthy, no locations — sync completes trivially
+    mockStorage.getPosConnectionById.mockResolvedValueOnce(TZ_CONN_B);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValueOnce({ acquired: true, job: JOB_TZ_B });
+
+    await runTimezoneAwareIncrementalSyncs({
+      getLocalHour: () => 4,
+      utcHour: 9,
+    });
+
+    // Collect all updatePosConnection calls keyed by connection id
+    const allUpdateCalls: Array<[string, any]> = mockStorage.updatePosConnection.mock.calls.map(
+      (args: any[]) => [args[0] as string, args[2]],
+    );
+
+    // conn-a must appear exactly once with status === "disconnected"
+    const connAUpdates = allUpdateCalls.filter(([id]) => id === "tz-conn-a");
+    expect(connAUpdates).toHaveLength(1);
+    expect(connAUpdates[0][1].status).toBe("disconnected");
+
+    // conn-b must never receive status === "disconnected"
+    const connBDisconnects = allUpdateCalls.filter(
+      ([id, payload]) => id === "tz-conn-b" && payload?.status === "disconnected",
     );
     expect(connBDisconnects).toHaveLength(0);
   });
