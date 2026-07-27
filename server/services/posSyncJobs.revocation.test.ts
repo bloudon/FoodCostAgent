@@ -1141,3 +1141,93 @@ describe("runTimezoneAwareIncrementalSyncs — all connections in window are rev
     expect(updatedJobIds).toContain(JOB_TZ_E.id);
   });
 });
+
+// ── Tests: runTimezoneAwareIncrementalSyncs — zero eligible connections ────────
+
+/**
+ * Edge case: the 4 AM window contains zero eligible connections because every
+ * connection's locations report a local hour other than 4.  The scheduler must
+ * resolve cleanly without calling updatePosConnection or updatePosSyncJob.
+ */
+describe("runTimezoneAwareIncrementalSyncs — zero connections in 4 AM window", () => {
+  // Two connections whose locations are in the middle of the day (hour 10),
+  // not in the nightly sync window.
+  const TZ_CONN_F = {
+    id: "tz-conn-f",
+    companyId: "co-tz-f",
+    status: "active",
+    accessToken: "access-token-tz-f",
+    refreshToken: null,
+    connectedByUserId: "user-tz-f",
+    merchantId: "merchant-tz-f",
+    tokenRefreshedAt: new Date(),
+    tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+  };
+
+  const TZ_CONN_G = {
+    id: "tz-conn-g",
+    companyId: "co-tz-g",
+    status: "active",
+    accessToken: "access-token-tz-g",
+    refreshToken: null,
+    connectedByUserId: "user-tz-g",
+    merchantId: "merchant-tz-g",
+    tokenRefreshedAt: new Date(),
+    tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+  };
+
+  const LOC_TZ_F = {
+    externalLocationId: "loc-tz-f",
+    storeId: "store-tz-f",
+    externalTimezone: "America/New_York",
+  };
+
+  const LOC_TZ_G = {
+    externalLocationId: "loc-tz-g",
+    storeId: "store-tz-g",
+    externalTimezone: "America/Chicago",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStorage.updatePosSyncJob.mockResolvedValue(undefined);
+    mockStorage.updatePosConnection.mockResolvedValue(undefined);
+  });
+
+  it("resolves without throwing when no connections fall in the 4 AM window", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_F, TZ_CONN_G]);
+
+    // Both locations report local hour 10 — neither is in the nightly window
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([LOC_TZ_F]) // conn-f window check
+      .mockResolvedValueOnce([LOC_TZ_G]); // conn-g window check
+
+    await expect(
+      runTimezoneAwareIncrementalSyncs({ getLocalHour: () => 10, utcHour: 15 }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("never calls updatePosConnection when no connections are eligible", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_F, TZ_CONN_G]);
+
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([LOC_TZ_F])
+      .mockResolvedValueOnce([LOC_TZ_G]);
+
+    await runTimezoneAwareIncrementalSyncs({ getLocalHour: () => 10, utcHour: 15 });
+
+    expect(mockStorage.updatePosConnection).not.toHaveBeenCalled();
+  });
+
+  it("never calls updatePosSyncJob when no connections are eligible", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_F, TZ_CONN_G]);
+
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([LOC_TZ_F])
+      .mockResolvedValueOnce([LOC_TZ_G]);
+
+    await runTimezoneAwareIncrementalSyncs({ getLocalHour: () => 10, utcHour: 15 });
+
+    expect(mockStorage.updatePosSyncJob).not.toHaveBeenCalled();
+  });
+});
