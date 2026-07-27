@@ -948,3 +948,196 @@ describe("runTimezoneAwareIncrementalSyncs — revocation on one connection does
     expect(connBDisconnects).toHaveLength(0);
   });
 });
+
+// ── Tests: runTimezoneAwareIncrementalSyncs — all connections revoked ──────────
+
+/**
+ * Edge case: every connection in the 4 AM window has a revoked token.
+ * The scheduler must complete without throwing, mark every connection
+ * disconnected, and leave no job in running state.
+ */
+describe("runTimezoneAwareIncrementalSyncs — all connections in window are revoked", () => {
+  // Three connections, all in the 4 AM window, all with revoked tokens.
+  const TZ_CONN_C = {
+    id: "tz-conn-c",
+    companyId: "co-tz-c",
+    status: "active",
+    accessToken: "access-token-tz-c",
+    refreshToken: null,
+    connectedByUserId: "user-tz-c",
+    merchantId: "merchant-tz-c",
+    tokenRefreshedAt: new Date(),
+    tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+  };
+
+  const TZ_CONN_D = {
+    id: "tz-conn-d",
+    companyId: "co-tz-d",
+    status: "active",
+    accessToken: "access-token-tz-d",
+    refreshToken: null,
+    connectedByUserId: "user-tz-d",
+    merchantId: "merchant-tz-d",
+    tokenRefreshedAt: new Date(),
+    tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+  };
+
+  const TZ_CONN_E = {
+    id: "tz-conn-e",
+    companyId: "co-tz-e",
+    status: "active",
+    accessToken: "access-token-tz-e",
+    refreshToken: null,
+    connectedByUserId: "user-tz-e",
+    merchantId: "merchant-tz-e",
+    tokenRefreshedAt: new Date(),
+    tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+  };
+
+  const JOB_TZ_C = { id: "job-tz-c", status: "running" };
+  const JOB_TZ_D = { id: "job-tz-d", status: "running" };
+  const JOB_TZ_E = { id: "job-tz-e", status: "running" };
+
+  const LOC_TZ_C = {
+    externalLocationId: "loc-tz-c",
+    storeId: "store-tz-c",
+    externalTimezone: "America/Chicago",
+  };
+  const LOC_TZ_D = {
+    externalLocationId: "loc-tz-d",
+    storeId: "store-tz-d",
+    externalTimezone: "America/Denver",
+  };
+  const LOC_TZ_E = {
+    externalLocationId: "loc-tz-e",
+    storeId: "store-tz-e",
+    externalTimezone: "America/Phoenix",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStorage.updatePosSyncJob.mockResolvedValue(undefined);
+    mockStorage.updatePosConnection.mockResolvedValue(undefined);
+  });
+
+  it("resolves without throwing when every connection in the window is revoked", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_C, TZ_CONN_D, TZ_CONN_E]);
+
+    // Window-check pass: each connection has a location in the 4 AM window
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([LOC_TZ_C])  // conn-c window check
+      .mockResolvedValueOnce([LOC_TZ_D])  // conn-d window check
+      .mockResolvedValueOnce([LOC_TZ_E])  // conn-e window check
+      // Sync pass: same locations returned for each sync
+      .mockResolvedValueOnce([LOC_TZ_C])  // conn-c sync
+      .mockResolvedValueOnce([LOC_TZ_D])  // conn-d sync
+      .mockResolvedValueOnce([LOC_TZ_E]); // conn-e sync
+
+    // All three connections are looked up during sync
+    mockStorage.getPosConnectionById
+      .mockResolvedValueOnce(TZ_CONN_C)
+      .mockResolvedValueOnce(TZ_CONN_D)
+      .mockResolvedValueOnce(TZ_CONN_E);
+
+    // All three acquire a lock
+    mockStorage.tryAcquirePosSyncLock
+      .mockResolvedValueOnce({ acquired: true, job: JOB_TZ_C })
+      .mockResolvedValueOnce({ acquired: true, job: JOB_TZ_D })
+      .mockResolvedValueOnce({ acquired: true, job: JOB_TZ_E });
+
+    // All three have revoked tokens — retrieveSales throws for each
+    mockSquare.retrieveSales
+      .mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"))
+      .mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"))
+      .mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"));
+
+    // The scheduler must not throw even though every connection is revoked
+    await expect(
+      runTimezoneAwareIncrementalSyncs({ getLocalHour: () => 4, utcHour: 9 }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("marks every connection disconnected when all are revoked", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_C, TZ_CONN_D, TZ_CONN_E]);
+
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([LOC_TZ_C])
+      .mockResolvedValueOnce([LOC_TZ_D])
+      .mockResolvedValueOnce([LOC_TZ_E])
+      .mockResolvedValueOnce([LOC_TZ_C])
+      .mockResolvedValueOnce([LOC_TZ_D])
+      .mockResolvedValueOnce([LOC_TZ_E]);
+
+    mockStorage.getPosConnectionById
+      .mockResolvedValueOnce(TZ_CONN_C)
+      .mockResolvedValueOnce(TZ_CONN_D)
+      .mockResolvedValueOnce(TZ_CONN_E);
+
+    mockStorage.tryAcquirePosSyncLock
+      .mockResolvedValueOnce({ acquired: true, job: JOB_TZ_C })
+      .mockResolvedValueOnce({ acquired: true, job: JOB_TZ_D })
+      .mockResolvedValueOnce({ acquired: true, job: JOB_TZ_E });
+
+    mockSquare.retrieveSales
+      .mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"))
+      .mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"))
+      .mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"));
+
+    await runTimezoneAwareIncrementalSyncs({ getLocalHour: () => 4, utcHour: 9 });
+
+    const disconnectCalls = mockStorage.updatePosConnection.mock.calls.filter(
+      (args: any[]) => args[2]?.status === "disconnected",
+    );
+
+    // All three connections must have been marked disconnected
+    const disconnectedIds = disconnectCalls.map((args: any[]) => args[0] as string);
+    expect(disconnectedIds).toContain("tz-conn-c");
+    expect(disconnectedIds).toContain("tz-conn-d");
+    expect(disconnectedIds).toContain("tz-conn-e");
+    expect(disconnectCalls).toHaveLength(3);
+  });
+
+  it("leaves no job in running state when all connections are revoked", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_C, TZ_CONN_D, TZ_CONN_E]);
+
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([LOC_TZ_C])
+      .mockResolvedValueOnce([LOC_TZ_D])
+      .mockResolvedValueOnce([LOC_TZ_E])
+      .mockResolvedValueOnce([LOC_TZ_C])
+      .mockResolvedValueOnce([LOC_TZ_D])
+      .mockResolvedValueOnce([LOC_TZ_E]);
+
+    mockStorage.getPosConnectionById
+      .mockResolvedValueOnce(TZ_CONN_C)
+      .mockResolvedValueOnce(TZ_CONN_D)
+      .mockResolvedValueOnce(TZ_CONN_E);
+
+    mockStorage.tryAcquirePosSyncLock
+      .mockResolvedValueOnce({ acquired: true, job: JOB_TZ_C })
+      .mockResolvedValueOnce({ acquired: true, job: JOB_TZ_D })
+      .mockResolvedValueOnce({ acquired: true, job: JOB_TZ_E });
+
+    mockSquare.retrieveSales
+      .mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"))
+      .mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"))
+      .mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"));
+
+    await runTimezoneAwareIncrementalSyncs({ getLocalHour: () => 4, utcHour: 9 });
+
+    // Every job update must have moved the job OUT of running state (to failed or completed)
+    const jobUpdateCalls: Array<[string, any]> = mockStorage.updatePosSyncJob.mock.calls.map(
+      (args: any[]) => [args[0] as string, args[1]],
+    );
+
+    // No final status should be "running"
+    const stillRunning = jobUpdateCalls.filter(([, payload]) => payload?.status === "running");
+    expect(stillRunning).toHaveLength(0);
+
+    // Each job should have been finalised (at least one update per job)
+    const updatedJobIds = jobUpdateCalls.map(([id]) => id);
+    expect(updatedJobIds).toContain(JOB_TZ_C.id);
+    expect(updatedJobIds).toContain(JOB_TZ_D.id);
+    expect(updatedJobIds).toContain(JOB_TZ_E.id);
+  });
+});
