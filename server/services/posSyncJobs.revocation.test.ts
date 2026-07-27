@@ -51,7 +51,7 @@ vi.mock("./posIngestion", () => ({
 
 // ── Imports (resolved after mocks are hoisted) ────────────────────────────────
 
-import { runIncrementalSync, runBackfill, refreshAllPosTokens } from "./posSyncJobs";
+import { runIncrementalSync, runBackfill, refreshAllPosTokens, runAllIncrementalSyncs } from "./posSyncJobs";
 import { storage } from "../storage";
 import { squarePosConnector, SquareTokenRevokedError } from "../integrations/pos/square";
 import { ingestSalesBatch } from "./posIngestion";
@@ -638,5 +638,144 @@ describe("refreshAllPosTokens — nightly token refresh loop", () => {
 
     // All three connections were attempted
     expect(mockSquare.refreshCredentials).toHaveBeenCalledTimes(3);
+  });
+});
+
+// ── Tests: runAllIncrementalSyncs — revocation isolation ─────────────────────
+
+/**
+ * Fixtures for the two-connection scheduler isolation tests.
+ * Both connections have no refresh token so the proactive-refresh block is
+ * bypassed and we can focus on mid-sync revocation behaviour.
+ */
+const SCHED_CONN_A = {
+  id: "sched-conn-a",
+  companyId: "co-sched-a",
+  status: "active",
+  accessToken: "access-token-sched-a",
+  refreshToken: null,
+  connectedByUserId: "user-sched",
+  merchantId: "merchant-sched-a",
+  tokenRefreshedAt: new Date(),
+  tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+};
+
+const SCHED_CONN_B = {
+  id: "sched-conn-b",
+  companyId: "co-sched-b",
+  status: "active",
+  accessToken: "access-token-sched-b",
+  refreshToken: null,
+  connectedByUserId: "user-sched",
+  merchantId: "merchant-sched-b",
+  tokenRefreshedAt: new Date(),
+  tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+};
+
+const JOB_SCHED_A = { id: "job-sched-a", status: "running" };
+const JOB_SCHED_B = { id: "job-sched-b", status: "running" };
+
+describe("runAllIncrementalSyncs — revocation on one connection does not affect the next", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStorage.updatePosSyncJob.mockResolvedValue(undefined);
+    mockStorage.updatePosConnection.mockResolvedValue(undefined);
+  });
+
+  it("connection 2 completes its sync and ingests rows even when connection 1 is revoked", async () => {
+    // Scheduler fetches two active connections
+    mockStorage.getAllActivePosConnections.mockResolvedValue([SCHED_CONN_A, SCHED_CONN_B]);
+
+    // --- conn-a (revoked) ---
+    mockStorage.getPosConnectionById.mockResolvedValueOnce(SCHED_CONN_A);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValueOnce({ acquired: true, job: JOB_SCHED_A });
+    mockStorage.getPosLocationMappings.mockResolvedValueOnce([LOC_ONE]);
+    mockSquare.retrieveSales.mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"));
+
+    // --- conn-b (healthy) ---
+    mockStorage.getPosConnectionById.mockResolvedValueOnce(SCHED_CONN_B);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValueOnce({ acquired: true, job: JOB_SCHED_B });
+    mockStorage.getPosLocationMappings.mockResolvedValueOnce([LOC_TWO]);
+    mockSquare.retrieveSales.mockResolvedValueOnce([
+      { locationId: "loc-west", businessDate: "2026-07-26", lines: [{}] },
+    ]);
+    mockIngest.mockResolvedValueOnce({ rowsIngested: 7, rowsSkipped: 0, adhocItems: [] });
+
+    // Run the scheduler
+    await runAllIncrementalSyncs();
+
+    // ── Connection 1 assertions ──────────────────────────────────────────────
+
+    // conn-a must be marked disconnected
+    const connADisconnect = findCallWithShape(
+      mockStorage.updatePosConnection,
+      (args) => args[0] === "sched-conn-a" && args[2]?.status === "disconnected",
+    );
+    expect(connADisconnect).toBeDefined();
+
+    // conn-a's job must be marked failed
+    const jobAFailed = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[0] === JOB_SCHED_A.id && args[1]?.status === "failed",
+    );
+    expect(jobAFailed).toBeDefined();
+
+    // ── Connection 2 assertions ──────────────────────────────────────────────
+
+    // conn-b must NOT be marked disconnected
+    const connBDisconnect = findCallWithShape(
+      mockStorage.updatePosConnection,
+      (args) => args[0] === "sched-conn-b" && args[2]?.status === "disconnected",
+    );
+    expect(connBDisconnect).toBeUndefined();
+
+    // conn-b's job must be marked completed
+    const jobBCompleted = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[0] === JOB_SCHED_B.id && args[1]?.status === "completed",
+    );
+    expect(jobBCompleted).toBeDefined();
+    expect(jobBCompleted![1].rowsIngested).toBe(7);
+
+    // Ingestion ran exactly once — for conn-b only
+    expect(mockIngest).toHaveBeenCalledTimes(1);
+
+    // Both connections were attempted — the revocation did not abort the loop
+    expect(mockStorage.getPosConnectionById).toHaveBeenCalledTimes(2);
+  });
+
+  it("connection 1 status is 'disconnected' and connection 2 status is unchanged after the scheduler run", async () => {
+    // Variant: verify that updatePosConnection is called with the correct
+    // connection IDs and that no cross-contamination occurs between connections.
+    mockStorage.getAllActivePosConnections.mockResolvedValue([SCHED_CONN_A, SCHED_CONN_B]);
+
+    // conn-a: revoked immediately on retrieveSales
+    mockStorage.getPosConnectionById.mockResolvedValueOnce(SCHED_CONN_A);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValueOnce({ acquired: true, job: JOB_SCHED_A });
+    mockStorage.getPosLocationMappings.mockResolvedValueOnce([LOC_ONE]);
+    mockSquare.retrieveSales.mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"));
+
+    // conn-b: healthy, no locations — sync completes trivially
+    mockStorage.getPosConnectionById.mockResolvedValueOnce(SCHED_CONN_B);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValueOnce({ acquired: true, job: JOB_SCHED_B });
+    mockStorage.getPosLocationMappings.mockResolvedValueOnce([]);
+
+    await runAllIncrementalSyncs();
+
+    // Collect all updatePosConnection calls keyed by connection id
+    const allUpdateCalls: Array<[string, any]> = mockStorage.updatePosConnection.mock.calls.map(
+      (args: any[]) => [args[0] as string, args[2]],
+    );
+
+    // conn-a must appear exactly once with status === "disconnected"
+    const connAUpdates = allUpdateCalls.filter(([id]) => id === "sched-conn-a");
+    expect(connAUpdates).toHaveLength(1);
+    expect(connAUpdates[0][1].status).toBe("disconnected");
+
+    // conn-b must never receive status === "disconnected"
+    const connBDisconnects = allUpdateCalls.filter(
+      ([id, payload]) => id === "sched-conn-b" && payload?.status === "disconnected",
+    );
+    expect(connBDisconnects).toHaveLength(0);
   });
 });
