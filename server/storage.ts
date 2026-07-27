@@ -663,6 +663,16 @@ export interface IStorage {
   getPosSyncJobs(connectionId: string, limit?: number): Promise<PosSyncJob[]>;
   /** Returns the currently-running sync job for a connection, if one exists. */
   getRunningPosSyncJob(connectionId: string): Promise<PosSyncJob | undefined>;
+  /**
+   * Atomically attempts to acquire a sync lock for a connection by inserting a
+   * `running` job row.  The partial unique index on (connection_id) WHERE
+   * status='running' makes the INSERT the actual lock — two concurrent callers
+   * can never both succeed.  Stale locks (> 30 min) are auto-released on conflict.
+   */
+  tryAcquirePosSyncLock(data: InsertPosSyncJob): Promise<
+    { acquired: true; job: PosSyncJob } |
+    { acquired: false; existingJobId: string; existingStartedAt: Date }
+  >;
 }
 
 // ── POS token encryption helpers (module-level, used by DatabaseStorage) ──────
@@ -4983,6 +4993,47 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return row;
+  }
+
+  async tryAcquirePosSyncLock(data: InsertPosSyncJob): Promise<
+    { acquired: true; job: PosSyncJob } |
+    { acquired: false; existingJobId: string; existingStartedAt: Date }
+  > {
+    const STALE_LOCK_MS = 30 * 60 * 1000;
+    let staleCleaned = false;
+
+    while (true) {
+      try {
+        const [row] = await db.insert(posSyncJobs).values(data).returning();
+        return { acquired: true, job: row };
+      } catch (err: any) {
+        // 23505 = PostgreSQL unique_violation — the partial unique index fired
+        if (err.code !== "23505") throw err;
+      }
+
+      // INSERT failed — find the blocking job
+      const running = await this.getRunningPosSyncJob(data.connectionId);
+      if (!running) {
+        // The running job just completed between our INSERT and this SELECT — retry
+        continue;
+      }
+
+      const age = Date.now() - new Date(running.startedAt!).getTime();
+      if (age < STALE_LOCK_MS || staleCleaned) {
+        // Active non-stale lock (or already tried releasing a stale one)
+        return { acquired: false, existingJobId: running.id, existingStartedAt: running.startedAt as Date };
+      }
+
+      // Stale lock — mark failed, then retry once
+      staleCleaned = true;
+      await this.updatePosSyncJob(running.id, {
+        status: "failed",
+        completedAt: new Date(),
+        errorMessage: "Job timed out — stale lock auto-released after 30 min",
+      });
+      console.warn(`[POS Lock] Stale lock released for connection ${data.connectionId} (job ${running.id})`);
+      // Next loop iteration retries the INSERT
+    }
   }
 }
 

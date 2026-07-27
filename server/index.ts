@@ -927,6 +927,11 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE pos_connections ADD COLUMN IF NOT EXISTS token_key_version integer NOT NULL DEFAULT 0`);
     // Task #541: token_refreshed_at — tracks last proactive token refresh for 7-day cadence
     await db.execute(sql`ALTER TABLE pos_connections ADD COLUMN IF NOT EXISTS token_refreshed_at timestamp`);
+    // Task #542: partial unique index — enforces at most one running sync job per connection atomically
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS pos_sync_jobs_one_running_per_connection
+        ON pos_sync_jobs (connection_id) WHERE status = 'running'
+    `);
 
     // Task #540: Re-encrypt any existing plain-text tokens when the key is available
     if (process.env.POS_TOKEN_ENCRYPTION_KEY) {

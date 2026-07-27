@@ -3,7 +3,14 @@
  * runBackfill — pulls N days of historical data from Square
  * runIncrementalSync — pulls the prior business date + recently modified dates
  * runAllIncrementalSyncs — called by the nightly scheduler
+ *
+ * Concurrency model:
+ *   A partial unique index on pos_sync_jobs(connection_id) WHERE status='running'
+ *   makes storage.tryAcquirePosSyncLock() the atomic lock.  Only one running job
+ *   per connection can exist at the DB level — two concurrent callers can never
+ *   both succeed.  Stale locks (> 30 min) are auto-released on conflict.
  */
+import type { PosSyncJob } from "@shared/schema";
 import { storage } from "../storage";
 import { squarePosConnector, SquareTokenRevokedError } from "../integrations/pos/square";
 import { ingestSalesBatch } from "./posIngestion";
@@ -21,61 +28,44 @@ function todayMinus(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Maximum age of a running job before it is considered stale and the lock is released. */
-const STALE_LOCK_MS = 30 * 60 * 1000;
-
 /**
- * Attempts to acquire an exclusive sync lock for a connection.
- * Returns `{ acquired: true }` when clear to proceed, or
- * `{ acquired: false, jobId, startedAt }` when a non-stale job is already running.
- * Automatically releases stale locks (jobs running > 30 min) before returning.
+ * Pull N days of historical data for all mapped locations on a connection.
+ *
+ * @param preCreatedJob  When the caller (e.g. the sync route) has already
+ *   acquired the lock atomically and created the job row, pass it here to skip
+ *   the lock-acquisition step inside this function.
  */
-async function acquireSyncLock(
-  connectionId: string,
-): Promise<{ acquired: true } | { acquired: false; jobId: string; startedAt: Date }> {
-  const running = await storage.getRunningPosSyncJob(connectionId);
-  if (!running) return { acquired: true };
-
-  const age = Date.now() - new Date(running.startedAt!).getTime();
-  if (age >= STALE_LOCK_MS) {
-    await storage.updatePosSyncJob(running.id, {
-      status: "failed",
-      completedAt: new Date(),
-      errorMessage: "Job timed out — stale lock auto-released after 30 min",
-    });
-    console.warn(`[POS Lock] Released stale lock for connection ${connectionId} (job ${running.id})`);
-    return { acquired: true };
-  }
-
-  return { acquired: false, jobId: running.id, startedAt: running.startedAt as Date };
-}
-
 export async function runBackfill(
   connectionId: string,
   days: number = 30,
+  preCreatedJob?: PosSyncJob,
 ): Promise<{ rowsIngested: number; error?: string; alreadyRunning?: boolean; jobId?: string }> {
   const connection = await storage.getPosConnectionById(connectionId);
   if (!connection || connection.status !== "active") {
     return { rowsIngested: 0, error: "Connection not found or inactive" };
   }
 
-  // Concurrency guard — reject if a non-stale sync is already running
-  const lock = await acquireSyncLock(connectionId);
-  if (!lock.acquired) {
-    console.log(
-      `[POS Backfill] Skipping — sync already running (job ${lock.jobId}) for connection ${connectionId}`,
-    );
-    return { rowsIngested: 0, alreadyRunning: true, jobId: lock.jobId };
+  let job: PosSyncJob;
+  if (preCreatedJob) {
+    job = preCreatedJob;
+  } else {
+    // Atomically acquire the sync lock via the partial unique index.
+    const lock = await storage.tryAcquirePosSyncLock({
+      connectionId,
+      companyId: connection.companyId,
+      jobType: "backfill",
+      status: "running",
+      startedAt: new Date(),
+      daysBackfilled: days,
+    });
+    if (!lock.acquired) {
+      console.log(
+        `[POS Backfill] Skipping — sync already running (job ${lock.existingJobId}) for connection ${connectionId}`,
+      );
+      return { rowsIngested: 0, alreadyRunning: true, jobId: lock.existingJobId };
+    }
+    job = lock.job;
   }
-
-  const job = await storage.createPosSyncJob({
-    connectionId,
-    companyId: connection.companyId,
-    jobType: "backfill",
-    status: "running",
-    startedAt: new Date(),
-    daysBackfilled: days,
-  });
 
   let totalRows = 0;
   let totalSkipped = 0;
@@ -132,21 +122,19 @@ export async function runBackfill(
   }
 }
 
+/**
+ * Pull the prior 2 business days for all mapped locations on a connection.
+ *
+ * @param preCreatedJob  When the caller has already acquired the lock atomically
+ *   and created the job row, pass it here to skip the lock-acquisition step.
+ */
 export async function runIncrementalSync(
   connectionId: string,
+  preCreatedJob?: PosSyncJob,
 ): Promise<{ rowsIngested: number; error?: string; alreadyRunning?: boolean; jobId?: string }> {
   let connection = await storage.getPosConnectionById(connectionId);
   if (!connection || connection.status !== "active") {
     return { rowsIngested: 0, error: "Connection not found or inactive" };
-  }
-
-  // Concurrency guard — reject if a non-stale sync is already running
-  const lock = await acquireSyncLock(connectionId);
-  if (!lock.acquired) {
-    console.log(
-      `[POS Incremental] Skipping — sync already running (job ${lock.jobId}) for connection ${connectionId}`,
-    );
-    return { rowsIngested: 0, alreadyRunning: true, jobId: lock.jobId };
   }
 
   // Refresh the access token if:
@@ -188,13 +176,26 @@ export async function runIncrementalSync(
     }
   }
 
-  const job = await storage.createPosSyncJob({
-    connectionId,
-    companyId: connection.companyId,
-    jobType: "incremental",
-    status: "running",
-    startedAt: new Date(),
-  });
+  let job: PosSyncJob;
+  if (preCreatedJob) {
+    job = preCreatedJob;
+  } else {
+    // Atomically acquire the sync lock via the partial unique index.
+    const lock = await storage.tryAcquirePosSyncLock({
+      connectionId,
+      companyId: connection.companyId,
+      jobType: "incremental",
+      status: "running",
+      startedAt: new Date(),
+    });
+    if (!lock.acquired) {
+      console.log(
+        `[POS Incremental] Skipping — sync already running (job ${lock.existingJobId}) for connection ${connectionId}`,
+      );
+      return { rowsIngested: 0, alreadyRunning: true, jobId: lock.existingJobId };
+    }
+    job = lock.job;
+  }
 
   let totalRows = 0;
   let totalSkipped = 0;
@@ -247,15 +248,15 @@ export async function runIncrementalSync(
       await storage.updatePosConnection(connectionId, connection.companyId, { status: "disconnected" });
     }
 
-    const safeMsg2 = sanitizeErrorMessage(err.message);
+    const safeMsg = sanitizeErrorMessage(err.message);
     await storage.updatePosSyncJob(job.id, {
       status: "failed",
       completedAt: new Date(),
-      errorMessage: safeMsg2,
+      errorMessage: safeMsg,
       rowsIngested: totalRows,
       rowsSkipped: totalSkipped,
     });
-    return { rowsIngested: totalRows, error: safeMsg2 };
+    return { rowsIngested: totalRows, error: safeMsg };
   }
 }
 

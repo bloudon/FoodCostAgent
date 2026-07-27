@@ -381,37 +381,40 @@ export function registerPosRoutes(app: Express): void {
         return res.status(404).json({ error: "Connection not found" });
       }
 
-      // Pre-flight concurrency check — return 409 immediately instead of starting a background job
-      const running = await storage.getRunningPosSyncJob(req.params.id);
-      if (running) {
-        const age = Date.now() - new Date(running.startedAt!).getTime();
-        if (age < 30 * 60 * 1000) {
-          return res.status(409).json({
-            error: "A sync is already in progress for this connection",
-            alreadyRunning: true,
-            jobId: running.id,
-            startedAt: running.startedAt,
-          });
-        }
-        // Stale lock — release it so the new sync can start
-        await storage.updatePosSyncJob(running.id, {
-          status: "failed",
-          completedAt: new Date(),
-          errorMessage: "Job timed out — stale lock auto-released after 30 min",
+      const { type = "incremental", days = 30 } = req.body;
+
+      // Atomically acquire the sync lock by inserting the job row.
+      // The partial unique index on pos_sync_jobs(connection_id) WHERE status='running'
+      // ensures only one running job per connection can ever exist — two concurrent
+      // requests cannot both succeed here.
+      const lock = await storage.tryAcquirePosSyncLock({
+        connectionId: req.params.id,
+        companyId,
+        jobType: type === "backfill" ? "backfill" : "incremental",
+        status: "running",
+        startedAt: new Date(),
+        ...(type === "backfill" ? { daysBackfilled: Number(days) } : {}),
+      });
+
+      if (!lock.acquired) {
+        return res.status(409).json({
+          error: "A sync is already in progress for this connection",
+          alreadyRunning: true,
+          jobId: lock.existingJobId,
+          startedAt: lock.existingStartedAt,
         });
       }
 
-      const { type = "incremental", days = 30 } = req.body;
-
-      // Start sync in background, return immediately
+      // Lock acquired — return 200 immediately and execute in background using the
+      // pre-created job row (skipping the lock-acquisition step inside the functions).
       res.json({ ok: true, message: `${type} sync started` });
 
       if (type === "backfill") {
-        runBackfill(req.params.id, Number(days)).catch((err) =>
+        runBackfill(req.params.id, Number(days), lock.job).catch((err) =>
           console.error("[POS] Backfill error:", err.message),
         );
       } else {
-        runIncrementalSync(req.params.id).catch((err) =>
+        runIncrementalSync(req.params.id, lock.job).catch((err) =>
           console.error("[POS] Incremental sync error:", err.message),
         );
       }
