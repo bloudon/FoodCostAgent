@@ -1944,6 +1944,17 @@ function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null
       });
       params.delete("pos_error");
       window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+    } else if (posError) {
+      // Catch-all for any other error codes (reconnect_failed, state_invalid,
+      // connection_not_found, missing_params, etc.) so the user always gets
+      // actionable feedback rather than a silent return to the disconnected state.
+      toast({
+        title: "Square connection error",
+        description: "Something went wrong during authorization. Please try reconnecting from the connection card.",
+        variant: "destructive",
+      });
+      params.delete("pos_error");
+      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location]);
