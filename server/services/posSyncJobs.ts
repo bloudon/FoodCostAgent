@@ -15,6 +15,27 @@ import { storage } from "../storage";
 import { squarePosConnector, SquareTokenRevokedError } from "../integrations/pos/square";
 import { ingestSalesBatch, type AdhocItem } from "./posIngestion";
 
+/**
+ * Maximum number of ad hoc item entries stored per sync job.
+ * When exceeded, the first 199 items are stored and a 200th sentinel entry
+ * `{ _overflow: true, total: N }` is appended so the UI can show the true count.
+ */
+const ADHOC_ITEMS_CAP = 200;
+
+/**
+ * Cap the accumulated ad hoc items array before writing to the DB.
+ * If the array exceeds ADHOC_ITEMS_CAP, it is trimmed to (CAP - 1) real
+ * entries and a sentinel `{ _overflow: true, total: realTotal }` is appended,
+ * keeping the stored length at exactly ADHOC_ITEMS_CAP.
+ */
+export function capAdhocItems(items: AdhocItem[]): AdhocItem[] | null {
+  if (items.length === 0) return null;
+  if (items.length <= ADHOC_ITEMS_CAP) return items;
+  const truncated = items.slice(0, ADHOC_ITEMS_CAP - 1) as any[];
+  truncated.push({ _overflow: true, total: items.length });
+  return truncated as AdhocItem[];
+}
+
 /** Strip any token-shaped strings from error messages before persisting to DB. */
 function sanitizeErrorMessage(msg: string): string {
   // Square access tokens are long alphanumeric strings starting with "EAAAl" or similar.
@@ -126,7 +147,7 @@ export async function runBackfill(
       completedAt: new Date(),
       rowsIngested: totalRows,
       rowsSkipped: totalSkipped,
-      adhocItems: allAdhocItems.length > 0 ? allAdhocItems : null,
+      adhocItems: capAdhocItems(allAdhocItems),
       errorMessage: locationErrors.length > 0 ? locationErrors.join("; ") : undefined,
     });
 
@@ -285,7 +306,7 @@ export async function runIncrementalSync(
       completedAt: new Date(),
       rowsIngested: totalRows,
       rowsSkipped: totalSkipped,
-      adhocItems: allAdhocItems.length > 0 ? allAdhocItems : null,
+      adhocItems: capAdhocItems(allAdhocItems),
       errorMessage: locationErrors.length > 0 ? locationErrors.join("; ") : undefined,
     });
 

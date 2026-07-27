@@ -5,12 +5,14 @@
  *   1. Running ingestSalesBatch twice with the same input does NOT double rows.
  *   2. A refund (negative-qty) line is stored as-is and reduces net usage.
  *   3. A custom-dollar refund (no variationId) is skipped and counted in rowsSkipped.
+ *   4. capAdhocItems truncates arrays > 200 to exactly 200 entries with an overflow sentinel.
  *
  * vi.mock factories are hoisted, so no top-level const refs inside them.
  * State is held in a plain Map that both the factory and tests share.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ingestSalesBatch } from "./posIngestion";
+import { capAdhocItems } from "./posSyncJobs";
 import type { PosSalesBatch } from "../integrations/pos/types";
 
 // ── Shared state (not referenced inside vi.mock factory) ──────────────────────
@@ -504,5 +506,62 @@ describe("POS ingestion — modifier and ad hoc item classification", () => {
     expect(result.rowsIngested).toBe(1);
     expect(result.rowsSkipped).toBe(1);   // has catalog ID but no FnB mapping
     expect(result.adhocItems).toHaveLength(0); // it's not ad hoc — it has a catalog ID
+  });
+});
+
+// ── capAdhocItems cap tests ───────────────────────────────────────────────────
+
+describe("capAdhocItems", () => {
+  /** Build a minimal AdhocItem array of length n for testing. */
+  function makeAdhocItems(n: number): any[] {
+    return Array.from({ length: n }, (_, i) => ({
+      name: `Item ${i + 1}`,
+      quantity: 1,
+      orderId: `order-${i + 1}`,
+      reason: "no_catalog_id" as const,
+    }));
+  }
+
+  it("returns null for an empty array", () => {
+    expect(capAdhocItems([])).toBeNull();
+  });
+
+  it("returns the original array unchanged when count is below the cap", () => {
+    const items = makeAdhocItems(50);
+    const result = capAdhocItems(items);
+    expect(result).toHaveLength(50);
+    expect((result as any[])[49].name).toBe("Item 50");
+  });
+
+  it("returns the original array unchanged when count equals the cap (200)", () => {
+    const items = makeAdhocItems(200);
+    const result = capAdhocItems(items);
+    expect(result).toHaveLength(200);
+    // No overflow sentinel — exact fit
+    expect((result as any[])[199]._overflow).toBeUndefined();
+  });
+
+  it("truncates to exactly 200 entries when input exceeds the cap", () => {
+    const items = makeAdhocItems(350);
+    const result = capAdhocItems(items) as any[];
+    expect(result).toHaveLength(200);
+  });
+
+  it("appends an overflow sentinel as the 200th entry with the true total count", () => {
+    const items = makeAdhocItems(350);
+    const result = capAdhocItems(items) as any[];
+    const sentinel = result[199];
+    expect(sentinel._overflow).toBe(true);
+    expect(sentinel.total).toBe(350);
+  });
+
+  it("stores 199 real items before the sentinel when input exceeds the cap", () => {
+    const items = makeAdhocItems(250);
+    const result = capAdhocItems(items) as any[];
+    // Entries 0–198 are real items; entry 199 is the sentinel
+    expect(result[0].name).toBe("Item 1");
+    expect(result[198].name).toBe("Item 199");
+    expect(result[199]._overflow).toBe(true);
+    expect(result[199].total).toBe(250);
   });
 });
