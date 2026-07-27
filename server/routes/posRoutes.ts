@@ -192,6 +192,16 @@ export function registerPosRoutes(app: Express): void {
           updatedAt: new Date(),
         });
 
+        // Refresh location timezone metadata so the nightly scheduler has accurate
+        // IANA zones even if the merchant changed their Square location settings.
+        try {
+          const { backfillLocationTimezones } = await import("../services/posSyncJobs");
+          await backfillLocationTimezones(connectionId);
+        } catch (tzErr: any) {
+          // Non-fatal — tokens are already updated, log and continue
+          console.warn("[POS] Failed to refresh location timezones on reconnect:", tzErr.message);
+        }
+
         console.info(`[POS] Connection ${connectionId} reconnected for merchant ${tokens.merchantId}`);
         return res.redirect("/settings?tab=connections&pos_reconnected=1");
       }

@@ -367,9 +367,24 @@ function localHour(timezone: string): number {
 /**
  * Returns true when the supplied IANA timezone string is currently in the
  * 4:00–4:59 AM window (i.e. local hour === 4).
+ *
+ * @param timezone  IANA timezone string (e.g. "America/Los_Angeles")
+ * @param getHour   Optional override for the current-hour lookup — used by
+ *                  unit tests to inject a fixed hour without mocking the clock.
  */
-export function isInNightlySyncWindow(timezone: string): boolean {
-  return localHour(timezone) === 4;
+export function isInNightlySyncWindow(
+  timezone: string,
+  getHour: (tz: string) => number = localHour,
+): boolean {
+  return getHour(timezone) === 4;
+}
+
+/** Options accepted by runTimezoneAwareIncrementalSyncs — mainly for testing. */
+export interface TimezoneAwareSyncOpts {
+  /** Override the local-hour lookup (for deterministic unit tests). */
+  getLocalHour?: (tz: string) => number;
+  /** Override the UTC hour (for deterministic unit tests). */
+  utcHour?: number;
 }
 
 /**
@@ -377,38 +392,43 @@ export function isInNightlySyncWindow(timezone: string): boolean {
  * Syncs only the connections whose mapped Square locations' local time is
  * currently 4:00–4:59 AM.  Connections with no timezone data fall back to
  * the UTC hour so they fire at 4 AM UTC (safe default).
+ *
+ * @param opts  Optional overrides for deterministic testing.
  */
-export async function runTimezoneAwareIncrementalSyncs(): Promise<void> {
+export async function runTimezoneAwareIncrementalSyncs(
+  opts: TimezoneAwareSyncOpts = {},
+): Promise<void> {
   const connections = await storage.getAllActivePosConnections();
-  const utcHour = new Date().getUTCHours();
+  const currentUtcHour = opts.utcHour ?? new Date().getUTCHours();
+  const getHour = opts.getLocalHour ?? localHour;
 
   const eligible: typeof connections = [];
 
   for (const conn of connections) {
     const locationMappings = await storage.getPosLocationMappings(conn.id);
 
-    // Collect distinct timezones from mapped locations
+    // Collect distinct, non-null timezones from mapped locations
     const timezones = [
       ...new Set(locationMappings.map((m) => m.externalTimezone).filter(Boolean) as string[]),
     ];
 
     if (timezones.length === 0) {
       // No timezone data — fall back to UTC 4 AM
-      if (utcHour === 4) {
+      if (currentUtcHour === 4) {
         eligible.push(conn);
       }
       continue;
     }
 
     // Eligible if ANY mapped location's local time is in the 4 AM window
-    const inWindow = timezones.some((tz) => isInNightlySyncWindow(tz));
+    const inWindow = timezones.some((tz) => isInNightlySyncWindow(tz, getHour));
     if (inWindow) {
       eligible.push(conn);
     }
   }
 
   if (eligible.length === 0) {
-    console.log(`[POS Hourly] No connections in 4 AM window at UTC ${utcHour}:xx — skipping`);
+    console.log(`[POS Hourly] No connections in 4 AM window at UTC ${currentUtcHour}:xx — skipping`);
     return;
   }
 
@@ -429,4 +449,60 @@ export async function runTimezoneAwareIncrementalSyncs(): Promise<void> {
   }
 
   console.log("[POS Hourly] Timezone-aware sync pass complete");
+}
+
+/**
+ * Backfill `externalTimezone` for active connections whose location mappings
+ * still have NULL timezone (i.e. they were connected before #544 shipped).
+ *
+ * Called once at startup (non-blocking — errors are logged, not rethrown).
+ * Also used by the reconnect path to refresh stale timezone data.
+ *
+ * @param connectionId  If provided, only that connection is refreshed.
+ *                      Omit to scan all active connections.
+ */
+export async function backfillLocationTimezones(connectionId?: string): Promise<void> {
+  const { squarePosConnector } = await import("../integrations/pos/square");
+
+  const connections = connectionId
+    ? [await storage.getPosConnectionById(connectionId)].filter(Boolean) as Awaited<ReturnType<typeof storage.getPosConnectionById>>[]
+    : await storage.getAllActivePosConnections();
+
+  for (const conn of connections) {
+    if (!conn || conn.status !== "active") continue;
+
+    try {
+      const existingMappings = await storage.getPosLocationMappings(conn.id);
+      const hasMissingTz = existingMappings.some((m) => !m.externalTimezone);
+      if (!hasMissingTz && !connectionId) {
+        // All locations already have timezone data — skip API call unless
+        // an explicit connectionId was passed (reconnect refresh)
+        continue;
+      }
+
+      const locations = await squarePosConnector.listLocations(conn.accessToken);
+      if (locations.length === 0) continue;
+
+      await storage.upsertPosLocationMappings(
+        conn.id,
+        conn.companyId,
+        locations.map((loc) => ({
+          externalLocationId: loc.externalId,
+          externalLocationName: loc.name,
+          storeId: existingMappings.find((m) => m.externalLocationId === loc.externalId)?.storeId ?? null,
+          externalTimezone: loc.timezone ?? null,
+        })),
+      );
+
+      console.log(
+        `[POS TZ Backfill] Refreshed timezone for connection ${conn.id} ` +
+        `(${locations.length} location(s))`,
+      );
+    } catch (err: any) {
+      // Non-fatal — log and continue so one bad connection doesn't block others
+      console.warn(
+        `[POS TZ Backfill] Failed for connection ${conn?.id}: ${sanitizeErrorMessage(err.message)}`,
+      );
+    }
+  }
 }

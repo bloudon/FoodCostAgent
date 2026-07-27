@@ -1082,7 +1082,16 @@ async function runStartupMigrations() {
 
   // POS nightly incremental sync — hourly pass; fires each connection at 4 AM local time
   const POS_SYNC_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
-  const { runTimezoneAwareIncrementalSyncs, refreshAllPosTokens } = await import("./services/posSyncJobs");
+  const { runTimezoneAwareIncrementalSyncs, refreshAllPosTokens, backfillLocationTimezones } = await import("./services/posSyncJobs");
+
+  // Backfill externalTimezone for any active connections that existed before #544.
+  // Runs once, 30 seconds after startup, so the server is already serving requests.
+  // Non-blocking — errors are caught inside backfillLocationTimezones().
+  setTimeout(() => {
+    backfillLocationTimezones().catch((e: any) =>
+      console.warn("⚠️  POS timezone backfill error:", e.message),
+    );
+  }, 30_000);
 
   // POS token refresh job — runs daily to stay inside Square's 7-day renewal window.
   // Runs independently of the nightly sync so disconnected accounts still get refreshed.

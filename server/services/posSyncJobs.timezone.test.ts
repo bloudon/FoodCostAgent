@@ -1,8 +1,8 @@
 /**
  * Unit tests for the timezone-aware nightly sync window logic (#544).
  *
- * isInNightlySyncWindow() and runTimezoneAwareIncrementalSyncs() are exported
- * from posSyncJobs.ts.  All storage calls are mocked so no DB is required.
+ * All time-dependent behaviour is exercised deterministically by injecting
+ * `getLocalHour` and `utcHour` overrides — no real clock or network needed.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -11,17 +11,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../storage", () => ({
   storage: {
     getAllActivePosConnections: vi.fn(),
-    getPosLocationMappings: vi.fn(),
     getPosConnectionById: vi.fn(),
+    getPosLocationMappings: vi.fn(),
     tryAcquirePosSyncLock: vi.fn(),
     updatePosSyncJob: vi.fn(),
     updatePosConnection: vi.fn(),
+    upsertPosLocationMappings: vi.fn(),
   },
 }));
 
-// Prevent the real Square HTTP client from being used
 vi.mock("../integrations/pos/square", () => ({
-  squarePosConnector: { retrieveSales: vi.fn() },
+  squarePosConnector: { retrieveSales: vi.fn(), listLocations: vi.fn() },
   SquareTokenRevokedError: class SquareTokenRevokedError extends Error {},
 }));
 
@@ -29,127 +29,266 @@ vi.mock("./posIngestion", () => ({
   ingestSalesBatch: vi.fn(),
 }));
 
-import { isInNightlySyncWindow, runTimezoneAwareIncrementalSyncs } from "./posSyncJobs";
+import {
+  isInNightlySyncWindow,
+  runTimezoneAwareIncrementalSyncs,
+  backfillLocationTimezones,
+} from "./posSyncJobs";
 import { storage } from "../storage";
+import { squarePosConnector } from "../integrations/pos/square";
+
+const mockStorage = storage as any;
+const mockSquare = squarePosConnector as any;
 
 // ── isInNightlySyncWindow ─────────────────────────────────────────────────────
 
 describe("isInNightlySyncWindow", () => {
-  /**
-   * We can't easily mock `new Date()` inside the module, so we test a range of
-   * real IANA timezone strings to verify the helper is callable and returns a
-   * boolean.  The important invariant is that the function:
-   *   (a) never throws for valid IANA strings
-   *   (b) returns false for invalid strings
-   *   (c) returns a boolean
-   */
-  it("returns a boolean for a valid IANA timezone", () => {
-    const result = isInNightlySyncWindow("America/New_York");
-    expect(typeof result).toBe("boolean");
+  it("returns true when the injected hour is 4", () => {
+    expect(isInNightlySyncWindow("America/New_York", () => 4)).toBe(true);
+    expect(isInNightlySyncWindow("America/Los_Angeles", () => 4)).toBe(true);
+    expect(isInNightlySyncWindow("UTC", () => 4)).toBe(true);
   });
 
-  it("returns a boolean for a Pacific timezone", () => {
-    const result = isInNightlySyncWindow("America/Los_Angeles");
-    expect(typeof result).toBe("boolean");
+  it("returns false when the injected hour is not 4", () => {
+    for (const h of [0, 1, 2, 3, 5, 12, 23]) {
+      expect(isInNightlySyncWindow("America/Chicago", () => h)).toBe(false);
+    }
   });
 
-  it("returns a boolean for UTC", () => {
-    const result = isInNightlySyncWindow("UTC");
-    expect(typeof result).toBe("boolean");
-  });
-
-  it("returns false for an invalid timezone string", () => {
-    // Invalid IANA zones throw inside Intl.DateTimeFormat; the helper catches
-    // and returns false so a bad stored value never breaks the scheduler.
+  it("returns false for an invalid IANA timezone (real Intl, no injection)", () => {
+    // localHour() catches the Intl exception and returns -1 → never === 4
     expect(isInNightlySyncWindow("Not/A_Timezone")).toBe(false);
     expect(isInNightlySyncWindow("")).toBe(false);
+  });
+
+  it("returns a boolean for real IANA zones without injection", () => {
+    expect(typeof isInNightlySyncWindow("America/New_York")).toBe("boolean");
+    expect(typeof isInNightlySyncWindow("Europe/London")).toBe("boolean");
   });
 });
 
 // ── runTimezoneAwareIncrementalSyncs ─────────────────────────────────────────
 
 describe("runTimezoneAwareIncrementalSyncs", () => {
-  const mockStorage = storage as any;
-
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: tryAcquirePosSyncLock returns not-acquired so incremental sync exits early
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValue({ acquired: false, existingJobId: "job-0" });
   });
 
-  it("skips connections whose locations are not in the 4 AM window", async () => {
-    // Manufacture a fake connection with a timezone where it is never 4 AM right now
-    // by using a zone that differs from UTC by more than 1 hour.  We can't control the
-    // clock, so we use a different approach: patch the connection mappings to return a
-    // timezone string that reports hour 99 (invalid → window returns false).
+  it("syncs a connection when its location timezone is in the 4 AM window", async () => {
     mockStorage.getAllActivePosConnections.mockResolvedValue([
       { id: "conn-1", companyId: "co-1", status: "active", refreshToken: null },
     ]);
-    // Return a mapping with an invalid timezone — isInNightlySyncWindow("bad") === false
     mockStorage.getPosLocationMappings.mockResolvedValue([
-      { externalLocationId: "loc-1", storeId: "store-1", externalTimezone: "Not/A_Timezone" },
+      { externalLocationId: "loc-1", storeId: "store-1", externalTimezone: "America/New_York" },
     ]);
+    mockStorage.getPosConnectionById.mockResolvedValue(
+      { id: "conn-1", companyId: "co-1", status: "active", refreshToken: null },
+    );
 
-    // Should complete without trying to sync (tryAcquirePosSyncLock never called)
-    await runTimezoneAwareIncrementalSyncs();
+    // Inject: New York is at hour 4, UTC is at hour 9
+    await runTimezoneAwareIncrementalSyncs({
+      getLocalHour: (_tz) => 4,
+      utcHour: 9,
+    });
 
-    expect(mockStorage.tryAcquirePosSyncLock).not.toHaveBeenCalled();
+    // tryAcquirePosSyncLock is called as part of runIncrementalSync
+    expect(mockStorage.tryAcquirePosSyncLock).toHaveBeenCalledOnce();
   });
 
-  it("falls back to UTC hour 4 when no timezone data is present and it is not 4 AM UTC", async () => {
-    const utcHour = new Date().getUTCHours();
-    // Only expect a sync attempt when it happens to be 4 AM UTC in the test environment.
-    // We're testing the fallback LOGIC, not the clock — so the test should be meaningful
-    // regardless of when it runs.  We verify that mappings with NULL timezone don't
-    // cause an unhandled exception.
-
+  it("skips a connection when its location timezone is NOT in the 4 AM window", async () => {
     mockStorage.getAllActivePosConnections.mockResolvedValue([
       { id: "conn-2", companyId: "co-1", status: "active", refreshToken: null },
     ]);
     mockStorage.getPosLocationMappings.mockResolvedValue([
-      { externalLocationId: "loc-2", storeId: "store-2", externalTimezone: null },
+      { externalLocationId: "loc-2", storeId: "store-2", externalTimezone: "America/Los_Angeles" },
     ]);
 
-    // Even if utcHour !== 4, the function should run without error
-    await expect(runTimezoneAwareIncrementalSyncs()).resolves.toBeUndefined();
+    // Inject: LA is at hour 14, UTC at 22
+    await runTimezoneAwareIncrementalSyncs({
+      getLocalHour: (_tz) => 14,
+      utcHour: 22,
+    });
 
-    // If it IS 4 AM UTC, a sync will be attempted; otherwise none
-    if (utcHour === 4) {
-      expect(mockStorage.tryAcquirePosSyncLock).toHaveBeenCalled();
-    } else {
-      expect(mockStorage.tryAcquirePosSyncLock).not.toHaveBeenCalled();
-    }
+    expect(mockStorage.tryAcquirePosSyncLock).not.toHaveBeenCalled();
   });
 
-  it("handles connections with no location mappings without error", async () => {
+  it("syncs a connection with no timezone data when UTC hour is 4 (fallback)", async () => {
     mockStorage.getAllActivePosConnections.mockResolvedValue([
       { id: "conn-3", companyId: "co-1", status: "active", refreshToken: null },
     ]);
-    mockStorage.getPosLocationMappings.mockResolvedValue([]);
+    // NULL timezone — legacy connection backfill not yet run
+    mockStorage.getPosLocationMappings.mockResolvedValue([
+      { externalLocationId: "loc-3", storeId: "store-3", externalTimezone: null },
+    ]);
+    mockStorage.getPosConnectionById.mockResolvedValue(
+      { id: "conn-3", companyId: "co-1", status: "active", refreshToken: null },
+    );
 
-    // No mappings → treated as no timezone → fallback to UTC 4 AM
-    await expect(runTimezoneAwareIncrementalSyncs()).resolves.toBeUndefined();
+    // Inject UTC 4 AM → fallback fires
+    await runTimezoneAwareIncrementalSyncs({ utcHour: 4 });
+
+    expect(mockStorage.tryAcquirePosSyncLock).toHaveBeenCalledOnce();
   });
 
-  it("handles zero active connections gracefully", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([]);
-
-    await expect(runTimezoneAwareIncrementalSyncs()).resolves.toBeUndefined();
-    expect(mockStorage.getPosLocationMappings).not.toHaveBeenCalled();
-  });
-
-  it("deduplicates timezones from multiple locations on the same connection", async () => {
-    // Three locations, all with the same invalid timezone — should only check once
-    // (and correctly conclude the connection is NOT in the sync window)
+  it("skips a connection with no timezone data when UTC hour is NOT 4", async () => {
     mockStorage.getAllActivePosConnections.mockResolvedValue([
       { id: "conn-4", companyId: "co-1", status: "active", refreshToken: null },
     ]);
     mockStorage.getPosLocationMappings.mockResolvedValue([
-      { externalLocationId: "loc-a", storeId: "s1", externalTimezone: "Not/Valid" },
-      { externalLocationId: "loc-b", storeId: "s2", externalTimezone: "Not/Valid" },
-      { externalLocationId: "loc-c", storeId: "s3", externalTimezone: "Not/Valid" },
+      { externalLocationId: "loc-4", storeId: "store-4", externalTimezone: null },
     ]);
 
-    await runTimezoneAwareIncrementalSyncs();
+    // Inject UTC 9 AM → no fallback
+    await runTimezoneAwareIncrementalSyncs({ utcHour: 9 });
 
     expect(mockStorage.tryAcquirePosSyncLock).not.toHaveBeenCalled();
+  });
+
+  it("syncs a connection once even when multiple locations share the same timezone", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([
+      { id: "conn-5", companyId: "co-1", status: "active", refreshToken: null },
+    ]);
+    mockStorage.getPosLocationMappings.mockResolvedValue([
+      { externalLocationId: "loc-a", storeId: "s1", externalTimezone: "America/Chicago" },
+      { externalLocationId: "loc-b", storeId: "s2", externalTimezone: "America/Chicago" },
+      { externalLocationId: "loc-c", storeId: "s3", externalTimezone: "America/Chicago" },
+    ]);
+    mockStorage.getPosConnectionById.mockResolvedValue(
+      { id: "conn-5", companyId: "co-1", status: "active", refreshToken: null },
+    );
+
+    await runTimezoneAwareIncrementalSyncs({ getLocalHour: () => 4, utcHour: 10 });
+
+    // Only one sync per connection (not one per location)
+    expect(mockStorage.tryAcquirePosSyncLock).toHaveBeenCalledOnce();
+  });
+
+  it("syncs only the in-window connection when two connections are in different timezones", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([
+      { id: "conn-east", companyId: "co-1", status: "active", refreshToken: null },
+      { id: "conn-west", companyId: "co-1", status: "active", refreshToken: null },
+    ]);
+    // East is at 4 AM, West is at 1 AM
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([
+        { externalLocationId: "loc-e", storeId: "se", externalTimezone: "America/New_York" },
+      ])
+      .mockResolvedValueOnce([
+        { externalLocationId: "loc-w", storeId: "sw", externalTimezone: "America/Los_Angeles" },
+      ]);
+    mockStorage.getPosConnectionById.mockResolvedValue(
+      { id: "conn-east", companyId: "co-1", status: "active", refreshToken: null },
+    );
+
+    // East → 4, West → 1
+    await runTimezoneAwareIncrementalSyncs({
+      getLocalHour: (tz) => (tz === "America/New_York" ? 4 : 1),
+      utcHour: 9,
+    });
+
+    expect(mockStorage.tryAcquirePosSyncLock).toHaveBeenCalledOnce();
+  });
+
+  it("handles zero active connections without error", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([]);
+    await expect(runTimezoneAwareIncrementalSyncs({ utcHour: 4 })).resolves.toBeUndefined();
+    expect(mockStorage.getPosLocationMappings).not.toHaveBeenCalled();
+  });
+
+  it("handles connections with no location mappings without error", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([
+      { id: "conn-6", companyId: "co-1", status: "active", refreshToken: null },
+    ]);
+    mockStorage.getPosLocationMappings.mockResolvedValue([]);
+
+    // No mappings → fallback; not UTC 4 → skip
+    await expect(runTimezoneAwareIncrementalSyncs({ utcHour: 12 })).resolves.toBeUndefined();
+    expect(mockStorage.tryAcquirePosSyncLock).not.toHaveBeenCalled();
+  });
+});
+
+// ── backfillLocationTimezones ─────────────────────────────────────────────────
+
+describe("backfillLocationTimezones", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("refreshes timezone for an active connection that has NULL timezone mappings", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([
+      { id: "conn-legacy", companyId: "co-1", status: "active", accessToken: "tok", refreshToken: null },
+    ]);
+    mockStorage.getPosLocationMappings.mockResolvedValue([
+      { externalLocationId: "loc-1", storeId: "store-1", externalTimezone: null },
+    ]);
+    mockSquare.listLocations.mockResolvedValue([
+      { externalId: "loc-1", name: "Downtown", timezone: "America/Chicago" },
+    ]);
+    mockStorage.upsertPosLocationMappings.mockResolvedValue([]);
+
+    await backfillLocationTimezones();
+
+    expect(mockSquare.listLocations).toHaveBeenCalledWith("tok");
+    expect(mockStorage.upsertPosLocationMappings).toHaveBeenCalledWith(
+      "conn-legacy",
+      "co-1",
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalLocationId: "loc-1",
+          externalTimezone: "America/Chicago",
+          storeId: "store-1",
+        }),
+      ]),
+    );
+  });
+
+  it("skips a connection where all locations already have timezone data", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([
+      { id: "conn-fresh", companyId: "co-1", status: "active", accessToken: "tok2", refreshToken: null },
+    ]);
+    mockStorage.getPosLocationMappings.mockResolvedValue([
+      { externalLocationId: "loc-x", storeId: "sx", externalTimezone: "America/New_York" },
+    ]);
+
+    await backfillLocationTimezones();
+
+    // Square API not called — no NULL timezones
+    expect(mockSquare.listLocations).not.toHaveBeenCalled();
+    expect(mockStorage.upsertPosLocationMappings).not.toHaveBeenCalled();
+  });
+
+  it("always refreshes when a specific connectionId is passed (reconnect path)", async () => {
+    mockStorage.getPosConnectionById.mockResolvedValue(
+      { id: "conn-rc", companyId: "co-1", status: "active", accessToken: "tok3", refreshToken: null },
+    );
+    mockStorage.getPosLocationMappings.mockResolvedValue([
+      // Already has timezone but we still refresh on explicit reconnect
+      { externalLocationId: "loc-r", storeId: "sr", externalTimezone: "America/Chicago" },
+    ]);
+    mockSquare.listLocations.mockResolvedValue([
+      { externalId: "loc-r", name: "Riverside", timezone: "America/Chicago" },
+    ]);
+    mockStorage.upsertPosLocationMappings.mockResolvedValue([]);
+
+    await backfillLocationTimezones("conn-rc");
+
+    expect(mockSquare.listLocations).toHaveBeenCalledWith("tok3");
+    expect(mockStorage.upsertPosLocationMappings).toHaveBeenCalledOnce();
+  });
+
+  it("handles a Square API failure gracefully (non-fatal)", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([
+      { id: "conn-err", companyId: "co-1", status: "active", accessToken: "bad", refreshToken: null },
+    ]);
+    mockStorage.getPosLocationMappings.mockResolvedValue([
+      { externalLocationId: "loc-e", storeId: "se", externalTimezone: null },
+    ]);
+    mockSquare.listLocations.mockRejectedValue(new Error("Square API 500: internal error"));
+
+    // Must not throw
+    await expect(backfillLocationTimezones()).resolves.toBeUndefined();
+    expect(mockStorage.upsertPosLocationMappings).not.toHaveBeenCalled();
   });
 });
