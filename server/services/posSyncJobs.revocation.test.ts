@@ -1142,6 +1142,295 @@ describe("runTimezoneAwareIncrementalSyncs — all connections in window are rev
   });
 });
 
+// ── Tests: unexpected generic Error after lock acquisition ────────────────────
+
+/**
+ * Simulates an unexpected runtime crash (non-SquareTokenRevokedError) that
+ * fires inside runIncrementalSync AFTER the lock has been acquired.
+ *
+ * In the code flow of runIncrementalSync:
+ *   1. getPosConnectionById  → connection returned (lock NOT yet held)
+ *   2. tryAcquirePosSyncLock → lock ACQUIRED here
+ *   3. getPosLocationMappings (inside the try block) → throws generic Error here
+ *
+ * We mock getPosLocationMappings to throw a generic Error on the call that
+ * occurs inside runIncrementalSync (i.e. after lock acquisition) for the
+ * failing connection.  The test confirms that:
+ *   - The scheduler (runTimezoneAwareIncrementalSyncs) resolves without throwing.
+ *   - The failing connection's job is updated to a non-running terminal state.
+ *   - The healthy connection completes its sync normally.
+ */
+describe("runTimezoneAwareIncrementalSyncs — unexpected generic Error after lock acquisition", () => {
+  const CRASH_CONN_A = {
+    id: "crash-conn-a",
+    companyId: "co-crash-a",
+    status: "active",
+    accessToken: "access-token-crash-a",
+    refreshToken: null,
+    connectedByUserId: "user-crash",
+    merchantId: "merchant-crash-a",
+    tokenRefreshedAt: new Date(),
+    tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+  };
+
+  const CRASH_CONN_B = {
+    id: "crash-conn-b",
+    companyId: "co-crash-b",
+    status: "active",
+    accessToken: "access-token-crash-b",
+    refreshToken: null,
+    connectedByUserId: "user-crash",
+    merchantId: "merchant-crash-b",
+    tokenRefreshedAt: new Date(),
+    tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+  };
+
+  const JOB_CRASH_A = { id: "job-crash-a", status: "running" };
+  const JOB_CRASH_B = { id: "job-crash-b", status: "running" };
+
+  const LOC_CRASH_A = {
+    externalLocationId: "loc-crash-a",
+    storeId: "store-crash-a",
+    externalTimezone: "America/New_York",
+  };
+
+  const LOC_CRASH_B = {
+    externalLocationId: "loc-crash-b",
+    storeId: "store-crash-b",
+    externalTimezone: "America/Chicago",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStorage.updatePosSyncJob.mockResolvedValue(undefined);
+    mockStorage.updatePosConnection.mockResolvedValue(undefined);
+  });
+
+  it("scheduler resolves without throwing when a generic Error crashes conn-a after lock acquisition", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([CRASH_CONN_A, CRASH_CONN_B]);
+
+    // Window-check pass: getPosLocationMappings called once per connection to determine eligibility
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([LOC_CRASH_A])  // conn-a window check → in 4 AM window
+      .mockResolvedValueOnce([LOC_CRASH_B])  // conn-b window check → in 4 AM window
+      // Sync pass: getPosLocationMappings called again inside runIncrementalSync (after lock)
+      .mockRejectedValueOnce(new Error("Unexpected DB crash after lock"))  // conn-a sync → crash
+      .mockResolvedValueOnce([LOC_CRASH_B]);  // conn-b sync → healthy
+
+    mockStorage.getPosConnectionById
+      .mockResolvedValueOnce(CRASH_CONN_A)
+      .mockResolvedValueOnce(CRASH_CONN_B);
+
+    mockStorage.tryAcquirePosSyncLock
+      .mockResolvedValueOnce({ acquired: true, job: JOB_CRASH_A })
+      .mockResolvedValueOnce({ acquired: true, job: JOB_CRASH_B });
+
+    // conn-b retrieves sales successfully
+    mockSquare.retrieveSales.mockResolvedValueOnce([
+      { locationId: "loc-crash-b", businessDate: "2026-07-27", lines: [{}] },
+    ]);
+    mockIngest.mockResolvedValueOnce({ rowsIngested: 4, rowsSkipped: 0, adhocItems: [] });
+
+    await expect(
+      runTimezoneAwareIncrementalSyncs({ getLocalHour: () => 4, utcHour: 9 }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("the failing connection's job is left in a non-running terminal state (failed) after the crash", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([CRASH_CONN_A, CRASH_CONN_B]);
+
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([LOC_CRASH_A])
+      .mockResolvedValueOnce([LOC_CRASH_B])
+      .mockRejectedValueOnce(new Error("Unexpected DB crash after lock"))
+      .mockResolvedValueOnce([LOC_CRASH_B]);
+
+    mockStorage.getPosConnectionById
+      .mockResolvedValueOnce(CRASH_CONN_A)
+      .mockResolvedValueOnce(CRASH_CONN_B);
+
+    mockStorage.tryAcquirePosSyncLock
+      .mockResolvedValueOnce({ acquired: true, job: JOB_CRASH_A })
+      .mockResolvedValueOnce({ acquired: true, job: JOB_CRASH_B });
+
+    mockSquare.retrieveSales.mockResolvedValueOnce([
+      { locationId: "loc-crash-b", businessDate: "2026-07-27", lines: [{}] },
+    ]);
+    mockIngest.mockResolvedValueOnce({ rowsIngested: 4, rowsSkipped: 0, adhocItems: [] });
+
+    await runTimezoneAwareIncrementalSyncs({ getLocalHour: () => 4, utcHour: 9 });
+
+    // conn-a's job must be updated to a terminal state — not left running
+    const jobAFinalUpdate = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[0] === JOB_CRASH_A.id,
+    );
+    expect(jobAFinalUpdate).toBeDefined();
+    expect(jobAFinalUpdate![1].status).not.toBe("running");
+
+    // No updatePosSyncJob call may leave job-crash-a in "running" state
+    const jobAStillRunning = mockStorage.updatePosSyncJob.mock.calls.filter(
+      (args: any[]) => args[0] === JOB_CRASH_A.id && args[1]?.status === "running",
+    );
+    expect(jobAStillRunning).toHaveLength(0);
+  });
+
+  it("the healthy connection completes its sync and ingests rows even after conn-a crashes", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([CRASH_CONN_A, CRASH_CONN_B]);
+
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([LOC_CRASH_A])
+      .mockResolvedValueOnce([LOC_CRASH_B])
+      .mockRejectedValueOnce(new Error("Unexpected DB crash after lock"))
+      .mockResolvedValueOnce([LOC_CRASH_B]);
+
+    mockStorage.getPosConnectionById
+      .mockResolvedValueOnce(CRASH_CONN_A)
+      .mockResolvedValueOnce(CRASH_CONN_B);
+
+    mockStorage.tryAcquirePosSyncLock
+      .mockResolvedValueOnce({ acquired: true, job: JOB_CRASH_A })
+      .mockResolvedValueOnce({ acquired: true, job: JOB_CRASH_B });
+
+    mockSquare.retrieveSales.mockResolvedValueOnce([
+      { locationId: "loc-crash-b", businessDate: "2026-07-27", lines: [{}] },
+    ]);
+    mockIngest.mockResolvedValueOnce({ rowsIngested: 4, rowsSkipped: 0, adhocItems: [] });
+
+    await runTimezoneAwareIncrementalSyncs({ getLocalHour: () => 4, utcHour: 9 });
+
+    // conn-b's job must be marked completed with the ingested row count
+    const jobBCompleted = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[0] === JOB_CRASH_B.id && args[1]?.status === "completed",
+    );
+    expect(jobBCompleted).toBeDefined();
+    expect(jobBCompleted![1].rowsIngested).toBe(4);
+
+    // Both connections were attempted — the crash did not abort the loop
+    expect(mockStorage.getPosConnectionById).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * Same scenario for runAllIncrementalSyncs — verifies that an unexpected generic
+ * Error thrown inside runIncrementalSync (after lock acquisition) does not leave
+ * the job stuck in "running" state and does not prevent the remaining connections
+ * from being processed.
+ */
+describe("runAllIncrementalSyncs — unexpected generic Error after lock acquisition", () => {
+  const SCHED_CRASH_A = {
+    id: "sched-crash-a",
+    companyId: "co-sched-crash-a",
+    status: "active",
+    accessToken: "access-token-sched-crash-a",
+    refreshToken: null,
+    connectedByUserId: "user-sched-crash",
+    merchantId: "merchant-sched-crash-a",
+    tokenRefreshedAt: new Date(),
+    tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+  };
+
+  const SCHED_CRASH_B = {
+    id: "sched-crash-b",
+    companyId: "co-sched-crash-b",
+    status: "active",
+    accessToken: "access-token-sched-crash-b",
+    refreshToken: null,
+    connectedByUserId: "user-sched-crash",
+    merchantId: "merchant-sched-crash-b",
+    tokenRefreshedAt: new Date(),
+    tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+  };
+
+  const JOB_SCHED_CRASH_A = { id: "job-sched-crash-a", status: "running" };
+  const JOB_SCHED_CRASH_B = { id: "job-sched-crash-b", status: "running" };
+
+  const LOC_SCHED_CRASH_B = {
+    externalLocationId: "loc-sched-crash-b",
+    storeId: "store-sched-crash-b",
+    externalTimezone: "America/Chicago",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStorage.updatePosSyncJob.mockResolvedValue(undefined);
+    mockStorage.updatePosConnection.mockResolvedValue(undefined);
+  });
+
+  it("scheduler resolves without throwing when conn-a crashes with a generic Error after lock acquisition", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([SCHED_CRASH_A, SCHED_CRASH_B]);
+
+    // conn-a: getPosConnectionById succeeds, lock acquired, then getPosLocationMappings crashes
+    mockStorage.getPosConnectionById
+      .mockResolvedValueOnce(SCHED_CRASH_A)
+      .mockResolvedValueOnce(SCHED_CRASH_B);
+
+    mockStorage.tryAcquirePosSyncLock
+      .mockResolvedValueOnce({ acquired: true, job: JOB_SCHED_CRASH_A })
+      .mockResolvedValueOnce({ acquired: true, job: JOB_SCHED_CRASH_B });
+
+    mockStorage.getPosLocationMappings
+      .mockRejectedValueOnce(new Error("Unexpected DB crash after lock"))  // conn-a sync
+      .mockResolvedValueOnce([LOC_SCHED_CRASH_B]);  // conn-b sync
+
+    mockSquare.retrieveSales.mockResolvedValueOnce([
+      { locationId: "loc-sched-crash-b", businessDate: "2026-07-27", lines: [{}] },
+    ]);
+    mockIngest.mockResolvedValueOnce({ rowsIngested: 5, rowsSkipped: 0, adhocItems: [] });
+
+    await expect(runAllIncrementalSyncs()).resolves.toBeUndefined();
+  });
+
+  it("conn-a job is left in a non-running terminal state and conn-b completes its sync", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([SCHED_CRASH_A, SCHED_CRASH_B]);
+
+    mockStorage.getPosConnectionById
+      .mockResolvedValueOnce(SCHED_CRASH_A)
+      .mockResolvedValueOnce(SCHED_CRASH_B);
+
+    mockStorage.tryAcquirePosSyncLock
+      .mockResolvedValueOnce({ acquired: true, job: JOB_SCHED_CRASH_A })
+      .mockResolvedValueOnce({ acquired: true, job: JOB_SCHED_CRASH_B });
+
+    mockStorage.getPosLocationMappings
+      .mockRejectedValueOnce(new Error("Unexpected DB crash after lock"))
+      .mockResolvedValueOnce([LOC_SCHED_CRASH_B]);
+
+    mockSquare.retrieveSales.mockResolvedValueOnce([
+      { locationId: "loc-sched-crash-b", businessDate: "2026-07-27", lines: [{}] },
+    ]);
+    mockIngest.mockResolvedValueOnce({ rowsIngested: 5, rowsSkipped: 0, adhocItems: [] });
+
+    await runAllIncrementalSyncs();
+
+    // conn-a's job must be finalised — no call may leave it in "running"
+    const jobAStillRunning = mockStorage.updatePosSyncJob.mock.calls.filter(
+      (args: any[]) => args[0] === JOB_SCHED_CRASH_A.id && args[1]?.status === "running",
+    );
+    expect(jobAStillRunning).toHaveLength(0);
+
+    // conn-a must have received at least one job update (moving it to a terminal state)
+    const jobAUpdated = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[0] === JOB_SCHED_CRASH_A.id,
+    );
+    expect(jobAUpdated).toBeDefined();
+    expect(jobAUpdated![1].status).not.toBe("running");
+
+    // conn-b must complete and ingest its rows
+    const jobBCompleted = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[0] === JOB_SCHED_CRASH_B.id && args[1]?.status === "completed",
+    );
+    expect(jobBCompleted).toBeDefined();
+    expect(jobBCompleted![1].rowsIngested).toBe(5);
+
+    // Both connections were processed — crash did not abort the outer loop
+    expect(mockStorage.getPosConnectionById).toHaveBeenCalledTimes(2);
+  });
+});
+
 // ── Tests: runTimezoneAwareIncrementalSyncs — zero eligible connections ────────
 
 /**
