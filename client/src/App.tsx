@@ -96,6 +96,7 @@ import DashboardMobile from "@/pages/dashboard-mobile";
 import { ChatPanel } from "@/components/chat-panel";
 import { WhatsNewModal } from "@/components/whats-new-modal";
 import { VersionBanner } from "@/components/version-banner";
+import { PosDisconnectedBanner } from "@/components/pos-disconnected-banner";
 import WebsiteHome from "@/pages/website/home";
 import WebsiteFeatures from "@/pages/website/features";
 import WebsitePricing from "@/pages/website/pricing";
@@ -368,6 +369,8 @@ function ProtectedLayoutContent() {
             userLastSeenVersion={user?.lastSeenVersion}
             onAcknowledged={refreshAuth}
           />
+
+          <PosDisconnectedBanner />
 
           <main className="flex-1 overflow-auto">
             <Switch>
