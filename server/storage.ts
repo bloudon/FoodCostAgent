@@ -672,6 +672,18 @@ export interface IStorage {
   /** Returns the currently-running sync job for a connection, if one exists. */
   getRunningPosSyncJob(connectionId: string): Promise<PosSyncJob | undefined>;
   /**
+   * Returns all pos_sync_jobs rows with status='running' whose startedAt is
+   * older than `thresholdMinutes` (default 30).  Joined with pos_connections so
+   * the caller gets merchantId and connection status without a second query.
+   */
+  getStuckPosSyncJobs(thresholdMinutes?: number): Promise<Array<PosSyncJob & { merchantId: string; connectionStatus: string }>>;
+  /**
+   * Marks all pos_sync_jobs rows with status='running' older than
+   * `thresholdMinutes` (default 60) as 'failed', releasing their locks.
+   * Returns the number of rows updated.
+   */
+  releaseStalePosSyncLocks(thresholdMinutes?: number): Promise<number>;
+  /**
    * Atomically attempts to acquire a sync lock for a connection by inserting a
    * `running` job row.  The partial unique index on (connection_id) WHERE
    * status='running' makes the INSERT the actual lock — two concurrent callers
@@ -5038,6 +5050,53 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return row;
+  }
+
+  async getStuckPosSyncJobs(thresholdMinutes = 30): Promise<Array<PosSyncJob & { merchantId: string; connectionStatus: string }>> {
+    const cutoff = new Date(Date.now() - thresholdMinutes * 60 * 1000);
+    const rows = await db
+      .select({
+        id: posSyncJobs.id,
+        connectionId: posSyncJobs.connectionId,
+        companyId: posSyncJobs.companyId,
+        jobType: posSyncJobs.jobType,
+        status: posSyncJobs.status,
+        startedAt: posSyncJobs.startedAt,
+        completedAt: posSyncJobs.completedAt,
+        daysBackfilled: posSyncJobs.daysBackfilled,
+        rowsIngested: posSyncJobs.rowsIngested,
+        rowsSkipped: posSyncJobs.rowsSkipped,
+        adhocItems: posSyncJobs.adhocItems,
+        errorMessage: posSyncJobs.errorMessage,
+        createdAt: posSyncJobs.createdAt,
+        merchantId: posConnections.merchantId,
+        connectionStatus: posConnections.status,
+      })
+      .from(posSyncJobs)
+      .innerJoin(posConnections, eq(posSyncJobs.connectionId, posConnections.id))
+      .where(and(
+        eq(posSyncJobs.status, "running"),
+        lte(posSyncJobs.startedAt, cutoff),
+      ))
+      .orderBy(asc(posSyncJobs.startedAt));
+    return rows as Array<PosSyncJob & { merchantId: string; connectionStatus: string }>;
+  }
+
+  async releaseStalePosSyncLocks(thresholdMinutes = 60): Promise<number> {
+    const cutoff = new Date(Date.now() - thresholdMinutes * 60 * 1000);
+    const updated = await db
+      .update(posSyncJobs)
+      .set({
+        status: "failed",
+        completedAt: new Date(),
+        errorMessage: `Job auto-expired — stuck in running state for over ${thresholdMinutes} minutes`,
+      })
+      .where(and(
+        eq(posSyncJobs.status, "running"),
+        lte(posSyncJobs.startedAt, cutoff),
+      ))
+      .returning({ id: posSyncJobs.id });
+    return updated.length;
   }
 
   async tryAcquirePosSyncLock(data: InsertPosSyncJob): Promise<

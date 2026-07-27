@@ -77,6 +77,7 @@ import EnterpriseInquiry from "@/pages/enterprise-inquiry";
 import EnterpriseOnboarding from "@/pages/enterprise-onboarding";
 import AdminBackgrounds from "@/pages/admin-backgrounds";
 import AdminVendorRegistry from "@/pages/admin-vendor-registry";
+import AdminPosSyncJobs from "@/pages/admin-pos-sync-jobs";
 import MenuInsights from "@/pages/menu-insights";
 import ExtensionPilot from "@/pages/extension-pilot";
 import AdminUsers from "@/pages/admin-users";
@@ -424,6 +425,7 @@ function ProtectedLayoutContent() {
               <Route path="/admin/backgrounds" component={AdminBackgrounds} />
               <Route path="/admin/users" component={AdminUsers} />
               <Route path="/admin/vendor-registry" component={AdminVendorRegistry} />
+              <Route path="/admin/pos-sync-jobs" component={AdminPosSyncJobs} />
               <Route path="/prep" component={PrepLanding} />
               <Route path="/analyze" component={AnalyzeLanding} />
               <Route path="/more" component={MoreLanding} />

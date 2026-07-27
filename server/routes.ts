@@ -770,6 +770,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Admin: Stuck POS Sync Jobs ──────────────────────────────────────────────
+
+  // GET /api/admin/pos-sync-jobs/stuck — list running jobs older than 30 min
+  app.get("/api/admin/pos-sync-jobs/stuck", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+    try {
+      const jobs = await storage.getStuckPosSyncJobs(30);
+      return res.json({ jobs });
+    } catch (err) {
+      console.error("GET /api/admin/pos-sync-jobs/stuck error:", err);
+      return res.status(500).json({ error: "Failed to fetch stuck jobs" });
+    }
+  });
+
+  // POST /api/admin/pos-sync-jobs/:id/release — mark a stuck job as failed
+  app.post("/api/admin/pos-sync-jobs/:id/release", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+    try {
+      const { id } = req.params;
+      const updated = await storage.updatePosSyncJob(id, {
+        status: "failed",
+        completedAt: new Date(),
+        errorMessage: `Manually released by admin ${user.email} — job was stuck in running state`,
+      });
+      if (!updated) return res.status(404).json({ error: "Job not found" });
+      if (updated.status !== "failed") {
+        // Job was already updated (race condition) — still return success
+      }
+      console.log(`[Admin] Stuck POS sync job ${id} released by ${user.email}`);
+      return res.json({ job: updated });
+    } catch (err) {
+      console.error("POST /api/admin/pos-sync-jobs/:id/release error:", err);
+      return res.status(500).json({ error: "Failed to release job" });
+    }
+  });
+
   // PUT /api/companies/:id/brand-image — set company brand background
   // imageUrl is the objectPath returned by /api/objects/upload
   app.put("/api/companies/:id/brand-image", requireAuth, requireTier("basic"), async (req, res) => {

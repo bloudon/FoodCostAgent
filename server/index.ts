@@ -1147,6 +1147,25 @@ async function runStartupMigrations() {
   };
   scheduleHourlyPosSync();
 
+  // POS stuck-job auto-cleanup — runs every 15 minutes, expires running jobs > 60 min old.
+  // This is a safety net for the double-fault case where a job gets stuck in running state
+  // and the error handler itself failed to mark it failed.
+  const POS_STUCK_JOB_CLEANUP_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+  const releaseStuckPosJobsJob = async () => {
+    try {
+      const released = await storage.releaseStalePosSyncLocks(60);
+      if (released > 0) {
+        log(`🔒 POS stuck-job cleanup: released ${released} stale lock(s) (>60 min running)`);
+      }
+    } catch (error) {
+      console.error("❌ POS stuck-job cleanup error:", error);
+    }
+  };
+  // Delay 2 minutes after startup so the server is ready, then run every 15 min
+  setTimeout(releaseStuckPosJobsJob, 2 * 60 * 1000);
+  setInterval(releaseStuckPosJobsJob, POS_STUCK_JOB_CLEANUP_INTERVAL_MS);
+  log(`🔄 POS stuck-job cleanup scheduled (every ${POS_STUCK_JOB_CLEANUP_INTERVAL_MS / 1000 / 60} minutes, first run in 2min)`);
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";

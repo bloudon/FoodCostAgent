@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Company } from "@shared/schema";
-import { Building2, ChevronRight, ImageIcon, Database } from "lucide-react";
+import { Building2, ChevronRight, ImageIcon, Database, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -60,6 +60,16 @@ export function GlobalAdminHeader() {
         >
           <Database className="h-4 w-4" />
           <span className="hidden sm:inline">Vendor Registry</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setLocation("/admin/pos-sync-jobs")}
+          className="gap-1.5"
+          data-testid="button-admin-pos-sync-jobs"
+        >
+          <AlertTriangle className="h-4 w-4" />
+          <span className="hidden sm:inline">Stuck Syncs</span>
         </Button>
         <Button
           variant="ghost"
