@@ -894,8 +894,6 @@ async function runStartupMigrations() {
     `);
     // Task #544: store the IANA timezone reported by the POS for each location
     await db.execute(sql`ALTER TABLE pos_location_mappings ADD COLUMN IF NOT EXISTS external_timezone text`);
-    // Task #546: ad hoc items (no catalog_object_id) captured per sync job
-    await db.execute(sql`ALTER TABLE pos_sync_jobs ADD COLUMN IF NOT EXISTS adhoc_items jsonb`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS pos_item_mappings (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -927,6 +925,8 @@ async function runStartupMigrations() {
       )
     `);
     await db.execute(sql`ALTER TABLE pos_sync_jobs ADD COLUMN IF NOT EXISTS rows_skipped integer NOT NULL DEFAULT 0`);
+    // Task #546: ad hoc items JSON log — must come after the CREATE TABLE above
+    await db.execute(sql`ALTER TABLE pos_sync_jobs ADD COLUMN IF NOT EXISTS adhoc_items jsonb`);
     // Task #540: token_key_version — 0=plain-text, 1=AES-256-GCM encrypted
     await db.execute(sql`ALTER TABLE pos_connections ADD COLUMN IF NOT EXISTS token_key_version integer NOT NULL DEFAULT 0`);
     // Task #541: token_refreshed_at — tracks last proactive token refresh for 7-day cadence
