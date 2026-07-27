@@ -13,7 +13,7 @@
 import type { PosSyncJob } from "@shared/schema";
 import { storage } from "../storage";
 import { squarePosConnector, SquareTokenRevokedError } from "../integrations/pos/square";
-import { ingestSalesBatch } from "./posIngestion";
+import { ingestSalesBatch, type AdhocItem } from "./posIngestion";
 
 /** Strip any token-shaped strings from error messages before persisting to DB. */
 function sanitizeErrorMessage(msg: string): string {
@@ -78,6 +78,7 @@ export async function runBackfill(
 
   let totalRows = 0;
   let totalSkipped = 0;
+  const allAdhocItems: AdhocItem[] = [];
   const locationErrors: string[] = [];
 
   try {
@@ -104,6 +105,7 @@ export async function runBackfill(
           });
           totalRows += result.rowsIngested;
           totalSkipped += result.rowsSkipped;
+          allAdhocItems.push(...result.adhocItems);
         }
       } catch (locErr: any) {
         // A single location failure must not abort the whole backfill.
@@ -124,6 +126,7 @@ export async function runBackfill(
       completedAt: new Date(),
       rowsIngested: totalRows,
       rowsSkipped: totalSkipped,
+      adhocItems: allAdhocItems.length > 0 ? allAdhocItems : null,
       errorMessage: locationErrors.length > 0 ? locationErrors.join("; ") : undefined,
     });
 
@@ -233,6 +236,7 @@ export async function runIncrementalSync(
 
   let totalRows = 0;
   let totalSkipped = 0;
+  const allAdhocItems: AdhocItem[] = [];
   const locationErrors: string[] = [];
 
   try {
@@ -260,6 +264,7 @@ export async function runIncrementalSync(
           });
           totalRows += result.rowsIngested;
           totalSkipped += result.rowsSkipped;
+          allAdhocItems.push(...result.adhocItems);
         }
       } catch (locErr: any) {
         // A single location failure must not abort the whole sync.
@@ -280,6 +285,7 @@ export async function runIncrementalSync(
       completedAt: new Date(),
       rowsIngested: totalRows,
       rowsSkipped: totalSkipped,
+      adhocItems: allAdhocItems.length > 0 ? allAdhocItems : null,
       errorMessage: locationErrors.length > 0 ? locationErrors.join("; ") : undefined,
     });
 

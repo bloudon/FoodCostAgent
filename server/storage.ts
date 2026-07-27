@@ -4987,9 +4987,12 @@ export class DatabaseStorage implements IStorage {
         .limit(1);
 
       if (existing.length > 0) {
+        // Only update menuItemId and updatedAt — never overwrite the name snapshot
+        // captured at mapping-creation time. This ensures that renaming or deleting
+        // a variation in Square does not break the display of historical mappings.
         const [updated] = await db
           .update(posItemMappings)
-          .set({ ...m, updatedAt: new Date() })
+          .set({ menuItemId: m.menuItemId, updatedAt: new Date() })
           .where(eq(posItemMappings.id, existing[0].id))
           .returning();
         results.push(updated);

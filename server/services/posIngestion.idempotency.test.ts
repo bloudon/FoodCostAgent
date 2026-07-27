@@ -268,12 +268,14 @@ describe("POS ingestion — idempotency", () => {
     }
   });
 
-  it("itemized refund produces a negative-qty row; custom-dollar refund is skipped", async () => {
+  it("itemized refund produces a negative-qty row; custom-dollar refund is recorded as ad hoc", async () => {
     await ingestSalesBatch(saleBatch, opts);           // 2 rows
-    const r2 = await ingestSalesBatch(refundBatch, opts); // 2 upserts + 1 refund insert + 1 skipped
+    const r2 = await ingestSalesBatch(refundBatch, opts); // 2 upserts + 1 refund insert + 1 ad hoc
 
-    // Custom-dollar refund counted in rowsSkipped
-    expect(r2.rowsSkipped).toBe(1);
+    // Custom-dollar refund has no catalog_object_id — it goes into adhocItems, NOT rowsSkipped
+    expect(r2.rowsSkipped).toBe(0);
+    expect(r2.adhocItems).toHaveLength(1);
+    expect(r2.adhocItems[0].reason).toBe("custom_dollar_refund");
 
     // Total unique keys: line-1, line-2, return-line-1 = 3
     expect(rowStore.size).toBe(3);

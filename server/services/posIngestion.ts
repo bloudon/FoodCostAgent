@@ -13,9 +13,21 @@
  *   the net qty_sold across all rows for a (menuItem, date, store) naturally reflects
  *   the post-refund total.
  *
- *   Custom-dollar refunds have no catalog_object_id → no variationId mapping → they
- *   are detected by the negative-qty + no-variationId condition and counted in
- *   rowsSkipped with a log note.
+ * Skip-reason taxonomy:
+ *   rowsSkipped  — line HAS a catalog_object_id but no FnB menu item mapping.
+ *                  Users should edit item mappings to capture these.
+ *   adhocItems   — line has NO catalog_object_id; it is a custom/ad hoc item or a
+ *                  custom-dollar refund that can never be mapped to a catalog entry.
+ *                  Stored in the sync job row so managers can see what was skipped.
+ *
+ * Modifier handling:
+ *   square.ts emits each modifier (with a catalog_object_id) as a separate PosSalesLine.
+ *   They flow through the same mapping lookup as regular variation lines — no special
+ *   casing required here.
+ *
+ * Quantity precision:
+ *   square.ts already uses parseFloat for quantity; posIngestion stores it as-is (real).
+ *   Fractional quantities (e.g. "0.5" for weighed items) are preserved throughout.
  */
 import { storage } from "../storage";
 import type { PosSalesBatch } from "../integrations/pos/types";
@@ -28,15 +40,36 @@ export interface IngestBatchOptions {
 }
 
 /**
+ * Represents a sale line that could not be attributed to any catalog entry.
+ * Persisted in pos_sync_jobs.adhoc_items so managers can review them.
+ */
+export interface AdhocItem {
+  /** Display name of the item as it appeared on the order */
+  name: string;
+  /** Quantity sold (negative for refunds) */
+  quantity: number;
+  /** Square order ID — used to cross-reference in Square Dashboard */
+  orderId: string;
+  /**
+   * Why the item is ad hoc:
+   *   "no_catalog_id"         — positive sale, no catalog_object_id (open item / ad hoc)
+   *   "custom_dollar_refund"  — negative qty refund with no catalog_object_id
+   */
+  reason: "no_catalog_id" | "custom_dollar_refund";
+}
+
+/**
  * Ingest one PosSalesBatch (one location × one business date).
  *
- * Returns { rowsIngested, rowsSkipped } where rowsSkipped counts lines that
- * could not be mapped to a menu item — including custom-dollar refunds.
+ * Returns:
+ *  - rowsIngested  — lines successfully written to daily_menu_item_sales
+ *  - rowsSkipped   — lines that had a catalog_object_id but no FnB mapping
+ *  - adhocItems    — lines with no catalog_object_id (ad hoc items / custom-dollar refunds)
  */
 export async function ingestSalesBatch(
   batch: PosSalesBatch,
   opts: IngestBatchOptions,
-): Promise<{ rowsIngested: number; rowsSkipped: number }> {
+): Promise<{ rowsIngested: number; rowsSkipped: number; adhocItems: AdhocItem[] }> {
   const { companyId, connectionId, connectedByUserId } = opts;
 
   // 1. Find the store mapped to this location
@@ -48,7 +81,7 @@ export async function ingestSalesBatch(
     console.warn(
       `[POS Ingest] No store mapped for location ${batch.locationId} on connection ${connectionId} — skipping`,
     );
-    return { rowsIngested: 0, rowsSkipped: 0 };
+    return { rowsIngested: 0, rowsSkipped: 0, adhocItems: [] };
   }
   const storeId = locationMapping.storeId;
 
@@ -74,27 +107,42 @@ export async function ingestSalesBatch(
   //    identified by (connectionId, externalOrderId, externalLineItemId).
   const salesRecords: Parameters<typeof storage.upsertPosDailyMenuItemSales>[0] = [];
   let rowsSkipped = 0;
+  const adhocItems: AdhocItem[] = [];
 
   for (const line of batch.lines) {
     // Skip zero-quantity lines (fully voided before close)
     if (line.quantity === 0) continue;
 
-    // Custom-dollar refund: negative qty with no variationId → cannot attribute
-    // to a menu item.  Count in rowsSkipped and emit a note to the job log.
-    if (line.quantity < 0 && !line.externalVariationId) {
-      rowsSkipped++;
-      console.log(
-        `[POS Ingest] Skipping custom-dollar refund on order ${line.externalOrderId}` +
-        ` (no catalog_object_id — cannot map to menu item)`,
-      );
+    // ── Ad hoc / custom-dollar: no catalog_object_id ────────────────────────
+    // These cannot be mapped to a FnB menu item regardless of mappings.
+    // Capture them in adhocItems for the sync job log instead of silently
+    // dropping them in the generic rowsSkipped counter.
+    if (!line.externalVariationId) {
+      const reason: AdhocItem["reason"] =
+        line.quantity < 0 ? "custom_dollar_refund" : "no_catalog_id";
+      adhocItems.push({
+        name: line.itemName,
+        quantity: line.quantity,
+        orderId: line.externalOrderId,
+        reason,
+      });
+      if (reason === "custom_dollar_refund") {
+        console.log(
+          `[POS Ingest] Custom-dollar refund on order ${line.externalOrderId}` +
+          ` (no catalog_object_id — recorded as ad hoc)`,
+        );
+      } else {
+        console.log(
+          `[POS Ingest] Ad hoc item "${line.itemName}" on order ${line.externalOrderId}` +
+          ` (no catalog_object_id — recorded as ad hoc)`,
+        );
+      }
       continue;
     }
 
-    // Positive qty with no variationId → unrecognised item type, skip
-    const mapping = line.externalVariationId
-      ? byVariation.get(line.externalVariationId)
-      : undefined;
-
+    // ── Has catalog ID but no FnB mapping ───────────────────────────────────
+    // Counted in rowsSkipped so users know to update item mappings.
+    const mapping = byVariation.get(line.externalVariationId);
     if (!mapping?.menuItemId) {
       rowsSkipped++;
       continue;
@@ -106,7 +154,7 @@ export async function ingestSalesBatch(
       menuItemId: mapping.menuItemId,
       salesDate,
       daypartId: null,
-      qtySold: line.quantity,          // negative for refund lines
+      qtySold: line.quantity,          // negative for refund lines; fractional for weighed items
       netSales: line.netSalesMoney / 100, // negative for refund lines
       sourceBatchId: batchRecord.id,
       connectionId,
@@ -117,7 +165,7 @@ export async function ingestSalesBatch(
 
   if (salesRecords.length === 0) {
     await storage.updateSalesUploadBatchStatus(batchRecord.id, companyId, "completed", new Date(), 0);
-    return { rowsIngested: 0, rowsSkipped };
+    return { rowsIngested: 0, rowsSkipped, adhocItems };
   }
 
   // 5. Upsert — ON CONFLICT (connectionId, externalOrderId, externalLineItemId) DO UPDATE
@@ -159,5 +207,5 @@ export async function ingestSalesBatch(
     await storage.updateSalesUploadBatchStatus(batchRecord.id, companyId, "failed");
   }
 
-  return { rowsIngested: upserted.length, rowsSkipped };
+  return { rowsIngested: upserted.length, rowsSkipped, adhocItems };
 }

@@ -2079,6 +2079,10 @@ export const posSyncJobs = pgTable("pos_sync_jobs", {
   daysBackfilled: integer("days_backfilled"),
   rowsIngested: integer("rows_ingested").notNull().default(0),
   rowsSkipped: integer("rows_skipped").notNull().default(0),
+  // Ad hoc items — line items without a catalog_object_id (cannot be mapped).
+  // Stored as JSON so managers can see what was sold but not tracked.
+  // Shape: Array<{ name: string; quantity: number; orderId: string; reason: "no_catalog_id" | "custom_dollar_refund" }>
+  adhocItems: jsonb("adhoc_items"),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({

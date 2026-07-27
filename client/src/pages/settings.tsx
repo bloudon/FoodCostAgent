@@ -2211,6 +2211,32 @@ function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null
                                   </Tooltip>
                                 </TooltipProvider>
                               )}
+                              {Array.isArray(job.adhocItems) && job.adhocItems.length > 0 && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400 cursor-default">
+                                        <AlertCircle className="h-3 w-3" />
+                                        {job.adhocItems.length} ad hoc
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-[240px] text-left">
+                                      <p className="font-medium mb-1">{job.adhocItems.length} item{job.adhocItems.length === 1 ? "" : "s"} sold without a catalog entry:</p>
+                                      <ul className="space-y-0.5 max-h-[120px] overflow-y-auto">
+                                        {job.adhocItems.slice(0, 8).map((item: any, i: number) => (
+                                          <li key={i} className="text-xs text-muted-foreground truncate">
+                                            · {item.name} (qty {item.quantity})
+                                          </li>
+                                        ))}
+                                        {job.adhocItems.length > 8 && (
+                                          <li className="text-xs text-muted-foreground">…and {job.adhocItems.length - 8} more</li>
+                                        )}
+                                      </ul>
+                                      <p className="text-xs mt-1 text-muted-foreground">Add these to your Square catalog to track them.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
                             </div>
                             <span className="text-muted-foreground">
                               {new Date(job.createdAt).toLocaleString()}

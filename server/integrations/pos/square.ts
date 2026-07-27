@@ -325,6 +325,37 @@ export const squarePosConnector: PosConnector = {
           };
 
           batchesByDate.get(businessDate)!.push(salesLine);
+
+          // ── Modifiers — each modifier with a catalog ID becomes its own line ──
+          // This lets modifiers (e.g. "Extra Cheese") be mapped to FnB items just
+          // like regular variations. Modifiers WITHOUT a catalog_object_id are ad hoc
+          // add-ons; the ingestion service will capture them in the adhocItems log.
+          for (const modifier of line.modifiers || []) {
+            const modCatId = modifier.catalog_object_id;
+            if (!modCatId) continue; // ad hoc modifier — ingestion will record it
+            const modLineId = `${lineId}-mod-${modifier.uid || modCatId}`;
+            const modMoney = modifier.applied_money?.amount ?? 0;
+            batchesByDate.get(businessDate)!.push({
+              provider: "square",
+              externalLocationId: locationId,
+              externalOrderId: order.id,
+              externalLineId: modLineId,
+              businessDate,
+              closedAt,
+              externalItemId: modCatId,
+              externalVariationId: modCatId,
+              externalModifierIds: [],
+              itemName: modifier.name || "Modifier",
+              variationName: undefined,
+              quantity: qty, // modifier sold once per parent item
+              grossSalesMoney: modMoney,
+              discountsMoney: 0,
+              netSalesMoney: modMoney,
+              voidedQuantity: undefined,
+              refundedQuantity: undefined,
+              rawPayloadReference: JSON.stringify({ orderId: order.id, lineUid: line.uid, modifierUid: modifier.uid }),
+            });
+          }
         }
 
         // ── Return (refund) line items ──────────────────────────────────────
